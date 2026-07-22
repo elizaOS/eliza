@@ -161,7 +161,9 @@ import {
   type OrchestratorTaskStatus,
   type OrchestratorTaskUsage,
   RETRY_BUDGET_EPOCH_METADATA_KEY,
+  RETRY_BUDGET_SESSION_METADATA_KEY,
   readRetryBudgetEpoch,
+  readRetryBudgetFirstSessionId,
   resolveStateLostRespawnCap,
   resolveTaskTransition,
   stateLostRespawnUnderCap,
@@ -186,6 +188,12 @@ import {
 import { extractPullRequestLink } from "./pull-request-link.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
 import {
+  readSmithersDurableRunLink,
+  runDurableTask,
+  type SmithersDurableRunLink,
+  smithersDurableRunMetadata,
+} from "./smithers-task-integration.js";
+import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
@@ -193,6 +201,7 @@ import {
   AdmissionQueueFullError,
   type ApprovalPreset,
   SessionCapError,
+  type SessionInfo,
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
@@ -378,6 +387,8 @@ export interface AttachSessionInput {
   providerSource?: string;
   repo?: string;
   goalPrompt?: string;
+  /** Stable Smithers identity persisted before TASKS sends its first prompt. */
+  durableRun?: SmithersDurableRunLink;
 }
 
 export interface AddMessageInput {
@@ -964,6 +975,9 @@ export class OrchestratorTaskService extends Service {
   // tick can't both dispatch the same parked task. A promise-chain mutex.
   private admissionDrainLock = Promise.resolve();
   private admissionReconcileTimer: NodeJS.Timeout | undefined;
+  private smithersRecoveryInFlight:
+    | Promise<{ recovered: number; skipped: number }>
+    | undefined;
 
   constructor(
     runtime: IAgentRuntime,
@@ -1038,6 +1052,7 @@ export class OrchestratorTaskService extends Service {
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
+      this.queueSmithersRecovery(acp);
       return;
     }
     // ACP may not be registered yet — service start order during boot isn't
@@ -1068,6 +1083,7 @@ export class OrchestratorTaskService extends Service {
       )) as AcpService;
       if (this.started && !this.unsubscribe) {
         this.subscribeToAcp(acp);
+        this.queueSmithersRecovery(acp);
       }
     } catch (error) {
       // error-policy:J7 background ACP bind; the failure is warned and observable
@@ -1090,6 +1106,323 @@ export class OrchestratorTaskService extends Service {
       this.admissionReconcileTimer = undefined;
     }
     this.started = false;
+  }
+
+  private queueSmithersRecovery(acp: AcpService): void {
+    if (
+      typeof acp.listSessions !== "function" ||
+      typeof acp.prepareSessionForDurableRecovery !== "function" ||
+      typeof acp.updateSessionMetadata !== "function"
+    ) {
+      return;
+    }
+    void this.recoverInterruptedSmithersRuns(acp).catch((err) => {
+      // error-policy:J7 startup recovery is retried on the next boot or an
+      // explicit recovery call; the task remains durably marked running and
+      // the failure is surfaced to the agent instead of blocking service boot.
+      this.runtime.reportError?.(
+        "OrchestratorTask.recoverSmithersRuns",
+        err,
+        {},
+      );
+    });
+  }
+
+  /**
+   * Resume TASKS-owned Smithers graphs left pending/running by a host restart.
+   * The run link is read from both durable stores: ACP metadata reconstructs a
+   * missing task-session row, while the task store reconstructs a missing ACP
+   * session. A replacement ACP transport is attached before Smithers executes,
+   * and the stable graph ids ensure completed turns are never prompted again.
+   */
+  recoverInterruptedSmithersRuns(
+    acpOverride?: AcpService,
+  ): Promise<{ recovered: number; skipped: number }> {
+    if (this.smithersRecoveryInFlight) return this.smithersRecoveryInFlight;
+    const run = this.recoverInterruptedSmithersRunsOnce(acpOverride).finally(
+      () => {
+        if (this.smithersRecoveryInFlight === run) {
+          this.smithersRecoveryInFlight = undefined;
+        }
+      },
+    );
+    this.smithersRecoveryInFlight = run;
+    return run;
+  }
+
+  private async recoverInterruptedSmithersRunsOnce(
+    acpOverride?: AcpService,
+  ): Promise<{ recovered: number; skipped: number }> {
+    const acp = acpOverride ?? this.acp();
+    if (!acp) throw new Error("ACP service unavailable for Smithers recovery");
+
+    const [acpSessions, taskRecords] = await Promise.all([
+      acp.listSessions(),
+      this.store.listTasks({}),
+    ]);
+    const taskDocs = (
+      await Promise.all(taskRecords.map((task) => this.store.getTask(task.id)))
+    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const acpById = new Map(
+      acpSessions.map((session) => [session.id, session]),
+    );
+    const taskSessionById = new Map(
+      taskDocs.flatMap((doc) =>
+        doc.sessions.map((session) => [session.sessionId, session] as const),
+      ),
+    );
+
+    type Candidate = {
+      link: SmithersDurableRunLink;
+      acpSession?: SessionInfo;
+      taskSession?: OrchestratorTaskSession;
+    };
+    const candidates = new Map<string, Candidate>();
+    const consider = (candidate: Candidate): void => {
+      if (
+        candidate.link.state === "completed" ||
+        candidate.link.state === "superseded"
+      ) {
+        return;
+      }
+      const key = `${candidate.link.tenantId}\u0000${candidate.link.taskId}\u0000${candidate.link.runId}`;
+      const prior = candidates.get(key);
+      const candidateTime =
+        candidate.acpSession?.createdAt.getTime() ??
+        candidate.taskSession?.spawnedAt ??
+        0;
+      const priorTime =
+        prior?.acpSession?.createdAt.getTime() ??
+        prior?.taskSession?.spawnedAt ??
+        0;
+      if (!prior || candidateTime >= priorTime) candidates.set(key, candidate);
+    };
+
+    for (const session of acpSessions) {
+      const link = readSmithersDurableRunLink(session.metadata);
+      if (!link) continue;
+      consider({
+        link,
+        acpSession: session,
+        taskSession: taskSessionById.get(session.id),
+      });
+    }
+    for (const doc of taskDocs) {
+      for (const session of doc.sessions) {
+        const link = readSmithersDurableRunLink(session.metadata);
+        if (!link) continue;
+        consider({
+          link,
+          taskSession: session,
+          acpSession: acpById.get(session.sessionId),
+        });
+      }
+    }
+
+    let recovered = 0;
+    let skipped = 0;
+    const failures: unknown[] = [];
+    for (const candidate of candidates.values()) {
+      const task = await this.store.getTask(candidate.link.orchestratorTaskId);
+      if (
+        !task ||
+        task.task.paused ||
+        (task.task.status !== "open" &&
+          task.task.status !== "active" &&
+          task.task.status !== "validating")
+      ) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        await this.recoverOneSmithersRun(acp, candidate);
+        recovered += 1;
+      } catch (err) {
+        // error-policy:J1 each candidate is an independent recovery boundary;
+        // retain every failure so healthy runs still recover, then surface one
+        // AggregateError after the complete startup scan.
+        failures.push(err);
+      }
+    }
+    if (recovered > 0 || skipped > 0) {
+      this.log("info", "Smithers restart recovery scan complete", {
+        recovered,
+        skipped,
+      });
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `${failures.length} Smithers run recovery attempt(s) failed`,
+      );
+    }
+    return { recovered, skipped };
+  }
+
+  private async recoverOneSmithersRun(
+    acp: AcpService,
+    candidate: {
+      link: SmithersDurableRunLink;
+      acpSession?: SessionInfo;
+      taskSession?: OrchestratorTaskSession;
+    },
+  ): Promise<void> {
+    const { link } = candidate;
+    let session = candidate.acpSession;
+    if (!session) {
+      const persisted = candidate.taskSession;
+      if (!persisted) {
+        throw new Error(`Smithers run ${link.runId} has no persisted session`);
+      }
+      const spawned = await acp.spawnSession({
+        agentType: persisted.framework,
+        workdir: persisted.workdir,
+        model: link.model,
+        approvalPreset: link.approvalPreset,
+        metadata: {
+          ...persisted.metadata,
+          taskId: link.orchestratorTaskId,
+          ...smithersDurableRunMetadata(link),
+        },
+      });
+      session = await acp.getSession(spawned.sessionId);
+      if (!session) {
+        throw new Error(
+          `Recovery spawn ${spawned.sessionId} was not persisted by ACP`,
+        );
+      }
+    }
+
+    const prepared = await acp.prepareSessionForDurableRecovery(session.id);
+    const preparedSession = await acp.getSession(prepared.sessionId);
+    if (!preparedSession) {
+      throw new Error(
+        `Recovery session ${prepared.sessionId} was not persisted by ACP`,
+      );
+    }
+    const runningLink: SmithersDurableRunLink = {
+      ...link,
+      state: "running",
+    };
+    const attached = await this.attachSession(link.orchestratorTaskId, {
+      sessionId: prepared.sessionId,
+      agentType: prepared.agentType,
+      workdir: prepared.workdir,
+      status: prepared.status,
+      metadata: prepared.metadata,
+      label:
+        typeof prepared.metadata?.label === "string"
+          ? prepared.metadata.label
+          : candidate.taskSession?.label,
+      originalTask: link.initialPrompt,
+      model: link.model,
+      durableRun: runningLink,
+    });
+    if (!attached) {
+      throw new Error(
+        `Orchestrator task ${link.orchestratorTaskId} disappeared during Smithers recovery`,
+      );
+    }
+    await this.syncSmithersRunCopies(acp, runningLink, prepared.sessionId);
+
+    try {
+      await runDurableTask(acp, prepared, link.initialPrompt, {
+        tenantId: link.tenantId,
+        taskId: link.taskId,
+        runId: link.runId,
+        timeoutMs: link.timeoutMs,
+        model: link.model,
+        maxTurns: link.maxTurns,
+      });
+      const completed: SmithersDurableRunLink = {
+        ...link,
+        state: "completed",
+      };
+      await this.syncSmithersRunCopies(acp, completed, prepared.sessionId);
+      if (!link.keepAliveAfterComplete) {
+        try {
+          await acp.stopSession(prepared.sessionId);
+        } catch (err) {
+          // error-policy:J6 the graph and both durable links are already
+          // completed; transport teardown cannot turn committed work into a
+          // failed recovery, but the leaked session remains observable.
+          this.log("warn", "Smithers recovery session teardown failed", {
+            sessionId: prepared.sessionId,
+            runId: link.runId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    } catch (err) {
+      // error-policy:J2 the durable graph stays running so the next recovery
+      // resumes its committed nodes; add stable task/run/session context and
+      // preserve the provider or transport failure as the cause.
+      const recoveryError = new ElizaError(
+        `Smithers recovery failed for run ${link.runId}`,
+        {
+          code: "SMITHERS_RECOVERY_FAILED",
+          context: {
+            taskId: link.orchestratorTaskId,
+            runId: link.runId,
+            sessionId: prepared.sessionId,
+          },
+          cause: err,
+          severity: "ephemeral",
+        },
+      );
+      this.runtime.reportError(
+        "OrchestratorTask.recoverSmithersRun",
+        recoveryError,
+        recoveryError.context,
+      );
+      throw recoveryError;
+    }
+  }
+
+  private async syncSmithersRunCopies(
+    acp: AcpService,
+    activeLink: SmithersDurableRunLink,
+    activeSessionId: string,
+  ): Promise<void> {
+    const task = await this.store.getTask(activeLink.orchestratorTaskId);
+    const acpSessions = await acp.listSessions();
+    const acpById = new Map(
+      acpSessions.map((session) => [session.id, session]),
+    );
+    const taskById = new Map(
+      (task?.sessions ?? []).map((session) => [session.sessionId, session]),
+    );
+    const ids = new Set([...acpById.keys(), ...taskById.keys()]);
+    const writes: Promise<unknown>[] = [];
+    for (const sessionId of ids) {
+      const persisted =
+        readSmithersDurableRunLink(acpById.get(sessionId)?.metadata) ??
+        readSmithersDurableRunLink(taskById.get(sessionId)?.metadata);
+      if (
+        !persisted ||
+        persisted.tenantId !== activeLink.tenantId ||
+        persisted.taskId !== activeLink.taskId ||
+        persisted.runId !== activeLink.runId
+      ) {
+        continue;
+      }
+      const next: SmithersDurableRunLink =
+        sessionId === activeSessionId
+          ? activeLink
+          : { ...persisted, state: "superseded" };
+      if (acpById.has(sessionId)) {
+        writes.push(
+          acp.updateSessionMetadata(
+            sessionId,
+            smithersDurableRunMetadata(next),
+          ),
+        );
+      }
+      if (taskById.has(sessionId)) {
+        writes.push(this.updateSmithersDurableRun(sessionId, next));
+      }
+    }
+    await Promise.all(writes);
   }
 
   // ---- live change bus ---------------------------------------------------
@@ -2211,12 +2544,19 @@ export class OrchestratorTaskService extends Service {
     // lineage) must not count, or a restarted task re-fails on its first blip
     // (#14104). Absent epoch → every session counts (pre-restart lifetime).
     const budgetEpoch = readRetryBudgetEpoch(doc.task.metadata);
+    const firstBudgetSessionId = readRetryBudgetFirstSessionId(
+      doc.task.metadata,
+    );
+    const firstBudgetSessionIndex = firstBudgetSessionId
+      ? doc.sessions.findIndex((s) => s.sessionId === firstBudgetSessionId)
+      : -1;
+    const budgetSessions =
+      firstBudgetSessionIndex >= 0
+        ? doc.sessions.slice(firstBudgetSessionIndex)
+        : doc.sessions.filter((s) => s.spawnedAt >= budgetEpoch);
     const erroredSessionIds = new Set(
-      doc.sessions
-        .filter(
-          (s) =>
-            SESSION_ERROR_STATUSES.has(s.status) && s.spawnedAt >= budgetEpoch,
-        )
+      budgetSessions
+        .filter((s) => SESSION_ERROR_STATUSES.has(s.status))
         .map((s) => s.sessionId),
     );
     erroredSessionIds.add(sessionId);
@@ -3058,6 +3398,23 @@ export class OrchestratorTaskService extends Service {
       })
     ) {
       return undefined;
+    }
+
+    // Automatic completion already verifies and stores these exact remote facts
+    // before invoking the model judge. Reuse that verdict when the claimed PR
+    // and file set are unchanged instead of issuing a second GitHub request in
+    // the same validation pass. A manual retry with different evidence or files
+    // misses this identity check and is verified afresh.
+    const recorded = _readGroundTruthVerdict(doc.task.metadata);
+    const claimedPr = extractPullRequestLink(completion)?.url;
+    const normalizedClaimedFiles = [...new Set(claimedFiles)].sort();
+    if (
+      recorded &&
+      recorded.pr.url === claimedPr &&
+      JSON.stringify(recorded.files.claimed) ===
+        JSON.stringify(normalizedClaimedFiles)
+    ) {
+      return recorded;
     }
 
     const workspace = getCodingWorkspaceService(this.runtime);
@@ -4132,10 +4489,20 @@ export class OrchestratorTaskService extends Service {
         [RETRY_BUDGET_EPOCH_METADATA_KEY]: Date.now(),
       },
     });
-    await this.spawnAgentForTask(taskId, {
+    const restartedDetail = await this.spawnAgentForTask(taskId, {
       ...input.agent,
       task: instruction,
     });
+    const firstRestartedSessionId = restartedDetail?.sessions.at(-1)?.sessionId;
+    if (firstRestartedSessionId) {
+      const afterSpawn = await this.store.getTask(taskId);
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...afterSpawn?.task.metadata,
+          [RETRY_BUDGET_SESSION_METADATA_KEY]: firstRestartedSessionId,
+        },
+      });
+    }
     if (input.stopActive !== false) await this.stopActiveSessions(doc);
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
@@ -4763,8 +5130,9 @@ export class OrchestratorTaskService extends Service {
    *
    * Idempotent: attaching the same sessionId twice is a no-op (the store's
    * `addSession` also upserts by sessionId). If the task doesn't exist, returns
-   * `false` — callers treat that as a soft failure, same policy as thread-mint
-   * failure in the create action.
+   * `false`; direct-prompt callers may degrade without a widget, while the
+   * Smithers path must abort before graph execution because it requires this
+   * durable recovery owner.
    *
    * Only advances the task status to `active` for a non-terminal session; a
    * session that's already `completed` / `stopped` / `error` on arrival gets
@@ -4825,7 +5193,12 @@ export class OrchestratorTaskService extends Service {
       cacheTokens: 0,
       costUsd: 0,
       usageState: "unavailable",
-      metadata: {},
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(input.durableRun
+          ? smithersDurableRunMetadata(input.durableRun)
+          : {}),
+      },
       createdAt: ts,
       updatedAt: ts,
     };
@@ -4845,6 +5218,27 @@ export class OrchestratorTaskService extends Service {
     if (!TERMINAL_TASK_SESSION_STATUSES.has(input.status)) {
       await this.advanceTaskStatus(taskId, "session_active");
     }
+    return true;
+  }
+
+  /**
+   * Mirror a durable Smithers run-state transition onto the orchestrator
+   * session row. TASKS writes the same link to AcpService metadata; keeping both
+   * copies lets startup reconstruct linkage even if the host dies between the
+   * two durable writes.
+   */
+  async updateSmithersDurableRun(
+    sessionId: string,
+    link: SmithersDurableRunLink,
+  ): Promise<boolean> {
+    const found = await this.store.findSession(sessionId);
+    if (!found) return false;
+    await this.store.updateSession(sessionId, {
+      metadata: {
+        ...found.session.metadata,
+        ...smithersDurableRunMetadata(link),
+      },
+    });
     return true;
   }
 

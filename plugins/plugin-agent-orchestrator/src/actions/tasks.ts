@@ -44,7 +44,9 @@ import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   runDurableTask,
+  type SmithersDurableRunLink,
   shouldUseSmithersTaskRunner,
+  smithersDurableRunMetadata,
 } from "../services/smithers-task-integration";
 import {
   KNOWN_ADAPTER_TYPES,
@@ -621,6 +623,7 @@ async function runPromptViaSmithers(
   service: ReturnType<typeof getAcpService> & {},
   session: SpawnResult,
   task: string,
+  durableRun: SmithersDurableRunLink,
   timeoutMs: number | undefined,
   model: string | undefined,
   keepAliveAfterComplete: boolean,
@@ -629,8 +632,12 @@ async function runPromptViaSmithers(
   let completed = false;
   try {
     const { lastResponse } = await runDurableTask(service, session, task, {
+      tenantId: durableRun.tenantId,
+      taskId: durableRun.taskId,
+      runId: durableRun.runId,
       timeoutMs,
       model,
+      maxTurns: durableRun.maxTurns,
     });
     if (service.emitsPromptTerminalEvents !== true) {
       emitSessionEvent(service, session.sessionId, "task_complete", {
@@ -794,6 +801,9 @@ async function runCreateLegacy(
     pickString(params, content, "approvalPreset"),
   );
   const timeoutMs = getTimeoutMs(params, content);
+  const maxSmithersTurns = readPositiveInteger(
+    params.maxTurns ?? content.maxTurns,
+  );
   const baseLabel = pickString(params, content, "label");
   const extraMetadata = additionalSessionMetadata(params, content);
   const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
@@ -822,6 +832,122 @@ async function runCreateLegacy(
     extraMetadata,
     resolvedTaskRoomId,
   );
+
+  // The durable task must exist before ACP work begins. Its id is the stable
+  // owner recorded in every Smithers run link, so a host restart can discover
+  // the task/session pair and resume the same graph without reconstructing the
+  // action call from transient planner state.
+  const taskTitle =
+    pickString(params, content, "title") ??
+    pickString(params, content, "goal") ??
+    (tasks[0] ? labelFrom(tasks[0], 0) : "Coding task");
+  const taskGoal = pickString(params, content, "goal") ?? taskTitle;
+  const taskPriority = (pickString(params, content, "priority") ?? "normal") as
+    | "low"
+    | "normal"
+    | "high"
+    | "urgent";
+  const acceptanceCriteria = pickStringArrayFromInputs(
+    params,
+    content,
+    "acceptanceCriteria",
+  );
+  const taskRoomId =
+    typeof swarmRoomMetadata.taskRoomId === "string"
+      ? swarmRoomMetadata.taskRoomId
+      : undefined;
+  const originRoomId =
+    typeof swarmRoomMetadata.originRoomId === "string"
+      ? swarmRoomMetadata.originRoomId
+      : undefined;
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  const useSmithers = shouldUseSmithersTaskRunner();
+  let threadId: string | null = null;
+  try {
+    if (!taskService || typeof taskService.createTask !== "function") {
+      if (useSmithers) {
+        throw new ElizaError(
+          "Smithers requires the durable orchestrator task service",
+          {
+            code: "SMITHERS_DURABLE_TASK_SERVICE_UNAVAILABLE",
+            context: { taskTitle },
+          },
+        );
+      }
+    } else {
+      const explicitProjectId = pickString(params, content, "projectId");
+      const first = tasks[0]
+        ? parseAgentPrefix(tasks[0], baseAgentType).task
+        : undefined;
+      const boundWorkdir = first
+        ? resolveSpawnWorkdir(runtime, first, routingRequest, explicitWorkdir, {
+            lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+          }).workdir
+        : explicitWorkdir;
+      const detail = await taskService.createTask({
+        title: taskTitle,
+        goal: taskGoal,
+        kind: "coding",
+        priority: taskPriority,
+        originalRequest: messageText(message),
+        ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
+        ...(boundWorkdir ? { workdir: boundWorkdir } : {}),
+        ...((originRoomId ?? taskRoomId)
+          ? { roomId: originRoomId ?? taskRoomId }
+          : {}),
+        ...(taskRoomId ? { taskRoomId } : {}),
+        acceptanceCriteria,
+        ...(objectValue(extraMetadata.lane)
+          ? {
+              metadata: {
+                waveId: extraMetadata.waveId,
+                lane: extraMetadata.lane,
+              },
+            }
+          : {}),
+      });
+      threadId = detail?.id ?? null;
+      if (useSmithers && !threadId) {
+        throw new ElizaError(
+          "Durable task creation returned no task id for Smithers",
+          {
+            code: "SMITHERS_DURABLE_TASK_MISSING_ID",
+            context: { taskTitle },
+          },
+        );
+      }
+    }
+  } catch (error) {
+    // error-policy:J1 the action boundary refuses Smithers execution when its
+    // restart owner cannot be persisted; no ACP session or graph side effect
+    // exists yet. The explicitly configured direct runner keeps its legacy J4
+    // widget-less degradation because it has no durable graph to recover.
+    const detail = error instanceof Error ? error.message : String(error);
+    if (useSmithers) {
+      logger(runtime).error(
+        `[TASKS:create] refusing Smithers launch without a durable task: ${detail}`,
+      );
+      const textOut =
+        "I couldn't create the durable task record, so no workflow agent was started. Please retry once task storage is available.";
+      await callbackText(callback, textOut);
+      return errorResult("SMITHERS_DURABLE_TASK_UNAVAILABLE", textOut);
+    }
+    logger(runtime).warn(
+      `[TASKS:create] durable task thread creation failed: ${detail}`,
+    );
+    threadId = null;
+  }
+
+  const smithersOwnerTaskId = useSmithers ? (threadId ?? undefined) : undefined;
+  if (useSmithers && !smithersOwnerTaskId) {
+    const textOut =
+      "I couldn't establish a durable task owner, so no workflow agent was started.";
+    await callbackText(callback, textOut);
+    return errorResult("SMITHERS_DURABLE_TASK_UNAVAILABLE", textOut);
+  }
+
   const settled = await Promise.allSettled(
     tasks.map(async (part, index) => {
       const parsed = parseAgentPrefix(part, baseAgentType);
@@ -846,6 +972,26 @@ async function runCreateLegacy(
         undefined,
         { monetized: pickBoolean(params, content, "appMonetized") === true },
       );
+      const smithersRunId = randomUUID();
+      const durableRun: SmithersDurableRunLink | undefined =
+        smithersOwnerTaskId === undefined
+          ? undefined
+          : {
+              version: 1,
+              orchestratorTaskId: smithersOwnerTaskId,
+              taskId: `${smithersOwnerTaskId}:part:${index}`,
+              runId: smithersRunId,
+              tenantId: runtime.agentId,
+              initialPrompt: taskWithRouteHints,
+              state: "pending",
+              keepAliveAfterComplete,
+              ...(timeoutMs === undefined ? {} : { timeoutMs }),
+              ...(model === undefined ? {} : { model }),
+              ...(approvalPreset === undefined ? {} : { approvalPreset }),
+              ...(maxSmithersTurns === undefined
+                ? {}
+                : { maxTurns: maxSmithersTurns }),
+            };
       const session = await service.spawnSession({
         agentType,
         workdir: sessionWorkdir,
@@ -868,17 +1014,118 @@ async function runCreateLegacy(
           workdirRouteId: route?.id,
           workdirRoute: route,
           keepAliveAfterComplete,
+          ...(durableRun ? smithersDurableRunMetadata(durableRun) : {}),
         },
       });
-      if (shouldUseSmithersTaskRunner()) {
+
+      // Link the already-durable ACP record to its task before the first
+      // prompt. If this write fails on the Smithers path, do not execute: boot
+      // recovery can reconstruct the missing copy from ACP metadata and start
+      // once the store is healthy, without risking an unowned side effect.
+      if (
+        threadId &&
+        taskService &&
+        typeof taskService.attachSession === "function"
+      ) {
+        try {
+          const attached = await taskService.attachSession(threadId, {
+            sessionId: session.sessionId,
+            agentType: session.agentType,
+            workdir: session.workdir,
+            status: session.status,
+            ...(session.metadata ? { metadata: session.metadata } : {}),
+            label,
+            originalTask: taskWithRouteHints,
+            ...(model ? { model } : {}),
+            ...(durableRun ? { durableRun } : {}),
+          });
+          if (!attached && durableRun) {
+            throw new ElizaError(
+              "Durable task disappeared before Smithers execution",
+              {
+                code: "SMITHERS_TASK_LINK_MISSING",
+                context: { threadId, sessionId: session.sessionId },
+              },
+            );
+          }
+        } catch (error) {
+          if (durableRun) {
+            try {
+              await service.stopSession(session.sessionId);
+            } catch (stopError) {
+              // error-policy:J6 the attachment failure remains authoritative;
+              // stopping an unprompted ACP session is best-effort teardown.
+              logger(runtime).warn(
+                `[TASKS:create] failed to stop unlinked Smithers session ${session.sessionId}: ${
+                  stopError instanceof Error
+                    ? stopError.message
+                    : String(stopError)
+                }`,
+              );
+            }
+            throw error;
+          }
+          // error-policy:J7 direct-prompt compatibility path: the ACP session
+          // still has value when optional widget bookkeeping is unavailable.
+          logger(runtime).warn(
+            `[TASKS:create] attachSession failed for ${session.sessionId} on task ${threadId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+
+      if (durableRun) {
+        const runningRun: SmithersDurableRunLink = {
+          ...durableRun,
+          state: "running",
+        };
+        const stateWrites: Promise<unknown>[] = [];
+        if (service.updateSessionMetadata) {
+          stateWrites.push(
+            service.updateSessionMetadata(
+              session.sessionId,
+              smithersDurableRunMetadata(runningRun),
+            ),
+          );
+        }
+        if (threadId && taskService?.updateSmithersDurableRun) {
+          stateWrites.push(
+            taskService.updateSmithersDurableRun(session.sessionId, runningRun),
+          );
+        }
+        await Promise.all(stateWrites);
         await runPromptViaSmithers(
           service,
           session,
           taskWithRouteHints,
+          runningRun,
           timeoutMs,
           model,
           keepAliveAfterComplete,
         );
+        const completedRun: SmithersDurableRunLink = {
+          ...durableRun,
+          state: "completed",
+        };
+        const completionWrites: Promise<unknown>[] = [];
+        if (service.updateSessionMetadata) {
+          completionWrites.push(
+            service.updateSessionMetadata(
+              session.sessionId,
+              smithersDurableRunMetadata(completedRun),
+            ),
+          );
+        }
+        if (threadId && taskService?.updateSmithersDurableRun) {
+          completionWrites.push(
+            taskService.updateSmithersDurableRun(
+              session.sessionId,
+              completedRun,
+            ),
+          );
+        }
+        await Promise.all(completionWrites);
       } else {
         await runPromptAndClose(
           service,
@@ -889,21 +1136,16 @@ async function runCreateLegacy(
           keepAliveAfterComplete,
         );
       }
-      return { session, label, agentType, originalTask: taskWithRouteHints };
+      return { session, label, agentType };
     }),
   );
 
   const results: Array<Record<string, unknown>> = [];
   const sessions: SpawnResult[] = [];
-  // Parallel to `sessions`; carries the per-part context needed to attach a
-  // successful spawn into the durable task thread minted below. Kept out of
-  // SpawnResult so the ACP contract stays lean.
-  const sessionAttachHints: Array<{ label: string; originalTask: string }> = [];
   for (const [index, outcome] of settled.entries()) {
     if (outcome.status === "fulfilled") {
-      const { session, label, originalTask } = outcome.value;
+      const { session, label } = outcome.value;
       sessions.push(session);
-      sessionAttachHints.push({ label, originalTask });
       results.push({
         id: session.sessionId,
         sessionId: session.sessionId,
@@ -948,132 +1190,6 @@ async function runCreateLegacy(
       text: textOut,
       data: { agents: results, suppressActionResultClipboard: true },
     };
-  }
-
-  // Mint a durable orchestrator task thread so the chat surface can render
-  // the `[TASK:<id>]<title>[/TASK]` widget that links back to the workbench.
-  // The ACP sessions have already succeeded; a failure here is logged but
-  // never demotes the action's success — the agents are still running.
-  //
-  // The ACP sessions spawned above via `service.spawnSession` are then
-  // registered against the freshly-minted thread through the task service's
-  // `attachSession` — without that, `resolveTaskId` never learns about them,
-  // event routing drops their session events, and the widget reads `0/0
-  // agents`. Per-session attach failures are logged but never demote the
-  // action's success, same policy as thread-mint failure.
-  const taskTitle =
-    pickString(params, content, "title") ??
-    pickString(params, content, "goal") ??
-    (tasks[0] ? labelFrom(tasks[0], 0) : "Coding task");
-  const taskGoal = pickString(params, content, "goal") ?? taskTitle;
-  const taskPriority = (pickString(params, content, "priority") ?? "normal") as
-    | "low"
-    | "normal"
-    | "high"
-    | "urgent";
-  const acceptanceCriteria = pickStringArrayFromInputs(
-    params,
-    content,
-    "acceptanceCriteria",
-  );
-  const taskRoomId =
-    typeof swarmRoomMetadata.taskRoomId === "string"
-      ? swarmRoomMetadata.taskRoomId
-      : undefined;
-  // Preserve the ORIGIN (chat) room on the durable task's `roomId` so the
-  // supervisor can bridge task status back to the human (getTaskOriginTarget),
-  // while `taskRoomId` carries the DISTINCT swarm room the sub-agents share.
-  // When task rooms are opted out, both resolve to the origin room (no change).
-  const originRoomId =
-    typeof swarmRoomMetadata.originRoomId === "string"
-      ? swarmRoomMetadata.originRoomId
-      : undefined;
-  let threadId: string | null = null;
-  const taskService = runtime.getService?.(
-    OrchestratorTaskService.serviceType,
-  ) as OrchestratorTaskService | null | undefined;
-  try {
-    if (taskService && typeof taskService.createTask === "function") {
-      // Bind the durable task to a registered Project: an explicit caller
-      // `projectId` (validated against the registry by the service) wins;
-      // otherwise the resolved spawn workdir (all sessions of this create share
-      // it) is realpath-matched against the registry. Unmatched = unbound.
-      const explicitProjectId = pickString(params, content, "projectId");
-      const boundWorkdir = sessions[0]?.workdir;
-      const detail = await taskService.createTask({
-        title: taskTitle,
-        goal: taskGoal,
-        kind: "coding",
-        priority: taskPriority,
-        originalRequest: messageText(message),
-        ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
-        ...(boundWorkdir ? { workdir: boundWorkdir } : {}),
-        ...((originRoomId ?? taskRoomId)
-          ? { roomId: originRoomId ?? taskRoomId }
-          : {}),
-        ...(taskRoomId ? { taskRoomId } : {}),
-        acceptanceCriteria,
-        ...(objectValue(extraMetadata.lane)
-          ? {
-              metadata: {
-                waveId: extraMetadata.waveId,
-                lane: extraMetadata.lane,
-              },
-            }
-          : {}),
-      });
-      threadId = detail?.id ?? null;
-    }
-  } catch (error) {
-    // error-policy:J4 durable-thread mint failed → omit the task widget (threadId
-    // null); the spawned agents already succeeded, and the failure is warned.
-    logger(runtime).warn(
-      `[TASKS:create] durable task thread creation failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    threadId = null;
-  }
-
-  // Bind every successfully spawned session to the freshly-minted thread so
-  // the task widget / tasks panel sees them (sessionCount, latestSessionId,
-  // token usage). Thread-mint-failed path skips this cleanly — no taskId to
-  // attach against, and the sessions are still running / stopped independently.
-  if (
-    threadId &&
-    taskService &&
-    typeof taskService.attachSession === "function"
-  ) {
-    for (const [index, session] of sessions.entries()) {
-      const hint = sessionAttachHints[index];
-      try {
-        // The spawn snapshot can be stale after the prompt: ordinary sessions
-        // are stopped, while validator-owned sessions deliberately remain
-        // ready for a corrective turn. Read the real state so the task widget
-        // reflects whichever lifecycle owns the session.
-        const refreshed = await service.getSession(session.sessionId);
-        const effectiveStatus =
-          refreshed?.status ?? (keepAliveAfterComplete ? "ready" : "stopped");
-        await taskService.attachSession(threadId, {
-          sessionId: session.sessionId,
-          agentType: session.agentType,
-          workdir: session.workdir,
-          status: effectiveStatus,
-          ...(session.metadata ? { metadata: session.metadata } : {}),
-          ...(hint?.label ? { label: hint.label } : {}),
-          ...(hint?.originalTask ? { originalTask: hint.originalTask } : {}),
-          ...(model ? { model } : {}),
-        });
-      } catch (error) {
-        // error-policy:J7 per-session attach is best-effort widget bookkeeping;
-        // warned, never demotes the already-succeeded spawn.
-        logger(runtime).warn(
-          `[TASKS:create] attachSession failed for ${session.sessionId} on task ${threadId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
   }
 
   const widgetBlock = threadId

@@ -493,6 +493,59 @@ describe('validateAndRepair — output-field reference', () => {
   });
 });
 
+describe('validateAndRepair — Set/Edit Fields assignment integrity', () => {
+  const setDef = makeNodeDef({ name: 'workflows-nodes-base.set', version: [3, 3.4] });
+
+  test('surfaces a missing assignment value to the bounded model-repair loop', () => {
+    const wf = makeWorkflow({
+      nodes: [
+        {
+          name: 'Set Result',
+          type: 'workflows-nodes-base.set',
+          typeVersion: 3.4,
+          position: [0, 0],
+          parameters: {
+            assignments: {
+              assignments: [{ name: 'message', type: 'stringValue' }],
+            },
+          },
+        },
+      ],
+    });
+
+    const result = validateAndRepair(wf, [setDef], NO_CTX);
+
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        kind: 'assignmentValueMissing',
+        node: 'Set Result',
+      })
+    );
+  });
+
+  test('treats an explicit empty-string assignment as valid', () => {
+    const wf = makeWorkflow({
+      nodes: [
+        {
+          name: 'Clear Result',
+          type: 'workflows-nodes-base.set',
+          typeVersion: 3.4,
+          position: [0, 0],
+          parameters: {
+            assignments: {
+              assignments: [{ name: 'message', type: 'string', value: '' }],
+            },
+          },
+        },
+      ],
+    });
+
+    const result = validateAndRepair(wf, [setDef], NO_CTX);
+
+    expect(result.errors).toEqual([]);
+  });
+});
+
 // ─── Check 5: node-name uniqueness ─────────────────────────────────────────
 
 describe('validateAndRepair — node-name uniqueness', () => {

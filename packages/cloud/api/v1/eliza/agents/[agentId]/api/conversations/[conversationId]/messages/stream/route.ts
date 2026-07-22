@@ -37,6 +37,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Shared-tier + org-scoped (resolveSharedAgent gates auth, org-scope, tier).
  */
 const CORS_METHODS = "POST, OPTIONS";
+const VOICE_AGENT_HEADER = "X-Eliza-Agent-Id";
+const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
+const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
+const VOICE_USER_HEADER = "X-Eliza-User-Id";
 
 const app = new Hono<AppEnv>();
 
@@ -53,8 +57,25 @@ async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
   const presented = c.req.header("authorization");
   if (configured && presented && timingSafeEqualSecret(presented, configured)) {
     const agentId = c.req.param("agentId") ?? "";
-    const orgId = c.req.header("X-Eliza-Organization-Id") ?? "";
-    const userId = c.req.header("X-Eliza-User-Id") ?? "";
+    const conversationId = c.req.param("conversationId") ?? "";
+    const scopedAgentId = c.req.header(VOICE_AGENT_HEADER) ?? "";
+    const scopedConversationId = c.req.header(VOICE_CONVERSATION_HEADER) ?? "";
+    const orgId = c.req.header(VOICE_ORGANIZATION_HEADER) ?? "";
+    const userId = c.req.header(VOICE_USER_HEADER) ?? "";
+    if (
+      !agentId ||
+      !conversationId ||
+      scopedAgentId !== agentId ||
+      scopedConversationId !== conversationId ||
+      !orgId ||
+      !userId
+    ) {
+      return {
+        error: "Agent not found",
+        code: "agent_not_found",
+        status: 404 as const,
+      };
+    }
     const agent = orgId
       ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId)
       : undefined;
@@ -65,7 +86,12 @@ async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
         status: 404 as const,
       };
     }
-    return { agentId: agent.id, orgId, agentName: agent.agent_name ?? "Agent" };
+    return {
+      agentId: agent.id,
+      orgId,
+      userId,
+      agentName: agent.agent_name ?? "Agent",
+    };
   }
   return resolveSharedAgent(c);
 }
@@ -84,7 +110,12 @@ app.post("/", async (c) => {
   const bodyStartedAt = nowMs();
   const bodyPromise = c.req
     .json()
-    .catch(() => ({}))
+    .catch(() => {
+      // error-policy:J3 untrusted-input sanitizing. Match the canonical stream
+      // contract: malformed JSON is an invalid request body, not a fabricated
+      // successful turn.
+      return {};
+    })
     .then((body: unknown) => ({
       body,
       durationMs: elapsedMs(bodyStartedAt),
@@ -114,6 +145,7 @@ app.post("/", async (c) => {
     agentId: r.agentId,
     orgId: r.orgId,
     conversationId,
+    ...("userId" in r ? { userId: r.userId } : {}),
     body: raw,
     origin,
     timings: {

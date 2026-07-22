@@ -345,35 +345,38 @@ describe("factsProvider standing-preferences lane gate", () => {
 		["the user speaks Spanish as first language", "identity"],
 		["the user wants a short runway to launch", "goal"],
 		["the user reports directly to the VP", "business_role"],
-	])("keeps reply/domain-shaped %s out of the lane when its category is %s, not preference", async (factText, category) => {
-		const message = memory("msg-current", "what's on my plate today?");
-		message.content.senderName = "Alice";
-		const runtime = makeRuntime({
-			facts: [
-				memory("fact-nonpref", factText, {
-					kind: "durable",
-					category,
-					confidence: 0.95,
-					keywords: ["scheduled", "context"],
-				}),
-			],
-		});
+	])(
+		"keeps reply/domain-shaped %s out of the lane when its category is %s, not preference",
+		async (factText, category) => {
+			const message = memory("msg-current", "what's on my plate today?");
+			message.content.senderName = "Alice";
+			const runtime = makeRuntime({
+				facts: [
+					memory("fact-nonpref", factText, {
+						kind: "durable",
+						category,
+						confidence: 0.95,
+						keywords: ["scheduled", "context"],
+					}),
+				],
+			});
 
-		const result = await factsProvider.get(runtime, message, {
-			values: {},
-			data: {},
-			text: "",
-		});
+			const result = await factsProvider.get(runtime, message, {
+				values: {},
+				data: {},
+				text: "",
+			});
 
-		const sections = result.text.split("\n\n");
-		const preferenceSection = sections.find((section) =>
-			section.startsWith("Standing preferences"),
-		);
-		// The fact never reaches the always-on lane: no "Standing preferences"
-		// section renders (the fact is not sender-owned `preference`), and the
-		// fact text is absent from any preference lane render.
-		expect(preferenceSection).toBeUndefined();
-	});
+			const sections = result.text.split("\n\n");
+			const preferenceSection = sections.find((section) =>
+				section.startsWith("Standing preferences"),
+			);
+			// The fact never reaches the always-on lane: no "Standing preferences"
+			// section renders (the fact is not sender-owned `preference`), and the
+			// fact text is absent from any preference lane render.
+			expect(preferenceSection).toBeUndefined();
+		},
+	);
 
 	it("routes a genuine sender preference into the lane while a same-turn non-preference domain fact stays out", async () => {
 		const message = memory("msg-current", "book me something");

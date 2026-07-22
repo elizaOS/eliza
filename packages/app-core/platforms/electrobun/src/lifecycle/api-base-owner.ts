@@ -70,6 +70,10 @@ function shouldInjectRuntimeChooserTestMode(): boolean {
   return process.env.ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER === "1";
 }
 
+function shouldInjectDesktopTestBridgeMarker(): boolean {
+  return process.env.ELIZA_DESKTOP_TEST_BRIDGE_ENABLED === "1";
+}
+
 function resolveStartupTraceId(): string | null {
   return getStartupTraceConfig().sessionId;
 }
@@ -139,7 +143,15 @@ export function injectIntoHtml(html: string): string {
   const runtimeChooserTestInject = shouldInjectRuntimeChooserTestMode()
     ? "window.__ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER__=true;"
     : "";
-  if (!current.base && !startupTraceInject && !runtimeChooserTestInject)
+  const desktopTestBridgeInject = shouldInjectDesktopTestBridgeMarker()
+    ? "window.__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__=true;"
+    : "";
+  if (
+    !current.base &&
+    !startupTraceInject &&
+    !runtimeChooserTestInject &&
+    !desktopTestBridgeInject
+  )
     return html;
 
   let apiBaseInject = "";
@@ -163,7 +175,7 @@ export function injectIntoHtml(html: string): string {
     apiBaseInject = `${runtimeModeInject}${externalApiBaseInject}${bootConfigInject}`;
   }
 
-  const script = `<script>${startupTraceInject}${runtimeChooserTestInject}${apiBaseInject}</script>`;
+  const script = `<script>${startupTraceInject}${runtimeChooserTestInject}${desktopTestBridgeInject}${apiBaseInject}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${script}</head>`);
   }

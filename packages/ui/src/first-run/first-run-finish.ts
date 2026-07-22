@@ -47,6 +47,7 @@ import {
   savePersistedFirstRunComplete,
 } from "../state";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
+import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -78,7 +79,10 @@ const RUNNING_CLOUD_AGENT_STATUS = "running";
 export interface FirstRunFinishPorts {
   uiLanguage: UiLanguage;
   elizaCloudConnected: boolean;
-  handleCloudLogin: (prePoppedWindow?: Window | null) => Promise<void>;
+  handleCloudLogin: (
+    prePoppedWindow?: Window | null,
+    options?: CloudLoginOptions,
+  ) => Promise<void>;
   /** Pre-opened popup window for the cloud-login redirect (popup-blocker safe). */
   preOpenWindow?: () => Window | null;
   setRuntimeState: (
@@ -651,6 +655,8 @@ export async function bindCloudAgent(
   //    set) but was bound via the shared adapter by tier preference — minting
   //    another dedicated agent for it would duplicate a billed container
   //    (#15902 run-2 class).
+  // Cloud agent discovery runs from the renderer and therefore needs its own
+  // bearer even when the local server already has a healthy Cloud connection.
   if (
     getBootConfig().preferSharedCloudTier &&
     !selectedAgent.bridgeUrl &&
@@ -764,9 +770,12 @@ export async function listOrAutoProvisionCloudAgent(
       cloudStatus?.reason,
     );
   }
-  if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
+  if (
+    firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish) ||
+    !getCloudAuthToken(client)
+  ) {
     const authWindow = ports.preOpenWindow?.() ?? null;
-    await ports.handleCloudLogin(authWindow);
+    await ports.handleCloudLogin(authWindow, { requireClientAuth: true });
     const cloudStatus = await getCloudStatusIfSupported();
     cloudConnectedForFinish = isCloudStatusAuthenticated(
       Boolean(cloudStatus?.connected),
@@ -781,7 +790,7 @@ export async function listOrAutoProvisionCloudAgent(
   }
   const authToken = getCloudAuthToken(client) ?? "";
   if (!authToken) {
-    return { kind: "error", message: "Eliza Cloud authentication required." };
+    return { kind: "needs-cloud-login" };
   }
   ports.onStatus?.("Finding your agents...", "listing");
   const list = await client.getCloudCompatAgents();

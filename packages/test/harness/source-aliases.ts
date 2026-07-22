@@ -147,7 +147,10 @@ export function buildHarnessSourceAliases(
             },
             {
               find: new RegExp(`^${packageName}/(.*)$`),
-              replacement: path.join(sourceDir, "$1.ts"),
+              // Keep the target extensionless so Vite can resolve either a
+              // source file (`foo.ts`) or a public directory entry
+              // (`foo/index.ts`) through the same package-subpath rule.
+              replacement: path.join(sourceDir, "$1"),
             },
           ])
       : [],

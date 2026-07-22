@@ -324,3 +324,8 @@ class BenchmarkResult:
     seeds: int
     agent_cost_usd: float = 0.0
     eval_cost_usd: float = 0.0
+    expected_run_count: int = 0
+    completed_run_count: int = 0
+    successful_run_count: int = 0
+    complete: bool = False
+    workload_sha256: str = ""

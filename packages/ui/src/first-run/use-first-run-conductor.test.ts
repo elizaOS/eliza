@@ -643,7 +643,9 @@ describe("useFirstRunConductor", () => {
 
     expect(mocks.preOpenCloudLoginWindow).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(spies.handleCloudLogin).toHaveBeenCalledWith(authWindow);
+      expect(spies.handleCloudLogin).toHaveBeenCalledWith(authWindow, {
+        requireClientAuth: true,
+      });
     });
     unmount();
   });
@@ -951,7 +953,9 @@ describe("useFirstRunConductor", () => {
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await waitFor(() => {
-      expect(handleCloudLogin).toHaveBeenCalledWith(popup);
+      expect(handleCloudLogin).toHaveBeenCalledWith(popup, {
+        requireClientAuth: true,
+      });
     });
     await waitFor(() => {
       expect(close).toHaveBeenCalledTimes(1);

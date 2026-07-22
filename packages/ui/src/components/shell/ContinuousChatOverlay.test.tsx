@@ -812,12 +812,15 @@ describe("ContinuousChatOverlay", () => {
     it.each([
       ["recording", { recording: true }],
       ["transcribing", { transcriptionMode: true }],
-    ] as const)("keeps the pulsing waveform neutral while %s", (_label, override) => {
-      render(<ContinuousChatOverlay controller={makeController(override)} />);
-      const waveform = screen.getByTestId("chat-composer-mic");
-      expect(waveform.className).toContain("animate-pulse");
-      expect(waveform.className).not.toContain("text-accent");
-    });
+    ] as const)(
+      "keeps the pulsing waveform neutral while %s",
+      (_label, override) => {
+        render(<ContinuousChatOverlay controller={makeController(override)} />);
+        const waveform = screen.getByTestId("chat-composer-mic");
+        expect(waveform.className).toContain("animate-pulse");
+        expect(waveform.className).not.toContain("text-accent");
+      },
+    );
 
     it("drops the pulse the moment the capture predicate clears", () => {
       const { rerender } = render(
@@ -910,7 +913,7 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
-  it("routes a horizontal swipe on the collapsed grabber to the launcher rail instead of opening chat", () => {
+  it("leaves a horizontal swipe on the collapsed grabber to the combined home/apps surface", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -934,7 +937,7 @@ describe("ContinuousChatOverlay", () => {
       pointerId: 1,
     });
 
-    expect(getShellSurface().page).toBe("launcher");
+    expect(getShellSurface().page).toBe("home");
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
@@ -949,7 +952,7 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
 
     // Drag the open chat sideways → dismiss to the pill (the put-the-chat-away
-    // landing) — NOT the home↔launcher rail nav the collapsed swipe means.
+    // landing). Collapsed horizontal gestures have no navigation meaning.
     fireEvent.pointerDown(grabber, {
       clientX: 260,
       clientY: 200,
@@ -1001,10 +1004,11 @@ describe("ContinuousChatOverlay", () => {
     expect(getShellSurface().page).toBe("home");
   });
 
-  it("routes a grabber flick whose moves were coalesced into the release to the launcher (#9943)", () => {
+  it("ignores a collapsed grabber flick whose moves were coalesced into the release", () => {
     // REAL touch on a janked Android WebView delivers pointerdown → pointerup
     // with the whole travel between them (every pointermove coalesced away).
-    // The swipe must still commit from the release deltas.
+    // The unified surface has no horizontal destination, so the release must
+    // stay inert rather than opening chat or changing shell state.
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -1022,14 +1026,14 @@ describe("ContinuousChatOverlay", () => {
       pointerId: 1,
     });
 
-    expect(getShellSurface().page).toBe("launcher");
+    expect(getShellSurface().page).toBe("home");
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("routes a grabber flick that ends in pointercancel after crossing the threshold to the launcher (#9943)", () => {
+  it("ignores a collapsed grabber flick that ends in pointercancel", () => {
     // Android's touch pipeline can revoke the pointer AFTER the finger already
-    // completed the swipe (renderer-unresponsive ack timeout) — the observed
-    // track must commit instead of being discarded.
+    // completed a horizontal track (renderer-unresponsive ack timeout). With
+    // no horizontal destination, cancel must leave the shell unchanged.
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -1052,7 +1056,7 @@ describe("ContinuousChatOverlay", () => {
       pointerId: 1,
     });
 
-    expect(getShellSurface().page).toBe("launcher");
+    expect(getShellSurface().page).toBe("home");
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 

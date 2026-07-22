@@ -452,7 +452,6 @@ class TerminalBenchRunner:
             client = HermesClient(
                 provider=provider,
                 model=client_model,
-                mode="in_process",
             )
             return build_terminal_bench_agent_fn(
                 environment=env,
@@ -485,7 +484,6 @@ class TerminalBenchRunner:
             client = OpenClawClient(
                 provider=provider,
                 model=client_model,
-                direct_openai_compatible=True,
             )
             return build_terminal_bench_agent_fn(
                 environment=env,

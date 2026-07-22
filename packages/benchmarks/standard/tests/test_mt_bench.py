@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from types import ModuleType
 from pathlib import Path
 
 import pytest
@@ -18,8 +20,56 @@ from benchmarks.standard.mt_bench import (
     _extract_rating,
     _build_judge_prompt,
     _build_strict_judge_prompt,
+    _load_dataset_questions,
     _MTBenchFactory,
 )
+
+
+def _judgment_rows(count: int = 80) -> list[dict[str, object]]:
+    return [
+        {
+            "question_id": question_id,
+            "conversation_a": [
+                {"role": "user", "content": f"turn one {question_id}"},
+                {"role": "assistant", "content": "candidate response"},
+                {"role": "user", "content": f"turn two {question_id}"},
+                {"role": "assistant", "content": "candidate response"},
+            ],
+        }
+        for question_id in range(81, 81 + count)
+    ]
+
+
+def _install_fake_datasets(monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, object]]) -> None:
+    module = ModuleType("datasets")
+    module.load_dataset = lambda *_args, **_kwargs: rows  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "datasets", module)
+
+
+def test_mt_bench_loader_reconstructs_all_official_questions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_datasets(monkeypatch, _judgment_rows())
+
+    questions = _load_dataset_questions(limit=None)
+
+    assert len(questions) == 80
+    assert questions[0] == {
+        "question_id": 81,
+        "category": "writing",
+        "turns": ("turn one 81", "turn two 81"),
+    }
+    assert questions[10]["category"] == "roleplay"
+    assert questions[-1]["category"] == "humanities"
+
+
+def test_mt_bench_loader_rejects_an_incomplete_corpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_datasets(monkeypatch, _judgment_rows(79))
+
+    with pytest.raises(RuntimeError, match="expected 80 unique questions, loaded 79"):
+        _load_dataset_questions(limit=None)
 
 
 def test_extract_rating_matches_lmsys_form() -> None:
@@ -107,10 +157,8 @@ def test_mt_bench_runner_separates_turn_means(tmp_path: Path) -> None:
     assert result.metrics["mean_rating"] == 8.0
 
 
-def test_mt_bench_runner_skips_invalid_judge(tmp_path: Path) -> None:
+def test_mt_bench_runner_rejects_invalid_judge_rating(tmp_path: Path) -> None:
     candidate = MockClient(["x"])
-    # Judge returns malformed ratings sometimes; runner must drop them but
-    # still emit a result if any valid rating survives.
     judge_responses = [
         "Rating: [[5]]",
         "garbage with no rating",
@@ -121,16 +169,15 @@ def test_mt_bench_runner_skips_invalid_judge(tmp_path: Path) -> None:
         judge_model="judge",
         questions=list(SMOKE_QUESTIONS),
     )
-    result = runner.run(
-        client=candidate,
-        model="cand",
-        endpoint="http://mock",
-        output_dir=tmp_path,
-        limit=None,
-    )
-    # Only the turn-1 ratings (5) survived; turn-2 were dropped.
-    assert result.metrics["mean_rating"] == 5.0
-    assert result.metrics["turn_2_mean"] == 0.0
+
+    with pytest.raises(RuntimeError, match="no valid rating.*after retry"):
+        runner.run(
+            client=candidate,
+            model="cand",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
 
 
 def test_mt_bench_runner_retries_unparseable_judge_rating(tmp_path: Path) -> None:
@@ -166,6 +213,50 @@ def test_mt_bench_runner_raises_when_all_candidate_outputs_empty(tmp_path: Path)
     with pytest.raises(RuntimeError, match="empty visible output for all"):
         runner.run(
             client=candidate,
+            model="cand",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
+def test_mt_bench_runner_aborts_when_candidate_turn_fails(tmp_path: Path) -> None:
+    class FailsOnSecondCall(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            if self._idx == 1:
+                raise OSError("transport unavailable")
+            return super().generate(messages, config)
+
+    runner = MTBenchRunner(
+        judge=MockClient(["Rating: [[8]]"]),
+        judge_model="judge",
+        questions=list(SMOKE_QUESTIONS[:1]),
+    )
+
+    with pytest.raises(RuntimeError, match="turn 2"):
+        runner.run(
+            client=FailsOnSecondCall(["answer"]),
+            model="cand",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
+def test_mt_bench_runner_aborts_when_judge_transport_fails(tmp_path: Path) -> None:
+    class FailingJudge(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            raise OSError("judge unavailable")
+
+    runner = MTBenchRunner(
+        judge=FailingJudge(["unused"]),
+        judge_model="judge",
+        questions=list(SMOKE_QUESTIONS[:1]),
+    )
+
+    with pytest.raises(RuntimeError, match="judge generation failed"):
+        runner.run(
+            client=MockClient(["answer"]),
             model="cand",
             endpoint="http://mock",
             output_dir=tmp_path,

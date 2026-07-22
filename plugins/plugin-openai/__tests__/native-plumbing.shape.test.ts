@@ -3,8 +3,16 @@
  * model-usage events, and trajectory recording — against a mocked `ai` SDK
  * (`generateText`/`streamText`), no network.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { EventType, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import type { Character, IAgentRuntime } from "@elizaos/core";
+import {
+  AgentRuntime,
+  EventType,
+  InMemoryDatabaseAdapter,
+  ModelType,
+  runWithLlmInputSubstringAttestation,
+  runWithStreamingContext,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -26,6 +34,8 @@ const aiMocks = vi.hoisted(() => ({
 const ENV_KEYS_TO_CLEAR = [
   "ELIZA_PROVIDER",
   "CEREBRAS_API_KEY",
+  "OPENAI_ACTION_PLANNER_MODEL",
+  "ACTION_PLANNER_MODEL",
   "OPENAI_SMALL_MODEL",
   "SMALL_MODEL",
   "OPENAI_LARGE_MODEL",
@@ -131,12 +141,468 @@ function expectNativeTextResult(value: unknown): asserts value is Record<string,
   expect(value).toEqual(expect.objectContaining({ text: expect.any(String) }));
 }
 
+function plannerResponseSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      thought: { type: "string" },
+      toolCalls: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            args: { type: "object" },
+          },
+          required: ["name"],
+        },
+      },
+      messageToUser: { type: "string" },
+      completed: { type: "boolean" },
+    },
+    required: ["thought", "toolCalls"],
+  };
+}
+
+function assertOpenAIStrictObjectContract(schema: unknown): void {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return;
+  }
+
+  const node = schema as Record<string, unknown>;
+  if (node.type === "object") {
+    expect(node.additionalProperties).toBe(false);
+    const properties =
+      node.properties && typeof node.properties === "object" && !Array.isArray(node.properties)
+        ? (node.properties as Record<string, unknown>)
+        : {};
+    expect(new Set(Array.isArray(node.required) ? node.required : [])).toEqual(
+      new Set(Object.keys(properties))
+    );
+  }
+
+  for (const key of [
+    "properties",
+    "$defs",
+    "definitions",
+    "patternProperties",
+    "dependentSchemas",
+  ]) {
+    const children = node[key];
+    if (children && typeof children === "object" && !Array.isArray(children)) {
+      for (const child of Object.values(children)) {
+        assertOpenAIStrictObjectContract(child);
+      }
+    }
+  }
+
+  if (Array.isArray(node.items)) {
+    for (const item of node.items) {
+      assertOpenAIStrictObjectContract(item);
+    }
+  } else {
+    assertOpenAIStrictObjectContract(node.items);
+  }
+
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    if (Array.isArray(node[key])) {
+      for (const item of node[key]) {
+        assertOpenAIStrictObjectContract(item);
+      }
+    }
+  }
+
+  assertOpenAIStrictObjectContract(node.not);
+  assertOpenAIStrictObjectContract(node.contains);
+  assertOpenAIStrictObjectContract(node.if);
+  assertOpenAIStrictObjectContract(node.then);
+  assertOpenAIStrictObjectContract(node.else);
+}
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
 
 describe("OpenAI native text plumbing", () => {
+  it("uses a strict-safe wire schema for planner tool args and restores returned args", async () => {
+    const wirePlannerText = JSON.stringify({
+      thought: "Need the calendar tool.",
+      toolCalls: [
+        {
+          id: "call-1",
+          name: "CALENDAR",
+          args: {
+            __eliza_planner_arg_entries: [
+              { key: "action", valueJson: JSON.stringify("create") },
+              {
+                key: "event",
+                valueJson: JSON.stringify({
+                  title: "Deep work",
+                  durationMinutes: 90,
+                  attendees: ["ada@example.com"],
+                  flexible: false,
+                  metadata: null,
+                }),
+              },
+              { key: "literalNumericString", valueJson: JSON.stringify("42") },
+            ],
+          },
+        },
+      ],
+    });
+    aiMocks.generateText.mockResolvedValue({
+      text: wirePlannerText,
+      finishReason: "stop",
+      usage: { inputTokens: 11, outputTokens: 9 },
+    });
+
+    const { handleActionPlanner } = await import("../models/text");
+    const result = (await handleActionPlanner(createRuntime(), {
+      messages: [{ role: "user", content: "Schedule deep work" }],
+      responseSchema: plannerResponseSchema(),
+    } as never)) as { text: string };
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    const responseFormat = await (call.output as { responseFormat: Promise<unknown> })
+      .responseFormat;
+    const schema = (responseFormat as { schema: Record<string, unknown> }).schema;
+    const toolCalls = (schema.properties as Record<string, Record<string, unknown>>).toolCalls;
+    const toolCallItem = toolCalls.items as Record<string, unknown>;
+    const itemProperties = toolCallItem.properties as Record<string, Record<string, unknown>>;
+    const args = itemProperties.args;
+
+    expect(itemProperties.args).toBeDefined();
+    expect(new Set(toolCallItem.required as string[])).toEqual(new Set(["id", "name", "args"]));
+    expect(args.additionalProperties).toBe(false);
+    expect(args.required).toEqual(["__eliza_planner_arg_entries"]);
+    expect(args.properties).toHaveProperty("__eliza_planner_arg_entries");
+    assertOpenAIStrictObjectContract(schema);
+
+    expect(JSON.parse(result.text)).toEqual({
+      thought: "Need the calendar tool.",
+      toolCalls: [
+        {
+          id: "call-1",
+          name: "CALENDAR",
+          args: {
+            action: "create",
+            event: {
+              title: "Deep work",
+              durationMinutes: 90,
+              attendees: ["ada@example.com"],
+              flexible: false,
+              metadata: null,
+            },
+            literalNumericString: "42",
+          },
+        },
+      ],
+    });
+  }, 180_000);
+
+  it("does not apply the planner wire transform to matching schemas on other model types", async () => {
+    const wirePlannerText = JSON.stringify({
+      thought: "Looks planner-shaped but is an ordinary text schema.",
+      toolCalls: [
+        {
+          id: "call-1",
+          name: "CALENDAR",
+          args: {
+            __eliza_planner_arg_entries: [{ key: "action", valueJson: JSON.stringify("create") }],
+          },
+        },
+      ],
+    });
+    aiMocks.generateText.mockResolvedValue({
+      text: wirePlannerText,
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const result = (await handleTextSmall(createRuntime(), {
+      messages: [{ role: "user", content: "Use a normal response schema" }],
+      responseSchema: plannerResponseSchema(),
+    } as never)) as { text: string };
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    const responseFormat = await (call.output as { responseFormat: Promise<unknown> })
+      .responseFormat;
+    const schema = (responseFormat as { schema: Record<string, unknown> }).schema;
+    const toolCalls = (schema.properties as Record<string, Record<string, unknown>>).toolCalls;
+    const toolCallItem = toolCalls.items as Record<string, unknown>;
+    const itemProperties = toolCallItem.properties as Record<string, Record<string, unknown>>;
+    const args = itemProperties.args;
+
+    const argsProperties =
+      args.properties && typeof args.properties === "object" && !Array.isArray(args.properties)
+        ? (args.properties as Record<string, unknown>)
+        : {};
+    expect(argsProperties).not.toHaveProperty("__eliza_planner_arg_entries");
+    expect(result.text).toBe(wirePlannerText);
+  }, 180_000);
+
+  it.each([
+    ["entries not array", "not-array"],
+    ["non-object entry", [null]],
+    ["extra row field", [{ key: "x", valueJson: JSON.stringify("x"), extra: true }]],
+    ["missing key", [{ valueJson: JSON.stringify("x") }]],
+    ["invalid key", [{ key: 1, valueJson: JSON.stringify("x") }]],
+    ["missing valueJson", [{ key: "x" }]],
+    ["invalid valueJson", [{ key: "x", valueJson: "{nope" }]],
+    [
+      "duplicate keys",
+      [
+        { key: "x", valueJson: JSON.stringify(1) },
+        { key: "x", valueJson: JSON.stringify(2) },
+      ],
+    ],
+  ])(
+    "rejects malformed strict-safe planner args: %s",
+    async (_name, entries) => {
+      aiMocks.generateText.mockResolvedValue({
+        text: JSON.stringify({
+          thought: "bad args",
+          toolCalls: [
+            { id: "call-1", name: "BROKEN", args: { __eliza_planner_arg_entries: entries } },
+          ],
+        }),
+        finishReason: "stop",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+
+      const { handleActionPlanner } = await import("../models/text");
+      await expect(
+        handleActionPlanner(createRuntime(), {
+          messages: [{ role: "user", content: "Plan" }],
+          responseSchema: plannerResponseSchema(),
+        } as never)
+      ).rejects.toThrow("Malformed strict-safe planner args");
+    },
+    180_000
+  );
+
+  it("restores empty-string and __proto__ planner arg keys losslessly", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: JSON.stringify({
+        thought: "special keys",
+        toolCalls: [
+          {
+            id: "call-1",
+            name: "SPECIAL",
+            args: {
+              __eliza_planner_arg_entries: [
+                { key: "", valueJson: JSON.stringify("empty key") },
+                { key: "__proto__", valueJson: JSON.stringify({ preserved: true }) },
+              ],
+            },
+          },
+        ],
+      }),
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+
+    const { handleActionPlanner } = await import("../models/text");
+    const result = (await handleActionPlanner(createRuntime(), {
+      messages: [{ role: "user", content: "Plan" }],
+      responseSchema: plannerResponseSchema(),
+    } as never)) as { text: string };
+
+    const args = JSON.parse(result.text).toolCalls[0].args;
+    expect(Object.hasOwn(args, "")).toBe(true);
+    expect(Object.hasOwn(args, "__proto__")).toBe(true);
+    expect(args[""]).toBe("empty key");
+    expect(Object.getOwnPropertyDescriptor(args, "__proto__")?.value).toEqual({
+      preserved: true,
+    });
+  }, 180_000);
+  it("attests the final generateText system/messages payload before provider invocation", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "ok",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+    const { handleResponseHandler } = await import("../models/text");
+    const hint = "exact lifecycle system instruction";
+    const messages = [{ role: "user", content: "delegate the work" }];
+
+    const scoped = await runWithLlmInputSubstringAttestation(hint, () =>
+      handleResponseHandler(createRuntime(), {
+        system: hint,
+        messages,
+        // This compatibility alias is not a second wire surface when native
+        // messages are present in the final generateText parameters.
+        prompt: hint,
+      } as never)
+    );
+
+    expect(scoped.attestation).toMatchObject({
+      modelCallCount: 1,
+      matchingCallCount: 1,
+      totalOccurrences: 1,
+      exactOncePerModelCall: true,
+      modelTypeCallCounts: { RESPONSE_HANDLER: 1 },
+    });
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.system).toBe(hint);
+    expect(call.messages).toEqual(messages);
+    expect(call).not.toHaveProperty("prompt");
+
+    aiMocks.generateText.mockClear();
+    await expect(
+      runWithLlmInputSubstringAttestation(hint, () =>
+        handleResponseHandler(createRuntime(), {
+          system: "different system instruction",
+          messages,
+        } as never)
+      )
+    ).rejects.toMatchObject({
+      code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISMATCH",
+    });
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("attests the live stream selected by AgentRuntime streaming context", async () => {
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "ok";
+      })(),
+      text: Promise.resolve("ok"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+    });
+    const { handleResponseHandler } = await import("../models/text");
+    const runtime = new AgentRuntime({
+      character: {
+        name: "Ada",
+        bio: "test runtime",
+        settings: {},
+      } as Character,
+      adapter: new InMemoryDatabaseAdapter(),
+      logLevel: "fatal",
+    });
+    runtime.registerModel(ModelType.RESPONSE_HANDLER, handleResponseHandler, "openai");
+    const hint = "streaming lifecycle system instruction";
+
+    const scoped = await runWithLlmInputSubstringAttestation(hint, () =>
+      runWithStreamingContext(
+        {
+          messageId: "attested-stream-turn",
+          onStreamChunk: vi.fn(),
+        },
+        () =>
+          runtime.useModel(ModelType.RESPONSE_HANDLER, {
+            system: hint,
+            messages: [{ role: "user", content: "delegate the work" }],
+          } as never)
+      )
+    );
+
+    expect(scoped.result).toBe("ok");
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+    expect(aiMocks.streamText.mock.calls[0][0]).toMatchObject({
+      system: hint,
+      messages: [{ role: "user", content: "delegate the work" }],
+    });
+    expect(scoped.attestation).toMatchObject({
+      modelCallCount: 1,
+      matchingCallCount: 1,
+      totalOccurrences: 1,
+      exactOncePerModelCall: true,
+      modelTypeCallCounts: { RESPONSE_HANDLER: 1 },
+    });
+  });
+
+  it("rechecks live-stream retries without inflating logical model-call totals", async () => {
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");
+    const transientError = Object.assign(new Error("temporary provider failure"), {
+      statusCode: 500,
+    });
+    aiMocks.streamText
+      .mockImplementationOnce((options: { onError?: (event: { error: unknown }) => void }) => ({
+        textStream: (async function* textStream() {
+          options.onError?.({ error: transientError });
+          yield* [];
+        })(),
+        text: Promise.resolve(""),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("error"),
+        usage: Promise.resolve(undefined),
+      }))
+      .mockResolvedValueOnce({
+        textStream: (async function* textStream() {
+          yield "ok";
+        })(),
+        text: Promise.resolve("ok"),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("stop"),
+        usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+      });
+    const { handleTextSmall } = await import("../models/text");
+    const hint = "retry lifecycle instruction";
+
+    const scoped = await runWithLlmInputSubstringAttestation(hint, async () => {
+      const stream = (await handleTextSmall(createRuntime(), {
+        system: "system without the instruction",
+        messages: [{ role: "user", content: hint }],
+        stream: true,
+      } as never)) as { textStream: AsyncIterable<string> };
+      for await (const _chunk of stream.textStream) {
+        // Full consumption settles the successful retry and its usage telemetry.
+      }
+    });
+
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(2);
+    expect(scoped.attestation).toMatchObject({
+      modelCallCount: 1,
+      matchingCallCount: 1,
+      totalOccurrences: 1,
+      exactOncePerModelCall: true,
+      modelTypeCallCounts: { TEXT_SMALL: 1 },
+    });
+
+    aiMocks.streamText.mockReset();
+    aiMocks.streamText.mockImplementationOnce(
+      (options: {
+        messages?: Array<{ content?: unknown }>;
+        onError?: (event: { error: unknown }) => void;
+      }) => ({
+        textStream: (async function* textStream() {
+          if (options.messages?.[0]) {
+            options.messages[0].content = "instruction removed before retry";
+          }
+          options.onError?.({ error: transientError });
+          yield* [];
+        })(),
+        text: Promise.resolve(""),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("error"),
+        usage: Promise.resolve(undefined),
+      })
+    );
+
+    await expect(
+      runWithLlmInputSubstringAttestation(hint, async () => {
+        await handleTextSmall(createRuntime(), {
+          system: "system without the instruction",
+          messages: [{ role: "user", content: hint }],
+          stream: true,
+        } as never);
+      })
+    ).rejects.toMatchObject({
+      code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISMATCH",
+      context: { retryAttempt: true },
+    });
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+  });
+
   it("passes messages, tools, toolChoice, schema, and provider options through", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "ok",

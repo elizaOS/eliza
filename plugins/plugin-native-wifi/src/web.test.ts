@@ -39,20 +39,18 @@ describe("WiFiWeb fallback", () => {
     );
   });
 
-  it.each([
-    null,
-    "limit=1",
-    1,
-    false,
-  ])("rejects non-object scan options %# without warning", async (options) => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const wifi = new WiFiWeb();
+  it.each([null, "limit=1", 1, false])(
+    "rejects non-object scan options %# without warning",
+    async (options) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const wifi = new WiFiWeb();
 
-    await expect(wifi.listAvailableNetworks(options as never)).rejects.toThrow(
-      "options must be an object",
-    );
-    expect(warn).not.toHaveBeenCalled();
-  });
+      await expect(
+        wifi.listAvailableNetworks(options as never),
+      ).rejects.toThrow("options must be an object");
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects malformed connect options before Android-only fallback responses", async () => {
     const wifi = new WiFiWeb();

@@ -577,19 +577,22 @@ describe("remote capability endpoint conformance", () => {
       {},
       'Capability endpoint "remote-endpoint" returned an empty app bridge result.',
     ],
-  ] as const)("fails when %s returns weak conformance evidence", async (method, surface, result, message) => {
-    installMinimalFixtureFetch({ [method]: result });
+  ] as const)(
+    "fails when %s returns weak conformance evidence",
+    async (method, surface, result, message) => {
+      installMinimalFixtureFetch({ [method]: result });
 
-    await expect(
-      assertRemoteCapabilityEndpointConformance({
-        endpoint: {
-          id: "remote-endpoint",
-          baseUrl: "https://remote.example.test",
-        },
-        requiredSurfaces: [surface],
-      }),
-    ).rejects.toThrow(message);
-  });
+      await expect(
+        assertRemoteCapabilityEndpointConformance({
+          endpoint: {
+            id: "remote-endpoint",
+            baseUrl: "https://remote.example.test",
+          },
+          requiredSurfaces: [surface],
+        }),
+      ).rejects.toThrow(message);
+    },
+  );
 
   it.each([
     [
@@ -616,19 +619,22 @@ describe("remote capability endpoint conformance", () => {
       {},
       'Capability endpoint "remote-endpoint" returned an empty response-handler field evaluator handle result.',
     ],
-  ] as const)("fails when %s returns weak staged conformance evidence", async (method, surface, result, message) => {
-    installMinimalFixtureFetch({ [method]: result });
+  ] as const)(
+    "fails when %s returns weak staged conformance evidence",
+    async (method, surface, result, message) => {
+      installMinimalFixtureFetch({ [method]: result });
 
-    await expect(
-      assertRemoteCapabilityEndpointConformance({
-        endpoint: {
-          id: "remote-endpoint",
-          baseUrl: "https://remote.example.test",
-        },
-        requiredSurfaces: [surface],
-      }),
-    ).rejects.toThrow(message);
-  });
+      await expect(
+        assertRemoteCapabilityEndpointConformance({
+          endpoint: {
+            id: "remote-endpoint",
+            baseUrl: "https://remote.example.test",
+          },
+          requiredSurfaces: [surface],
+        }),
+      ).rejects.toThrow(message);
+    },
+  );
 
   it("fails when remote view conformance returns a non-JavaScript asset", async () => {
     installMinimalFixtureFetch({

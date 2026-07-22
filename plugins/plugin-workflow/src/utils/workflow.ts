@@ -22,6 +22,10 @@ import {
   loadTriggerOutputSchema,
   parseExpressions,
 } from './outputSchema';
+import {
+  normalizeSetNodeParameters,
+  normalizeSetNodeParametersInWorkflow,
+} from './setNodeParameters';
 
 function isTriggerNode(type: string): boolean {
   const t = type.toLowerCase();
@@ -82,6 +86,13 @@ export function validateWorkflow(workflow: WorkflowDefinition): WorkflowValidati
       warnings.push(`Node "${node.name}" missing parameters object`);
     }
   }
+
+  const setParameterResult = normalizeSetNodeParametersInWorkflow(workflow);
+  errors.push(
+    ...setParameterResult.issues.map(
+      (parameterIssue) => `Node "${parameterIssue.node}": ${parameterIssue.detail}`
+    )
+  );
 
   // 4. Validate connections reference existing nodes
   for (const [sourceName, outputs] of Object.entries(workflow.connections)) {
@@ -284,10 +295,6 @@ function isPropertyVisible(prop: NodeProperty, parameters: Record<string, unknow
   }
 
   return true;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function validateNodeInputs(workflow: WorkflowDefinition): string[] {
@@ -536,45 +543,11 @@ export function correctOptionParameters(workflow: WorkflowDefinition): number {
 }
 
 export function normalizeWorkflowNodeParameterShapes(workflow: WorkflowDefinition): number {
-  let corrections = 0;
-  for (const node of workflow.nodes) {
-    corrections += normalizeSetNodeAssignments(node);
-  }
-  return corrections;
+  return normalizeSetNodeParametersInWorkflow(workflow).corrections;
 }
 
 function normalizeSetNodeAssignments(node: WorkflowDefinition['nodes'][0]): number {
-  if (node.type !== 'workflows-nodes-base.set' || !isRecord(node.parameters)) {
-    return 0;
-  }
-
-  const assignmentContainer = node.parameters.assignments;
-  if (!isRecord(assignmentContainer)) {
-    return 0;
-  }
-
-  if (Array.isArray(assignmentContainer.assignments)) {
-    return 0;
-  }
-
-  const generatedValues = assignmentContainer.values;
-  if (!Array.isArray(generatedValues)) {
-    return 0;
-  }
-
-  const assignments = generatedValues.filter(isRecord).map((entry) => ({
-    name: entry.name,
-    value: entry.value,
-    ...(entry.type !== undefined ? { type: entry.type } : {}),
-  }));
-
-  assignmentContainer.assignments = assignments;
-  delete assignmentContainer.values;
-  logger.warn(
-    { src: 'plugin:workflow:correctOptions' },
-    `Node "${node.name}": assignments.values → assignments.assignments`
-  );
-  return 1;
+  return normalizeSetNodeParameters(node).corrections;
 }
 
 function fixOptionValue(node: WorkflowDefinition['nodes'][0], prop: NodeProperty): number {

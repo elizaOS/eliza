@@ -33,6 +33,36 @@ describe("runOneBenchmark", () => {
     expect(report.error_count).toBe(0);
   });
 
+  it("rejects an incomplete dataset instead of scoring a partial sample", async () => {
+    const runtime = createStubRuntime("test");
+    await expect(
+      runOneBenchmark({
+        tier: "stub",
+        benchmark: "textvqa",
+        samples: 6,
+        smoke: true,
+        runtime,
+      }),
+    ).rejects.toThrow(/dataset is incomplete: requested 6 samples, loaded 5/);
+  });
+
+  it("rejects prediction errors instead of writing a partial score", async () => {
+    await expect(
+      runOneBenchmark({
+        tier: "stub",
+        benchmark: "textvqa",
+        samples: 1,
+        smoke: true,
+        runtime: {
+          id: "broken-runtime",
+          async ask() {
+            throw new Error("vision transport failed");
+          },
+        },
+      }),
+    ).rejects.toThrow(/refusing a partial report.*vision transport failed/);
+  });
+
   it("expands selected samples into ten edge variants each", async () => {
     const runtime = createStubRuntime("test");
     const report = await runOneBenchmark({

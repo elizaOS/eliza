@@ -50,13 +50,13 @@
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api GatewayPlugin --output-readme README.md --output-json dist/docs.json",
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-native-gateway -- bun run build:unlocked",
-    "build:docs": "bun run clean && bun run docgen && tsc && bunx rollup -c rollup.config.mjs",
+    "build:docs": "bun run clean && bun run docgen && tsc6 && bunx rollup -c rollup.config.mjs",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run",
-    "watch": "tsc --watch",
+    "watch": "tsc6 --watch",
     "prepublishOnly": "bun run build",
-    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.4",
@@ -64,6 +64,7 @@
     "@capacitor/docgen": "^0.3.0",
     "rollup": "^4.60.2",
     "swiftlint": "^2.0.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },

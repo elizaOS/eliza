@@ -183,7 +183,9 @@ describe("AccountCommandTable", () => {
     expect(screen.getByText("Leases")).toBeTruthy();
     const row = screen.getByTestId("account-row-a");
     expect(within(row).getByText("3")).toBeTruthy();
-    expect(within(row).getByText("served last")).toBeTruthy();
+    expect(within(row).getByText("served last").className).toContain(
+      "text-accent",
+    );
   });
 
   it("renders the reauth CTA only for accounts needing repair", () => {
@@ -197,7 +199,7 @@ describe("AccountCommandTable", () => {
     const okRow = screen.getByTestId("account-row-ok");
     const reRow = screen.getByTestId("account-row-re");
     expect(within(okRow).queryByText("Reauth")).toBeNull();
-    expect(within(reRow).getByText("Reauth")).toBeTruthy();
+    expect(within(reRow).getByText("Reauth").className).toContain("text-bg");
   });
 
   it("invokes onReauthenticate with the account via the existing repair flow", () => {
@@ -209,11 +211,12 @@ describe("AccountCommandTable", () => {
     expect(onReauthenticate).toHaveBeenCalledWith(reauthAccount);
   });
 
-  it("dims disabled rows and forwards enabled toggles through onPatch", () => {
+  it("marks disabled rows without lowering descendant contrast and forwards enabled toggles", () => {
     const onPatch = vi.fn().mockResolvedValue(undefined);
     renderTable([account({ id: "off", enabled: false })], { onPatch });
     const row = screen.getByTestId("account-row-off");
-    expect(row.className).toContain("opacity-55");
+    expect(row.className).toContain("bg-bg-accent/20");
+    expect(row.className).not.toContain("opacity-");
     fireEvent.click(within(row).getByRole("checkbox"));
     expect(onPatch).toHaveBeenCalledWith("off", { enabled: true });
   });

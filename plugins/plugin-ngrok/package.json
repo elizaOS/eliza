@@ -36,9 +36,9 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc --noCheck -p tsconfig.json",
-    "dev": "tsc --watch",
-    "typecheck": "tsgo --noEmit",
+    "build": "tsc6 --noCheck -p tsconfig.json",
+    "dev": "tsc6 --watch",
+    "typecheck": "tsc --noEmit",
     "test": "bun run --cwd ../plugin-tunnel build && bun test",
     "test:unit": "bun test src/__tests__/unit/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -68,6 +68,7 @@
     "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
     "dotenv": "^17.2.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "publishConfig": {

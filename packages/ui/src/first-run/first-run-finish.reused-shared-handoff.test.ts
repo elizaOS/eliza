@@ -51,7 +51,9 @@ const clientMock = vi.hoisted(() => ({
   startCloudAgentHandoff: vi.fn(),
   deleteSharedBridgeAgent: vi.fn(async () => ({ success: true })),
   getCloudCompatAgents: vi.fn(),
-  getCloudStatus: vi.fn(async () => null),
+  getCloudStatus: vi.fn<
+    () => Promise<{ connected: boolean; reason?: string } | null>
+  >(async () => null),
   getRestAuthToken: vi.fn(() => null as string | null),
 }));
 
@@ -152,6 +154,8 @@ function seedMarker(sharedAgentId: string): void {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  clientMock.getCloudStatus.mockResolvedValue(null);
+  clientMock.getRestAuthToken.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -327,5 +331,55 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
     p.elizaCloudConnected = false;
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("needs-cloud-login");
+  });
+
+  it("requires renderer auth when the server is connected but has no client token", async () => {
+    window.localStorage.clear();
+    clientMock.getCloudStatus.mockResolvedValue({ connected: true });
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          agent_id: "cad3c071",
+          status: "running",
+          preferred: true,
+        },
+      ],
+    });
+    mockSelection(false, { bridgeUrl: "https://cad3c071.elizacloud.ai" });
+    const authWindow = { close: vi.fn() } as unknown as Window;
+    const p = ports();
+    p.preOpenWindow = () => authWindow;
+    p.handleCloudLogin = vi.fn(async () => {
+      window.localStorage.setItem(
+        "steward_session_token",
+        "fresh-client-token",
+      );
+    });
+
+    const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
+
+    expect(p.handleCloudLogin).toHaveBeenCalledWith(authWindow, {
+      requireClientAuth: true,
+    });
+    expect(outcome.kind).toBe("done");
+    expect(clientMock.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ authToken: "fresh-client-token" }),
+    );
+  });
+
+  it("does not list or provision when required client auth returns no token", async () => {
+    window.localStorage.clear();
+    clientMock.getCloudStatus.mockResolvedValue({ connected: true });
+    const p = ports();
+
+    const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
+
+    expect(p.handleCloudLogin).toHaveBeenCalledWith(null, {
+      requireClientAuth: true,
+    });
+    expect(outcome.kind).toBe("needs-cloud-login");
+    expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 });

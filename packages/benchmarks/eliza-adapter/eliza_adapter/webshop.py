@@ -368,7 +368,9 @@ class ElizaBridgeWebShopAgent:
         try:
             self._client.reset(task_id=task.task_id, benchmark="webshop")
         except Exception as exc:
-            logger.warning("[webshop-bridge] reset failed (continuing): %s", exc)
+            raise RuntimeError(
+                f"WebShop bridge session reset failed for task {task.task_id}"
+            ) from exc
 
         observation = self.env.reset(task)
         steps: list[EpisodeStep] = []
@@ -417,13 +419,10 @@ class ElizaBridgeWebShopAgent:
                     ),
                 )
             except Exception as exc:
-                logger.error(
-                    "[webshop-bridge] bridge call failed at turn %d: %s",
-                    turn,
-                    exc,
-                )
-                final_response = f"Bridge error: {exc}"
-                break
+                raise RuntimeError(
+                    f"WebShop bridge call failed for task {task.task_id} "
+                    f"at turn {turn}"
+                ) from exc
 
             logger.debug(
                 "[webshop-bridge] turn=%d text_len=%d actions=%s params=%s",

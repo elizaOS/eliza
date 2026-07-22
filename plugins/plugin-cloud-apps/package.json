@@ -58,7 +58,7 @@
     "build": "bun run build.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "bun test __tests__",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -70,6 +70,7 @@
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "@types/bun": "^1.1.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

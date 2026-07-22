@@ -1,3 +1,6 @@
+/**
+ * Locks public mobile smoke commands and their CI evidence/gating contracts.
+ */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +39,10 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
     path.resolve(testDir, "../../../.github/workflows/mobile-build-smoke.yml"),
     "utf8",
   );
+  const iosE2e = readFileSync(
+    path.resolve(testDir, "../scripts/ios-e2e.mjs"),
+    "utf8",
+  );
   const STEP_MARKER = "      - name:";
 
   // Return the YAML text of the single workflow step whose `- name:` line
@@ -71,5 +78,30 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
     const localChat = stepBlock("Run iOS local-chat simulator smoke");
     expect(localChat).toContain("mobile-local-chat-smoke.mjs");
     expect(localChat).toContain("--platform ios --require-installed");
+  });
+
+  it("keeps the composed auth + full-Bun lane blocking and captures reviewable evidence", () => {
+    const boot = stepBlock("Boot simulator and configure the full-Bun runtime");
+    expect(boot).toContain("SIMCTL_CHILD_DYLD_FALLBACK_LIBRARY_PATH");
+    expect(boot).toContain("System/Cryptexes/OS/usr/lib/swift");
+    expect(boot).toContain("IOS_FULL_BUN_APP_PATH");
+
+    const fullBun = stepBlock("Run composed iOS auth + full-Bun simulator e2e");
+    expect(fullBun).not.toMatch(/\n\s*continue-on-error\s*:/);
+    expect(fullBun).toContain("ios-e2e.mjs");
+    expect(fullBun).toContain("--skip-build");
+    expect(fullBun).toContain("--app-path");
+    expect(fullBun).not.toContain("mobile-local-chat-smoke.mjs");
+    expect(fullBun).toContain("recordVideo");
+    expect(fullBun).toContain("ios-final.jpg");
+    expect(fullBun).toContain("ios-simulator.log");
+    expect(fullBun).toContain('process == "App"');
+    expect(fullBun).toContain("test-results/auth/result.json");
+    expect(fullBun).toContain("test-results/ios-full-bun/result.json");
+    expect(fullBun).toContain("reports/ios-scheme-approval.json");
+    expect(fullBun).toContain('callbackDisposition!=="deliver-to-app"');
+    expect(fullBun).toContain('"plistPath" in r');
+    expect(fullBun).toContain("orchestrator/summary.json");
+    expect(iosE2e).toContain("ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR");
   });
 });

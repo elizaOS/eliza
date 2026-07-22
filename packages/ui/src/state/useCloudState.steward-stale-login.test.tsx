@@ -135,6 +135,64 @@ describe("useCloudState — handleCloudLogin with a stale Steward token and no l
     );
   });
 
+  it("preserves the default cached-server-connected short-circuit", async () => {
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(deviceCodeCalls()).toBe(0);
+  });
+
+  it("requires a client token for onboarding even when cached and fresh server status are connected", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      connected: true,
+      enabled: true,
+    } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const params = makeParams();
+    const { result } = renderHook(() => useCloudState(params));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+
+    expect(deviceCodeCalls()).toBe(1);
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+    expect(params.setActionNotice).not.toHaveBeenCalledWith(
+      "Already connected to Eliza Cloud.",
+      "info",
+      4000,
+    );
+  });
+
+  it("does not reauthenticate when required client auth is already present", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(3600));
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+
+    expect(deviceCodeCalls()).toBe(0);
+  });
+
   it("a still-usable stored token keeps the Steward short-circuit (no device-code call)", async () => {
     const valid = makeJwt(3600);
     localStorage.setItem(STEWARD_TOKEN_KEY, valid);

@@ -675,27 +675,27 @@ describe("connector read gate (requiresAuth only, not requiresElevated)", () => 
 	// via gateConnectorCommandByName BEFORE runCommand) refuse the bare read to
 	// an authorized-but-not-elevated sender. With requiresAuth only, the read
 	// passes the bridge and the write subcommands re-check isElevated in-handler.
-	it.each([
-		"accounts",
-		"backend",
-	])("lets an authorized non-elevated sender through the bridge for /%s", (name) => {
-		const decision = gateConnectorCommandByName(
-			"agent-accounts-backend",
-			name,
-			{ isAuthorized: true, isElevated: false, senderName: "t" },
-		);
-		expect(decision.allowed).toBe(true);
-	});
+	it.each(["accounts", "backend"])(
+		"lets an authorized non-elevated sender through the bridge for /%s",
+		(name) => {
+			const decision = gateConnectorCommandByName(
+				"agent-accounts-backend",
+				name,
+				{ isAuthorized: true, isElevated: false, senderName: "t" },
+			);
+			expect(decision.allowed).toBe(true);
+		},
+	);
 
-	it.each([
-		"accounts",
-		"backend",
-	])("refuses an unauthorized sender at the bridge for /%s", (name) => {
-		const decision = gateConnectorCommandByName(
-			"agent-accounts-backend",
-			name,
-			{ isAuthorized: false, isElevated: false, senderName: "t" },
-		);
-		expect(decision.allowed).toBe(false);
-	});
+	it.each(["accounts", "backend"])(
+		"refuses an unauthorized sender at the bridge for /%s",
+		(name) => {
+			const decision = gateConnectorCommandByName(
+				"agent-accounts-backend",
+				name,
+				{ isAuthorized: false, isElevated: false, senderName: "t" },
+			);
+			expect(decision.allowed).toBe(false);
+		},
+	);
 });

@@ -14,7 +14,7 @@
     "build": "bun build src/index.ts --outdir dist --target node",
     "clean": "rm -rf dist",
     "start": "PORT=3002 bun run src/index.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
     "docker:build": "docker build -t gateway-webhook:local ."
   },
@@ -22,7 +22,7 @@
     "@elizaos/cloud-services-common": "workspace:*",
     "@upstash/redis": "^1.37.0",
     "hashring": "^3.2.0",
-    "hono": "4.12.25",
+    "hono": "4.12.27",
     "ioredis": "^5.10.1",
     "zod": "^4.4.3"
   },
@@ -32,6 +32,7 @@
     "@types/node": "22.19.17",
     "bun-types": "1.3.14",
     "ioredis-mock": "^8.13.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   }
 }

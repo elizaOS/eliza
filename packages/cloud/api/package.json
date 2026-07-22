@@ -15,8 +15,8 @@
     "agent:build": "node ../../scripts/cloud/admin/dev/build-cloud-agent-image.mjs",
     "deploy": "wrangler deploy --env production",
     "codegen": "node src/_generate-router.mjs",
-    "build": "tsc --noEmit",
-    "typecheck": "tsgo --noEmit && bun run check:worker-bundle",
+    "build": "tsc6 --noEmit",
+    "typecheck": "tsc --noEmit && bun run check:worker-bundle",
     "check:worker-bundle": "wrangler deploy --env production --dry-run --outdir .wrangler-dry-run",
     "test": "node test/run-unit-isolated.mjs",
     "test:batch": "bun test __tests__",
@@ -37,7 +37,7 @@
     "ai": "^6.0.170",
     "drizzle-orm": "^0.45.1",
     "file-type": "^22.0.1",
-    "hono": "4.12.25",
+    "hono": "4.12.27",
     "music-metadata": "^11.12.3",
     "nanoid": "^5.1.9",
     "stripe": "^22.0.0",
@@ -54,6 +54,7 @@
     "@types/ws": "^8.18.1",
     "dotenv": "^17.4.2",
     "pg": "^8.20.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "ws": "^8.21.0"
   }

@@ -9,6 +9,7 @@ runtime model and the on-disk contract can move independently.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from eliza_lifeops_bench.types import ScenarioResult
@@ -22,9 +23,8 @@ class TaskRun:
 
     ``result`` is ``None`` only when the task never produced a
     ``ScenarioResult`` — a wall-clock timeout the scheduler tripped before
-    ``run_one`` returned, or an unexpected exception. In both cases
-    ``terminated_reason`` carries the classification ("timeout"/"error") so
-    metrics never has to conflate a missing result with a zero score.
+    ``run_one`` returned. Unexpected infrastructure exceptions propagate and
+    invalidate the lane rather than being converted into scored task data.
     """
 
     scenario_id: str
@@ -46,8 +46,12 @@ class TaskRun:
         """
         if self.result is None:
             return 0.0
-        max_score = self.result.max_score or 1.0
-        return self.result.total_score / max_score
+        if not math.isfinite(self.result.max_score) or self.result.max_score <= 0:
+            raise ValueError(
+                f"scenario {self.scenario_id} has invalid max_score "
+                f"{self.result.max_score!r}"
+            )
+        return self.result.total_score / self.result.max_score
 
     @property
     def turns(self) -> int:

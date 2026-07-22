@@ -93,6 +93,9 @@ subprocess calls.
 - Default port is `3939`; override with `ELIZA_BENCH_PORT`.
 - `BENCHMARK_HARNESS` / `ELIZA_BENCH_HARNESS` routes `ElizaClient` through
   Hermes, Smithers, or OpenClaw backends instead of the eliza HTTP server.
+- The Vending-Bench bridge forwards the benchmark's bounded transcript and required action schema
+  unchanged to every native harness. Missing usage, reset failures, and empty output fail or score
+  invalid; no strategy hints or fallback business actions are injected.
 - Per-turn telemetry writes to `BENCHMARK_TELEMETRY_JSONL` or
   `$BENCHMARK_RUN_DIR/telemetry.jsonl` (auto-fallback to a tmp dir).
 - This package is not registered in `registry/commands.py`; no orchestrator

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { availableToolsProvider } from "./available-tools.js";
 
 describe("availableToolsProvider", () => {

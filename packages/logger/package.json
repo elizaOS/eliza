@@ -27,10 +27,11 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "build": "bun run build:dist",
-    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/logger",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/logger",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome check",
+    "lint:check": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome check",
     "lint:fix": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome check --write",
     "format": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome format",
     "format:fix": "find src -name '*.ts' ! -name '*.d.ts' -print0 | xargs -0 bunx @biomejs/biome format --write",
@@ -54,6 +55,7 @@
     "fast-redact": "^3.5.0"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@types/fast-redact": "^3.0.4",
     "@types/node": "^24.0.0"
   },

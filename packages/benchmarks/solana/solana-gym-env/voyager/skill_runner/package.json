@@ -26,6 +26,7 @@
     "decimal.js": "^10.4.3"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@types/node": "^25.0.3"
   }
 }

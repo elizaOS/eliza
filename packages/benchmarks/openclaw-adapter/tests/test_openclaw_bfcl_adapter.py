@@ -139,7 +139,7 @@ def test_provider_safe_tools_preserves_schema_field_names_and_defaults() -> None
     assert tools[0]["function"]["name"] == "customer.lookup"
 
 
-def test_build_bfcl_agent_fn_default_client_uses_native_direct_transport() -> None:
+def test_build_bfcl_agent_fn_default_client_uses_embedded_runtime() -> None:
     agent_fn = build_bfcl_agent_fn()
     captured: dict[str, Any] = {}
 
@@ -154,7 +154,7 @@ def test_build_bfcl_agent_fn_default_client_uses_native_direct_transport() -> No
     with patch.object(OpenClawClient, "send_message", _fake_send):
         result = _run(agent_fn("hello", []))
 
-    assert captured["direct_openai_compatible"] is True
+    assert captured["direct_openai_compatible"] is False
     assert result["tool_calls"] == []
 
 

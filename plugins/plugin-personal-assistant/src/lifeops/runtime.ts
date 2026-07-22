@@ -123,16 +123,24 @@ export async function executeLifeOpsSchedulerTask(
   };
 }
 
-export function registerLifeOpsTaskWorker(runtime: IAgentRuntime): void {
+export function registerLifeOpsTaskWorker(
+  runtime: IAgentRuntime,
+  options: { disabled?: boolean } = {},
+): void {
   if (runtime.getTaskWorker(LIFEOPS_TASK_NAME)) {
     return;
   }
+  const disabled = options.disabled === true;
   runtime.registerTaskWorker({
     name: LIFEOPS_TASK_NAME,
-    // Skip execution when the user has disabled LifeOps via the UI. The task
-    // record and worker stay registered so toggling back on requires no
-    // restart — cycles just become cheap no-ops while disabled.
+    // Keep the worker identity registered even when the process-level scheduler
+    // kill switch is set. Owner-profile writes use the scheduler row as their
+    // metadata store and may create it lazily; without this disabled worker the
+    // live TaskService treats that valid row as an orphan and emits a fatal
+    // TASK_WORKER_MISSING error every second. Returning false preserves the kill
+    // switch exactly: the timer still validates the row, but never executes it.
     shouldRun: async (rt) => {
+      if (disabled) return false;
       try {
         const state = await loadLifeOpsAppState(rt as IAgentRuntime);
         return state.enabled;
@@ -145,7 +153,7 @@ export function registerLifeOpsTaskWorker(runtime: IAgentRuntime): void {
         return false;
       }
     },
-    execute: async (rt, options) =>
-      executeLifeOpsSchedulerTask(rt, isRecord(options) ? options : {}),
+    execute: async (rt, taskOptions) =>
+      executeLifeOpsSchedulerTask(rt, isRecord(taskOptions) ? taskOptions : {}),
   });
 }

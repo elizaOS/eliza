@@ -11,10 +11,20 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { seedGuiViewScaffold } from "./views-create-scaffold.js";
 
 const tempDirs: string[] = [];
+const repoRoot = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"../../../..",
+);
+const canonicalBiomeVersion = (
+	JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
+		devDependencies: Record<string, string>;
+	}
+).devDependencies["@biomejs/biome"];
 
 function scaffoldFixture(): string {
 	const workdir = mkdtempSync(path.join(os.tmpdir(), "view-scaffold-"));
@@ -30,7 +40,11 @@ function scaffoldFixture(): string {
 				test: "vitest run --config ./vitest.config.ts",
 			},
 			dependencies: { "@elizaos/core": "latest" },
-			devDependencies: { typescript: "^6.0.3", vitest: "^4.0.0" },
+			devDependencies: {
+				"@biomejs/biome": canonicalBiomeVersion,
+				typescript: "^6.0.3",
+				vitest: "^4.0.0",
+			},
 		}),
 	);
 	writeFileSync(
@@ -116,9 +130,12 @@ describe("seedGuiViewScaffold", () => {
 			"vite build --config vite.config.views.ts",
 		);
 		expect(packageJson.scripts.lint).toBe("biome check src/ tests/");
+		expect(packageJson.scripts["lint:check"]).toBe("biome check src/ tests/");
 		expect(packageJson.dependencies.react).toBe("^19.0.0");
 		expect(packageJson.dependencies["react-dom"]).toBe("^19.0.0");
-		expect(packageJson.devDependencies["@biomejs/biome"]).toBe("2.5.1");
+		expect(packageJson.devDependencies["@biomejs/biome"]).toBe(
+			canonicalBiomeVersion,
+		);
 		expect(packageJson.devDependencies.vite).toBe("^8.0.0");
 
 		const tsconfig = JSON.parse(
@@ -127,5 +144,24 @@ describe("seedGuiViewScaffold", () => {
 		expect(tsconfig.compilerOptions.jsx).toBe("react-jsx");
 		expect(tsconfig.include).toContain("src/**/*.tsx");
 		expect(tsconfig.include).toContain("tests/**/*.tsx");
+	});
+
+	it("rejects a copied template without an exact Biome pin", async () => {
+		const workdir = scaffoldFixture();
+		const packageJsonPath = path.join(workdir, "package.json");
+		const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+			devDependencies: Record<string, string>;
+		};
+		packageJson.devDependencies["@biomejs/biome"] = `^${canonicalBiomeVersion}`;
+		writeFileSync(packageJsonPath, JSON.stringify(packageJson));
+
+		await expect(
+			seedGuiViewScaffold({
+				workdir,
+				viewId: "proof-surface",
+				displayName: "Proof Surface",
+				intent: "Show proof",
+			}),
+		).rejects.toThrow("must pin an exact semantic version");
 	});
 });

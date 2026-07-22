@@ -3,10 +3,13 @@
  *
  * The coverage gate executes before workspace builds, so combining unrelated
  * package tests under the root config can resolve absent dist entrypoints and
- * bypass package-specific aliases or setup. Each group runs in isolation, and
- * the per-group LCOV reports are then union-merged into a single
- * `coverage/vitest/lcov.info` (see {@link mergeLcovReports}) so the gate sees
- * one record per file across every group that executed it.
+ * bypass package-specific aliases or setup. A coverage-only wrapper preserves
+ * each package config while appending the complete workspace source-alias set.
+ * Package aliases stay first so their test stubs and platform shims retain
+ * precedence. Each group runs in isolation, and the per-group LCOV reports are
+ * then union-merged into a single
+ * `coverage/vitest/lcov.info` (see {@link mergeAndRemoveLcovReports}) so the
+ * gate sees one record per file across every group that executed it.
  *
  * Two path-resolution rules make nested and specialty configs runnable:
  * `*.harness.test.ts` files prefer the repo's `vitest.harness.config.ts`
@@ -18,9 +21,10 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { mergeAndRemoveLcovReports } from "./merge-lcov-reports.mjs";
 
 const CONFIG_NAMES = [
   "vitest.config.ts",
@@ -36,10 +40,25 @@ const CONFIG_NAMES = [
 const HARNESS_CONFIG_NAME = "vitest.harness.config.ts";
 const HARNESS_TEST_SUFFIXES = [".harness.test.ts", ".harness.test.tsx"];
 
+// The Electrobun desktop shell lives under platforms/electrobun as an isolated
+// sub-tree. The owning app-core config deliberately excludes
+// `platforms/electrobun/**` (its suites need the electrobun/bun stub alias), so
+// grouping one there exits "no test files found". The platform carries its own
+// `vitest.electrobun.config.ts`; prefer it for any test under that sub-tree.
+const ELECTROBUN_CONFIG_NAME = "vitest.electrobun.config.ts";
+const ELECTROBUN_DIR_SEGMENT = `${path.sep}platforms${path.sep}electrobun${path.sep}`;
+const CHANGED_COVERAGE_CONFIG = fileURLToPath(
+  new URL("./vitest.changed-coverage.config.ts", import.meta.url),
+);
+
 const normalize = (value) => value.split(path.sep).join("/");
 
 function isHarnessTest(testFile) {
   return HARNESS_TEST_SUFFIXES.some((suffix) => testFile.endsWith(suffix));
+}
+
+function isElectrobunTest(absoluteTest) {
+  return normalize(absoluteTest).includes(normalize(ELECTROBUN_DIR_SEGMENT));
 }
 
 export function findNearestVitestConfig(repoRoot, testFile) {
@@ -54,9 +73,12 @@ export function findNearestVitestConfig(repoRoot, testFile) {
     throw new Error(`Changed test escapes the repository: ${testFile}`);
   }
 
-  const configNames = isHarnessTest(absoluteTest)
-    ? [HARNESS_CONFIG_NAME, ...CONFIG_NAMES]
-    : CONFIG_NAMES;
+  let configNames = CONFIG_NAMES;
+  if (isHarnessTest(absoluteTest)) {
+    configNames = [HARNESS_CONFIG_NAME, ...CONFIG_NAMES];
+  } else if (isElectrobunTest(absoluteTest)) {
+    configNames = [ELECTROBUN_CONFIG_NAME, ...CONFIG_NAMES];
+  }
 
   let directory = path.dirname(absoluteTest);
   while (true) {
@@ -149,59 +171,6 @@ export function normalizeLcovReport(repoRoot, baseDir, reportDir) {
   writeFileSync(lcovPath, normalized);
 }
 
-/**
- * Union-merge normalized LCOV reports: per file, a line counts as hit when ANY
- * report hit it. The coverage gate latches a failure on EVERY report occurrence
- * of a changed file below the threshold, so feeding it one merged record per
- * file — instead of one low record per group that merely LOADED the file plus
- * one high record from the group that exercised it — is what makes multi-group
- * coverage mean "covered anywhere in the changed-test run".
- */
-export function mergeLcovReports(reportPaths, mergedPath) {
-  const files = new Map();
-  for (const reportPath of reportPaths) {
-    if (!existsSync(reportPath)) continue;
-    let current = null;
-    for (const line of readFileSync(reportPath, "utf8").split("\n")) {
-      if (line.startsWith("SF:")) {
-        current = line.slice("SF:".length);
-        if (!files.has(current)) files.set(current, new Map());
-      } else if (line.startsWith("DA:") && current) {
-        const [lineNo, hits] = line.slice("DA:".length).split(",");
-        const parsedLine = Number(lineNo);
-        const parsedHits = Number(hits);
-        if (!Number.isFinite(parsedLine) || !Number.isFinite(parsedHits)) {
-          continue;
-        }
-        const lineHits = files.get(current);
-        lineHits.set(
-          parsedLine,
-          Math.max(lineHits.get(parsedLine) ?? 0, parsedHits),
-        );
-      } else if (line === "end_of_record") {
-        current = null;
-      }
-    }
-  }
-
-  const out = ["TN:"];
-  for (const [sourceFile, lineHits] of [...files.entries()].sort(
-    ([left], [right]) => left.localeCompare(right),
-  )) {
-    out.push(`SF:${sourceFile}`);
-    const sortedLines = [...lineHits.entries()].sort(
-      ([left], [right]) => left - right,
-    );
-    let hit = 0;
-    for (const [lineNo, hits] of sortedLines) {
-      out.push(`DA:${lineNo},${hits}`);
-      if (hits > 0) hit++;
-    }
-    out.push(`LF:${sortedLines.length}`, `LH:${hit}`, "end_of_record");
-  }
-  writeFileSync(mergedPath, `${out.join("\n")}\n`);
-}
-
 export function runChangedVitestCoverage(repoRoot, testFiles) {
   const groups = groupChangedVitestTests(repoRoot, testFiles);
   for (const group of groups) {
@@ -212,7 +181,7 @@ export function runChangedVitestCoverage(repoRoot, testFiles) {
         "run",
         ...group.tests,
         "--config",
-        group.configPath,
+        CHANGED_COVERAGE_CONFIG,
         "--coverage",
         "--coverage.reporter=lcov",
         // Package configs carry whole-suite global thresholds. This lane runs
@@ -233,7 +202,11 @@ export function runChangedVitestCoverage(repoRoot, testFiles) {
         // scripts invoke nested configs from the package root, and relative
         // `include` patterns resolve against the cwd.
         cwd: group.packageDir,
-        env: process.env,
+        env: {
+          ...process.env,
+          ELIZA_CHANGED_VITEST_CONFIG: group.configPath,
+          ELIZA_CHANGED_VITEST_REPO_ROOT: path.resolve(repoRoot),
+        },
         stdio: "inherit",
       },
     );
@@ -255,13 +228,10 @@ export function runChangedVitestCoverage(repoRoot, testFiles) {
     path.join(group.reportDir, "lcov.info"),
   );
   if (groupReports.length > 0) {
-    mergeLcovReports(
+    mergeAndRemoveLcovReports(
       groupReports,
       path.join(path.resolve(repoRoot), "coverage", "vitest", "lcov.info"),
     );
-    for (const reportPath of groupReports) {
-      if (existsSync(reportPath)) unlinkSync(reportPath);
-    }
   }
 }
 

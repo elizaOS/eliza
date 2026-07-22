@@ -148,8 +148,18 @@ function isFunctionLike(node) {
 
 /** Is `fn` an argument to a deferred caller, a JSX on* handler, or async? */
 function isDeferredCallback(fn) {
+  // An `async` function body (arrow, expression, declaration, or method) is a
+  // promise machine: nothing after the first `await` runs during the synchronous
+  // render pass, and the function must be explicitly invoked (as an event handler
+  // or effect) to run at all. Treat all async function *forms* as deferred, not
+  // just arrows/expressions. Previously async function DECLARATIONS (e.g.
+  // `async function handleEmail() { ... Date.now() ... }`) were misclassified as
+  // render-time.
   if (
-    (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) &&
+    (ts.isArrowFunction(fn) ||
+      ts.isFunctionExpression(fn) ||
+      ts.isFunctionDeclaration(fn) ||
+      ts.isMethodDeclaration(fn)) &&
     fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
   ) {
     return true;
@@ -374,6 +384,12 @@ function runSelfTest() {
       "function Foo(){ setTimeout(()=>{ Math.random(); }, 10); return <div/>; }",
       "deferred",
       "Math.random()",
+    ],
+    [
+      "async fn declaration deferred",
+      "function Foo(){ async function h(){ const t = Date.now(); return t; } return <button onClick={h}/>; }",
+      "deferred",
+      "Date.now()",
     ],
   ];
   let failed = 0;

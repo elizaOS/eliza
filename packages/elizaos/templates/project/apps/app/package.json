@@ -6,7 +6,8 @@
     "dev": "bun --bun vite",
     "preview": "bun --bun vite preview",
     "design-review": "node --import tsx test/design-review/run-design-review.ts",
-    "lint": "bunx @biomejs/biome check src test scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts package.json capacitor.config.ts",
+    "lint": "biome check src test scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts package.json capacitor.config.ts",
+    "lint:check": "biome check src test scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts package.json capacitor.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "test:ui": "vitest run --config vitest.config.ts test/app/command-palette.test.tsx test/app/chat-view.test.tsx test/app/conversations-sidebar.test.tsx test/app/events.test.ts test/app/command-registry.test.ts test/app/shell-overlays.test.tsx test/app/shortcuts-overlay.test.tsx test/app/confirm-modal.test.tsx",
@@ -45,6 +46,7 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.4",
     "@capacitor/cli": "8.3.1",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.3.1",
@@ -52,6 +54,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react-swc": "^4.2.1",
     "jsdom": "^29.0.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
     "vitest": "^4.0.0"

@@ -1856,44 +1856,46 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
-  it.each([
-    "max_tokens",
-    "interrupted",
-  ])("native sendPrompt does not advertise an incomplete %s turn as task_complete", async (stopReason) => {
-    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
-    const events: string[] = [];
-    service.onSessionEvent((_sid, event) => events.push(event));
-    await service.start();
-    const { sessionId } = await service.spawnSession({
-      name: `native-${stopReason}`,
-      agentType: "codex",
-      workdir: "/tmp/acp-test",
-    });
-    events.length = 0;
-    const client = firstNativeClient();
-    client.prompt.mockImplementationOnce(async () => {
-      client.emit({
-        jsonrpc: "2.0",
-        id: "prompt",
-        sessionId: "protocol-session",
-        result: {
-          stopReason,
-          content: [{ type: "text", text: "partial output" }],
-        },
-      } as AcpJsonRpcMessage);
-      return { stopReason };
-    });
+  it.each(["max_tokens", "interrupted"])(
+    "native sendPrompt does not advertise an incomplete %s turn as task_complete",
+    async (stopReason) => {
+      const service = new AcpService(
+        runtime({ ELIZA_ACP_TRANSPORT: "native" }),
+      );
+      const events: string[] = [];
+      service.onSessionEvent((_sid, event) => events.push(event));
+      await service.start();
+      const { sessionId } = await service.spawnSession({
+        name: `native-${stopReason}`,
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      events.length = 0;
+      const client = firstNativeClient();
+      client.prompt.mockImplementationOnce(async () => {
+        client.emit({
+          jsonrpc: "2.0",
+          id: "prompt",
+          sessionId: "protocol-session",
+          result: {
+            stopReason,
+            content: [{ type: "text", text: "partial output" }],
+          },
+        } as AcpJsonRpcMessage);
+        return { stopReason };
+      });
 
-    const result = await service.sendPrompt(sessionId, "continue the task");
+      const result = await service.sendPrompt(sessionId, "continue the task");
 
-    expect(result).toMatchObject({
-      stopReason,
-      finalText: "partial output",
-    });
-    expect(events).not.toContain("task_complete");
-    expect(events).not.toContain("stopped");
-    expect((await service.getSession(sessionId))?.status).toBe("ready");
-  });
+      expect(result).toMatchObject({
+        stopReason,
+        finalText: "partial output",
+      });
+      expect(events).not.toContain("task_complete");
+      expect(events).not.toContain("stopped");
+      expect((await service.getSession(sessionId))?.status).toBe("ready");
+    },
+  );
 
   // Fix #2 (PR #9855): a terminal `stopReason === "error"` that nonetheless
   // captured a real deliverable (the sub-agent edited files / deployed / printed

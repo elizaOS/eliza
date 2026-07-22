@@ -105,6 +105,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="List all available persona archetypes and exit",
     )
     parser.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help=(
+            "Run the complete authored-plus-edge corpus. WooBench already uses "
+            "that 198-scenario corpus by default; this flag makes the full-profile "
+            "contract explicit."
+        ),
+    )
+    parser.add_argument(
         "--count-scenarios",
         action="store_true",
         help="Print authored, added, and total scenario counts and exit",
@@ -262,6 +271,11 @@ async def _run(args: argparse.Namespace) -> None:
     old_sigterm = signal.getsignal(signal.SIGTERM)
     signal.signal(signal.SIGTERM, _handle_signal)
 
+    if args.expand_scenarios:
+        validation = validate_woobench_scenarios()
+        if not validation["valid"]:
+            raise RuntimeError(f"WooBench expanded scenario corpus is invalid: {validation}")
+
     # Select scenarios
     scenarios = None
     if args.scenarios:
@@ -401,6 +415,12 @@ async def _run(args: argparse.Namespace) -> None:
     print(f"Full results saved to: {filepath}")
     if interrupted:
         raise SystemExit(130)
+    if result.failed_scenarios:
+        raise RuntimeError(
+            "WooBench infrastructure failed for "
+            f"{result.failed_scenarios}/{len(result.scenarios)} scenarios; "
+            f"inspect {filepath} for ERROR notes"
+        )
 
 
 def main() -> None:

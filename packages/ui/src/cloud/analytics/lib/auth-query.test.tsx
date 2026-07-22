@@ -62,31 +62,34 @@ afterEach(() => {
 describe.each([
   ["analytics", useAnalyticsGate],
   ["api-keys", useApiKeysGate],
-])("%s query gate — session from persisted JWT only (page-reload reality)", (_name, useGate) => {
-  it("enables the query and exposes the user id when a valid JWT is persisted", () => {
-    storage.setItem(
-      "steward_session_token",
-      makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) + 600 }),
-    );
+])(
+  "%s query gate — session from persisted JWT only (page-reload reality)",
+  (_name, useGate) => {
+    it("enables the query and exposes the user id when a valid JWT is persisted", () => {
+      storage.setItem(
+        "steward_session_token",
+        makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) + 600 }),
+      );
 
-    const { result } = renderHook(() => useGate());
+      const { result } = renderHook(() => useGate());
 
-    expect(result.current.enabled).toBe(true);
-    expect(result.current.userId).toBe("u1");
-  });
+      expect(result.current.enabled).toBe(true);
+      expect(result.current.userId).toBe("u1");
+    });
 
-  it("stays disabled with no persisted session", () => {
-    const { result } = renderHook(() => useGate());
-    expect(result.current.enabled).toBe(false);
-  });
+    it("stays disabled with no persisted session", () => {
+      const { result } = renderHook(() => useGate());
+      expect(result.current.enabled).toBe(false);
+    });
 
-  it("stays disabled for an expired token", () => {
-    storage.setItem(
-      "steward_session_token",
-      makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) - 600 }),
-    );
+    it("stays disabled for an expired token", () => {
+      storage.setItem(
+        "steward_session_token",
+        makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) - 600 }),
+      );
 
-    const { result } = renderHook(() => useGate());
-    expect(result.current.enabled).toBe(false);
-  });
-});
+      const { result } = renderHook(() => useGate());
+      expect(result.current.enabled).toBe(false);
+    });
+  },
+);

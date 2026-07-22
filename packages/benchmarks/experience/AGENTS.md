@@ -7,19 +7,23 @@ effectiveness. Not registered in the suite registry — run directly.
 ## Run
 
 ```bash
-# Direct mode — no LLM required (default: 1000 experiences, 100 queries, 20 learning cycles)
+# Default Eliza bridge mode (1000 memories, 100 retrievals, 20 learnings)
+# Requires ELIZA_BENCH_URL and ELIZA_BENCH_TOKEN.
 python run_benchmark.py
+
+# Deterministic direct-service smoke (no LLM)
+python run_benchmark.py --mode direct
 
 # Custom scale
 python run_benchmark.py --experiences 2000 --queries 200 --learning-cycles 50 --output results.json
 
-# Agent mode via the elizaOS TypeScript benchmark bridge (requires ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN)
+# Agent mode alias for the same elizaOS TypeScript benchmark bridge
 python run_benchmark.py --mode eliza-agent --provider groq --model qwen3-32b
 ```
 
 ## Smoke test (no API keys)
 
-The `direct` mode (default) runs entirely in-process without any LLM or external
+The explicitly selected `direct` mode runs entirely in-process without any LLM or external
 service. It is the smoke path:
 
 ```bash
@@ -49,7 +53,10 @@ pytest tests/ -v
 ## Notes
 
 - Results write to the path given by `--output` (no default output directory; prints to stdout when omitted).
-- Not registered in `registry/commands.py` or `registry/scores.py` — no orchestrator integration.
+- The full campaign marks this cohort unsupported for three-harness publication:
+  the CLI only owns the Eliza bridge and the Python service supplies memory.
+- Bridge reports include expected/completed learning and retrieval counts; a
+  generic acknowledgement is not accepted as a successful memory write.
 - Reproducible by default: seeded RNG (`--seed 42`). Change with `--seed`.
 - Full background: [README.md](README.md).
 

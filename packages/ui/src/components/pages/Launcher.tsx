@@ -1,15 +1,13 @@
 /**
  * Launcher — iOS-like app/view launcher.
  *
- * Renders the curated view tiles as names-only icons on a single scrolling page
- * (the home dashboard is the adjacent page on the rail). Tap launches. There is
+ * Renders the curated view tiles as names-only icons in one grid. Tap launches. There is
  * one flat grid of every visible tile — no favorites, no recents, no section
  * dividers. Composition + visibility are owned by `curateLauncherPages` (system
  * + release always; developer + preview gated by their Settings toggles), so
  * the launcher is READ-ONLY: no reorder, no edit mode, no per-tile pin, no
- * persisted free-form layout. A grid taller than the viewport scrolls
- * vertically; the outer home↔launcher rail owns horizontal navigation in both
- * directions (there is no inner grid pager to arbitrate against).
+ * persisted free-form layout. A standalone grid scrolls vertically; when
+ * embedded on Home, the bounded Home app region owns that same vertical scroll.
  *
  * Renders no background of its own — the shared root `AppBackground` shows
  * through, matching the home screen. Tiles, labels, and the skeleton use a FIXED
@@ -28,7 +26,6 @@ import {
   WALLPAPER_GLASS,
   WALLPAPER_TEXT,
 } from "../shell/wallpaper-idiom";
-import { Button } from "../ui/button";
 import { ViewTileImage } from "../views/ViewTileImage";
 
 export interface LauncherProps {
@@ -36,6 +33,8 @@ export interface LauncherProps {
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
   className?: string;
+  /** Render at natural height inside Home's app scroll region. */
+  embedded?: boolean;
 }
 
 interface IconTileProps {
@@ -81,65 +80,68 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
   });
   return (
     <div
-      className="group relative flex flex-col items-center gap-1.5 select-none"
+      className="flex justify-center"
       data-testid={`launcher-tile-${entry.id}`}
     >
-      <div className="relative">
-        <Button
-          variant="ghost"
-          aria-label={entry.label}
-          onPointerDown={hold.onPointerDown}
-          onPointerMove={hold.onPointerMove}
-          onPointerUp={hold.onPointerUp}
-          onPointerCancel={hold.onPointerCancel}
-          onClickCapture={suppression.onClickCapture}
-          onClick={() => onLaunch(entry)}
+      <button
+        type="button"
+        aria-label={entry.label}
+        onPointerDown={hold.onPointerDown}
+        onPointerMove={hold.onPointerMove}
+        onPointerUp={hold.onPointerUp}
+        onPointerCancel={hold.onPointerCancel}
+        onClickCapture={suppression.onClickCapture}
+        onClick={() => onLaunch(entry)}
+        className="group relative flex max-w-[5.5rem] flex-col items-center gap-1.5 rounded-2xl select-none focus-visible:outline-none"
+      >
+        <div className="relative">
+          <div
+            className={cn(
+              // ViewTileImage renders this surface as an app icon, not as a
+              // cropped catalog preview. The tile stays a generous hit target,
+              // compacting only on short landscape screens so its label clears
+              // chat; the inner visual owns color/glyph. Flat — no border; a
+              // subtle glass wash is the icon plate (neutral resting →
+              // neutral-with-opacity hover).
+              "h-16 w-16 overflow-hidden rounded-2xl transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14",
+              WALLPAPER_GLASS.iconPlate,
+              // Hovering the label highlights the same icon plate, and keyboard
+              // focus traces the visual tile instead of an invisible outer box.
+              "group-hover:bg-white/20 group-focus-visible:ring-2 group-focus-visible:ring-white/80 group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-transparent",
+            )}
+          >
+            <ViewTileImage
+              entry={entry}
+              source="launcher"
+              containerClassName="grid h-full w-full place-items-center"
+              glyphClassName="h-7 w-7"
+              imageTestId={`launcher-image-${entry.id}`}
+            />
+          </div>
+          {badge ? (
+            <span
+              data-testid={`launcher-kind-${entry.id}`}
+              title={badge.title}
+              className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900"
+            >
+              {badge.label}
+            </span>
+          ) : null}
+        </div>
+        {/* 5.5rem, not the icon's 4rem: the narrowest grid cell (4 cols on a
+            ~380px phone) leaves just enough room for the longest single-word
+            label while keeping OCR-readable 12px copy from clipping mid-glyph
+            (#14427). line-clamp-2 still wraps multi-word labels. */}
+        <span
           className={cn(
-            // ViewTileImage renders this surface as an app icon, not as a
-            // cropped catalog preview. The button is one constant hit target and
-            // owns hover/focus chrome; the inner visual owns color/glyph. Flat —
-            // no border; a subtle glass wash is the icon plate (neutral resting →
-            // neutral-with-opacity hover).
-            "h-16 w-16 overflow-hidden rounded-2xl transition-colors",
-            WALLPAPER_GLASS.iconPlate,
-            // Neutralize Button's default-size padding (px-4 py-2 letterboxed
-            // the artwork into a 32×48 inset) and its [&_svg]:size-4 descendant
-            // rule (which would shrink the 28px glyph fallback): the artwork
-            // must fill the whole 64×64 icon plate.
-            "p-0 [&_svg]:size-7",
+            "line-clamp-2 max-w-[5.5rem] text-center text-xs font-semibold leading-tight tracking-normal whitespace-normal",
+            WALLPAPER_TEXT.base,
+            WALLPAPER_FLOAT_SHADOW,
           )}
         >
-          <ViewTileImage
-            entry={entry}
-            source="launcher"
-            containerClassName="grid h-full w-full place-items-center"
-            glyphClassName="h-7 w-7"
-            imageTestId={`launcher-image-${entry.id}`}
-          />
-        </Button>
-        {badge ? (
-          <span
-            data-testid={`launcher-kind-${entry.id}`}
-            title={badge.title}
-            className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900"
-          >
-            {badge.label}
-          </span>
-        ) : null}
-      </div>
-      {/* 5.5rem, not the icon's 4rem: the narrowest grid cell (4 cols on a
-          ~380px phone) leaves just enough room for the longest single-word
-          label while keeping OCR-readable 12px copy from clipping mid-glyph
-          (#14427). line-clamp-2 still wraps multi-word labels. */}
-      <span
-        className={cn(
-          "line-clamp-2 max-w-[5.5rem] text-center text-xs font-semibold leading-tight tracking-normal",
-          WALLPAPER_TEXT.base,
-          WALLPAPER_FLOAT_SHADOW,
-        )}
-      >
-        {entry.label}
-      </span>
+          {entry.label}
+        </span>
+      </button>
     </div>
   );
 });
@@ -149,6 +151,7 @@ export function Launcher({
   loading = false,
   onLaunch,
   className,
+  embedded = false,
 }: LauncherProps) {
   const handleLaunch = useCallback(
     (entry: ViewEntry) => {
@@ -166,20 +169,30 @@ export function Launcher({
 
   return (
     <div
-      className={cn("flex min-h-0 flex-1 flex-col", className)}
+      className={cn("flex flex-col", !embedded && "min-h-0 flex-1", className)}
       data-testid="launcher"
+      aria-busy={showSkeleton || undefined}
     >
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        {/* Single scrolling page — the outer home↔launcher rail owns every
-            horizontal gesture, so this container takes no pointer handlers and
-            only scrolls vertically when the grid overflows. */}
+      <div
+        className={cn(
+          "relative flex flex-col",
+          !embedded && "min-h-0 flex-1 overflow-hidden",
+        )}
+      >
+        {/* The full-page variant owns vertical overflow; Home's embedded variant
+            stays natural-height so the shared app region is the sole scroller. */}
         <div
           data-testid="launcher-page-window"
-          className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto touch-pan-y px-6 pt-2 pb-8"
+          className={cn(
+            "scrollbar-hide relative flex touch-pan-y flex-col items-center overscroll-y-contain pt-2 pb-8 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
+            embedded
+              ? "overflow-visible px-2 [@media(orientation:landscape)_and_(max-height:520px)]:pt-0"
+              : "min-h-0 flex-1 overflow-y-auto px-6",
+          )}
         >
           <div className="flex w-full max-w-2xl flex-col gap-6">
             {showSkeleton ? (
-              <div className="grid w-full grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+              <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 sm:grid-cols-5">
                 {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                   <div
                     key={id}
@@ -191,7 +204,7 @@ export function Launcher({
                 ))}
               </div>
             ) : (
-              <div className="grid w-full grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-8 sm:grid-cols-5">
+              <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">
                 {entries.map((entry) => (
                   <div key={entry.id} className="flex justify-center">
                     <IconTile entry={entry} onLaunch={handleLaunch} />

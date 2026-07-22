@@ -453,8 +453,13 @@ describe("compat agent create credit + quota gate (elizaOS/eliza#11678)", () => 
       maxNonTerminalAgents: 20,
     });
     // Compat stays multi-agent-per-org: the reuse guard must remain OFF.
+    const standardCreateCall = createAgent.mock.calls[0];
+    expect(standardCreateCall).toBeDefined();
+    if (!standardCreateCall) {
+      throw new Error("Expected the standard-auth agent creation call");
+    }
     expect(
-      (createAgent.mock.calls[0]?.[0] as Record<string, unknown>)
+      (standardCreateCall[0] as Record<string, unknown>)
         .reuseExistingNonTerminal,
     ).toBeUndefined();
   });
@@ -491,9 +496,13 @@ describe("compat agent create credit + quota gate (elizaOS/eliza#11678)", () => 
     expect(validateServiceKey).toHaveBeenCalled();
     expect(checkAgentCreditGate).not.toHaveBeenCalled();
     expect(createAgent).toHaveBeenCalledTimes(1);
+    const serviceKeyCreateCall = createAgent.mock.calls[0];
+    expect(serviceKeyCreateCall).toBeDefined();
+    if (!serviceKeyCreateCall) {
+      throw new Error("Expected the service-key agent creation call");
+    }
     expect(
-      (createAgent.mock.calls[0]?.[0] as Record<string, unknown>)
-        .maxNonTerminalAgents,
+      (serviceKeyCreateCall[0] as Record<string, unknown>).maxNonTerminalAgents,
     ).toBeUndefined();
     expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
   });
@@ -517,9 +526,13 @@ describe("compat agent create credit + quota gate (elizaOS/eliza#11678)", () => 
     // Trusted bridge path: no credit gate, no quota cap (waifu-core must not break).
     expect(checkAgentCreditGate).not.toHaveBeenCalled();
     expect(createAgent).toHaveBeenCalledTimes(1);
+    const serviceJwtCreateCall = createAgent.mock.calls[0];
+    expect(serviceJwtCreateCall).toBeDefined();
+    if (!serviceJwtCreateCall) {
+      throw new Error("Expected the service-JWT agent creation call");
+    }
     expect(
-      (createAgent.mock.calls[0]?.[0] as Record<string, unknown>)
-        .maxNonTerminalAgents,
+      (serviceJwtCreateCall[0] as Record<string, unknown>).maxNonTerminalAgents,
     ).toBeUndefined();
   });
 });

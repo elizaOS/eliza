@@ -37,37 +37,48 @@ const TYPECHECK_PROJECTS: Partial<Record<(typeof WORKSPACES)[number], string>> =
     "packages/testing": "packages/testing/tsconfig.typecheck.json",
   };
 
-const selectedWorkspaces =
-  process.argv.length > 2 ? process.argv.slice(2) : [...WORKSPACES];
-const needsAgentDeclarations = selectedWorkspaces.some((workspace) =>
-  ["packages/api", "packages/agents", "apps/cli", "apps/web"].includes(
-    workspace,
-  ),
-);
-const needsApiDeclarations = selectedWorkspaces.some((workspace) =>
-  [
-    "packages/a2a",
-    "packages/mcp",
-    "apps/cli",
-    "apps/web",
-    "packages/testing",
-  ].includes(workspace),
-);
-const needsA2aDeclarations = selectedWorkspaces.some(
-  (workspace) =>
-    workspace === "packages/mcp" ||
-    workspace === "apps/cli" ||
-    workspace === "apps/web" ||
-    workspace === "packages/testing",
-);
-const needsCliDeclarationDependencies = selectedWorkspaces.some(
-  (workspace) =>
-    workspace === "apps/cli" ||
-    workspace === "apps/web" ||
-    workspace === "packages/testing",
-);
+export function selectFeedWorkspaces(argv = process.argv): string[] {
+  return argv.length > 2 ? argv.slice(2) : [...WORKSPACES];
+}
 
-async function runTypecheck(workspace: string): Promise<void> {
+export function feedTypecheckPlan(selectedWorkspaces: readonly string[]) {
+  const needsAgentDeclarations = selectedWorkspaces.some((workspace) =>
+    ["packages/api", "packages/agents", "apps/cli", "apps/web"].includes(
+      workspace,
+    ),
+  );
+  const needsApiDeclarations = selectedWorkspaces.some((workspace) =>
+    [
+      "packages/a2a",
+      "packages/mcp",
+      "apps/cli",
+      "apps/web",
+      "packages/testing",
+    ].includes(workspace),
+  );
+  const needsA2aDeclarations = selectedWorkspaces.some(
+    (workspace) =>
+      workspace === "packages/mcp" ||
+      workspace === "apps/cli" ||
+      workspace === "apps/web" ||
+      workspace === "packages/testing",
+  );
+  const needsCliDeclarationDependencies = selectedWorkspaces.some(
+    (workspace) =>
+      workspace === "apps/cli" ||
+      workspace === "apps/web" ||
+      workspace === "packages/testing",
+  );
+  return {
+    selectedWorkspaces: [...selectedWorkspaces],
+    needsAgentDeclarations,
+    needsApiDeclarations,
+    needsA2aDeclarations,
+    needsCliDeclarationDependencies,
+  };
+}
+
+export async function runTypecheck(workspace: string): Promise<void> {
   process.stdout.write(`\n[${workspace}] typecheck\n`);
   const project =
     workspace in TYPECHECK_PROJECTS
@@ -94,25 +105,15 @@ async function runTypecheck(workspace: string): Promise<void> {
   });
 }
 
-// Bootstrap agents declarations to break circular dependency with api.
-// api resolves @feed/agents/* from agents/dist, but agents references api
-// via project refs. Emit agents .d.ts without type-checking so api can resolve
-// its imports before the full typecheck sequence runs.
-if (needsAgentDeclarations) {
-  process.stdout.write(
-    "\n[packages/agents] emitting declarations (bootstrap)\n",
-  );
+export async function emitFeedDeclarations(
+  workspace: string,
+  label = workspace,
+): Promise<void> {
+  process.stdout.write(`\n[${label}] emitting declarations (bootstrap)\n`);
   await new Promise<void>((resolvePromise, rejectPromise) => {
     const child = spawn(
       "bun",
-      [
-        "run",
-        "tsc",
-        "-p",
-        "packages/agents",
-        "--emitDeclarationOnly",
-        "--noCheck",
-      ],
+      ["run", "tsc6", "-p", workspace, "--emitDeclarationOnly", "--noCheck"],
       { cwd: ROOT, stdio: "inherit", env: process.env },
     );
     child.on("error", rejectPromise);
@@ -123,112 +124,63 @@ if (needsAgentDeclarations) {
       }
       rejectPromise(
         new Error(
-          `agents declaration bootstrap failed with code ${code ?? "null"}`,
+          `${label} declaration bootstrap failed with code ${code ?? "null"}`,
         ),
       );
     });
   });
 }
 
-// Bootstrap API declarations for packages that intentionally consume @feed/api
-// through package declarations instead of pulling the full API source tree under
-// their own rootDir.
-if (needsApiDeclarations) {
-  process.stdout.write("\n[packages/api] emitting declarations (bootstrap)\n");
-  await new Promise<void>((resolvePromise, rejectPromise) => {
-    const child = spawn(
-      "bun",
-      [
-        "run",
-        "tsc",
-        "-p",
-        "packages/api",
-        "--emitDeclarationOnly",
-        "--noCheck",
-      ],
-      { cwd: ROOT, stdio: "inherit", env: process.env },
-    );
-    child.on("error", rejectPromise);
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolvePromise();
-        return;
-      }
-      rejectPromise(
-        new Error(
-          `api declaration bootstrap failed with code ${code ?? "null"}`,
-        ),
-      );
-    });
-  });
-}
+export async function typecheckFeedWorkspace(
+  argv = process.argv,
+  options: {
+    runTypecheck?: typeof runTypecheck;
+    emitDeclarations?: typeof emitFeedDeclarations;
+  } = {},
+): Promise<void> {
+  const plan = feedTypecheckPlan(selectFeedWorkspaces(argv));
+  const checkWorkspace = options.runTypecheck ?? runTypecheck;
+  const emitDeclarations = options.emitDeclarations ?? emitFeedDeclarations;
 
-if (needsA2aDeclarations) {
-  process.stdout.write("\n[packages/a2a] emitting declarations (bootstrap)\n");
-  await new Promise<void>((resolvePromise, rejectPromise) => {
-    const child = spawn(
-      "bun",
-      [
-        "run",
-        "tsc",
-        "-p",
-        "packages/a2a",
-        "--emitDeclarationOnly",
-        "--noCheck",
-      ],
-      { cwd: ROOT, stdio: "inherit", env: process.env },
-    );
-    child.on("error", rejectPromise);
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolvePromise();
-        return;
-      }
-      rejectPromise(
-        new Error(
-          `a2a declaration bootstrap failed with code ${code ?? "null"}`,
-        ),
-      );
-    });
-  });
-}
-
-if (needsCliDeclarationDependencies) {
-  for (const workspace of [
-    "packages/shared",
-    "packages/db",
-    "packages/core",
-    "packages/engine",
-    "packages/pack-default",
-    "packages/mcp",
-  ]) {
-    process.stdout.write(
-      `\n[${workspace}] emitting declarations (bootstrap)\n`,
-    );
-    await new Promise<void>((resolvePromise, rejectPromise) => {
-      const child = spawn(
-        "bun",
-        ["run", "tsc", "-p", workspace, "--emitDeclarationOnly", "--noCheck"],
-        { cwd: ROOT, stdio: "inherit", env: process.env },
-      );
-      child.on("error", rejectPromise);
-      child.on("exit", (code) => {
-        if (code === 0) {
-          resolvePromise();
-          return;
-        }
-        rejectPromise(
-          new Error(
-            `${workspace} declaration bootstrap failed with code ${code ?? "null"}`,
-          ),
-        );
-      });
-    });
+  // Bootstrap agents declarations to break circular dependency with api.
+  // api resolves @feed/agents/* from agents/dist, but agents references api
+  // via project refs. Emit agents .d.ts without type-checking so api can resolve
+  // its imports before the full typecheck sequence runs.
+  if (plan.needsAgentDeclarations) {
+    await emitDeclarations("packages/agents", "packages/agents");
   }
+
+  // Bootstrap API declarations for packages that intentionally consume @feed/api
+  // through package declarations instead of pulling the full API source tree under
+  // their own rootDir.
+  if (plan.needsApiDeclarations) {
+    await emitDeclarations("packages/api", "packages/api");
+  }
+
+  if (plan.needsA2aDeclarations) {
+    await emitDeclarations("packages/a2a", "packages/a2a");
+  }
+
+  if (plan.needsCliDeclarationDependencies) {
+    for (const workspace of [
+      "packages/shared",
+      "packages/db",
+      "packages/core",
+      "packages/engine",
+      "packages/pack-default",
+      "packages/mcp",
+    ]) {
+      await emitDeclarations(workspace);
+    }
+  }
+
+  for (const workspace of plan.selectedWorkspaces) {
+    await checkWorkspace(workspace);
+  }
+
+  process.stdout.write("\nAll workspace typechecks passed.\n");
 }
 
-for (const workspace of selectedWorkspaces) {
-  await runTypecheck(workspace);
+if (import.meta.main) {
+  await typecheckFeedWorkspace();
 }
-
-process.stdout.write("\nAll workspace typechecks passed.\n");

@@ -10,6 +10,7 @@ from benchmarks.orchestrator.adapters import (
     OSWORLD_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_OPENCLAW_NATIVE_MULTIMODAL_UNAVAILABLE_REASON,
     VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
 )
 from benchmarks.orchestrator.calibration_report import build_calibration_report
@@ -333,7 +334,7 @@ def test_calibration_report_explains_vision_language_fixed_runtime(
     assert row["real_unsupported_harnesses"] == ["hermes", "openclaw"]
     assert row["real_unsupported_reasons"] == {
         "hermes": VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
-        "openclaw": VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+        "openclaw": VISION_LANGUAGE_OPENCLAW_NATIVE_MULTIMODAL_UNAVAILABLE_REASON,
     }
 
 

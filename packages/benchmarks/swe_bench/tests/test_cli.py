@@ -1,9 +1,10 @@
 """Tests for SWE-bench CLI reporting helpers."""
 
-import pytest
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 import benchmarks.swe_bench.cli as swe_cli
 from benchmarks.swe_bench.cli import (
@@ -112,7 +113,9 @@ def test_scenario_expansion_adds_ten_edge_prompts_per_instance() -> None:
     }
     assert len(expanded) == 11
     assert expanded[0].instance_id == instances[0].instance_id
-    assert expanded[1].instance_id == instances[0].instance_id
+    assert expanded[1].instance_id == f"{instances[0].instance_id}--edge-01"
+    assert expanded[1].official_instance_id == instances[0].instance_id
+    assert len({instance.instance_id for instance in expanded}) == 11
     assert "Additional benchmark edge condition 01" in expanded[1].problem_statement
     assert _validate_instances(instances, expand_scenarios=True)["valid"] is True
 
@@ -165,12 +168,77 @@ def test_default_task_agent_provider_uses_claude_for_anthropic_key(
 
 
 def test_openclaw_harness_uses_configured_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENCLAW_DIRECT_OPENAI_COMPAT", "1")
+    from openclaw_adapter.client import OpenClawClient
+
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "claude-subscription")
+    monkeypatch.setattr(
+        OpenClawClient,
+        "wait_until_ready",
+        lambda self, timeout: None,
+    )
 
     client, server = _build_client_for_harness("openclaw", model_name="gpt-oss-120b")
 
     assert server is None
     assert client.model == "gpt-oss-120b"
+    assert client.provider == "claude-subscription"
+    assert client.direct_openai_compatible is False
+
+
+def test_openclaw_harness_fails_closed_when_native_runtime_is_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from openclaw_adapter.client import OpenClawClient
+
+    def fail_readiness(_self: OpenClawClient, timeout: float) -> None:
+        del timeout
+        raise RuntimeError("native runtime unavailable")
+
+    monkeypatch.setattr(
+        OpenClawClient,
+        "wait_until_ready",
+        fail_readiness,
+    )
+
+    with pytest.raises(RuntimeError, match="native runtime unavailable"):
+        _build_client_for_harness("openclaw", model_name="gpt-oss-120b")
+
+
+def test_hermes_harness_preserves_subscription_campaign_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hermes_adapter.client import HermesClient
+
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "claude-subscription")
+    monkeypatch.setenv("BENCHMARK_MODEL_NAME", "claude-opus-4-6")
+    monkeypatch.setenv("HERMES_MODE", "subprocess")
+    monkeypatch.setenv("HERMES_ADAPTER_MODE", "subprocess")
+    monkeypatch.setattr(HermesClient, "wait_until_ready", lambda self, timeout: None)
+
+    client, server = _build_client_for_harness(
+        "hermes",
+        model_name="openai/claude-opus-4-6",
+    )
+
+    assert server is None
+    assert client.provider == "claude-subscription"
+    assert client.model == "claude-opus-4-6"
+    assert client.mode == "subprocess"
+
+
+def test_hermes_harness_fails_closed_when_native_runtime_is_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hermes_adapter.client import HermesClient
+
+    def fail_readiness(_self: HermesClient, timeout: float) -> None:
+        del timeout
+        raise RuntimeError("native Hermes unavailable")
+
+    monkeypatch.setattr(HermesClient, "wait_until_ready", fail_readiness)
+
+    with pytest.raises(RuntimeError, match="native Hermes unavailable"):
+        _build_client_for_harness("hermes", model_name="claude-opus-4-6")
 
 
 def test_hermes_harness_uses_configured_cerebras_model(
@@ -187,6 +255,7 @@ def test_hermes_harness_uses_configured_cerebras_model(
 
     assert server is None
     assert client.model == "gpt-oss-120b"
+    assert client.mode == "subprocess"
 
 
 def test_cerebras_cost_accepts_provider_prefixed_model() -> None:

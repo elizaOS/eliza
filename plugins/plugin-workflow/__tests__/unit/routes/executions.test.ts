@@ -1,5 +1,6 @@
 /** Execution query routes over real workflow services and persisted execution rows. */
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { getRouteOwnerEntityId } from '../../../src/routes/_helpers';
 import { executionRoutes } from '../../../src/routes/executions';
 import { WORKFLOW_SERVICE_TYPE, WorkflowService } from '../../../src/services/workflow-service';
 import { createRouteRequest, createRouteResponse } from '../../helpers/routeHarness';
@@ -12,40 +13,49 @@ if (!listHandler || !getHandler) throw new Error('expected execution route handl
 setDefaultTimeout(60_000);
 
 let harness: EmbeddedHarness;
+let workflowService: WorkflowService;
+let routeOwnerEntityId: string;
 let firstWorkflowId: string;
 let firstExecutionId: string;
 
 async function createAndExecute(
   name: string
 ): Promise<{ workflowId: string; executionId: string }> {
-  const workflow = await harness.workflow.createWorkflow({
-    name,
-    nodes: [
-      {
-        id: 'trigger',
-        name: 'Manual Trigger',
-        type: 'workflows-nodes-base.manualTrigger',
-        typeVersion: 1,
-        position: [0, 0],
-        parameters: {},
+  const workflow = await workflowService.deployWorkflow(
+    {
+      name,
+      nodes: [
+        {
+          id: 'trigger',
+          name: 'Manual Trigger',
+          type: 'workflows-nodes-base.manualTrigger',
+          typeVersion: 1,
+          position: [0, 0],
+          parameters: {},
+        },
+        {
+          id: 'set',
+          name: 'Set',
+          type: 'workflows-nodes-base.set',
+          typeVersion: 3.4,
+          position: [200, 0],
+          parameters: { assignments: { assignments: [] } },
+        },
+      ],
+      connections: {
+        'Manual Trigger': { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
       },
-      {
-        id: 'set',
-        name: 'Set',
-        type: 'workflows-nodes-base.set',
-        typeVersion: 3.4,
-        position: [200, 0],
-        parameters: { assignments: { assignments: [] } },
-      },
-    ],
-    connections: {
-      'Manual Trigger': { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
     },
-  });
-  const execution = await harness.workflow.executeWorkflow(workflow.id, {
-    mode: 'manual',
-    triggerData: { suite: 'execution-routes' },
-  });
+    routeOwnerEntityId
+  );
+  const execution = await workflowService.runWorkflow(
+    workflow.id,
+    {
+      mode: 'manual',
+      triggerData: { suite: 'execution-routes' },
+    },
+    routeOwnerEntityId
+  );
   return { workflowId: workflow.id, executionId: execution.id };
 }
 
@@ -60,6 +70,8 @@ beforeAll(async () => {
   if (!(loadedService instanceof WorkflowService)) {
     throw new Error('expected real WorkflowService');
   }
+  workflowService = loadedService;
+  routeOwnerEntityId = getRouteOwnerEntityId(harness.runtime);
   const first = await createAndExecute('First execution route workflow');
   firstWorkflowId = first.workflowId;
   firstExecutionId = first.executionId;
@@ -162,8 +174,12 @@ describe('GET /executions/:id', () => {
     );
 
     expect(result()).toMatchObject({
-      status: 500,
-      body: { success: false, error: 'failed_to_fetch_execution' },
+      status: 404,
+      body: {
+        success: false,
+        error: 'workflow_resource_not_found',
+        message: 'Workflow resource not found',
+      },
     });
   });
 });

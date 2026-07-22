@@ -64,11 +64,16 @@ class MockBotApi {
   private server: Server | undefined;
 
   async start(): Promise<string> {
-    this.server = createServer((req, res) => this.handle(req, res));
+    const server = createServer((req, res) => this.handle(req, res));
+    this.server = server;
     await new Promise<void>((resolve) =>
-      this.server?.listen(0, "127.0.0.1", resolve),
+      server.listen(0, "127.0.0.1", resolve),
     );
-    const { port } = this.server?.address() as AddressInfo;
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Telegram test server did not bind to a TCP address");
+    }
+    const { port } = address satisfies AddressInfo;
     return `http://127.0.0.1:${port}`;
   }
 

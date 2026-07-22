@@ -117,6 +117,70 @@ export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] 
     .slice(0, limit);
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function displayConditionMatchesDefault(
+  node: NodeDefinition,
+  rawConditions: unknown,
+  missingPropertyMatches: boolean
+): boolean {
+  const conditions = asRecord(rawConditions);
+  if (!conditions) return missingPropertyMatches;
+
+  for (const [propertyName, rawAllowedValues] of Object.entries(conditions)) {
+    const property = node.properties.find((candidate) => candidate.name === propertyName);
+    if (!property) {
+      if (!missingPropertyMatches) return false;
+      continue;
+    }
+    if (!Array.isArray(rawAllowedValues)) {
+      if (!missingPropertyMatches) return false;
+      continue;
+    }
+    if (!rawAllowedValues.some((allowed) => Object.is(allowed, property.default))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Credential declarations are conditional UI branches, not proof that the
+ * node always needs authentication. Evaluate those branches against catalog
+ * defaults so Webhook/HTTP utility nodes whose default authentication is
+ * `none` remain usable, while an unconditional or default-selected credential
+ * still participates in the host capability gate.
+ */
+function credentialAppliesByDefault(
+  node: NodeDefinition,
+  credential: NonNullable<NodeDefinition['credentials']>[number]
+): boolean {
+  if (!credential.required) return false;
+  const displayOptions = asRecord(credential.displayOptions);
+  if (!displayOptions) return true;
+
+  const show = displayOptions.show;
+  if (show !== undefined && !displayConditionMatchesDefault(node, show, true)) {
+    return false;
+  }
+  const hide = displayOptions.hide;
+  if (hide !== undefined && displayConditionMatchesDefault(node, hide, false)) {
+    return false;
+  }
+  return true;
+}
+
+/** Credential types selected by a node's catalog-default configuration. */
+export function getDefaultRequiredCredentialTypes(node: NodeDefinition): string[] {
+  return (node.credentials ?? [])
+    .filter((credential) => credentialAppliesByDefault(node, credential))
+    .map((credential) => credential.name);
+}
+
 export function filterNodesByIntegrationSupport(
   nodes: NodeSearchResult[],
   supportedCredTypes: Set<string>
@@ -125,16 +189,18 @@ export function filterNodesByIntegrationSupport(
   const removed: NodeSearchResult[] = [];
 
   for (const result of nodes) {
-    const creds = result.node.credentials;
+    const credentialTypes = getDefaultRequiredCredentialTypes(result.node);
 
-    // No credentials → utility node → always keep
-    if (!creds || creds.length === 0) {
+    // No default-active credentials → utility/unauthenticated mode is usable.
+    if (credentialTypes.length === 0) {
       remaining.push(result);
       continue;
     }
 
     // Service node: keep if ANY credential type is supported
-    const hasSupported = creds.some((c) => supportedCredTypes.has(c.name));
+    const hasSupported = credentialTypes.some((credentialType) =>
+      supportedCredTypes.has(credentialType)
+    );
     if (hasSupported) {
       remaining.push(result);
     } else {
