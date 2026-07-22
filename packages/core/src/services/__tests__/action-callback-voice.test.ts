@@ -120,26 +120,34 @@ describe("action callback voice rewriting", () => {
 				throw new Error("formatter unavailable");
 			},
 		],
-	])("keeps the original action text when rewriting is %s", async (_case, model) => {
-		const callback: HandlerCallback = vi.fn(async () => []);
-		const runtime = createMockRuntime({
-			agentId: "agent",
-			character: { name: "Example" },
-			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-			useModel: vi.fn(model),
-		});
-		const message = {
-			id: "message",
-			roomId: "room",
-			entityId: "user",
-		} as unknown as Memory;
+	])(
+		"keeps the original action text when rewriting is %s",
+		async (_case, model) => {
+			const callback: HandlerCallback = vi.fn(async () => []);
+			const runtime = createMockRuntime({
+				agentId: "agent",
+				character: { name: "Example" },
+				logger: {
+					debug: vi.fn(),
+					info: vi.fn(),
+					warn: vi.fn(),
+					error: vi.fn(),
+				},
+				useModel: vi.fn(model),
+			});
+			const message = {
+				id: "message",
+				roomId: "room",
+				entityId: "user",
+			} as unknown as Memory;
 
-		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
-		await wrapped?.({ text: "Exact result." }, "CREATE_TASK");
+			const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+			await wrapped?.({ text: "Exact result." }, "CREATE_TASK");
 
-		expect(callback).toHaveBeenCalledWith(
-			{ text: "Exact result." },
-			"CREATE_TASK",
-		);
-	});
+			expect(callback).toHaveBeenCalledWith(
+				{ text: "Exact result." },
+				"CREATE_TASK",
+			);
+		},
+	);
 });
