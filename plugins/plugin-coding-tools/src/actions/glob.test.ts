@@ -8,7 +8,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
@@ -69,33 +69,7 @@ afterEach(async () => {
 const state: State | undefined = undefined;
 
 describe("GLOB", () => {
-  it("fences and source-tags the user-facing path listing (#16563)", async () => {
-    const { runtime, message } = await buildRuntime();
-    const posts: Array<{ text: string; source?: string }> = [];
-
-    const result = await globHandler(
-      runtime,
-      message,
-      state,
-      { parameters: { pattern: "**/*.ts" } },
-      async (content) => {
-        posts.push(content as { text: string; source?: string });
-        return [];
-      },
-    );
-
-    expect(result.success).toBe(true);
-    // Planner-facing text stays raw; the user-facing relay is fenced (paths
-    // like __tests__/ get bold-consumed unfenced) and tagged like every
-    // sibling coding-tools relay.
-    expect(result.text?.startsWith("```")).toBe(false);
-    expect(posts).toHaveLength(1);
-    expect(posts[0].source).toBe("coding-tools");
-    expect(posts[0].text.startsWith("```")).toBe(true);
-    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
-  });
-
-  it("matches **/*.ts and returns expected count", async () => {
+    it("matches **/*.ts and returns expected count", async () => {
     const { runtime, message } = await buildRuntime();
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "**/*.ts" },
@@ -188,5 +162,18 @@ describe("globToRegExp (fallback matcher)", () => {
     expect(globToRegExp("a.ts").test("aXts")).toBe(false);
     expect(globToRegExp("a+(b).ts").test("a+(b).ts")).toBe(true);
     expect(globToRegExp("a+(b).ts").test("ab.ts")).toBe(false);
+  });
+});
+
+describe("globHandler — read-only query stays silent", () => {
+  // The contract this PR establishes: raw listings/matches reach the model via
+  // the ActionResult and the user via the planner's final message. Posting each
+  // exploratory call's dump spammed chat (#16589) — the callback must never fire.
+  it("does not invoke the visible chat callback", async () => {
+    const { runtime, message } = await buildRuntime();
+    const callback = vi.fn();
+    const result = await globHandler(runtime, message, undefined, { parameters: { pattern: "**/*.ts" } }, callback);
+    expect(result.success).toBe(true);
+    expect(callback).not.toHaveBeenCalled();
   });
 });

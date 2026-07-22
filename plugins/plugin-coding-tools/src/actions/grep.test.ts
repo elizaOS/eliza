@@ -9,7 +9,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RipgrepService } from "../services/ripgrep-service.js";
 import { SandboxService } from "../services/sandbox-service.js";
@@ -237,5 +237,18 @@ describe("GREP", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param");
+  });
+});
+
+describe("grepHandler — read-only query stays silent", () => {
+  // The contract this PR establishes: raw listings/matches reach the model via
+  // the ActionResult and the user via the planner's final message. Posting each
+  // exploratory call's dump spammed chat (#16589) — the callback must never fire.
+  it("does not invoke the visible chat callback", async () => {
+    const { runtime, message } = await buildRuntime();
+    const callback = vi.fn();
+    const result = await grepHandler(runtime, message, undefined, { parameters: { pattern: "alpha" } }, callback);
+    expect(result.success).toBe(true);
+    expect(callback).not.toHaveBeenCalled();
   });
 });
