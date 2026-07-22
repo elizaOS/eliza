@@ -12,13 +12,14 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   assertRequiredBundledPackagesLanded,
+  assertTarSafeRuntimePaths,
   getRuntimeDependencies,
   getWorkspacePackageRuntimeCopyEntries,
   selectCopyTargetNodeModules,
@@ -474,6 +475,61 @@ describe("assertRequiredBundledPackagesLanded", () => {
         resolvedVersion: "5.5.0",
       }),
     ).toBe(targetNodeModules);
+  });
+
+  it("keeps Smithers dependency families aligned so graph stays tar-safe at the runtime root", () => {
+    const rootDestDir = path.join(tmpDir, "dist");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "@smithers-orchestrator",
+      "vercel",
+      "node_modules",
+      "@smithers-orchestrator",
+      "sandbox",
+      "node_modules",
+      "@smithers-orchestrator",
+      "scheduler",
+    );
+
+    for (const plugin of ["plugin-agent-orchestrator", "plugin-workflow"]) {
+      const manifest = JSON.parse(
+        readFileSync(
+          path.join(repoRoot, "plugins", plugin, "package.json"),
+          "utf8",
+        ),
+      ) as { dependencies: Record<string, string> };
+      const engineVersion =
+        manifest.dependencies["@smithers-orchestrator/engine"];
+      const umbrellaVersion = manifest.dependencies["smithers-orchestrator"];
+
+      expect(umbrellaVersion).toBe(engineVersion);
+      expect(
+        selectCopyTargetNodeModules({
+          name: "@smithers-orchestrator/graph",
+          requesterDestDir,
+          rootDestDir,
+          targetNodeModules,
+          topLevelVersions: new Map([
+            ["@smithers-orchestrator/graph", engineVersion],
+          ]),
+          resolvedVersion: umbrellaVersion,
+        }),
+      ).toBe(targetNodeModules);
+    }
+
+    const graphSource = path.join(
+      targetNodeModules,
+      "@smithers-orchestrator",
+      "graph",
+      "src",
+    );
+    mkdirSync(graphSource, { recursive: true });
+    writeFileSync(
+      path.join(graphSource, "deriveClaudeWorkflowPhasesFromFrame.js"),
+      "export {};\n",
+    );
+    expect(() => assertTarSafeRuntimePaths(rootDestDir)).not.toThrow();
   });
 
   it("collapses WalletConnect patch drift to avoid duplicate desktop runtime copies", () => {
