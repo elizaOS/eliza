@@ -39,11 +39,15 @@ bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 check() {
   local name="$1"
   shift
-  if "$@" >/dev/null 2>&1; then
+  local output
+  if output="$("$@" 2>&1)"; then
     green "  ✓ $name"
     PASS=$((PASS + 1))
   else
     red "  ✗ $name"
+    if [[ -n "$output" ]]; then
+      printf '%s\n' "$output" >&2
+    fi
     FAIL=$((FAIL + 1))
   fi
 }
@@ -204,6 +208,8 @@ echo ""
 # ── 4. Snap Package ─────────────────────────────────────────────────────────
 bold "4. Snap Package"
 check_file "snapcraft.yaml" "$SCRIPT_DIR/snap/snapcraft.yaml"
+SNAP_CONTRACT_VALIDATOR="$REPO_ROOT/packages/app-core/scripts/validate-snap-packaging-contract.mjs"
+check_file "Snap packaging contract validator" "$SNAP_CONTRACT_VALIDATOR"
 
 # Validate YAML syntax
 if python_has_module yaml; then
@@ -238,7 +244,7 @@ check "Snap bundles pinned Node runtime" grep -q 'NODE_VERSION="24.15.0"' "$SCRI
 check "Snap verifies Node runtime checksum" grep -q 'sha256sum --check --strict' "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Snap bundles pinned Bun runtime" grep -q 'BUN_VERSION="1.3.14"' "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Snap avoids mutable Bun release URL" bash -c "! grep -q 'releases/latest' '$SCRIPT_DIR/snap/snapcraft.yaml'"
-check "Snap reduced workspace does not request an impossible frozen install" bash -c "! grep -q 'bun install --frozen-lockfile' '$SCRIPT_DIR/snap/snapcraft.yaml'"
+check "Snap build and workflow pass semantic contract" node "$SNAP_CONTRACT_VALIDATOR"
 
 echo ""
 
@@ -333,6 +339,9 @@ check "Publishing fails closed on packaged version" grep -Fq "test \"\$(elizaos-
 DEBIAN_WORKFLOW="$REPO_ROOT/.github/workflows/build-debian-package.yml"
 check_file "build-debian-package.yml" "$DEBIAN_WORKFLOW"
 check "Debian workflow pins Bun release" grep -q 'bun-version: "1.3.14"' "$DEBIAN_WORKFLOW"
+
+SNAP_WORKFLOW="$REPO_ROOT/.github/workflows/snap-build-test.yml"
+check_file "snap-build-test.yml" "$SNAP_WORKFLOW"
 
 echo ""
 

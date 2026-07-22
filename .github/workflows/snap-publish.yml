@@ -50,10 +50,21 @@ permissions:
 
 jobs:
   build-and-publish:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-
-    env:
-      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+    name: Build & Publish Snap (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -63,7 +74,10 @@ jobs:
 
       - name: Check Snap Store credentials
         id: creds_check
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
+          set -euo pipefail
           if [[ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]]; then
             echo "::warning::SNAPCRAFT_STORE_CREDENTIALS not configured. Snap build will run but Store upload will be skipped."
             echo "can_publish=false" >> "$GITHUB_OUTPUT"
@@ -71,33 +85,145 @@ jobs:
             echo "can_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install snapcraft
-        run: sudo snap install snapcraft --classic
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
 
-      - name: Update snap version
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        with:
+          version: "1.50.0"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare snapcraft.yaml
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
         run: |
-          # Update the version in snapcraft.yaml to match the release
-          sed -i "s/^version: .*/version: \"${{ inputs.version }}\"/" packages/app-core/packaging/snap/snapcraft.yaml
+          set -euo pipefail
+          test -n "$VERSION"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          case "$CHANNEL" in
+            edge|beta) SNAP_GRADE=devel ;;
+            candidate|stable) SNAP_GRADE=stable ;;
+            *) echo "Unsupported Snap Store channel: $CHANNEL" >&2; exit 1 ;;
+          esac
+          mkdir -p snap
+          cp packages/app-core/packaging/snap/snapcraft.yaml snap/snapcraft.yaml
+          sed -i "s/^version: .*/version: '${VERSION}'/" snap/snapcraft.yaml
+          sed -i "s/^grade: .*/grade: ${SNAP_GRADE}/" snap/snapcraft.yaml
+          grep -Fx "grade: ${SNAP_GRADE}" snap/snapcraft.yaml
+          echo "Snap version: $VERSION"
+          echo "Snap grade: $SNAP_GRADE for channel $CHANNEL"
 
       - name: Build snap
+        id: snapcraft
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79
+        with:
+          path: .
+          build-info: true
+          snapcraft-channel: "8.x/stable"
+
+      - name: Verify snap contents
+        env:
+          SNAP_PATH: ${{ steps.snapcraft.outputs.snap }}
+          EVIDENCE_DIR: snap-evidence/${{ matrix.arch }}
         run: |
-          cd packages/app-core/packaging/snap
-          snapcraft --destructive-mode
-          SNAP_FILE=$(find . -name "*.snap" -maxdepth 1 | head -1)
-          echo "SNAP_FILE=$SNAP_FILE" >> "$GITHUB_ENV"
-          echo "Built: $SNAP_FILE"
-          ls -la "$SNAP_FILE"
+          set -euo pipefail
+          test -n "$SNAP_PATH"
+          test -f "$SNAP_PATH"
+          mkdir -p "$EVIDENCE_DIR"
+          ls -lh "$SNAP_PATH"
+          SNAP_SHA256="$(sha256sum "$SNAP_PATH" | awk '{ print $1 }')"
+          printf '%s  %s\n' "$SNAP_SHA256" "$(basename "$SNAP_PATH")" | tee "$EVIDENCE_DIR/SHA256SUMS"
+          unsquashfs -l "$SNAP_PATH" | tee "$EVIDENCE_DIR/squashfs-files.txt" | sed -n '1,50p'
+
+      - name: Install and test snap
+        env:
+          SNAP_PATH: ${{ steps.snapcraft.outputs.snap }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+          EVIDENCE_DIR: snap-evidence/${{ matrix.arch }}/installed
+        run: bash packages/app-core/packaging/snap/test-installed-snap.sh
+
+      - name: Record builder and base provenance
+        env:
+          SNAP_PATH: ${{ steps.snapcraft.outputs.snap }}
+          EVIDENCE_DIR: snap-evidence/${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          test -f "$SNAP_PATH"
+          mkdir -p "$EVIDENCE_DIR"
+          {
+            printf 'github_sha=%s\n' "$GITHUB_SHA"
+            printf 'runner_arch=%s\n' "$RUNNER_ARCH"
+            printf 'runner_os=%s\n' "$RUNNER_OS"
+            printf 'runner_image_os=%s\n' "${ImageOS:-unknown}"
+            printf 'runner_image_version=%s\n' "${ImageVersion:-unknown}"
+            printf 'snapcraft_action=%s\n' 'snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79'
+            printf 'snapcraft_channel=%s\n' '8.x/stable'
+            printf 'snapcraft_base=%s\n' 'core22'
+            snap version
+            snapcraft version
+            snap list snapcraft
+            snap list core22
+          } | tee "$EVIDENCE_DIR/build-provenance.txt"
+          unsquashfs -cat "$SNAP_PATH" meta/snap.yaml >"$EVIDENCE_DIR/installed-snap.yaml"
+          unsquashfs -cat "$SNAP_PATH" snap/snapcraft.yaml >"$EVIDENCE_DIR/build-snapcraft.yaml"
+          unsquashfs -cat "$SNAP_PATH" snap/manifest.yaml >"$EVIDENCE_DIR/build-manifest.yaml"
+
+      - name: Extract snap filesystem for SBOM
+        id: sbom-root
+        env:
+          SNAP_PATH: ${{ steps.snapcraft.outputs.snap }}
+        run: |
+          set -euo pipefail
+          test -f "$SNAP_PATH"
+          SBOM_ROOT="$(mktemp -d "$RUNNER_TEMP/eliza-snap-sbom-${{ matrix.arch }}.XXXXXX")"
+          unsquashfs -d "$SBOM_ROOT" "$SNAP_PATH" >/dev/null
+          test -f "$SBOM_ROOT/meta/snap.yaml"
+          test -f "$SBOM_ROOT/snap/manifest.yaml"
+          echo "path=$SBOM_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Snap SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          path: ${{ steps.sbom-root.outputs.path }}
+          format: spdx-json
+          output-file: snap-evidence/${{ matrix.arch }}/elizaos-app-${{ matrix.arch }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Attest Snap build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: ${{ steps.snapcraft.outputs.snap }}
+
+      - name: Upload snap artifact and evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: elizaos-snap-${{ inputs.version }}-${{ matrix.arch }}
+          path: |
+            ${{ steps.snapcraft.outputs.snap }}
+            snap-evidence/${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Publish to Snap Store
         if: steps.creds_check.outputs.can_publish == 'true'
-        run: |
-          cd packages/app-core/packaging/snap
-          snapcraft upload "$SNAP_FILE" --release ${{ inputs.channel }}
-          echo "Published snap to channel: ${{ inputs.channel }}"
+        uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.snapcraft.outputs.snap }}
+          release: ${{ inputs.channel }}
 
-      - name: Upload snap artifact
+      - name: Upload Snap diagnostics after failure
+        if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: elizaos-snap-${{ inputs.version }}
-          path: packages/app-core/packaging/snap/*.snap
+          name: elizaos-snap-${{ matrix.arch }}-failure-diagnostics
+          path: snap-evidence/${{ matrix.arch }}/
+          if-no-files-found: warn
           retention-days: 30

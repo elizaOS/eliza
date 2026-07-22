@@ -34,6 +34,8 @@ architectures:
 layout:
   /usr/lib/x86_64-linux-gnu/libatomic.so.1:
     symlink: $SNAP/usr/lib/x86_64-linux-gnu/libatomic.so.1
+  /usr/lib/aarch64-linux-gnu/libatomic.so.1:
+    symlink: $SNAP/usr/lib/aarch64-linux-gnu/libatomic.so.1
 
 apps:
   elizaos-app:
@@ -138,10 +140,20 @@ parts:
       PACKAGES_DIR="packages"
       APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
       RM_PATH_RECURSIVE="packages/scripts/rm-path-recursive.mjs"
+      ROOT_NODE_MODULES_BIN="node_modules/.bin"
 
       # Skip building local upstreams and native Capacitor plugins in the snap build.
       export ELIZAOS_APP_SKIP_LOCAL_UPSTREAMS=1
       export SKIP_NATIVE_PLUGINS=1
+
+      # Resolve the complete, untouched workspace exactly once. The lockfile is
+      # the integrity-bearing dependency authority; the reduced build graph
+      # below is allowed to prune source but never to trigger another install.
+      test -f bun.lock
+      LOCKFILE_SHA256="$(sha256sum bun.lock)"
+      bun install --frozen-lockfile --ignore-scripts
+      test "$(sha256sum bun.lock)" = "$LOCKFILE_SHA256"
+      test -x "$ROOT_NODE_MODULES_BIN/turbo"
 
       # Remove plugin source directories outside the snap runtime closure so
       # tsc/build does not attempt to compile unrelated app/plugin workspaces.
@@ -238,12 +250,10 @@ parts:
         }
 
         for (const pkgPath of packageJsonPaths) {
-          try {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-            if (typeof pkg.name === "string" && pkg.name.length > 0) {
-              availableWorkspaceNames.add(pkg.name);
-            }
-          } catch {}
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+          if (typeof pkg.name === "string" && pkg.name.length > 0) {
+            availableWorkspaceNames.add(pkg.name);
+          }
         }
 
         function stripWorkspaceDeps(pkgPath) {
@@ -323,16 +333,9 @@ parts:
         }
       '
 
-      # The committed lockfile still references repo-local workspace
-      # paths that no longer exist after the destructive rewrite
-      # above. Force Bun to resolve against the patched manifests.
-      rm -f bun.lock
-
-      # The build intentionally rewrites the workspace graph above, so the
-      # committed full-repository lockfile cannot describe this reduced tree.
-      # Skip postinstall to avoid rebuilding removed workspaces; package and
-      # toolchain inputs used by the shipped closure are validated below.
-      bun install --ignore-scripts
+      # The manifests now describe only the buildable runtime graph. Dependency
+      # bytes still come exclusively from the frozen install performed before
+      # this rewrite; do not run a package manager below this point.
 
       # app-core still carries compatibility re-exports for wallet route
       # helpers that live in plugin-wallet. The snap workspace rewrite keeps
@@ -346,46 +349,16 @@ parts:
       ln -s ../../plugins/plugin-wallet node_modules/@elizaos/plugin-wallet
       ln -s ../../../../plugins/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
 
-      # `bun install --ignore-scripts` skips the npm bun package postinstall,
-      # leaving node_modules/bun/bin/bun as a non-executable JS shim. Turbo
-      # package builds can then fail with "Exec format error" when they spawn
-      # that package binary instead of the staged Bun runtime.
-      install_js=""
-      if [ -f node_modules/bun/install.js ]; then
-        install_js="node_modules/bun/install.js"
-      elif [ -d node_modules/.bun ]; then
-        install_js="$(find node_modules/.bun -maxdepth 4 -path '*/bun@*/node_modules/bun/install.js' -print -quit 2>/dev/null)"
-      fi
-      if [ -n "$install_js" ] && [ -f "$install_js" ]; then
-        echo "Running bun postinstall: $install_js"
-        (cd "$(dirname "$install_js")" && node install.js)
-      else
-        echo "No bun/install.js found; continuing with staged Bun runtime"
-      fi
-
-      # Rehydrate published-only workspace deps that Vite and app-core imports
-      # still need after the destructive workspace rewrite above.
-      if [ -f scripts/install-published-workspace-fallback-deps.sh ]; then
-        bash scripts/install-published-workspace-fallback-deps.sh
-      fi
-
-      # Inject tailwindcss into packages/app-core/node_modules so the
-      # Vite CSS pipeline can resolve @import "tailwindcss" from the app-core
-      # source tree during the snap production build.
-      mkdir -p "$APP_CORE_DIR/node_modules"
-      if [ ! -d "$APP_CORE_DIR/node_modules/tailwindcss" ]; then
-        TW_EXTRACT_DIR="/tmp/tw_extract"
-        TAILWIND_URL=$(npm view tailwindcss dist.tarball 2>/dev/null || true)
-        if [ -z "$TAILWIND_URL" ]; then
-          echo "Failed to resolve tailwindcss tarball URL" >&2
-          exit 1
-        fi
-        node "$RM_PATH_RECURSIVE" "$TW_EXTRACT_DIR"
-        mkdir -p "$TW_EXTRACT_DIR"
-        curl -fsSL "$TAILWIND_URL" | tar xz -C "$TW_EXTRACT_DIR"
-        node "$RM_PATH_RECURSIVE" "$APP_CORE_DIR/node_modules/tailwindcss"
-        mv "$TW_EXTRACT_DIR/package" "$APP_CORE_DIR/node_modules/tailwindcss"
-      fi
+      # Vite resolves Tailwind from app-core's workspace install. Missing bytes
+      # are a frozen-closure defect, never permission to fetch a mutable tarball.
+      TAILWIND_PACKAGE_JSON="$APP_CORE_DIR/node_modules/tailwindcss/package.json"
+      test -f "$TAILWIND_PACKAGE_JSON"
+      node -e '
+        const pkg = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+        if (pkg.name !== "tailwindcss" || typeof pkg.version !== "string" || !pkg.version) {
+          throw new Error("invalid Tailwind package from frozen workspace install");
+        }
+      ' "$TAILWIND_PACKAGE_JSON"
 
       # Fresh snap builds also need generated i18n keyword data; the
       # production build imports the generated TypeScript module directly.
@@ -418,9 +391,9 @@ parts:
         cp -aL "$type_target" "$SNAP_BUILD_TYPES_DIR/@types/$type_pkg"
       done
 
-      # Run only the safe postinstall steps (patch deps, link browser server)
-      node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
-      node "$APP_CORE_SCRIPTS_DIR/link-browser-server.mjs" || true
+      # Patch the locked dependency tree before packaging. A failed patch is a
+      # build failure because shipping a partially patched runtime is unsafe.
+      node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs"
 
       # patch-deps intentionally removes @types from the runtime install so Bun
       # never tries to execute .d.ts files. Rehydrate just the type packages tsc
@@ -464,12 +437,10 @@ parts:
               continue;
             }
             if (entry.isFile() && entry.name === "package.json") {
-              try {
-                const pkg = JSON.parse(fs.readFileSync(entryPath, "utf8"));
-                if (typeof pkg.name === "string" && pkg.name.length > 0) {
-                  availableWorkspaceNames.add(pkg.name);
-                }
-              } catch {}
+              const pkg = JSON.parse(fs.readFileSync(entryPath, "utf8"));
+              if (typeof pkg.name === "string" && pkg.name.length > 0) {
+                availableWorkspaceNames.add(pkg.name);
+              }
             }
           }
         }
@@ -509,7 +480,7 @@ parts:
       # Snap closure.
       bun run --cwd packages/cloud/routing build
 
-      bunx turbo run build \
+      "$ROOT_NODE_MODULES_BIN/turbo" run build \
         --filter=@elizaos/cloud-routing \
         --filter=@elizaos/core \
         --filter=@elizaos/shared \
@@ -546,12 +517,18 @@ parts:
       mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent"
 
       # Copy built artifacts
-      cp -r dist/ "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
-      cp elizaos-app.mjs "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      if [ -d dist ]; then
+        cp -r dist/ "$CRAFT_PART_INSTALL/lib/elizaos-app/"
+      fi
+      if [ -f elizaos-app.mjs ]; then
+        cp elizaos-app.mjs "$CRAFT_PART_INSTALL/lib/elizaos-app/"
+      fi
       cp -r packages/agent/dist "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent/"
       cp packages/agent/package.json "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent/"
       cp package.json "$CRAFT_PART_INSTALL/lib/elizaos-app/"
-      cp plugins.json "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      if [ -f plugins.json ]; then
+        cp plugins.json "$CRAFT_PART_INSTALL/lib/elizaos-app/"
+      fi
       node -e 'const fs=require("node:fs"); const root=JSON.parse(fs.readFileSync("package.json")); const target=process.argv[1]; const agent=JSON.parse(fs.readFileSync(target)); agent.version=root.version; fs.writeFileSync(target, JSON.stringify(agent, null, 2) + "\n");' \
         "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent/package.json"
 
@@ -583,7 +560,7 @@ parts:
       # Copy additional runtime files
       for dir in src scripts skills patches; do
         if [ -d "$dir" ]; then
-          cp -r "$dir" "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+          cp -r "$dir" "$CRAFT_PART_INSTALL/lib/elizaos-app/"
         fi
       done
 
