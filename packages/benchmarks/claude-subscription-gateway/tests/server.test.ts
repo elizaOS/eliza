@@ -636,16 +636,20 @@ describe("startClaudeSubscriptionGateway", () => {
       request(HERMES_TOKEN),
       request(OPENCLAW_TOKEN),
     ]);
-    expect(responses.map((response) => response.status)).toEqual([429, 429, 429]);
+    expect(responses.map((response) => response.status)).toEqual([
+      429, 429, 429,
+    ]);
     expect(completionCalls).toBe(1);
     expect(handle.auditStore.snapshot()).toHaveLength(3);
     expect(
-      handle.auditStore.snapshot().every(
-        (record) =>
-          record.status === "paused" &&
-          record.pauseReason === "rate_limit" &&
-          record.auditEvent === "pause_control",
-      ),
+      handle.auditStore
+        .snapshot()
+        .every(
+          (record) =>
+            record.status === "paused" &&
+            record.pauseReason === "rate_limit" &&
+            record.auditEvent === "pause_control",
+        ),
     ).toBe(true);
   });
 

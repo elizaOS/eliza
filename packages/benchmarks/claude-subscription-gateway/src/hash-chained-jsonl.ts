@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, type FileHandle } from "node:fs/promises";
+import { type FileHandle, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import { stableJson } from "./canonical.js";
 import type { JsonObject, JsonValue } from "./types.js";
@@ -68,7 +68,9 @@ export class HashChainedJsonl {
       !Number.isSafeInteger(normalized.maxRecordBytes) ||
       normalized.maxRecordBytes <= 0
     ) {
-      throw new TypeError("Hash-chain record limit must be a positive integer.");
+      throw new TypeError(
+        "Hash-chain record limit must be a positive integer.",
+      );
     }
     const file = await open(
       target,
@@ -131,7 +133,8 @@ export class HashChainedJsonl {
     });
     this.appendTail = operation;
     return operation.then(() => {
-      if (appended === null) throw new Error("Hash-chain append did not commit.");
+      if (appended === null)
+        throw new Error("Hash-chain append did not commit.");
       return appended;
     });
   }
@@ -154,7 +157,9 @@ export class HashChainedJsonl {
   async readNext(cursor: HashChainedJsonlCursor): Promise<JsonObject | null> {
     await this.appendTail;
     if (!Number.isSafeInteger(cursor.offset) || cursor.offset < 0) {
-      throw new TypeError("Hash-chain read offset must be a non-negative integer.");
+      throw new TypeError(
+        "Hash-chain read offset must be a non-negative integer.",
+      );
     }
     const buffer = Buffer.allocUnsafe(READ_CHUNK_BYTES);
     while (cursor.pending.length <= this.options.maxRecordBytes) {
@@ -332,7 +337,9 @@ function assertNoReservedFields(
     options.recordHashField,
   ]) {
     if (field in payload) {
-      throw new TypeError(`Hash-chain payload contains reserved field ${field}.`);
+      throw new TypeError(
+        `Hash-chain payload contains reserved field ${field}.`,
+      );
     }
   }
 }
