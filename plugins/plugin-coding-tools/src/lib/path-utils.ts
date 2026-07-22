@@ -73,3 +73,16 @@ export function relativeFromRoot(p: string, root: string): string {
   const rel = path.relative(path.resolve(root), path.resolve(p));
   return rel === "" ? "." : rel;
 }
+
+/**
+ * Resolve a relative tool path against the conversation's working directory.
+ * The planner naturally says `file_path: "AGENTS.md"` the way every CLI user
+ * would; rejecting relatives outright errored the whole turn (observed live:
+ * three identical not_absolute failures, then a silent errored turn). Absolute
+ * paths pass through untouched; sandbox validation still runs on the result.
+ */
+export function resolveRelativeToCwd(filePath: string, cwd: string): string {
+  if (isAbsolutePath(filePath)) return filePath;
+  const joined = `${cwd.replace(/\/+$/, "")}/${filePath}`;
+  return joined;
+}
