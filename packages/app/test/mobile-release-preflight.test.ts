@@ -3,6 +3,8 @@
  * Android release branches with deterministic toolchain and filesystem edges.
  */
 
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -40,9 +42,10 @@ function successfulCommand(command: string, args: string[]) {
 
 async function runPreflight(args: string[]) {
   process.argv = ["node", "mobile-release-preflight.mjs", ...args];
-  const scriptUrl = new URL(
-    "../scripts/mobile-release-preflight.mjs",
-    import.meta.url,
+  // Vite rewrites relative import.meta.url asset URLs to HTTP under coverage,
+  // while the Node ESM loader requires a file URL for this executable module.
+  const scriptUrl = pathToFileURL(
+    path.resolve(process.cwd(), "scripts/mobile-release-preflight.mjs"),
   );
   scriptUrl.searchParams.set("case", String(importSequence++));
   return import(scriptUrl.href);
