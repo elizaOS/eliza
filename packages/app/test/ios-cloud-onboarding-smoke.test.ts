@@ -56,6 +56,7 @@ vi.mock("../scripts/lib/ios-simulator-capture.mjs", () => ({
 }));
 
 import {
+  activeCloudApiBase,
   ensureSimulatorBooted,
   findSimulator,
   main,
@@ -245,6 +246,30 @@ describe("dedicated Simulator selection", () => {
 });
 
 describe("Cloud onboarding orchestration", () => {
+  it("accepts dedicated production and staging Cloud origins only", () => {
+    const resultWithApiBase = (apiBase: string) => ({
+      storage: {
+        "elizaos:active-server": JSON.stringify({ kind: "cloud", apiBase }),
+      },
+    });
+
+    expect(
+      activeCloudApiBase(resultWithApiBase("https://agent-1.elizacloud.ai")),
+    ).toBe("https://agent-1.elizacloud.ai");
+    expect(
+      activeCloudApiBase(
+        resultWithApiBase("https://agent-1.staging.elizacloud.ai"),
+      ),
+    ).toBe("https://agent-1.staging.elizacloud.ai");
+    expect(() =>
+      activeCloudApiBase(
+        resultWithApiBase(
+          "https://agent-1.staging.elizacloud.ai.attacker.test",
+        ),
+      ),
+    ).toThrow("invalid API base");
+  });
+
   it("reads the app plist before a stale defaults cache", () => {
     execFileSync.mockImplementation((command: string, args: string[]) => {
       if (args.includes("get_app_container")) return "/sim/data/app";

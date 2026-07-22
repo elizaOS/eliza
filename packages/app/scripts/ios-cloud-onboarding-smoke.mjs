@@ -405,7 +405,7 @@ async function pollRelaunchResult(udid, appId, runId) {
   );
 }
 
-function activeCloudApiBase(result) {
+export function activeCloudApiBase(result) {
   const raw = result.storage?.["elizaos:active-server"];
   if (typeof raw !== "string") {
     throw new Error("Cloud onboarding result did not include an active server");
@@ -421,7 +421,7 @@ function activeCloudApiBase(result) {
   if (
     parsed?.kind !== "cloud" ||
     typeof parsed.apiBase !== "string" ||
-    !/^https:\/\/[a-z0-9-]+\.elizacloud\.ai$/.test(parsed.apiBase)
+    !/^https:\/\/[a-z0-9-]+(?:\.staging)?\.elizacloud\.ai$/.test(parsed.apiBase)
   ) {
     throw new Error(
       `Cloud onboarding result selected an invalid API base: ${JSON.stringify(parsed)}`,
