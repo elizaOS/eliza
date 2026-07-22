@@ -20,11 +20,26 @@ function workflow(parameters: Record<string, unknown>, type = 'workflows-nodes-b
 }
 
 function assignments(definition: WorkflowDefinition): Array<Record<string, unknown>> {
-  return (
-    definition.nodes[0]?.parameters.assignments as {
-      assignments: Array<Record<string, unknown>>;
-    }
-  ).assignments;
+  const node = definition.nodes[0];
+  if (!node) {
+    throw new Error('Expected the workflow fixture to contain a node');
+  }
+
+  const assignmentGroup = node.parameters.assignments;
+  if (
+    typeof assignmentGroup !== 'object' ||
+    assignmentGroup === null ||
+    !('assignments' in assignmentGroup) ||
+    !Array.isArray(assignmentGroup.assignments) ||
+    !assignmentGroup.assignments.every(
+      (assignment: unknown) =>
+        typeof assignment === 'object' && assignment !== null && !Array.isArray(assignment)
+    )
+  ) {
+    throw new Error('Expected normalized workflow assignments');
+  }
+
+  return assignmentGroup.assignments;
 }
 
 describe('Set/Edit Fields parameter normalization', () => {
