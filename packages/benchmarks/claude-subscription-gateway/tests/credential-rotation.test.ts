@@ -17,7 +17,10 @@ const HMAC_KEY = Buffer.alloc(32, 7);
 describe("RotatingCredentialCompletionRunner", () => {
   it("rotates linked leases on quota with one stable session key and token-only injection", async () => {
     const leases = [lease("a", "token-a"), lease("b", "token-b"), null];
-    const leaseBroker = vi.fn(async () => leases.shift() ?? null);
+    const leaseBroker = vi.fn(
+      async (_request: Parameters<CredentialLeaseBroker["lease"]>[0]) =>
+        leases.shift() ?? null,
+    );
     const broker: CredentialLeaseBroker = {
       lease: leaseBroker,
       report: vi.fn(async () => ({ ok: true })),

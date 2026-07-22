@@ -883,18 +883,6 @@ function normalizeHarness(value: string): string {
   return normalized;
 }
 
-function normalizeRequestId(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/[^A-Za-z0-9_-]/g, "")
-    .slice(0, 80);
-  if (!normalized)
-    throw new Error(
-      "[ClaudeSubscriptionGateway] request id factory returned no safe text",
-    );
-  return normalized;
-}
-
 function secureEquals(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left, "utf8");
   const rightBuffer = Buffer.from(right, "utf8");

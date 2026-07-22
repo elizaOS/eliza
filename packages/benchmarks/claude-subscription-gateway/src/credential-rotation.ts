@@ -113,7 +113,7 @@ export class RotatingCredentialCompletionRunner implements CompletionRunner {
             providerId: "anthropic-subscription",
             sessionKey: `claude-benchmark:${context.requestId}`,
             strategy: "quota-aware",
-            ...(excluded.length > 0 ? { exclude: excluded } : {}),
+            ...(excluded.length > 0 ? { exclude: [...excluded] } : {}),
           })
         : null;
       if (lease === null) break;

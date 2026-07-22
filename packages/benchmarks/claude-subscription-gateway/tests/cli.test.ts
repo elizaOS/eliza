@@ -272,7 +272,9 @@ describe("gateway CLI", () => {
 
 const PRIVATE_MODE = 0o600;
 
-function statMode(stats: Awaited<ReturnType<typeof stat>>): number {
+function statMode(
+  stats: NonNullable<Awaited<ReturnType<typeof stat>>>,
+): number {
   return Number(stats.mode) & 0o777;
 }
 
