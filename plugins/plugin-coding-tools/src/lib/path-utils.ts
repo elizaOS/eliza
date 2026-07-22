@@ -6,7 +6,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Service } from "@elizaos/core";
 
 const BLOCKED_PATHS = new Set([
   "/dev/zero",
@@ -88,7 +88,7 @@ export function resolveRelativeToCwd(filePath: string, cwd: string): string {
 }
 
 /** Minimal shape of the SessionCwdService this resolver depends on. */
-interface CwdLookup {
+interface CwdLookup extends Service {
   getCwd(id: string | undefined): string;
 }
 
@@ -99,8 +99,7 @@ interface CwdLookup {
  * `process.cwd()` when the conversation has no recorded cwd.
  *
  * The `runtime` param mirrors core's generic `getService<T>(): T | null`
- * signature so a full `IAgentRuntime` is assignable here; the resolved
- * service is narrowed to the {@link CwdLookup} shape internally.
+ * signature so a full `IAgentRuntime` is assignable here.
  */
 export function resolveInputPath(
   runtime: Pick<IAgentRuntime, "getService">,
@@ -108,9 +107,7 @@ export function resolveInputPath(
   filePath: string,
 ): string {
   if (isAbsolutePath(filePath)) return filePath;
-  const cwdService = runtime.getService(
-    "CODING_TOOLS_SESSION_CWD",
-  ) as CwdLookup | null;
+  const cwdService = runtime.getService<CwdLookup>("CODING_TOOLS_SESSION_CWD");
   const cwd = cwdService?.getCwd(conversationId) ?? process.cwd();
   return path.resolve(cwd, filePath);
 }
