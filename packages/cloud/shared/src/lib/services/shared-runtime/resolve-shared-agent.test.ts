@@ -55,8 +55,35 @@ const cacheGet = mock(async (key: string) => (cacheStore.has(key) ? cacheStore.g
 const cacheSet = mock(async (key: string, value: unknown) => {
   cacheStore.set(key, value);
 });
+// Single-flight double: an in-process lock so N concurrent misses run the loader
+// EXACTLY ONCE (the real getOrSet uses a distributed SET NX lock). Waiters await
+// the in-flight loader and reuse its result — the property the stampede fix relies
+// on. Only populates the cache when the loader returns a non-null value (matches
+// the real getOrSet contract the fix depends on for not caching a 404/null scope).
+const inFlight = new Map<string, Promise<unknown>>();
+const cacheGetOrSet = mock(
+  async (key: string, _ttl: number, loader: () => Promise<unknown>) => {
+    if (cacheStore.has(key)) return cacheStore.get(key);
+    const existing = inFlight.get(key);
+    if (existing) return existing;
+    const p = (async () => {
+      const fresh = await loader();
+      // Real getOrSet populates via this.set() on a non-null load — route through
+      // the cacheSet double so existing "cold miss writes the scope once"
+      // assertions still observe the populate through the same mock.
+      if (fresh !== null && fresh !== undefined) await cacheSet(key, fresh);
+      return fresh;
+    })();
+    inFlight.set(key, p);
+    try {
+      return await p;
+    } finally {
+      inFlight.delete(key);
+    }
+  },
+);
 mock.module("../../cache/client", () => ({
-  cache: { get: cacheGet, set: cacheSet },
+  cache: { get: cacheGet, set: cacheSet, getOrSet: cacheGetOrSet },
 }));
 
 // validateApiKey double for the cache-HIT re-validation gate.
@@ -111,6 +138,8 @@ beforeEach(() => {
   findByIdAndOrg.mockResolvedValue(null);
   cacheGet.mockClear();
   cacheSet.mockClear();
+  cacheGetOrSet.mockClear();
+  inFlight.clear();
   validateApiKey.mockClear();
   cacheStore.clear();
   sessionScopeHashPrefix.mockClear();
@@ -267,6 +296,49 @@ describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
   });
 });
 
+describe("resolveSharedAgent stampede single-flight (CONTENTION-2026-07-22)", () => {
+  test("N concurrent cold callers hydrate the scope EXACTLY once", async () => {
+    // Repro of the demo-day audience pile-on: N callers hit the SAME shared
+    // agent's scope with a cold cache at once. Without single-flight all N run
+    // the expensive user/org+agent hydration in parallel and starve the DB pool
+    // (one turn wedged ~8.5s on staging). The fix collapses them to one loader.
+    let resolveGate: (() => void) | null = null;
+    const gateOpened = new Promise<void>((r) => {
+      resolveGate = r;
+    });
+    // Make the expensive hydration hang until we release it, so all N callers
+    // are provably in-flight simultaneously before any completes.
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(async (_c, lookup) => {
+      await gateOpened;
+      const a = agent();
+      const orgLookupResult = await lookup((a as { organization_id: string }).organization_id);
+      return { user: { organization_id: "org-1" }, orgLookupResult };
+    });
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    const N = 8;
+    const inflightCalls = Array.from({ length: N }, () =>
+      resolveSharedAgent(apiKeyContext("agent-1") as never),
+    );
+    // All callers have entered; release the single hydration.
+    resolveGate?.();
+    const results = await Promise.all(inflightCalls);
+
+    // Every caller resolves correctly...
+    for (const r of results) expect(r).toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    // ...but the expensive DB hydration ran ONCE, not N times.
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+    // The scope was populated exactly once.
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+
+    // Restore the default implementation (mockClear keeps impls across tests).
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(async (_c: unknown, lookup: (o: string) => unknown) => ({
+      user: { organization_id: "org-1", steward_id: "steward-user-1" },
+      orgLookupResult: await lookup("org-1"),
+    }));
+  });
+});
+
 describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => {
   // Shadow's own account authenticates by steward JWT / cookie, not an API key,
   // so the API-key-only scope cache used to skip him entirely -> he paid the
@@ -300,6 +372,10 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
     await resolveSharedAgent(contextWithAgentId("agent-1") as never);
     requireUserOrApiKeyWithOrgLookup.mockClear();
     findByIdAndOrg.mockClear();
+    // The populate goes through the single-flight hydration (getOrSet), which
+    // re-runs the credential gate once on the just-hydrated scope (cheap/warm,
+    // strictly safer). Clear it so the assertion below isolates the SECOND hit.
+    revalidateSessionScope.mockClear();
 
     // Second hit: served from cache, no user/org+agent hydration.
     const result = await resolveSharedAgent(contextWithAgentId("agent-1") as never);
