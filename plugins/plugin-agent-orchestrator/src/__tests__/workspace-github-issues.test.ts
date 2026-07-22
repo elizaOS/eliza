@@ -8,8 +8,11 @@
  * host on the other end of the socket is local. Error legs assert non-2xx
  * responses surface as thrown errors, never as fabricated results.
  */
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { GitHubPatClient as GitHubPatClientInstance } from "git-workspace-service";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -564,4 +567,45 @@ describe("issue functions over a real local GitHub API server", () => {
       updateIssue(ctx, "acme/widgets", 999, { title: "x" }),
     ).rejects.toThrow(/Not Found|404/);
   });
+});
+
+/**
+ * Regression guard for the Server Tests fix (#16716): `@octokit/rest` must load
+ * lazily via `createRequire`, never through a static top-level ESM import. A
+ * static `import { Octokit } from "@octokit/rest"` forces symlink-preserving
+ * resolvers (vitest `preserveSymlinks: true`) to resolve octokit's transitive
+ * graph (`@octokit/core`, `@octokit/request`, ...) eagerly at module load, where
+ * the nested-in-plugin `@octokit/rest@22` store realpath is not visible —
+ * collapsing the agent `proactive-interaction-pipeline` suite at collection.
+ * The HTTP-boundary suite above already drives the real Octokit request path
+ * against a local server (so the lazy require is genuinely resolved at runtime);
+ * these assertions pin the source shape so the eager import cannot return.
+ */
+describe("octokit lazy-load contract (#16716)", () => {
+  const servicesDir = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "services",
+  );
+  const OCTOKIT_SERVICE_FILES = [
+    "workspace-service.ts",
+    "workspace-github.ts",
+  ] as const;
+  // A value (non-type) top-level ESM import of @octokit/rest — the exact form
+  // the symlink-preserving resolver chokes on. `import type { ... }` is fine; it
+  // is erased before resolution, so the pattern deliberately excludes `type`.
+  const EAGER_OCTOKIT_IMPORT =
+    /^\s*import\s+(?!type\b)[^;]*from\s+["']@octokit\/rest["']/m;
+  const LAZY_OCTOKIT_REQUIRE =
+    /createRequire\([^)]*\)\(\s*["']@octokit\/rest["']/;
+
+  for (const file of OCTOKIT_SERVICE_FILES) {
+    const source = readFileSync(join(servicesDir, file), "utf8");
+    it(`${file} has no eager top-level @octokit/rest value import`, () => {
+      expect(EAGER_OCTOKIT_IMPORT.test(source)).toBe(false);
+    });
+    it(`${file} loads @octokit/rest lazily via createRequire`, () => {
+      expect(LAZY_OCTOKIT_REQUIRE.test(source)).toBe(true);
+    });
+  }
 });

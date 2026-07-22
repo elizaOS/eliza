@@ -55,3 +55,12 @@ packages/elizaos/templates/min-project/src/index.tsx
 # tested for real. Remove this line if the barrel's export graph stops
 # transitively requiring built plugin dists in the pre-build coverage lane.
 packages/agent/src/index.ts
+
+# CodingWorkspaceService is a 1600-line git/subprocess integration boundary
+# (clone/fetch/commit/push, PR finalization via git-workspace-service). Its
+# executable surface is dominated by real git child processes the parent Vitest
+# LCOV collector cannot instrument; the focused provider/branch/provision suites
+# together top out near 20% line coverage even though they exercise the public
+# paths end to end. Same class as smithers-task-runner.ts above. Delete this
+# entry once a subprocess-aware coverage lane lands for the orchestrator plugin.
+plugins/plugin-agent-orchestrator/src/services/workspace-service.ts
