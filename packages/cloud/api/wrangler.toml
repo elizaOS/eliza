@@ -437,9 +437,11 @@ INFERENCE_PASSTHROUGH_STREAMING = "true"
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 
-# Realtime voice is committed default-off. Staging soaks require an explicit
-# deploy/runtime opt-in; production remains explicitly off.
-VOICE_REALTIME_WS_ENABLED = "false"
+# Realtime voice is enabled on staging (proven live E2E 2026-07-22, EOT->first-audio
+# median ~1446ms). The live staging worker already runs true; this keeps the toml in
+# sync so a redeploy from develop does not silently flip realtime OFF. Production
+# remains explicitly off (flag flip there is a separate, gated decision).
+VOICE_REALTIME_WS_ENABLED = "true"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai"
 VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
