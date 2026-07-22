@@ -67,6 +67,7 @@ test("download section distinguishes unavailable release artifacts", async ({
 
   const downloads = page.locator("#download");
   await expect(downloads).toBeVisible();
+  await expect(downloads).toBeInViewport();
 
   await expect(
     downloads.getByText("Downloads are temporarily unavailable."),
