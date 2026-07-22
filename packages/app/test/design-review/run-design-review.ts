@@ -41,9 +41,12 @@ type ViewStateId =
   | "first-run-local";
 type ViewportId =
   | "mobile-portrait"
+  | "lp3-portrait"
+  | "lp3-landscape"
   | "mobile-landscape"
   | "desktop-landscape"
   | "ipad-portrait"
+  | "chat-shell-breakpoint"
   | "ipad-landscape";
 
 interface ViewportSpec {
@@ -53,6 +56,7 @@ interface ViewportSpec {
   height: number;
   isMobile: boolean;
   hasTouch: boolean;
+  deviceScaleFactor: number;
 }
 
 interface ReadyCheck {
@@ -146,6 +150,25 @@ const viewports: ViewportSpec[] = [
     height: 844,
     isMobile: true,
     hasTouch: true,
+    deviceScaleFactor: 1,
+  },
+  {
+    id: "lp3-portrait",
+    label: "Light Phone 3 Portrait",
+    width: 360,
+    height: 413,
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
+  },
+  {
+    id: "lp3-landscape",
+    label: "Light Phone 3 Landscape",
+    width: 413,
+    height: 360,
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
   },
   {
     id: "mobile-landscape",
@@ -154,6 +177,7 @@ const viewports: ViewportSpec[] = [
     height: 390,
     isMobile: true,
     hasTouch: true,
+    deviceScaleFactor: 1,
   },
   {
     id: "desktop-landscape",
@@ -162,6 +186,7 @@ const viewports: ViewportSpec[] = [
     height: 900,
     isMobile: false,
     hasTouch: false,
+    deviceScaleFactor: 1,
   },
   {
     id: "ipad-portrait",
@@ -170,6 +195,7 @@ const viewports: ViewportSpec[] = [
     height: 1180,
     isMobile: true,
     hasTouch: true,
+    deviceScaleFactor: 1,
   },
   {
     id: "chat-shell-breakpoint",
@@ -178,6 +204,7 @@ const viewports: ViewportSpec[] = [
     height: 1180,
     isMobile: true,
     hasTouch: true,
+    deviceScaleFactor: 1,
   },
   {
     id: "ipad-landscape",
@@ -186,6 +213,7 @@ const viewports: ViewportSpec[] = [
     height: 820,
     isMobile: true,
     hasTouch: true,
+    deviceScaleFactor: 1,
   },
 ];
 
@@ -209,7 +237,10 @@ const views: ViewSpec[] = [
     path: "/chat",
     shellMode: "native",
     lastNativeTab: "chat",
-    readyChecks: [{ selector: '[aria-label="Chat workspace"]' }],
+    readyChecks: [
+      { selector: '[data-testid="home-screen"]' },
+      { selector: '[data-testid="continuous-chat-overlay"]' },
+    ],
   },
   {
     id: "stream",
@@ -471,7 +502,7 @@ async function createPage(
     },
     isMobile: capture.viewport.isMobile,
     hasTouch: capture.viewport.hasTouch,
-    deviceScaleFactor: 1,
+    deviceScaleFactor: capture.viewport.deviceScaleFactor,
   });
   await context.addInitScript(
     (init) => {

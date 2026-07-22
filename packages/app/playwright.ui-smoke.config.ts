@@ -172,6 +172,7 @@ export default defineConfig({
         viewport: viewport.viewport,
         isMobile: viewport.isMobile,
         hasTouch: viewport.hasTouch,
+        deviceScaleFactor: viewport.deviceScaleFactor,
         ...withChromiumLaunchOptions(),
       },
     })),

@@ -50,6 +50,30 @@ const HOME_SCREEN_CSS = `
   min-height: 0;
   overflow: hidden;
 }
+/* Compact phones need the same hierarchy, not a scaled copy of the page. Only
+   editorial type and breathing room contract; controls retain their touch size. */
+@media (max-width: 380px) {
+  [data-testid="home-screen"] [data-home-editorial-header] { column-gap: .5rem; }
+  [data-testid="home-screen"] [data-home-clock-time] { font-size: 3rem; }
+  [data-testid="home-screen"] [data-home-clock-date] {
+    margin-top: .5rem;
+    font-size: .875rem;
+  }
+  [data-testid="home-screen"] [data-home-weather-reading] { gap: .375rem; }
+  [data-testid="home-screen"] [data-home-weather-icon] {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  [data-testid="home-screen"] [data-home-weather-temperature] { font-size: 2.5rem; }
+}
+@media (max-width: 480px) and (max-height: 520px) {
+  [data-testid="home-screen"] [data-home-notification-region] { margin-top: .5rem; }
+  [data-testid="home-screen"] [data-home-secondary-widgets] {
+    min-height: 5rem;
+    padding-top: .75rem;
+    padding-bottom: .75rem;
+  }
+}
 [data-testid="home-content-column"]:has(
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
 ) [data-home-below-notifications],
@@ -280,6 +304,7 @@ export function HomeScreen({
             to fill the column down to the chat, its list scrolling internally;
             it fades in (Apple-style) on first appearance. */}
           <div
+            data-home-notification-region=""
             className={cn(
               "mt-4",
               hasNotifications && "flex min-h-0 flex-1 flex-col",
@@ -312,6 +337,7 @@ export function HomeScreen({
                 this block absorb the column's breathing room and centre its
                 content. */}
               <div
+                data-home-secondary-widgets=""
                 className={cn(
                   enterClass,
                   "flex min-h-32 flex-col py-6",

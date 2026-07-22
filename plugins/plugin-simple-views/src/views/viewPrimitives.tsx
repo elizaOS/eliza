@@ -27,7 +27,7 @@ export const VIEW_ROOT_STYLE: CSSProperties = {
   overflowX: "hidden",
   overflowY: "auto",
   overscrollBehavior: "contain",
-  padding: "clamp(12px, 2.4vw, 24px)",
+  padding: "clamp(8px, 2.4vw, 24px)",
   color: "var(--txt, #f5f5f5)",
   fontFamily: "inherit",
 };
@@ -47,7 +47,7 @@ export const GLASS_PANEL_STYLE: CSSProperties = {
 export const FIELD_STYLE: CSSProperties = {
   boxSizing: "border-box",
   width: "100%",
-  minHeight: 42,
+  minHeight: 44,
   border: "1px solid var(--border-strong, rgba(255,255,255,.22))",
   borderRadius: 13,
   padding: "10px 12px",
@@ -81,7 +81,7 @@ const BUTTON_STYLE: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   gap: 7,
-  minHeight: 38,
+  minHeight: 44,
   border: "1px solid var(--border-strong, rgba(255,255,255,.22))",
   borderRadius: 12,
   padding: "8px 12px",
@@ -147,7 +147,7 @@ export function AgentAction({
       style={{
         ...BUTTON_STYLE,
         ...variantStyle,
-        ...(compact ? { minWidth: 38, width: 38, padding: 0 } : {}),
+        ...(compact ? { minWidth: 44, width: 44, padding: 0 } : {}),
         ...(disabled ? { cursor: "default", opacity: 0.5 } : {}),
         ...style,
       }}
@@ -282,10 +282,10 @@ export function ColorPicker({
           onClick={() => onChange(color)}
           title={`${color[0]?.toUpperCase()}${color.slice(1)}`}
           style={{
-            minWidth: 32,
-            width: 32,
-            minHeight: 32,
-            height: 32,
+            minWidth: 44,
+            width: 44,
+            minHeight: 44,
+            height: 44,
             borderRadius: 999,
             borderColor:
               value === color

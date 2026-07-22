@@ -130,12 +130,19 @@ function WeatherTile(): React.JSX.Element {
               widths. No letter-space tightening on numerals: it crammed the
               digits into the degree unit; tabular-nums already keeps the
               width stable across minute ticks. */}
-          <div className="flex items-center gap-2 whitespace-nowrap">
+          <div
+            data-home-weather-reading=""
+            className="flex items-center gap-2 whitespace-nowrap"
+          >
             <Icon
+              data-home-weather-icon=""
               className={cn("h-8 w-8 shrink-0", WALLPAPER_TEXT.primary)}
               aria-hidden
             />
-            <div className="flex items-start text-5xl font-semibold leading-none tabular-nums">
+            <div
+              data-home-weather-temperature=""
+              className="flex items-start text-5xl font-semibold leading-none tabular-nums"
+            >
               <span>{weather.temp}</span>
               <span
                 className={cn(
@@ -189,7 +196,10 @@ const HomeClock = memo(function HomeClock(): React.JSX.Element {
   return (
     <div className={cn("flex flex-col", !timeReady && "invisible")}>
       <div className="flex items-baseline gap-1.5">
-        <span className="text-6xl font-semibold leading-[0.9] tabular-nums tracking-tighter">
+        <span
+          data-home-clock-time=""
+          className="text-6xl font-semibold leading-[0.9] tabular-nums tracking-tighter"
+        >
           {time}
         </span>
         {ampm ? (
@@ -204,6 +214,7 @@ const HomeClock = memo(function HomeClock(): React.JSX.Element {
         ) : null}
       </div>
       <div
+        data-home-clock-date=""
         className={cn(
           "mt-3 truncate text-base font-medium",
           WALLPAPER_TEXT.primary,
@@ -232,6 +243,7 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
   return (
     <div
       data-testid="default-home-widgets"
+      data-home-editorial-header=""
       className="grid grid-cols-4 items-start gap-x-4 gap-y-2"
     >
       {/* Time, the editorial header. Big, left-aligned, with a tight tracking

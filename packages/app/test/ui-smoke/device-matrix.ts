@@ -12,6 +12,23 @@ export const DASHBOARD_E2E_DEVICE_MATRIX = [
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
+    deviceScaleFactor: 1,
+  },
+  {
+    id: "lp3-portrait",
+    label: "Light Phone 3 Portrait",
+    viewport: { width: 360, height: 413 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
+  },
+  {
+    id: "lp3-landscape",
+    label: "Light Phone 3 Landscape",
+    viewport: { width: 413, height: 360 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
   },
   {
     id: "mobile-landscape",
@@ -19,6 +36,7 @@ export const DASHBOARD_E2E_DEVICE_MATRIX = [
     viewport: { width: 844, height: 390 },
     isMobile: true,
     hasTouch: true,
+    deviceScaleFactor: 1,
   },
   {
     id: "desktop-landscape",
@@ -26,6 +44,7 @@ export const DASHBOARD_E2E_DEVICE_MATRIX = [
     viewport: { width: 1440, height: 900 },
     isMobile: false,
     hasTouch: false,
+    deviceScaleFactor: 1,
   },
   {
     id: "ipad-portrait",
@@ -33,5 +52,6 @@ export const DASHBOARD_E2E_DEVICE_MATRIX = [
     viewport: { width: 820, height: 1180 },
     isMobile: true,
     hasTouch: true,
+    deviceScaleFactor: 1,
   },
 ] as const;

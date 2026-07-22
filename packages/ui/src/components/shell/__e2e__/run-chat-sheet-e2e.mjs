@@ -3753,7 +3753,7 @@ try {
   {
     const short = await ctrl();
     attachConsole(short, sink);
-    await short.setViewportSize({ width: 1080, height: 1240 });
+    await short.setViewportSize({ width: 360, height: 413 });
     await gotoFixture(short, `${url}?firstrun&tall`);
     await short.waitForSelector('[data-testid="chat-thread-scroll"]');
     await short.waitForTimeout(700);

@@ -511,89 +511,95 @@ describe("ContinuousChatOverlay", () => {
     );
   });
 
-  it("publishes side clearance for the compact short-landscape composer", () => {
-    const originalInnerWidth = Object.getOwnPropertyDescriptor(
-      window,
-      "innerWidth",
-    );
-    const originalInnerHeight = Object.getOwnPropertyDescriptor(
-      window,
-      "innerHeight",
-    );
-    const originalResizeObserver = globalThis.ResizeObserver;
-    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
-    class TestResizeObserver {
-      observe = vi.fn();
-      disconnect = vi.fn();
-    }
-
-    try {
-      Object.defineProperty(window, "innerWidth", {
-        configurable: true,
-        value: 800,
-      });
-      Object.defineProperty(window, "innerHeight", {
-        configurable: true,
-        value: 390,
-      });
-      vi.stubGlobal("ResizeObserver", TestResizeObserver);
-      rectSpy.mockReturnValue({
-        width: 360,
-        height: 72,
-        x: 0,
-        y: 0,
-        top: 0,
-        right: 208,
-        bottom: 72,
-        left: 0,
-        toJSON: () => ({}),
-      } as DOMRect);
-      document.documentElement.style.removeProperty(
-        "--eliza-continuous-chat-side-clearance",
+  it.each([
+    { viewportWidth: 800, expectedClearance: "384px" },
+    { viewportWidth: 413, expectedClearance: "0px" },
+  ])(
+    "publishes usable side clearance at $viewportWidth px",
+    ({ viewportWidth, expectedClearance }) => {
+      const originalInnerWidth = Object.getOwnPropertyDescriptor(
+        window,
+        "innerWidth",
       );
-
-      render(
-        <ContinuousChatOverlay
-          controller={makeController()}
-          agentName="Playwright Smoke"
-        />,
+      const originalInnerHeight = Object.getOwnPropertyDescriptor(
+        window,
+        "innerHeight",
       );
-
-      expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Ask",
-      );
-
-      expect(
-        document.documentElement.style.getPropertyValue(
-          "--eliza-continuous-chat-side-clearance",
-        ),
-      ).toBe("384px");
-
-      fireEvent.focus(screen.getByLabelText("message"));
-
-      expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Ask Playwright Smoke",
-      );
-
-      expect(
-        document.documentElement.style.getPropertyValue(
-          "--eliza-continuous-chat-side-clearance",
-        ),
-      ).toBe("0px");
-    } finally {
-      rectSpy.mockRestore();
-      if (originalInnerWidth) {
-        Object.defineProperty(window, "innerWidth", originalInnerWidth);
+      const originalResizeObserver = globalThis.ResizeObserver;
+      const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+      class TestResizeObserver {
+        observe = vi.fn();
+        disconnect = vi.fn();
       }
-      if (originalInnerHeight) {
-        Object.defineProperty(window, "innerHeight", originalInnerHeight);
+
+      try {
+        Object.defineProperty(window, "innerWidth", {
+          configurable: true,
+          value: viewportWidth,
+        });
+        Object.defineProperty(window, "innerHeight", {
+          configurable: true,
+          value: 390,
+        });
+        vi.stubGlobal("ResizeObserver", TestResizeObserver);
+        rectSpy.mockReturnValue({
+          width: 360,
+          height: 72,
+          x: 0,
+          y: 0,
+          top: 0,
+          right: 208,
+          bottom: 72,
+          left: 0,
+          toJSON: () => ({}),
+        } as DOMRect);
+        document.documentElement.style.removeProperty(
+          "--eliza-continuous-chat-side-clearance",
+        );
+
+        render(
+          <ContinuousChatOverlay
+            controller={makeController()}
+            agentName="Playwright Smoke"
+          />,
+        );
+
+        expect(
+          screen.getByLabelText("message").getAttribute("placeholder"),
+        ).toBe("Ask");
+
+        expect(
+          document.documentElement.style.getPropertyValue(
+            "--eliza-continuous-chat-side-clearance",
+          ),
+        ).toBe(expectedClearance);
+
+        fireEvent.focus(screen.getByLabelText("message"));
+
+        expect(
+          screen.getByLabelText("message").getAttribute("placeholder"),
+        ).toBe("Ask Playwright Smoke");
+
+        expect(
+          document.documentElement.style.getPropertyValue(
+            "--eliza-continuous-chat-side-clearance",
+          ),
+        ).toBe("0px");
+      } finally {
+        rectSpy.mockRestore();
+        if (originalInnerWidth) {
+          Object.defineProperty(window, "innerWidth", originalInnerWidth);
+        }
+        if (originalInnerHeight) {
+          Object.defineProperty(window, "innerHeight", originalInnerHeight);
+        }
+        vi.stubGlobal("ResizeObserver", originalResizeObserver);
+        document.documentElement.style.removeProperty(
+          "--eliza-continuous-chat-side-clearance",
+        );
       }
-      vi.stubGlobal("ResizeObserver", originalResizeObserver);
-      document.documentElement.style.removeProperty(
-        "--eliza-continuous-chat-side-clearance",
-      );
-    }
-  });
+    },
+  );
 
   it("keeps the resting home clearance fixed while the chat sheet is dragged open", async () => {
     const originalResizeObserver = globalThis.ResizeObserver;

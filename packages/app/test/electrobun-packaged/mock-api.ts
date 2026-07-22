@@ -217,8 +217,17 @@ const firstRunOptions = {
   sharedStyleRules: "",
 };
 
-function applyCors(res: http.ServerResponse): void {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+function applyCors(res: http.ServerResponse, requestOrigin?: string): void {
+  // Packaged renderers and design review use distinct ephemeral loopback
+  // origins. Credentialed requests require the exact origin; the wildcard is
+  // retained only for direct mock-server calls that send no Origin header.
+  if (requestOrigin) {
+    res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Vary", "Origin");
+  } else if (!res.hasHeader("Access-Control-Allow-Origin")) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
@@ -538,6 +547,7 @@ export async function startMockApiServer(
     const url = new URL(req.url ?? "/", `http://${host}`);
     const { pathname, searchParams } = url;
     requests.push(`${method} ${pathname}`);
+    applyCors(res, req.headers.origin);
 
     if (method === "OPTIONS") {
       applyCors(res);

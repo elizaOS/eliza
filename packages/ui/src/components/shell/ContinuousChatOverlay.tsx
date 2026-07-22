@@ -296,6 +296,11 @@ const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // rotation look like the composer had broken. Keep the corner treatment, but
 // preserve the same useful width as a portrait-phone composer.
 const SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX = 360;
+// A side-by-side clearance is useful only when the hosted view keeps a
+// conventional phone-width column. Narrow landscapes instead let the resting
+// composer overlay the bottom corner; reserving its whole width would collapse
+// the view to a sliver on short, nearly-square displays.
+const MIN_SHORT_LANDSCAPE_CONTENT_WIDTH_PX = 320;
 // Ceiling (px) for the composer-footprint clearance the chat reserves in the
 // home/launcher layout. The panel can momentarily measure its OPEN/animating
 // height on the drag-down→collapse edge; publishing that as the reserved space
@@ -2813,9 +2818,14 @@ export function ContinuousChatOverlay({
     }
     const publish = () => {
       const width = panel.getBoundingClientRect().width;
+      const reservedWidth = Math.ceil(width + 24);
       root.style.setProperty(
         "--eliza-continuous-chat-side-clearance",
-        width > 0 ? `${Math.ceil(width + 24)}px` : "0px",
+        width > 0 &&
+          viewport.innerWidth - reservedWidth >=
+            MIN_SHORT_LANDSCAPE_CONTENT_WIDTH_PX
+          ? `${reservedWidth}px`
+          : "0px",
       );
     };
     publish();
@@ -2828,7 +2838,7 @@ export function ContinuousChatOverlay({
       ro.disconnect();
       reset();
     };
-  }, [compactLanding, getPanelElement]);
+  }, [compactLanding, getPanelElement, viewport.innerWidth]);
 
   // Top clearance + max height come from the pure, unit-tested layout solver.
   // It reserves the real measured notch inset (`safeAreaTop`) above the panel,

@@ -521,7 +521,7 @@ export function SimpleCalendarView() {
             aria-label="Calendar month"
             style={{
               ...GLASS_PANEL_STYLE,
-              padding: "14px clamp(9px, 1.6vw, 16px)",
+              padding: "14px clamp(4px, 1.6vw, 16px)",
             }}
           >
             <div
@@ -582,7 +582,7 @@ export function SimpleCalendarView() {
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                gap: 5,
+                gap: 3,
                 marginBottom: 5,
               }}
             >
@@ -604,7 +604,7 @@ export function SimpleCalendarView() {
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                gap: 5,
+                gap: 3,
               }}
             >
               {days.map((day) => (
