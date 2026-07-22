@@ -1959,6 +1959,54 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/simple-views/state", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          revision: 4,
+          selectedDate: "2026-07-22",
+          notes: [
+            {
+              id: "note-launch",
+              title: "Launch checklist",
+              body: "Cloud agent, phone, and deck are ready.",
+              color: "yellow",
+              createdAt: SMOKE_GENERATED_AT,
+              updatedAt: SMOKE_GENERATED_AT,
+            },
+            {
+              id: "note-follow-up",
+              title: "Follow up",
+              body: "Share the demo recording with the team.",
+              color: "green",
+              createdAt: SMOKE_GENERATED_AT,
+              updatedAt: SMOKE_GENERATED_AT,
+            },
+          ],
+          events: [
+            {
+              id: "event-demo",
+              title: "Light Phone demo",
+              date: "2026-07-22",
+              time: "15:00",
+              notes: "Show Cloud chat, Notes, and Calendar.",
+              color: "rose",
+              createdAt: SMOKE_GENERATED_AT,
+              updatedAt: SMOKE_GENERATED_AT,
+            },
+          ],
+        },
+      }),
+    });
+  });
+
   // The Transcripts view (client.listTranscripts) hits this on mount; the
   // keyless loopback stack answers 501 for unimplemented endpoints, which surface
   // as console errors in the stricter app-window smoke. Serve an empty list so
