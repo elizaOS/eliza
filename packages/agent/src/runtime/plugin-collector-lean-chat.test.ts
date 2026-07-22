@@ -60,6 +60,7 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     // Lean chat keeps the conversational essentials.
     expect(names.has("@elizaos/plugin-sql")).toBe(true);
     expect(names.has("@elizaos/plugin-app-control")).toBe(true);
+    expect(names.has("@elizaos/plugin-simple-views")).toBe(true);
     expect(names.has("@elizaos/plugin-commands")).toBe(true);
     expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
 
@@ -159,5 +160,6 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-shell")).toBe(true);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(true);
     expect(names.has("@elizaos/plugin-browser")).toBe(true);
+    expect(names.has("@elizaos/plugin-simple-views")).toBe(false);
   });
 });

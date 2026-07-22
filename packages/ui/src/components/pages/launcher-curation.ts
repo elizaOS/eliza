@@ -42,6 +42,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "settings",
   "wallet",
   "tasks",
+  "simple-calendar",
+  "notes",
   "automations",
   "my-apps",
   "browser",
@@ -247,6 +249,8 @@ function preferenceScore(entry: ViewEntry): number {
 export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set([
   "cloud-apps",
   "cloud",
+  "notes",
+  "simple-calendar",
 ]);
 
 export interface CurateLauncherOptions {

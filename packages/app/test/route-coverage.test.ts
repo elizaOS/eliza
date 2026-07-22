@@ -95,6 +95,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-scheduling/src/plugin.ts",
   "plugins/plugin-screenshare/src/index.ts",
+  "plugins/plugin-simple-views/src/plugin.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/plugin.ts",
   "plugins/plugin-training/src/setup-routes.ts",
@@ -103,6 +104,7 @@ const PLUGIN_VIEW_MANIFESTS = [
 const APP_SHELL_REGISTRATION_SOURCES = [
   "plugins/plugin-facewear/src/register.ts",
   "plugins/plugin-phone/src/register-companion-page.ts",
+  "plugins/plugin-simple-views/src/register.ts",
   "plugins/plugin-task-coordinator/src/register.ts",
   "plugins/plugin-wallet-ui/src/register-routes.ts",
 ] as const;
@@ -153,6 +155,7 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-personal-assistant": null,
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-polymarket": "plugins/plugin-polymarket/src/plugin.ts",
+  "@elizaos/plugin-simple-views": "plugins/plugin-simple-views/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
   "@elizaos/plugin-task-coordinator/register":
@@ -184,6 +187,20 @@ const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
       modalities: SHIPPED_MODALITIES,
       path: "/screenshare",
       componentExport: "ScreenshareView",
+    },
+    {
+      manifestPath: "plugins/plugin-simple-views/src/plugin.ts",
+      id: "notes",
+      modalities: SHIPPED_MODALITIES,
+      path: "/notes",
+      componentExport: "NotesView",
+    },
+    {
+      manifestPath: "plugins/plugin-simple-views/src/plugin.ts",
+      id: "simple-calendar",
+      modalities: SHIPPED_MODALITIES,
+      path: "/simple-calendar",
+      componentExport: "SimpleCalendarView",
     },
     {
       manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
