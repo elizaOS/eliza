@@ -51,9 +51,14 @@ describe("#13111 strict-safe record/map tool args", () => {
       },
     ]) as Record<string, { inputSchema: { jsonSchema: unknown }; strict?: boolean }>;
 
-    expect(toolSet.TASKS?.strict).toBe(false);
-    expect(toolSet.TASKS?.inputSchema.jsonSchema).toEqual(schema);
-    expect((toolSet.TASKS?.inputSchema.jsonSchema as { required?: string[] }).required).toEqual([
+    const tasksTool = toolSet.TASKS;
+    if (!tasksTool) {
+      throw new Error("normalizeNativeTools must return the TASKS tool");
+    }
+
+    expect(tasksTool.strict).toBe(false);
+    expect(tasksTool.inputSchema.jsonSchema).toEqual(schema);
+    expect((tasksTool.inputSchema.jsonSchema as { required?: string[] }).required).toEqual([
       "action",
     ]);
   });
