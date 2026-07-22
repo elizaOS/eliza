@@ -1556,6 +1556,10 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       expandShade();
       const swipe = screen.getByTestId("notification-row-swipe");
       const peek = screen.getByTestId("notification-stack-peek");
+      const previewContent = peek.querySelector(
+        "[data-notification-stack-preview-content]",
+      ) as HTMLElement;
+      expect(previewContent.style.opacity).toBe("0");
       expect(
         peek
           .querySelector("[data-notification-stack-preview-title]")
@@ -1577,6 +1581,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       step("pointerMove", 80);
       step("pointerMove", 150);
       expect(swipe.style.transform).toContain("translateX(130px)");
+      expect(previewContent.style.opacity).toBe("1");
       expect(peek.style.transform).toContain("translateY(7px)");
       step("pointerUp", 150);
       expect(swipe.style.transform).toContain("translateX(120%)");

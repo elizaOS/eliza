@@ -274,6 +274,15 @@ for (const [name, width, height] of [
   const underlyingPeek = page
     .locator('[data-testid="notification-stack-peek"]')
     .first();
+  const underlyingPreview = underlyingPeek.locator(
+    '[data-notification-stack-preview-content]',
+  );
+  check(
+    "folded stack content stays hidden until its front card moves",
+    (await underlyingPreview.evaluate(
+      (preview) => getComputedStyle(preview).opacity,
+    )) === "0",
+  );
   await page.mouse.move(
     restedSwipeBox.x + 40,
     restedSwipeBox.y + restedSwipeBox.height / 2,
@@ -296,7 +305,10 @@ for (const [name, width, height] of [
   check(
     "partial stack swipe reveals the next notification face",
     underCard.title === "PR #42 approved" &&
-      underCard.renderedTitle.includes("PR #42 approved"),
+      underCard.renderedTitle.includes("PR #42 approved") &&
+      (await underlyingPreview.evaluate(
+        (preview) => getComputedStyle(preview).opacity,
+      )) === "1",
     JSON.stringify(underCard),
   );
   await page.screenshot({

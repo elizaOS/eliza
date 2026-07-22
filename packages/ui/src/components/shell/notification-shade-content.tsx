@@ -225,9 +225,11 @@ function NotificationSourceIcon({
 }
 
 function NotificationStackPreviewContent({
+  exposed,
   notification,
   stackCount,
 }: {
+  exposed: boolean;
   notification: AgentNotification;
   stackCount?: number;
 }): JSX.Element {
@@ -235,7 +237,8 @@ function NotificationStackPreviewContent({
     <span
       aria-hidden
       data-notification-stack-preview-content=""
-      className="pointer-events-none flex min-h-touch min-w-0 items-center gap-3 px-3 py-2 text-left"
+      style={{ opacity: exposed ? 1 : 0 }}
+      className="pointer-events-none flex min-h-touch min-w-0 items-center gap-3 px-3 py-2 text-left transition-opacity duration-150 ease-out motion-reduce:transition-none"
     >
       <NotificationSourceIcon
         source={notification.source}
@@ -626,6 +629,7 @@ export const NotificationRow = memo(function NotificationRow({
               >
                 {stackPeeks.previewRows?.[index] ? (
                   <NotificationStackPreviewContent
+                    exposed={dragging || promotingStack}
                     notification={stackPeeks.previewRows[index]}
                     stackCount={
                       index === 0 && stackPeeks.totalCount > 2
