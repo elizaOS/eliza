@@ -1,14 +1,9 @@
-"""Client surface for running benchmarks through an OpenClaw-style harness.
+"""Runs benchmark turns through an isolated OpenClaw embedded-agent loop.
 
-The real OpenClaw project is installed from source by
-``benchmarks.lib.agent_install``. For benchmark parity this client exposes the
-same small surface as ``ElizaClient`` / ``HermesClient``: ``reset`` plus
-``send_message`` returning a normalized ``MessageResponse``.
-
-Every ``send_message`` spawns ``openclaw agent --local --json --message <text>``
-and maps the JSON output into a :class:`MessageResponse`. The provider /
-model / api-key fields configure the env vars passed to the spawned CLI so
-OpenClaw's own provider routing picks the right backend.
+Each turn receives a generated key-free provider config and native plugin that
+exposes only its benchmark tools. Actual plugin executions are captured and
+normalized into the shared ``MessageResponse`` surface; direct provider calls
+remain test-only and are explicitly non-publishable.
 """
 
 from __future__ import annotations
@@ -34,6 +29,16 @@ from ._retry import (
     is_retryable_status,
     parse_retry_after,
 )
+from .native_runtime import (
+    AGENT_ID,
+    NativeRuntimePaths,
+    PROVIDER_ID,
+    benchmark_runtime_env,
+    inspect_native_session,
+    normalize_benchmark_tools,
+    prepare_native_runtime,
+    read_captured_tool_executions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +57,27 @@ DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_TIMEOUT_S = 600.0
 _ALLOWED_TOOL_CHOICES = {"auto", "required", "none"}
+_ALLOWED_THINKING_LEVELS = {
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "adaptive",
+    "xhigh",
+    "max",
+}
+_REASONING_EFFORT_TO_THINKING = {
+    "none": "off",
+    "off": "off",
+    "minimal": "minimal",
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "adaptive": "adaptive",
+    "xhigh": "xhigh",
+    "max": "max",
+}
 
 
 _JSON_BLOB_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -68,6 +94,7 @@ class MessageResponse:
 
 
 _CONTROL_CONTEXT_KEYS = {
+    "benchmark_messages",
     "messages",
     "system_prompt",
     "system_hint",
@@ -81,6 +108,7 @@ _CONTROL_CONTEXT_KEYS = {
     "agent_id",
     "tools",
     "tool_choice",
+    "benchmark_workspace_path",
 }
 
 
@@ -88,7 +116,11 @@ def context_to_prompt(context: Mapping[str, object] | None) -> str:
     if not context:
         return ""
     parts: list[str] = []
-    hint_keys = ("instructions",) if isinstance(context.get("system_prompt"), str) else ("system_hint", "instructions")
+    hint_keys = (
+        ("instructions",)
+        if isinstance(context.get("system_prompt"), str)
+        else ("system_hint", "instructions")
+    )
     for key in hint_keys:
         value = context.get(key)
         if isinstance(value, str) and value.strip():
@@ -111,7 +143,9 @@ def context_to_prompt(context: Mapping[str, object] | None) -> str:
         value = context.get(key)
         if value in (None, "", [], {}):
             continue
-        parts.append(f"{key}:\n{json.dumps(_jsonable(value), ensure_ascii=True, indent=2)}")
+        parts.append(
+            f"{key}:\n{json.dumps(_jsonable(value), ensure_ascii=True, indent=2)}"
+        )
     return "\n\n".join(parts)
 
 
@@ -129,7 +163,9 @@ def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
     context_prompt = context_to_prompt(context)
     if context_prompt:
         parts.append(f"Benchmark context:\n{context_prompt}")
-    messages = context.get("messages")
+    messages = context.get("benchmark_messages")
+    if not isinstance(messages, Sequence) or isinstance(messages, (str, bytes)):
+        messages = context.get("messages")
     if isinstance(messages, Sequence) and not isinstance(messages, (str, bytes)):
         for item in messages:
             if not isinstance(item, Mapping):
@@ -151,6 +187,13 @@ def _jsonable(value: object) -> object:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_jsonable(v) for v in value]
     return str(value)
+
+
+def _canonical_sha256(value: object) -> str:
+    canonical = json.dumps(
+        _jsonable(value), ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _coerce_optional_float(value: object, *, fallback: float | None) -> float | None:
@@ -245,7 +288,8 @@ def _resolve_telemetry_path() -> str | None:
         import tempfile
 
         _TELEMETRY_FALLBACK_PATH = str(
-            Path(tempfile.mkdtemp(prefix="openclaw-adapter-telemetry-")) / "telemetry.jsonl"
+            Path(tempfile.mkdtemp(prefix="openclaw-adapter-telemetry-"))
+            / "telemetry.jsonl"
         )
         logger.info(
             "BENCHMARK_RUN_DIR not set; writing per-turn telemetry to %s",
@@ -262,7 +306,9 @@ def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
                 return value
         return None
 
-    def pick_from_details(detail_keys: Sequence[str], field_keys: Sequence[str]) -> int | None:
+    def pick_from_details(
+        detail_keys: Sequence[str], field_keys: Sequence[str]
+    ) -> int | None:
         for detail_key in detail_keys:
             detail = usage.get(detail_key)
             if not isinstance(detail, Mapping):
@@ -322,6 +368,7 @@ def _write_telemetry(
     benchmark: str | None,
     response: MessageResponse | None = None,
     error: str | None = None,
+    prompt_text: str | None = None,
 ) -> None:
     telemetry_path = _resolve_telemetry_path()
     if not telemetry_path:
@@ -333,19 +380,32 @@ def _write_telemetry(
             usage = dict(usage_raw)
         else:
             meta_raw = response.params.get("_meta")
-            if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
+            if isinstance(meta_raw, Mapping) and isinstance(
+                meta_raw.get("usage"), Mapping
+            ):
                 usage = dict(meta_raw["usage"])  # type: ignore[index]
-    prompt = _prompt_text(text, context)
+    prompt = prompt_text if prompt_text is not None else _prompt_text(text, context)
     global _TELEMETRY_TURN_COUNTER
     turn_index = _TELEMETRY_TURN_COUNTER
     _TELEMETRY_TURN_COUNTER += 1
-    tokens = _extract_usage_tokens(usage) if usage else {
-        "prompt_tokens": None,
-        "completion_tokens": None,
-        "total_tokens": None,
-        "cache_read_input_tokens": None,
-        "cache_creation_input_tokens": None,
-    }
+    tokens = (
+        _extract_usage_tokens(usage)
+        if usage
+        else {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+            "cache_read_input_tokens": None,
+            "cache_creation_input_tokens": None,
+        }
+    )
+    runtime_provenance: dict[str, object] = {}
+    if response is not None:
+        meta = response.params.get("_meta")
+        if isinstance(meta, Mapping):
+            adapter_meta = meta.get("openclaw_adapter")
+            if isinstance(adapter_meta, Mapping):
+                runtime_provenance = dict(adapter_meta)
     record: dict[str, Any] = {
         "harness": harness,
         "provider": provider,
@@ -364,6 +424,7 @@ def _write_telemetry(
         "cache_creation_input_tokens": tokens["cache_creation_input_tokens"],
         "actions": list(response.actions) if response is not None else [],
         "params": _jsonable(response.params) if response is not None else {},
+        "runtime_provenance": _jsonable(runtime_provenance),
         "response_text": response.text if response is not None else "",
         "error_if_any": error,
     }
@@ -377,11 +438,12 @@ def _write_telemetry(
 
 
 class OpenClawClient:
-    """Spawn ``openclaw agent --local --json`` per turn.
+    """Run each benchmark turn through OpenClaw's embedded agent runtime.
 
-    The client is stateless. ``reset`` simply records the ``task_id`` and
-    ``benchmark`` strings for log correlation; per-turn state belongs to the
-    caller (e.g. via ``context['session_id']``).
+    Every turn gets an isolated OpenClaw state directory and a generated
+    native plugin containing only that turn's benchmark tools. This prevents
+    developer configuration, memories, and unrelated tools from affecting a
+    score while retaining OpenClaw's real planning and tool-execution loop.
     """
 
     def __init__(
@@ -402,16 +464,48 @@ class OpenClawClient:
         max_tokens: int | None = None,
         direct_openai_compatible: bool = False,
         allow_text_tool_calls: bool = False,
+        native_state_root: Path | None = None,
     ) -> None:
         del allow_text_tool_calls
+        campaign_provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip()
+        if provider == DEFAULT_PROVIDER and campaign_provider:
+            provider = campaign_provider
+        campaign_model = os.environ.get("BENCHMARK_MODEL_NAME", "").strip()
+        if model == DEFAULT_MODEL and campaign_model:
+            model = campaign_model
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
-        self.binary_path = Path(binary_path) if binary_path else _resolve_default_binary()
+        self.binary_path = (
+            Path(binary_path) if binary_path else _resolve_default_binary()
+        )
         self.provider = provider
         self.model = model
+        if provider == "claude-subscription" and api_key_env == DEFAULT_API_KEY_ENV:
+            api_key_env = "CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN"
+        if provider == "claude-subscription" and base_url_env == DEFAULT_BASE_URL_ENV:
+            base_url_env = "CLAUDE_SUBSCRIPTION_GATEWAY_URL"
         self.api_key_env = api_key_env
-        self.base_url = base_url.rstrip("/") if isinstance(base_url, str) and base_url else None
+        self.base_url = (
+            base_url.rstrip("/") if isinstance(base_url, str) and base_url else None
+        )
         self.base_url_env = base_url_env
-        self.api_key = api_key if api_key is not None else _default_api_key(provider, api_key_env)
+        default_api_key = _default_api_key(provider, api_key_env)
+        if (
+            provider == "claude-subscription"
+            and api_key is not None
+            and default_api_key
+            and api_key != default_api_key
+        ):
+            raise ValueError(
+                "Explicit OpenClaw API key does not match the active "
+                "Claude-subscription gateway bearer"
+            )
+        self.api_key = (
+            default_api_key
+            if provider == "claude-subscription" and default_api_key
+            else api_key
+            if api_key is not None
+            else default_api_key
+        )
         self.thinking_level = thinking_level
         env_timeout_s = _env_optional_float("OPENCLAW_TIMEOUT_S")
         self.timeout_s = float(
@@ -427,7 +521,9 @@ class OpenClawClient:
         self.reasoning_effort = (
             reasoning_effort
             if reasoning_effort is not None
-            else _env_optional_str("BENCHMARK_REASONING_EFFORT", "CEREBRAS_REASONING_EFFORT")
+            else _env_optional_str(
+                "BENCHMARK_REASONING_EFFORT", "CEREBRAS_REASONING_EFFORT"
+            )
         )
         self.max_tokens = (
             max_tokens
@@ -435,8 +531,22 @@ class OpenClawClient:
             else _env_optional_int("BENCHMARK_MAX_TOKENS", "MAX_TOKENS")
         )
         self.direct_openai_compatible = bool(direct_openai_compatible)
+        configured_state_root = os.environ.get(
+            "OPENCLAW_BENCHMARK_STATE_DIR", ""
+        ).strip()
+        self.native_state_root = (
+            Path(native_state_root)
+            if native_state_root is not None
+            else Path(configured_state_root).expanduser()
+            if configured_state_root
+            else None
+        )
         self._task_id: str | None = None
         self._benchmark: str | None = None
+        self._turn_index = 0
+        self._active_native_runtime: NativeRuntimePaths | None = None
+        self._native_runtime_version: str | None = None
+        self._native_runtime_build: str | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -445,10 +555,8 @@ class OpenClawClient:
     def health(self) -> dict[str, object]:
         """Probe the OpenClaw binary by running ``<binary> --version``.
 
-        Single canonical path — there is no "skip the subprocess" mode. If the
-        binary exists, we must invoke it to fail fast on a broken install. The
-        old conditional that returned ``ready`` based purely on file existence
-        masked install corruption until the first benchmark turn.
+        Invoking the executable validates both availability and a parseable
+        runtime version/build identity before a benchmark turn consumes quota.
         """
         direct_requested = (
             self.direct_openai_compatible
@@ -458,6 +566,7 @@ class OpenClawClient:
             return {
                 "status": "ready",
                 "transport": "direct_openai_compatible",
+                "publishable_native": False,
                 "model": self.model,
                 "provider": self.provider,
             }
@@ -469,6 +578,7 @@ class OpenClawClient:
         try:
             result = subprocess.run(
                 [str(self.binary_path), "--version"],
+                env=self._base_child_env(),
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -481,11 +591,28 @@ class OpenClawClient:
             return {"status": "error", "error": tail or f"exit {result.returncode}"}
 
         version, build = _parse_version_line(result.stdout or "")
-        info: dict[str, object] = {"status": "ready"}
-        if version:
-            info["version"] = version
-        if build:
-            info["build"] = build
+        if (
+            version is None
+            or _VALID_VERSION_RE.fullmatch(version) is None
+            or build is None
+            or _VALID_BUILD_RE.fullmatch(build) is None
+        ):
+            self._native_runtime_version = None
+            self._native_runtime_build = None
+            return {
+                "status": "error",
+                "error": "OpenClaw --version omitted a parseable version or build",
+            }
+        info: dict[str, object] = {
+            "status": "ready",
+            "transport": "openclaw_embedded_runtime",
+            "agent_runtime": "openclaw",
+            "publishable_native": True,
+        }
+        info["version"] = version
+        info["build"] = build
+        self._native_runtime_version = version
+        self._native_runtime_build = build
         return info
 
     def is_ready(self) -> bool:
@@ -503,9 +630,7 @@ class OpenClawClient:
                     return
                 last_err = probe.get("error") or probe
             time.sleep(poll)
-        raise TimeoutError(
-            f"OpenClaw harness not ready after {timeout}s: {last_err}"
-        )
+        raise TimeoutError(f"OpenClaw harness not ready after {timeout}s: {last_err}")
 
     def reset(
         self,
@@ -520,6 +645,8 @@ class OpenClawClient:
         del kwargs
         self._task_id = task_id
         self._benchmark = benchmark
+        self._turn_index = 0
+        self._active_native_runtime = None
         return {"task_id": task_id, "benchmark": benchmark, "ready": True}
 
     def send_message(
@@ -527,13 +654,11 @@ class OpenClawClient:
         text: str,
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
-        """Run one OpenClaw turn and parse it.
+        """Run one native OpenClaw turn and return its normalized result.
 
-        Normal benchmark runs use the OpenClaw CLI. Tests and lightweight
-        smoke paths can set ``direct_openai_compatible=True`` (or
-        ``OPENCLAW_DIRECT_OPENAI_COMPAT=1``) to exercise the direct
-        OpenAI-compatible retry/parser path without requiring the Node binary.
-        Setting ``OPENCLAW_USE_CLI=1`` always forces the CLI path.
+        The direct completion transport remains only for parser/retry tests and
+        is always marked non-publishable. Benchmark factories use this native
+        path so an OpenClaw result can never silently bypass OpenClaw itself.
         """
         direct_requested = (
             self.direct_openai_compatible
@@ -548,9 +673,78 @@ class OpenClawClient:
         text: str,
         context: Mapping[str, object] | None,
     ) -> MessageResponse:
-        """Spawn one ``openclaw agent --local --json`` turn and parse it."""
+        """Spawn one isolated embedded OpenClaw turn and parse it."""
+        ctx = context or {}
+        requested_tool_choice = _coerce_optional_str(
+            ctx.get("tool_choice"), fallback="auto"
+        )
+        if requested_tool_choice not in _ALLOWED_TOOL_CHOICES:
+            raise ValueError(
+                f"unsupported OpenClaw tool_choice: {requested_tool_choice!r}"
+            )
+        tools = normalize_benchmark_tools(ctx.get("tools"))
+        if requested_tool_choice == "required" and not tools:
+            raise ValueError("OpenClaw tool_choice='required' needs at least one tool")
+        runtime_tools = () if requested_tool_choice == "none" else tools
+        max_tokens = _coerce_optional_int(
+            ctx.get("max_tokens"), fallback=self.max_tokens
+        )
+        if max_tokens is not None and max_tokens <= 0:
+            raise ValueError("OpenClaw max_tokens must be positive")
+        temperature = _coerce_optional_float(
+            ctx.get("temperature"), fallback=self.temperature
+        )
+        reasoning_effort = _coerce_optional_str(
+            ctx.get("reasoning_effort"), fallback=self.reasoning_effort
+        )
+        thinking_level = _thinking_level_for_request(
+            reasoning_effort=reasoning_effort,
+            configured_thinking_level=self.thinking_level,
+        )
+        requested_system_prompt = _requested_native_system_prompt(text, ctx)
+        native_system_prompt = _native_system_prompt(text, ctx)
+        native_message = _cli_prompt_text(text, context)
+        telemetry_prompt = _native_prompt_text(native_system_prompt, native_message)
+        benchmark_workspace = _benchmark_workspace_path(ctx)
+        benchmark_workspace_git_sha = _workspace_git_sha(benchmark_workspace)
+        base_url = self.base_url or os.environ.get(self.base_url_env, "").strip()
+        if not base_url:
+            raise RuntimeError(
+                "OpenClaw native benchmark runs require the loopback completion gateway URL"
+            )
+        gateway_token = self.api_key or os.environ.get(self.api_key_env, "").strip()
+        if not gateway_token:
+            gateway_token = os.environ.get(
+                "CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN", ""
+            ).strip()
+        state_dir = self._turn_state_dir()
+        runtime = prepare_native_runtime(
+            tools=runtime_tools,
+            model=self.model,
+            base_url=base_url,
+            timeout_s=self.timeout_s,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            thinking_level=thinking_level,
+            system_prompt=native_system_prompt,
+            state_dir=state_dir,
+        )
+        self._active_native_runtime = runtime
         argv = self.build_argv(text, context)
-        env = self.build_env()
+        env = benchmark_runtime_env(
+            paths=runtime,
+            gateway_token=gateway_token,
+            parent=self._base_child_env(),
+        )
+        # OpenClaw otherwise resolves trajectory gitSha from the isolated
+        # workspace's enclosing repository, which identifies elizaOS rather
+        # than the OpenClaw executable. CLI health is the independent native
+        # runtime identity boundary, so give that build precedence explicitly.
+        env.pop("GIT_SHA", None)
+        if self._native_runtime_build is not None:
+            env["GIT_COMMIT"] = self._native_runtime_build
+        else:
+            env.pop("GIT_COMMIT", None)
         started = time.monotonic()
         try:
             result = subprocess.run(
@@ -572,6 +766,7 @@ class OpenClawClient:
                 task_id=self._task_id,
                 benchmark=self._benchmark,
                 error=f"TimeoutExpired: {exc}",
+                prompt_text=telemetry_prompt,
             )
             raise RuntimeError(
                 f"openclaw CLI timed out after {self.timeout_s}s\n"
@@ -591,6 +786,7 @@ class OpenClawClient:
                 task_id=self._task_id,
                 benchmark=self._benchmark,
                 error=f"openclaw CLI failed rc={result.returncode}",
+                prompt_text=telemetry_prompt,
             )
             raise RuntimeError(
                 f"openclaw CLI failed rc={result.returncode}\n"
@@ -600,13 +796,196 @@ class OpenClawClient:
             )
 
         payload = _extract_json_blob(result.stdout or "", result.stderr or "")
+        try:
+            session_evidence = inspect_native_session(
+                runtime,
+                expected_thinking_level=thinking_level,
+                expected_runtime_version=self._native_runtime_version,
+                expected_runtime_git_sha=self._native_runtime_build,
+            )
+        except RuntimeError as exc:
+            _write_telemetry(
+                harness="openclaw",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"{type(exc).__name__}: {exc}",
+                prompt_text=telemetry_prompt,
+            )
+            # error-policy:J2 name the adapter evidence boundary while keeping
+            # the native transcript validation failure as the cause.
+            raise RuntimeError(
+                f"OpenClaw native transcript validation failed: {exc}"
+            ) from exc
         response = _response_from_payload(payload)
+        payload_usage = response.params.get("usage")
+        response.params.pop("usage", None)
+        response_meta = response.params.get("_meta")
+        if isinstance(response_meta, dict):
+            response_meta.pop("usage", None)
+        if session_evidence.usage is not None:
+            response.params["usage"] = dict(session_evidence.usage)
+            if not isinstance(response_meta, dict):
+                response_meta = {}
+                response.params["_meta"] = response_meta
+            response_meta["usage"] = dict(session_evidence.usage)
+        captured_executions = read_captured_tool_executions(runtime.capture_path)
+        captured_calls = [
+            {
+                "id": execution["id"],
+                "name": execution["name"],
+                "arguments": execution["arguments"],
+            }
+            for execution in captured_executions
+        ]
+        if captured_calls:
+            response.actions = [str(call["name"]) for call in captured_calls]
+            response.params["tool_calls"] = captured_calls
+            response.params["lifecycle_results"] = [
+                {
+                    "name": execution["name"],
+                    "arguments": execution["arguments"],
+                    "result": execution["result"],
+                }
+                for execution in captured_executions
+                if execution["result"].get("effect") == "not_executed"
+            ]
+            for call in captured_calls:
+                response.params[str(call["name"])] = call["arguments"]
+        if runtime_tools and requested_tool_choice == "required" and not captured_calls:
+            raise RuntimeError(
+                "OpenClaw completed a required-tool turn without executing a benchmark tool"
+            )
+        native_identity_attested = (
+            self._native_runtime_version is not None
+            and self._native_runtime_build is not None
+            and session_evidence.trajectory_runtime_version
+            == self._native_runtime_version
+            and session_evidence.trajectory_runtime_git_sha
+            == self._native_runtime_build
+        )
+        native_thinking_attested = (
+            session_evidence.effective_thinking_level == thinking_level
+            and session_evidence.trajectory_thinking_level == thinking_level
+        )
+        publishable_native = (
+            session_evidence.status == "succeeded"
+            and session_evidence.trajectory_status == "succeeded"
+            and session_evidence.usage is not None
+            and native_identity_attested
+            and native_thinking_attested
+        )
         _annotate_response(
             response,
-            transport="openclaw_cli",
-            path_label="openclaw-cli-one-shot",
+            transport="openclaw_embedded_runtime",
+            path_label="openclaw-native-plugin-loop",
             preserves_full_messages=False,
-            passes_benchmark_tools=False,
+            passes_benchmark_tools=bool(runtime_tools),
+            publishable_native=publishable_native,
+            extra={
+                "agent_runtime": "openclaw",
+                "native_runtime_class": "openclaw.agent.embedded",
+                "native_runtime_api": "openclaw agent --local --json",
+                "tool_bridge": "native_plugin",
+                "canonicalizes_full_history": True,
+                "config_sha256": runtime.config_sha256,
+                "tool_names": list(runtime.tool_names),
+                "requested_max_tokens": max_tokens,
+                "requested_temperature": temperature,
+                "reasoning_effort_requested": reasoning_effort,
+                "thinking_level_requested": thinking_level,
+                "thinking_level_effective": (session_evidence.effective_thinking_level),
+                "thinking_level_trajectory": (
+                    session_evidence.trajectory_thinking_level
+                ),
+                "thinking_level_attested": native_thinking_attested,
+                "reasoning_visibility_effective": (
+                    session_evidence.trajectory_reasoning_level
+                ),
+                "requested_tool_choice": requested_tool_choice,
+                "tool_choice_native_policy": (
+                    "native_default_auto"
+                    if requested_tool_choice == "auto"
+                    else "tools_denied"
+                    if requested_tool_choice == "none"
+                    else "required_postcondition"
+                ),
+                "benchmark_messages_sha256": _canonical_sha256(
+                    _messages_from_context(text, ctx)
+                ),
+                "tool_schema_sha256": _canonical_sha256(ctx.get("tools") or []),
+                "native_system_prompt_surface": (
+                    "workspace/AGENTS.md"
+                    if runtime.system_prompt_sha256 is not None
+                    else "none"
+                ),
+                "native_system_prompt_sha256": runtime.system_prompt_sha256,
+                "native_prompt_sha256": hashlib.sha256(
+                    telemetry_prompt.encode("utf-8")
+                ).hexdigest(),
+                "native_requested_system_prompt_sha256": (
+                    hashlib.sha256(requested_system_prompt.encode("utf-8")).hexdigest()
+                    if requested_system_prompt is not None
+                    else None
+                ),
+                "native_system_prompt_matches_requested": (
+                    runtime.system_prompt_sha256
+                    == (
+                        hashlib.sha256(
+                            requested_system_prompt.encode("utf-8")
+                        ).hexdigest()
+                        if requested_system_prompt is not None
+                        else None
+                    )
+                ),
+                "native_system_prompt_in_cli_message": False,
+                "benchmark_workspace_path": (
+                    str(benchmark_workspace)
+                    if benchmark_workspace is not None
+                    else None
+                ),
+                "benchmark_workspace_git_sha": benchmark_workspace_git_sha,
+                "runtime_workspace_path": str(runtime.workspace_dir),
+                "runtime_workspace_isolated": (
+                    benchmark_workspace is not None
+                    and runtime.workspace_dir.resolve() != benchmark_workspace
+                ),
+                "capture_stop_after_scored_action": False,
+                "native_session_evidence": session_evidence.status,
+                "native_session_sha256": session_evidence.session_sha256,
+                "native_session_terminal_stop_reason": (
+                    session_evidence.terminal_stop_reason
+                ),
+                "native_session_assistant_model_call_count": (
+                    session_evidence.assistant_model_call_count
+                ),
+                "native_usage_scope": "full_native_turn_aggregate",
+                "native_usage_sha256": (
+                    _canonical_sha256(session_evidence.usage)
+                    if session_evidence.usage is not None
+                    else None
+                ),
+                "native_payload_last_call_usage_sha256": (
+                    _canonical_sha256(payload_usage)
+                    if isinstance(payload_usage, Mapping)
+                    else None
+                ),
+                "native_trajectory_evidence": session_evidence.trajectory_status,
+                "native_trajectory_sha256": session_evidence.trajectory_sha256,
+                "native_cli_health_version": self._native_runtime_version,
+                "native_cli_health_build": self._native_runtime_build,
+                "native_trajectory_runtime_version": (
+                    session_evidence.trajectory_runtime_version
+                ),
+                "native_trajectory_runtime_git_sha": (
+                    session_evidence.trajectory_runtime_git_sha
+                ),
+                "native_runtime_identity_attested": native_identity_attested,
+            },
         )
         _write_telemetry(
             harness="openclaw",
@@ -618,8 +997,20 @@ class OpenClawClient:
             task_id=self._task_id,
             benchmark=self._benchmark,
             response=response,
+            prompt_text=telemetry_prompt,
         )
         return response
+
+    def _turn_state_dir(self) -> Path | None:
+        turn_index = self._turn_index
+        self._turn_index += 1
+        if self.native_state_root is None:
+            return None
+        task = re.sub(r"[^A-Za-z0-9_-]", "-", self._task_id or "turn").strip("-")
+        benchmark = re.sub(
+            r"[^A-Za-z0-9_-]", "-", self._benchmark or "benchmark"
+        ).strip("-")
+        return self.native_state_root / benchmark / task / f"turn-{turn_index:04d}"
 
     def _send_openai_compatible(
         self,
@@ -636,7 +1027,8 @@ class OpenClawClient:
             payload = _post_with_retry(
                 url=f"{self.base_url or DEFAULT_BASE_URL}/chat/completions",
                 body=self.build_openai_compatible_body(text, context),
-                api_key=self.api_key or _default_api_key(self.provider, self.api_key_env),
+                api_key=self.api_key
+                or _default_api_key(self.provider, self.api_key_env),
                 timeout_s=self.timeout_s,
             )
             response = _response_from_openai_completion(payload)
@@ -648,6 +1040,7 @@ class OpenClawClient:
                 passes_benchmark_tools=bool(
                     context and _openai_compatible_tools(context.get("tools"))
                 ),
+                publishable_native=False,
             )
         except Exception as exc:
             _write_telemetry(
@@ -685,10 +1078,15 @@ class OpenClawClient:
         context: Mapping[str, object] | None,
     ) -> list[str]:
         """The exact argv used by :meth:`send_message`."""
-        model_id = self.model
-        if self.provider and "/" not in model_id:
-            model_id = f"{self.provider}/{model_id}"
+        model_id = f"{PROVIDER_ID}/{self.model.rsplit('/', 1)[-1]}"
         message_text = _cli_prompt_text(text, context)
+        reasoning_effort = _coerce_optional_str(
+            (context or {}).get("reasoning_effort"), fallback=self.reasoning_effort
+        )
+        thinking_level = _thinking_level_for_request(
+            reasoning_effort=reasoning_effort,
+            configured_thinking_level=self.thinking_level,
+        )
         argv: list[str] = [
             str(self.binary_path),
             "agent",
@@ -697,14 +1095,14 @@ class OpenClawClient:
             "--model",
             model_id,
             "--thinking",
-            self.thinking_level,
+            thinking_level,
             "--timeout",
             str(int(self.timeout_s)),
             "--message",
             message_text,
         ]
         session_id: str | None = None
-        agent_id: str | None = None
+        agent_id: str | None = AGENT_ID
         if context:
             ctx_session = context.get("session_id")
             if isinstance(ctx_session, str) and ctx_session:
@@ -712,15 +1110,6 @@ class OpenClawClient:
             ctx_agent = context.get("agent_id")
             if isinstance(ctx_agent, str) and ctx_agent:
                 agent_id = ctx_agent
-        # ``openclaw agent --local`` rejects calls without a session selector
-        # ("Error: Pass --to <E.164>, --session-id, or --agent ..."). When
-        # neither was supplied, synthesize a benchmark-scoped session id from
-        # the recorded (benchmark, task_id) pair so each turn is reproducible
-        # but never collides with a real-user session. Tests can still pin a
-        # deterministic value via context["session_id"].
-        if session_id is None and agent_id is None:
-            seed = f"{self._benchmark or 'bench'}:{self._task_id or 'turn'}"
-            session_id = f"bench-{hashlib.sha1(seed.encode('utf-8')).hexdigest()[:12]}"
         if session_id is not None:
             argv.extend(["--session-id", session_id])
         if agent_id is not None:
@@ -735,7 +1124,7 @@ class OpenClawClient:
         names so OpenClaw's provider routing picks them up regardless of
         which key the operator set.
         """
-        env: dict[str, str] = {**os.environ}
+        env = self._base_child_env()
         api_key = self.api_key or env.get(self.api_key_env, "")
         if api_key:
             env[self.api_key_env] = api_key
@@ -743,6 +1132,14 @@ class OpenClawClient:
         base_url = self.base_url or env.get(self.base_url_env, "")
         if base_url:
             env.setdefault("OPENAI_BASE_URL", base_url)
+        return env
+
+    def _base_child_env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        node_bin = _resolve_compatible_node_bin(self.binary_path)
+        if node_bin is not None:
+            current_path = env.get("PATH", "")
+            env["PATH"] = f"{node_bin.parent}{os.pathsep}{current_path}"
         return env
 
     def build_openai_compatible_body(
@@ -761,7 +1158,10 @@ class OpenClawClient:
             if tools:
                 body["tools"] = tools
                 tool_choice = ctx.get("tool_choice")
-                if isinstance(tool_choice, str) and tool_choice in _ALLOWED_TOOL_CHOICES:
+                if (
+                    isinstance(tool_choice, str)
+                    and tool_choice in _ALLOWED_TOOL_CHOICES
+                ):
                     body["tool_choice"] = tool_choice
             temperature = _coerce_optional_float(
                 ctx.get("temperature"), fallback=self.temperature
@@ -835,7 +1235,9 @@ def _post_with_retry(
                 ) from exc
             retry_after_raw: str | None = None
             try:
-                retry_after_raw = exc.headers.get("Retry-After") if exc.headers else None
+                retry_after_raw = (
+                    exc.headers.get("Retry-After") if exc.headers else None
+                )
             except AttributeError:
                 retry_after_raw = None
             delay = parse_retry_after(retry_after_raw) or backoff_seconds(attempt)
@@ -887,22 +1289,42 @@ def _resolve_default_binary() -> Path:
     override = os.environ.get("OPENCLAW_BIN", "").strip()
     if override:
         return Path(override).expanduser()
-    try:
-        if DEFAULT_MANIFEST_PATH.exists():
-            with DEFAULT_MANIFEST_PATH.open("r", encoding="utf-8") as fh:
-                manifest = json.load(fh)
-            binary = manifest.get("binary_path") if isinstance(manifest, dict) else None
-            if isinstance(binary, str) and binary:
-                return Path(binary).expanduser()
-    except (OSError, json.JSONDecodeError):
-        pass
+    if DEFAULT_MANIFEST_PATH.exists():
+        with DEFAULT_MANIFEST_PATH.open("r", encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        if not isinstance(manifest, Mapping):
+            raise ValueError("OpenClaw install manifest must be a JSON object")
+        binary = manifest.get("binary_path")
+        if not isinstance(binary, str) or not binary.strip():
+            raise ValueError("OpenClaw install manifest requires binary_path")
+        return Path(binary).expanduser()
     on_path = shutil.which("openclaw")
     if on_path:
         return Path(on_path)
     return DEFAULT_BINARY_FALLBACK
 
 
+def _resolve_compatible_node_bin(binary_path: Path) -> Path | None:
+    """Find the Node runtime shipped beside an isolated OpenClaw install."""
+
+    override = os.environ.get("OPENCLAW_NODE_BIN", "").strip()
+    if override:
+        candidate = Path(override).expanduser()
+        if not candidate.is_file():
+            raise FileNotFoundError(f"OPENCLAW_NODE_BIN does not exist: {candidate}")
+        return candidate
+    for parent in binary_path.expanduser().resolve().parents:
+        candidate = parent / "node" / "bin" / "node"
+        if candidate.is_file():
+            return candidate
+        if parent.name == "node_modules":
+            break
+    return None
+
+
 _VERSION_RE = re.compile(r"OpenClaw\s+(\S+)(?:\s+\(([^)]+)\))?")
+_VALID_VERSION_RE = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?")
+_VALID_BUILD_RE = re.compile(r"[0-9a-fA-F]{7,40}")
 
 
 def _parse_version_line(stdout: str) -> tuple[str | None, str | None]:
@@ -926,12 +1348,13 @@ def _extract_json_blob(stdout: str, stderr: str) -> dict[str, object]:
     stripped = stdout.strip()
     if not stripped:
         raise RuntimeError(
-            "openclaw CLI produced no stdout.\n"
-            f"stderr:\n{stderr[-4000:]}"
+            f"openclaw CLI produced no stdout.\nstderr:\n{stderr[-4000:]}"
         )
     try:
         parsed = json.loads(stripped)
     except json.JSONDecodeError:
+        # error-policy:J3 a non-JSON prefix is an explicit invalid first shape;
+        # the bounded object extractor below still rejects malformed payloads.
         parsed = None
 
     if parsed is None:
@@ -945,6 +1368,7 @@ def _extract_json_blob(stdout: str, stderr: str) -> dict[str, object]:
         try:
             parsed = json.loads(match.group(0))
         except json.JSONDecodeError as exc:
+            # error-policy:J2 retain the decoder failure behind adapter context.
             raise RuntimeError(
                 f"openclaw CLI stdout JSON parse failed: {exc}\n"
                 f"matched:\n{match.group(0)[-4000:]}\n"
@@ -974,7 +1398,9 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
     if not text:
         meta = payload.get("meta")
         if isinstance(meta, Mapping):
-            text = _first_str(meta, ("finalAssistantVisibleText", "finalAssistantRawText"))
+            text = _first_str(
+                meta, ("finalAssistantVisibleText", "finalAssistantRawText")
+            )
     raw_tool_calls = _collect_tool_calls(payload)
 
     actions: list[str] = []
@@ -984,12 +1410,7 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
         if not isinstance(name, str) or not name:
             continue
         actions.append(name)
-        args = entry.get("arguments")
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except json.JSONDecodeError:
-                pass
+        args = _decode_tool_arguments(entry.get("arguments"))
         params[name] = args if args is not None else {}
 
     extras: dict[str, object] = {}
@@ -1029,7 +1450,9 @@ def _response_from_openai_completion(payload: Mapping[str, object]) -> MessageRe
     choices = payload.get("choices")
     choice: object = (
         choices[0]
-        if isinstance(choices, Sequence) and not isinstance(choices, (str, bytes)) and choices
+        if isinstance(choices, Sequence)
+        and not isinstance(choices, (str, bytes))
+        and choices
         else {}
     )
     message = choice.get("message") if isinstance(choice, Mapping) else {}
@@ -1051,6 +1474,8 @@ def _annotate_response(
     path_label: str,
     preserves_full_messages: bool,
     passes_benchmark_tools: bool,
+    publishable_native: bool = False,
+    extra: Mapping[str, object] | None = None,
 ) -> None:
     """Attach adapter metadata used by harness conformance tests.
 
@@ -1063,13 +1488,17 @@ def _annotate_response(
     if not isinstance(meta, dict):
         meta = {}
         response.params["_meta"] = meta
-    meta["openclaw_adapter"] = {
+    adapter_meta: dict[str, object] = {
         "transport": transport,
         "path_label": path_label,
         "native_openai_tool_calls": transport == "direct_openai_compatible",
         "preserves_full_messages": preserves_full_messages,
         "passes_benchmark_tools": passes_benchmark_tools,
+        "publishable_native": publishable_native,
     }
+    if extra:
+        adapter_meta.update(extra)
+    meta["openclaw_adapter"] = adapter_meta
 
 
 def _first_str(payload: Mapping[str, object], keys: Sequence[str]) -> str:
@@ -1175,6 +1604,17 @@ def _collect_tool_calls(payload: Mapping[str, object]) -> list[dict[str, object]
     return collected
 
 
+def _decode_tool_arguments(raw: object) -> object:
+    if not isinstance(raw, str):
+        return raw
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # error-policy:J3 native runtimes may emit opaque scalar arguments;
+        # preserving the string keeps its non-JSON shape explicit to callers.
+        return raw
+
+
 def _normalize_tool_call(
     raw: object, *, fallback_index: int
 ) -> dict[str, object] | None:
@@ -1188,14 +1628,12 @@ def _normalize_tool_call(
         args_obj: object = function.get("arguments", {})
     else:
         args_obj = raw.get("arguments", raw.get("args", {}))
-    if isinstance(args_obj, str):
-        try:
-            args_obj = json.loads(args_obj)
-        except json.JSONDecodeError:
-            pass
+    args_obj = _decode_tool_arguments(args_obj)
     call_id = raw.get("id")
     return {
-        "id": str(call_id) if isinstance(call_id, (str, int)) else f"call_{fallback_index}",
+        "id": str(call_id)
+        if isinstance(call_id, (str, int))
+        else f"call_{fallback_index}",
         "name": name_obj,
         "arguments": args_obj if args_obj is not None else {},
     }
@@ -1213,11 +1651,7 @@ def _coerce_native_tool_call(raw: object) -> dict[str, object] | None:
         args = raw.get("arguments", {})
     if not isinstance(name, str) or not name:
         return None
-    if isinstance(args, str):
-        try:
-            args = json.loads(args)
-        except json.JSONDecodeError:
-            pass
+    args = _decode_tool_arguments(args)
     return {
         "id": str(raw.get("id") or ""),
         "name": name,
@@ -1225,22 +1659,145 @@ def _coerce_native_tool_call(raw: object) -> dict[str, object] | None:
     }
 
 
-def _messages_from_context(text: str, ctx: Mapping[str, object]) -> list[dict[str, object]]:
-    raw_messages = ctx.get("messages")
+def _messages_from_context(
+    text: str, ctx: Mapping[str, object]
+) -> list[dict[str, object]]:
+    raw_benchmark_messages = ctx.get("benchmark_messages")
+    uses_benchmark_history = isinstance(
+        raw_benchmark_messages, Sequence
+    ) and not isinstance(raw_benchmark_messages, (str, bytes))
+    raw_messages = (
+        raw_benchmark_messages if uses_benchmark_history else ctx.get("messages")
+    )
     messages: list[dict[str, object]] = []
-    if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
+    if isinstance(raw_messages, Sequence) and not isinstance(
+        raw_messages, (str, bytes)
+    ):
         for item in raw_messages:
             if not isinstance(item, Mapping):
                 continue
             message = _openai_message_from_raw(item)
             if message is not None:
                 messages.append(message)
-    if not messages:
+    if uses_benchmark_history:
+        if not (
+            messages
+            and messages[-1].get("role") == "user"
+            and messages[-1].get("content") == text
+        ):
+            messages.append({"role": "user", "content": text})
+    elif not messages:
         sys_prompt = ctx.get("system_prompt")
         if isinstance(sys_prompt, str) and sys_prompt.strip():
             messages.append({"role": "system", "content": sys_prompt.strip()})
         messages.append({"role": "user", "content": text})
     return messages
+
+
+def _requested_native_system_prompt(
+    text: str,
+    ctx: Mapping[str, object],
+) -> str | None:
+    """Collect the benchmark-requested system text before runtime equalization."""
+
+    parts: list[str] = []
+    for message in _messages_from_context(text, ctx):
+        if message.get("role") != "system":
+            continue
+        content = message.get("content")
+        if content in (None, ""):
+            continue
+        if not isinstance(content, str):
+            raise TypeError("OpenClaw native system messages must contain text")
+        normalized = content.strip()
+        if normalized and normalized not in parts:
+            parts.append(normalized)
+
+    explicit = ctx.get("system_prompt")
+    if not isinstance(explicit, str) or not explicit.strip():
+        explicit = ctx.get("system_hint")
+    if isinstance(explicit, str):
+        normalized = explicit.strip()
+        if normalized and normalized not in parts:
+            parts.append(normalized)
+    return "\n\n".join(parts) if parts else None
+
+
+def _benchmark_workspace_path(ctx: Mapping[str, object]) -> Path | None:
+    raw = ctx.get("benchmark_workspace_path")
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or not raw.strip():
+        raise TypeError("OpenClaw benchmark_workspace_path must be a non-empty path")
+    workspace = Path(raw).expanduser().resolve()
+    if not workspace.is_dir():
+        raise ValueError(
+            f"OpenClaw benchmark workspace is not a directory: {workspace}"
+        )
+    return workspace
+
+
+def _native_system_prompt(text: str, ctx: Mapping[str, object]) -> str | None:
+    """Keep target-workspace provenance out of model-visible instructions."""
+
+    return _requested_native_system_prompt(text, ctx)
+
+
+def _thinking_level_for_request(
+    *,
+    reasoning_effort: str | None,
+    configured_thinking_level: str,
+) -> str:
+    """Map the shared benchmark effort onto OpenClaw's native CLI control."""
+
+    if reasoning_effort is not None:
+        normalized_effort = reasoning_effort.strip().lower()
+        mapped = _REASONING_EFFORT_TO_THINKING.get(normalized_effort)
+        if mapped is None:
+            raise ValueError(
+                f"unsupported OpenClaw reasoning_effort: {reasoning_effort!r}"
+            )
+        return mapped
+    normalized_thinking = configured_thinking_level.strip().lower()
+    if normalized_thinking not in _ALLOWED_THINKING_LEVELS:
+        raise ValueError(
+            f"unsupported OpenClaw thinking_level: {configured_thinking_level!r}"
+        )
+    return normalized_thinking
+
+
+def _workspace_git_sha(workspace_path: Path | None) -> str | None:
+    """Identify benchmark source separately from the OpenClaw runtime build."""
+
+    if workspace_path is None:
+        return None
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(workspace_path), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        # error-policy:J3 unavailable source provenance remains an explicit
+        # ``None`` signal that publishability validation rejects.
+        return None
+    candidate = completed.stdout.strip().lower()
+    if completed.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", candidate):
+        return None
+    return candidate
+
+
+def _native_prompt_text(system_prompt: str | None, message_text: str) -> str:
+    """Represent the two benchmark-controlled native prompt surfaces once each."""
+
+    parts = []
+    if system_prompt:
+        parts.append(f"system: {system_prompt}")
+    if message_text:
+        parts.append(message_text)
+    return "\n\n".join(parts)
 
 
 def _direct_messages_from_context(
@@ -1338,39 +1895,50 @@ def _openai_compatible_tools(raw_tools: object) -> list[object] | None:
 
 
 def _cli_prompt_text(text: str, context: Mapping[str, object] | None) -> str:
-    """Flatten benchmark chat/tool context for the OpenClaw CLI message flag."""
+    """Serialize non-system history for one isolated native turn."""
     if not context:
         return text
     parts: list[str] = []
-    tools = context.get("tools")
-    if isinstance(tools, list) and tools:
-        parts.append(_openclaw_system_prompt(tools))
-    context_prompt = context_to_prompt(context)
+    user_context = {
+        key: value
+        for key, value in context.items()
+        if key not in {"system_prompt", "system_hint"}
+    }
+    context_prompt = context_to_prompt(user_context)
     if context_prompt:
         parts.append(f"Benchmark context:\n{context_prompt}")
     messages = _messages_from_context(text, context)
     for message in messages:
         role = message.get("role", "user")
+        if role == "system":
+            continue
         content = message.get("content", "")
-        parts.append(f"{role}: {content}")
+        if role == "assistant" and message.get("tool_calls"):
+            parts.append(
+                "assistant tool_calls: "
+                + json.dumps(
+                    message["tool_calls"],
+                    ensure_ascii=True,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+        if role == "tool":
+            tool_call_id = message.get("tool_call_id") or "unknown"
+            name = message.get("name") or "tool"
+            parts.append(f"tool {name} [{tool_call_id}]: {content}")
+        elif content not in (None, ""):
+            parts.append(f"{role}: {content}")
     return "\n\n".join(part for part in parts if part.strip()) or text
-
-
-def _openclaw_system_prompt(tools: list[object] | None) -> str:
-    prompt = (
-        "You are operating through the OpenClaw benchmark harness. "
-        "Use concise reasoning. This CLI transport can only pass a flattened "
-        "message, so benchmark-provided tools below are context only and are "
-        "not counted as native OpenAI tool_calls. Answer normally unless the "
-        "native direct transport is explicitly enabled."
-    )
-    if tools:
-        prompt += "\nAvailable tools:\n" + json.dumps(tools, ensure_ascii=True)
-    return prompt
 
 
 def _default_api_key(provider: str, api_key_env: str) -> str:
     provider = provider.strip().lower()
+    if provider == "claude-subscription":
+        # Subscription runs authenticate only to the per-lane loopback gateway.
+        # OPENCLAW_API_KEY is a generic native-provider override and must never
+        # replace that ephemeral bearer.
+        return os.environ.get("CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN", "")
     key_env = {
         "cerebras": "CEREBRAS_API_KEY",
         "openai": "OPENAI_API_KEY",
@@ -1387,4 +1955,7 @@ def _default_repo_path() -> Path:
     return DEFAULT_REPO_PATH
 
 
-__all__ = ["MessageResponse", "OpenClawClient"]
+__all__ = [
+    "MessageResponse",
+    "OpenClawClient",
+]

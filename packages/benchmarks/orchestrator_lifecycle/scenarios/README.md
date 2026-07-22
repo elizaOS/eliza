@@ -17,5 +17,5 @@ Behavior tags align with the lifecycle evaluator:
 - `pause_task`
 - `resume_task`
 - `cancel_task`
-- `confirm_cancel_effect`
+- `report_cancel_outcome`
 - `final_summary_to_stakeholder`

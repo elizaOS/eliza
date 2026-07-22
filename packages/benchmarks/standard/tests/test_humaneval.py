@@ -209,6 +209,50 @@ def test_humaneval_runner_retries_empty_visible_output(tmp_path: Path) -> None:
     assert result.raw_json["empty_outputs"] == 0
 
 
+def test_humaneval_runner_aborts_instead_of_publishing_partial_score(
+    tmp_path: Path,
+) -> None:
+    class FailsOnSecondCall(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            if self._idx == 1:
+                raise OSError("transport unavailable")
+            return super().generate(messages, config)
+
+    runner = HumanEvalRunner(examples=list(SMOKE_FIXTURES), timeout_s=10.0)
+
+    with pytest.raises(RuntimeError, match="example 2/2"):
+        runner.run(
+            client=FailsOnSecondCall(
+                [str(SMOKE_FIXTURES[0]["canonical_solution"])]
+            ),
+            model="m",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
+def test_humaneval_runner_aborts_when_empty_output_retry_fails(
+    tmp_path: Path,
+) -> None:
+    class RetryFailureClient(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            if self._idx == 1:
+                raise OSError("retry transport unavailable")
+            return super().generate(messages, config)
+
+    runner = HumanEvalRunner(examples=list(SMOKE_FIXTURES[:1]), timeout_s=10.0)
+
+    with pytest.raises(RuntimeError, match="empty-output retry failed"):
+        runner.run(
+            client=RetryFailureClient([""]),
+            model="m",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
 def test_humaneval_default_token_budget_allows_reasoning_models() -> None:
     assert DEFAULT_MAX_TOKENS >= 2048
 

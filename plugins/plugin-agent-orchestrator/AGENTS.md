@@ -291,6 +291,7 @@ README → "GitHub credentials".
 | `SMITHERS_DB_PROVIDER` | unset | Database provider for smithers task storage |
 | `SMITHERS_DB_URL` | unset | Database URL for smithers task storage |
 | `SMITHERS_DB_DATA_DIR` | unset | Data directory for smithers file-backed storage |
+| `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` | Maximum wall-clock time for a Smithers durable task run; `TASKS` request timeouts override it per run. |
 | `ELIZA_SCRATCH_RETENTION` | unset | How long to retain scratch workspace dirs |
 | `ELIZA_SCRATCH_DECISION_TTL_MS` | unset | TTL for scratch workspace GC decisions |
 | `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_URL` | unset | Owner Cloud creds. **Broker-first (#14118): NOT forwarded to sub-agents by default** — a child reaches Cloud via the parent broker (`apps.create` / `containers.create`, spend-gated). Set `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to restore raw forwarding. |
@@ -352,8 +353,12 @@ README → "GitHub credentials".
   don't survive restart.
 - **Smithers task path.** By default (`ELIZA_ORCHESTRATOR_SMITHERS` not `0`), task
   execution goes through the smithers runner (`smithers-task-runner.ts`), which
-  drives a structured provision→turn→submit loop. Set `ELIZA_ORCHESTRATOR_SMITHERS=0`
-  to revert to the direct prompt path.
+  drives a structured provision→turn→submit loop. `TASKS:create` persists the
+  task/session link and stable Smithers task/run ids before its first ACP prompt,
+  and fails before spawning ACP when that durable owner cannot be created;
+  `OrchestratorTaskService` resumes pending/running graphs at startup while the
+  generic ACP orphan-resume path leaves those sessions alone. Set
+  `ELIZA_ORCHESTRATOR_SMITHERS=0` to revert to the direct prompt path.
 - **`ACPX_SUB_AGENT_ROUND_TRIP_CAP`** (default 32) force-stops runaway sub-agent
   loops. Lower it in test environments.
 - **`coding-agent-adapters`** is the adapter registry/API dependency, not a bundled

@@ -56,7 +56,7 @@ def test_build_action_calling_agent_fn_returns_async_callable(client: OpenClawCl
     assert inspect.iscoroutinefunction(agent_fn)
 
 
-def test_action_calling_default_client_uses_native_direct_transport() -> None:
+def test_action_calling_default_client_uses_embedded_runtime() -> None:
     agent_fn = build_action_calling_agent_fn()
     captured: dict[str, Any] = {}
 
@@ -67,7 +67,7 @@ def test_action_calling_default_client_uses_native_direct_transport() -> None:
     with patch.object(OpenClawClient, "send_message", _fake_send):
         result = _run(agent_fn("no tool needed", []))
 
-    assert captured["direct_openai_compatible"] is True
+    assert captured["direct_openai_compatible"] is False
     assert result["tool_calls"] == []
 
 

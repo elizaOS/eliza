@@ -6,6 +6,7 @@ ships tiny smoke fixtures that cover the packaged sample tasks.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -112,4 +113,30 @@ def load_domain_data(domain: Domain) -> dict[str, Any]:
     return _read_domain_data(domain, ensure_official_data(domain))
 
 
-__all__ = ["ensure_official_data", "load_domain_data"]
+def data_provenance(domains: list[Domain]) -> dict[str, Any]:
+    """Describe and hash the exact domain assets consumed by a run."""
+    smoke = _use_smoke_data()
+    domain_sources: dict[str, Any] = {}
+    for domain in domains:
+        directory = _package_domain_dir(domain) if smoke else ensure_official_data(domain)
+        files: dict[str, str] = {}
+        for filename in DATA_FILES[domain]:
+            path = directory / filename
+            digest = hashlib.sha256()
+            with path.open("rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            files[filename] = digest.hexdigest()
+        domain_sources[domain] = {
+            "directory": str(directory.resolve()),
+            "files_sha256": files,
+        }
+    return {
+        "mode": "smoke" if smoke else "official",
+        "upstream": "sierra-research/tau-bench",
+        "upstream_ref": UPSTREAM_REF,
+        "domains": domain_sources,
+    }
+
+
+__all__ = ["data_provenance", "ensure_official_data", "load_domain_data"]

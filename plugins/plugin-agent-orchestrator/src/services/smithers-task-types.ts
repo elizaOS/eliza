@@ -13,7 +13,9 @@
 
 /** A coding task to run on the durable engine. */
 export interface TaskRunSpec {
-  /** Stable task id (also used to name the per-task SQLite file). */
+  /** Runtime/owner boundary used to isolate durable task state. */
+  tenantId: string;
+  /** Stable task id (also used to name the tenant-local SQLite file). */
   taskId: string;
   /**
    * Stable Smithers run id. Re-running with the same id resumes a crashed run
@@ -41,6 +43,11 @@ export interface TaskRunSpec {
 export interface TaskStepContext {
   taskId: string;
   runId: string;
+  /**
+   * Parent-process cancellation only. This value is attached after the worker
+   * protocol boundary and is never serialized into Smithers state.
+   */
+  signal?: AbortSignal;
   /** 1-based turn counter for the current agent loop (best-effort across resume). */
   turn?: number;
   /** 0-based agent index when fanning out (`parallelAgents > 1`). */
@@ -90,6 +97,9 @@ export interface TaskRunMetrics {
   durationMs: number;
 }
 
+/** Durable graph output returned by Smithers, including values loaded on resume. */
+export type SmithersTaskExecution = unknown;
+
 export interface TaskRunResult {
   taskId: string;
   runId: string;
@@ -101,5 +111,7 @@ export interface TaskRunResult {
   submit?: Record<string, unknown>;
   /** Per-agent completion flags (length === parallelAgents). */
   agentsDone: boolean[];
+  /** Smithers' durable result, present even when every step was resumed. */
+  execution: SmithersTaskExecution;
   metrics: TaskRunMetrics;
 }

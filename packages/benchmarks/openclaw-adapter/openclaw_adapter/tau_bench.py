@@ -5,17 +5,15 @@ but routes the agent-side completion through :class:`OpenClawClient`. The
 control flow mirrors ``LiteLLMToolCallingAgent.solve`` step-for-step so reward
 computation against the upstream ``Env`` is identical.
 
-For benchmark runs we use OpenClaw's ``direct_openai_compatible`` mode (set
-via ``OPENCLAW_DIRECT_OPENAI_COMPAT=1`` or the constructor flag) so the
-adapter hits the Cerebras OpenAI-compatible endpoint directly without
-needing the OpenClaw Node binary at every turn.
+Each turn uses OpenClaw's embedded runtime with a generated native tool plugin.
+The plugin preserves TauBench's benchmark-owned environment boundary while
+OpenClaw retains ownership of planning and tool execution.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any, Final, Optional
 
 from openclaw_adapter.client import MessageResponse, OpenClawClient
@@ -208,10 +206,6 @@ def _recover_text_tool_calls(text: str, tools_info: list[dict[str, Any]]) -> lis
     return out
 
 
-def _detect_direct_mode_default() -> bool:
-    return os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "1").strip() != "0"
-
-
 class OpenClawTauAgent(BaseTauAgent):
     """Tau-bench agent that drives an upstream ``Env`` via the OpenClaw client.
 
@@ -233,16 +227,15 @@ class OpenClawTauAgent(BaseTauAgent):
         if client is not None:
             self.client = client
         else:
-            direct = (
-                bool(direct_openai_compatible)
-                if direct_openai_compatible is not None
-                else _detect_direct_mode_default()
-            )
+            if direct_openai_compatible:
+                raise ValueError(
+                    "TauBench publication requires OpenClaw's embedded runtime; "
+                    "direct_openai_compatible is non-publishable"
+                )
             self.client = OpenClawClient(
                 provider=provider,
                 model=model,
                 temperature=temperature,
-                direct_openai_compatible=direct,
             )
 
     def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:

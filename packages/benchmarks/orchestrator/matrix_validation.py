@@ -14,6 +14,7 @@ from .adapters import (
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_FIXED_RUNTIME_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_OPENCLAW_NATIVE_MULTIMODAL_UNAVAILABLE_REASON,
     VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
     discover_adapters,
 )
@@ -141,7 +142,9 @@ def _incompatibility_reason(adapter_id: str, harness: str, allowed_harnesses: tu
     if adapter_id == "vision_language":
         if not allowed_harnesses:
             return VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
-        if harness in {"hermes", "openclaw"}:
+        if harness == "openclaw":
+            return VISION_LANGUAGE_OPENCLAW_NATIVE_MULTIMODAL_UNAVAILABLE_REASON
+        if harness == "hermes":
             return VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
         return VISION_LANGUAGE_FIXED_RUNTIME_REASON
     allowed = ", ".join(allowed_harnesses) or "none"

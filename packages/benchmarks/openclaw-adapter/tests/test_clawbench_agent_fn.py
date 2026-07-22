@@ -35,7 +35,14 @@ def fake_binary(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def client(fake_binary: Path) -> OpenClawClient:
-    return OpenClawClient(binary_path=fake_binary)
+    return OpenClawClient(
+        binary_path=fake_binary,
+        provider="claude-subscription",
+        model="claude-opus-4-8",
+        api_key="gateway-sentinel",
+        base_url="http://127.0.0.1:39999",
+        native_state_root=fake_binary.parent / "state",
+    )
 
 
 def test_build_clawbench_agent_fn_returns_callable(client: OpenClawClient) -> None:
@@ -52,14 +59,14 @@ def test_build_clawbench_agent_fn_returns_callable(client: OpenClawClient) -> No
     assert inspect.iscoroutinefunction(agent_fn)
 
 
-def test_build_clawbench_agent_fn_defaults_to_direct_transport() -> None:
+def test_build_clawbench_agent_fn_defaults_to_native_transport() -> None:
     with patch("openclaw_adapter.clawbench.OpenClawClient") as mock_client_cls:
         build_clawbench_agent_fn(
             scenario_yaml={"name": "inbox_triage", "prompt": "Triage the inbox."},
             fixtures={"inbox": [{"id": 1}]},
         )
 
-    mock_client_cls.assert_called_once_with(direct_openai_compatible=True)
+    mock_client_cls.assert_called_once_with()
 
 
 def test_build_bfcl_agent_fn_returns_callable(client: OpenClawClient) -> None:
@@ -92,6 +99,23 @@ def test_clawbench_agent_fn_executes_synchronously(client: OpenClawClient) -> No
 
     def _fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured["argv"] = argv
+        env = kwargs["env"]
+        Path(env["OPENCLAW_BENCHMARK_CAPTURE_PATH"]).write_text(
+            json.dumps(
+                {
+                    "call_id": "c1",
+                    "original_name": "EMAIL_SUMMARY",
+                    "runtime_name": "EMAIL_SUMMARY",
+                    "arguments": {},
+                    "result": {
+                        "captured": True,
+                        "sequence": 0,
+                        "tool": "EMAIL_SUMMARY",
+                    },
+                }
+            )
+            + "\n"
+        )
         return _fake_completed(response_payload)
 
     with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
@@ -122,11 +146,35 @@ def test_bfcl_agent_fn_returns_first_tool_call(client: OpenClawClient) -> None:
         }
     )
     with patch("openclaw_adapter.client.subprocess.run") as mock_run:
-        mock_run.return_value = _fake_completed(payload)
+        def _fake_bfcl_run(
+            _argv: list[str], **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            env = kwargs["env"]
+            Path(env["OPENCLAW_BENCHMARK_CAPTURE_PATH"]).write_text(
+                json.dumps(
+                    {
+                        "call_id": "c1",
+                        "original_name": "ADD",
+                        "runtime_name": "ADD",
+                        "arguments": {"a": 1, "b": 2},
+                        "result": {
+                            "captured": True,
+                            "sequence": 0,
+                            "tool": "ADD",
+                        },
+                    }
+                )
+                + "\n"
+            )
+            return _fake_completed(payload)
+
+        mock_run.side_effect = _fake_bfcl_run
         result = asyncio.run(agent_fn("add 1+2", [{"type": "function", "function": {"name": "ADD"}}]))
     assert result["name"] == "ADD"
     assert result["arguments"] == {"a": 1, "b": 2}
-    assert len(result["tool_calls"]) == 2
+    # Only native plugin executions count; payload-only calls cannot bypass the
+    # benchmark tool catalog.
+    assert len(result["tool_calls"]) == 1
 
 
 def test_lifeops_bench_factory_ignores_missing_snapshot(client: OpenClawClient, tmp_path: Path) -> None:

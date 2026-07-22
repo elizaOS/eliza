@@ -209,6 +209,34 @@ def test_evaluator_rejects_empty_type_value() -> None:
 
     assert evaluator._check_value("", "test query", Mind2WebOperation.TYPE) is False
     assert evaluator._check_value("test query", "test query", Mind2WebOperation.TYPE) is True
+    assert evaluator._check_value("test query please", "test query", Mind2WebOperation.TYPE) is False
+    assert evaluator._check_value("query test", "test query", Mind2WebOperation.TYPE) is True
+
+
+def test_evaluator_requires_exact_positive_backend_id() -> None:
+    from benchmarks.mind2web.evaluator import Mind2WebEvaluator
+    from benchmarks.mind2web.types import (
+        Mind2WebActionStep,
+        Mind2WebElement,
+        Mind2WebOperation,
+    )
+
+    step = Mind2WebActionStep(
+        action_uid="a1",
+        operation=Mind2WebOperation.CLICK,
+        pos_candidates=[
+            Mind2WebElement(
+                tag="button",
+                backend_node_id="node_submit",
+                attributes={"id": "submit-button"},
+            )
+        ],
+    )
+    evaluator = Mind2WebEvaluator()
+
+    assert evaluator._check_element("node_submit", step) is True
+    assert evaluator._check_element("submit-button", step) is False
+    assert evaluator._check_element("#submit-button", step) is False
 
 
 def test_provider_normalization_does_not_rewrite_to_ground_truth() -> None:
@@ -374,7 +402,7 @@ async def test_mock_agent() -> bool:
     # Verify actions match ground truth
     assert len(actions) == len(task.actions), f"Expected {len(task.actions)} actions, got {len(actions)}"
 
-    for i, (action, gt_step) in enumerate(zip(actions, task.actions)):
+    for i, (action, gt_step) in enumerate(zip(actions, task.actions, strict=True)):
         assert action.operation == gt_step.operation, f"Step {i}: operation mismatch"
         if gt_step.target_element:
             assert action.element_id == gt_step.target_element.backend_node_id, f"Step {i}: element_id mismatch"
@@ -416,6 +444,7 @@ async def test_full_benchmark_run() -> bool:
     # Verify summary
     assert report.summary.get("mode") == "mock"
     assert report.summary.get("status") == "excellent"
+    assert report.summary.get("ranker_mode") == "oracle"
 
     logger.info("✓ Full benchmark run test passed")
     return True
@@ -450,10 +479,10 @@ async def test_expanded_benchmark_run() -> bool:
 
 async def test_cli_integration() -> bool:
     """Test CLI creates valid config."""
-    from benchmarks.mind2web.cli import create_config, parse_args
-
     # Simulate args
     import sys
+
+    from benchmarks.mind2web.cli import create_config, parse_args
     original_argv = sys.argv
     try:
         sys.argv = ["mind2web", "--sample", "--max-tasks", "5", "--provider", "groq"]

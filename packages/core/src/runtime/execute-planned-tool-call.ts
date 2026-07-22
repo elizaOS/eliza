@@ -253,7 +253,7 @@ export async function executePlannedToolCall(
 
 	const normalizedArgs = expandEnumShortForm(
 		action,
-		normalizeToolArgs(toolCall),
+		flattenUndeclaredParametersEnvelope(action, normalizeToolArgs(toolCall)),
 	);
 	const validation = validateToolArgs(
 		action,
@@ -571,6 +571,52 @@ function actionResultToStreamingResult(
 }
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Recover the hybrid native-call shape weak models produce after copying the
+ * plain-JSON planner envelope into a tool's argument object. The unwrap is
+ * intentionally schema-bounded: a real `parameters` field, an unknown nested
+ * key, or a conflicting duplicate stays untouched so strict validation still
+ * surfaces the malformed call instead of guessing at intent.
+ */
+function flattenUndeclaredParametersEnvelope(
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	const declaredParameters = action.parameters ?? [];
+	if (declaredParameters.some((parameter) => parameter.name === "parameters")) {
+		return args;
+	}
+
+	const nested = args.parameters;
+	if (!isPlainRecord(nested)) return args;
+
+	const declaredNames = new Set(
+		declaredParameters.map((parameter) => parameter.name),
+	);
+	const nestedEntries = Object.entries(nested);
+	if (nestedEntries.some(([key]) => !declaredNames.has(key))) return args;
+	if (
+		nestedEntries.some(
+			([key, value]) =>
+				Object.hasOwn(args, key) && !Object.is(args[key], value),
+		)
+	) {
+		return args;
+	}
+
+	const { parameters: _parameters, ...outerArgs } = args;
+	return { ...nested, ...outerArgs };
+}
+
 /**
  * Short-form enum completion. When the action has a single closed-enum
  * parameter, accept three input shapes from the planner:

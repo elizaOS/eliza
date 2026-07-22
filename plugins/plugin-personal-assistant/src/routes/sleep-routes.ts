@@ -8,7 +8,7 @@
 import {
   createHealthSleepRouteHandler,
   type HealthSleepRouteContext,
-} from "@elizaos/plugin-health";
+} from "@elizaos/plugin-health/routes/sleep";
 import { LifeOpsService } from "../lifeops/service.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 

@@ -699,7 +699,7 @@ describe("useChatSend always streams (#9174)", () => {
   });
 });
 
-describe("useChatSend VIEWS action handoff", () => {
+describe("useChatSend action handoff", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.client.getBaseUrl.mockReturnValue("");
@@ -766,6 +766,103 @@ describe("useChatSend VIEWS action handoff", () => {
       viewType: "gui",
     });
     expect(deps.setActionNotice).not.toHaveBeenCalled();
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
+  it("opens a workflow created by a completed chat action", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: 'Created workflow "Daily digest".',
+      completed: true,
+      actionResults: [
+        {
+          actionName: "WORKFLOW",
+          success: true,
+          values: {
+            workflowId: "workflow-daily-digest",
+            workflowName: "Daily digest",
+          },
+        },
+      ],
+    });
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("create a daily digest workflow", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(navigations[0]?.detail).toEqual({
+      viewId: "automations",
+      viewPath: "/automations#automations/workflow-daily-digest",
+    });
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
+  it("keeps VIEWS navigation authoritative when a turn also returns a workflow id", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Opening Calendar.",
+      completed: true,
+      actionResults: [
+        {
+          actionName: "WORKFLOW",
+          success: true,
+          values: { workflowId: "workflow-secondary" },
+        },
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "calendar" },
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              currentView: {
+                viewId: "calendar",
+                viewPath: "/calendar",
+                viewLabel: "Calendar",
+                viewType: "gui",
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      ),
+    );
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("open the calendar after creating it", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(navigations[0]?.detail).toMatchObject({
+      viewId: "calendar",
+      viewPath: "/calendar",
+    });
     window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
   });
 

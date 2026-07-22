@@ -1,8 +1,12 @@
-// Stores workflow credential mappings and connector-disconnect eviction state.
-import { type IAgentRuntime, logger, Service } from '@elizaos/core';
+/**
+ * Agent-scoped workflow credential mappings and connector-disconnect eviction.
+ * A user may connect the same credential type to several Eliza agents without
+ * any runtime observing or deleting another agent's mapping.
+ */
+import { ElizaError, type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { credentialMappings } from '../db/schema';
+import { credentialMappings, LEGACY_UNSCOPED_WORKFLOW_AGENT_ID } from '../db/schema';
 import type {
   ConnectorDisconnectedPayload,
   CredentialMapping,
@@ -37,22 +41,29 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
     if (payload.credTypes.length === 0) {
       return;
     }
-    await Promise.all(
-      payload.credTypes.map((credType) =>
-        this.delete(payload.userId, credType).catch((err: unknown) => {
-          logger.warn(
-            {
-              src: 'plugin:workflow:service:credential-store',
-              userId: payload.userId,
-              credType,
-              connectorName: payload.connectorName,
-              error: err instanceof Error ? err.message : String(err),
-            },
-            'Failed to purge credential mapping on connector_disconnected'
-          );
-        })
-      )
+    const results = await Promise.allSettled(
+      payload.credTypes.map((credType) => this.delete(payload.userId, credType))
     );
+    const failures = results.flatMap((result, index) =>
+      result.status === 'rejected'
+        ? [{ credType: payload.credTypes[index] ?? 'unknown', cause: result.reason }]
+        : []
+    );
+    if (failures.length === 0) return;
+
+    const error = new ElizaError('Workflow credential eviction failed', {
+      code: 'WORKFLOW_CREDENTIAL_EVICTION_FAILED',
+      cause: failures[0]?.cause,
+      context: {
+        connectorName: payload.connectorName,
+        failedCredentialTypes: failures.map((failure) => failure.credType),
+      },
+      severity: 'ephemeral',
+    });
+    this.runtime.reportError('WorkflowCredentialStore.connectorDisconnected', error, {
+      connectorName: payload.connectorName,
+    });
+    throw error;
   };
 
   private getDb(): NodePgDatabase {
@@ -61,6 +72,17 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
       throw new Error('Database not available for WorkflowCredentialStore');
     }
     return db as NodePgDatabase;
+  }
+
+  private get tenantAgentId(): string {
+    const agentId = this.runtime.agentId;
+    if (!agentId || agentId === LEGACY_UNSCOPED_WORKFLOW_AGENT_ID) {
+      throw new ElizaError('Workflow credential mappings require a live agent tenant id', {
+        code: 'WORKFLOW_CREDENTIAL_AGENT_TENANT_REQUIRED',
+        context: { agentId },
+      });
+    }
+    return agentId;
   }
 
   static async start(runtime: IAgentRuntime): Promise<WorkflowCredentialStore> {
@@ -96,7 +118,13 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
     const rows = await db
       .select()
       .from(credentialMappings)
-      .where(and(eq(credentialMappings.userId, userId), eq(credentialMappings.credType, credType)))
+      .where(
+        and(
+          eq(credentialMappings.agentId, this.tenantAgentId),
+          eq(credentialMappings.userId, userId),
+          eq(credentialMappings.credType, credType)
+        )
+      )
       .limit(1);
     return rows[0]?.workflowCredentialId ?? null;
   }
@@ -105,9 +133,18 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
     const db = this.getDb();
     await db
       .insert(credentialMappings)
-      .values({ userId, credType, workflowCredentialId: workflowCredId })
+      .values({
+        agentId: this.tenantAgentId,
+        userId,
+        credType,
+        workflowCredentialId: workflowCredId,
+      })
       .onConflictDoUpdate({
-        target: [credentialMappings.userId, credentialMappings.credType],
+        target: [
+          credentialMappings.agentId,
+          credentialMappings.userId,
+          credentialMappings.credType,
+        ],
         set: { workflowCredentialId: workflowCredId, updatedAt: sql`now()` },
       });
   }
@@ -120,7 +157,12 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
         workflowCredentialId: credentialMappings.workflowCredentialId,
       })
       .from(credentialMappings)
-      .where(eq(credentialMappings.userId, userId));
+      .where(
+        and(
+          eq(credentialMappings.agentId, this.tenantAgentId),
+          eq(credentialMappings.userId, userId)
+        )
+      );
     return rows;
   }
 
@@ -128,6 +170,12 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
     const db = this.getDb();
     await db
       .delete(credentialMappings)
-      .where(and(eq(credentialMappings.userId, userId), eq(credentialMappings.credType, credType)));
+      .where(
+        and(
+          eq(credentialMappings.agentId, this.tenantAgentId),
+          eq(credentialMappings.userId, userId),
+          eq(credentialMappings.credType, credType)
+        )
+      );
   }
 }

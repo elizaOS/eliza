@@ -23,13 +23,15 @@ We expose the same five files through three named profiles:
 Files are saved into ``packages/benchmarks/webshop/data/`` and skipped if a
 matching file already exists with non-zero size.
 
-Java/Lucene/pyserini are *not* fetched here; the WebShop search engine is
-optional (we degrade to BM25 in-process when pyserini is unavailable).
+Java/Lucene/pyserini are *not* fetched here. Full publishable runs require the
+checksum-bound Lucene index built by ``scripts/build_search_index.py``;
+small/sample diagnostics use the in-process BM25 backend.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import sys
@@ -65,23 +67,113 @@ PROFILES: dict[str, tuple[str, ...]] = {
     "goals": ("items_human_ins",),
 }
 
+# Google Drive is the upstream distribution channel. This immutable mirror is
+# used only when Drive refuses an otherwise-public large-file download; hashes
+# prove that either source produced the same benchmark bytes.
+HF_MIRROR_REPOSITORY = "YWZBrandon/webshop-data"
+HF_MIRROR_REVISION = "ce990fff5aee388db2706f07820c578ab68e0453"
+EXPECTED_FILES: dict[str, tuple[int, str]] = {
+    "items_shuffle_1000": (
+        4_467_013,
+        "30a4765c3a327af72d9a9a95a6b2486d516f0fa1d3ecd83681901ce82a21b269",
+    ),
+    "items_ins_v2_1000": (
+        147_099,
+        "f88a36314a397b53b3d9c3fa5878e5f7b26d35019a51ec83fbedeca61a948f6f",
+    ),
+    "items_shuffle": (
+        5_479_720_229,
+        "2ef591d65df3af89e972ab72468eb82cbf124d876552d9f3678667edd620a6c8",
+    ),
+    "items_ins_v2": (
+        186_295_270,
+        "1d36af476bdb8f82a5da62bd8acdabe54cd8de2fa84010d37da5c4890feb447e",
+    ),
+    "items_human_ins": (
+        5_137_548,
+        "cf78667548a71786e1d9049c24b802e48e1084ad4bb021cae56ce1f6d96954a3",
+    ),
+}
+
 REPO_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+
+class PrimarySourceUnavailable(RuntimeError):
+    """Signals that the upstream Google Drive transport could not serve a file."""
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_file(logical_name: str, path: Path) -> None:
+    expected_size, expected_sha256 = EXPECTED_FILES[logical_name]
+    actual_size = path.stat().st_size
+    if actual_size != expected_size:
+        raise RuntimeError(
+            f"{path.name} size mismatch: expected {expected_size}, got {actual_size}"
+        )
+    actual_sha256 = _sha256(path)
+    if actual_sha256 != expected_sha256:
+        raise RuntimeError(
+            f"{path.name} checksum mismatch: expected {expected_sha256}, got {actual_sha256}"
+        )
 
 
 def _download_via_gdown(file_id: str, dest: Path) -> None:
     try:
         import gdown  # type: ignore[import-not-found]
     except ImportError as exc:
-        raise SystemExit(
-            "gdown is required to fetch WebShop datasets. "
-            "Install it with: pip install gdown"
+        raise PrimarySourceUnavailable(
+            "gdown is unavailable for the upstream Google Drive transport"
         ) from exc
 
     url = f"https://drive.google.com/uc?id={file_id}"
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    gdown.download(url, str(tmp), quiet=False)
-    tmp.replace(dest)
+    tmp.unlink(missing_ok=True)
+    try:
+        downloaded = gdown.download(url, str(tmp), quiet=False)
+    except Exception as exc:
+        # error-policy:J2 context-adding rethrow — the caller owns the explicit
+        # checksum-pinned mirror policy and must distinguish source transport
+        # failure from an invalid downloaded artifact.
+        tmp.unlink(missing_ok=True)
+        raise PrimarySourceUnavailable(
+            f"Google Drive could not serve {dest.name}"
+        ) from exc
+    if not downloaded or not tmp.is_file():
+        raise PrimarySourceUnavailable(f"Google Drive did not produce {dest.name}")
+
+
+def _download_via_huggingface(logical_name: str, dest: Path) -> None:
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as exc:
+        raise RuntimeError(
+            "huggingface_hub is required when the upstream Google Drive transport is unavailable"
+        ) from exc
+
+    _file_id, basename = GDRIVE_FILES[logical_name]
+    downloaded = Path(
+        hf_hub_download(
+            repo_id=HF_MIRROR_REPOSITORY,
+            repo_type="dataset",
+            filename=basename,
+            revision=HF_MIRROR_REVISION,
+        )
+    )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    tmp.unlink(missing_ok=True)
+    try:
+        os.link(downloaded, tmp)
+    except OSError:
+        shutil.copy2(downloaded, tmp)
 
 
 def fetch_profile(profile: str, *, data_dir: Path, force: bool = False) -> list[Path]:
@@ -94,12 +186,25 @@ def fetch_profile(profile: str, *, data_dir: Path, force: bool = False) -> list[
         file_id, basename = GDRIVE_FILES[logical_name]
         dest = data_dir / basename
         if dest.exists() and dest.stat().st_size > 0 and not force:
+            _verify_file(logical_name, dest)
             print(f"[fetch_data] {basename}: already present "
                   f"({dest.stat().st_size:,} bytes), skipping")
             fetched.append(dest)
             continue
         print(f"[fetch_data] Downloading {logical_name} -> {dest}")
-        _download_via_gdown(file_id, dest)
+        try:
+            _download_via_gdown(file_id, dest)
+        except PrimarySourceUnavailable as exc:
+            # error-policy:J4 explicit source degrade — both transports are
+            # public distribution paths for checksum-identical immutable data.
+            print(
+                f"[fetch_data] {exc}; using pinned Hugging Face mirror "
+                f"{HF_MIRROR_REPOSITORY}@{HF_MIRROR_REVISION}"
+            )
+            _download_via_huggingface(logical_name, dest)
+        tmp = dest.with_suffix(dest.suffix + ".part")
+        _verify_file(logical_name, tmp)
+        tmp.replace(dest)
         fetched.append(dest)
     return fetched
 

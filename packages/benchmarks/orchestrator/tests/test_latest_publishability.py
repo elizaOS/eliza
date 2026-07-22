@@ -4,8 +4,19 @@ import argparse
 import json
 from pathlib import Path
 
+from benchmarks.publication_contracts import (
+    WEBSHOP_FULL_REPORT_CONTRACT,
+    WEBSHOP_FULL_SCENARIO_ID_MANIFEST_SHA256,
+)
 from benchmarks.orchestrator import cli
 from benchmarks.orchestrator.latest_publishability import validate_latest_publishability
+from benchmarks.orchestrator.runtime_provenance import EXPECTED_NATIVE_RUNTIME
+from benchmarks.orchestrator.subscription_provenance import (
+    summarize_subscription_gateway_audit,
+)
+
+
+AUDIT_HASH = "a" * 64
 
 
 def _write_latest(latest_dir: Path, name: str, payload: dict) -> None:
@@ -14,6 +25,91 @@ def _write_latest(latest_dir: Path, name: str, payload: dict) -> None:
         json.dumps(payload, sort_keys=True),
         encoding="utf-8",
     )
+
+
+def _subscription_gateway_summary(
+    tmp_path: Path,
+    *,
+    harness: str,
+    request_count: int,
+) -> tuple[Path, dict]:
+    audit = tmp_path / f"{harness}-subscription-audit.jsonl"
+    records = []
+    for index in range(request_count):
+        records.append(
+            {
+                "schema_version": 1,
+                "request_id": f"{harness}-{index}",
+                "recorded_at": "2026-07-20T20:00:00Z",
+                "harness": harness,
+                "transport": "claude-agent-sdk",
+                "credential_source": "claude-code-managed",
+                "sdk_version": "0.3.200",
+                "sdk_api_key_source": "none",
+                "claude_code_version": "2.1.214",
+                "fresh_session": True,
+                "tool_execution": "capture-only",
+                "serializer": "openai-full-history-v1",
+                "response_mode": "json",
+                "model_requested": "claude-opus-4-6",
+                "model_effective": "claude-opus-4-6",
+                "reasoning_effort": "medium",
+                "message_count": 2,
+                "message_roles": ["system", "user"],
+                "tool_names": ["lookup"],
+                "tool_choice": "auto",
+                "tool_call_names": [],
+                "prompt_sha256": AUDIT_HASH,
+                "system_prompt_sha256": AUDIT_HASH,
+                "tool_schema_sha256": AUDIT_HASH,
+                "request_sha256": AUDIT_HASH,
+                "queue_wait_ms": 0,
+                "service_ms": 250.0,
+                "status": "succeeded",
+                "finish_reason": "stop",
+                "result_subtype": "success",
+                "terminal_reason": None,
+                "unapplied_parameters": [],
+                "error_code": None,
+            }
+        )
+    audit.write_text(
+        "".join(f"{json.dumps(record, sort_keys=True)}\n" for record in records),
+        encoding="utf-8",
+    )
+    return audit, summarize_subscription_gateway_audit(audit, harness=harness)
+
+
+def _openclaw_runtime_summary(record_count: int) -> dict[str, object]:
+    return {
+        "telemetry_records": record_count,
+        "provenance_records": record_count,
+        "invalid_json_lines": 0,
+        "harnesses": ["openclaw"],
+        "providers": ["claude-subscription"],
+        "models": ["claude-opus-4-6"],
+        "agent_runtimes": ["openclaw"],
+        "native_runtime_classes": [
+            EXPECTED_NATIVE_RUNTIME["openclaw"]["native_runtime_class"]
+        ],
+        "native_runtime_apis": [
+            EXPECTED_NATIVE_RUNTIME["openclaw"]["native_runtime_api"]
+        ],
+        "transports": [EXPECTED_NATIVE_RUNTIME["openclaw"]["transport"]],
+        "publishable_native_all": True,
+        "stub_embedding_enabled": False,
+        "openclaw_native_session_records": record_count,
+        "openclaw_native_session_evidence_all_succeeded": True,
+        "openclaw_native_session_sha256_all_valid": True,
+        "openclaw_native_session_terminal_reason_records": record_count,
+        "openclaw_native_session_terminal_reasons": ["stop"],
+        "openclaw_native_trajectory_evidence_all_succeeded": True,
+        "openclaw_native_trajectory_sha256_all_valid": True,
+        "openclaw_full_native_usage_all_attested": True,
+        "openclaw_native_usage_sha256_all_valid": True,
+        "openclaw_runtime_identity_all_attested": True,
+        "openclaw_thinking_level_all_attested": True,
+    }
 
 
 def _write_code_agent_artifacts(tmp_path: Path) -> dict[str, str]:
@@ -65,7 +161,9 @@ def _write_code_agent_artifacts(tmp_path: Path) -> dict[str, str]:
     }
 
 
-def test_latest_publishability_allows_benign_sample_count_fields(tmp_path: Path) -> None:
+def test_latest_publishability_allows_benign_sample_count_fields(
+    tmp_path: Path,
+) -> None:
     latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_latest(
         latest_dir,
@@ -93,7 +191,201 @@ def test_latest_publishability_allows_benign_sample_count_fields(tmp_path: Path)
     assert report.checked_files == 1
 
 
-def test_latest_publishability_flags_structured_non_real_markers(tmp_path: Path) -> None:
+def test_latest_publishability_accepts_verified_subscription_runtime(
+    tmp_path: Path,
+) -> None:
+    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _, gateway_provenance = _subscription_gateway_summary(
+        tmp_path,
+        harness="openclaw",
+        request_count=2,
+    )
+    _write_latest(
+        latest_dir,
+        "bfcl__openclaw.json",
+        {
+            "benchmark_id": "bfcl",
+            "agent": "openclaw",
+            "provider": "claude-subscription",
+            "model": "anthropic/claude-opus-4-6",
+            "status": "succeeded",
+            "score": 0.8,
+            "metrics": {
+                "runtime_provenance": _openclaw_runtime_summary(2),
+                "subscription_gateway_provenance": gateway_provenance,
+            },
+        },
+    )
+
+    report = validate_latest_publishability(tmp_path)
+
+    assert report.ok
+
+
+def test_latest_publishability_rejects_mutated_subscription_audit(
+    tmp_path: Path,
+) -> None:
+    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    audit, gateway_provenance = _subscription_gateway_summary(
+        tmp_path,
+        harness="openclaw",
+        request_count=1,
+    )
+    _write_latest(
+        latest_dir,
+        "bfcl__openclaw.json",
+        {
+            "benchmark_id": "bfcl",
+            "agent": "openclaw",
+            "provider": "claude-subscription",
+            "model": "claude-opus-4-6",
+            "status": "succeeded",
+            "score": 0.8,
+            "metrics": {
+                "runtime_provenance": _openclaw_runtime_summary(1),
+                "subscription_gateway_provenance": gateway_provenance,
+            },
+        },
+    )
+    audit.write_text("mutated\n", encoding="utf-8")
+
+    report = validate_latest_publishability(tmp_path)
+
+    assert {finding.reason for finding in report.findings} == {
+        "subscription_gateway_audit_hash_mismatch"
+    }
+
+
+def test_latest_publishability_rejects_openclaw_without_full_turn_usage(
+    tmp_path: Path,
+) -> None:
+    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _, gateway_provenance = _subscription_gateway_summary(
+        tmp_path,
+        harness="openclaw",
+        request_count=1,
+    )
+    runtime_provenance = _openclaw_runtime_summary(1)
+    runtime_provenance["openclaw_full_native_usage_all_attested"] = False
+    _write_latest(
+        latest_dir,
+        "bfcl__openclaw.json",
+        {
+            "benchmark_id": "bfcl",
+            "agent": "openclaw",
+            "provider": "claude-subscription",
+            "model": "anthropic/claude-opus-4-6",
+            "status": "succeeded",
+            "score": 0.8,
+            "metrics": {
+                "runtime_provenance": runtime_provenance,
+                "subscription_gateway_provenance": gateway_provenance,
+            },
+        },
+    )
+
+    report = validate_latest_publishability(tmp_path)
+
+    assert {finding.reason for finding in report.findings} == {
+        "subscription_native_session_evidence_mismatch"
+    }
+
+
+def test_latest_publishability_rejects_subscription_without_runtime_proof(
+    tmp_path: Path,
+) -> None:
+    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_latest(
+        latest_dir,
+        "bfcl__openclaw.json",
+        {
+            "benchmark_id": "bfcl",
+            "agent": "openclaw",
+            "provider": "claude-subscription",
+            "model": "claude-opus-4-6",
+            "status": "succeeded",
+            "score": 0.8,
+            "metrics": {},
+        },
+    )
+
+    report = validate_latest_publishability(tmp_path)
+
+    assert not report.ok
+    assert {finding.reason for finding in report.findings} == {
+        "subscription_missing_runtime_provenance"
+    }
+
+
+def _complete_webshop_latest_metrics() -> dict:
+    return {
+        **WEBSHOP_FULL_REPORT_CONTRACT,
+        "java_version": "openjdk version 21.0.8",
+        "total_tasks": 5_500,
+        "total_trials": 5_500,
+        "runtime_provenance": {
+            "telemetry_records": 5_500,
+            "task_id_records": 5_500,
+            "missing_task_id_records": 0,
+            "task_id_manifest_count": 5_500,
+            "task_id_manifest_sha256": WEBSHOP_FULL_SCENARIO_ID_MANIFEST_SHA256,
+        },
+    }
+
+
+def test_latest_publishability_accepts_exact_webshop_workload_proof(
+    tmp_path: Path,
+) -> None:
+    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_latest(
+        latest_dir,
+        "webshop__openclaw.json",
+        {
+            "benchmark_id": "webshop",
+            "agent": "openclaw",
+            "provider": "cerebras",
+            "model": "test-model",
+            "status": "succeeded",
+            "score": 0.4,
+            "metrics": _complete_webshop_latest_metrics(),
+        },
+    )
+
+    report = validate_latest_publishability(tmp_path)
+
+    assert report.ok
+
+
+def test_latest_publishability_rejects_webshop_model_call_manifest_drift(
+    tmp_path: Path,
+) -> None:
+    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    metrics = _complete_webshop_latest_metrics()
+    metrics["runtime_provenance"]["task_id_manifest_sha256"] = "0" * 64
+    _write_latest(
+        latest_dir,
+        "webshop__openclaw.json",
+        {
+            "benchmark_id": "webshop",
+            "agent": "openclaw",
+            "provider": "cerebras",
+            "model": "test-model",
+            "status": "succeeded",
+            "score": 0.4,
+            "metrics": metrics,
+        },
+    )
+
+    report = validate_latest_publishability(tmp_path)
+
+    assert {finding.reason for finding in report.findings} == {
+        "webshop_scenario_model_call_manifest_mismatch"
+    }
+
+
+def test_latest_publishability_flags_structured_non_real_markers(
+    tmp_path: Path,
+) -> None:
     latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_latest(
         latest_dir,
@@ -1236,7 +1528,9 @@ def test_latest_publishability_filters_excluded_benchmarks(tmp_path: Path) -> No
     assert report.checked_files == 2
 
 
-def test_latest_publishability_filtered_scope_requires_selected_row(tmp_path: Path) -> None:
+def test_latest_publishability_filtered_scope_requires_selected_row(
+    tmp_path: Path,
+) -> None:
     latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_latest(
         latest_dir,
@@ -1256,12 +1550,13 @@ def test_latest_publishability_filtered_scope_requires_selected_row(tmp_path: Pa
 
     assert not report.ok
     assert any(
-        finding.reason == "no_selected_latest_rows"
-        for finding in report.findings
+        finding.reason == "no_selected_latest_rows" for finding in report.findings
     )
 
 
-def test_latest_publishability_include_filter_requires_matching_row(tmp_path: Path) -> None:
+def test_latest_publishability_include_filter_requires_matching_row(
+    tmp_path: Path,
+) -> None:
     latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_latest(
         latest_dir,
@@ -1281,8 +1576,7 @@ def test_latest_publishability_include_filter_requires_matching_row(tmp_path: Pa
 
     assert not report.ok
     assert any(
-        finding.reason == "no_selected_latest_rows"
-        for finding in report.findings
+        finding.reason == "no_selected_latest_rows" for finding in report.findings
     )
 
 

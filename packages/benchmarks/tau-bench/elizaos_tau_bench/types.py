@@ -67,6 +67,12 @@ class BenchmarkReport:
     avg_reward: float
     num_tasks: int
     num_trials_per_task: int
+    data_provenance: dict[str, Any]
+    scenario_counts: dict[str, int]
+    complete: bool
+    expected_rollouts: int
+    completed_rollouts: int
+    workload_sha256: str
     domain_results: dict[str, list[TaskRunResult]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -74,6 +80,12 @@ class BenchmarkReport:
             "config": self.config.to_dict(),
             "num_tasks": self.num_tasks,
             "num_trials_per_task": self.num_trials_per_task,
+            "data_provenance": self.data_provenance,
+            "scenario_counts": self.scenario_counts,
+            "complete": self.complete,
+            "expected_rollouts": self.expected_rollouts,
+            "completed_rollouts": self.completed_rollouts,
+            "workload_sha256": self.workload_sha256,
             "avg_reward": self.avg_reward,
             "pass_k": {
                 k: {"k": v.k, "num_tasks": v.num_tasks, "pass_hat_k": v.pass_hat_k}
@@ -134,8 +146,8 @@ class TauBenchConfig:
     # Which agent harness drives per-turn completions:
     #   "litellm"  – built-in LiteLLM tool-calling agent (default)
     #   "eliza"    – elizaos TS bench server bridge
-    #   "hermes"   – hermes-adapter (OpenAI-compatible, in_process when available)
-    #   "openclaw" – openclaw-adapter (OpenAI-compatible direct mode by default)
+    #   "hermes"   – pinned native hermes-agent subprocess adapter
+    #   "openclaw" – isolated OpenClaw embedded runtime + native tool plugin
     agent_harness: str = "litellm"
     agent_model: str = "gpt-4o"
     agent_provider: str = "openai"

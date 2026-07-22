@@ -231,7 +231,16 @@ describe("v5 planner loop skeleton", () => {
 			'never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
 		);
 		expect(plannerTemplate).toContain(
-			'return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}',
+			"native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares",
+		);
+		expect(plannerTemplate).toContain(
+			"never nest arguments under `parameters` unless the tool schema itself declares a `parameters` field",
+		);
+		expect(plannerTemplate).toContain(
+			"plain-JSON fallback only (when native tool calls are unavailable)",
+		);
+		expect(plannerTemplate).toContain(
+			"never put that envelope inside a native tool's args",
 		);
 		expect(plannerTemplate).toContain(
 			"owner goal save/create/update/review when OWNER_GOALS is exposed",
@@ -3089,6 +3098,52 @@ describe("v5 planner loop — evaluator gate", () => {
 		});
 
 		expect(evaluate).toHaveBeenCalled();
+	});
+
+	it("never publishes a namespaced workflow invocation after the action succeeds", async () => {
+		const leakedInvocation =
+			'call:automation:GET_WORKFLOW{workflowId: "8914e389-8cda-401e-aac0-a501286a8130"}';
+		const createdReply = "Created the workflow draft and opened it for review.";
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: leakedInvocation,
+				toolCalls: [
+					{
+						name: "WORKFLOW",
+						args: {
+							action: "create",
+							seedPrompt: "Create a daily digest workflow",
+						},
+					},
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: createdReply,
+			userFacingText: createdReply,
+			verifiedUserFacing: true,
+			data: {
+				workflowId: "8914e389-8cda-401e-aac0-a501286a8130",
+			},
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The workflow action completed.",
+			messageToUser: leakedInvocation,
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.finalMessage).toBe(createdReply);
+		expect(result.finalMessage).not.toContain("call:automation:");
 	});
 
 	it("never surfaces scratch prose accompanying a STOP-only terminal", async () => {

@@ -100,6 +100,27 @@ def test_gsm8k_format_ok_tracks_marker_presence(tmp_path: Path) -> None:
     assert result.metrics["format_ok"] == pytest.approx(1 / 3, rel=1e-3)
 
 
+def test_gsm8k_runner_aborts_instead_of_publishing_partial_score(
+    tmp_path: Path,
+) -> None:
+    class FailsOnSecondCall(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            if self._idx == 1:
+                raise OSError("transport unavailable")
+            return super().generate(messages, config)
+
+    runner = GSM8KRunner(examples=list(SMOKE_FIXTURES))
+
+    with pytest.raises(RuntimeError, match="example 2/3"):
+        runner.run(
+            client=FailsOnSecondCall([str(SMOKE_FIXTURES[0]["answer"])]),
+            model="m",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
 def test_gsm8k_cli_end_to_end(tmp_path: Path) -> None:
     out_dir = tmp_path / "out"
     rc = main_entry(
