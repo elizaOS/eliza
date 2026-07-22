@@ -45,6 +45,18 @@ vi.mock("../../widgets/WidgetHost", () => ({
   ),
 }));
 
+vi.mock("../pages/LauncherSurface", () => ({
+  LauncherSurface: ({ layout }: { layout: string }) => (
+    <nav
+      aria-label="Launcher apps"
+      data-testid="home-launcher-grid"
+      data-layout={layout}
+    >
+      <button type="button">Calendar</button>
+    </nav>
+  ),
+}));
+
 import type { AgentNotification } from "@elizaos/core";
 import {
   __ingestNotificationForTests,
@@ -68,14 +80,6 @@ afterEach(() => {
   navigateDeepLink.mockClear();
 });
 
-const NATIVE_OS_TILES = ["messages", "phone", "contacts", "camera"];
-
-function tileIds(container: HTMLElement): string[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>('[data-testid^="home-tile-"]'),
-  ).map((el) => el.dataset.testid?.replace("home-tile-", "") ?? "");
-}
-
 function makeNotification(
   overrides: Partial<AgentNotification> = {},
 ): AgentNotification {
@@ -93,39 +97,40 @@ function makeNotification(
 }
 
 describe("HomeScreen", () => {
-  it("mounts the unified home WidgetHost (slot=home) and no clock, NO pinned tiles off-AOSP", () => {
-    const { container } = render(<HomeScreen onOpenTile={vi.fn()} />);
+  it("orders notifications, inline apps, then ranked widgets in one bounded column", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
     // The clock/date was removed — the home stays simple.
     expect(screen.queryByTestId("home-clock")).toBeNull();
-    // The prioritized home widgets render through the unified WidgetHost.
+    const notifications = screen.getByTestId("home-notification-center");
+    const apps = screen.getByTestId("home-apps-scroll");
+    const launcher = screen.getByTestId("home-launcher-grid");
+    expect(launcher.getAttribute("data-layout")).toBe("embedded");
     const host = screen.getByTestId("home-widget-host");
     expect(host.getAttribute("data-slot")).toBe("home");
-    // Off-AOSP: zero tiles — Launcher is the adjacent launcher now, and the
-    // tile grid is omitted entirely (not an empty section).
-    expect(tileIds(container)).toEqual([]);
+    expect(
+      notifications.compareDocumentPosition(apps) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeGreaterThan(0);
+    expect(apps.contains(launcher)).toBe(true);
+    expect(apps.contains(host)).toBe(true);
+    expect(
+      launcher.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeGreaterThan(0);
+    expect(screen.getByTestId("home-screen").className).toContain(
+      "overflow-hidden",
+    );
+    expect(apps.className).toContain("overflow-y-auto");
+    expect(apps.className).toContain("scrollbar-hide");
+    expect(apps.className).toContain("[scrollbar-width:none]");
+    expect(apps.className).toContain("[&::-webkit-scrollbar]:hidden");
+    expect(apps.hasAttribute("data-scroll-cert-scroller")).toBe(true);
+  });
+
+  it("does not render a second AOSP tile list beside the curated launcher", () => {
+    render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
     expect(screen.queryByTestId("home-tiles")).toBeNull();
-  });
-
-  it("shows only the 4 native-OS tiles on the AOSP fork; none off-AOSP", () => {
-    const { rerender, container } = render(<HomeScreen onOpenTile={vi.fn()} />);
-    // Off-AOSP: no tiles at all (default tiles removed; native-OS hidden).
-    for (const id of NATIVE_OS_TILES) {
-      expect(screen.queryByTestId(`home-tile-${id}`)).toBeNull();
-    }
-    expect(tileIds(container)).toHaveLength(0);
-
-    rerender(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
-    // AOSP: exactly the four native-OS surfaces.
-    expect(tileIds(container)).toEqual(NATIVE_OS_TILES);
-  });
-
-  it("opens an AOSP native-OS tile with the right target", () => {
-    const onOpenTile = vi.fn();
-    render(<HomeScreen onOpenTile={onOpenTile} showNativeOsTiles />);
-    fireEvent.click(screen.getByTestId("home-tile-camera"));
-    expect(onOpenTile).toHaveBeenCalledWith({ kind: "tab", tab: "camera" });
-    fireEvent.click(screen.getByTestId("home-tile-phone"));
-    expect(onOpenTile).toHaveBeenCalledWith({ kind: "tab", tab: "phone" });
+    expect(screen.getAllByRole("button", { name: "Calendar" })).toHaveLength(1);
   });
 
   it("has no Edit button or Pinned label (clean, action-driven dashboard)", () => {
@@ -143,47 +148,7 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
-  it("renders the notification inbox inline (Apple-style fade-in), below the time/weather header", () => {
-    __ingestNotificationForTests(makeNotification());
-    render(<HomeScreen onOpenTile={vi.fn()} />);
-    const home = screen.getByTestId("home-screen");
-    const card = screen.getByTestId("home-notification-center");
-    // Inline on the same layer — it lives INSIDE the home scroller, not a portal
-    // shade over it.
-    expect(home.contains(card)).toBe(true);
-    expect(screen.queryByTestId("notifications-shade")).toBeNull();
-    // Apple-style entrance.
-    expect(card.className).toContain("eliza-notif-center-in");
-    // Positioned AFTER the time/weather header in the column.
-    const header = screen.getByTestId("default-home-widgets");
-    expect(
-      header.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeGreaterThan(0);
-    // The wrapper grows to fill the column down to the chat (flex-1) and keeps a
-    // small margin below the header (mt-4).
-    const wrapper = card.parentElement;
-    expect(wrapper?.className).toContain("flex-1");
-    expect(wrapper?.className).toContain("mt-4");
-    // The inbox itself fills its wrapper and scrolls internally.
-    expect(card.className).toContain("flex-1");
-    // The containing flex column has a definite height. `min-h-full` lets a
-    // large inbox grow to its content height and continue behind the composer.
-    const column = screen.getByTestId("home-content-column");
-    expect(column.className).toContain("h-full");
-    expect(column.className).not.toContain("min-h-full");
-    // Closed keeps interrupt-tier rows above the total; opening reveals every
-    // priority with no header eyebrows.
-    expect(screen.getByTestId("notifications-count")).toBeTruthy();
-    expect(screen.getByTestId("notification-row")).toBeTruthy();
-    fireEvent.wheel(screen.getByTestId("home-notification-list"), {
-      deltaY: -(PULL_COMMIT_PX + 10),
-    });
-    expect(screen.getByTestId("notification-row")).toBeTruthy();
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
-    expect(screen.queryByTestId("notification-group-label")).toBeNull();
-  });
-
-  it("keeps widget taps inert and expands a populated shade from a widget-area pull", () => {
+  it("keeps rested notifications compact, then displaces and restores the mounted apps region", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Priority alert", priority: "urgent" }),
     );
@@ -195,28 +160,60 @@ describe("HomeScreen", () => {
       }),
     );
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    const timeWidget = screen.getByTestId("home-time-widget");
-    const center = screen.getByTestId("home-notification-center");
-    const list = screen.getByTestId("home-notification-list");
+    const home = screen.getByTestId("home-screen");
+    const card = screen.getByTestId("home-notification-center");
+    const apps = screen.getByTestId("home-apps-scroll");
+    const launcher = screen.getByTestId("home-launcher-grid");
+    expect(home.contains(card)).toBe(true);
+    expect(screen.queryByTestId("notifications-shade")).toBeNull();
+    expect(card.className).toContain("eliza-notif-center-in");
+    const header = screen.getByTestId("default-home-widgets");
+    expect(
+      header.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeGreaterThan(0);
+    const wrapper = card.parentElement;
+    expect(wrapper?.className).toContain("flex-none");
+    expect(wrapper?.className).toContain("max-h-[40%]");
+    expect(wrapper?.className).toContain("mt-4");
+    expect(wrapper?.className).toContain("mb-3");
+    expect(card.className).toContain("flex-1");
+    const column = screen.getByTestId("home-content-column");
+    expect(column.className).toContain("h-full");
+    expect(column.className).not.toContain("min-h-full");
+    expect(apps.className).toContain("flex-1");
+    expect(apps.hasAttribute("inert")).toBe(false);
+    expect(apps.contains(launcher)).toBe(true);
+    apps.scrollTop = 96;
 
-    fireEvent.touchStart(timeWidget, {
-      touches: [{ clientX: 100, clientY: 80 }],
+    const calendarButton = screen.getByRole("button", { name: "Calendar" });
+    calendarButton.focus();
+    fireEvent.wheel(screen.getByTestId("home-notification-list"), {
+      deltaY: -(PULL_COMMIT_PX + 10),
     });
-    fireEvent.touchEnd(timeWidget, { touches: [] });
-    fireEvent.click(timeWidget);
-    expect(screen.getByTestId("home-notification-center")).toBe(center);
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
-
-    fireEvent.touchStart(timeWidget, {
-      touches: [{ clientX: 100, clientY: 80 }],
-    });
-    fireEvent.touchMove(timeWidget, {
-      touches: [{ clientX: 102, clientY: 230 }],
-    });
-    fireEvent.touchEnd(timeWidget, { touches: [] });
-    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(wrapper?.className).toContain("flex-1");
+    expect(apps.className).toContain("h-0");
+    expect(apps.className).toContain("overflow-y-auto");
+    expect(apps.className).not.toContain("overflow-y-hidden");
+    expect(apps.getAttribute("aria-hidden")).toBe("true");
+    expect(apps.hasAttribute("inert")).toBe(true);
+    expect(apps.contains(launcher)).toBe(true);
+    expect(document.activeElement).toBe(
+      screen.getByTestId("notifications-collapse"),
+    );
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(screen.queryByTestId("notification-group-label")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByTestId("home-notification-list").dataset.shadeMode).toBe(
+      "rested",
+    );
+    expect(apps.hasAttribute("inert")).toBe(false);
+    expect(apps.getAttribute("aria-hidden")).toBeNull();
+    expect(apps.className).toContain("overflow-y-auto");
+    expect(apps.contains(launcher)).toBe(true);
+    expect(apps.scrollTop).toBe(96);
+    expect(document.activeElement).toBe(calendarButton);
   });
 
   it("keeps the hydrated empty gesture band quiet without growing the notification region", () => {
@@ -230,85 +227,113 @@ describe("HomeScreen", () => {
     expect(empty.style.opacity).toBe("0");
     expect(empty.getAttribute("aria-hidden")).toBe("true");
     expect(center.parentElement?.className).not.toContain("flex-1");
-    // The widget breathing region keeps the flex-1 fill.
-    const hostWrapper = screen.getByTestId("home-widget-host").parentElement;
-    expect(hostWrapper?.className).toContain("flex-1");
-    expect(hostWrapper?.className).toContain("justify-center");
+    const apps = screen.getByTestId("home-apps-scroll");
+    expect(apps.className).toContain("flex-1");
+    expect(apps.hasAttribute("inert")).toBe(false);
   });
 
-  it("reveals the empty state from a pull on the quiet home background", () => {
+  it("keeps apps available when the empty notification band is expanded", () => {
     __setHydratedForTests(true);
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    const home = screen.getByTestId("home-screen");
     const list = screen.getByTestId("home-notification-list");
-
-    fireEvent.touchStart(home, {
-      touches: [{ clientX: 200, clientY: 300 }],
-    });
-    fireEvent.touchMove(home, {
-      // An 80px pull clears the empty-state threshold while remaining below
-      // the populated shade's commit threshold after resistance.
-      touches: [{ clientX: 202, clientY: 380 }],
-    });
+    const apps = screen.getByTestId("home-apps-scroll");
+    fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
     expect(screen.getByTestId("notifications-empty").textContent).toBe(
       "No Notifications",
     );
-    fireEvent.touchEnd(home, { touches: [] });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-
-    fireEvent.touchStart(home, {
-      touches: [{ clientX: 200, clientY: 440 }],
-    });
-    fireEvent.touchMove(home, {
-      touches: [{ clientX: 202, clientY: 300 }],
-    });
-    fireEvent.touchEnd(home, { touches: [] });
-    act(() => vi.advanceTimersByTime(300));
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+    expect(apps.hasAttribute("inert")).toBe(false);
+    expect(apps.getAttribute("aria-hidden")).toBeNull();
+    expect(apps.className).toContain("overflow-y-auto");
   });
 
-  it("reveals and closes the empty state from a trackpad swipe on the home background", () => {
+  it("moves and restores app focus when a notification arrives in an expanded empty shade", () => {
     __setHydratedForTests(true);
-    render(<HomeScreen onOpenTile={vi.fn()} />);
-    const home = screen.getByTestId("home-screen");
+    render(
+      <HomeScreen
+        onOpenTile={vi.fn()}
+        apps={<button type="button">Open Calendar</button>}
+      />,
+    );
     const list = screen.getByTestId("home-notification-list");
-
-    fireEvent.wheel(home, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
+    const apps = screen.getByTestId("home-apps-scroll");
+    fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(screen.getByTestId("notifications-empty").textContent).toBe(
-      "No Notifications",
+    expect(apps.hasAttribute("inert")).toBe(false);
+
+    const calendarButton = screen.getByRole("button", {
+      name: "Open Calendar",
+    });
+    calendarButton.focus();
+    act(() => {
+      __ingestNotificationForTests(
+        makeNotification({ title: "Priority alert", priority: "urgent" }),
+      );
+    });
+
+    expect(apps.hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(
+      screen.getByTestId("notifications-collapse"),
     );
 
-    // Opposite-direction rebound during the settle cannot hide the empty
-    // status and make it flash back on trailing momentum.
-    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-
-    act(() => vi.advanceTimersByTime(500));
-    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.click(screen.getByTestId("notifications-collapse"));
     act(() => vi.advanceTimersByTime(300));
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+    expect(apps.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(calendarButton);
   });
 
-  it("does not steal an empty-inbox gesture that begins on a home control", () => {
-    __setHydratedForTests(true);
-    render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
-    const tile = screen.getByTestId("home-tile-camera");
+  it("does not steal focus back from chat when the expanded shade collapses", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "Priority alert", priority: "urgent" }),
+    );
+    render(
+      <>
+        <input aria-label="Chat composer" />
+        <HomeScreen
+          onOpenTile={vi.fn()}
+          apps={<button type="button">Open Calendar</button>}
+        />
+      </>,
+    );
     const list = screen.getByTestId("home-notification-list");
+    const apps = screen.getByTestId("home-apps-scroll");
+    const calendarButton = screen.getByRole("button", {
+      name: "Open Calendar",
+    });
+    calendarButton.focus();
+    fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
+    expect(apps.hasAttribute("inert")).toBe(true);
 
-    fireEvent.touchStart(tile, {
+    const chatComposer = screen.getByRole("textbox", {
+      name: "Chat composer",
+    });
+    chatComposer.focus();
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(apps.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(chatComposer);
+  });
+
+  it("does not let app-region wheel or touch gestures change notification mode", () => {
+    __setHydratedForTests(true);
+    render(
+      <HomeScreen
+        onOpenTile={vi.fn()}
+        apps={<button type="button">Open Calendar</button>}
+      />,
+    );
+    const apps = screen.getByTestId("home-apps-scroll");
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.wheel(apps, { deltaY: -(PULL_COMMIT_PX + 10) });
+    fireEvent.touchStart(apps, {
       touches: [{ clientX: 200, clientY: 300 }],
     });
-    fireEvent.touchMove(tile, {
+    fireEvent.touchMove(apps, {
       touches: [{ clientX: 202, clientY: 440 }],
     });
-    fireEvent.touchEnd(tile, { touches: [] });
-    fireEvent.wheel(tile, { deltaY: -(PULL_COMMIT_PX + 10) });
-
+    fireEvent.touchEnd(apps, { touches: [] });
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
   });

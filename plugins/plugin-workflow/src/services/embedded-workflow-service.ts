@@ -33,6 +33,7 @@ import {
   embeddedExecutions,
   embeddedTags,
   embeddedWorkflows,
+  LEGACY_UNSCOPED_WORKFLOW_AGENT_ID,
   workflowRevisions,
 } from '../db/schema';
 import type {
@@ -93,6 +94,9 @@ interface IExecuteFunctions {
   /** Identifier of the in-progress workflow execution, used by nodes that emit
    *  audit metadata (e.g. respondToEvent records it on the injected memory). */
   getExecutionId?(): string | null;
+  /** Cancellation from the Smithers run boundary. Network and wait nodes use
+   * this to stop before a timed-out execution can produce late side effects. */
+  getAbortSignal?(): AbortSignal;
 }
 
 interface NodeCapabilities {
@@ -168,6 +172,13 @@ interface ExecuteOptions {
   throwOnError?: boolean;
 }
 
+const SMITHERS_RESUME_STATE_KEY = 'smithersResumeState';
+
+interface SmithersResumeState {
+  version: 1;
+  workflow: WorkflowDefinition;
+}
+
 interface IncomingConnection {
   source: string;
   sourceOutputIndex: number;
@@ -176,7 +187,7 @@ interface IncomingConnection {
 
 const EMBEDDED_HOST = 'embedded://local';
 const DEFAULT_SCHEDULE_INTERVAL_MS = 60_000;
-const DEVICE_HEALTH_CHECK_WORKFLOW_ID = 'system-device-health-check';
+export const DEVICE_HEALTH_CHECK_WORKFLOW_ID = 'system-device-health-check';
 const DEVICE_HEALTH_CHECK_RUN_KEY = `${DEVICE_HEALTH_CHECK_WORKFLOW_ID}:initial`;
 
 /**
@@ -189,6 +200,30 @@ const DEVICE_HEALTH_CHECK_RUN_KEY = `${DEVICE_HEALTH_CHECK_WORKFLOW_ID}:initial`
  * pattern so both consumers of the one clock seed the same way.)
  */
 const DEFAULT_WORKFLOW_SEED_MARKER_CACHE_KEY = 'eliza:workflow:seeded-defaults:v1';
+
+const WORKFLOW_AGENT_SCOPE_PRIMARY_KEYS = [
+  'credential_mappings_tenant_pkey',
+  'embedded_workflows_tenant_pkey',
+  'workflow_revisions_tenant_pkey',
+  'embedded_executions_tenant_pkey',
+  'embedded_credentials_tenant_pkey',
+  'embedded_tags_tenant_pkey',
+] as const;
+
+const WORKFLOW_AGENT_SCOPE_INDEXES = [
+  'idx_credential_mappings_agent_user_cred',
+  'idx_embedded_workflows_agent_active',
+  'idx_embedded_workflows_agent_updated_at',
+  'idx_workflow_revisions_agent_workflow_id',
+  'idx_workflow_revisions_agent_workflow_version',
+  'idx_workflow_revisions_agent_captured_at',
+  'idx_embedded_executions_agent_workflow_id',
+  'idx_embedded_executions_agent_status',
+  'idx_embedded_executions_agent_started_at',
+  'idx_embedded_executions_agent_idempotency_key',
+  'idx_embedded_credentials_agent_type',
+  'idx_embedded_tags_agent_name',
+] as const;
 
 let loadedQuickJs: Promise<typeof import('quickjs-emscripten')> | null = null;
 
@@ -207,6 +242,20 @@ function nowIso(): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readSmithersResumeWorkflow(execution: WorkflowExecution): WorkflowDefinition | undefined {
+  const state = execution.customData?.[SMITHERS_RESUME_STATE_KEY];
+  if (!isRecord(state) || state.version !== 1 || !isRecord(state.workflow)) return undefined;
+  const workflow = state.workflow;
+  if (
+    typeof workflow.name !== 'string' ||
+    !Array.isArray(workflow.nodes) ||
+    !isRecord(workflow.connections)
+  ) {
+    return undefined;
+  }
+  return cloneJson(workflow as unknown as WorkflowDefinition);
 }
 
 function normalizeWorkflowPayload(
@@ -252,6 +301,20 @@ function revisionFromRow(row: StoredWorkflowRevisionRow): WorkflowRevision {
     updatedAt: row.updatedAt,
     capturedAt: row.capturedAt,
     operation: row.operation,
+  };
+}
+
+function tagFromRow(row: {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}): WorkflowTag {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -839,7 +902,11 @@ function createHttpRequestNode(): INodeType {
           ...normalizeHeaderEntries(headerParameters),
         };
 
-        const requestOptions: RequestInit = { method, headers };
+        const requestOptions: RequestInit = {
+          method,
+          headers,
+          signal: this.getAbortSignal?.(),
+        };
         const bodyContainer = isRecord(nodeParameters.bodyParameters)
           ? nodeParameters.bodyParameters
           : {};
@@ -1134,7 +1201,17 @@ function createWaitNode(): INodeType {
             : unit === 'hours'
               ? 3_600_000
               : 1000;
-      await new Promise((resolve) => setTimeout(resolve, amount * multiplier));
+      const signal = this.getAbortSignal?.();
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, amount * multiplier);
+        if (!signal) return;
+        const onAbort = (): void => {
+          clearTimeout(timer);
+          reject(signal.reason ?? new DOMException('Workflow execution aborted', 'AbortError'));
+        };
+        if (signal.aborted) onAbort();
+        else signal.addEventListener('abort', onAbort, { once: true });
+      });
       return [this.getInputData()];
     },
   };
@@ -1558,6 +1635,8 @@ export class EmbeddedWorkflowService extends Service {
   private readonly nodeTypes = new EmbeddedNodeTypes();
   private readonly hostCapabilities = detectHostCapabilities();
   private schemaReady: Promise<void> | null = null;
+  private readonly recoveryController = new AbortController();
+  private recoveryPromise: Promise<void> | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<EmbeddedWorkflowService> {
     const service = new EmbeddedWorkflowService(runtime);
@@ -1570,6 +1649,7 @@ export class EmbeddedWorkflowService extends Service {
       if (shouldSeedDefaultWorkflows(runtime)) {
         await service.seedDefaultWorkflows();
       }
+      service.startExecutionRecovery();
       await service.rehydrateSchedules();
     }
     return service;
@@ -1577,7 +1657,11 @@ export class EmbeddedWorkflowService extends Service {
 
   override async stop(): Promise<void> {
     // Scheduling lives in core's TaskService. Tasks persist across restart;
-    // there is nothing in-process to tear down here.
+    // only a startup recovery worker is owned in-process.
+    if (!this.recoveryController.signal.aborted) {
+      this.recoveryController.abort(new Error('Embedded workflow service stopped'));
+    }
+    await this.recoveryPromise;
   }
 
   get host(): string {
@@ -1609,12 +1693,78 @@ export class EmbeddedWorkflowService extends Service {
     return db as NodePgDatabase;
   }
 
+  private get tenantAgentId(): string {
+    const agentId = this.runtime.agentId;
+    if (!agentId || agentId === LEGACY_UNSCOPED_WORKFLOW_AGENT_ID) {
+      throw new ElizaError('Workflow persistence requires a live agent tenant id', {
+        code: 'WORKFLOW_AGENT_TENANT_REQUIRED',
+        context: { agentId },
+      });
+    }
+    return agentId;
+  }
+
+  /**
+   * The constraint/index names are the durable v1 migration marker. Reading
+   * PostgreSQL catalogs keeps an already-migrated startup on a SELECT-only fast
+   * path; the advisory lock and ACCESS EXCLUSIVE DDL are reserved for installs
+   * that genuinely still need the tenant re-key.
+   */
+  private async isAgentScopeSchemaReady(db: Pick<NodePgDatabase, 'execute'>): Promise<boolean> {
+    const primaryKeys = sql.join(
+      WORKFLOW_AGENT_SCOPE_PRIMARY_KEYS.map((name) => sql`${name}`),
+      sql`, `
+    );
+    const indexes = sql.join(
+      WORKFLOW_AGENT_SCOPE_INDEXES.map((name) => sql`${name}`),
+      sql`, `
+    );
+    const result = await db.execute(sql`
+      SELECT
+        (
+          SELECT count(*)::int
+          FROM pg_catalog.pg_constraint AS constraint_record
+          JOIN pg_catalog.pg_namespace AS namespace_record
+            ON namespace_record.oid = constraint_record.connamespace
+          WHERE namespace_record.nspname = 'workflow'
+            AND constraint_record.conname IN (${primaryKeys})
+        ) AS primary_key_count,
+        (
+          SELECT count(*)::int
+          FROM pg_catalog.pg_class AS index_record
+          JOIN pg_catalog.pg_namespace AS namespace_record
+            ON namespace_record.oid = index_record.relnamespace
+          WHERE namespace_record.nspname = 'workflow'
+            AND index_record.relkind = 'i'
+            AND index_record.relname IN (${indexes})
+        ) AS index_count
+    `);
+    const resultRecord = isRecord(result) ? result : null;
+    const rows = resultRecord && Array.isArray(resultRecord.rows) ? resultRecord.rows : [];
+    const first = rows.find(isRecord);
+    return (
+      Number(first?.primary_key_count) === WORKFLOW_AGENT_SCOPE_PRIMARY_KEYS.length &&
+      Number(first?.index_count) === WORKFLOW_AGENT_SCOPE_INDEXES.length
+    );
+  }
+
   private async ensureSchema(): Promise<void> {
     if (!this.schemaReady) {
       this.schemaReady = (async () => {
         const db = this.getDb();
-        await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "workflow"`);
-        await db.execute(sql`
+        if (await this.isAgentScopeSchemaReady(db)) return;
+        await db.transaction(async (tx) => {
+          // A shared database can start several AgentRuntime instances at once.
+          // Serializing the re-key migration prevents competing DDL while still
+          // allowing every service instance to keep its own lazy readiness gate.
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext('eliza-workflow-agent-scope-v1'))`
+          );
+          // Another runtime may have completed the migration while this one
+          // waited for the shared advisory lock.
+          if (await this.isAgentScopeSchemaReady(tx)) return;
+          await tx.execute(sql`CREATE SCHEMA IF NOT EXISTS "workflow"`);
+          await tx.execute(sql`
           CREATE TABLE IF NOT EXISTS "workflow"."credential_mappings" (
             "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             "user_id" text NOT NULL,
@@ -1624,11 +1774,7 @@ export class EmbeddedWorkflowService extends Service {
             "updated_at" timestamp DEFAULT now() NOT NULL
           )
         `);
-        await db.execute(sql`
-          CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_cred"
-          ON "workflow"."credential_mappings" ("user_id", "cred_type")
-        `);
-        await db.execute(sql`
+          await tx.execute(sql`
           CREATE TABLE IF NOT EXISTS "workflow"."embedded_workflows" (
             "id" text PRIMARY KEY,
             "name" text NOT NULL,
@@ -1639,15 +1785,7 @@ export class EmbeddedWorkflowService extends Service {
             "version_id" text NOT NULL
           )
         `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_embedded_workflows_active"
-          ON "workflow"."embedded_workflows" ("active")
-        `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_embedded_workflows_updated_at"
-          ON "workflow"."embedded_workflows" ("updated_at")
-        `);
-        await db.execute(sql`
+          await tx.execute(sql`
           CREATE TABLE IF NOT EXISTS "workflow"."workflow_revisions" (
             "id" text PRIMARY KEY,
             "workflow_id" text NOT NULL,
@@ -1661,19 +1799,7 @@ export class EmbeddedWorkflowService extends Service {
             "operation" text NOT NULL
           )
         `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_workflow_revisions_workflow_id"
-          ON "workflow"."workflow_revisions" ("workflow_id")
-        `);
-        await db.execute(sql`
-          CREATE UNIQUE INDEX IF NOT EXISTS "idx_workflow_revisions_workflow_version"
-          ON "workflow"."workflow_revisions" ("workflow_id", "version_id")
-        `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_workflow_revisions_captured_at"
-          ON "workflow"."workflow_revisions" ("captured_at")
-        `);
-        await db.execute(sql`
+          await tx.execute(sql`
           CREATE TABLE IF NOT EXISTS "workflow"."embedded_executions" (
             "id" text PRIMARY KEY,
             "workflow_id" text NOT NULL,
@@ -1686,28 +1812,12 @@ export class EmbeddedWorkflowService extends Service {
             "idempotency_key" text
           )
         `);
-        // Online migration: add idempotency_key to pre-existing tables.
-        await db.execute(sql`
+          // Online migration: add idempotency_key to pre-existing tables.
+          await tx.execute(sql`
           ALTER TABLE "workflow"."embedded_executions"
           ADD COLUMN IF NOT EXISTS "idempotency_key" text
         `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_embedded_executions_workflow_id"
-          ON "workflow"."embedded_executions" ("workflow_id")
-        `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_embedded_executions_status"
-          ON "workflow"."embedded_executions" ("status")
-        `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_embedded_executions_started_at"
-          ON "workflow"."embedded_executions" ("started_at")
-        `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_embedded_executions_idempotency_key"
-          ON "workflow"."embedded_executions" ("idempotency_key")
-        `);
-        await db.execute(sql`
+          await tx.execute(sql`
           CREATE TABLE IF NOT EXISTS "workflow"."embedded_credentials" (
             "id" text PRIMARY KEY,
             "name" text NOT NULL,
@@ -1718,11 +1828,7 @@ export class EmbeddedWorkflowService extends Service {
             "updated_at" text NOT NULL
           )
         `);
-        await db.execute(sql`
-          CREATE INDEX IF NOT EXISTS "idx_embedded_credentials_type"
-          ON "workflow"."embedded_credentials" ("type")
-        `);
-        await db.execute(sql`
+          await tx.execute(sql`
           CREATE TABLE IF NOT EXISTS "workflow"."embedded_tags" (
             "id" text PRIMARY KEY,
             "name" text NOT NULL,
@@ -1730,10 +1836,99 @@ export class EmbeddedWorkflowService extends Service {
             "updated_at" text NOT NULL
           )
         `);
-        await db.execute(sql`
-          CREATE UNIQUE INDEX IF NOT EXISTS "idx_embedded_tags_name"
-          ON "workflow"."embedded_tags" ("name")
-        `);
+          const tenantTables = [
+            ['credential_mappings', 'credential_mappings_pkey', 'credential_mappings_tenant_pkey'],
+            ['embedded_workflows', 'embedded_workflows_pkey', 'embedded_workflows_tenant_pkey'],
+            ['workflow_revisions', 'workflow_revisions_pkey', 'workflow_revisions_tenant_pkey'],
+            ['embedded_executions', 'embedded_executions_pkey', 'embedded_executions_tenant_pkey'],
+            [
+              'embedded_credentials',
+              'embedded_credentials_pkey',
+              'embedded_credentials_tenant_pkey',
+            ],
+            ['embedded_tags', 'embedded_tags_pkey', 'embedded_tags_tenant_pkey'],
+          ] as const;
+
+          for (const [tableName, legacyPrimaryKey, tenantPrimaryKey] of tenantTables) {
+            const qualifiedTable = `"workflow"."${tableName}"`;
+            await tx.execute(
+              sql.raw(`ALTER TABLE ${qualifiedTable} ADD COLUMN IF NOT EXISTS "agent_id" text`)
+            );
+            await tx.execute(
+              sql.raw(
+                `UPDATE ${qualifiedTable} SET "agent_id" = '${LEGACY_UNSCOPED_WORKFLOW_AGENT_ID}' WHERE "agent_id" IS NULL`
+              )
+            );
+            // Retaining the sentinel default makes a rolling upgrade fail closed:
+            // an older writer can create only quarantined rows, never live-tenant rows.
+            await tx.execute(
+              sql.raw(
+                `ALTER TABLE ${qualifiedTable} ALTER COLUMN "agent_id" SET DEFAULT '${LEGACY_UNSCOPED_WORKFLOW_AGENT_ID}'`
+              )
+            );
+            await tx.execute(
+              sql.raw(`ALTER TABLE ${qualifiedTable} ALTER COLUMN "agent_id" SET NOT NULL`)
+            );
+            await tx.execute(
+              sql.raw(
+                `ALTER TABLE ${qualifiedTable} DROP CONSTRAINT IF EXISTS "${legacyPrimaryKey}"`
+              )
+            );
+            await tx.execute(
+              sql.raw(`
+                DO $$
+                BEGIN
+                  IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = '${tenantPrimaryKey}'
+                      AND conrelid = '${qualifiedTable}'::regclass
+                  ) THEN
+                    ALTER TABLE ${qualifiedTable}
+                    ADD CONSTRAINT "${tenantPrimaryKey}" PRIMARY KEY ("agent_id", "id");
+                  END IF;
+                END
+                $$
+              `)
+            );
+          }
+
+          const legacyIndexes = [
+            'idx_user_cred',
+            'idx_embedded_workflows_active',
+            'idx_embedded_workflows_updated_at',
+            'idx_workflow_revisions_workflow_id',
+            'idx_workflow_revisions_workflow_version',
+            'idx_workflow_revisions_captured_at',
+            'idx_embedded_executions_workflow_id',
+            'idx_embedded_executions_status',
+            'idx_embedded_executions_started_at',
+            'idx_embedded_executions_idempotency_key',
+            'idx_embedded_credentials_type',
+            'idx_embedded_tags_name',
+          ] as const;
+          for (const indexName of legacyIndexes) {
+            await tx.execute(sql.raw(`DROP INDEX IF EXISTS "workflow"."${indexName}"`));
+          }
+
+          const tenantIndexes = [
+            `CREATE UNIQUE INDEX IF NOT EXISTS "idx_credential_mappings_agent_user_cred" ON "workflow"."credential_mappings" ("agent_id", "user_id", "cred_type")`,
+            `CREATE INDEX IF NOT EXISTS "idx_embedded_workflows_agent_active" ON "workflow"."embedded_workflows" ("agent_id", "active")`,
+            `CREATE INDEX IF NOT EXISTS "idx_embedded_workflows_agent_updated_at" ON "workflow"."embedded_workflows" ("agent_id", "updated_at")`,
+            `CREATE INDEX IF NOT EXISTS "idx_workflow_revisions_agent_workflow_id" ON "workflow"."workflow_revisions" ("agent_id", "workflow_id")`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS "idx_workflow_revisions_agent_workflow_version" ON "workflow"."workflow_revisions" ("agent_id", "workflow_id", "version_id")`,
+            `CREATE INDEX IF NOT EXISTS "idx_workflow_revisions_agent_captured_at" ON "workflow"."workflow_revisions" ("agent_id", "captured_at")`,
+            `CREATE INDEX IF NOT EXISTS "idx_embedded_executions_agent_workflow_id" ON "workflow"."embedded_executions" ("agent_id", "workflow_id")`,
+            `CREATE INDEX IF NOT EXISTS "idx_embedded_executions_agent_status" ON "workflow"."embedded_executions" ("agent_id", "status")`,
+            `CREATE INDEX IF NOT EXISTS "idx_embedded_executions_agent_started_at" ON "workflow"."embedded_executions" ("agent_id", "started_at")`,
+            `CREATE INDEX IF NOT EXISTS "idx_embedded_executions_agent_idempotency_key" ON "workflow"."embedded_executions" ("agent_id", "idempotency_key")`,
+            `CREATE INDEX IF NOT EXISTS "idx_embedded_credentials_agent_type" ON "workflow"."embedded_credentials" ("agent_id", "type")`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS "idx_embedded_tags_agent_name" ON "workflow"."embedded_tags" ("agent_id", "name")`,
+          ] as const;
+          for (const statement of tenantIndexes) {
+            await tx.execute(sql.raw(statement));
+          }
+        });
       })();
     }
     await this.schemaReady;
@@ -1749,6 +1944,7 @@ export class EmbeddedWorkflowService extends Service {
     const versionId = randomUUID();
     const stored = normalizeWorkflowPayload(workflow, id, false);
     await db.insert(embeddedWorkflows).values({
+      agentId: this.tenantAgentId,
       id,
       name: stored.name,
       active: false,
@@ -1780,7 +1976,7 @@ export class EmbeddedWorkflowService extends Service {
         updatedAt,
         versionId,
       })
-      .where(eq(embeddedWorkflows.id, id));
+      .where(and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.id, id)));
     if (stored.active) await this.armSchedules(id);
     return responseFromWorkflow(stored, existing.createdAt, updatedAt, versionId);
   }
@@ -1796,6 +1992,7 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await db
       .select()
       .from(embeddedWorkflows)
+      .where(eq(embeddedWorkflows.agentId, this.tenantAgentId))
       .orderBy(desc(embeddedWorkflows.updatedAt));
     const data = rows
       .map((row) => ({
@@ -1823,11 +2020,13 @@ export class EmbeddedWorkflowService extends Service {
 
   async deleteWorkflow(id: string): Promise<void> {
     await this.ensureSchema();
-    this.clearSchedules(id);
+    await this.clearSchedules(id);
     const existing = await this.getStoredWorkflow(id);
     const db = this.getDb();
     await this.captureWorkflowRevision(id, existing, 'delete');
-    await db.delete(embeddedWorkflows).where(eq(embeddedWorkflows.id, id));
+    await db
+      .delete(embeddedWorkflows)
+      .where(and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.id, id)));
     if (!existing) {
       throw new WorkflowApiError(`Workflow not found: ${id}`, 404);
     }
@@ -1849,7 +2048,7 @@ export class EmbeddedWorkflowService extends Service {
         updatedAt: entry.updatedAt,
         versionId: entry.versionId,
       })
-      .where(eq(embeddedWorkflows.id, id));
+      .where(and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.id, id)));
     await this.armSchedules(id);
     return responseFromWorkflow(entry.workflow, entry.createdAt, entry.updatedAt, entry.versionId);
   }
@@ -1861,7 +2060,7 @@ export class EmbeddedWorkflowService extends Service {
     entry.workflow.active = false;
     entry.updatedAt = nowIso();
     entry.versionId = randomUUID();
-    this.clearSchedules(id);
+    await this.clearSchedules(id);
     await db
       .update(embeddedWorkflows)
       .set({
@@ -1870,7 +2069,7 @@ export class EmbeddedWorkflowService extends Service {
         updatedAt: entry.updatedAt,
         versionId: entry.versionId,
       })
-      .where(eq(embeddedWorkflows.id, id));
+      .where(and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.id, id)));
     return responseFromWorkflow(entry.workflow, entry.createdAt, entry.updatedAt, entry.versionId);
   }
 
@@ -1879,7 +2078,11 @@ export class EmbeddedWorkflowService extends Service {
     const db = this.getDb();
     const tags: WorkflowTag[] = [];
     for (const tagId of tagIds) {
-      const rows = await db.select().from(embeddedTags).where(eq(embeddedTags.id, tagId)).limit(1);
+      const rows = await db
+        .select()
+        .from(embeddedTags)
+        .where(and(eq(embeddedTags.agentId, this.tenantAgentId), eq(embeddedTags.id, tagId)))
+        .limit(1);
       const tag = rows[0];
       if (!tag) throw new WorkflowApiError(`Tag not found: ${tagId}`, 404);
       tags.push({ id: tag.id, name: tag.name, createdAt: tag.createdAt, updatedAt: tag.updatedAt });
@@ -1895,7 +2098,7 @@ export class EmbeddedWorkflowService extends Service {
         updatedAt: entry.updatedAt,
         versionId: entry.versionId,
       })
-      .where(eq(embeddedWorkflows.id, id));
+      .where(and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.id, id)));
     return cloneJson(tags);
   }
 
@@ -1908,7 +2111,12 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await db
       .select()
       .from(workflowRevisions)
-      .where(eq(workflowRevisions.workflowId, workflowId))
+      .where(
+        and(
+          eq(workflowRevisions.agentId, this.tenantAgentId),
+          eq(workflowRevisions.workflowId, workflowId)
+        )
+      )
       .orderBy(desc(workflowRevisions.capturedAt))
       .limit(Math.min(Math.max(1, limit), 50));
     return {
@@ -1938,6 +2146,7 @@ export class EmbeddedWorkflowService extends Service {
       .from(workflowRevisions)
       .where(
         and(
+          eq(workflowRevisions.agentId, this.tenantAgentId),
           eq(workflowRevisions.workflowId, workflowId),
           eq(workflowRevisions.versionId, versionId)
         )
@@ -1965,7 +2174,9 @@ export class EmbeddedWorkflowService extends Service {
         updatedAt,
         versionId: nextVersionId,
       })
-      .where(eq(embeddedWorkflows.id, workflowId));
+      .where(
+        and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.id, workflowId))
+      );
     if (restored.active) {
       await this.armSchedules(workflowId);
     } else {
@@ -1993,6 +2204,7 @@ export class EmbeddedWorkflowService extends Service {
       updatedAt: timestamp,
     };
     await db.insert(embeddedCredentials).values({
+      agentId: this.tenantAgentId,
       id,
       name: stored.name,
       type: stored.type,
@@ -2007,7 +2219,11 @@ export class EmbeddedWorkflowService extends Service {
 
   async deleteCredential(id: string): Promise<void> {
     await this.ensureSchema();
-    await this.getDb().delete(embeddedCredentials).where(eq(embeddedCredentials.id, id));
+    await this.getDb()
+      .delete(embeddedCredentials)
+      .where(
+        and(eq(embeddedCredentials.agentId, this.tenantAgentId), eq(embeddedCredentials.id, id))
+      );
   }
 
   async listExecutions(params?: {
@@ -2021,16 +2237,11 @@ export class EmbeddedWorkflowService extends Service {
       .select()
       .from(embeddedExecutions)
       .where(
-        params?.workflowId && params?.status
-          ? and(
-              eq(embeddedExecutions.workflowId, params.workflowId),
-              eq(embeddedExecutions.status, params.status)
-            )
-          : params?.workflowId
-            ? eq(embeddedExecutions.workflowId, params.workflowId)
-            : params?.status
-              ? eq(embeddedExecutions.status, params.status)
-              : undefined
+        and(
+          eq(embeddedExecutions.agentId, this.tenantAgentId),
+          params?.workflowId ? eq(embeddedExecutions.workflowId, params.workflowId) : undefined,
+          params?.status ? eq(embeddedExecutions.status, params.status) : undefined
+        )
       )
       .orderBy(desc(embeddedExecutions.startedAt));
     const data = rows.map((row) => cloneJson(row.execution));
@@ -2042,7 +2253,7 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await this.getDb()
       .select()
       .from(embeddedExecutions)
-      .where(eq(embeddedExecutions.id, id))
+      .where(and(eq(embeddedExecutions.agentId, this.tenantAgentId), eq(embeddedExecutions.id, id)))
       .limit(1);
     const execution = rows[0]?.execution;
     if (!execution) throw new WorkflowApiError(`Execution not found: ${id}`, 404);
@@ -2051,13 +2262,21 @@ export class EmbeddedWorkflowService extends Service {
 
   async deleteExecution(id: string): Promise<void> {
     await this.ensureSchema();
-    await this.getDb().delete(embeddedExecutions).where(eq(embeddedExecutions.id, id));
+    await this.getDb()
+      .delete(embeddedExecutions)
+      .where(
+        and(eq(embeddedExecutions.agentId, this.tenantAgentId), eq(embeddedExecutions.id, id))
+      );
   }
 
   async listTags(): Promise<{ data: WorkflowTag[] }> {
     await this.ensureSchema();
-    const rows = await this.getDb().select().from(embeddedTags).orderBy(embeddedTags.name);
-    return { data: rows.map((row) => cloneJson(row)) };
+    const rows = await this.getDb()
+      .select()
+      .from(embeddedTags)
+      .where(eq(embeddedTags.agentId, this.tenantAgentId))
+      .orderBy(embeddedTags.name);
+    return { data: rows.map((row) => tagFromRow(row)) };
   }
 
   async createTag(name: string): Promise<WorkflowTag> {
@@ -2066,21 +2285,24 @@ export class EmbeddedWorkflowService extends Service {
     const existingRows = await db
       .select()
       .from(embeddedTags)
-      .where(eq(embeddedTags.name, name))
+      .where(and(eq(embeddedTags.agentId, this.tenantAgentId), eq(embeddedTags.name, name)))
       .limit(1);
     const existing = existingRows[0];
-    if (existing) return cloneJson(existing);
+    if (existing) return tagFromRow(existing);
     const timestamp = nowIso();
     const tag = { id: randomUUID(), name, createdAt: timestamp, updatedAt: timestamp };
-    await db.insert(embeddedTags).values(tag);
+    await db.insert(embeddedTags).values({ agentId: this.tenantAgentId, ...tag });
     return cloneJson(tag);
   }
 
   async getOrCreateTag(name: string): Promise<WorkflowTag> {
     await this.ensureSchema();
-    const rows = await this.getDb().select().from(embeddedTags);
+    const rows = await this.getDb()
+      .select()
+      .from(embeddedTags)
+      .where(eq(embeddedTags.agentId, this.tenantAgentId));
     const existing = rows.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
-    return existing ? cloneJson(existing) : this.createTag(name);
+    return existing ? tagFromRow(existing) : this.createTag(name);
   }
 
   async executeWorkflow(id: string, options: ExecuteOptions = {}): Promise<WorkflowExecution> {
@@ -2110,6 +2332,7 @@ export class EmbeddedWorkflowService extends Service {
       .from(embeddedExecutions)
       .where(
         and(
+          eq(embeddedExecutions.agentId, this.tenantAgentId),
           eq(embeddedExecutions.workflowId, workflowId),
           eq(embeddedExecutions.idempotencyKey, idempotencyKey)
         )
@@ -2131,7 +2354,9 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await this.getDb()
       .select()
       .from(embeddedWorkflows)
-      .where(eq(embeddedWorkflows.active, true));
+      .where(
+        and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.active, true))
+      );
 
     for (const row of rows) {
       const workflow = cloneJson(row.workflow);
@@ -2172,7 +2397,9 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await this.getDb()
       .select()
       .from(embeddedWorkflows)
-      .where(eq(embeddedWorkflows.active, true));
+      .where(
+        and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.active, true))
+      );
     for (const row of rows) {
       const wf = cloneJson(row.workflow);
       executions.push(await this.runWorkflow(wf, 'trigger'));
@@ -2189,6 +2416,7 @@ export class EmbeddedWorkflowService extends Service {
     await this.getDb()
       .insert(workflowRevisions)
       .values({
+        agentId: this.tenantAgentId,
         id: randomUUID(),
         workflowId,
         versionId: entry.versionId,
@@ -2208,7 +2436,7 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await this.getDb()
       .select()
       .from(embeddedWorkflows)
-      .where(eq(embeddedWorkflows.id, id))
+      .where(and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.id, id)))
       .limit(1);
     const row = rows[0];
     if (!row) throw new WorkflowApiError(`Workflow not found: ${id}`, 404);
@@ -2294,7 +2522,9 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await this.getDb()
       .select()
       .from(embeddedWorkflows)
-      .where(eq(embeddedWorkflows.active, true));
+      .where(
+        and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.active, true))
+      );
     for (const row of rows) {
       await this.armSchedules(row.id);
     }
@@ -2331,6 +2561,7 @@ export class EmbeddedWorkflowService extends Service {
     const rows = await this.getDb()
       .select({ id: embeddedWorkflows.id })
       .from(embeddedWorkflows)
+      .where(eq(embeddedWorkflows.agentId, this.tenantAgentId))
       .limit(1);
     // Pre-marker install that already has workflows: backfill the marker so
     // future boots take the fast path and the deletion-respecting guard is
@@ -2394,6 +2625,7 @@ export class EmbeddedWorkflowService extends Service {
     const versionId = randomUUID();
     const stored = normalizeWorkflowPayload(workflow, DEVICE_HEALTH_CHECK_WORKFLOW_ID, true);
     await this.getDb().insert(embeddedWorkflows).values({
+      agentId: this.tenantAgentId,
       id: DEVICE_HEALTH_CHECK_WORKFLOW_ID,
       name: stored.name,
       active: true,
@@ -2410,7 +2642,12 @@ export class EmbeddedWorkflowService extends Service {
       await this.clearSchedules(DEVICE_HEALTH_CHECK_WORKFLOW_ID);
       await this.getDb()
         .delete(embeddedWorkflows)
-        .where(eq(embeddedWorkflows.id, DEVICE_HEALTH_CHECK_WORKFLOW_ID));
+        .where(
+          and(
+            eq(embeddedWorkflows.agentId, this.tenantAgentId),
+            eq(embeddedWorkflows.id, DEVICE_HEALTH_CHECK_WORKFLOW_ID)
+          )
+        );
       logger.warn(
         { src: 'plugin:workflow:embedded' },
         'Rolled back default-workflow seed: could not persist the seed marker (will retry next boot)'
@@ -2476,6 +2713,7 @@ export class EmbeddedWorkflowService extends Service {
         .from(workflowRevisions)
         .where(
           and(
+            eq(workflowRevisions.agentId, this.tenantAgentId),
             eq(workflowRevisions.workflowId, DEVICE_HEALTH_CHECK_WORKFLOW_ID),
             eq(workflowRevisions.operation, 'delete')
           )
@@ -2629,6 +2867,7 @@ export class EmbeddedWorkflowService extends Service {
       };
       const idempotencyKey = buildScheduleIdempotencyKey(workflowId, nextRunAtMs);
       await this.runtime.createTask({
+        agentId: this.runtime.agentId,
         name: TRIGGER_TASK_NAME,
         description: trigger.displayName,
         tags: [...TRIGGER_TASK_TAGS, WORKFLOW_TASK_TAG],
@@ -2674,6 +2913,7 @@ export class EmbeddedWorkflowService extends Service {
     await this.getDb()
       .insert(embeddedExecutions)
       .values({
+        agentId: this.tenantAgentId,
         id: execution.id,
         workflowId: execution.workflowId,
         status: execution.status,
@@ -2685,7 +2925,7 @@ export class EmbeddedWorkflowService extends Service {
         idempotencyKey: key,
       })
       .onConflictDoUpdate({
-        target: embeddedExecutions.id,
+        target: [embeddedExecutions.agentId, embeddedExecutions.id],
         set: {
           workflowId: execution.workflowId,
           status: execution.status,
@@ -2697,6 +2937,93 @@ export class EmbeddedWorkflowService extends Service {
           idempotencyKey: key,
         },
       });
+  }
+
+  /**
+   * Re-drive executions whose host disappeared while Smithers still owns a
+   * durable run. The pending row supplies the stable execution id and frozen
+   * workflow definition; `force:false` then skips every persisted node and
+   * resumes at the first unfinished one without repeating side effects.
+   */
+  private startExecutionRecovery(): void {
+    const signal = this.recoveryController.signal;
+    this.recoveryPromise = this.recoverUnfinishedExecutions(signal).catch((error) => {
+      if (signal.aborted) return;
+      // error-policy:J7 startup recovery is supervised in the background so a
+      // long workflow cannot block the workflows API; scan failures remain
+      // observable and their rows remain resumable.
+      this.runtime.reportError?.('EmbeddedWorkflowService.recoverExecutions', error, {});
+      logger.warn(
+        {
+          src: 'plugin:workflow:embedded',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'unfinished workflow recovery scan failed'
+      );
+    });
+  }
+
+  private async recoverUnfinishedExecutions(signal: AbortSignal): Promise<void> {
+    const rows = await this.getDb()
+      .select()
+      .from(embeddedExecutions)
+      .where(
+        and(
+          eq(embeddedExecutions.agentId, this.tenantAgentId),
+          eq(embeddedExecutions.finished, false),
+          eq(embeddedExecutions.status, 'running')
+        )
+      )
+      .orderBy(embeddedExecutions.startedAt);
+
+    for (const row of rows) {
+      signal.throwIfAborted();
+      const pending = cloneJson(row.execution);
+      try {
+        const workflow =
+          readSmithersResumeWorkflow(pending) ??
+          (await this.getStoredWorkflow(row.workflowId)).workflow;
+        const triggerData = isRecord(pending.customData?.triggerData)
+          ? cloneJson(pending.customData.triggerData)
+          : undefined;
+        const recovered = await this.executePendingWorkflow(
+          workflow,
+          pending,
+          triggerData,
+          row.idempotencyKey ?? undefined,
+          true,
+          false,
+          signal
+        );
+        logger.info(
+          {
+            src: 'plugin:workflow:embedded',
+            workflowId: row.workflowId,
+            executionId: row.id,
+            status: recovered.status,
+          },
+          'recovered unfinished workflow execution'
+        );
+      } catch (error) {
+        if (signal.aborted) throw error;
+        // error-policy:J7 a failed startup recovery remains `running` so a later
+        // startup can retry it; report the failed attempt without fabricating a
+        // terminal workflow result.
+        this.runtime.reportError?.('EmbeddedWorkflowService.recoverExecution', error, {
+          workflowId: row.workflowId,
+          executionId: row.id,
+        });
+        logger.warn(
+          {
+            src: 'plugin:workflow:embedded',
+            workflowId: row.workflowId,
+            executionId: row.id,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'unfinished workflow recovery failed; execution remains resumable'
+        );
+      }
+    }
   }
 
   private buildIncomingConnections(
@@ -2812,16 +3139,20 @@ export class EmbeddedWorkflowService extends Service {
   private async executeNode(
     node: WorkflowNode,
     inputData: INodeExecutionData[][],
-    executionId: string
+    executionId: string,
+    signal: AbortSignal
   ): Promise<INodeExecutionData[][]> {
+    signal.throwIfAborted();
     const nodeType = this.nodeTypes.getByNameAndVersion(node.type);
     const context: IExecuteFunctions = {
       getNode: () => node,
       getInputData: (inputIndex = 0) => inputData[inputIndex] ?? [],
       getRuntime: () => this.runtime,
       getExecutionId: () => executionId,
+      getAbortSignal: () => signal,
     };
     const output = await nodeType.execute.call(context);
+    signal.throwIfAborted();
     return output.length > 0 ? output : [[]];
   }
 
@@ -2841,31 +3172,52 @@ export class EmbeddedWorkflowService extends Service {
       startedAt: startedAt.toISOString(),
       workflowId: workflowData.id ?? '',
       status: 'running',
-      ...(triggerData || idempotencyKey
-        ? {
-            customData: {
-              ...(triggerData ? { triggerData } : {}),
-              ...(idempotencyKey ? { idempotencyKey } : {}),
-            },
-          }
-        : {}),
+      customData: {
+        ...(triggerData ? { triggerData } : {}),
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+        [SMITHERS_RESUME_STATE_KEY]: {
+          version: 1,
+          workflow: cloneJson(workflowData),
+        } satisfies SmithersResumeState,
+      },
     };
     await this.saveExecution(pending, idempotencyKey);
 
+    return this.executePendingWorkflow(
+      workflowData,
+      pending,
+      triggerData,
+      idempotencyKey,
+      throwOnError
+    );
+  }
+
+  private async executePendingWorkflow(
+    workflowData: WorkflowDefinition,
+    pending: WorkflowExecution,
+    triggerData: Record<string, unknown> | undefined,
+    idempotencyKey: string | undefined,
+    throwOnError: boolean,
+    persistFailure = true,
+    signal?: AbortSignal
+  ): Promise<WorkflowExecution> {
     try {
-      const plan = this.resolveExecutionPlan(workflowData, mode);
+      const plan = this.resolveExecutionPlan(workflowData, pending.mode);
       const execution = await runWorkflowWithSmithers({
+        tenantId: this.tenantAgentId,
         workflow: workflowData,
-        executionId,
+        executionId: pending.id,
         pending,
-        mode,
+        mode: pending.mode,
         triggerData,
         plan,
-        runNode: (node, inputData) => this.executeNode(node, inputData, executionId),
+        ...(signal ? { signal } : {}),
+        runNode: (node, inputData, signal) => this.executeNode(node, inputData, pending.id, signal),
       });
       await this.saveExecution(execution, idempotencyKey);
       return cloneJson(execution);
     } catch (error) {
+      if (!persistFailure) throw error;
       const stoppedAt = new Date();
       const execution: WorkflowExecution = {
         ...pending,

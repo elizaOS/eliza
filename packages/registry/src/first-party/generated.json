@@ -141,7 +141,7 @@
           "type": "string",
           "required": false,
           "sensitive": false,
-          "default": "claude-opus-4-7",
+          "default": "claude-opus-4-8",
           "label": "Large Model",
           "help": "Override the default Anthropic large model identifier used by the plugin",
           "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
@@ -5874,6 +5874,39 @@
       "shortIds": [],
       "kind": "plugin",
       "subtype": "documents"
+    },
+    {
+      "id": "personal-assistant",
+      "name": "LifeOps",
+      "description": "Personal-assistant LifeOps routes for goals, todos, schedules, connectors, and related owner workflows.",
+      "npmName": "@elizaos/plugin-personal-assistant",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["personal-assistant", "lifeops", "goals", "todos"],
+      "config": {},
+      "render": {
+        "visible": false,
+        "pinTo": [],
+        "style": "card",
+        "icon": "ListChecks",
+        "group": "Curated",
+        "groupOrder": 100,
+        "actions": []
+      },
+      "resources": {},
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": ["selfcontrol"],
+      "kind": "app",
+      "subtype": "tool",
+      "launch": {
+        "type": "server-launch",
+        "capabilities": ["lifeops", "goals", "todos"],
+        "routePlugin": {
+          "specifier": "@elizaos/plugin-personal-assistant/routes/plugin",
+          "exportName": "personalAssistantRoutesPlugin"
+        }
+      }
     },
     {
       "id": "phone",

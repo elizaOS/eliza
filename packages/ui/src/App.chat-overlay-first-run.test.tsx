@@ -31,7 +31,9 @@ const appState = vi.hoisted(() => ({
   startupPhase: "first-run-required",
 }));
 
-const notificationMock = vi.hoisted(() => ({ init: vi.fn(async () => undefined) }));
+const notificationMock = vi.hoisted(() => ({
+  init: vi.fn(async () => undefined),
+}));
 
 vi.mock("./state/notifications/notification-store", () => ({
   initNotifications: notificationMock.init,
@@ -233,6 +235,10 @@ vi.mock("./components/character/CharacterEditor", () => ({
 
 vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
+}));
+
+vi.mock("./widgets/WidgetHost", () => ({
+  WidgetHost: () => <div data-testid="home-widget-host" />,
 }));
 
 vi.mock("./components/settings/SecretsManagerSection", () => ({

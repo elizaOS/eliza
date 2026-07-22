@@ -142,7 +142,7 @@ describe("LifeOps package boundaries", () => {
       ),
     ).toBe(false);
     expect(sleepRoutes).toContain("createHealthSleepRouteHandler");
-    expect(sleepRoutes).toContain('from "@elizaos/plugin-health"');
+    expect(sleepRoutes).toContain('from "@elizaos/plugin-health/routes/sleep"');
     expect(sleepRoutes).not.toContain("parseWindowDaysQuery");
     expect(sleepServiceMixin).toContain("createHealthSleepServiceMethods");
     expect(sleepServiceMixin).toContain('from "@elizaos/plugin-health"');

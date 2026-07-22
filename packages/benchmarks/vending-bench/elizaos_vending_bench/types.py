@@ -349,6 +349,7 @@ class VendingBenchResult:
     daily_summaries: list[DailySummary] = field(default_factory=list)
     actions: list[AgentAction] = field(default_factory=list)
     total_tokens: int = 0
+    messages_used: int = 0
     total_latency_ms: float = 0.0
     error: str | None = None
     starter_baseline_revenue: Decimal = Decimal("0")

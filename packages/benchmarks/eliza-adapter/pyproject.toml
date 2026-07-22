@@ -11,3 +11,7 @@ requires-python = ">=3.11"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["eliza_adapter*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["../..", "../mmau-audio", "../experience", "../webshop"]

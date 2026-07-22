@@ -90,6 +90,15 @@ export type { UiShellMode } from "./ui-preferences";
 
 export type ShellView = "character" | "desktop";
 
+/**
+ * Controls which cloud-auth authority a login caller needs. Most settings
+ * surfaces only require the connected server session; onboarding additionally
+ * needs a renderer-held token for direct agent discovery and provisioning.
+ */
+export interface CloudLoginOptions {
+  requireClientAuth?: boolean;
+}
+
 /** Deferred work scheduling for multi-step navigation. */
 export interface NavigationEventsApi {
   /**
@@ -895,7 +904,10 @@ export interface AppActions {
   completeFirstRun: (landingTab?: Tab) => void;
 
   // Cloud
-  handleCloudLogin: (prePoppedWindow?: Window | null) => Promise<void>;
+  handleCloudLogin: (
+    prePoppedWindow?: Window | null,
+    options?: CloudLoginOptions,
+  ) => Promise<void>;
   handleCloudDisconnect: (opts?: {
     skipConfirmation?: boolean;
   }) => Promise<void>;

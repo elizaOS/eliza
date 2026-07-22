@@ -25,6 +25,7 @@ import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
+  getCloudAuthToken,
   refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
@@ -62,6 +63,7 @@ import {
 } from "./cloud-steward-login";
 import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
+import type { CloudLoginOptions } from "./types";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -628,7 +630,10 @@ export function useCloudState({
   }, []);
 
   const handleCloudLogin = useCallback(
-    async (prePoppedWindow: Window | null = null) => {
+    async (
+      prePoppedWindow: Window | null = null,
+      options: CloudLoginOptions = {},
+    ) => {
       rememberCloudLoginPopup(prePoppedWindow);
       const closePrePoppedWindow = () => {
         closeCloudLoginPopup(prePoppedWindow);
@@ -642,8 +647,18 @@ export function useCloudState({
         }
       };
 
+      // A server-side API key is enough for Settings/credits, but onboarding
+      // needs a renderer-held bearer for direct agent discovery/provisioning.
+      // Only callers that declare that stronger requirement bypass the normal
+      // connected-server short-circuits below.
+      const hasRequiredClientAuth = () =>
+        !options.requireClientAuth || Boolean(getCloudAuthToken(client));
       if (
-        isCloudStatusAuthenticated(elizaCloudConnected, elizaCloudStatusReason)
+        isCloudStatusAuthenticated(
+          elizaCloudConnected,
+          elizaCloudStatusReason,
+        ) &&
+        hasRequiredClientAuth()
       ) {
         closePrePoppedWindow();
         return;
@@ -802,7 +817,7 @@ export function useCloudState({
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,
         );
-        if (alreadyAuthenticated) {
+        if (alreadyAuthenticated && hasRequiredClientAuth()) {
           closePrePoppedWindow();
           await pollCloudCredits();
           await loadWalletConfig().catch((err: unknown) => {

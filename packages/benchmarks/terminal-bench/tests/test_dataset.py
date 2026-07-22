@@ -1,12 +1,16 @@
 """Tests for Terminal-Bench dataset loader."""
 
-import pytest
+import hashlib
 from pathlib import Path
 
+import pytest
+
+import elizaos_terminal_bench.dataset as dataset_module
 from elizaos_terminal_bench.dataset import (
     EDGE_VARIANTS,
     TerminalBenchDataset,
     TerminalBenchDatasetMissingError,
+    TerminalBenchDatasetIntegrityError,
     count_tasks,
     expand_tasks,
     validate_tasks,
@@ -172,10 +176,40 @@ class TestDatasetEdgeCases:
         """Without args, the loader pulls the vendored upstream corpus."""
         dataset = TerminalBenchDataset(use_sample_tasks=False)
         await dataset.load()
-        # The vendored corpus has hundreds of tasks; verify we got a
-        # plausible number and that none look like sample IDs.
-        assert len(dataset) > 100
+        assert len(dataset) == 241
         assert all(not t.task_id.startswith("sample_") for t in dataset.tasks)
+        assert dataset.provenance["revision"] == (
+            "d28711d0da2675d0bb1d56de45ae5df6082438a3"
+        )
+
+    def test_pinned_corpus_verification_rejects_missing_ignored_asset(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        tasks_root = tmp_path / "tasks"
+        task_dir = tasks_root / "one"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.yaml").write_text("instruction: test\n", encoding="utf-8")
+        manifest = tmp_path / "manifest.json"
+        corpus_hash = hashlib.sha256()
+        corpus_hash.update(b"one/task.yaml\0")
+        corpus_hash.update(hashlib.sha256(b"instruction: test\n").digest())
+        corpus_hash.update(b"\0")
+        manifest.write_text(
+            '{"expected_task_count": 1, "corpus_file_count": 1, '
+            '"corpus_snapshot_sha256": "'
+            + corpus_hash.hexdigest()
+            + '", "required_assets": '
+            + '{"one/data.bin": "'
+            + "a" * 64
+            + '"}}',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(dataset_module, "_CORPUS_MANIFEST_PATH", manifest)
+
+        with pytest.raises(TerminalBenchDatasetIntegrityError, match="missing one/data.bin"):
+            dataset_module._verify_pinned_corpus(tasks_root)
 
     @pytest.mark.asyncio
     async def test_nonexistent_path_raises(self) -> None:

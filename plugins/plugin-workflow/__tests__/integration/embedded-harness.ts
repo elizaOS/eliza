@@ -21,7 +21,10 @@ export interface EmbeddedHarness {
   close: () => Promise<void>;
 }
 
-export async function makeEmbeddedHarness(agentSeed: string): Promise<EmbeddedHarness> {
+export async function makeEmbeddedHarness(
+  agentSeed: string,
+  options: { seedDefaults?: boolean } = {}
+): Promise<EmbeddedHarness> {
   const dir = await mkdtemp(join(tmpdir(), 'workflow-e2e-'));
   const client = new PGlite({ dataDir: join(dir, 'pglite') });
   const db = drizzle(client, { schema: dbSchema });
@@ -32,7 +35,7 @@ export async function makeEmbeddedHarness(agentSeed: string): Promise<EmbeddedHa
       character: createCharacter({
         id: stringToUuid(agentSeed),
         name: `WorkflowIntegrationAgent-${agentSeed}`,
-        settings: { WORKFLOW_SEED_DEFAULTS: 'false' },
+        settings: { WORKFLOW_SEED_DEFAULTS: options.seedDefaults ? 'true' : 'false' },
       }),
       adapter,
       logLevel: 'fatal',

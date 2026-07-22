@@ -1,4 +1,7 @@
-// Exercises cloud API tests dedicated agent proxy.test behavior with deterministic Worker route fixtures.
+/**
+ * Verifies dedicated-agent proxy ownership, token isolation, runtime recovery,
+ * and headers-phase timeout behavior with deterministic Worker fixtures.
+ */
 import {
   afterAll,
   afterEach,
@@ -8,13 +11,13 @@ import {
   mock,
   test,
 } from "bun:test";
-
-/**
- * Security tests for the dedicated-agent unified-auth proxy. The single
- * invariant under test: the agent's `ELIZA_API_TOKEN` is injected ONLY for a
- * validated owner of a RUNNING dedicated agent; every other path proxies
- * UNCHANGED (so the container's own auth stays the backstop).
- */
+import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
+import * as authActual from "@/lib/auth";
+import * as cloudBindingsActual from "@/lib/runtime/cloud-bindings";
+import * as billingGateActual from "@/lib/services/agent-billing-gate";
+import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
+import * as workerHealthActual from "@/lib/services/provisioning-worker-health";
+import * as loggerActual from "@/lib/utils/logger";
 
 let authResult: { user: { id: string; organization_id: string } } | "throw" =
   "throw";
@@ -26,19 +29,27 @@ let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
 let enqueueCalls = 0;
 
 mock.module("@/lib/runtime/cloud-bindings", () => ({
+  ...cloudBindingsActual,
   runWithCloudBindingsAsync: (_b: unknown, fn: () => Promise<unknown>) => fn(),
 }));
 mock.module("@/lib/auth", () => ({
+  ...authActual,
   requireAuthOrApiKeyWithOrg: async () => {
     if (authResult === "throw") throw new Error("unauthorized");
     return authResult;
   },
 }));
 mock.module("@/db/repositories/agent-sandboxes", () => ({
-  agentSandboxesRepository: { findByIdAndOrg: async () => sandboxResult },
+  ...agentSandboxesActual,
+  agentSandboxesRepository: {
+    ...agentSandboxesActual.agentSandboxesRepository,
+    findByIdAndOrg: async () => sandboxResult,
+  },
 }));
 mock.module("@/lib/services/provisioning-jobs", () => ({
+  ...provisioningJobsActual,
   provisioningJobService: {
+    ...provisioningJobsActual.provisioningJobService,
     enqueueAgentProvisionOnce: async () => {
       enqueueCalls++;
       return {
@@ -49,13 +60,22 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
   },
 }));
 mock.module("@/lib/services/provisioning-worker-health", () => ({
+  ...workerHealthActual,
   checkProvisioningWorkerHealth: async () => ({ ok: true }),
 }));
 mock.module("@/lib/services/agent-billing-gate", () => ({
+  ...billingGateActual,
   checkAgentCreditGate: async () => creditGateResult,
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { warn() {}, error() {}, info() {}, debug() {} },
+  ...loggerActual,
+  logger: {
+    ...loggerActual.logger,
+    warn() {},
+    error() {},
+    info() {},
+    debug() {},
+  },
 }));
 
 let captured: Request | null = null;
@@ -70,11 +90,23 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 }) as typeof fetch;
 afterAll(() => {
   globalThis.fetch = originalFetch;
+  mock.module("@/lib/runtime/cloud-bindings", () => cloudBindingsActual);
+  mock.module("@/lib/auth", () => authActual);
+  mock.module("@/db/repositories/agent-sandboxes", () => agentSandboxesActual);
+  mock.module("@/lib/services/agent-billing-gate", () => billingGateActual);
+  mock.module("@/lib/services/provisioning-jobs", () => provisioningJobsActual);
+  mock.module(
+    "@/lib/services/provisioning-worker-health",
+    () => workerHealthActual,
+  );
+  mock.module("@/lib/utils/logger", () => loggerActual);
 });
 
-const { handleDedicatedAgentProxy, __dedicatedProxyTestHooks } = await import(
-  "../src/dedicated-agent-proxy"
-);
+const {
+  handleDedicatedAgentProxy,
+  dedicatedProxyOriginHeadersTimeoutMs,
+  __dedicatedProxyTestHooks,
+} = await import("../src/dedicated-agent-proxy");
 
 const AGENT = "11111111-1111-1111-1111-111111111111";
 const ENV = { AGENT_ROUTER_ORIGIN_HOST: "cp.example.test" } as never;
@@ -347,7 +379,6 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
  */
 describe("dedicated-agent-proxy — stream-aware origin timeout", () => {
   const ORIGIN = "https://app-staging.elizacloud.ai";
-  const DEFAULT_TIMEOUT_MS = __dedicatedProxyTestHooks.originHeadersTimeoutMs;
   const encoder = new TextEncoder();
 
   beforeEach(() => {
@@ -355,7 +386,7 @@ describe("dedicated-agent-proxy — stream-aware origin timeout", () => {
     sandboxResult = runningDedicated;
   });
   afterEach(() => {
-    __dedicatedProxyTestHooks.setOriginHeadersTimeoutMs(DEFAULT_TIMEOUT_MS);
+    __dedicatedProxyTestHooks.resetOriginHeadersTimeoutMs();
   });
 
   test("body still streaming PAST the headers timeout is not aborted — it completes", async () => {
@@ -435,5 +466,43 @@ describe("dedicated-agent-proxy — stream-aware origin timeout", () => {
     await expect(
       handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT),
     ).rejects.toThrow("connection refused");
+  });
+});
+
+describe("dedicated-agent-proxy — workflow origin timeout budgets", () => {
+  test("allows generation and clarification to reach the engine deadline", () => {
+    expect(
+      dedicatedProxyOriginHeadersTimeoutMs(
+        "POST",
+        "/api/workflow/workflows/generate",
+      ),
+    ).toBe(5 * 60_000);
+    expect(
+      dedicatedProxyOriginHeadersTimeoutMs(
+        "POST",
+        "/api/workflow/workflows/resolve-clarification/",
+      ),
+    ).toBe(5 * 60_000);
+  });
+
+  test("allows runs to reach the engine deadline without widening other routes", () => {
+    expect(
+      dedicatedProxyOriginHeadersTimeoutMs(
+        "POST",
+        "/api/workflow/workflows/workflow%2F1/run",
+      ),
+    ).toBe(10 * 60_000);
+    expect(
+      dedicatedProxyOriginHeadersTimeoutMs(
+        "POST",
+        "/api/workflow/workflows/workflow-1/activate",
+      ),
+    ).toBe(30_000);
+    expect(
+      dedicatedProxyOriginHeadersTimeoutMs(
+        "GET",
+        "/api/workflow/workflows/workflow-1/run",
+      ),
+    ).toBe(30_000);
   });
 });

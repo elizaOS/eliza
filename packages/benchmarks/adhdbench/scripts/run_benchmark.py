@@ -115,6 +115,24 @@ def _configure_bridge_model_env(model_name: str | None) -> None:
     os.environ["OPENROUTER_SMALL_MODEL"] = model
 
 
+def _expected_real_result_count(config: ADHDBenchConfig) -> int:
+    """Count the scenario/config/scale cells a real run must produce."""
+    per_scale = 0
+    for config_name in config.config_names:
+        is_full = config_name == "full"
+        per_scale += len(
+            get_scenarios(
+                levels=config.levels,
+                tags=config.tags,
+                scenario_ids=config.scenario_ids,
+                include_memory_scenarios=is_full,
+                include_planning_scenarios=is_full,
+                include_edge_scenarios=config.include_edge_scenarios,
+            )
+        )
+    return per_scale * len(config.scale_points)
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     """Run the benchmark."""
     logging.basicConfig(
@@ -212,6 +230,23 @@ def cmd_run(args: argparse.Namespace) -> None:
             )
         runner = OpenAICompatibleADHDBenchRunner(config)
         results = asyncio.run(runner.run(progress_callback=progress))
+
+    if provider_lc not in {"mock", "mock-passthrough"}:
+        expected_results = _expected_real_result_count(config)
+        if len(results.results) != expected_results:
+            raise RuntimeError(
+                "ADHDBench incomplete run: expected "
+                f"{expected_results} scenario/config/scale results, got {len(results.results)}"
+            )
+        failed_results = [result for result in results.results if result.error]
+        if failed_results:
+            examples = ", ".join(
+                f"{result.scenario_id}: {result.error}" for result in failed_results[:3]
+            )
+            raise RuntimeError(
+                "ADHDBench transport/runtime failed for "
+                f"{len(failed_results)}/{len(results.results)} results; examples: {examples}"
+            )
 
     print(f"\nBenchmark complete. {len(results.results)} scenario results.")
     print(f"Results saved to: {config.output_dir}/")

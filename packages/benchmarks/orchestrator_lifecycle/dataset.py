@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
+from dataclasses import asdict
 from dataclasses import replace
 from pathlib import Path
 
@@ -16,11 +18,23 @@ EDGE_VARIANTS: tuple[tuple[str, str, str], ...] = (
     ("mobile", "Mobile-message framing.", "Sent from mobile, quick note: {message}"),
     ("followup", "Follow-up thread framing.", "Following up from earlier: {message}"),
     ("quoted", "Forwarded quoted request.", "Forwarded request:\n> {message}"),
-    ("context", "Extra operating context.", "Context: orchestrator lifecycle benchmark\n{message}"),
+    (
+        "context",
+        "Extra operating context.",
+        "Additional context for this request:\n{message}",
+    ),
     ("brief", "Brevity preference.", "Keep this brief if you reply: {message}"),
     ("noisy", "Natural chat filler.", "Hey, sorry for the messy phrasing, {message}"),
-    ("boundary", "Explicit user-intent boundary.", "User intent starts here:\n{message}"),
-    ("handoff", "Teammate handoff framing.", "My teammate asked me to pass this along: {message}"),
+    (
+        "boundary",
+        "Explicit user-intent boundary.",
+        "User intent starts here:\n{message}",
+    ),
+    (
+        "handoff",
+        "Teammate handoff framing.",
+        "My teammate asked me to pass this along: {message}",
+    ),
 )
 
 if len(EDGE_VARIANTS) != EXPANSION_MULTIPLIER:
@@ -36,7 +50,9 @@ class LifecycleDataset:
 
     def load_base(self) -> list[Scenario]:
         if not self.scenario_dir.exists():
-            raise FileNotFoundError(f"Scenario directory not found: {self.scenario_dir}")
+            raise FileNotFoundError(
+                f"Scenario directory not found: {self.scenario_dir}"
+            )
 
         scenarios: list[Scenario] = []
         for path in sorted(self.scenario_dir.glob("*.json")):
@@ -115,7 +131,9 @@ class LifecycleDataset:
             if scenario.scenario_id in ids:
                 duplicate_ids.add(scenario.scenario_id)
             ids.add(scenario.scenario_id)
-            if not scenario.turns or any(not turn.message.strip() for turn in scenario.turns):
+            if not scenario.turns or any(
+                not turn.message.strip() for turn in scenario.turns
+            ):
                 empty_turns.append(scenario.scenario_id)
 
         expansion_matches = len(expanded) == len(base) * EXPANSION_MULTIPLIER
@@ -139,11 +157,29 @@ class LifecycleDataset:
             package_dir / scenario_dir,
             package_dir / scenario_dir.name,
         ]
-        return next((candidate for candidate in candidates if candidate.exists()), scenario_dir)
+        return next(
+            (candidate for candidate in candidates if candidate.exists()), scenario_dir
+        )
 
 
 def base_scenario_id(scenario_id: str) -> str:
     return re.sub(r"--edge-[a-z-]+$", "", scenario_id)
+
+
+def scenario_corpus_sha256(scenarios: list[Scenario]) -> str:
+    """Hash every model-visible turn and hidden scoring contract canonically."""
+
+    canonical = [
+        asdict(scenario)
+        for scenario in sorted(scenarios, key=lambda item: item.scenario_id)
+    ]
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _apply_variant(

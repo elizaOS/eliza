@@ -76,6 +76,324 @@ def test_edge_scenario_expansion_adds_ten_per_selected_webshop_task():
     validate_tasks([task], include_edge_scenarios=True)
 
 
+def test_resolve_paths_requires_human_goal_manifest(tmp_path: Path):
+    from elizaos_webshop.dataset import resolve_paths
+
+    (tmp_path / "items_shuffle.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "items_ins_v2.json").write_text("{}", encoding="utf-8")
+
+    assert resolve_paths(data_dir=tmp_path, profile="full") is None
+
+
+def test_full_profile_goal_count_is_fixed_to_published_corpus():
+    from elizaos_webshop.dataset import (
+        EXPECTED_FULL_CATALOG_ENTRIES,
+        EXPECTED_FULL_HUMAN_GOALS,
+        EXPECTED_FULL_PRODUCTS,
+        WebShopDataset,
+    )
+
+    assert EXPECTED_FULL_HUMAN_GOALS == 12_087
+    assert EXPECTED_FULL_CATALOG_ENTRIES == 1_181_436
+    assert EXPECTED_FULL_PRODUCTS == 1_181_430
+    dataset = WebShopDataset(profile="full", split="test")
+    assert dataset._expected_full_split_count() == 500
+    assert WebShopDataset(profile="full", split="eval")._expected_full_split_count() == 1_000
+    assert WebShopDataset(profile="full", split="train")._expected_full_split_count() == 10_587
+
+
+def test_fetch_profile_rejects_corrupt_existing_file(tmp_path: Path):
+    from elizaos_webshop.dataset import _load_fetch_module
+
+    fetch_module = _load_fetch_module()
+    (tmp_path / "items_human_ins.json").write_bytes(b"corrupt")
+
+    with pytest.raises(RuntimeError, match="size mismatch"):
+        fetch_module.fetch_profile("goals", data_dir=tmp_path)
+
+
+def test_upstream_provenance_hashes_every_selected_file(
+    tmp_path: Path, monkeypatch
+):
+    import hashlib
+
+    import elizaos_webshop.dataset as dataset_module
+
+    payloads = {
+        "items_shuffle.json": b"items",
+        "items_ins_v2.json": b"attributes",
+        "items_human_ins.json": b"goals",
+    }
+    for name, payload in payloads.items():
+        (tmp_path / name).write_bytes(payload)
+        monkeypatch.setitem(
+            dataset_module.UPSTREAM_FILE_MANIFEST,
+            name,
+            (len(payload), hashlib.sha256(payload).hexdigest()),
+        )
+    paths = dataset_module.WebShopDataPaths(
+        items=tmp_path / "items_shuffle.json",
+        attributes=tmp_path / "items_ins_v2.json",
+        human_instructions=tmp_path / "items_human_ins.json",
+    )
+
+    provenance = dataset_module.verify_upstream_data(paths)
+
+    assert provenance["items_sha256"] == hashlib.sha256(b"items").hexdigest()
+    assert provenance["attributes_file_size"] == len(b"attributes")
+    assert provenance["human_goals_source_id"] == (
+        dataset_module.UPSTREAM_GDRIVE_FILE_IDS["items_human_ins.json"]
+    )
+
+    paths.items.write_bytes(b"mutated")
+    with pytest.raises(ValueError, match="size mismatch"):
+        dataset_module.verify_upstream_data(paths)
+
+
+def test_fetch_profile_uses_checksum_pinned_mirror(
+    tmp_path: Path, monkeypatch
+):
+    from elizaos_webshop.dataset import _load_fetch_module
+
+    fetch_module = _load_fetch_module()
+    fetch_profile = fetch_module.fetch_profile
+    expected_size, expected_sha256 = fetch_module.EXPECTED_FILES["items_human_ins"]
+    calls: list[str] = []
+
+    def unavailable(_file_id: str, _dest: Path) -> None:
+        raise fetch_module.PrimarySourceUnavailable("drive unavailable")
+
+    def mirror(logical_name: str, dest: Path) -> None:
+        calls.append(logical_name)
+        part = dest.with_suffix(dest.suffix + ".part")
+        part.write_bytes(b"mirror")
+
+    def verify(logical_name: str, path: Path) -> None:
+        assert logical_name == "items_human_ins"
+        assert path.read_bytes() == b"mirror"
+
+    monkeypatch.setitem(fetch_profile.__globals__, "_download_via_gdown", unavailable)
+    monkeypatch.setitem(fetch_profile.__globals__, "_download_via_huggingface", mirror)
+    monkeypatch.setitem(fetch_profile.__globals__, "_verify_file", verify)
+
+    fetched = fetch_profile("goals", data_dir=tmp_path)
+
+    assert calls == ["items_human_ins"]
+    assert fetched == [tmp_path / "items_human_ins.json"]
+    assert fetched[0].read_bytes() == b"mirror"
+    assert expected_size == 5_137_548
+    assert len(expected_sha256) == 64
+
+
+def test_count_scenarios_exits_without_starting_benchmark(monkeypatch, capsys):
+    import sys
+
+    import elizaos_webshop.cli as cli_mod
+
+    task = WebShopTask(
+        task_id="webshop_000001_B000HEADPH",
+        instruction="buy wireless bluetooth headphones in black",
+        target_product_ids=["B000HEADPH"],
+        budget=100.0,
+        metadata={"upstream_goal_json": "{}"},
+    )
+
+    class FakeDataset:
+        def __init__(self, **_kwargs):
+            pass
+
+        def load_manifest_sync(self):
+            pass
+
+        def get_tasks(self, limit=None):
+            return [task][:limit]
+
+    def fail_if_started(_coroutine):
+        raise AssertionError("count mode started the benchmark")
+
+    monkeypatch.setattr(cli_mod, "WebShopDataset", FakeDataset)
+    monkeypatch.setattr(cli_mod.asyncio, "run", fail_if_started)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["webshop-bench", "--count-scenarios", "--expand-scenarios"],
+    )
+
+    assert cli_mod.main() == 0
+    assert '"total": 11' in capsys.readouterr().out
+
+
+def test_manifest_count_filters_goals_absent_from_selected_catalog(tmp_path: Path):
+    import json
+
+    from elizaos_webshop.dataset import WebShopDataset
+
+    (tmp_path / "items_shuffle_1000.json").write_text(
+        json.dumps([{"asin": "B000INSET"}]),
+        encoding="utf-8",
+    )
+    (tmp_path / "items_ins_v2_1000.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "items_human_ins.json").write_text(
+        json.dumps(
+            {
+                "B000INSET": [
+                    {
+                        "instruction": "buy the included item",
+                        "instruction_attributes": ["included"],
+                        "instruction_options": [],
+                    }
+                ],
+                "B000OUTSET": [
+                    {
+                        "instruction": "buy an item outside the catalog",
+                        "instruction_attributes": ["outside"],
+                        "instruction_options": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = WebShopDataset(profile="small", split="test", data_dir=tmp_path)
+    dataset.load_manifest_sync()
+
+    assert len(dataset.tasks) == 1
+    assert dataset.tasks[0].target_product_ids == ["B000INSET"]
+
+
+def test_manifest_loader_uses_canonical_positional_splits(tmp_path: Path):
+    import json
+    import random
+
+    from elizaos_webshop.dataset import CANONICAL_GOAL_SHUFFLE_SEED, WebShopDataset
+
+    (tmp_path / "items_shuffle_1000.json").write_text(
+        json.dumps([{"asin": "B000INSET"}]),
+        encoding="utf-8",
+    )
+    (tmp_path / "items_ins_v2_1000.json").write_text("{}", encoding="utf-8")
+    instructions = [
+        {
+            "instruction": f"canonical instruction {index}",
+            "instruction_attributes": ["included"],
+            "instruction_options": [],
+        }
+        for index in range(1_600)
+    ]
+    (tmp_path / "items_human_ins.json").write_text(
+        json.dumps({"B000INSET": instructions}),
+        encoding="utf-8",
+    )
+
+    test_dataset = WebShopDataset(profile="small", split="test", data_dir=tmp_path)
+    test_dataset.load_manifest_sync()
+    eval_dataset = WebShopDataset(profile="small", split="eval", data_dir=tmp_path)
+    eval_dataset.load_manifest_sync()
+    train_dataset = WebShopDataset(profile="small", split="train", data_dir=tmp_path)
+    train_dataset.load_manifest_sync()
+
+    shuffled = list(range(1_600))
+    random.Random(CANONICAL_GOAL_SHUFFLE_SEED).shuffle(shuffled)
+
+    assert len(test_dataset.tasks) == 500
+    assert test_dataset.tasks[0].instruction == f"canonical instruction {shuffled[0]}"
+    assert test_dataset.tasks[-1].instruction == f"canonical instruction {shuffled[499]}"
+    assert len(eval_dataset.tasks) == 1_000
+    assert eval_dataset.tasks[0].instruction == f"canonical instruction {shuffled[500]}"
+    assert eval_dataset.tasks[-1].instruction == f"canonical instruction {shuffled[1499]}"
+    assert len(train_dataset.tasks) == 100
+    assert train_dataset.tasks[0].instruction == f"canonical instruction {shuffled[1500]}"
+
+
+def test_full_catalog_signature_rejects_truncated_product_set(tmp_path: Path):
+    import json
+
+    from elizaos_webshop.dataset import _catalog_asins
+
+    catalog = tmp_path / "items_shuffle.json"
+    catalog.write_text(json.dumps([{"asin": "B000ONLY01"}]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected 2 unique products, found 1"):
+        _catalog_asins(catalog, stream=True, expected_count=2)
+
+
+def test_runtime_goals_replace_count_manifest_with_exact_upstream_payload(tmp_path: Path):
+    import json
+
+    from elizaos_webshop.dataset import WebShopDataset
+
+    dataset = WebShopDataset(profile="small", split="test", data_dir=tmp_path)
+    runtime_goal = {
+        "asin": "B000EXACT1",
+        "instruction_text": "buy the exact item, and price lower than 40.00 dollars",
+        "attributes": ["exact"],
+        "price_upper": 40.0,
+        "goal_options": {"color": "black"},
+        "category": "test",
+        "query": "exact item",
+        "name": "Exact Item",
+        "product_category": "Test > Exact",
+        "weight": 1,
+    }
+
+    dataset.install_runtime_goals([runtime_goal], catalog_product_count=1)
+
+    assert dataset.catalog_product_count == 1
+    assert dataset.published_goal_count == 1
+    assert len(dataset.tasks) == 1
+    stored = json.loads(dataset.tasks[0].metadata["upstream_goal_json"])
+    assert stored == runtime_goal
+    assert dataset.tasks[0].budget == 40.0
+
+
+def test_streaming_catalog_reader_ignores_nested_customization_asins(
+    tmp_path: Path, monkeypatch
+):
+    import json
+
+    import elizaos_webshop.dataset as dataset_module
+
+    catalog = tmp_path / "items_shuffle.json"
+    catalog.write_text(
+        json.dumps(
+            [
+                {
+                    "asin": "B000TOP001",
+                    "customization_options": {
+                        "size": [{"value": "small", "asin": "B000NEST01"}]
+                    },
+                },
+                {"asin": "B000TOP002", "description": "x" * 80},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dataset_module, "_CATALOG_STREAM_CHUNK_SIZE", 17)
+
+    asins = dataset_module._catalog_asins(catalog, stream=True, expected_count=2)
+
+    assert asins == {"B000TOP001", "B000TOP002"}
+
+
+def test_report_metadata_marks_deprecated_hf_flag_as_ignored(tmp_path: Path):
+    from elizaos_webshop.runner import WebShopRunner
+    from elizaos_webshop.types import WebShopConfig
+
+    runner = WebShopRunner(
+        WebShopConfig(output_dir=str(tmp_path), use_mock=True),
+        use_hf=True,
+        use_sample_tasks=True,
+    )
+    runner._env = types.SimpleNamespace(runtime_provenance={})
+    report = runner._generate_report([])
+    payload = runner._report_to_dict(report)
+
+    assert payload["dataset_source"] == "sample-files"
+    assert payload["hf_requested"] is True
+    assert payload["use_hf"] is False
+
+
 def test_spacy_autoinstall_retries_after_oserror():
     """First call OSErrors; we install; retry succeeds."""
     import elizaos_webshop.environment as env_mod
@@ -187,6 +505,31 @@ def test_spacy_autoinstall_subprocess_failure_raises():
     msg = str(ei.value)
     assert "spacy download" in msg
     assert "exit code 1" in msg
+
+
+def test_dependency_stubs_require_explicit_smoke_opt_in(monkeypatch):
+    import sys
+
+    import elizaos_webshop.environment as env_mod
+
+    module_names = (
+        "spacy",
+        "thefuzz",
+        "thefuzz.fuzz",
+    )
+    for name in module_names:
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.setattr(env_mod.importlib.util, "find_spec", lambda _name: None)
+    monkeypatch.delenv("WEBSHOP_ALLOW_SPACY_STUB", raising=False)
+
+    env_mod._install_optional_dependency_stubs()
+
+    assert not any(name in sys.modules for name in module_names)
+
+    monkeypatch.setenv("WEBSHOP_ALLOW_SPACY_STUB", "1")
+    env_mod._install_optional_dependency_stubs()
+
+    assert all(name in sys.modules for name in module_names)
 
 
 # ---------------------------------------------------------------------------

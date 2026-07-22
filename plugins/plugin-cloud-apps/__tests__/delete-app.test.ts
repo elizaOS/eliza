@@ -8,6 +8,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setDeleteApp,
   setListApps,
@@ -59,9 +60,16 @@ describe("DELETE_APP", () => {
     );
 
     expect(deletes.count()).toBe(0);
-    expect((result?.data as { deleted: boolean }).deleted).toBe(false);
     expect(
-      (result?.data as { confirmationRequired: boolean }).confirmationRequired,
+      (requireDefined(result, "action result").data as { deleted: boolean })
+        .deleted,
+    ).toBe(false);
+    expect(
+      (
+        requireDefined(result, "action result").data as {
+          confirmationRequired: boolean;
+        }
+      ).confirmationRequired,
     ).toBe(true);
     const prompt = cb.calls[0]?.text ?? "";
     expect(prompt).toContain("Acme Bot");
@@ -90,7 +98,10 @@ describe("DELETE_APP", () => {
 
     expect(deletes.count()).toBe(1);
     expect(result?.success ?? false).toBe(true);
-    expect((result?.data as { deleted: boolean }).deleted).toBe(true);
+    expect(
+      (requireDefined(result, "action result").data as { deleted: boolean })
+        .deleted,
+    ).toBe(true);
     expect(cb.calls.at(-1)?.text).toContain("Deleted");
   });
 
@@ -121,10 +132,14 @@ describe("DELETE_APP", () => {
       cb.fn,
     );
     expect(result?.success ?? true).toBe(false);
-    expect((result?.data as { partial?: boolean }).partial).toBe(true);
-    expect((result?.data as { errors?: string[] }).errors).toContain(
-      "tenant_db teardown failed",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { partial?: boolean })
+        .partial,
+    ).toBe(true);
+    expect(
+      (requireDefined(result, "action result").data as { errors?: string[] })
+        .errors,
+    ).toContain("tenant_db teardown failed");
     const reply = cb.calls.at(-1)?.text ?? "";
     expect(reply).not.toContain("are gone");
     expect(reply.toLowerCase()).toContain("dashboard");
@@ -150,7 +165,11 @@ describe("DELETE_APP", () => {
     );
     expect(deletes.count()).toBe(0);
     expect(
-      (result?.data as { confirmationRequired: boolean }).confirmationRequired,
+      (
+        requireDefined(result, "action result").data as {
+          confirmationRequired: boolean;
+        }
+      ).confirmationRequired,
     ).toBe(true);
   });
 
@@ -172,7 +191,10 @@ describe("DELETE_APP", () => {
       captureCallback().fn,
     );
     expect(deletes.count()).toBe(0);
-    expect((result?.data as { canceled: boolean }).canceled).toBe(true);
+    expect(
+      (requireDefined(result, "action result").data as { canceled: boolean })
+        .canceled,
+    ).toBe(true);
   });
 
   it("structured confirm without a pending prompt does NOT delete", async () => {
@@ -185,9 +207,10 @@ describe("DELETE_APP", () => {
       captureCallback().fn,
     );
     expect(deletes.count()).toBe(0);
-    expect((result?.data as { reason: string }).reason).toBe(
-      "no_pending_confirmation",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_pending_confirmation");
   });
 
   it("returns not-found for an unknown app (no confirmation, no delete)", async () => {
@@ -201,7 +224,10 @@ describe("DELETE_APP", () => {
       cb.fn,
     );
     expect(deletes.count()).toBe(0);
-    expect((result?.data as { reason: string }).reason).toBe("not_found");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
   });
 
   it("degrades gracefully with no Cloud API key", async () => {
@@ -214,7 +240,10 @@ describe("DELETE_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   it("confirm naming a DIFFERENT app refuses, deletes nothing, and clears the pending", async () => {
@@ -239,9 +268,10 @@ describe("DELETE_APP", () => {
 
     expect(deletes.count()).toBe(0);
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe(
-      "confirm_target_mismatch",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("confirm_target_mismatch");
     const reply = cb.calls.at(-1)?.text ?? "";
     expect(reply).toContain("Beta Dashboard");
     expect(reply).toContain("Acme Bot");
@@ -256,9 +286,10 @@ describe("DELETE_APP", () => {
       cb.fn,
     );
     expect(deletes.count()).toBe(0);
-    expect((followUp?.data as { reason: string }).reason).toBe(
-      "no_pending_confirmation",
-    );
+    expect(
+      (requireDefined(followUp, "follow-up result").data as { reason: string })
+        .reason,
+    ).toBe("no_pending_confirmation");
   });
 
   it("confirm re-naming the SAME app (partial name / generic filler) still deletes", async () => {
@@ -279,7 +310,10 @@ describe("DELETE_APP", () => {
       captureCallback().fn,
     );
     expect(deletes.count()).toBe(1);
-    expect((result?.data as { deleted: boolean }).deleted).toBe(true);
+    expect(
+      (requireDefined(result, "action result").data as { deleted: boolean })
+        .deleted,
+    ).toBe(true);
 
     // Generic filler ("my app") is not a target switch either.
     await deleteAppAction.handler(
@@ -297,7 +331,10 @@ describe("DELETE_APP", () => {
       captureCallback().fn,
     );
     expect(deletes.count()).toBe(2);
-    expect((generic?.data as { deleted: boolean }).deleted).toBe(true);
+    expect(
+      (requireDefined(generic, "generic result").data as { deleted: boolean })
+        .deleted,
+    ).toBe(true);
   });
 
   it("surfaces a delete API error", async () => {
@@ -319,6 +356,9 @@ describe("DELETE_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
   });
 });

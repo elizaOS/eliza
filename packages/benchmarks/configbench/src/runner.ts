@@ -23,6 +23,7 @@ async function runHandler(
     try {
       await handler.setup();
     } catch (error) {
+      // error-policy:J4 setup incompatibility is an explicit non-publishable state.
       const teardownTrace = await teardownAfterSetupFailure(handler);
       if (isSetupIncompatibleError(error)) {
         return {
@@ -37,12 +38,7 @@ async function runHandler(
           },
         };
       }
-      return {
-        kind: "outcomes",
-        outcomes: scenarios.map((scenario) =>
-          failedOutcome(scenario, 0, `setup failed: ${errorMessage(error)}`),
-        ),
-      };
+      throw error;
     }
   }
 
@@ -50,47 +46,14 @@ async function runHandler(
     for (let i = 0; i < scenarios.length; i++) {
       const scenario = scenarios[i];
       progressCallback?.(scenario.id, i + 1, scenarios.length);
-      const started = Date.now();
-      try {
-        outcomes.push(await handler.run(scenario));
-      } catch (error) {
-        outcomes.push(
-          failedOutcome(scenario, Date.now() - started, errorMessage(error)),
-        );
-      }
+      outcomes.push(await handler.run(scenario));
     }
   } finally {
     if (handler.teardown) {
-      try {
-        await handler.teardown();
-      } catch (error) {
-        const message = `ERROR: teardown failed: ${errorMessage(error)}`;
-        for (const outcome of outcomes) outcome.traces.push(message);
-      }
+      await handler.teardown();
     }
   }
   return { kind: "outcomes", outcomes };
-}
-
-function failedOutcome(
-  scenario: Scenario,
-  latencyMs: number,
-  error: string,
-): ScenarioOutcome {
-  return {
-    scenarioId: scenario.id,
-    agentResponses: [],
-    secretsInStorage: {},
-    pluginsLoaded: [],
-    secretLeakedInResponse: false,
-    leakedValues: [],
-    refusedInPublic: false,
-    pluginActivated: null,
-    pluginDeactivated: null,
-    latencyMs,
-    traces: [`ERROR: ${error}`],
-    error,
-  };
 }
 
 function errorMessage(error: unknown): string {
@@ -105,6 +68,7 @@ async function teardownAfterSetupFailure(
     await handler.teardown();
     return null;
   } catch (error) {
+    // error-policy:J6 teardown after a known setup failure is best-effort.
     return `ERROR: teardown failed after setup failure: ${errorMessage(error)}`;
   }
 }

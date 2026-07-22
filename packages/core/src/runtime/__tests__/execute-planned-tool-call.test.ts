@@ -168,6 +168,187 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("flattens a schema-safe parameters envelope inside native tool args", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "WORKFLOW",
+			parameters: [
+				{
+					name: "action",
+					description: "Workflow operation",
+					required: true,
+					schema: { type: "string", enum: ["create"] },
+				},
+				{
+					name: "name",
+					description: "Workflow name",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "seedPrompt",
+					description: "Workflow description",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "active",
+					description: "Initial active state",
+					required: false,
+					schema: { type: "boolean" },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{
+				name: "WORKFLOW",
+				params: {
+					action: "create",
+					parameters: {
+						name: "Smithers acceptance",
+						seedPrompt: "Manual Trigger followed by Set Message",
+						active: false,
+					},
+				},
+			},
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({
+				parameters: {
+					action: "create",
+					name: "Smithers acceptance",
+					seedPrompt: "Manual Trigger followed by Set Message",
+					active: false,
+				},
+			}),
+			undefined,
+			undefined,
+		);
+	});
+
+	it("does not flatten a parameters envelope containing an unknown key", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "WORKFLOW",
+			parameters: [
+				{
+					name: "action",
+					description: "Workflow operation",
+					required: true,
+					schema: { type: "string", enum: ["create"] },
+				},
+				{
+					name: "name",
+					description: "Workflow name",
+					required: false,
+					schema: { type: "string" },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{
+				name: "WORKFLOW",
+				params: {
+					action: "create",
+					parameters: { name: "Smithers acceptance", reciepient: "alice" },
+				},
+			},
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("Unexpected argument 'parameters'");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("does not flatten conflicting top-level and nested parameter values", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "WORKFLOW",
+			parameters: [
+				{
+					name: "action",
+					description: "Workflow operation",
+					required: true,
+					schema: { type: "string", enum: ["create"] },
+				},
+				{
+					name: "name",
+					description: "Workflow name",
+					required: false,
+					schema: { type: "string" },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{
+				name: "WORKFLOW",
+				params: {
+					action: "create",
+					name: "Top-level name",
+					parameters: { name: "Conflicting nested name" },
+				},
+			},
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("Unexpected argument 'parameters'");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("preserves a parameters object when the action declares that field", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "DECLARED_PARAMETERS",
+			parameters: [
+				{
+					name: "parameters",
+					description: "Action-owned nested parameters",
+					required: true,
+					schema: { type: "object", additionalProperties: true },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{
+				name: "DECLARED_PARAMETERS",
+				params: { parameters: { name: "Nested name" } },
+			},
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({
+				parameters: { parameters: { name: "Nested name" } },
+			}),
+			undefined,
+			undefined,
+		);
+	});
+
 	it("canonicalizes undeclared subaction into the declared discriminator", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const action = makeAction({

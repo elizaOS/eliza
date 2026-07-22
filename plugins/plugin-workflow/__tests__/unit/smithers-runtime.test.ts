@@ -132,4 +132,45 @@ describe('runWorkflowWithSmithers (in-process Smithers engine)', () => {
     expect(result.threw).toBe(true);
     expect(String(result.message)).toContain('fatal');
   }, 60_000);
+
+  it('kills a stalled workflow at the configured execution deadline', async () => {
+    const { result } = await runCase('timeout');
+
+    expect(result.threw).toBe(true);
+    expect(result.code).toBe('SMITHERS_WORKFLOW_TIMEOUT');
+  }, 60_000);
+
+  it('cancels parent node work before an aborted run can produce a late side effect', async () => {
+    const { result } = await runCase('timeout-cancellation');
+
+    expect(result.code).toBe('SMITHERS_WORKFLOW_ABORTED');
+    expect(result.nodeWorkStarted).toBe(true);
+    expect(result.observedAbort).toBe(true);
+    expect(result.sideEffectHappened).toBe(false);
+  }, 60_000);
+
+  it('delivers workflow results larger than the subprocess pipe buffer without truncation', async () => {
+    const { result } = await runCase('large-result');
+
+    expect(result.status).toBe('success');
+    expect(result.payloadLength).toBe(1024 * 1024);
+    expect(result.payloadSuffix).toBe('smithers-large-result');
+  }, 60_000);
+
+  it('resumes after a crash without repeating an already-persisted side effect', async () => {
+    const { result } = await runCase('crash-resume');
+
+    expect(result.status).toBe('success');
+    expect(result.sideEffectCalls).toBe(1);
+    expect(result.firstCalls).toEqual(['side-effect', 'consumer']);
+    expect(result.resumedCalls).toEqual(['consumer']);
+    expect(result.resumedInput).toEqual({ durableToken: 'created-once' });
+    expect(result.persistedNodes).toEqual(['consumer', 'side-effect']);
+    expect(result.engine).toMatchObject({
+      provider: 'smithers',
+      nodes: 2,
+      started: 2,
+      finished: 2,
+    });
+  }, 60_000);
 });

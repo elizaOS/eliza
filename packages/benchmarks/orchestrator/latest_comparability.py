@@ -14,14 +14,6 @@ from .code_agent_latest_contract import (
 )
 
 REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
-SCORE_SPREAD_EXEMPT_BENCHMARKS: frozenset[str] = frozenset(
-    {
-        # This benchmark intentionally runs the native Hermes terminal-agent
-        # environment through each harness path. The rows must exist and be
-        # publishable, but equal scores are not a valid cross-harness invariant.
-        "hermes_terminalbench_2",
-    }
-)
 
 
 @dataclass(frozen=True)
@@ -65,6 +57,13 @@ def validate_latest_comparability(
     include_benchmarks: set[str] | None = None,
     exclude_benchmarks: set[str] | None = None,
 ) -> ComparabilityReport:
+    """Validate that required rows represent the same benchmark inputs/config.
+
+    Outcome scores are deliberately not compared: different agents are
+    expected to earn different scores. ``tolerance`` remains in the public API
+    so existing automation can upgrade without changing its command line.
+    """
+
     target_dir = latest_dir or workspace_root / "benchmarks" / "benchmark_results" / "latest"
     findings: list[ComparabilityFinding] = []
     rows_by_benchmark: dict[str, dict[str, dict[str, Any]]] = {}
@@ -132,8 +131,8 @@ def validate_latest_comparability(
             )
             continue
 
-        scores: dict[str, float] = {}
         signatures: dict[str, str] = {}
+        derived_signatures: dict[str, str] = {}
         for agent in required:
             row = rows[agent]
             status = row.get("status")
@@ -154,8 +153,6 @@ def validate_latest_comparability(
                         value=str(score),
                     )
                 )
-            else:
-                scores[agent] = float(score)
             if agent == CODE_AGENT_LATEST_AGENT:
                 comparison_status = str(row.get("comparison_status") or "").strip()
                 if comparison_status not in CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES:
@@ -182,40 +179,44 @@ def validate_latest_comparability(
                         )
                     )
             signature = _comparison_signature_for_latest_row(row)
-            if signature:
-                signatures[agent] = signature
+            signatures[agent] = signature
+            derived_signatures[agent] = _comparison_signature_for_run(row)
 
-        if (
-            benchmark_id not in SCORE_SPREAD_EXEMPT_BENCHMARKS
-            and len(signatures) == len(required)
-            and len(set(signatures.values())) > 1
-        ):
+        if len(set(signatures.values())) > 1 or len(set(derived_signatures.values())) > 1:
             findings.append(
                 ComparabilityFinding(
                     benchmark_id=benchmark_id,
                     reason="mixed_comparison_signatures",
-                    value=json.dumps(signatures, sort_keys=True),
+                    value=json.dumps(
+                        {
+                            "recorded": signatures,
+                            "derived_input_config": derived_signatures,
+                        },
+                        sort_keys=True,
+                    ),
                 )
             )
-        if (
-            benchmark_id not in SCORE_SPREAD_EXEMPT_BENCHMARKS
-            and len(scores) == len(required)
-            and scores
-        ):
-            spread = max(scores.values()) - min(scores.values())
-            baseline = min(scores.values())
-            if not math.isclose(
-                max(scores.values()),
-                baseline,
-                rel_tol=tolerance,
-                abs_tol=tolerance,
-            ):
+        subscription_rows = [
+            rows[agent]
+            for agent in required
+            if str(rows[agent].get("provider") or "").strip().lower()
+            == "claude-subscription"
+        ]
+        if len(subscription_rows) == len(required):
+            run_group_ids = {
+                str(row.get("run_group_id") or "").strip()
+                for row in subscription_rows
+            }
+            if "" in run_group_ids or len(run_group_ids) != 1:
                 findings.append(
                     ComparabilityFinding(
                         benchmark_id=benchmark_id,
-                        reason="score_spread_exceeds_tolerance",
+                        reason="subscription_rows_not_single_cohort",
                         value=json.dumps(
-                            {"scores": scores, "spread": spread},
+                            {
+                                agent: rows[agent].get("run_group_id")
+                                for agent in required
+                            },
                             sort_keys=True,
                         ),
                     )
@@ -233,11 +234,10 @@ def print_comparability_report(report: ComparabilityReport) -> None:
     print(
         "Latest comparability: "
         f"checked={report.checked_benchmarks} "
-        f"tolerance={report.tolerance} "
         f"findings={len(report.findings)}"
     )
     if report.ok:
-        print("All required latest real-harness rows are comparable within tolerance.")
+        print("All required latest real-harness rows use aligned inputs and configuration.")
         return
     for finding in report.findings:
         print(f"- {finding.benchmark_id}: {finding.reason} value={finding.value}")

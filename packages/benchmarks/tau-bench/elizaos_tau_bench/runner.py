@@ -9,14 +9,23 @@ This replaces the previous handwritten environments + executor pipeline.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import math
 import os
 import time
 from pathlib import Path
 from typing import Optional
 
-from elizaos_tau_bench.dataset import expand_task_items, iter_sample_tasks, iter_tasks
+from elizaos_tau_bench.dataset import (
+    count_task_items,
+    expand_task_items,
+    iter_sample_tasks,
+    iter_tasks,
+    validate_task_items,
+)
+from elizaos_tau_bench.data_assets import data_provenance
 from elizaos_tau_bench.eliza_agent import (
     AgentRunResult,
     BaseTauAgent,
@@ -39,11 +48,76 @@ from elizaos_tau_bench.upstream.envs.base import Env
 
 logger = logging.getLogger(__name__)
 
+OFFICIAL_TEST_TASK_COUNTS: dict[DomainName, int] = {
+    "retail": 115,
+    "airline": 50,
+}
+
+
+def _workload_sha256(
+    task_list: list[tuple[DomainName, int, Task, str, str]],
+    config: TauBenchConfig,
+) -> str:
+    payload = {
+        "schema_version": 1,
+        "task_split": config.task_split,
+        "num_trials": config.num_trials,
+        "seed": config.seed,
+        "tasks": [
+            {
+                "domain": domain,
+                "task_index": task_index,
+                "scenario_id": scenario_id,
+                "scenario_note": scenario_note,
+                "task": task.model_dump(mode="json"),
+            }
+            for domain, task_index, task, scenario_id, scenario_note in task_list
+        ],
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
 
 class TauBenchRunner:
     """Orchestrates evaluation of a set of tasks across trials."""
 
     def __init__(self, config: TauBenchConfig) -> None:
+        if not config.domains or len(set(config.domains)) != len(config.domains):
+            raise ValueError("tau-bench domains must be a non-empty unique list")
+        if any(domain not in OFFICIAL_TEST_TASK_COUNTS for domain in config.domains):
+            raise ValueError(f"unknown tau-bench domain selection: {config.domains!r}")
+        if config.num_trials <= 0:
+            raise ValueError("tau-bench num_trials must be positive")
+        if (
+            not config.pass_k_values
+            or len(set(config.pass_k_values)) != len(config.pass_k_values)
+            or any(k <= 0 or k > config.num_trials for k in config.pass_k_values)
+        ):
+            raise ValueError(
+                "tau-bench pass_k_values must be unique positive values no larger "
+                "than num_trials"
+            )
+        if config.agent_max_turns <= 0:
+            raise ValueError("tau-bench agent_max_turns must be positive")
+        if config.max_concurrency <= 0:
+            raise ValueError("tau-bench max_concurrency must be positive")
+        if config.start_index < 0:
+            raise ValueError("tau-bench start_index cannot be negative")
+        if config.end_index != -1 and config.end_index <= config.start_index:
+            raise ValueError("tau-bench end_index must be -1 or greater than start_index")
+        if config.max_tasks_per_domain is not None and config.max_tasks_per_domain <= 0:
+            raise ValueError("tau-bench max_tasks_per_domain must be positive")
+        if config.task_ids is not None and (
+            not config.task_ids
+            or len(set(config.task_ids)) != len(config.task_ids)
+            or any(task_id < 0 for task_id in config.task_ids)
+        ):
+            raise ValueError("tau-bench task_ids must be unique non-negative ids")
         self.config = config
 
     # --- Env construction -------------------------------------------------
@@ -168,22 +242,31 @@ class TauBenchRunner:
         try:
             env = self._make_env(domain, task_index)
             self._apply_scenario_note(env, task_index, scenario_note)
-        except Exception as e:
-            logger.exception("Failed to construct env for %s task %d", domain, task_index)
-            return TaskRunResult(
-                task_id=task_index,
-                trial=trial,
-                domain=domain,
-                reward=0.0,
-                success=False,
-                scenario_id=scenario_id,
-                scenario_note=scenario_note,
-                error=f"env_init: {e}",
-            )
+        except Exception as exc:
+            # error-policy:J2 Attach the scheduled rollout identity before the
+            # full-run boundary aborts without writing a partial report.
+            raise RuntimeError(
+                f"failed to construct tau-bench env for {domain} task {task_index}"
+            ) from exc
 
         run: AgentRunResult = agent.solve(
             env=env, task_index=task_index, max_num_steps=self.config.agent_max_turns
         )
+        if run.error is not None:
+            raise RuntimeError(
+                f"tau-bench agent failed for {domain} task {task_index} "
+                f"scenario={scenario_id} trial={trial}: {run.error}"
+            )
+        if (
+            not isinstance(run.reward, (int, float))
+            or isinstance(run.reward, bool)
+            or not math.isfinite(float(run.reward))
+            or not 0 <= float(run.reward) <= 1
+        ):
+            raise ValueError(
+                f"tau-bench agent returned invalid reward for {domain} task "
+                f"{task_index}: {run.reward!r}"
+            )
 
         # Upstream env's calculate_reward fired on done; pull both data-hash and
         # outputs sub-rewards out of info.reward_info.
@@ -278,6 +361,35 @@ class TauBenchRunner:
             )
         try:
             base_task_list = list(task_iter)
+            validation_errors = validate_task_items(
+                base_task_list,
+                include_edge_scenarios=self.config.include_edge_scenarios,
+            )
+            if validation_errors:
+                raise ValueError(
+                    "invalid tau-bench task selection: " + "; ".join(validation_errors)
+                )
+            if (
+                not self.config.use_sample_tasks
+                and self.config.task_split == "test"
+                and self.config.task_ids is None
+                and self.config.start_index == 0
+                and self.config.end_index == -1
+                and self.config.max_tasks_per_domain is None
+            ):
+                actual_by_domain = {
+                    domain: sum(1 for selected, _, _ in base_task_list if selected == domain)
+                    for domain in self.config.domains
+                }
+                expected_by_domain = {
+                    domain: OFFICIAL_TEST_TASK_COUNTS[domain]
+                    for domain in self.config.domains
+                }
+                if actual_by_domain != expected_by_domain:
+                    raise RuntimeError(
+                        "official tau-bench test corpus count mismatch: "
+                        f"expected={expected_by_domain}, actual={actual_by_domain}"
+                    )
             task_list = (
                 expand_task_items(base_task_list)
                 if self.config.include_edge_scenarios
@@ -286,12 +398,20 @@ class TauBenchRunner:
             if not task_list:
                 raise ValueError("No tasks selected — check --domains / --task-ids / --split")
 
+            expected_keys = [
+                (domain, task_index, scenario_id, trial)
+                for domain, task_index, _task, scenario_id, _note in task_list
+                for trial in range(self.config.num_trials)
+            ]
+            if len(set(expected_keys)) != len(expected_keys):
+                raise ValueError("tau-bench workload contains duplicate rollout identities")
+
             agent = self._make_agent()
 
             results: list[TaskRunResult] = []
             domain_results: dict[str, list[TaskRunResult]] = {}
             start_ts = time.time()
-            total = len(task_list) * self.config.num_trials
+            total = len(expected_keys)
             logger.info(
                 "Running tau-bench: %d tasks × %d trials = %d rollouts",
                 len(task_list),
@@ -325,13 +445,34 @@ class TauBenchRunner:
                         r.success,
                     )
 
+            completed_keys = [
+                (result.domain, result.task_id, result.scenario_id, result.trial)
+                for result in results
+            ]
+            if completed_keys != expected_keys:
+                raise RuntimeError(
+                    "tau-bench completed rollouts do not match the scheduled workload"
+                )
+            for result in results:
+                if result.error is not None:
+                    raise RuntimeError(
+                        "tau-bench workload contains a failed rollout: "
+                        f"{result.domain}#{result.task_id}/{result.scenario_id}/"
+                        f"trial-{result.trial}: {result.error}"
+                    )
+                if not math.isfinite(result.reward) or not 0 <= result.reward <= 1:
+                    raise ValueError(
+                        "tau-bench workload contains an invalid reward: "
+                        f"{result.reward!r}"
+                    )
+
             # Pass^k aggregation
             pass_k: dict[int, PassKResult] = {}
             for k in self.config.pass_k_values:
                 pk, num_tasks = calculate_pass_hat_k(results, k)
                 pass_k[k] = PassKResult(k=k, num_tasks=num_tasks, pass_hat_k=pk)
 
-            avg_reward = sum(r.reward for r in results) / len(results) if results else 0.0
+            avg_reward = sum(r.reward for r in results) / len(results)
 
             report = BenchmarkReport(
                 config=self.config,
@@ -340,6 +481,15 @@ class TauBenchRunner:
                 avg_reward=avg_reward,
                 num_tasks=len(task_list),
                 num_trials_per_task=self.config.num_trials,
+                data_provenance=data_provenance(self.config.domains),
+                scenario_counts=count_task_items(
+                    base_task_list,
+                    include_edge_scenarios=self.config.include_edge_scenarios,
+                ),
+                complete=True,
+                expected_rollouts=len(expected_keys),
+                completed_rollouts=len(completed_keys),
+                workload_sha256=_workload_sha256(task_list, self.config),
                 domain_results=domain_results,
             )
 
@@ -355,6 +505,17 @@ class TauBenchRunner:
                 os.environ["TAU_BENCH_DATA_MODE"] = previous_data_mode
 
     def _save_report(self, report: BenchmarkReport) -> None:
+        if (
+            not report.complete
+            or report.expected_rollouts <= 0
+            or report.completed_rollouts != report.expected_rollouts
+            or len(report.results) != report.expected_rollouts
+            or any(result.error is not None for result in report.results)
+            or len(report.workload_sha256) != 64
+        ):
+            raise RuntimeError(
+                "refusing to publish incomplete or unprovenanced tau-bench report"
+            )
         out_dir = Path(self.config.output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "report.json").write_text(

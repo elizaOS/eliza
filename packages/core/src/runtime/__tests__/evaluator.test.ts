@@ -887,6 +887,30 @@ describe("native tool dialects never recover as the user-facing answer", () => {
 		expect(result.messageToUser ?? "").toBe("");
 	});
 
+	it("does not deliver a namespaced workflow invocation as the chat reply", async () => {
+		// Action results and evaluator prose are persisted independently, so the
+		// evaluator must not place machine invocation text beside a valid result.
+		const result = await runWithModelText(
+			'call:automation:GET_WORKFLOW{workflowId: "8914e389-8cda-401e-aac0-a501286a8130"}',
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser ?? "").toBe("");
+	});
+
+	it("rejects the same workflow invocation inside a structured evaluator verdict", async () => {
+		const result = await runWithModelText(
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The workflow action completed.",
+				messageToUser:
+					'call:automation:GET_WORKFLOW{workflowId: "8914e389-8cda-401e-aac0-a501286a8130"}',
+			}),
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+	});
+
 	it("does not deliver a mid-text invocation of a tool the trajectory carries", async () => {
 		const result = await runWithModelText(
 			"Let me check that again. SHELL{cmd: df -h}",

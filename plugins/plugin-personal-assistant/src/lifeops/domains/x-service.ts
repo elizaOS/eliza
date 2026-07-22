@@ -699,12 +699,12 @@ export class XDomain {
     const metadata = result.value.metadata as
       | Record<string, unknown>
       | undefined;
+    const xMetadata = metadata?.x as Record<string, unknown> | undefined;
     const postId =
       typeof metadata?.messageIdFull === "string"
         ? metadata.messageIdFull
-        : typeof (metadata?.x as Record<string, unknown> | undefined)
-              ?.tweetId === "string"
-          ? ((metadata?.x as Record<string, unknown>).tweetId as string)
+        : typeof xMetadata?.tweetId === "string"
+          ? xMetadata.tweetId
           : result.value.id;
     await this.deps.recordXPostAudit(
       `x:${grant.mode}`,

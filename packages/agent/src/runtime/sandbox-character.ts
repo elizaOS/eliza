@@ -153,8 +153,8 @@ export function applySandboxCharacterFromEnv(
     ...(parsed.knowledge ? { knowledge: parsed.knowledge } : {}),
   };
 
-  const agents = (config.agents ?? {}) as NonNullable<ElizaConfig["agents"]>;
-  const list = Array.isArray(agents.list) ? [...agents.list] : [];
+  const agents = config.agents as ElizaConfig["agents"] | undefined;
+  const list = Array.isArray(agents?.list) ? [...agents.list] : [];
   // Replace any existing primary entry; the injected character is authoritative.
   const existingIdx = list.findIndex((a) => a?.default) ?? -1;
   if (existingIdx >= 0) {

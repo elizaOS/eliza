@@ -944,6 +944,17 @@ export function captureCallback(): {
   return { fn, calls };
 }
 
+/** Fail a test at the invariant boundary and return the narrowed value. */
+export function requireDefined<T>(
+  value: T | null | undefined,
+  label: string,
+): T {
+  if (value === null || value === undefined) {
+    throw new Error(`Expected ${label} to be defined`);
+  }
+  return value;
+}
+
 /** Minimal AppDto factory — fills only the fields the read-core reads. */
 export function makeApp(overrides: Partial<AppDto> = {}): AppDto {
   return {

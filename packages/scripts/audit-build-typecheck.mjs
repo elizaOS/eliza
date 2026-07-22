@@ -1,37 +1,36 @@
 #!/usr/bin/env node
 /**
  * Audit the build / typecheck compiler model (issue #9626, TL;DR #3 + "two
- * compilers"). The repo's chosen model is: **tsgo checks, tsc only emits.**
+ * compilers"). The repo's chosen model is: **stable tsc checks, compatibility tsc6 emits.**
  *
  * This script flags drift from that model across every workspace package:
- *   1. A `build` that runs a full `tsc` type-check (declaration emit WITHOUT
+ *   1. A `build` that runs a full `tsc6` type-check (declaration emit WITHOUT
  *      `--noCheck`) while a separate `typecheck` already checks the same source
  *      — a redundant second full type-check.
- *   2. A `typecheck` that uses `tsc` instead of the standard `tsgo`.
+ *   2. A `typecheck` that uses compatibility `tsc6` instead of stable `tsc`.
  *   3. A no-op `typecheck` (`tsc --noEmit --noCheck` checks nothing).
  *
  * Exits non-zero on any un-allowlisted violation so it can gate CI / `verify`.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBuildModelExceptions } from "./lib/script-metadata.mjs";
+import { resolveWorkspacePackageDirs } from "./lib/workspace-package-dirs.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
 );
-const WORKSPACE_GLOBS = ["packages", "plugins"];
+const rootPackage = JSON.parse(
+  readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+);
+const workspaceGlobs = rootPackage.workspaces;
 
-// Deliberate, documented exceptions to the "tsgo checks, tsc emits" model. Each
-// package opts in via `elizaos.scripts.buildModel` in its own package.json (e.g.
-// @elizaos/core / plugin-streaming keep a full build type-check for byte-stable
-// declaration emit; plugin-personal-assistant stays on `tsc` for typecheck
-// pending a tsgo fix, #9626). Resolved through the discovery
-// seam so no package names live in this file.
-const ALLOW = resolveBuildModelExceptions({ repoRoot });
-
+// Deliberate, documented exceptions to the stable-native checker model. Build
+// and declaration emit may remain on TypeScript 6 while stable native checks
+// resolve through the @typescript/native package alias.
 const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
   [
     "plugins/plugin-app-manager/build.ts",
@@ -73,44 +72,11 @@ const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
   ],
 ]);
 
-function listPackageDirs() {
-  const dirs = [];
-  for (const glob of WORKSPACE_GLOBS) {
-    const base = path.join(repoRoot, glob);
-    let entries;
-    try {
-      entries = readdirSync(base, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue;
-      const dir = path.join(base, ent.name);
-      try {
-        statSync(path.join(dir, "package.json"));
-        dirs.push(dir);
-      } catch {
-        // nested workspace (e.g. packages/feed/packages/*) — descend one level
-        try {
-          const nestedBase = path.join(dir, "packages");
-          for (const nested of readdirSync(nestedBase, {
-            withFileTypes: true,
-          })) {
-            if (!nested.isDirectory()) continue;
-            const ndir = path.join(nestedBase, nested.name);
-            try {
-              statSync(path.join(ndir, "package.json"));
-              dirs.push(ndir);
-            } catch {}
-          }
-        } catch {}
-      }
-    }
-  }
-  return dirs;
+export function listPackageDirs(root = repoRoot, globs = workspaceGlobs) {
+  return resolveWorkspacePackageDirs(root, globs);
 }
 
-function walkBuildFiles(base, out = []) {
+export function walkBuildFiles(base, out = []) {
   let entries;
   try {
     entries = readdirSync(base, { withFileTypes: true });
@@ -136,15 +102,15 @@ function walkBuildFiles(base, out = []) {
   return out;
 }
 
-function listBuildFiles() {
+export function listBuildFiles(root = repoRoot) {
   return ["packages", "plugins"]
-    .flatMap((dir) => walkBuildFiles(path.join(repoRoot, dir)))
+    .flatMap((dir) => walkBuildFiles(path.join(root, dir)))
     .sort();
 }
 
-function nearestPackageName(filePath) {
+export function nearestPackageName(filePath, root = repoRoot) {
   let dir = path.dirname(filePath);
-  while (dir.startsWith(repoRoot)) {
+  while (dir.startsWith(root)) {
     const manifest = path.join(dir, "package.json");
     if (existsSync(manifest)) {
       try {
@@ -160,9 +126,9 @@ function nearestPackageName(filePath) {
   return null;
 }
 
-/** A tsc invocation that emits declarations and does NOT skip the type-check. */
-function isFullTscEmit(script) {
-  if (!/\btsc\b/.test(script)) return false;
+/** A compatibility tsc6 invocation that emits and does not skip checking. */
+export function isFullTscEmit(script) {
+  if (!/\btsc6\b/.test(script)) return false;
   const emits =
     /--emitDeclarationOnly|--declaration\b/.test(script) ||
     /(?:^|[\s"',])(?:-p|--project)(?:[\s"',]+)tsconfig/.test(script);
@@ -170,132 +136,183 @@ function isFullTscEmit(script) {
   if (/--noCheck/.test(script)) return false;
   // `--noEmit` means a pure check (no emit) — UNLESS it's `--noEmit false`,
   // which re-enables emit to override a tsconfig `noEmit: true`. So
-  // `tsc --emitDeclarationOnly --noEmit false` (no --noCheck) is still a full
-  // type-check that emits, and must be flagged.
+  // `tsc6 --emitDeclarationOnly --noEmit false` (no --noCheck) is still a
+  // full type-check that emits, and must be flagged.
   if (/--noEmit\b(?!\s+false)/.test(script)) return false;
   return true;
 }
 
-const violations = [];
-const turbo = JSON.parse(
-  readFileSync(path.join(repoRoot, "turbo.json"), "utf8"),
-);
-for (const taskName of ["typecheck", "lint", "lint:check"]) {
-  const deps = turbo.tasks?.[taskName]?.dependsOn ?? [];
-  if (deps.includes("^build")) {
-    violations.push(
-      `turbo ${taskName}: generic task depends on ^build; keep typecheck/lint source-first and add explicit package overrides only where dist is required`,
-    );
-  }
-}
+export function auditBuildTypecheck(options = {}) {
+  const root = options.repoRoot ?? repoRoot;
+  const rootPkg =
+    options.rootPackage ??
+    JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+  const globs = options.workspaceGlobs ?? rootPkg.workspaces;
+  const allow =
+    options.allow ?? resolveBuildModelExceptions({ repoRoot: root });
+  const violations = [];
 
-for (const dir of listPackageDirs()) {
-  let pkg;
-  try {
-    pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
-  } catch {
-    continue;
+  if (rootPkg.devDependencies?.["@typescript/native-preview"]) {
+    violations.push("root still depends on retired @typescript/native-preview");
   }
-  const name = pkg.name ?? path.relative(repoRoot, dir);
-  const scripts = pkg.scripts ?? {};
-  const build = scripts.build ?? "";
-  const typecheck = scripts.typecheck ?? "";
-  const hasSeparateTypecheck = /\btsgo\b|\btsc\b/.test(typecheck);
-
   if (
-    isFullTscEmit(build) &&
-    hasSeparateTypecheck &&
-    !ALLOW.doubleCheck.has(name)
+    !/^npm:typescript@\^?7\./.test(
+      rootPkg.devDependencies?.["@typescript/native"] ?? "",
+    )
   ) {
-    violations.push(
-      `${name}: build double-type-checks (add --noCheck to its tsc emit) — ${build.trim()}`,
-    );
-  } else if (hasSeparateTypecheck && !ALLOW.doubleCheck.has(name)) {
-    // The build script may delegate to a build.ts/build.mjs that runs tsc
-    // internally — inspect those files for a tsc emit without --noCheck.
-    for (const buildFile of ["build.ts", "build.mjs"]) {
-      if (!new RegExp(`\\b${buildFile.replace(".", "\\.")}\\b`).test(build))
-        continue;
-      let body;
-      try {
-        body = readFileSync(path.join(dir, buildFile), "utf8");
-      } catch {
-        continue;
+    violations.push("root @typescript/native alias is not stable TypeScript 7");
+  }
+  if (!rootPkg.devDependencies?.["@typescript/typescript6"]) {
+    violations.push("root is missing the TypeScript 6 compatibility package");
+  }
+
+  const turbo =
+    options.turbo ??
+    JSON.parse(readFileSync(path.join(root, "turbo.json"), "utf8"));
+  for (const taskName of ["typecheck", "lint", "lint:check"]) {
+    const deps = turbo.tasks?.[taskName]?.dependsOn ?? [];
+    if (deps.includes("^build")) {
+      violations.push(
+        `turbo ${taskName}: generic task depends on ^build; keep typecheck/lint source-first and add explicit package overrides only where dist is required`,
+      );
+    }
+  }
+
+  for (const dir of options.packageDirs ?? listPackageDirs(root, globs)) {
+    let pkg;
+    try {
+      pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    const name = pkg.name ?? path.relative(root, dir);
+    const scripts = pkg.scripts ?? {};
+    const build = scripts.build ?? "";
+    const typecheck = scripts.typecheck ?? "";
+    const hasSeparateTypecheck = /\btsc6?\b/.test(typecheck);
+    const nativeTypeScript =
+      pkg.dependencies?.["@typescript/native"] ??
+      pkg.devDependencies?.["@typescript/native"];
+
+    if (/\btsgo\b/.test(typecheck)) {
+      violations.push(`${name}: typecheck still invokes retired tsgo`);
+    }
+    if (
+      /\btsc\b/.test(typecheck) &&
+      !/^npm:typescript@\^?7\./.test(nativeTypeScript ?? "")
+    ) {
+      violations.push(
+        `${name}: native typecheck does not declare the stable @typescript/native alias`,
+      );
+    }
+
+    if (
+      isFullTscEmit(build) &&
+      hasSeparateTypecheck &&
+      !allow.doubleCheck.has(name)
+    ) {
+      violations.push(
+        `${name}: build double-type-checks (add --noCheck to its tsc6 emit) — ${build.trim()}`,
+      );
+    } else if (hasSeparateTypecheck && !allow.doubleCheck.has(name)) {
+      // A build script may delegate to build.ts/build.mjs, so inspect it for a
+      // compatibility declaration emit that omits --noCheck.
+      for (const buildFile of ["build.ts", "build.mjs"]) {
+        if (!new RegExp(`\\b${buildFile.replace(".", "\\.")}\\b`).test(build))
+          continue;
+        let body;
+        try {
+          body = readFileSync(path.join(dir, buildFile), "utf8");
+        } catch {
+          continue;
+        }
+        for (const line of body.split("\n")) {
+          if (/^\s*(\/\/|\*)/.test(line)) continue; // skip comments
+          if (isFullTscEmit(line)) {
+            violations.push(
+              `${name}: ${buildFile} runs a full tsc6 type-check (add --noCheck) — ${line.trim()}`,
+            );
+            break;
+          }
+        }
       }
+    }
+    if (/\btsc6? --noEmit\b/.test(typecheck) && /--noCheck/.test(typecheck)) {
+      violations.push(
+        `${name}: typecheck is a no-op (\`tsc --noEmit --noCheck\` checks nothing)`,
+      );
+    } else if (
+      /\btsc6\b/.test(typecheck) &&
+      /--noEmit/.test(typecheck) &&
+      !allow.tscTypecheck.has(name)
+    ) {
+      // `tsc6 -b` is a deliberately different mode. Only compatibility
+      // `tsc6 --noEmit` is a checker-model violation here.
+      violations.push(
+        `${name}: typecheck uses compatibility tsc6 --noEmit, not stable tsc — ${typecheck.trim()}`,
+      );
+    }
+  }
+
+  for (const file of options.buildFiles ?? listBuildFiles(root)) {
+    const rel = path.relative(root, file);
+    const body = readFileSync(file, "utf8");
+    const owner = nearestPackageName(file, root);
+    if (!allow.doubleCheck.has(owner)) {
       for (const line of body.split("\n")) {
-        if (/^\s*(\/\/|\*)/.test(line)) continue; // skip comments
+        if (/^\s*(\/\/|\*)/.test(line)) continue;
         if (isFullTscEmit(line)) {
           violations.push(
-            `${name}: ${buildFile} runs a full tsc type-check (add --noCheck) — ${line.trim()}`,
+            `${rel}: build script runs tsc6 declaration emit without --noCheck — ${line.trim()}`,
           );
           break;
         }
       }
     }
-  }
-  if (/\btsc --noEmit\b/.test(typecheck) && /--noCheck/.test(typecheck)) {
-    violations.push(
-      `${name}: typecheck is a no-op (\`tsc --noEmit --noCheck\` checks nothing)`,
-    );
-  } else if (
-    /\btsc\b/.test(typecheck) &&
-    /--noEmit/.test(typecheck) &&
-    !/\btsgo\b/.test(typecheck) &&
-    !ALLOW.tscTypecheck.has(name)
-  ) {
-    // `tsc -b` (project-references build) is a deliberately different mode and
-    // is intentionally not flagged here — only the `tsc --noEmit` checker form.
-    violations.push(
-      `${name}: typecheck uses tsc --noEmit, not tsgo — ${typecheck.trim()}`,
-    );
-  }
-}
 
-for (const file of listBuildFiles()) {
-  const rel = path.relative(repoRoot, file);
-  const body = readFileSync(file, "utf8");
-  const owner = nearestPackageName(file);
-  if (!ALLOW.doubleCheck.has(owner)) {
-    for (const line of body.split("\n")) {
-      if (/^\s*(\/\/|\*)/.test(line)) continue;
-      if (isFullTscEmit(line)) {
+    if (
+      rel.startsWith("plugins/") &&
+      /\/build\.ts$/.test(rel) &&
+      !/import\s+\{\s*buildPlugin\s*\}\s+from\s+["']\.\.\/plugin-build/.test(
+        body,
+      ) &&
+      (/\bBun\.build\b/.test(body) ||
+        /\bbuild\(\s*\{/.test(body) ||
+        /import\s+\{\s*build\s*\}\s+from\s+["']bun["']/.test(body))
+    ) {
+      const reason = CUSTOM_PLUGIN_BUILD_ALLOW.get(rel);
+      if (!reason) {
         violations.push(
-          `${rel}: build script runs declaration emit without --noCheck — ${line.trim()}`,
+          `${rel}: custom Bun build should use plugins/plugin-build.ts or be added to CUSTOM_PLUGIN_BUILD_ALLOW with a package-specific reason`,
         );
-        break;
       }
     }
   }
 
-  if (
-    rel.startsWith("plugins/") &&
-    /\/build\.ts$/.test(rel) &&
-    !/import\s+\{\s*buildPlugin\s*\}\s+from\s+["']\.\.\/plugin-build/.test(
-      body,
-    ) &&
-    (/\bBun\.build\b/.test(body) ||
-      /\bbuild\(\s*\{/.test(body) ||
-      /import\s+\{\s*build\s*\}\s+from\s+["']bun["']/.test(body))
-  ) {
-    const reason = CUSTOM_PLUGIN_BUILD_ALLOW.get(rel);
-    if (!reason) {
-      violations.push(
-        `${rel}: custom Bun build should use plugins/plugin-build.ts or be added to CUSTOM_PLUGIN_BUILD_ALLOW with a package-specific reason`,
-      );
-    }
-  }
+  return violations;
 }
 
-if (violations.length > 0) {
-  console.error(
-    `[audit-build-typecheck] ${violations.length} compiler-model violation(s):\n`,
+export function runAuditBuildTypecheck(options = {}) {
+  const violations = auditBuildTypecheck(options);
+  if (violations.length > 0) {
+    console.error(
+      `[audit-build-typecheck] ${violations.length} compiler-model violation(s):\n`,
+    );
+    for (const v of violations) console.error(`  ✗ ${v}`);
+    console.error(
+      "\nModel: stable tsc checks, compatibility tsc6 emits. Add --noCheck to emit-only tsc6 builds; use tsc for typecheck.",
+    );
+    return 1;
+  }
+  console.log(
+    "[audit-build-typecheck] ✓ build/typecheck compiler model is consistent",
   );
-  for (const v of violations) console.error(`  ✗ ${v}`);
-  console.error(
-    "\nModel: tsgo checks, tsc emits. Add --noCheck to emit-only tsc builds; use tsgo for typecheck.",
-  );
-  process.exit(1);
+  return 0;
 }
-console.log(
-  "[audit-build-typecheck] ✓ build/typecheck compiler model is consistent",
-);
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  process.exit(runAuditBuildTypecheck());
+}

@@ -33,6 +33,7 @@ import {
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
+import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-action-handoff";
 import {
   APP_RESUME_EVENT,
   CLOUD_HANDOFF_PHASE_EVENT,
@@ -66,24 +67,27 @@ import {
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
 
-async function handoffCompletedViewAction(
+async function handoffCompletedAction(
   actionResults: ChatActionResultSummary[] | undefined,
   showFailure: (message: string) => void,
 ): Promise<void> {
-  if (!findViewActionHandoff(actionResults)) return;
-  try {
-    await dispatchViewActionHandoff(actionResults);
-  } catch (err) {
-    // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
-    // distinct navigation failure instead of fabricating an opened view.
-    logger.warn(
-      { err },
-      "[useChatSend] completed VIEWS action could not reach the renderer",
-    );
-    showFailure(
-      "The agent chose a view, but the app couldn't open it. Try opening the view again.",
-    );
+  if (findViewActionHandoff(actionResults)) {
+    try {
+      await dispatchViewActionHandoff(actionResults);
+    } catch (err) {
+      // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
+      // distinct navigation failure instead of fabricating an opened view.
+      logger.warn(
+        { err },
+        "[useChatSend] completed VIEWS action could not reach the renderer",
+      );
+      showFailure(
+        "The agent chose a view, but the app couldn't open it. Try opening the view again.",
+      );
+    }
+    return;
   }
+  dispatchWorkflowActionHandoff(actionResults);
 }
 
 // Sentinel for the streaming buffer's `pendingStatus`: "no status update
@@ -689,11 +693,16 @@ export interface UseChatSendDeps {
 export async function createConversationForFirstSend(
   chatClient: Pick<typeof client, "createConversation" | "getBaseUrl">,
   lang: string,
+  title?: string,
 ): Promise<{ conversation: Conversation }> {
   const sharedAgentId = directCloudSharedAgentIdFromBase(
     chatClient.getBaseUrl(),
   );
   if (sharedAgentId) {
+    // The shared-agent server POST handler ignores the request body, so the
+    // title cannot round-trip; synthesize the canonical record locally and
+    // skip the redundant cold Worker/Hyperdrive create entirely. The optional
+    // `title` only feeds the real REST fallback below.
     const createdAt = new Date().toISOString();
     return {
       conversation: {
@@ -705,7 +714,7 @@ export async function createConversationForFirstSend(
       },
     };
   }
-  return chatClient.createConversation(undefined, { lang });
+  return chatClient.createConversation(title, { lang });
 }
 
 export async function prewarmSharedChatScope(
@@ -1773,7 +1782,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             setChatSending(false);
           }
         }
-        await handoffCompletedViewAction(data.actionResults, (message) => {
+        await handoffCompletedAction(data.actionResults, (message) => {
           setActionNotice(message, "error", 8_000);
         });
 
@@ -1983,12 +1992,9 @@ export function useChatSend(deps: UseChatSendDeps) {
               clientMessageId,
             );
 
-            await handoffCompletedViewAction(
-              retryData.actionResults,
-              (message) => {
-                setActionNotice(message, "error", 8_000);
-              },
-            );
+            await handoffCompletedAction(retryData.actionResults, (message) => {
+              setActionNotice(message, "error", 8_000);
+            });
 
             // Commit any throttle-parked token before the terminal modification.
             flushStreamingText();
@@ -2434,8 +2440,15 @@ export function useChatSend(deps: UseChatSendDeps) {
           try {
             const actionTitle =
               trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
+            // Defer the create the same way the fixed cold-open send path does
+            // (runQueuedChatSend -> createConversationForFirstSend): on a shared
+            // agent base this synthesizes the canonical record locally and skips
+            // the redundant cold Worker/Hyperdrive round trip. The title is only
+            // forwarded to the real REST fallback (the shared server ignores it).
             const { conversation: rawConversation } =
-              await client.createConversation(
+              await createConversationForFirstSend(
+                client,
+                uiLanguage,
                 actionTitle || t("common.newChat"),
               );
             if (!isConversationRecord(rawConversation)) {
@@ -2558,7 +2571,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Commit any token parked by the throttle before the terminal
           // drop/complete/fail/interrupt — no streamed tokens may be lost.
           flushStreamingText();
-          await handoffCompletedViewAction(data.actionResults, (message) => {
+          await handoffCompletedAction(data.actionResults, (message) => {
             setActionNotice(message, "error", 8_000);
           });
 

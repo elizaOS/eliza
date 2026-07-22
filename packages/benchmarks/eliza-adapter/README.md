@@ -72,6 +72,25 @@ client.wait_until_ready()
 
 The server auto-detects model provider plugins from API key env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.).
 
+## Native runtime diagnostic
+
+Before spending model credits, exercise the real subprocess, HTTP boundary,
+`AgentRuntime`, generic message service, and native tool-model path against a
+loopback OpenAI-compatible fixture:
+
+```bash
+PYTHONPATH=packages/benchmarks/eliza-adapter \
+  python packages/benchmarks/eliza-adapter/run_native_runtime_diagnostic.py
+```
+
+The command writes health, upstream-call summaries, trajectories, telemetry,
+and server logs under `packages/benchmarks/benchmark_results/`. It deliberately
+uses a fake model and zero-vector embedding, so the artifact is marked
+`publishable: false`, `stand_in: true`, and `release_evidence: false`. A real
+campaign turn is publishable only when the server reports its exact native API
+(`messageService.handleMessage` or `useModel`), transport, tool bridge,
+`direct_model_bypass: false`, and no stand-in components.
+
 ## Used by
 
 - [`benchmarks/agentbench/`](../agentbench/) -- `run_benchmark.py`

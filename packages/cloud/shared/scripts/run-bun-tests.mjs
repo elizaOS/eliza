@@ -17,7 +17,9 @@
 // passed 11h earlier. Workflow files cannot carry the mitigation (see the
 // issue), so it lives here in the test entry:
 //
-//   - non-win32 (default): exactly `bun test --isolate [args]` — unchanged.
+//   - every pass: use the repository's 60-second per-test default unless the
+//                 caller supplied either supported `--timeout` form.
+//   - non-win32 (default): one `bun test --isolate [args]` process.
 //   - win32 (or ELIZA_WIN_PGLITE_QUARANTINE=1):
 //       pass 1  `bun test --isolate` over everything EXCEPT the quarantined
 //               PGlite tenant-db suites (repeated --path-ignore-patterns).
@@ -36,8 +38,8 @@
 //   - the main pass keeps plain fail-fast semantics: any non-zero exit fails
 //     the run (no crash-retry outside the quarantined suites).
 //
-// Extra CLI args are forwarded verbatim to BOTH passes (flags like --timeout
-// or --conditions compose fine; a positional file filter will run matching
+// Extra CLI args are forwarded verbatim to BOTH passes (explicit --timeout
+// forms and --conditions compose fine; a positional file filter will run matching
 // files in both passes — harmless, but scope filters manually if that grates).
 
 import { spawn } from "node:child_process";
@@ -54,12 +56,13 @@ import {
   resolveMaxAttempts,
   resolveQuarantineMode,
   shouldRetryQuarantinedSuites,
+  withDefaultTestTimeout,
 } from "./run-bun-tests-helpers.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(here, "..");
 const repoRoot = path.resolve(packageDir, "../../..");
-const passthroughArgs = process.argv.slice(2);
+const passthroughArgs = withDefaultTestTimeout(process.argv.slice(2));
 
 const UPSTREAM_TEMPLATE = "packages/cloud/shared/scripts/bun-pglite-crash-upstream-report.md";
 
@@ -240,7 +243,8 @@ async function main() {
   });
 
   if (!quarantineOn) {
-    // Behavior-identical to the previous `"test": "bun test --isolate"`.
+    // Keep the simple one-process path while making the repository's intended
+    // timeout explicit across this package-cwd process boundary.
     const result = await runBunTest(["--isolate", ...passthroughArgs], {
       inherit: true,
     });

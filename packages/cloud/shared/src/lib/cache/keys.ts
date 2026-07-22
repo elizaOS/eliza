@@ -33,6 +33,25 @@ export const CacheKeys = {
     pattern: () => `apikey:*`,
   },
   /**
+   * Shared-runtime agent SCOPE resolution cache (COLDPATH-FIX-2026-07-21).
+   *
+   * Collapses the whole cold pre-inference gate for a shared-agent chat turn —
+   * API-key validation + user/org hydration + org-scoped agent lookup — into a
+   * SINGLE read, keyed by (16-char key-hash prefix, agentId). The individual
+   * entity caches (apiKey.validation, user.withOrg) are each warm-fast but on a
+   * FRESH browser session they are ALL cold, so the resolver pays 2 serial
+   * Hyperdrive waves (~1–4.4s measured). This entry lets the SECOND cold-session
+   * hit (or a composer-mount prewarm) skip both waves. Keyed on the same
+   * key-hash prefix the validation cache uses so a credential revoke that
+   * invalidates `apiKey.validation` reasons about the same identity; TTL is
+   * deliberately short (see CacheTTL.sharedAgentScope) so a stale membership
+   * self-heals fast, and the authoritative slow path still runs on a miss.
+   */
+  sharedAgentScope: {
+    resolve: (keyHashPrefix: string, agentId: string) =>
+      `shared-agent-scope:${keyHashPrefix}:${agentId}:v1`,
+  },
+  /**
    * Inference hot-path caches (#9899). The IAC entry collapses auth + org +
    * moderation into a single read for API-key dedicated-agent inference; the
    * org-balance entry is the Tier-2 optimistic-billing gate hint.
@@ -246,6 +265,18 @@ export const CacheTTL = {
   apiKey: {
     validation: 600, // 10 minutes
     appMapping: 600, // 10 minutes - app-to-API-key mapping rarely changes
+  },
+  /**
+   * Shared-agent scope resolution (COLDPATH-FIX-2026-07-21). Short by design:
+   * this collapses an auth+org+agent membership decision, so it must react fast
+   * to a revoke/detach/agent-delete that did not issue an explicit invalidation.
+   * 30s keeps a fresh session's follow-up turns off the cold Hyperdrive path
+   * while bounding a lost-invalidation window well under the validation TTL. The
+   * authoritative slow path still runs on every miss, so this only ever REMOVES
+   * latency, never changes an authorization outcome beyond a 30s staleness edge.
+   */
+  sharedAgentScope: {
+    resolve: 30,
   },
   /**
    * Inference hot-path TTLs (#9899). The IAC entry caches a fully-authorized
