@@ -2669,8 +2669,10 @@ async function runHistory(
     });
   }
   const sessions = (await listSessionsWithin(service, 2000))
-    .filter((session) =>
-      sessionMatchesHistoryFilters(session, statuses, windowFilters, search),
+    .filter(
+      (session) =>
+        (!sessionId || session.id === sessionId) &&
+        sessionMatchesHistoryFilters(session, statuses, windowFilters, search),
     )
     .slice(0, limit);
   const count = sessions.length;

@@ -28,6 +28,7 @@ import type {
 } from "../types";
 import {
 	CANONICAL_SUBACTION_KEY,
+	DEFAULT_SUBACTION_KEYS,
 	LEGACY_SUBACTION_KEYS,
 	normalizeSubaction,
 } from "./subaction-dispatch";
@@ -268,14 +269,6 @@ function mergeOptionsWithSubaction(
 	};
 }
 
-const DISCRIMINATOR_ALIASES = [
-	"action",
-	"subaction",
-	"op",
-	"operation",
-	"verb",
-] as const;
-
 function buildVirtualHandler(parent: Action, subaction: string): Handler {
 	const parentHandler = parent.handler;
 	return async (
@@ -295,7 +288,25 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 			| Record<string, unknown>
 			| undefined;
 		if (rawParams) {
-			for (const key of DISCRIMINATOR_ALIASES) {
+			for (const key of DEFAULT_SUBACTION_KEYS) {
+				// A parent may declare an alias-named parameter as a SECOND-level
+				// selector (e.g. TASKS' nested `op`) whose enum does not carry the
+				// pinned value — that is that param's own vocabulary, not a
+				// contradiction of this virtual's pin.
+				const declared = parent.parameters?.find((p) => p.name === key);
+				if (declared) {
+					const declaredEnum = (
+						declared.schema as { enum?: unknown } | undefined
+					)?.enum;
+					const carriesPin =
+						Array.isArray(declaredEnum) &&
+						declaredEnum.some(
+							(v) =>
+								typeof v === "string" &&
+								normalizeSubaction(v) === normalizeSubaction(subaction),
+						);
+					if (!carriesPin) continue;
+				}
 				const value = rawParams[key];
 				if (
 					typeof value === "string" &&
