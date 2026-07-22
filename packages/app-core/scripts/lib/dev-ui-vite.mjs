@@ -1,36 +1,31 @@
 /**
- * Resolves the dashboard dev stack's Vite subprocess command. The orchestrator
- * validates Node and the installed CLI before it mutates process state.
+ * Resolves a Vite subprocess command for app development entrypoints. Both the
+ * dashboard orchestrator and shared-worktree server use this boundary so Node
+ * selection and CLI validation cannot drift.
  */
 
+import { existsSync } from "node:fs";
 import path from "node:path";
+import process from "node:process";
 
-export function resolveDevUiViteCommand({
+export function resolveViteCommand({
   appDir,
-  cwd,
-  exists,
-  force,
-  nodePath,
-  uiPort,
+  force = false,
+  nodePath = process.execPath,
+  port,
 }) {
   if (!nodePath) {
-    throw new Error("Node.js 24+ is required to run the Vite dev server.");
+    throw new Error("Node.js is required to run the Vite dev server.");
   }
-  const viteCli = path.join(
-    cwd,
-    appDir,
-    "node_modules",
-    "vite",
-    "bin",
-    "vite.js",
-  );
-  if (!exists(viteCli)) {
+  const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
+  if (!existsSync(viteCli)) {
     throw new Error(`Vite CLI not found at ${viteCli}. Run bun install first.`);
   }
+  const args = [viteCli];
+  if (force) args.push("--force");
+  if (port !== undefined) args.push("--port", String(port));
   return {
     command: nodePath,
-    args: force
-      ? [viteCli, "--force", "--port", String(uiPort)]
-      : [viteCli, "--port", String(uiPort)],
+    args,
   };
 }

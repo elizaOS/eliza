@@ -2,13 +2,13 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveViteCommand } from "../../app-core/scripts/lib/dev-ui-vite.mjs";
 import {
   defaultRegistryPath,
   normalizeWorktreePath,
   reservePortsForWorktree,
   updateRegistryEntry,
 } from "./dev-server-registry.mjs";
-import { buildSharedViteCommand } from "./lib/dev-vite-command.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(here, "..");
@@ -29,7 +29,7 @@ console.log(
     `[dev:shared] registry=${registryPath}`,
 );
 
-const viteCommand = buildSharedViteCommand(appDir);
+const viteCommand = resolveViteCommand({ appDir });
 const child = spawn(viteCommand.command, viteCommand.args, {
   cwd: appDir,
   env,

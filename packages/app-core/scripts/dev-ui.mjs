@@ -31,7 +31,7 @@ import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
-import { resolveDevUiViteCommand } from "./lib/dev-ui-vite.mjs";
+import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
@@ -1014,13 +1014,11 @@ function startVite() {
   // Bun, `/ws` remains pending even while ordinary HTTP proxying succeeds,
   // silently disconnecting live notifications and chat events in the UI.
   const viteForce = process.env.ELIZA_VITE_FORCE === "1";
-  const { command: viteCmd, args: viteArgs } = resolveDevUiViteCommand({
-    appDir,
-    cwd,
-    exists: existsSync,
+  const { command: viteCmd, args: viteArgs } = resolveViteCommand({
+    appDir: path.join(cwd, appDir),
     force: viteForce,
     nodePath: which("node"),
-    uiPort: UI_PORT,
+    port: UI_PORT,
   });
   if (viteForce) {
     console.log(
