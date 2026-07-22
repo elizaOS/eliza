@@ -1,114 +1,161 @@
 /**
  * Exercises `wrapSingleTurnVisibleCallback` (services/message): action-callback
  * text is rewritten through TEXT_SMALL into natural language, while passive REPLY
- * callbacks pass through untouched. Runs against a mock runtime with a stubbed model.
+ * callbacks pass through untouched. Uses a real AgentRuntime with deterministic
+ * registered model handlers so model routing and action lookup remain in-path.
  */
-import { describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../../testing/mock-runtime";
-import type { Action, HandlerCallback, Memory } from "../../types";
+import { describe, expect, it } from "vitest";
+import { createCharacter } from "../../character";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { AgentRuntime } from "../../runtime";
+import type { Action, Content, HandlerCallback, Memory } from "../../types";
 import { ModelType } from "../../types";
+import { stringToUuid } from "../../utils";
 import { wrapSingleTurnVisibleCallback } from "../message";
+
+type RegisteredModelHandler = Parameters<AgentRuntime["registerModel"]>[1];
+
+interface DeliveredCallback {
+	content: Content;
+	actionName: string | undefined;
+}
+
+function createRuntime(
+	modelHandler: RegisteredModelHandler,
+	actions: Action[] = [],
+): AgentRuntime {
+	const runtime = new AgentRuntime({
+		character: createCharacter({
+			name: "Action callback voice test",
+			system: "Speak with crisp, helpful confidence.",
+			style: { all: ["clear", "warm"] },
+		}),
+		adapter: new InMemoryDatabaseAdapter(),
+		logLevel: "fatal",
+	});
+	runtime.registerModel(ModelType.TEXT_SMALL, modelHandler, "voice-test", 100);
+	for (const action of actions) {
+		runtime.registerAction(action);
+	}
+	return runtime;
+}
+
+function createDeliveryCapture(): {
+	deliveries: DeliveredCallback[];
+	callback: HandlerCallback;
+} {
+	const deliveries: DeliveredCallback[] = [];
+	return {
+		deliveries,
+		callback: async (content, actionName) => {
+			deliveries.push({ content, actionName });
+			return [];
+		},
+	};
+}
+
+function createMessage(): Pick<Memory, "id" | "roomId" | "entityId"> {
+	return {
+		id: stringToUuid("action-callback-voice-message"),
+		roomId: stringToUuid("action-callback-voice-room"),
+		entityId: stringToUuid("action-callback-voice-user"),
+	};
+}
 
 describe("action callback voice rewriting", () => {
 	it("rewrites action callback text through TEXT_SMALL and delivers parsed natural language", async () => {
-		const callback: HandlerCallback = vi.fn(async () => []);
-		const runtime = createMockRuntime({
-			agentId: "agent",
-			character: {
-				name: "Example",
-				system: "Speak with crisp, helpful confidence.",
-				style: { all: ["clear", "warm"] },
-			},
-			logger: {
-				debug: vi.fn(),
-				info: vi.fn(),
-				warn: vi.fn(),
-				error: vi.fn(),
-			},
-			useModel: vi.fn(
-				async (modelType: ModelType, params: { prompt: string }) => {
-					expect(modelType).toBe(ModelType.TEXT_SMALL);
-					expect(params.prompt).toContain("Original action payload");
-					expect(params.prompt).toContain("stdout: created task id=abc123");
-					return JSON.stringify({
-						response: "I created the task and kept its ID handy: abc123.",
-					});
-				},
-			),
+		let receivedPrompt: string | undefined;
+		let modelCalls = 0;
+		const runtime = createRuntime(async (_runtime, params) => {
+			modelCalls += 1;
+			if (typeof params.prompt !== "string") {
+				throw new TypeError("TEXT_SMALL prompt must be a string");
+			}
+			receivedPrompt = params.prompt;
+			return JSON.stringify({
+				response: "I created the task and kept its ID handy: abc123.",
+			});
 		});
-		const message = {
-			id: "message",
-			roomId: "room",
-			entityId: "user",
-		} as unknown as Memory;
+		const { callback, deliveries } = createDeliveryCapture();
 
-		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			createMessage(),
+			callback,
+		);
 		await wrapped?.({ text: "stdout: created task id=abc123" }, "CREATE_TASK");
 
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "I created the task and kept its ID handy: abc123.",
-				data: expect.objectContaining({
-					rawActionText: "stdout: created task id=abc123",
-					voiceRewritten: true,
+		expect(modelCalls).toBe(1);
+		expect(receivedPrompt).toContain("Original action payload");
+		expect(receivedPrompt).toContain("stdout: created task id=abc123");
+		expect(deliveries).toEqual([
+			{
+				actionName: "CREATE_TASK",
+				content: expect.objectContaining({
+					text: "I created the task and kept its ID handy: abc123.",
+					data: expect.objectContaining({
+						rawActionText: "stdout: created task id=abc123",
+						voiceRewritten: true,
+					}),
 				}),
-			}),
-			"CREATE_TASK",
-		);
+			},
+		]);
 	});
 
 	it("does not rewrite passive reply callbacks", async () => {
-		const callback: HandlerCallback = vi.fn(async () => []);
-		const runtime = createMockRuntime({
-			agentId: "agent",
-			character: { name: "Example" },
-			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-			useModel: vi.fn(),
+		let modelCalls = 0;
+		const runtime = createRuntime(async () => {
+			modelCalls += 1;
+			return JSON.stringify({ response: "Unexpected rewrite." });
 		});
-		const message = {
-			id: "message",
-			roomId: "room",
-			entityId: "user",
-		} as unknown as Memory;
+		const { callback, deliveries } = createDeliveryCapture();
 
-		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			createMessage(),
+			callback,
+		);
 		await wrapped?.({ text: "Already model-written." }, "REPLY");
 
-		expect(runtime.useModel).not.toHaveBeenCalled();
-		expect(callback).toHaveBeenCalledWith(
-			{ text: "Already model-written." },
-			"REPLY",
-		);
+		expect(modelCalls).toBe(0);
+		expect(deliveries).toEqual([
+			{
+				actionName: "REPLY",
+				content: { text: "Already model-written." },
+			},
+		]);
 	});
 
 	it("preserves canonical VIEWS callbacks without a TEXT_SMALL rewrite", async () => {
-		const callback: HandlerCallback = vi.fn(async () => []);
-		const runtime = createMockRuntime({
-			agentId: "agent",
-			character: { name: "Example" },
-			actions: [
-				{
-					name: "VIEWS",
-					preserveCallbackText: true,
-				} as Action,
-			],
-			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-			useModel: vi.fn(),
-		});
-		const message = {
-			id: "message",
-			roomId: "room",
-			entityId: "user",
-		} as unknown as Memory;
+		let modelCalls = 0;
+		const runtime = createRuntime(async () => {
+			modelCalls += 1;
+			return JSON.stringify({ response: "Unexpected rewrite." });
+		}, [
+			{
+				name: "VIEWS",
+				description: "Navigate to a registered application view.",
+				handler: async () => ({ success: true }),
+				validate: async () => true,
+				preserveCallbackText: true,
+			},
+		]);
+		const { callback, deliveries } = createDeliveryCapture();
 
-		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			createMessage(),
+			callback,
+		);
 		await wrapped?.({ text: "Navigated to Notes." }, "VIEWS");
 
-		expect(runtime.useModel).not.toHaveBeenCalled();
-		expect(callback).toHaveBeenCalledWith(
-			{ text: "Navigated to Notes." },
-			"VIEWS",
-		);
+		expect(modelCalls).toBe(0);
+		expect(deliveries).toEqual([
+			{
+				actionName: "VIEWS",
+				content: { text: "Navigated to Notes." },
+			},
+		]);
 	});
 
 	it.each([
@@ -123,31 +170,27 @@ describe("action callback voice rewriting", () => {
 	])(
 		"keeps the original action text when rewriting is %s",
 		async (_case, model) => {
-			const callback: HandlerCallback = vi.fn(async () => []);
-			const runtime = createMockRuntime({
-				agentId: "agent",
-				character: { name: "Example" },
-				logger: {
-					debug: vi.fn(),
-					info: vi.fn(),
-					warn: vi.fn(),
-					error: vi.fn(),
-				},
-				useModel: vi.fn(model),
+			let modelCalls = 0;
+			const runtime = createRuntime(async () => {
+				modelCalls += 1;
+				return model();
 			});
-			const message = {
-				id: "message",
-				roomId: "room",
-				entityId: "user",
-			} as unknown as Memory;
+			const { callback, deliveries } = createDeliveryCapture();
 
-			const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+			const wrapped = wrapSingleTurnVisibleCallback(
+				runtime,
+				createMessage(),
+				callback,
+			);
 			await wrapped?.({ text: "Exact result." }, "CREATE_TASK");
 
-			expect(callback).toHaveBeenCalledWith(
-				{ text: "Exact result." },
-				"CREATE_TASK",
-			);
+			expect(modelCalls).toBe(1);
+			expect(deliveries).toEqual([
+				{
+					actionName: "CREATE_TASK",
+					content: { text: "Exact result." },
+				},
+			]);
 		},
 	);
 });

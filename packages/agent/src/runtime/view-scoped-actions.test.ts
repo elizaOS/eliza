@@ -11,13 +11,16 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import type {
-  Action,
-  IAgentRuntime,
-  Memory,
-  ViewScopedAction,
+import {
+  type Action,
+  AgentRuntime,
+  createMessageMemory,
+  type ElizaError,
+  isElizaError,
+  type Memory,
+  stringToUuid,
+  type ViewScopedAction,
 } from "@elizaos/core";
-import { type ElizaError, isElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_VIEWS } from "../api/builtin-views.ts";
 import {
@@ -127,6 +130,9 @@ async function navigateTo(
     method: "POST",
     pathname,
     url: new URL(`http://local${pathname}`),
+    // Keep dormant multi-pane behavior covered while the launch UI exposes
+    // one view at a time.
+    multiViewLayoutsEnabled: true,
     json: vi.fn(),
     error: vi.fn(),
     broadcastWs: vi.fn(),
@@ -135,42 +141,25 @@ async function navigateTo(
   await handleViewsRoutes(ctx);
 }
 
-/**
- * Minimal runtime whose registerAction/unregisterAction mutate a name→action
- * map, so the test can register scoped actions and then invoke the real
- * validate()/handler() the mechanism built.
- */
-function makeRuntime(): {
-  runtime: Pick<
-    IAgentRuntime,
-    "actions" | "registerAction" | "unregisterAction"
-  >;
-  actions: Map<string, Action>;
-} {
-  const actions = new Map<string, Action>();
-  const actionList: Action[] = [];
+const TEST_ENTITY_ID = stringToUuid("view-scoped-actions-test-entity");
+const TEST_ROOM_ID = stringToUuid("view-scoped-actions-test-room");
+const fakeMessage = createMessageMemory({
+  entityId: TEST_ENTITY_ID,
+  roomId: TEST_ROOM_ID,
+  content: { text: "Drive the visible view." },
+});
+
+function messageForClient(clientId: string): Memory {
   return {
-    actions,
-    runtime: {
-      actions: actionList,
-      registerAction: (action: Action) => {
-        if (actions.has(action.name)) return;
-        actions.set(action.name, action);
-        actionList.push(action);
-      },
-      unregisterAction: (name: string) => {
-        const removed = actions.delete(name);
-        const index = actionList.findIndex((action) => action.name === name);
-        if (index >= 0) actionList.splice(index, 1);
-        return removed;
-      },
-    } as Pick<IAgentRuntime, "actions" | "registerAction" | "unregisterAction">,
+    ...fakeMessage,
+    metadata: { ...fakeMessage.metadata, type: "message", clientId },
   };
 }
 
-const fakeMessage = {} as never;
+let runtime: AgentRuntime;
 
 beforeEach(async () => {
+  runtime = new AgentRuntime({ logLevel: "fatal" });
   __resetViewScopedActionRegistryForTests();
   clearCurrentViewState();
   clearActiveViewContext();
@@ -205,19 +194,19 @@ describe("view-scoped action validate() gating on visible views", () => {
     );
 
     // No active view → gated closed.
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+    expect(await action.validate(runtime, fakeMessage)).toBe(false);
 
     // Switch to a DIFFERENT view → still closed.
     await navigateTo("chat");
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+    expect(await action.validate(runtime, fakeMessage)).toBe(false);
 
     // Switch INTO the declaring view via the real navigate route → open.
     await navigateTo(INTERACTIVE_VIEW_ID);
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(true);
+    expect(await action.validate(runtime, fakeMessage)).toBe(true);
 
     // Switch away again → closes without any restart.
     await navigateTo("chat");
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+    expect(await action.validate(runtime, fakeMessage)).toBe(false);
   });
 
   it("isolates visible-view action affinity between two shell clients", async () => {
@@ -242,36 +231,25 @@ describe("view-scoped action validate() gating on visible views", () => {
       calendar.view.id,
       calendar.view.scopedActions[0],
     );
-    const messageFor = (clientId: string) =>
-      ({ metadata: { type: "message", clientId } }) as Memory;
-
     expect(
-      await notesAction.validate(
-        {} as IAgentRuntime,
-        messageFor("shell-client-a"),
-      ),
+      await notesAction.validate(runtime, messageForClient("shell-client-a")),
     ).toBe(true);
     expect(
-      await notesAction.validate(
-        {} as IAgentRuntime,
-        messageFor("shell-client-b"),
+      await notesAction.validate(runtime, messageForClient("shell-client-b")),
+    ).toBe(false);
+    expect(
+      await calendarAction.validate(
+        runtime,
+        messageForClient("shell-client-a"),
       ),
     ).toBe(false);
     expect(
       await calendarAction.validate(
-        {} as IAgentRuntime,
-        messageFor("shell-client-a"),
-      ),
-    ).toBe(false);
-    expect(
-      await calendarAction.validate(
-        {} as IAgentRuntime,
-        messageFor("shell-client-b"),
+        runtime,
+        messageForClient("shell-client-b"),
       ),
     ).toBe(true);
-    expect(await notesAction.validate({} as IAgentRuntime, fakeMessage)).toBe(
-      false,
-    );
+    expect(await notesAction.validate(runtime, fakeMessage)).toBe(false);
   });
 
   it("keeps a secondary split pane's scoped action available until that pane closes", async () => {
@@ -297,20 +275,17 @@ describe("view-scoped action validate() gating on visible views", () => {
       secondary.view.id,
       secondary.view.scopedActions[0],
     );
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(true);
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      { parameters: { provider: "anthropic" } },
-    );
+    expect(await action.validate(runtime, fakeMessage)).toBe(true);
+    const result = await action.handler(runtime, fakeMessage, undefined, {
+      parameters: { provider: "anthropic" },
+    });
     expect(result?.success).toBe(true);
     expect(secondary.filled["provider-select"]).toBe("anthropic");
 
     // The primary remains open, but removing the secondary pane gates its
     // action immediately without a runtime restart.
     await navigateTo(primary.view.id);
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+    expect(await action.validate(runtime, fakeMessage)).toBe(false);
   });
 
   it("targets a frontend-only secondary pane's owning shell", async () => {
@@ -357,10 +332,8 @@ describe("view-scoped action validate() gating on visible views", () => {
 
     const action = buildViewScopedAction("secondary_frontend", scopedAction);
     const result = await action.handler(
-      {} as IAgentRuntime,
-      {
-        metadata: { type: "message", clientId: "secondary-owner" },
-      } as Memory,
+      runtime,
+      messageForClient("secondary-owner"),
       undefined,
       {},
     );
@@ -421,8 +394,8 @@ describe("view-scoped action validate() gating on visible views", () => {
     await navigateTo("dual_modal", { viewType: "xr" });
 
     const action = buildViewScopedAction("dual_modal", scopedAction, "xr");
-    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(true);
-    await action.handler({} as IAgentRuntime, fakeMessage, undefined, {});
+    expect(await action.validate(runtime, fakeMessage)).toBe(true);
+    await action.handler(runtime, fakeMessage, undefined, {});
     expect(clicked).toEqual(["xr"]);
   });
 });
@@ -447,12 +420,9 @@ describe("view-scoped action handler drives the interact protocol", () => {
       INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      { parameters: { provider: "anthropic" } },
-    );
+    const result = await action.handler(runtime, fakeMessage, undefined, {
+      parameters: { provider: "anthropic" },
+    });
 
     expect(result?.success).toBe(true);
     // The fill drove the real serverInteract with the resolved param value…
@@ -490,7 +460,7 @@ describe("view-scoped action handler drives the interact protocol", () => {
 
     let thrown: unknown;
     try {
-      await action.handler({} as IAgentRuntime, fakeMessage, undefined, {});
+      await action.handler(runtime, fakeMessage, undefined, {});
     } catch (err) {
       thrown = err;
     }
@@ -523,7 +493,7 @@ describe("view-scoped action handler drives the interact protocol", () => {
     // No `provider` param → the {{provider}} fill step must fail loudly, not
     // fill an empty string into the real control.
     await expect(
-      action.handler({} as IAgentRuntime, fakeMessage, undefined, {
+      action.handler(runtime, fakeMessage, undefined, {
         parameters: {},
       }),
     ).rejects.toMatchObject({ code: "VIEW_SCOPED_ACTION_PARAM_MISSING" });
@@ -553,7 +523,7 @@ describe("view-scoped action handler drives the interact protocol", () => {
       settings.view.scopedActions[0],
     );
     await expect(
-      action.handler({} as IAgentRuntime, fakeMessage, undefined, {
+      action.handler(runtime, fakeMessage, undefined, {
         parameters: { provider: "anthropic" },
       }),
     ).rejects.toMatchObject({ code: "VIEW_SCOPED_ACTION_VIEW_INACTIVE" });
@@ -562,37 +532,49 @@ describe("view-scoped action handler drives the interact protocol", () => {
 
 describe("view-scoped action registration reconciliation", () => {
   it("registers a view's scoped actions and unregisters exactly its set", () => {
-    const { runtime, actions } = makeRuntime();
     const settings = makeInteractiveView("settings", new Set());
     const registered = registerViewScopedActions(runtime, TEST_PLUGIN, [
       settings.view,
     ]);
 
     expect(registered).toEqual(scopedActionNames(settings.view.scopedActions));
-    expect(actions.has("VIEW_SETTINGS_SET_PROVIDER")).toBe(true);
-    expect(actions.has("VIEW_SETTINGS_MISSING_TARGET")).toBe(true);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_SET_PROVIDER",
+      ),
+    ).toBe(true);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_MISSING_TARGET",
+      ),
+    ).toBe(true);
 
     unregisterViewScopedActions(runtime, TEST_PLUGIN);
-    expect(actions.size).toBe(0);
+    expect(runtime.actions).toHaveLength(0);
   });
 
   it("reconciles on reload: a removed scoped action is unregistered", () => {
-    const { runtime, actions } = makeRuntime();
     const settings = makeInteractiveView("settings", new Set());
     registerViewScopedActions(runtime, TEST_PLUGIN, [settings.view]);
-    expect(actions.size).toBe(2);
+    expect(runtime.actions).toHaveLength(2);
 
     // Reload with only the first action → the second is dropped.
     registerViewScopedActions(runtime, TEST_PLUGIN, [
       { ...settings.view, scopedActions: [settings.view.scopedActions[0]] },
     ]);
-    expect(actions.has("VIEW_SETTINGS_SET_PROVIDER")).toBe(true);
-    expect(actions.has("VIEW_SETTINGS_MISSING_TARGET")).toBe(false);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_SET_PROVIDER",
+      ),
+    ).toBe(true);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_MISSING_TARGET",
+      ),
+    ).toBe(false);
   });
 
   it("keeps the first of a duplicate scoped-action name across views", () => {
-    const { runtime, actions } = makeRuntime();
-    const warn = vi.fn();
     const a = makeInteractiveView("a", new Set());
     const dupName = a.view.scopedActions[0].name;
     const b = {
@@ -606,14 +588,12 @@ describe("view-scoped action registration reconciliation", () => {
       b,
     ]);
     expect(registered).toContain(dupName);
-    expect(actions.get(dupName)?.description).toBe(
-      a.view.scopedActions[0].description,
-    );
-    void warn;
+    expect(
+      runtime.actions.find((action) => action.name === dupName)?.description,
+    ).toBe(a.view.scopedActions[0].description);
   });
 
   it("does not unregister an incumbent action when a scoped action collides by name", () => {
-    const { runtime, actions } = makeRuntime();
     const incumbent: Action = {
       name: "VIEW_SETTINGS_SET_PROVIDER",
       description: "global incumbent",
@@ -628,11 +608,23 @@ describe("view-scoped action registration reconciliation", () => {
     ]);
 
     expect(registered).toEqual(["VIEW_SETTINGS_MISSING_TARGET"]);
-    expect(actions.get("VIEW_SETTINGS_SET_PROVIDER")).toBe(incumbent);
+    expect(
+      runtime.actions.find(
+        (action) => action.name === "VIEW_SETTINGS_SET_PROVIDER",
+      ),
+    ).toBe(incumbent);
 
     unregisterViewScopedActions(runtime, TEST_PLUGIN);
-    expect(actions.get("VIEW_SETTINGS_SET_PROVIDER")).toBe(incumbent);
-    expect(actions.has("VIEW_SETTINGS_MISSING_TARGET")).toBe(false);
+    expect(
+      runtime.actions.find(
+        (action) => action.name === "VIEW_SETTINGS_SET_PROVIDER",
+      ),
+    ).toBe(incumbent);
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "VIEW_SETTINGS_MISSING_TARGET",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -739,7 +731,6 @@ describe("character view scoped actions (#14155)", () => {
   });
 
   it("registers exactly the three Character actions and gates them on the view being active", async () => {
-    const { runtime, actions } = makeRuntime();
     const char = characterView();
     await registerPluginViews(
       {
@@ -758,18 +749,16 @@ describe("character view scoped actions (#14155)", () => {
       "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE",
     ]);
 
-    const fillBio = actions.get("VIEW_CHARACTER_FILL_BIO");
+    const fillBio = runtime.actions.find(
+      (action) => action.name === "VIEW_CHARACTER_FILL_BIO",
+    );
     expect(fillBio).toBeDefined();
 
     // Gated closed everywhere but the declaring view.
     await navigateTo("chat");
-    expect(await fillBio?.validate?.({} as IAgentRuntime, fakeMessage)).toBe(
-      false,
-    );
+    expect(await fillBio?.validate?.(runtime, fakeMessage)).toBe(false);
     await navigateTo(CHARACTER_TEST_VIEW_ID);
-    expect(await fillBio?.validate?.({} as IAgentRuntime, fakeMessage)).toBe(
-      true,
-    );
+    expect(await fillBio?.validate?.(runtime, fakeMessage)).toBe(true);
   });
 
   it("FILL_BIO fills the identity-bio control from the {{bio}} param", async () => {
@@ -788,12 +777,9 @@ describe("character view scoped actions (#14155)", () => {
       CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_FILL_BIO"),
     );
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      { parameters: { bio: "A calm, precise onchain research agent." } },
-    );
+    const result = await action.handler(runtime, fakeMessage, undefined, {
+      parameters: { bio: "A calm, precise onchain research agent." },
+    });
     expect(result?.success).toBe(true);
     expect(char.filled["identity-bio"]).toBe(
       "A calm, precise onchain research agent.",
@@ -817,12 +803,9 @@ describe("character view scoped actions (#14155)", () => {
       CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_ADD_STYLE_RULE"),
     );
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      { parameters: { rule: "Keep replies under three sentences." } },
-    );
+    const result = await action.handler(runtime, fakeMessage, undefined, {
+      parameters: { rule: "Keep replies under three sentences." },
+    });
     expect(result?.success).toBe(true);
     expect(char.filled["style-add-input-all"]).toBe(
       "Keep replies under three sentences.",
@@ -850,12 +833,7 @@ describe("character view scoped actions (#14155)", () => {
       CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE"),
     );
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      {},
-    );
+    const result = await action.handler(runtime, fakeMessage, undefined, {});
     expect(result?.success).toBe(true);
     expect(char.clicked).toContain("example-add-conversation");
     expect(result?.data?.steps).toEqual([
@@ -909,7 +887,7 @@ describe("character view scoped actions (#14155)", () => {
 
     let thrown: unknown;
     try {
-      await action.handler({} as IAgentRuntime, fakeMessage, undefined, {
+      await action.handler(runtime, fakeMessage, undefined, {
         parameters: { rule: "never fills" },
       });
     } catch (err) {

@@ -86,6 +86,13 @@ describe("element-reporter buildPayload", () => {
   });
 
   it("reports the real snapshot body with the shell WebSocket client identity", async () => {
+    const postedSnapshots: Array<[string, RequestInit]> = [];
+    fetchWithCsrfMock.mockImplementation(
+      async (url: string, init: RequestInit) => {
+        postedSnapshots.push([url, init]);
+        return new Response("{}");
+      },
+    );
     const registry = new ViewAgentRegistry("calendar", "gui");
     registry.register(
       { id: "create-event", label: "Create event", role: "button" },
@@ -94,11 +101,8 @@ describe("element-reporter buildPayload", () => {
 
     await reportAgentSurfaceElementSnapshot(registry);
 
-    expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchWithCsrfMock.mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
+    expect(postedSnapshots).toHaveLength(1);
+    const [url, init] = postedSnapshots[0];
     expect(url).toContain("/api/views/calendar/elements");
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({

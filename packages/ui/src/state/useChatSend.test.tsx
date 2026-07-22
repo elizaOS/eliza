@@ -609,7 +609,9 @@ describe("useChatSend 404 recovery", () => {
     });
 
     expect(deps.setActionNotice).not.toHaveBeenCalled();
-    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    expect(
+      deps.conversationsRef.current.filter(({ id }) => id === "conv-new"),
+    ).toEqual([conversation("conv-new", "room-new")]);
     // Original send (404) + streaming replay = two stream calls; the
     // non-streaming endpoint is never used.
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(2);

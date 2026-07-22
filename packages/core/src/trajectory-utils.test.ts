@@ -1,37 +1,50 @@
 /**
  * Pins child-trajectory lifecycle ownership when a logger cannot allocate a
- * native child step. Deterministic logger doubles exercise success and error
- * finalization without a model or database.
+ * native child step. A real AgentRuntime owns a deterministic trajectory
+ * service double so success and error finalization exercise the production
+ * service-resolution path without a model or database.
  */
+
 import { describe, expect, it, vi } from "vitest";
+import { AgentRuntime } from "./runtime";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "./trajectory-context";
 import { withActionStep } from "./trajectory-utils";
-import type { IAgentRuntime } from "./types/runtime";
+import { Service, ServiceType } from "./types/service";
 
-function makeRuntime(trajectoryLogger: object): IAgentRuntime {
-	return {
-		agentId: "agent-1",
-		getService: vi.fn((serviceType: string) =>
-			serviceType === "trajectories" ? trajectoryLogger : undefined,
-		),
-		getServicesByType: vi.fn(() => []),
-		reportError: vi.fn(),
-	} as unknown as IAgentRuntime;
+class TestTrajectoryLogger extends Service {
+	static override serviceType = ServiceType.TRAJECTORIES;
+	capabilityDescription =
+		"Records deterministic child-trajectory lifecycle calls";
+	readonly isEnabled = vi.fn(() => true);
+	readonly startStep = vi.fn((trajectoryId: string) => trajectoryId);
+	readonly flushWriteQueue = vi.fn(async (_trajectoryId: string) => {});
+	readonly endTrajectory = vi.fn(
+		async (_stepId: string, _status?: "completed" | "error") => {},
+	);
+	readonly annotateStep = vi.fn(
+		async (_params: { stepId: string; appendChildSteps?: string[] }) => {},
+	);
+
+	async stop(): Promise<void> {}
+}
+
+async function makeRuntime(
+	trajectoryLogger: TestTrajectoryLogger,
+): Promise<AgentRuntime> {
+	const runtime = new AgentRuntime({ logLevel: "fatal" });
+	await runtime.enableTrajectories();
+	runtime.services.set(ServiceType.TRAJECTORIES, [trajectoryLogger]);
+	vi.spyOn(runtime, "reportError").mockImplementation(() => {});
+	return runtime;
 }
 
 describe("withActionStep generated child lifecycle", () => {
 	it("completes a generated child after a successful callback", async () => {
-		const trajectoryLogger = {
-			isEnabled: vi.fn(() => true),
-			startStep: vi.fn((trajectoryId: string) => trajectoryId),
-			flushWriteQueue: vi.fn(async () => {}),
-			endTrajectory: vi.fn(async () => {}),
-			annotateStep: vi.fn(async () => {}),
-		};
-		const runtime = makeRuntime(trajectoryLogger);
+		const trajectoryLogger = new TestTrajectoryLogger();
+		const runtime = await makeRuntime(trajectoryLogger);
 		let childStepId = "";
 
 		const result = await runWithTrajectoryContext(
@@ -65,14 +78,8 @@ describe("withActionStep generated child lifecycle", () => {
 	});
 
 	it("marks a generated child as errored without replacing the callback error", async () => {
-		const trajectoryLogger = {
-			isEnabled: vi.fn(() => true),
-			startStep: vi.fn((trajectoryId: string) => trajectoryId),
-			flushWriteQueue: vi.fn(async () => {}),
-			endTrajectory: vi.fn(async () => {}),
-			annotateStep: vi.fn(async () => {}),
-		};
-		const runtime = makeRuntime(trajectoryLogger);
+		const trajectoryLogger = new TestTrajectoryLogger();
+		const runtime = await makeRuntime(trajectoryLogger);
 		let childStepId = "";
 
 		await expect(
@@ -102,21 +109,17 @@ describe("withActionStep generated child lifecycle", () => {
 	});
 
 	it("reports logger lifecycle failures without replacing the host result", async () => {
-		const trajectoryLogger = {
-			isEnabled: vi.fn(() => true),
-			startStep: vi.fn(() => {
-				throw new Error("start failed");
-			}),
-			flushWriteQueue: vi
-				.fn()
-				.mockRejectedValueOnce(new Error("child flush failed"))
-				.mockRejectedValueOnce(new Error("parent flush failed")),
-			endTrajectory: vi.fn(async () => {}),
-			annotateStep: vi.fn(async () => {
-				throw new Error("annotation failed");
-			}),
-		};
-		const runtime = makeRuntime(trajectoryLogger);
+		const trajectoryLogger = new TestTrajectoryLogger();
+		trajectoryLogger.startStep.mockImplementation(() => {
+			throw new Error("start failed");
+		});
+		trajectoryLogger.flushWriteQueue
+			.mockRejectedValueOnce(new Error("child flush failed"))
+			.mockRejectedValueOnce(new Error("parent flush failed"));
+		trajectoryLogger.annotateStep.mockImplementation(async () => {
+			throw new Error("annotation failed");
+		});
+		const runtime = await makeRuntime(trajectoryLogger);
 
 		const result = await runWithTrajectoryContext(
 			{

@@ -80,12 +80,14 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
     ({
       bundleUrl,
       frameUrl,
+      reserveChatClearance,
       surface,
       viewId,
       viewType,
     }: {
       bundleUrl?: string;
       frameUrl?: string;
+      reserveChatClearance?: boolean;
       surface?: { capabilities?: string[]; isolation?: string };
       viewId: string;
       viewType?: string;
@@ -93,6 +95,7 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
       <div
         data-bundle-url={bundleUrl ?? ""}
         data-frame-url={frameUrl ?? ""}
+        data-reserve-chat-clearance={String(reserveChatClearance ?? true)}
         data-surface-capabilities={surface?.capabilities?.join(",") ?? ""}
         data-testid="dynamic-view-loader"
         data-view-id={viewId}
@@ -109,11 +112,18 @@ const viewShellStateMock = vi.hoisted(() => ({
 
 const settingsViewMock = vi.hoisted(() => ({
   render: vi.fn(
-    (_props: {
+    (props: {
       initialSection?: string;
       navigatePayload?: unknown;
       navigateSequence?: number;
-    }) => <div data-testid="settings-view" />,
+    }) => (
+      <div
+        data-initial-section={props.initialSection ?? ""}
+        data-navigate-payload={JSON.stringify(props.navigatePayload ?? null)}
+        data-navigate-sequence={String(props.navigateSequence ?? 0)}
+        data-testid="settings-view"
+      />
+    ),
   ),
 }));
 
@@ -312,6 +322,8 @@ vi.mock("./hooks", () => ({
     saveCommandModalOpen: false,
     saveCommandText: "",
   }),
+  useDocumentVisibility: () => true,
+  useIntervalWhenDocumentVisible: vi.fn(),
   useMediaQuery: () => mediaQueryState.matches,
   useRenderGuard: vi.fn(),
 }));
@@ -591,15 +603,16 @@ describe("App navigate-view event wiring", () => {
       }),
     );
 
-    await waitFor(() => {
-      expect(settingsViewMock.render).toHaveBeenCalledWith(
-        expect.objectContaining({
-          initialSection: "permissions",
-          navigatePayload: payload,
-          navigateSequence: 1,
-        }),
-      );
-    });
+    const settingsView = await waitFor(() =>
+      screen.getByTestId("settings-view"),
+    );
+    expect(settingsView.getAttribute("data-initial-section")).toBe(
+      "permissions",
+    );
+    expect(
+      JSON.parse(settingsView.getAttribute("data-navigate-payload") ?? "null"),
+    ).toEqual(payload);
+    expect(settingsView.getAttribute("data-navigate-sequence")).toBe("1");
   });
 
   it("pins remote views and opens remote view windows through App wiring", async () => {
@@ -641,24 +654,13 @@ describe("App navigate-view event wiring", () => {
 
     const { container, getByTestId, queryByTestId } = render(<App />);
 
-    await waitFor(() => {
-      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleUrl: "/api/views/remote-ledger/bundle.js",
-          reserveChatClearance: false,
-          viewId: "remote-ledger",
-          viewType: "gui",
-        }),
-        undefined,
-      );
-    });
-
-    const loader = getByTestId("dynamic-view-loader");
+    const loader = await waitFor(() => getByTestId("dynamic-view-loader"));
     expect(loader.getAttribute("data-bundle-url")).toBe(
       "/api/views/remote-ledger/bundle.js",
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
+    expect(loader.getAttribute("data-reserve-chat-clearance")).toBe("false");
     expect(
       container
         .querySelector('[data-shell-content-region="true"]')
@@ -680,23 +682,12 @@ describe("App navigate-view event wiring", () => {
 
     const { getByTestId } = render(<App />);
 
-    await waitFor(() => {
-      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleUrl: undefined,
-          frameUrl: "/api/views/sandboxed-frame/frame.html",
-          viewId: "sandboxed-frame",
-          viewType: "gui",
-        }),
-        undefined,
-      );
-    });
-
-    const loader = getByTestId("dynamic-view-loader");
+    const loader = await waitFor(() => getByTestId("dynamic-view-loader"));
     expect(loader.getAttribute("data-bundle-url")).toBe("");
     expect(loader.getAttribute("data-frame-url")).toBe(
       "/api/views/sandboxed-frame/frame.html",
     );
+    expect(loader.getAttribute("data-view-type")).toBe("gui");
   });
 
   it("renders no global corner back button on app routes (removed in favor of per-page back affordances + browser/OS back)", async () => {
@@ -704,12 +695,12 @@ describe("App navigate-view event wiring", () => {
     window.history.replaceState(null, "", "/chat");
     window.history.pushState(null, "", "/apps/remote-ledger");
 
-    const { queryByTestId } = render(<App />);
+    const { getByTestId, queryByTestId } = render(<App />);
 
     // The route mounts (its remote view loader is requested)…
-    await waitFor(() => {
-      expect(dynamicViewLoaderMock.render).toHaveBeenCalled();
-    });
+    expect(
+      await waitFor(() => getByTestId("dynamic-view-loader")),
+    ).toBeTruthy();
 
     // …but the floating top-left corner back button that used to overlap page
     // content (Apps gallery section headings, the Character/Knowledge
@@ -725,15 +716,11 @@ describe("App navigate-view event wiring", () => {
 
     const { getByTestId, queryByTestId } = render(<App />);
 
-    await waitFor(() => {
-      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleUrl: "/api/views/shared-canvas/bundle.js",
-          viewId: "shared-canvas",
-        }),
-        undefined,
-      );
-    });
+    const loader = await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(loader.getAttribute("data-bundle-url")).toBe(
+      "/api/views/shared-canvas/bundle.js",
+    );
+    expect(loader.getAttribute("data-view-id")).toBe("shared-canvas");
 
     expect(getByTestId("app-background-shader")).toBeTruthy();
     expect(queryByTestId("app-opaque-background")).toBeNull();
