@@ -356,6 +356,117 @@ describe("notification-store", () => {
     expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps polling an explicitly starting notification service beyond the generic retry budget", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const starting = new ApiError({
+      kind: "http",
+      path: "/api/notifications",
+      status: 503,
+      code: "NOTIFICATION_SERVICE_NOT_READY",
+      retryAfter: 1,
+      message: "Notification service is still starting",
+    });
+    listNotifications
+      .mockRejectedValueOnce(starting)
+      .mockRejectedValueOnce(starting)
+      .mockRejectedValueOnce(starting)
+      .mockRejectedValueOnce(starting)
+      .mockRejectedValueOnce(starting)
+      .mockResolvedValueOnce({
+        notifications: [],
+        unreadCount: 0,
+        serviceStatus: "ready",
+      });
+
+    initNotifications();
+    await flushDelivery();
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(5);
+    expect(vi.getTimerCount()).toBe(1);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "retrying",
+      hydrationAttempts: 5,
+    });
+
+    await vi.runOnlyPendingTimersAsync();
+    await flushDelivery();
+    expect(listNotifications).toHaveBeenCalledTimes(6);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationAttempts: 6,
+      hydrationError: null,
+    });
+  });
+
+  it("does not extend retries for an explicitly failed notification service", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/notifications",
+        status: 503,
+        code: "NOTIFICATION_SERVICE_FAILED",
+        retryAfter: 1,
+        message: "Notification service failed to start",
+      }),
+    );
+
+    initNotifications();
+    await flushDelivery();
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(5);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "failed",
+      hydrationAttempts: 5,
+      hydrationError: "Notification service failed to start",
+    });
+  });
+
+  it("eventually surfaces a notification service that never leaves its starting phase", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/notifications",
+        status: 503,
+        code: "NOTIFICATION_SERVICE_NOT_READY",
+        retryAfter: 1,
+        message: "Notification service is still starting",
+      }),
+    );
+
+    initNotifications();
+    await flushDelivery();
+    for (let attempt = 1; attempt < 12; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(12);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "failed",
+      hydrationAttempts: 12,
+      hydrationError: "Notification service is still starting",
+    });
+  });
+
   it("stops after the bounded hydrate retry budget and exposes terminal failure", async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0.5);

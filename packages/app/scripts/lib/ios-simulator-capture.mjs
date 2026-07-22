@@ -7,6 +7,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const STILL_CAPTURE_SETTLE_MS = 1_000;
+const RECORDING_STOP_TIMEOUT_MS = 3_000;
+const RECORDING_FORCE_STOP_TIMEOUT_MS = 1_000;
+
+function waitForChildClose(closePromise, timeoutMs) {
+  return Promise.race([closePromise, delay(timeoutMs).then(() => false)]);
+}
 
 function isNonEmptyFile(filePath) {
   try {
@@ -148,6 +155,9 @@ export function startIosSimulatorVideo({
     ["simctl", "io", target, "recordVideo", localPath],
     { stdio: ["ignore", "ignore", "pipe"] },
   );
+  const closePromise = new Promise((resolve) => {
+    child.once("close", () => resolve(true));
+  });
   let stderr = "";
   child.stderr?.on("data", (chunk) => {
     stderr += chunk.toString();
@@ -161,11 +171,30 @@ export function startIosSimulatorVideo({
     localPath,
     child,
     async stop() {
-      if (child.exitCode === null) child.kill("SIGINT");
-      await Promise.race([
-        new Promise((resolve) => child.once("close", resolve)),
-        delay(3_000),
-      ]);
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGINT");
+      }
+      let closed = await waitForChildClose(
+        closePromise,
+        RECORDING_STOP_TIMEOUT_MS,
+      );
+      if (!closed) {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+        closed = await waitForChildClose(
+          closePromise,
+          RECORDING_FORCE_STOP_TIMEOUT_MS,
+        );
+      }
+      if (!closed) {
+        log(`iOS simulator recording did not stop for ${target}`);
+        return null;
+      }
+      // CoreSimulator may finalize recordVideo before its post-relaunch
+      // framebuffer is available to a following still capture. Let one render
+      // transaction settle so evidence reflects the live Simulator window.
+      await delay(STILL_CAPTURE_SETTLE_MS);
       if (!isNonEmptyFile(localPath)) {
         if (stderr.trim())
           log(`iOS simulator recording stderr: ${stderr.trim()}`);

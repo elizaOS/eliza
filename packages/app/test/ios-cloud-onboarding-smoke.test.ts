@@ -98,6 +98,7 @@ function completedResult(
     livenessReply: string;
     mode: "tap" | "autologin";
     runId: string;
+    visual: { ready: true; notificationState?: string | null };
   }> = {},
 ) {
   return JSON.stringify({
@@ -110,7 +111,7 @@ function completedResult(
     signInGreetingVisible: true,
     notificationRoute: { ok: true, status: 200 },
     permissionPriming: { shown: true, skipped: true, hidden: true },
-    visual: { ready: true },
+    visual: { ready: true, notificationState: "empty" },
     storage: {
       "elizaos:active-server": JSON.stringify({
         kind: "cloud",
@@ -121,7 +122,7 @@ function completedResult(
   });
 }
 
-function completedRelaunchResult() {
+function completedRelaunchResult(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     ok: true,
     phase: "complete",
@@ -135,7 +136,9 @@ function completedRelaunchResult() {
       agentState: "running",
       connected: true,
     },
-    visual: { ready: true },
+    notificationRoute: { ok: true, status: 200 },
+    visual: { ready: true, notificationState: "empty" },
+    ...overrides,
   });
 }
 
@@ -294,6 +297,42 @@ describe("Cloud onboarding orchestration", () => {
     ).toBe(false);
   });
 
+  it("treats a missing plist key as removed despite a stale defaults cache", () => {
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") return JSON.stringify({});
+      if (args.includes("read")) return "stale-request";
+      return "";
+    });
+
+    expect(
+      readSimulatorPreferenceString(
+        "LANE-UDID",
+        "ai.elizaos.app",
+        REQUEST_KEY,
+        { authoritativePlistAbsence: true },
+      ),
+    ).toBeNull();
+    expect(
+      execFileSync.mock.calls.some(
+        ([, args]) => Array.isArray(args) && args.includes("read"),
+      ),
+    ).toBe(false);
+  });
+
+  it("falls back to cfprefsd for a newly written result not yet in the plist", () => {
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") return JSON.stringify({});
+      if (args.includes("read")) return "fresh-result";
+      return "";
+    });
+
+    expect(
+      readSimulatorPreferenceString("LANE-UDID", "ai.elizaos.app", RESULT_KEY),
+    ).toBe("fresh-result");
+  });
+
   it("runs tap and autologin through install, launch, result, and capture", async () => {
     await expect(main()).resolves.toBeUndefined();
 
@@ -371,6 +410,97 @@ describe("Cloud onboarding orchestration", () => {
     });
 
     await expect(main()).rejects.toThrow("was not correlated to run");
+  });
+
+  it("rejects a visible notification failure even when the route probe passed", async () => {
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.join(" ").includes("list devices available --json")) {
+        return simulatorInventory();
+      }
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") {
+        return JSON.stringify({
+          [`CapacitorStorage.${RESULT_KEY}`]: completedResult({
+            visual: {
+              ready: true,
+              notificationState: "unavailable",
+            },
+          }),
+        });
+      }
+      return "";
+    });
+
+    await expect(main()).rejects.toThrow("lacked a healthy notification state");
+  });
+
+  it("rejects a missing notification state instead of treating visual ready as sufficient", async () => {
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.join(" ").includes("list devices available --json")) {
+        return simulatorInventory();
+      }
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") {
+        return JSON.stringify({
+          [`CapacitorStorage.${RESULT_KEY}`]: completedResult({
+            visual: { ready: true },
+          }),
+        });
+      }
+      return "";
+    });
+
+    await expect(main()).rejects.toThrow("lacked a healthy notification state");
+  });
+
+  it("rejects an unknown cold-relaunch notification state", async () => {
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.join(" ").includes("list devices available --json")) {
+        return simulatorInventory();
+      }
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") {
+        return JSON.stringify({
+          [`CapacitorStorage.${RESULT_KEY}`]: completedResult(),
+          [`CapacitorStorage.${RELAUNCH_RESULT_KEY}`]: completedRelaunchResult({
+            visual: { ready: true, notificationState: "unknown" },
+          }),
+        });
+      }
+      return "";
+    });
+
+    await expect(main()).rejects.toThrow("cold relaunch lacked a clean home");
+  });
+
+  it("refuses to cold relaunch while the one-shot request remains pending", async () => {
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.join(" ").includes("list devices available --json")) {
+        return simulatorInventory();
+      }
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") {
+        return JSON.stringify({
+          [`CapacitorStorage.${REQUEST_KEY}`]: JSON.stringify({
+            mode: mocks.runState.mode,
+            runId: mocks.runState.runId,
+          }),
+          [`CapacitorStorage.${RESULT_KEY}`]: completedResult(),
+        });
+      }
+      return "";
+    });
+
+    await expect(main()).rejects.toThrow("did not consume its one-shot");
+    expect(
+      spawnSync.mock.calls.some(
+        ([, args]) =>
+          Array.isArray(args) &&
+          args.some((arg) =>
+            String(arg).includes("ios-onboarding-relaunch-smoke:request"),
+          ),
+      ),
+    ).toBe(false);
   });
 
   it("refuses accidental non-live execution", async () => {

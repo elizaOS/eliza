@@ -242,7 +242,12 @@ function defaultsReadString(udid, appId, key) {
   return null;
 }
 
-export function readSimulatorPreferenceString(udid, appId, key) {
+export function readSimulatorPreferenceString(
+  udid,
+  appId,
+  key,
+  { authoritativePlistAbsence = false } = {},
+) {
   const container = tryRun("xcrun", [
     "simctl",
     "get_app_container",
@@ -270,6 +275,13 @@ export function readSimulatorPreferenceString(udid, appId, key) {
             for (const nativeKey of preferenceNativeKeys(key)) {
               const value = preferences[nativeKey];
               if (typeof value === "string") return value;
+            }
+            if (authoritativePlistAbsence) {
+              // Request consumption needs durable deletion semantics: asking
+              // the defaults daemon here can resurrect its stale cache after
+              // Preferences.remove. Result polling keeps the compatibility
+              // fallback because a new value may reach cfprefsd before disk.
+              return null;
             }
           }
         } catch {
@@ -405,6 +417,30 @@ async function pollRelaunchResult(udid, appId, runId) {
   );
 }
 
+async function waitForRequestConsumption(udid, appId) {
+  const attempts = Number.parseInt(
+    process.env.IOS_CLOUD_ONBOARDING_ATTEMPTS ?? "240",
+    10,
+  );
+  const delayMs = Number.parseInt(
+    process.env.IOS_CLOUD_ONBOARDING_DELAY_MS ?? "1000",
+    10,
+  );
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (
+      readSimulatorPreferenceString(udid, appId, REQUEST_KEY, {
+        authoritativePlistAbsence: true,
+      }) === null
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  throw new Error(
+    "iOS Cloud onboarding app did not consume its one-shot smoke request before cold relaunch",
+  );
+}
+
 export function activeCloudApiBase(result) {
   const raw = result.storage?.["elizaos:active-server"];
   if (typeof raw !== "string") {
@@ -529,6 +565,14 @@ async function runMode({ udid, appId, mode, privateKey }) {
         `iOS Cloud home did not reach visual readiness: ${JSON.stringify(result.visual)}`,
       );
     }
+    if (
+      result.visual.notificationState !== "count" &&
+      result.visual.notificationState !== "empty"
+    ) {
+      throw new Error(
+        `iOS Cloud home lacked a healthy notification state after onboarding: ${JSON.stringify(result.visual.notificationState)}`,
+      );
+    }
     if (liveness) {
       const reply = assertLiveReply(result.livenessReply, {
         label: `ios-cloud-onboarding-${mode}`,
@@ -543,6 +587,8 @@ async function runMode({ udid, appId, mode, privateKey }) {
       }
       log(`liveness reply OK: ${JSON.stringify(result.livenessReply)}`);
     }
+
+    await waitForRequestConsumption(udid, appId);
 
     const onboardingVideoPath = await recording?.stop();
     recording = null;
@@ -583,7 +629,10 @@ async function runMode({ udid, appId, mode, privateKey }) {
       coldRelaunch.runtime?.startupPhase !== "ready" ||
       coldRelaunch.runtime?.agentState !== "running" ||
       coldRelaunch.runtime?.connected !== true ||
-      coldRelaunch.visual?.ready !== true
+      coldRelaunch.notificationRoute?.ok !== true ||
+      coldRelaunch.visual?.ready !== true ||
+      (coldRelaunch.visual?.notificationState !== "count" &&
+        coldRelaunch.visual?.notificationState !== "empty")
     ) {
       throw new Error(
         `iOS Cloud cold relaunch lacked a clean home: ${JSON.stringify(coldRelaunch)}`,

@@ -32,6 +32,7 @@ const iosBoot = vi.hoisted(() => ({
   preferenceSet: vi.fn<
     (entry: { key: string; value: string }) => Promise<void>
   >(async () => undefined),
+  preferenceRemove: vi.fn(async () => undefined),
 }));
 
 iosBoot.createRoot.mockReturnValue({ render: iosBoot.render });
@@ -56,7 +57,7 @@ vi.mock("@capacitor/preferences", () => ({
   Preferences: {
     get: vi.fn(async () => ({ value: null })),
     set: iosBoot.preferenceSet,
-    remove: vi.fn(async () => undefined),
+    remove: iosBoot.preferenceRemove,
   },
 }));
 vi.mock("@capacitor/background-runner", () => ({
@@ -338,6 +339,17 @@ describe("renderer interactive iOS composition", () => {
       { method: "GET" },
       { allowNonOk: true, timeoutMs: 10_000 },
     );
+    expect(iosBoot.preferenceRemove).toHaveBeenCalledWith({
+      key: CLOUD_SMOKE_REQUEST_KEY,
+    });
+    const firstCloudResultWrite = iosBoot.preferenceSet.mock.calls.findIndex(
+      ([entry]) => entry.key === CLOUD_SMOKE_RESULT_KEY,
+    );
+    expect(firstCloudResultWrite).toBeGreaterThanOrEqual(0);
+    expect(iosBoot.preferenceRemove.mock.invocationCallOrder[0]).toBeLessThan(
+      iosBoot.preferenceSet.mock.invocationCallOrder[firstCloudResultWrite],
+    );
+    expect(window.localStorage.getItem(CLOUD_SMOKE_REQUEST_KEY)).toBeNull();
 
     expect(window.location.hash).toContain("aec-loop");
     expect(window.__ELIZA_APP_SHARE_QUEUE__).toEqual([

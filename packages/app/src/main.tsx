@@ -1437,7 +1437,7 @@ async function waitForIosCloudHomeVisualReady(): Promise<IosCloudHomeVisualProof
       state.timeTextPresent &&
       state.weatherStatus !== null &&
       state.weatherStatus !== "loading" &&
-      notificationState !== null;
+      (notificationState === "count" || notificationState === "empty");
     const signature = ready ? JSON.stringify(state) : null;
     if (ready && signature === stableSignature) {
       stableSince ??= Date.now();
@@ -1719,8 +1719,24 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
   }
   if (!rawRequest) return false;
 
-  iosCloudOnboardingSmokeStarted = true;
   const request = parseIosCloudOnboardingSmokeRequest(rawRequest);
+  iosCloudOnboardingSmokeStarted = true;
+  // The native request is a one-shot command. Consume it before publishing
+  // any result so a process kill after PASS cannot replay onboarding on the
+  // cold launch and overwrite the terminal proof for the same run.
+  try {
+    shellLocalStorage.removeItem(IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY);
+  } catch (error) {
+    // error-policy:J6 Preferences is authoritative for the simulator harness;
+    // localStorage removal only keeps the WebView mirror in sync.
+    logger.debug(
+      { error },
+      "[iOSCloudOnboardingSmoke] localStorage request cleanup failed",
+    );
+  }
+  await boundedPreferenceWrite(() =>
+    Preferences.remove({ key: IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY }),
+  );
   const firstRunCounter = installFirstRunSubmitCounter();
   await writeIosCloudOnboardingSmokeResult({
     ok: false,
@@ -1739,7 +1755,6 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
 
     const completion =
       await waitForIosCloudOnboardingCompletion(firstRunCounter);
-    const notificationRoute = await probeIosCloudNotificationRoute();
     const permissionPriming = request.completePermissionPriming
       ? await completeIosPermissionPriming()
       : null;
@@ -1751,6 +1766,7 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       : null;
     await collapseIosChatForHomeProof();
     const visual = await waitForIosCloudHomeVisualReady();
+    const notificationRoute = await probeIosCloudNotificationRoute();
 
     await writeIosCloudOnboardingSmokeResult({
       ok: true,
@@ -1787,19 +1803,6 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
     });
   } finally {
     firstRunCounter.restore();
-    try {
-      shellLocalStorage.removeItem(IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY);
-    } catch (error) {
-      // error-policy:J6 best-effort cleanup — Preferences removal below is
-      // authoritative for the simulator harness
-      logger.debug(
-        { error },
-        "[iOSCloudOnboardingSmoke] localStorage request cleanup failed",
-      );
-    }
-    await boundedPreferenceWrite(() =>
-      Preferences.remove({ key: IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY }),
-    );
   }
   return true;
 }
@@ -2098,6 +2101,7 @@ async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
     );
     const runtime = await waitForIosCloudRuntimeReady();
     const visual = await waitForIosCloudHomeVisualReady();
+    const notificationRoute = await probeIosCloudNotificationRoute();
 
     await writeIosOnboardingRelaunchSmokeResult({
       ok: true,
@@ -2118,6 +2122,7 @@ async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
         '[data-testid="permission-priming-modal"]',
       ),
       runtime,
+      notificationRoute,
       visual,
       storage,
     });

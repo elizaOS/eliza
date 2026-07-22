@@ -73,6 +73,7 @@ const listeners = new Set<() => void>();
 const ephemeralNotificationIds = new Set<string>();
 let initialized = false;
 const HYDRATION_MAX_ATTEMPTS = 5;
+const HYDRATION_STARTUP_MAX_ATTEMPTS = 12;
 const HYDRATION_BASE_DELAY_MS = 500;
 const HYDRATION_MAX_DELAY_MS = 30_000;
 const HYDRATION_JITTER_RATIO = 0.2;
@@ -418,6 +419,14 @@ function isRetryableHydrationError(error: unknown): boolean {
   );
 }
 
+function isNotificationServiceStarting(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    error.status === 503 &&
+    error.code === "NOTIFICATION_SERVICE_NOT_READY"
+  );
+}
+
 function hydrationRetryDelayMs(error: unknown, attempt: number): number {
   const exponential = Math.min(
     HYDRATION_MAX_DELAY_MS,
@@ -477,8 +486,14 @@ async function runHydrationAttempt(generation: number): Promise<void> {
     // live subscription active while surfacing terminal failure in store state.
     if (generation !== hydrationGeneration) return;
     const message = hydrationErrorMessage(err);
-    const retryable =
-      isRetryableHydrationError(err) && attempt < HYDRATION_MAX_ATTEMPTS;
+    // NOT_READY is a server-declared boot phase, not a failed inbox. Give that
+    // phase a longer bounded budget; generic transport, 5xx, and explicit
+    // service failures retain the shorter terminal budget.
+    const serviceStarting = isNotificationServiceStarting(err);
+    const maxAttempts = serviceStarting
+      ? HYDRATION_STARTUP_MAX_ATTEMPTS
+      : HYDRATION_MAX_ATTEMPTS;
+    const retryable = isRetryableHydrationError(err) && attempt < maxAttempts;
     if (!retryable) {
       logger.error(
         { err, attempt, retryable: isRetryableHydrationError(err) },
