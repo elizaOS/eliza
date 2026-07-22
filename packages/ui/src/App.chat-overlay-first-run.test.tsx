@@ -191,7 +191,22 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
 }));
 
 vi.mock("./components/shell/StartupScreen", () => ({
-  StartupScreen: () => <div data-testid="startup-screen" />,
+  StartupScreen: ({
+    readyLoadingFallback,
+  }: {
+    readyLoadingFallback?: {
+      kind?: string;
+      phase?: string;
+      status?: string;
+    };
+  }) => (
+    <div
+      data-ready-kind={readyLoadingFallback?.kind ?? ""}
+      data-ready-phase={readyLoadingFallback?.phase ?? ""}
+      data-ready-status={readyLoadingFallback?.status ?? ""}
+      data-testid="startup-screen"
+    />
+  ),
 }));
 
 vi.mock("./components/shell/BugReportModal", () => ({
@@ -272,6 +287,7 @@ describe("App chat-overlay first-run composition", () => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
     conductorMock.mount.mockClear();
     notificationMock.init.mockClear();
+    appState.authPhase = "loading";
   });
 
   afterEach(() => {
@@ -325,6 +341,22 @@ describe("App chat-overlay first-run composition", () => {
     expect(startupGate.getByTestId("startup-screen")).toBeTruthy();
     await waitFor(() => expect(notificationMock.init).toHaveBeenCalledOnce());
     startupGate.unmount();
+  });
+
+  it("gives the startup shell an explicit authenticating fallback while auth is unresolved", () => {
+    window.history.replaceState(null, "", "/?shellMode=full");
+    appState.firstRunComplete = true;
+    appState.startupPhase = "ready";
+    appState.authPhase = "loading";
+
+    const { getByTestId } = render(<App />);
+
+    const startupScreen = getByTestId("startup-screen");
+    expect(startupScreen.getAttribute("data-ready-kind")).toBe("loading");
+    expect(startupScreen.getAttribute("data-ready-phase")).toBe(
+      "authenticating",
+    );
+    expect(startupScreen.getAttribute("data-ready-status")).toBe("");
   });
 
   it("keeps the conductor mounted but UNGATED by App once first-run completes (hook self-gates)", () => {

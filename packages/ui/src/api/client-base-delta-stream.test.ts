@@ -136,6 +136,28 @@ describe("delta-v2 chat stream client reducer", () => {
     expect(parseRequestBody(request).streamProtocol).toBe("delta-v2");
   });
 
+  it("streams against a newly selected dedicated Cloud base without losing the protocol", async () => {
+    const { client, request } = streamFromSse(
+      'data: {"type":"done","fullText":"ready","agentName":"Eliza"}\n\n',
+    );
+    const observedBases: string[] = [];
+    client.onBaseUrlChange((baseUrl) => observedBases.push(baseUrl));
+
+    client.repointBaseUrl("https://agent-123.elizacloud.ai/");
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/c/messages/stream",
+      "hi",
+      vi.fn(),
+    );
+
+    expect(observedBases).toEqual(["https://agent-123.elizacloud.ai"]);
+    expect(request.mock.calls[0]?.[0]).toBe(
+      "https://agent-123.elizacloud.ai/api/conversations/c/messages/stream",
+    );
+    expect(parseRequestBody(request).streamProtocol).toBe("delta-v2");
+    expect(result.text).toBe("ready");
+  });
+
   it("lets the terminal done.fullText win as the final text over accumulated deltas", async () => {
     const { client } = streamFromSse(
       'data: {"type":"token","text":"par"}\n\n' +

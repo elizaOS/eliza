@@ -4,7 +4,13 @@
  */
 import { describe, expect, it } from "vitest";
 import { IOS_LOCAL_AGENT_IPC_BASE } from "./mobile-runtime-mode";
-import { activeServerToStartupRuntimeTarget } from "./runtime-target";
+import {
+  activeServerKindToFirstRunRuntimeTarget,
+  activeServerToStartupRuntimeTarget,
+  isElizaCloudFirstRunTarget,
+  isMobileLocalActiveServer,
+  resolveFirstRunLocalAgentApiBase,
+} from "./runtime-target";
 
 describe("active server startup target", () => {
   it.each([
@@ -27,13 +33,40 @@ describe("active server startup target", () => {
   });
 
   it("treats the remote-shaped mobile IPC profile as embedded local", () => {
-    expect(
-      activeServerToStartupRuntimeTarget({
-        id: "local:mobile",
-        kind: "remote",
-        label: "On-device agent",
-        apiBase: IOS_LOCAL_AGENT_IPC_BASE,
-      }),
-    ).toBe("embedded-local");
+    const mobileServer = {
+      id: "local:mobile",
+      kind: "remote" as const,
+      label: "On-device agent",
+      apiBase: IOS_LOCAL_AGENT_IPC_BASE,
+    };
+
+    expect(isMobileLocalActiveServer(mobileServer)).toBe(true);
+    expect(activeServerToStartupRuntimeTarget(mobileServer)).toBe(
+      "embedded-local",
+    );
+  });
+
+  it.each([
+    ["local", "local"],
+    ["cloud", "elizacloud"],
+    ["remote", "remote"],
+  ] as const)(
+    "maps persisted %s kinds back to first-run target %s",
+    (kind, expected) => {
+      expect(activeServerKindToFirstRunRuntimeTarget(kind)).toBe(expected);
+    },
+  );
+
+  it("identifies both managed Cloud first-run modes", () => {
+    expect(isElizaCloudFirstRunTarget("elizacloud")).toBe(true);
+    expect(isElizaCloudFirstRunTarget("elizacloud-hybrid")).toBe(true);
+    expect(isElizaCloudFirstRunTarget("local")).toBe(false);
+    expect(isElizaCloudFirstRunTarget("remote")).toBe(false);
+  });
+
+  it("uses a concrete local API base when no native IPC platform is active", () => {
+    expect(resolveFirstRunLocalAgentApiBase()).toMatch(
+      /^(https?:\/\/|eliza-local-agent:\/\/)/,
+    );
   });
 });

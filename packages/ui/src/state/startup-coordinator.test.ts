@@ -4,9 +4,19 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  connectionModeToTarget,
+  createAndroidPolicy,
+  createDesktopPolicy,
+  createElizaOSPolicy,
+  createIosPolicy,
+  createMobilePolicy,
+  createWebPolicy,
   INITIAL_STARTUP_STATE,
   isShellPaintable,
+  isStartupLoading,
+  isStartupTerminal,
   startupReducer,
+  toLegacyStartupPhase,
 } from "./startup-coordinator";
 import { deriveAgentReady } from "./types";
 
@@ -203,6 +213,118 @@ describe("startup coordinator", () => {
       attempts: 0,
       target: "embedded-local",
     });
+  });
+
+  it("surfaces every backend boundary outcome without fabricating readiness", () => {
+    const polling = {
+      phase: "polling-backend" as const,
+      target: "cloud-managed" as const,
+      attempts: 2,
+    };
+
+    expect(startupReducer(polling, { type: "BACKEND_AUTH_REQUIRED" })).toEqual({
+      phase: "pairing-required",
+    });
+    expect(startupReducer(polling, { type: "BACKEND_NOT_FOUND" })).toEqual({
+      phase: "error",
+      reason: "backend-unreachable",
+      message: "Backend returned 404 — check the API base URL.",
+      timedOut: false,
+    });
+    expect(
+      startupReducer(polling, {
+        type: "AGENT_ERROR",
+        message: "native transport failed",
+      }),
+    ).toEqual({
+      phase: "error",
+      reason: "agent-error",
+      message: "native transport failed",
+      timedOut: false,
+    });
+  });
+
+  it("completes the runtime, hydration, and agent-switch sequence", () => {
+    const starting = {
+      phase: "starting-runtime" as const,
+      attempts: 0,
+      target: "cloud-managed" as const,
+    };
+    const hydrating = startupReducer(starting, { type: "AGENT_RUNNING" });
+    expect(hydrating).toEqual({ phase: "hydrating" });
+    const ready = startupReducer(hydrating, { type: "HYDRATION_COMPLETE" });
+    expect(ready).toEqual({ phase: "ready" });
+    expect(
+      startupReducer(ready, {
+        type: "SWITCH_AGENT",
+        target: "remote-backend",
+      }),
+    ).toEqual({
+      phase: "polling-backend",
+      target: "remote-backend",
+      attempts: 0,
+    });
+  });
+});
+
+describe("startup policy and presentation helpers", () => {
+  it("keeps every stock mobile policy Cloud-first with the local runtime available", () => {
+    for (const policy of [
+      createMobilePolicy(),
+      createIosPolicy(),
+      createAndroidPolicy(),
+    ]) {
+      expect(policy).toMatchObject({
+        supportsLocalRuntime: true,
+        defaultTarget: "cloud-managed",
+        backendTimeoutMs: 180_000,
+        agentReadyTimeoutMs: 300_000,
+      });
+    }
+  });
+
+  it("keeps desktop and ElizaOS local-first while plain web has no implicit target", () => {
+    expect(createDesktopPolicy().defaultTarget).toBe("embedded-local");
+    expect(createElizaOSPolicy().defaultTarget).toBe("embedded-local");
+    expect(createWebPolicy()).toMatchObject({
+      supportsLocalRuntime: false,
+      defaultTarget: null,
+    });
+  });
+
+  it.each([
+    [undefined, "embedded-local"],
+    ["local", "embedded-local"],
+    ["cloud", "cloud-managed"],
+    ["remote", "remote-backend"],
+  ] as const)("maps connection mode %s to %s", (mode, expected) => {
+    expect(connectionModeToTarget(mode)).toBe(expected);
+  });
+
+  it("distinguishes loading, terminal, and legacy presentation phases", () => {
+    expect(isStartupLoading({ phase: "restoring-session" })).toBe(true);
+    expect(isStartupLoading({ phase: "hydrating" })).toBe(true);
+    expect(isStartupLoading({ phase: "ready" })).toBe(false);
+    expect(isStartupTerminal({ phase: "ready" })).toBe(true);
+    expect(
+      isStartupTerminal({
+        phase: "error",
+        reason: "unknown",
+        message: "failed",
+        timedOut: false,
+      }),
+    ).toBe(true);
+    expect(toLegacyStartupPhase({ phase: "restoring-session" })).toBe(
+      "starting-backend",
+    );
+    expect(
+      toLegacyStartupPhase({
+        phase: "starting-runtime",
+        attempts: 0,
+        target: "cloud-managed",
+      }),
+    ).toBe("initializing-agent");
+    expect(toLegacyStartupPhase({ phase: "ready" })).toBe("ready");
   });
 });
 

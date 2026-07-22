@@ -122,7 +122,10 @@ describe("runRestoringSession — mobile committed-runtime existing-install prob
       expect.objectContaining({ waitForBootingAgent: true, timeoutMs: 45_000 }),
     );
     expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "SESSION_RESTORED" }),
+      expect.objectContaining({
+        type: "SESSION_RESTORED",
+        target: "embedded-local",
+      }),
     );
     expect(dispatch).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "NO_SESSION" }),
@@ -151,7 +154,10 @@ describe("runRestoringSession — mobile committed-runtime existing-install prob
       expect.stringContaining("existing-install probe failed"),
     );
     expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "SESSION_RESTORED" }),
+      expect.objectContaining({
+        type: "SESSION_RESTORED",
+        target: "embedded-local",
+      }),
     );
     expect(dispatch).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "NO_SESSION" }),

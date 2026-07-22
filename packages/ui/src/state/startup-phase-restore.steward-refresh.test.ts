@@ -123,6 +123,9 @@ describe("applyRestoredConnection — cloud Steward token refresh at restore", (
       "https://agent-123.example.com",
     );
     expect(client.setToken).toHaveBeenCalledWith(valid);
+    expect(client.setBaseUrl.mock.invocationCallOrder[0]).toBeLessThan(
+      client.setToken.mock.invocationCallOrder[0],
+    );
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(valid);
   });
 

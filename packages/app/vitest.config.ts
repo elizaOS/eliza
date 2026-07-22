@@ -119,6 +119,8 @@ export default defineConfig({
       // relying on source-string assertions.
       include: [
         "src/**/*.ts",
+        "src/**/*.tsx",
+        "vite/renderer-build-manifest-plugin.ts",
         "scripts/ios-cloud-onboarding-smoke.mjs",
         "scripts/ios-store-engine-gate.mjs",
         "scripts/mobile-release-preflight.mjs",

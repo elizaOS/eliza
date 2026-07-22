@@ -48,12 +48,15 @@ describe("ElizaClient 202 dedicated-agent resume handling", () => {
       );
 
     const client = makeClient(request);
+    const observedBases: string[] = [];
+    client.onBaseUrlChange((baseUrl) => observedBases.push(baseUrl));
     const pending = client.fetch<{ ok: boolean }>("/api/status");
     await vi.runAllTimersAsync();
     const out = await pending;
 
     expect(request).toHaveBeenCalledTimes(3);
     expect(out).toEqual(expect.objectContaining({ ok: true }));
+    expect(observedBases).toEqual([]);
   });
 
   it("does not retry a normal 200 response (ordinary requests unaffected)", async () => {

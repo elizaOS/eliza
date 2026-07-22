@@ -1,11 +1,18 @@
 /**
  * Boots the renderer through the ordinary interactive iOS path, then drives
- * the native lifecycle callbacks that the composition root owns: keyboard,
- * runtime-mode changes, and representative OS deep links.
+ * the native lifecycle callbacks and Cloud autologin smoke that the composition
+ * root owns: keyboard, runtime-mode changes, and representative OS deep links.
  */
 import { Capacitor } from "@capacitor/core";
 import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "@elizaos/ui/api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const CLOUD_SMOKE_REQUEST_KEY = "eliza:ios-cloud-onboarding-smoke:request";
+const CLOUD_SMOKE_RESULT_KEY = "eliza:ios-cloud-onboarding-smoke:result";
+const CLOUD_SMOKE_RUN_ID = "00000000-0000-4000-8000-000000000123";
+const SHARED_AGENT_BASE =
+  "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-123";
 
 const iosBoot = vi.hoisted(() => ({
   initializeStorage: vi.fn(async () => undefined),
@@ -22,7 +29,9 @@ const iosBoot = vi.hoisted(() => ({
     | undefined,
   initializeAppLifecycle: vi.fn(),
   initializeNetworkListener: vi.fn(async () => undefined),
-  preferenceSet: vi.fn(async () => undefined),
+  preferenceSet: vi.fn<
+    (entry: { key: string; value: string }) => Promise<void>
+  >(async () => undefined),
 }));
 
 iosBoot.createRoot.mockReturnValue({ render: iosBoot.render });
@@ -111,6 +120,12 @@ vi.mock("./sw-registration", () => ({
   registerViewServiceWorker: iosBoot.registerServiceWorker,
 }));
 
+function requiredElement<T extends Element>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) throw new Error(`Expected test fixture element: ${selector}`);
+  return element;
+}
+
 beforeEach(() => {
   vi.mocked(Capacitor.getPlatform).mockReturnValue("ios");
   vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
@@ -122,8 +137,108 @@ beforeEach(() => {
     "requestAnimationFrame",
     vi.fn(() => 1),
   );
-  window.localStorage.setItem("eliza:mobile-runtime-mode", "local");
-  document.body.innerHTML = '<div id="root"></div>';
+  window.localStorage.setItem("eliza:mobile-runtime-mode", "cloud");
+  window.localStorage.setItem("eliza:first-run-complete", "1");
+  window.localStorage.setItem(
+    "elizaos:active-server",
+    JSON.stringify({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: SHARED_AGENT_BASE,
+    }),
+  );
+  iosBoot.initializeStorage.mockImplementation(async () => {
+    window.localStorage.setItem("eliza:first-run-complete", "1");
+    window.localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:agent-123",
+        kind: "cloud",
+        label: "Eliza Cloud",
+        apiBase: SHARED_AGENT_BASE,
+      }),
+    );
+  });
+  window.localStorage.setItem(
+    CLOUD_SMOKE_REQUEST_KEY,
+    JSON.stringify({
+      mode: "autologin",
+      runId: CLOUD_SMOKE_RUN_ID,
+      liveness: false,
+      completePermissionPriming: false,
+    }),
+  );
+  Object.assign(globalThis, {
+    __ELIZAOS_UI_APP_STORE__: {
+      value: {
+        agentStatus: { state: "running" },
+        connected: true,
+        firstRunComplete: true,
+        firstRunLoading: false,
+        startupCoordinator: { phase: "ready", target: "cloud-managed" },
+        startupError: null,
+        tab: "chat",
+      },
+    },
+  });
+  document.body.innerHTML = `
+    <div id="root">
+      <div data-testid="home-launcher-surface" data-page="home">
+        <div data-testid="home-launcher-home-page">
+          <div data-testid="home-screen">
+            <div data-testid="home-time-widget"><span>10:20</span></div>
+            <div data-testid="home-weather" data-status="unavailable">Weather unavailable</div>
+            <div data-testid="notifications-empty">No notifications</div>
+          </div>
+        </div>
+      </div>
+      <textarea data-testid="chat-composer-textarea"></textarea>
+      <div data-testid="chat-sheet" data-detent="collapsed" data-maximized="false"></div>
+    </div>`;
+
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 390,
+  });
+  Object.defineProperty(window, "innerHeight", {
+    configurable: true,
+    value: 844,
+  });
+  for (const selector of [
+    '[data-testid="home-launcher-surface"]',
+    '[data-testid="chat-composer-textarea"]',
+  ]) {
+    const element = requiredElement<HTMLElement>(selector);
+    Object.defineProperty(element, "offsetParent", {
+      configurable: true,
+      get: () => document.body,
+    });
+  }
+  vi.spyOn(
+    requiredElement<HTMLElement>('[data-testid="home-launcher-home-page"]'),
+    "getBoundingClientRect",
+  ).mockReturnValue(DOMRect.fromRect({ x: 0, y: 0, width: 390, height: 700 }));
+  vi.spyOn(
+    requiredElement<HTMLElement>('[data-testid="home-time-widget"] span'),
+    "getBoundingClientRect",
+  ).mockReturnValue(DOMRect.fromRect({ x: 20, y: 40, width: 100, height: 24 }));
+  vi.spyOn(
+    requiredElement<HTMLElement>('[data-testid="home-weather"]'),
+    "getBoundingClientRect",
+  ).mockReturnValue(DOMRect.fromRect({ x: 20, y: 80, width: 180, height: 24 }));
+  vi.spyOn(client, "rawRequest").mockResolvedValue(
+    new Response(JSON.stringify({ notifications: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+});
+
+afterEach(() => {
+  Reflect.deleteProperty(globalThis, "__ELIZAOS_UI_APP_STORE__");
+  window.localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe("renderer interactive iOS composition", () => {
@@ -183,6 +298,45 @@ describe("renderer interactive iOS composition", () => {
           value: expect.stringContaining('"phase":"handled"'),
         }),
       ),
+    );
+
+    await vi.waitFor(
+      () => {
+        const completed = iosBoot.preferenceSet.mock.calls
+          .map(([entry]) => entry)
+          .find(
+            (entry) =>
+              entry.key === CLOUD_SMOKE_RESULT_KEY &&
+              typeof entry.value === "string" &&
+              JSON.parse(entry.value).phase === "complete",
+          );
+        expect(completed).toBeTruthy();
+      },
+      { timeout: 15_000 },
+    );
+    const cloudResult = iosBoot.preferenceSet.mock.calls
+      .map(([entry]) => entry)
+      .find(
+        (entry) =>
+          entry.key === CLOUD_SMOKE_RESULT_KEY &&
+          typeof entry.value === "string" &&
+          JSON.parse(entry.value).phase === "complete",
+      );
+    expect(JSON.parse(cloudResult?.value ?? "{}")).toMatchObject({
+      ok: true,
+      phase: "complete",
+      mode: "autologin",
+      runId: CLOUD_SMOKE_RUN_ID,
+      firstRunPostCount: 0,
+      firstRunPostExpectedCount: 0,
+      cloudActiveServer: true,
+      livenessRequested: false,
+      visual: { ready: true },
+    });
+    expect(client.rawRequest).toHaveBeenCalledWith(
+      "/api/notifications?limit=1",
+      { method: "GET" },
+      { allowNonOk: true, timeoutMs: 10_000 },
     );
 
     expect(window.location.hash).toContain("aec-loop");

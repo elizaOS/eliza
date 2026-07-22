@@ -27,12 +27,16 @@ const appState = vi.hoisted(() => ({
 }));
 
 const authStatusMock = vi.hoisted(() => ({
-  phase: "authenticated" as "authenticated" | "unauthenticated",
-  use: vi.fn(),
+  lastOptions: {} as { skip?: boolean },
+  phase: "authenticated" as "authenticated" | "loading" | "unauthenticated",
 }));
 
 const cloudOriginMock = vi.hoisted(() => ({
   agentless: false,
+}));
+
+const platformState = vi.hoisted(() => ({
+  native: false,
 }));
 
 const desktopTabsMock = vi.hoisted(() => ({
@@ -221,7 +225,9 @@ vi.mock("./bridge/electrobun-runtime", () => ({
 vi.mock("./platform/init", () => ({
   isDesktopPlatform: () => false,
   isIOS: false,
-  isNative: false,
+  get isNative() {
+    return platformState.native;
+  },
   isStandalonePwa: () => false,
   isWebPlatform: () => true,
 }));
@@ -245,7 +251,7 @@ vi.mock("./hooks/useAvailableViews", () => ({
 
 vi.mock("./hooks/useAuthStatus", () => ({
   useAuthStatus: (options: { skip?: boolean } = {}) => {
-    authStatusMock.use(options);
+    authStatusMock.lastOptions = options;
     return {
       state: { phase: authStatusMock.phase },
       refetch: vi.fn(),
@@ -297,6 +303,8 @@ vi.mock("./hooks", () => ({
     saveCommandModalOpen: false,
     saveCommandText: "",
   }),
+  useDocumentVisibility: () => true,
+  useIntervalWhenDocumentVisible: () => {},
   useMediaQuery: () => mediaQueryState.matches,
   useRenderGuard: vi.fn(),
 }));
@@ -492,11 +500,12 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "chat";
     authStatusMock.phase = "authenticated";
     cloudOriginMock.agentless = false;
+    platformState.native = false;
     mediaQueryState.matches = false;
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();
-    authStatusMock.use.mockClear();
+    authStatusMock.lastOptions = {};
     desktopTabsMock.openTab.mockClear();
     desktopTabsMock.closeTab.mockClear();
     desktopBridgeMock.invokeDesktopBridgeRequest.mockClear();
@@ -519,9 +528,30 @@ describe("App navigate-view event wiring", () => {
 
     render(<App />);
 
-    expect(authStatusMock.use).toHaveBeenCalledWith(
-      expect.objectContaining({ skip: true }),
+    expect(authStatusMock.lastOptions.skip).toBe(true);
+    expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
+    expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
+  });
+
+  it("defers auth for an unbound native Cloud bundle until onboarding selects an agent", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
     );
+    window.history.replaceState(null, "", "/?shellMode=full");
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    authStatusMock.phase = "loading";
+    cloudOriginMock.agentless = false;
+    platformState.native = true;
+
+    render(<App />);
+
+    expect(authStatusMock.lastOptions.skip).toBe(true);
     expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
   });
