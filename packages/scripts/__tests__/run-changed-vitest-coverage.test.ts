@@ -23,7 +23,10 @@ import {
   groupChangedVitestTests,
   normalizeLcovReport,
 } from "../run-changed-vitest-coverage.mjs";
-import { composeChangedCoverageConfig } from "../vitest.changed-coverage.config";
+import {
+  composeChangedCoverageConfig,
+  loadChangedCoverageConfig,
+} from "../vitest.changed-coverage.config";
 
 const roots: string[] = [];
 const repoRoot = path.resolve(
@@ -223,6 +226,25 @@ describe("changed Vitest coverage grouping", () => {
       replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
     });
     expect(config.resolve?.conditions).toEqual(["browser", "eliza-source"]);
+  });
+
+  test("loads extensionless TypeScript config dependencies through Vite", async () => {
+    // packages/agent imports `packages/test/vitest/default.config` without a
+    // file extension. This is valid in a Vite config graph but fails when the
+    // package config is loaded through native Node ESM.
+    const config = await loadChangedCoverageConfig(
+      { command: "serve", mode: "test" },
+      {
+        ELIZA_CHANGED_VITEST_CONFIG: path.join(
+          repoRoot,
+          "packages/agent/vitest.config.ts",
+        ),
+        ELIZA_CHANGED_VITEST_REPO_ROOT: repoRoot,
+      },
+    );
+
+    expect(config.root).toBe(path.join(repoRoot, "packages/agent"));
+    expect(config.test?.environment).toBe("node");
   });
 
   test("union-merges per-group LCOV reports so any-group coverage counts once per file", () => {

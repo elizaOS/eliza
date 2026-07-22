@@ -6,13 +6,11 @@
  */
 
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import type { Alias } from "vite";
+import { type Alias, loadConfigFromFile } from "vite";
 import {
   type ConfigEnv,
   defineConfig,
   type ViteUserConfig,
-  type ViteUserConfigExport,
 } from "vitest/config";
 import { buildHarnessSourceAliases } from "../test/harness/source-aliases";
 
@@ -29,19 +27,6 @@ function normalizeAliasEntries(alias: unknown): Alias[] {
     }
     return { find, replacement };
   });
-}
-
-async function resolveUserConfig(
-  configExport: ViteUserConfigExport,
-  configEnv: ConfigEnv,
-): Promise<ViteUserConfig> {
-  const awaited = await configExport;
-  const resolved =
-    typeof awaited === "function" ? await awaited(configEnv) : awaited;
-  if (!resolved || typeof resolved !== "object" || Array.isArray(resolved)) {
-    throw new TypeError("Package Vitest config must resolve to an object");
-  }
-  return resolved;
 }
 
 export function composeChangedCoverageConfig(
@@ -87,16 +72,18 @@ export async function loadChangedCoverageConfig(
     );
   }
 
-  const module = (await import(pathToFileURL(absoluteConfig).href)) as {
-    default?: ViteUserConfigExport;
-  };
-  if (module.default === undefined) {
-    throw new Error(
-      `Package Vitest config has no default export: ${configPath}`,
-    );
+  // Package configs commonly compose extensionless TypeScript modules. Vite's
+  // config bundler resolves that graph exactly as a direct `--config` load
+  // would; native dynamic import cannot resolve those specifiers under Node ESM.
+  const loaded = await loadConfigFromFile(
+    configEnv,
+    absoluteConfig,
+    path.dirname(absoluteConfig),
+  );
+  if (!loaded) {
+    throw new Error(`Package Vitest config was not loaded: ${configPath}`);
   }
-  const packageConfig = await resolveUserConfig(module.default, configEnv);
-  return composeChangedCoverageConfig(packageConfig, absoluteRoot);
+  return composeChangedCoverageConfig(loaded.config, absoluteRoot);
 }
 
 export default defineConfig((configEnv) =>
