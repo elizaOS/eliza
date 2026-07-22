@@ -3,6 +3,7 @@ import {
   WalletAgeSummary,
   WalletBehaviorSummary,
   WalletDeFiSummary,
+  WalletProtocolIntelligenceSummary,
   WalletRiskSummary,
   WalletWhaleSummary,
 } from "../types";
@@ -14,6 +15,7 @@ export function analyzeWalletBehavior(
   activity: WalletActivitySummary,
   age: WalletAgeSummary,
   defi: WalletDeFiSummary,
+  protocolIntelligence: WalletProtocolIntelligenceSummary,
   whale: WalletWhaleSummary,
   risk: WalletRiskSummary,
 ): WalletBehaviorSummary {
@@ -35,11 +37,27 @@ export function analyzeWalletBehavior(
     confidence = "high";
     traits.push("Elevated risk indicators detected.");
   } else if (
+    protocolIntelligence.activeProtocols >= 3
+  ) {
+    primaryProfile = "defi_user";
+    confidence = "high";
+    traits.push(
+      "Uses multiple verified blockchain protocols.",
+    );
+  } else if (
+    protocolIntelligence.activeProtocols >= 1
+  ) {
+    primaryProfile = "defi_user";
+    confidence = "medium";
+    traits.push(
+      "Uses recognized blockchain protocols.",
+    );
+  } else if (
     defi.profile === "active_defi_user" ||
     defi.profile === "power_user"
   ) {
     primaryProfile = "defi_user";
-    confidence = "high";
+    confidence = "medium";
     traits.push("Active DeFi protocol usage.");
   } else if (activity.activityLevel === "high") {
     primaryProfile = "active_trader";
@@ -63,6 +81,14 @@ export function analyzeWalletBehavior(
 
   if (risk.level === "low") {
     traits.push("Low current risk.");
+  }
+
+  if (
+    protocolIntelligence.activeProtocols === 0
+  ) {
+    limitations.push(
+      "No recognized protocol activity was identified.",
+    );
   }
 
   if (age.classification === "unknown") {
@@ -107,10 +133,11 @@ export function analyzeWalletBehavior(
         "Wallet age evidence was available.",
     },
     {
-      condition: Boolean(defi.profile),
+      condition:
+        protocolIntelligence.activeProtocols >= 1,
       score: 15,
       reason:
-        "A DeFi usage profile was available.",
+        "Protocol intelligence evidence was available.",
     },
     {
       condition:
@@ -181,7 +208,7 @@ function buildExplanation(
       return "This wallet appears to trade frequently.";
 
     case "defi_user":
-      return "This wallet actively interacts with DeFi protocols.";
+      return "This wallet actively interacts with blockchain protocols and DeFi services.";
 
     case "holder":
       return "This wallet primarily appears to hold digital assets.";
