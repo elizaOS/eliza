@@ -27,6 +27,10 @@ packages/eliza-hub/services/merge-steward/src/cli.js
 # ACP stdio entrypoint is exercised via spawned runtime contract tests; importing it in-process starts the protocol server.
 packages/examples/code/src/acp.ts
 
+# The dev host entrypoint performs real port/process cleanup on import. Its ACP
+# reload guard is exercised through the one-shot real-process diagnostic.
+packages/app-core/scripts/dev-ui.mjs
+
 # The cloud-shared package test wrapper is exercised by a spawned real-process contract suite; importing it starts the test runner.
 packages/cloud/shared/scripts/run-bun-tests.mjs
 
