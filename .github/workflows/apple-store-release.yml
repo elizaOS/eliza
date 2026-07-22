@@ -265,7 +265,7 @@ jobs:
         run: pod install
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@8e41b362d2589a22a44c1cfa214b3c83052c195b
+        uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
