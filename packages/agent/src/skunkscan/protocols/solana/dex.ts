@@ -21,4 +21,24 @@ export const SOLANA_DEX_PROTOCOLS: Readonly<
       "solana",
     ],
   },
+
+  whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc: {
+    programId: "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+    name: "Orca Whirlpool",
+    category: "dex",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://orca.so",
+    notes: "Official Orca concentrated liquidity AMM program.",
+    tags: [
+      "orca",
+      "whirlpool",
+      "amm",
+      "dex",
+      "liquidity",
+      "solana",
+    ],
+  },
 };
