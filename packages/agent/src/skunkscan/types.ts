@@ -1045,6 +1045,47 @@ export type WalletSmartMoneySummary = {
   investorInsights?: InvestorEvidenceCollection;
 };
 
+export type WalletStrategySummary = {
+  primaryStrategy:
+    | "unknown"
+    | "accumulating"
+    | "holding"
+    | "active_trading"
+    | "taking_profits"
+    | "distributing"
+    | "defi_participation"
+    | "yield_farming"
+    | "liquidity_providing"
+    | "whale_positioning"
+    | "dormant";
+
+  strategyScore: number;
+
+  displayScore: string;
+
+  confidence: "low" | "medium" | "high";
+
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  investorHeadline: string;
+
+  investorSummary: string;
+
+  investorTakeaway: string;
+
+  supportingSignals: string[];
+
+  conflictingSignals: string[];
+
+  limitations: string[];
+
+  investorExplanation?: InvestorExplanation;
+
+  investorInsights?: InvestorEvidenceCollection;
+};
+
 export type WalletInvestigationReport = {
   generatedAt: string;
 
@@ -1109,6 +1150,7 @@ export type WalletInvestigationResult = {
   risk?: WalletRiskSummary;
   transactionRisk?: WalletTransactionRiskSummary;
   smartMoney?: WalletSmartMoneySummary;
+  strategy?: WalletStrategySummary;
   investigationReport?: WalletInvestigationReport;
   investigationNarrative?: WalletInvestigationNarrative;
   summary: string;
