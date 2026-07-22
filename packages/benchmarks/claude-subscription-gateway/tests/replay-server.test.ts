@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   type AuditSink,
-  canonicalizeChatCompletion,
-  DurableAuditStore,
   type ClaudeCompletionResult,
   type CompletionRunner,
+  canonicalizeChatCompletion,
+  DurableAuditStore,
   type GatewayAuditRecord,
   LogicalRequestAllocator,
   ReplayJournal,
@@ -40,7 +40,11 @@ describe("gateway replay", () => {
     try {
       const journal = await ReplayJournal.open(journalPath);
       const gateway = await startClaudeSubscriptionGateway({
-        completionRunner: { async complete() { return completionResult(); } },
+        completionRunner: {
+          async complete() {
+            return completionResult();
+          },
+        },
         replayJournal: journal,
         auditSink,
         benchmarkNamespace: "ordering-test",

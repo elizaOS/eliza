@@ -3,12 +3,12 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
-  canonicalizeChatCompletion,
   type ClaudeCompletionResult,
   ClaudeRateLimitError,
   type CompletionContext,
   type CompletionRunner,
   type CredentialLeaseBroker,
+  canonicalizeChatCompletion,
   RotatingCredentialCompletionRunner,
 } from "../src/index.js";
 
@@ -29,10 +29,7 @@ describe("RotatingCredentialCompletionRunner", () => {
         contexts.push(context);
         context.credentialTierValidator?.("Claude Max");
         if (context.credentialOAuthToken === "token-a") {
-          throw new ClaudeRateLimitError(
-            2_000_000_000_000,
-            "seven_day",
-          );
+          throw new ClaudeRateLimitError(2_000_000_000_000, "seven_day");
         }
         return completionResult();
       },
@@ -136,9 +133,7 @@ describe("RotatingCredentialCompletionRunner", () => {
       broker: null,
       hmacKey: HMAC_KEY,
       expectedTierHmacSha256: expectedTier,
-      expectedCapabilityHmacSha256: hmac(
-        "firstParty:oauth:subscription",
-      ),
+      expectedCapabilityHmacSha256: hmac("firstParty:oauth:subscription"),
     });
 
     await expect(runner.complete(completionContext())).rejects.toMatchObject({
