@@ -34,7 +34,7 @@ dependencies = [
     "gymnasium~=1.3.0",
     "requests~=2.34.2",
     "pytz~=2026.2.0",
-    "transformers~=5.13.0",
+    "transformers~=5.14.1",
     "torch~=2.13.0",
     "accelerate",
     "opencv-python~=5.0.0.93",
