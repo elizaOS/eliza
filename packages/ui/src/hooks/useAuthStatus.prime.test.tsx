@@ -14,6 +14,7 @@ import {
   __setAuthStatusForTests,
   isAuthenticatedNow,
   primeAuthStatusProbe,
+  refreshAuthStatus,
   subscribeAuthStatus,
   useAuthStatus,
 } from "./useAuthStatus";
@@ -29,6 +30,16 @@ function jsonResponse(status: number, body: unknown): Response {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
+  } as unknown as Response;
+}
+
+function malformedJsonResponse(): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError("Malformed auth JSON");
+    },
   } as unknown as Response;
 }
 
@@ -169,6 +180,69 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       expect(result.current.state.phase).toBe("authenticated"),
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("translates a malformed successful refresh into the explicit unavailable state", async () => {
+    fetchMock.mockResolvedValue(malformedJsonResponse());
+    const { result } = renderHook(() =>
+      useAuthStatus({ pollIntervalMs: 0, observeOnly: true }),
+    );
+
+    await act(async () => {
+      await refreshAuthStatus();
+    });
+
+    expect(result.current.state.phase).toBe("server_unavailable");
+  });
+
+  it("suppresses a delayed pre-login 401 and coalesces one required post-login probe", async () => {
+    let resolvePreLogin: (response: Response) => void = () => {};
+    fetchMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolvePreLogin = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, AUTH_ME_BODY));
+
+    const seen: string[] = [];
+    const unsubscribe = subscribeAuthStatus((state) => seen.push(state.phase));
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await vi.waitFor(() => expect(fetchMock.mock.calls).toHaveLength(1));
+
+    let firstRefresh!: Promise<void>;
+    let duplicateRefresh!: Promise<void>;
+    act(() => {
+      firstRefresh = refreshAuthStatus();
+      duplicateRefresh = refreshAuthStatus();
+    });
+    expect(duplicateRefresh).toBe(firstRefresh);
+
+    await act(async () => {
+      resolvePreLogin(jsonResponse(401, { reason: "remote_auth_required" }));
+      await firstRefresh;
+    });
+
+    expect(fetchMock.mock.calls).toHaveLength(2);
+    expect(seen).not.toContain("unauthenticated");
+    expect(result.current.state.phase).toBe("authenticated");
+    unsubscribe();
+  });
+
+  it("contains a malformed primed response as an explicit unavailable state", async () => {
+    fetchMock.mockResolvedValue(malformedJsonResponse());
+    const { result } = renderHook(() =>
+      useAuthStatus({ pollIntervalMs: 0, observeOnly: true }),
+    );
+
+    act(() => {
+      primeAuthStatusProbe();
+    });
+
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("server_unavailable"),
+    );
   });
 });
 

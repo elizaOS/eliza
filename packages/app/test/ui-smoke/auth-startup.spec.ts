@@ -72,8 +72,12 @@ test("remote auth requirement renders pairing instead of password sign-in", asyn
   });
   await routeAuthStatus(page, REMOTE_AUTH_REQUIRED_STATUS);
   await page.route("**/api/auth/me", async (route) => {
+    expect(route.request().method()).toBe("GET");
     authMeRequests += 1;
-    await fulfillJson(route, 500, { error: "auth me should not be reached" });
+    await fulfillJson(route, 401, {
+      error: "Unauthorized",
+      reason: "remote_auth_required",
+    });
   });
 
   await openAppPath(page, "/chat");
@@ -84,7 +88,9 @@ test("remote auth requirement renders pairing instead of password sign-in", asyn
     0,
   );
   await expect(page.getByText("Sign in with your password.")).toHaveCount(0);
-  expect(authMeRequests).toBe(0);
+  // Session restoration deliberately primes /api/auth/me in parallel with the
+  // auth/status probe. The early probe must not steal the pairing surface.
+  await expect.poll(() => authMeRequests).toBeGreaterThan(0);
 });
 
 test("unavailable auth probe shows startup failure instead of password sign-in", async ({

@@ -19,10 +19,10 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 // activity/notification signals plus each widget's self-published attention.
 // This spec boots the app to the Views launcher with sparse home widgets
 // enabled, seeds attention-worthy data into the kept widget sources (at-risk
-// goal, imminent calendar event, irregular sleep, urgent notification), and
-// proves the urgent widgets render and rank correctly. Finance, relationships,
-// inbox, workflow, feed, and orchestrator app/activity cards are intentionally
-// absent from the ranked home host.
+// goal, imminent calendar event, urgent notification), and proves the urgent
+// widgets render and rank correctly. Sleep, finance, relationships, inbox,
+// workflow, feed, and orchestrator app/activity cards are intentionally absent
+// from the ranked home host.
 // Desktop + mobile screenshots land under
 // aesthetic-audit-output/home-widget-priority/.
 
@@ -82,7 +82,7 @@ const VIEW_FIXTURES = [
 // Plugin snapshot (GET /api/plugins) — the home widgets resolve only when the
 // matching plugin id is enabled+active in the runtime snapshot (registry.ts
 // `isWidgetEnabled`). The kept sparse-home declarations key off calendar/goals/
-// health/todo. Notifications are pinned outside WidgetHost.
+// todo. Notifications are pinned outside WidgetHost.
 function pluginInfo(id: string, name: string) {
   return {
     id,
@@ -103,7 +103,6 @@ function pluginInfo(id: string, name: string) {
 const PLUGIN_SNAPSHOT = [
   pluginInfo("calendar", "Calendar"),
   pluginInfo("goals", "Goals"),
-  pluginInfo("health", "Health"),
   pluginInfo("todo", "Todos"),
 ];
 
@@ -163,38 +162,6 @@ function calendarFeed() {
         location: "Zoom",
       },
     ],
-  };
-}
-
-// HealthSleepWidget reads /api/lifeops/sleep/{history,regularity}. An
-// "irregular" classification -> off-rhythm -> check-in self-signal (weight 4)
-// and an urgent badge. A latest episode is required for the card to render.
-function sleepHistory() {
-  return {
-    episodes: [
-      {
-        startedAt: "2026-01-01T23:30:00.000Z",
-        endedAt: "2026-01-02T05:15:00.000Z",
-        durationMin: 345,
-      },
-    ],
-    summary: {
-      cycleCount: 6,
-      averageDurationMin: 360,
-      overnightCount: 6,
-      napCount: 0,
-      openCount: 0,
-    },
-    windowDays: 14,
-    includeNaps: true,
-  };
-}
-function sleepRegularity() {
-  return {
-    classification: "irregular",
-    sri: 41.2,
-    sampleSize: 6,
-    windowDays: 14,
   };
 }
 
@@ -427,12 +394,6 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     await fulfillJson(route, calendarFeed());
   });
-  await page.route("**/api/lifeops/sleep/history**", async (route) => {
-    await fulfillJson(route, sleepHistory());
-  });
-  await page.route("**/api/lifeops/sleep/regularity**", async (route) => {
-    await fulfillJson(route, sleepRegularity());
-  });
   // Notification inbox hydrate — the pinned center + the urgent signal.
   await page.route("**/api/notifications**", async (route) => {
     if (route.request().method() !== "GET") {
@@ -592,16 +553,20 @@ async function screenshot(page: Page, name: string): Promise<void> {
 }
 
 // The WidgetSection testIds each widget renders (read from source — not guessed).
-const GOALS_TESTID = "widget-goals-attention";
+// Goal attention is intentionally merged into the Today card so home shows one
+// actionable daily surface instead of two cards for overlapping work.
+const TODAY_TESTID = "chat-widget-todos";
+const GOAL_ROW_TESTID = "todo-goal-attention-row";
 const CALENDAR_TESTID = "chat-widget-calendar-upcoming";
-const HEALTH_TESTID = "widget-health-sleep";
 // The notification inbox renders inline on the home column, outside the ranked
 // WidgetHost (asserted below).
 const NOTIFICATION_CENTER_TESTID = "home-notification-center";
 
-const URGENT_TESTIDS = [GOALS_TESTID];
-const SEEDED_TESTIDS = [GOALS_TESTID, CALENDAR_TESTID, HEALTH_TESTID];
+const URGENT_TESTIDS = [TODAY_TESTID];
+const SEEDED_TESTIDS = [TODAY_TESTID, CALENDAR_TESTID];
 const REMOVED_HOME_TESTIDS = [
+  "widget-goals-attention",
+  "widget-health-sleep",
   "chat-widget-finances-alerts",
   "chat-widget-relationships",
   "chat-widget-inbox-unread",
@@ -671,9 +636,10 @@ test.describe("home widget priority (#9143)", () => {
     }
 
     // Sanity-check the seeded urgent content actually rendered.
-    await expect(host.getByTestId(GOALS_TESTID)).toContainText(
+    await expect(host.getByTestId(TODAY_TESTID)).toContainText(
       "Ship the release",
     );
+    await expect(host.getByTestId(GOAL_ROW_TESTID)).toBeVisible();
     for (const testId of REMOVED_HOME_TESTIDS) {
       await expect(
         host.getByTestId(testId),
@@ -696,8 +662,8 @@ test.describe("home widget priority (#9143)", () => {
 
     // The ranking re-settles once useNow installs the real clock in an effect
     // (it returns 0 on the first render for determinism). Poll for the stable
-    // post-effect order: the urgent goal widget must occupy the top of the host,
-    // ahead of non-urgent calendar/health cards.
+    // post-effect order: the Today card carrying the urgent merged goal signal
+    // must occupy the top of the host, ahead of the calendar card.
     await expect
       .poll(
         async () => {

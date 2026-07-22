@@ -63,3 +63,35 @@ export function authProbeShouldHoldShell(
     !firstRunOwnsLoginSurface(coordinatorPhase, firstRunComplete)
   );
 }
+
+/**
+ * Cloud-provisioned containers with no bootstrap bearer use the full-screen
+ * startup shell's BootstrapStep. `first-run-required` is normally paintable so
+ * in-chat onboarding can run; this narrower state must override that normal
+ * rule or the main shell/top-level LoginView hides the bootstrap token gate.
+ */
+export function bootstrapOwnsStartupSurface(
+  coordinatorPhase: string,
+  firstRunComplete: boolean | null | undefined,
+  firstRunCloudProvisionedContainer: boolean,
+  bootstrapSessionNeeded: boolean,
+): boolean {
+  return (
+    coordinatorPhase === "first-run-required" &&
+    firstRunComplete === false &&
+    firstRunCloudProvisionedContainer &&
+    bootstrapSessionNeeded
+  );
+}
+
+/** Safe browser-storage probe shared by App's paint gate and the controller. */
+export function needsBootstrapSession(): boolean {
+  try {
+    return !sessionStorage.getItem("eliza_session");
+  } catch {
+    // error-policy:J3 storage can be unavailable in privacy mode. Requiring
+    // bootstrap is the fail-closed branch; skipping it could expose a shell
+    // with no bearer.
+    return true;
+  }
+}

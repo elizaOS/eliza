@@ -7,9 +7,40 @@
 import { describe, expect, it } from "vitest";
 import {
   authProbeShouldHoldShell,
+  bootstrapOwnsStartupSurface,
   firstRunOwnsLoginSurface,
   topLevelAuthGateOwnsSurface,
 } from "./top-level-auth-gate";
+
+describe("bootstrapOwnsStartupSurface — cloud container activation", () => {
+  it("keeps a cloud-provisioned incomplete container on StartupScreen", () => {
+    expect(
+      bootstrapOwnsStartupSurface("first-run-required", false, true, true),
+    ).toBe(true);
+  });
+
+  it("does not steal ordinary in-chat first-run, a completed shell, or a restored bootstrap session", () => {
+    expect(
+      bootstrapOwnsStartupSurface("first-run-required", false, false, true),
+    ).toBe(false);
+    expect(bootstrapOwnsStartupSurface("ready", false, true, true)).toBe(false);
+    expect(
+      bootstrapOwnsStartupSurface("first-run-required", true, true, true),
+    ).toBe(false);
+    expect(
+      bootstrapOwnsStartupSurface("first-run-required", false, true, false),
+    ).toBe(false);
+  });
+
+  it("requires an explicit incomplete first-run state", () => {
+    expect(
+      bootstrapOwnsStartupSurface("first-run-required", undefined, true, true),
+    ).toBe(false);
+    expect(
+      bootstrapOwnsStartupSurface("first-run-required", null, true, true),
+    ).toBe(false);
+  });
+});
 
 describe("firstRunOwnsLoginSurface — top-level LoginView vs in-chat onboarding", () => {
   it("yields the login surface while the coordinator is in first-run-required", () => {

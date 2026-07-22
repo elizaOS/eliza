@@ -7,7 +7,11 @@
  * device.
  */
 
-import type { StewardAuthResult, StewardMfaRequiredResult } from "@stwd/sdk";
+import type {
+  StewardAuthResult,
+  StewardMfaRequiredResult,
+  StewardUser,
+} from "@stwd/sdk";
 
 export type StewardEmailLoginStatus =
   | "pending"
@@ -50,6 +54,91 @@ function string(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function stewardUser(value: unknown): StewardUser | null {
+  const data = object(value);
+  if (!data) return null;
+
+  const id = string(data.id);
+  const email = data.email === null ? null : string(data.email);
+  const walletAddress = string(data.walletAddress);
+  const tenantId = string(data.tenantId);
+  const guestExpiresAt =
+    data.guestExpiresAt === null ? null : string(data.guestExpiresAt);
+  const walletChain = data.walletChain;
+  const isGuest = data.isGuest;
+  const alreadyUpgraded = data.alreadyUpgraded;
+
+  if (
+    !id ||
+    email === undefined ||
+    (data.walletAddress !== undefined && walletAddress === undefined) ||
+    (walletChain !== undefined &&
+      walletChain !== "ethereum" &&
+      walletChain !== "solana") ||
+    (data.isGuest !== undefined && typeof isGuest !== "boolean") ||
+    (data.guestExpiresAt !== undefined && guestExpiresAt === undefined) ||
+    (data.tenantId !== undefined && tenantId === undefined) ||
+    (data.alreadyUpgraded !== undefined && typeof alreadyUpgraded !== "boolean")
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    email,
+    ...(walletAddress !== undefined ? { walletAddress } : {}),
+    ...(walletChain !== undefined ? { walletChain } : {}),
+    ...(typeof isGuest === "boolean" ? { isGuest } : {}),
+    ...(guestExpiresAt !== undefined ? { guestExpiresAt } : {}),
+    ...(tenantId !== undefined ? { tenantId } : {}),
+    ...(typeof alreadyUpgraded === "boolean" ? { alreadyUpgraded } : {}),
+  };
+}
+
+function stewardEmailVerifyResult(
+  data: Record<string, unknown>,
+): StewardAuthResult | StewardMfaRequiredResult {
+  const user = stewardUser(data.user);
+  if (data.mfaRequired === true) {
+    const mfa = object(data.mfa);
+    const type = mfa?.type;
+    const challengeId = string(mfa?.challengeId);
+    const expiresAt = string(mfa?.expiresAt);
+    if (
+      data.ok === true &&
+      user &&
+      (type === "totp" || type === "sms" || type === "passkey") &&
+      challengeId &&
+      expiresAt
+    ) {
+      return {
+        ok: true,
+        mfaRequired: true,
+        mfa: { type, challengeId, expiresAt },
+        user,
+      };
+    }
+  } else {
+    const token = string(data.token);
+    const refreshToken = string(data.refreshToken);
+    const expiresIn = data.expiresIn;
+    if (
+      token &&
+      refreshToken &&
+      typeof expiresIn === "number" &&
+      Number.isFinite(expiresIn) &&
+      user
+    ) {
+      return { token, refreshToken, expiresIn, user };
+    }
+  }
+
+  throw new StewardEmailLoginError(
+    "Steward email code verification response was malformed.",
+    502,
+  );
+}
+
 async function request(
   options: StewardEmailLoginOptions,
   path: string,
@@ -68,7 +157,18 @@ async function request(
       signal: options.signal,
     },
   );
-  const payload = object(await response.json().catch(() => null));
+  let payload: Record<string, unknown> | null = null;
+  try {
+    payload = object(await response.json());
+  } catch {
+    // error-policy:J3 The remote body is untrusted input. A malformed body is
+    // an explicit transport failure, never an empty payload that callers could
+    // mistake for a valid response.
+    throw new StewardEmailLoginError(
+      "Steward email sign-in response was malformed.",
+      response.ok ? 502 : response.status,
+    );
+  }
   if (!response.ok) {
     const nested = object(payload?.error);
     throw new StewardEmailLoginError(
@@ -79,7 +179,13 @@ async function request(
       string(nested?.code) ?? string(payload?.code),
     );
   }
-  return object(payload?.data) ?? payload ?? {};
+  if (!payload) {
+    throw new StewardEmailLoginError(
+      "Steward email sign-in response was malformed.",
+      502,
+    );
+  }
+  return object(payload.data) ?? payload;
 }
 
 export async function startStewardEmailLogin(
@@ -108,10 +214,11 @@ export async function verifyStewardEmailSignInCode(
   email: string,
   code: string,
 ): Promise<StewardAuthResult | StewardMfaRequiredResult> {
-  return (await request(options, "/auth/email/code/verify", {
+  const data = await request(options, "/auth/email/code/verify", {
     email,
     code,
-  })) as unknown as StewardAuthResult | StewardMfaRequiredResult;
+  });
+  return stewardEmailVerifyResult(data);
 }
 
 export async function pollStewardEmailSignInStatus(

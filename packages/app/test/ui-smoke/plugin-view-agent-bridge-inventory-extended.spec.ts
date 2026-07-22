@@ -192,14 +192,14 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Hyperliquid",
     path: "/hyperliquid",
     viewId: "hyperliquid",
-    ready: { selector: '[aria-label="Hyperliquid controls"]' },
+    ready: { selector: '[data-agent-id="hyperliquid-refresh"]' },
     requiredIds: ["hyperliquid-refresh", "hyperliquid-home"],
   },
   {
     label: "Polymarket",
     path: "/polymarket",
     viewId: "polymarket",
-    ready: { selector: '[aria-label="Polymarket controls"]' },
+    ready: { selector: '[data-agent-id="polymarket-refresh"]' },
     requiredIds: ["polymarket-refresh"],
   },
   {

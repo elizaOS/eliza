@@ -182,7 +182,10 @@ async function bootLauncher(
 }
 
 const cloudTile = (page: Page) => page.getByTestId("launcher-tile-cloud-apps");
-const chatTile = (page: Page) => page.getByTestId("launcher-tile-chat");
+// Chat is the persistent overlay, not a launcher tile. Settings is a stable
+// local tile that proves the curated launcher finished painting in both cloud
+// states before the cloud-specific assertion runs.
+const baselineTile = (page: Page) => page.getByTestId("launcher-tile-settings");
 
 test.describe("launcher cloud gating (#10725)", () => {
   for (const viewport of VIEWPORTS) {
@@ -192,7 +195,7 @@ test.describe("launcher cloud gating (#10725)", () => {
       await bootLauncher(page, viewport, { connected: false });
       // The catalog HAS the cloud-apps view (injected above); the launcher must
       // still not surface it while cloud is disconnected.
-      await expect(chatTile(page)).toBeVisible();
+      await expect(baselineTile(page)).toBeVisible();
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(
         page,
@@ -205,7 +208,7 @@ test.describe("launcher cloud gating (#10725)", () => {
       page,
     }, testInfo) => {
       await bootLauncher(page, viewport, { connected: true });
-      await expect(chatTile(page)).toBeVisible();
+      await expect(baselineTile(page)).toBeVisible();
       await expect(cloudTile(page)).toBeVisible({ timeout: 30_000 });
       await screenshot(
         page,

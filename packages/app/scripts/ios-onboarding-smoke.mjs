@@ -1,15 +1,11 @@
 #!/usr/bin/env node
-// iOS Simulator first-run REMOTE-CONNECT smoke. WKWebView is not CDP-drivable
-// like Android, so the harness writes a Capacitor Preferences request, launches
-// the installed app, and lets the in-app verifier drive the same hardened
-// first-run remote-connect handler used by the OS deep-link path. The verifier
-// proves the app landed on home and reports back via Preferences. No onboarding
-// DOM is driven, so the lane survives the in-chat redesign.
-//
-// Liveness contract (#14359): STUB-BACKED by default. Point the host at a
-// live-provider backend and set `ELIZA_ONBOARDING_LIVENESS=1` to have the
-// verifier drive one real post-onboarding chat turn; the harness then enforces
-// the shared non-stub assertion (`assertLiveReply`) on the reported reply.
+/**
+ * Drives the iOS Simulator first-run remote-connect path through Capacitor
+ * Preferences because WKWebView has no Chrome DevTools Protocol. The in-app
+ * verifier exercises the production deep-link handler, proves the home state,
+ * and reports transport evidence back to this harness. Live-provider liveness
+ * is opt-in through `ELIZA_ONBOARDING_LIVENESS=1` (#14359).
+ */
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -451,7 +447,12 @@ async function pollMixedContentResult(udid, appId) {
       try {
         parsed = JSON.parse(lastRaw);
       } catch {
+        // error-policy:J3 malformed simulator preference is not a completed result
         parsed = null;
+      }
+      if (parsed?.phase === "complete") {
+        assertIosMixedContentSmokeResult(parsed);
+        return parsed;
       }
       if (parsed?.ok === true) return parsed;
       if (parsed?.phase === "failed" || parsed?.error) {

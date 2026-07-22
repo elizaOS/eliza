@@ -12,10 +12,9 @@
  *      compat click after a long press passed the `!editing` guard and
  *      ghost-launched the tile).
  *   2. Inline notification inbox (`home-notification-center`, rendered directly
- *      on the home column) — a seeded inbox renders its rows; a row tap marks it
- *      read IN PLACE (order ignores read state, so the row never moves under the
- *      pointer); the per-row hover-X and the right-click menu each dismiss; there
- *      is no bulk clear-all.
+ *      on the home column) — rested triage shows interrupt-tier rows, the count
+ *      expands the full shade, a row tap acknowledges/removes it, a horizontal
+ *      throw dismisses it, and clear-all requires explicit confirmation.
  *   3. Chat sheet flick/drag detents — a fast upward flick on the grabber
  *      snaps the sheet open; a slow sub-threshold drag leaves it closed.
  *   4. Drag-through prevention — dragging the sheet grabber must not deliver
@@ -333,11 +332,9 @@ async function rowTitleOrder(center: Locator): Promise<string[]> {
 }
 
 /**
- * Fan the rested shade open so every seeded row renders flat. The inbox is
- * priority-triaged: at rest only interrupt-tier rows (high/urgent) show,
- * Z-stacked by view group, so a mixed-priority seed collapses to a single
- * visible row. The notification-count button is the keyboard-accessible form
- * of the same pull-to-expand transition, fanning all rows out.
+ * Fan the rested shade open so every seeded producer renders. At rest the inbox
+ * shows one top card per interrupt-tier producer group; the count button is the
+ * keyboard-accessible form of the pull-to-expand transition.
  */
 async function expandNotificationShade(page: Page): Promise<void> {
   await page.getByTestId("notifications-count-button").click();
@@ -347,97 +344,92 @@ async function expandNotificationShade(page: Page): Promise<void> {
   );
 }
 
-test("dashboard notification center: row tap marks read in place, hover-X dismiss removes, context menu dismisses, no clear-all", async ({
+test("dashboard notification center: triage expands, tap/swipe remove, and clear-all confirms", async ({
   page,
 }, testInfo) => {
-  // The hover-X and right-click paths are MOUSE affordances (the X is
-  // `pointer-coarse:hidden`; touch has no right-click). The touch equivalents —
-  // sideways swipe + long-press menu — are covered by the real-touch describe
-  // below, so this pointer test only runs on the non-touch projects.
   test.skip(
     Boolean(testInfo.project.use?.hasTouch),
-    "mouse-pointer paths (hover-X, right-click); touch paths live in the real-touch describe",
+    "mouse-pointer throw path; touch throw lives in the real-touch describe",
   );
   await installSeededInboxRoutes(page, seedInboxNotifications());
   await openHome(page);
 
-  // (a) The inbox renders INLINE on the home column (no shade, no hint pill):
-  // it carries every seeded row in priority-bucket-then-recency order, and the
-  // unread badge counts the six unread rows.
+  // Rested mode is intentionally sparse: only the urgent and high-priority
+  // producers render, while the total count advertises the complete inbox.
   const center = page.getByTestId("home-notification-center");
   await expect(center).toBeVisible({ timeout: 15_000 });
-  // Inline on the same layer — inside the home scroller, not a portal shade.
   await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
   await expect(
     page.getByTestId("home-screen").getByTestId("home-notification-center"),
   ).toBeVisible();
+  await expect(center.getByTestId("notification-row")).toHaveCount(2, {
+    timeout: 15_000,
+  });
+  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER.slice(0, 2));
+  await expect(center.getByTestId("notifications-count-button")).toContainText(
+    "8 Notifications",
+  );
+  await evidenceShot(page, "notification-center-rested-triage");
+
+  // Expanding through the count control reveals every distinct producer in
+  // priority/recency order.
+  await expandNotificationShade(page);
   await expect(center.getByTestId("notification-row")).toHaveCount(8, {
     timeout: 15_000,
   });
-  await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
-    "6",
-  );
   expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
-  await evidenceShot(page, "notification-center-seeded");
+  await evidenceShot(page, "notification-center-expanded");
 
-  // (b) Tapping a row marks it read WITHOUT moving it. The tapped row is the
-  // top (urgent, unread) one — under an unread-first inbox sort it would sink
-  // below the six remaining unread rows, so an identical order is a real
-  // no-reshuffle proof, not a tautology.
-  const urgentRow = center
-    .getByTestId("notification-row")
-    .filter({ hasText: "Payment failed" });
-  await expect(urgentRow).toHaveAttribute("data-unread", "true");
-  await urgentRow.click();
-  await expect(urgentRow).not.toHaveAttribute("data-unread", "true", {
-    timeout: 10_000,
-  });
-  await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
-    "5",
-  );
-  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
-  // The tap had no deepLink: the home surface must not have navigated.
-  await expect(page.getByTestId("home-screen")).toBeVisible();
-  await expect(page.getByTestId("continuous-chat-overlay")).not.toHaveAttribute(
-    "data-open",
-    "true",
-  );
-  await evidenceShot(page, "notification-center-row-read-in-place");
-
-  // (c) The per-row X removes exactly that row.
+  // Platform-shade semantics acknowledge and remove on tap. This fixture has
+  // no deepLink, so the home surface must remain in place.
   await center
-    .locator("li[data-notif-row]")
-    .filter({ hasText: "Approval needed" })
-    .getByTestId("notification-row-dismiss")
-    .click();
-  await expect(
-    center
-      .getByTestId("notification-row")
-      .filter({ hasText: "Approval needed" }),
-  ).toHaveCount(0, { timeout: 10_000 });
-  await expect(center.getByTestId("notification-row")).toHaveCount(7);
-
-  // (d) There is no bulk clear-all trash button any more — rows are dismissed
-  // one at a time. The right-click contextual menu is a second per-row path:
-  // open it on a remaining row and dismiss from it.
-  await expect(center.getByTestId("notifications-clear-all")).toHaveCount(0);
-  // Right-click the row button; the contextmenu bubbles to the row li, which
-  // opens the menu.
-  const menuTarget = center
     .getByTestId("notification-row")
-    .filter({ hasText: "Payment failed" });
-  await menuTarget.click({ button: "right" });
-  await expect(page.getByTestId("notification-row-menu")).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.getByTestId("notification-menu-dismiss").click();
+    .filter({ hasText: "Payment failed" })
+    .click();
   await expect(
     center
       .getByTestId("notification-row")
       .filter({ hasText: "Payment failed" }),
   ).toHaveCount(0, { timeout: 10_000 });
+  await expect(center.getByTestId("notification-row")).toHaveCount(7);
+  await expect(page.getByTestId("home-screen")).toBeVisible();
+  await expect(page.getByTestId("continuous-chat-overlay")).not.toHaveAttribute(
+    "data-open",
+    "true",
+  );
+  await evidenceShot(page, "notification-center-row-acknowledged");
+
+  // A real horizontal pointer throw uses the same swipe surface as touch and
+  // removes exactly the targeted row.
+  const swipeTarget = center
+    .locator("li[data-notif-row]")
+    .filter({ hasText: "Approval needed" })
+    .first()
+    .getByTestId("notification-row-swipe");
+  await mousePointerDrag(page, swipeTarget, -160, 0, { steps: 12 });
+  await expect(
+    center
+      .getByTestId("notification-row")
+      .filter({ hasText: "Approval needed" }),
+  ).toHaveCount(0, { timeout: 10_000 });
   await expect(center.getByTestId("notification-row")).toHaveCount(6);
-  await evidenceShot(page, "notification-center-row-menu-dismiss");
+
+  // Destructive bulk clearing is available only in the expanded shade and is
+  // deliberately two-step: first arm confirmation, then execute it.
+  const clearAll = center.getByTestId("notifications-clear-all");
+  await expect(clearAll).toBeVisible();
+  await clearAll.click();
+  await expect(clearAll).toHaveAttribute("data-confirming", "true");
+  await expect(clearAll).toHaveAttribute(
+    "aria-label",
+    "Confirm clear all notifications",
+  );
+  await clearAll.click();
+  await expect(center.getByTestId("notification-row")).toHaveCount(0, {
+    timeout: 10_000,
+  });
+  await expect(center.getByTestId("notifications-count-button")).toHaveCount(0);
+  await evidenceShot(page, "notification-center-cleared");
 });
 
 test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, and the drag never leaks under the sheet", async ({

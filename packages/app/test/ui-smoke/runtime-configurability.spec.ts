@@ -59,6 +59,9 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
 // the shape every desktop / device shell presents to the renderer.
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    // The production onboarding defaults to the managed cloud path. This spec
+    // deliberately exercises every developer-selectable runtime.
+    window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
       window.location.origin;
     (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =

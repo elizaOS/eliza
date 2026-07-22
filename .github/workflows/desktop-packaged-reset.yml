@@ -1,0 +1,85 @@
+name: Desktop Packaged Reset
+
+# The reset command is intentionally a native application-menu action and is
+# implemented only by the macOS and Windows launchers. Linux packaged coverage
+# therefore cannot prove it. This focused macOS lane drives the real packaged
+# launcher on relevant PRs and develop pushes so release-only coverage cannot
+# hide a broken reset-to-onboarding path.
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - ".github/workflows/desktop-packaged-reset.yml"
+      - "packages/app/**"
+      - "packages/agent/src/api/**"
+      - "packages/app-core/**"
+      - "packages/ui/src/bridge/**"
+      - "packages/ui/src/state/**"
+  push:
+    branches: [develop]
+    paths:
+      - ".github/workflows/desktop-packaged-reset.yml"
+      - "packages/app/**"
+      - "packages/agent/src/api/**"
+      - "packages/app-core/**"
+      - "packages/ui/src/bridge/**"
+      - "packages/ui/src/state/**"
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-packaged-reset-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  NODE_VERSION: "24.15.0"
+  BUN_VERSION: "1.3.14"
+  PGLITE_WASM_MODE: node
+
+jobs:
+  reset-macos:
+    name: packaged application-menu reset (macOS)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Drive reset through the real packaged application menu
+        env:
+          ELECTROBUN_SKIP_CODESIGN: "1"
+          ELIZA_TEST_PACKAGED_AUTO_BUILD: "1"
+        run: >-
+          bun run --cwd packages/app test:desktop:packaged --grep
+          "packaged desktop reset from the application menu"
+
+      - name: Upload packaged reset evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: desktop-packaged-reset-macos
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: error
+          retention-days: 7

@@ -258,9 +258,28 @@ jobs:
           retention-days: 3
 
   app-browser-all-pages:
-    name: Zero-Key app browser all-pages
+    name: Zero-Key app browser all-pages (${{ matrix.lane }})
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: desktop-routes
+            specs: test/ui-smoke/all-pages-clicksafe.spec.ts
+            grep: "route renders without console failures: desktop|visible safe app tiles|shared ViewHeader"
+          - lane: mobile-routes
+            specs: test/ui-smoke/all-pages-clicksafe.spec.ts
+            grep: "route renders without console failures: mobile"
+          - lane: builtin-desktop
+            specs: test/ui-smoke/builtin-views-visual.spec.ts
+            grep: "builtin views visual coverage.* desktop$"
+          - lane: builtin-mobile
+            specs: test/ui-smoke/builtin-views-visual.spec.ts
+            grep: "builtin views visual coverage.* mobile$"
+          - lane: documents
+            specs: test/ui-smoke/documents-view.spec.ts
+            grep: .
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
@@ -289,13 +308,13 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Actual app all-pages render + click-safety browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts test/ui-smoke/builtin-views-visual.spec.ts test/ui-smoke/documents-view.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e ${{ matrix.specs }} --project=chromium --grep "${{ matrix.grep }}"
 
       - name: Upload app browser all-pages artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: scenario-pr-app-browser-all-pages
+          name: scenario-pr-app-browser-all-pages-${{ matrix.lane }}
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
@@ -424,7 +443,7 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Actual app ratcheted keyless browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-interaction-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/backups-no-destructive-reset.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-interaction-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
 
       - name: Upload app browser ratcheted artifacts
         if: always()
@@ -446,9 +465,21 @@ jobs:
   # packages/app/scripts/ui-smoke-pr-specs.mjs and the wiring is enforced by
   # packages/app/test/ui-smoke-coverage.test.ts.
   app-browser-auto-discovered:
-    name: Zero-Key app browser auto-discovered specs
+    name: Zero-Key app browser auto-discovered specs (${{ matrix.shard.id }})
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - id: 1-of-4
+            value: 1/4
+          - id: 2-of-4
+            value: 2/4
+          - id: 3-of-4
+            value: 3/4
+          - id: 4-of-4
+            value: 4/4
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
@@ -479,19 +510,19 @@ jobs:
       - name: Actual app auto-discovered ui-smoke browser coverage
         run: |
           set -euo pipefail
-          specs="$(node packages/app/scripts/ui-smoke-pr-specs.mjs --list-auto)"
-          if [ -z "$specs" ]; then
+          read -r -a specs <<< "$(node packages/app/scripts/ui-smoke-pr-specs.mjs --list-auto)"
+          if (( ${#specs[@]} == 0 )); then
             echo "No auto-discovered ui-smoke specs to run (all covered by named slices or denied)."
             exit 0
           fi
-          echo "Auto-discovered ui-smoke specs: $specs"
-          bun run --cwd packages/app test:e2e $specs --project=chromium
+          echo "Auto-discovered ui-smoke specs: ${specs[*]}"
+          bun run --cwd packages/app test:e2e "${specs[@]}" --project=chromium --fully-parallel --shard="${{ matrix.shard.value }}"
 
       - name: Upload app browser auto-discovered artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: scenario-pr-app-browser-auto-discovered
+          name: scenario-pr-app-browser-auto-discovered-${{ matrix.shard.id }}
           path: |
             packages/app/playwright-report/
             packages/app/test-results/

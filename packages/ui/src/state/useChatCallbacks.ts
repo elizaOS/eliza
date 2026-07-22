@@ -807,6 +807,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     chatReplyTargetRef,
     conversationsRef,
     conversationMessagesRef,
+    conversationHydrationEpochRef,
     chatAbortRef,
     chatSendBusyRef,
     chatSendNonceRef,

@@ -19,6 +19,7 @@ vi.mock("@elizaos/ui/bridge", () => ({
 
 import {
   installPackagedShellStorageTestBridge,
+  seedResettableStateForPackagedTests,
   seedReturningInstallStateForPackagedTests,
 } from "./packaged-shell-storage-test-bridge";
 
@@ -38,14 +39,14 @@ describe("packaged shell storage test bridge", () => {
     expect(window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__).toBeUndefined();
   });
 
-  it("exposes only the returning-install seed helper when the marker is present", () => {
+  it("exposes only the privileged packaged-storage seed helpers when the marker is present", () => {
     window.__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__ = true;
 
     expect(installPackagedShellStorageTestBridge()).toBe(true);
 
     expect(
       Object.keys(window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__ ?? {}),
-    ).toEqual(["seedReturningInstallState"]);
+    ).toEqual(["seedReturningInstallState", "seedResettableState"]);
   });
 
   it("seeds returning-install state through shellLocalStorage", () => {
@@ -79,6 +80,32 @@ describe("packaged shell storage test bridge", () => {
       kind: "remote",
       label: "127.0.0.1:31337",
       apiBase: "http://127.0.0.1:31337",
+    });
+  });
+
+  it("seeds reset preconditions through shellLocalStorage", () => {
+    const result = seedResettableStateForPackagedTests();
+
+    expect(storageBridge.setItem).toHaveBeenCalledWith(
+      "eliza:first-run-complete",
+      "1",
+    );
+    expect(storageBridge.setItem).toHaveBeenCalledWith(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "local:embedded",
+        kind: "local",
+        label: "This device",
+      }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      firstRunComplete: "1",
+      activeServer: JSON.stringify({
+        id: "local:embedded",
+        kind: "local",
+        label: "This device",
+      }),
     });
   });
 });

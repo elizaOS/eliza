@@ -376,6 +376,9 @@ async function installMutableFirstRun(page: Page): Promise<FirstRunControl> {
 
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    // Production onboarding is cloud-only by default. The walkthrough's
+    // runtime-choice steps intentionally cover the retained developer chooser.
+    window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
       window.location.origin;
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;
@@ -536,8 +539,41 @@ export async function installJourneyRoutes(
   lane: Lane,
 ): Promise<JourneyRoutes> {
   await injectFullCapabilityHost(page);
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    // The walkthrough covers the app journey, not the independent native
+    // permissions primer that otherwise overlays later captured steps.
+    "eliza:permissions-primed": "1",
+  });
   await installDefaultAppRoutes(page);
+  // Settings opens these inventories during the journey. The zero-key stack
+  // intentionally omits them, so serve their canonical empty-state contracts.
+  await page.route("**/api/models?catalogOnly=1", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      providers: {},
+      catalog: { providers: {} },
+    });
+  });
+  await page.route("**/api/models/config", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      targets: { small: {}, large: {}, coding: {} },
+    });
+  });
+  await page.route("**/api/accounts", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, { providers: [] });
+  });
   // The agent's TTS playback (e.g. the tutorial tour narrating) posts far-end
   // reference frames to this OPTIONAL echo-cancellation route. The keyless stub
   // 501s it; the route is explicitly fire-and-forget ("a missing backend must

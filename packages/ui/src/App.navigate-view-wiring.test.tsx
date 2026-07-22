@@ -28,6 +28,8 @@ const appState = vi.hoisted(() => ({
 
 const authStatusMock = vi.hoisted(() => ({
   phase: "authenticated" as "authenticated" | "unauthenticated",
+  refetch: vi.fn(),
+  refresh: vi.fn(async () => undefined),
   use: vi.fn(),
 }));
 
@@ -244,11 +246,12 @@ vi.mock("./hooks/useAvailableViews", () => ({
 }));
 
 vi.mock("./hooks/useAuthStatus", () => ({
+  refreshAuthStatus: authStatusMock.refresh,
   useAuthStatus: (options: { skip?: boolean } = {}) => {
     authStatusMock.use(options);
     return {
       state: { phase: authStatusMock.phase },
-      refetch: vi.fn(),
+      refetch: authStatusMock.refetch,
     };
   },
   // Home widgets gate their loaders on this (#11084); the mounted App renders
@@ -336,6 +339,7 @@ vi.mock("./state", async () => {
     setUiTheme: vi.fn(),
     setUiThemeMode: vi.fn(),
     startupCoordinator: {
+      dispatch: vi.fn(),
       phase: appState.startupPhase,
       retry: vi.fn(),
     },
@@ -390,6 +394,14 @@ vi.mock("./components/views/DynamicViewLoader", () => ({
 
 vi.mock("./components/shell/BugReportModal", () => ({
   BugReportModal: () => null,
+}));
+
+vi.mock("./components/auth/LoginView", () => ({
+  LoginView: ({ onLoginSuccess }: { onLoginSuccess: () => void }) => (
+    <button type="button" onClick={onLoginSuccess}>
+      Complete owner login
+    </button>
+  ),
 }));
 
 vi.mock("./components/shell/ChatSurface", () => ({
@@ -493,6 +505,8 @@ describe("App navigate-view event wiring", () => {
     resetMockAvailableViews();
     appState.setTab.mockClear();
     authStatusMock.use.mockClear();
+    authStatusMock.refetch.mockClear();
+    authStatusMock.refresh.mockClear();
     desktopTabsMock.openTab.mockClear();
     desktopTabsMock.closeTab.mockClear();
     desktopBridgeMock.invokeDesktopBridgeRequest.mockClear();
@@ -520,6 +534,21 @@ describe("App navigate-view event wiring", () => {
     );
     expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
+  });
+
+  it("forces a new auth generation after a successful owner-password login", () => {
+    window.history.replaceState(null, "", "/?shellMode=full");
+    authStatusMock.phase = "unauthenticated";
+
+    render(<App />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Complete owner login" }),
+    );
+
+    expect({
+      refreshes: authStatusMock.refresh.mock.calls.length,
+      ordinaryRefetches: authStatusMock.refetch.mock.calls.length,
+    }).toEqual({ refreshes: 1, ordinaryRefetches: 0 });
   });
 
   it("routes view-manager events through the mounted App listener", async () => {

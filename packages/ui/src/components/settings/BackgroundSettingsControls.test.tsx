@@ -109,7 +109,7 @@ describe("BackgroundSettingsControls undo/redo", () => {
 describe("BackgroundSettingsControls wallpaper gallery", () => {
   it("renders the gallery with live wallpaper tiles", () => {
     seed();
-    render(<BackgroundSettingsControls />);
+    const { container } = render(<BackgroundSettingsControls />);
 
     const gallery = screen.getByTestId("background-catalog-gallery");
     expect(gallery).toBeTruthy();
@@ -123,6 +123,18 @@ describe("BackgroundSettingsControls wallpaper gallery", () => {
       screen.queryByLabelText("Pick a custom background color"),
     ).toBeNull();
     expect(screen.queryByLabelText("Generate a background image")).toBeNull();
+    // The file input is implementation machinery behind the addressable Upload
+    // button, not a second user-facing setting for the agent inventory.
+    const fileInput = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement | null;
+    expect(fileInput?.hidden).toBe(true);
+    expect(fileInput?.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: "Upload a background image" })
+        .getAttribute("data-agent-id"),
+    ).toBe("background-upload");
   });
 
   it("renders curated photo wallpaper tiles from their actual served image", () => {

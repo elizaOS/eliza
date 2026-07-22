@@ -125,7 +125,9 @@ function makeDeps(
     activeConversationId?: string | null;
     conversations?: Conversation[];
   } = {},
-): UseChatSendDeps {
+): UseChatSendDeps & {
+  conversationHydrationEpochRef: MutableRefObject<number>;
+} {
   const conversationsRef = {
     current: overrides.conversations ?? [],
   } as MutableRefObject<Conversation[]>;
@@ -178,6 +180,7 @@ function makeDeps(
     chatReplyTargetRef: { current: null },
     conversationsRef,
     conversationMessagesRef,
+    conversationHydrationEpochRef: { current: 0 },
     chatAbortRef: {
       current: null,
     } as MutableRefObject<AbortController | null>,
@@ -321,6 +324,44 @@ describe("useChatSend stop handling", () => {
       });
       await sendPromise;
     });
+  });
+
+  it("claims conversation selection before a cold create can race boot hydration", async () => {
+    const creation = deferred<{ conversation: Conversation }>();
+    mocks.client.createConversation.mockReturnValue(creation.promise);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Hi there",
+      completed: true,
+    });
+    const deps = makeDeps();
+    const hydrationEpochRef = deps.conversationHydrationEpochRef;
+    hydrationEpochRef.current = 7;
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hello during hydration");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The create request is still unresolved. An in-flight hydration holding
+    // epoch 7 already sees its ownership revoked and cannot restore another
+    // conversation over the one this send is about to create.
+    expect(hydrationEpochRef.current).toBe(8);
+    expect(deps.setActiveConversationId).not.toHaveBeenCalled();
+
+    await act(async () => {
+      creation.resolve({
+        conversation: conversation("conv-new", "room-new"),
+      });
+      await sendPromise;
+    });
+
+    expect(deps.activeConversationIdRef.current).toBe("conv-new");
+    const streamCall = mocks.client.sendConversationMessageStream.mock.calls[0];
+    expect(streamCall?.[0]).toBe("conv-new");
+    expect(streamCall?.[1]).toBe("hello during hydration");
   });
 
   it("does NOT surface an error notice when the send is aborted by the user", async () => {

@@ -337,7 +337,8 @@ export function BackgroundSettingsControls({
         type="file"
         accept="image/*"
         onChange={onFileChange}
-        className="sr-only border-0 bg-transparent p-0"
+        hidden
+        aria-hidden="true"
         aria-label="Background image file"
         tabIndex={-1}
       />

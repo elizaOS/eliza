@@ -122,25 +122,19 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   // Hyperliquid/Polymarket wallet sub-views consolidated onto single adaptive
-  // spatial views — the rich-DOM app shells that carried
-  // `data-testid="<id>-shell"` and literal title text were deleted
-  // (PolymarketAppView). The one element each view wrapper still renders
-  // unconditionally on mount is its agent toolbar
-  // (`aria-label="<Name> controls"`), so that is the readiness anchor proving
-  // the real view bundle mounted (and not the Launcher fallback).
+  // spatial views. Anchor readiness to controls their current wrappers render
+  // unconditionally, proving the real bundle mounted rather than relying on
+  // the deleted toolbar aria-labels.
   {
     name: "hyperliquid",
     path: "/hyperliquid",
-    readyChecks: [
-      { selector: '[aria-label="Hyperliquid controls"]' },
-      { text: "Hyperliquid" },
-    ],
+    readyChecks: [{ selector: '[data-agent-id="hyperliquid-refresh"]' }],
     timeoutMs: 90_000,
   },
   {
     name: "polymarket",
     path: "/polymarket",
-    readyChecks: [{ selector: '[aria-label="Polymarket controls"]' }],
+    readyChecks: [{ selector: '[data-agent-id="polymarket-refresh"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -174,9 +168,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "phone companion app shell page",
-    path: "/phone-companion",
-    readyChecks: [{ text: "Eliza" }, { text: "Pair" }],
+    name: "phone companion special-window shell",
+    // The companion is a dedicated window shell selected by `mode=companion`,
+    // not a normal dashboard tab. Without the mode the main shell correctly
+    // falls back to the Views manager instead of mounting native companion UI.
+    path: "/phone-companion?mode=companion",
+    readyChecks: [{ text: "Companion" }, { text: "Pair" }],
     timeoutMs: 90_000,
   },
   {
@@ -255,7 +252,7 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  * without turning all-pages click safety into a long game/app bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
-  { viewId: "fine-tuning", path: "/apps/fine-tuning" },
+  { viewId: "calendar", path: "/calendar" },
 ].map(({ viewId, path }) => ({
   viewId,
   testId: launcherTileTestId(viewId),

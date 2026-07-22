@@ -14,11 +14,6 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 import { VIEW_CASES } from "./plugin-view-cases";
 
 const KNOWN_BROKEN = new Set<string>([]);
-const MIN_VISIBLE_TEXT_LENGTH_BY_VIEW_ID = new Map<string, number>([
-  ["feed", 4],
-  ["focus", 4],
-]);
-const DEFAULT_MIN_VISIBLE_TEXT_LENGTH = 21;
 
 // Interaction coverage ratchet signals: rendered text, controls, screenshots.
 type ViewAudit = {
@@ -93,9 +88,6 @@ test.describe("registered plugin views visual coverage", () => {
         `${view.id} ${view.viewType} initial load`,
       );
 
-      const minVisibleTextLength =
-        MIN_VISIBLE_TEXT_LENGTH_BY_VIEW_ID.get(view.id) ??
-        DEFAULT_MIN_VISIBLE_TEXT_LENGTH;
       const viewRoot = page.locator("main").first();
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
       await expect
@@ -105,7 +97,7 @@ test.describe("registered plugin views visual coverage", () => {
               (root.textContent ?? "").trim().replace(/\s+/g, " "),
             );
             return (
-              text.length >= minVisibleTextLength &&
+              text.length >= view.minVisibleTextLength &&
               !/^Loading view\b/.test(text)
             );
           },

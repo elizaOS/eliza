@@ -1387,11 +1387,10 @@ export class ElizaClient {
 
     if (!host) return;
 
-    // WKWebView and browsers on an HTTPS origin block insecure `ws://` as mixed
-    // content before the backend can answer. REST/SSE remains usable in that
-    // remote-host simulator lane, so degrade to connected-over-REST instead of
-    // burning the reconnect budget and surfacing the fatal lost-connection
-    // overlay against a healthy agent.
+    // HTTPS browser origins block `ws://` as mixed content before the backend
+    // can answer. Capacitor's custom scheme does not: ordinary HTTP/LAN agents
+    // still need their `/ws` channel for realtime events. Known REST-only bases
+    // are handled by shouldTreatAsConnectedWithoutWebSocket above.
     if (isMixedContentWebSocketBlocked(wsProtocol)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;

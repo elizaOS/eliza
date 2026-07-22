@@ -6,6 +6,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 /**
  * UI-smoke spec-coverage ratchet gate (vitest, boot-free).
@@ -55,6 +56,45 @@ interface DenyEntry {
   spec: string;
   category: DenyCategory;
   reason: string;
+}
+
+interface WorkflowStep {
+  name?: string;
+  run?: string;
+  with?: Record<string, string>;
+}
+
+interface WorkflowJob {
+  strategy?: {
+    "fail-fast"?: boolean;
+    matrix?: {
+      include?: Array<{ lane: string; specs: string; grep: string }>;
+      shard?: Array<{ id: string; value: string }>;
+    };
+  };
+  steps?: WorkflowStep[];
+}
+
+function workflowJobs(): Record<string, WorkflowJob> {
+  const parsed = parse(readFileSync(KEYLESS_WORKFLOW, "utf8")) as {
+    jobs?: Record<string, WorkflowJob>;
+  };
+  if (!parsed.jobs) {
+    throw new Error("scenario-pr.yml must define jobs");
+  }
+  return parsed.jobs;
+}
+
+function workflowStep(job: WorkflowJob, name: string): WorkflowStep {
+  const step = job.steps?.find((candidate) => candidate.name === name);
+  if (!step) {
+    throw new Error(`scenario-pr.yml job is missing step: ${name}`);
+  }
+  return step;
+}
+
+function githubExpression(expression: string): string {
+  return ["$", `{{ ${expression} }}`].join("");
 }
 
 /**
@@ -190,6 +230,85 @@ describe("ui-smoke spec coverage gate", () => {
       "The app-browser-auto-discovered job must exist and be gated by the " +
         "deterministic-scenario aggregate.",
     ).toBe(true);
+  });
+
+  it("splits the all-pages lane without dropping any owned browser suite", () => {
+    const job = workflowJobs()["app-browser-all-pages"];
+    expect(job).toBeDefined();
+    expect(job?.strategy?.["fail-fast"]).toBe(false);
+    expect(job?.strategy?.matrix?.include).toEqual([
+      {
+        lane: "desktop-routes",
+        specs: "test/ui-smoke/all-pages-clicksafe.spec.ts",
+        grep: "route renders without console failures: desktop|visible safe app tiles|shared ViewHeader",
+      },
+      {
+        lane: "mobile-routes",
+        specs: "test/ui-smoke/all-pages-clicksafe.spec.ts",
+        grep: "route renders without console failures: mobile",
+      },
+      {
+        lane: "builtin-desktop",
+        specs: "test/ui-smoke/builtin-views-visual.spec.ts",
+        grep: "builtin views visual coverage.* desktop$",
+      },
+      {
+        lane: "builtin-mobile",
+        specs: "test/ui-smoke/builtin-views-visual.spec.ts",
+        grep: "builtin views visual coverage.* mobile$",
+      },
+      {
+        lane: "documents",
+        specs: "test/ui-smoke/documents-view.spec.ts",
+        grep: ".",
+      },
+    ]);
+
+    const runStep = workflowStep(
+      job ?? {},
+      "Actual app all-pages render + click-safety browser coverage",
+    );
+    expect(runStep.run).toContain(githubExpression("matrix.specs"));
+    expect(runStep.run).toContain(
+      `--grep "${githubExpression("matrix.grep")}"`,
+    );
+    const artifactStep = workflowStep(
+      job ?? {},
+      "Upload app browser all-pages artifacts",
+    );
+    expect(artifactStep.with?.name).toBe(
+      `scenario-pr-app-browser-all-pages-${githubExpression("matrix.lane")}`,
+    );
+  });
+
+  it("runs the auto-discovered browser inventory across four complete shards", () => {
+    const job = workflowJobs()["app-browser-auto-discovered"];
+    expect(job).toBeDefined();
+    expect(job?.strategy?.["fail-fast"]).toBe(false);
+    expect(job?.strategy?.matrix?.shard).toEqual([
+      { id: "1-of-4", value: "1/4" },
+      { id: "2-of-4", value: "2/4" },
+      { id: "3-of-4", value: "3/4" },
+      { id: "4-of-4", value: "4/4" },
+    ]);
+
+    const runStep = workflowStep(
+      job ?? {},
+      "Actual app auto-discovered ui-smoke browser coverage",
+    );
+    expect(runStep.run).toContain("read -r -a specs");
+    expect(runStep.run).toContain('"${specs[@]}"');
+    expect(runStep.run).toContain("--fully-parallel");
+    expect(runStep.run).toContain(
+      `--shard="${githubExpression("matrix.shard.value")}"`,
+    );
+    const artifactStep = workflowStep(
+      job ?? {},
+      "Upload app browser auto-discovered artifacts",
+    );
+    expect(artifactStep.with?.name).toBe(
+      `scenario-pr-app-browser-auto-discovered-${githubExpression("matrix.shard.id")}`,
+    );
   });
 
   it("named slices ∪ auto-discovered = every non-denied spec (nothing runs nowhere)", () => {

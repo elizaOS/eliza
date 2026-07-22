@@ -49,6 +49,37 @@ async function fulfillJson(
   });
 }
 
+async function installConnectedCloudRoutes(page: Page): Promise<void> {
+  await page.unroute("**/api/cloud/status");
+  await page.route("**/api/cloud/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      connected: true,
+      enabled: true,
+      cloudVoiceProxyAvailable: true,
+      hasApiKey: true,
+      userId: "cloud-lifecycle-smoke-user",
+    });
+  });
+
+  await page.unroute("**/api/cloud/credits");
+  await page.route("**/api/cloud/credits", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      balance: 100,
+      low: false,
+      critical: false,
+      authRejected: false,
+    });
+  });
+}
+
 /** Serialize one agent into the cloud's REST shape (snake_case + aliases). */
 function serializeAgent(
   agent: StoreAgent,
@@ -252,7 +283,7 @@ function agentRow(page: Page, name: string) {
   return page.getByText(name, { exact: true });
 }
 
-test("cloud agents: list, delete, then reprovision another from Settings", async ({
+test("cloud agents: explicitly create with multiple existing agents, then delete the originals", async ({
   page,
   baseURL,
 }) => {
@@ -270,6 +301,7 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
 
   await seedCloudActiveAgent(page, "agent-keep", apiBase);
   await installDefaultAppRoutes(page);
+  await installConnectedCloudRoutes(page);
   await installAgentStoreRoutes(page, store, apiBase);
 
   // Cloud agents are embedded in the Cloud Overview settings section.
@@ -288,17 +320,10 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
     page.getByRole("button", { name: "Delete Keeper" }),
   ).toBeDisabled();
 
-  // --- Delete the non-active agent; the row disappears, the keeper remains.
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: "Delete Disposable" }).click();
-  await expect(agentRow(page, "Disposable")).toHaveCount(0, {
-    timeout: 30_000,
-  });
-  await expect(agentRow(page, "Keeper")).toBeVisible();
-  expect(store.agents.map((a) => a.id)).toEqual(["agent-keep"]);
-
-  // --- Reprovision: create a brand-new agent; the section binds it active and
-  // reloads the app (the same path a returning user takes on switch).
+  // Explicit create must remain available even when the account already has
+  // multiple agents. This is the canonical replacement for the removed
+  // onboarding picker: first-run reuses the best healthy agent automatically,
+  // while deliberate additional-agent creation lives in Settings.
   await page.getByPlaceholder(/Agent name/i).fill("Fresh Agent");
   await page.getByRole("button", { name: /^Create$/ }).click();
 
@@ -314,23 +339,33 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
     )
     .toBe("cloud:agent-101");
   expect(store.agents.map((a) => a.agentName).sort()).toEqual([
+    "Disposable",
     "Fresh Agent",
     "Keeper",
   ]);
 
-  // --- After the reload the new agent is active; the original is now deletable.
+  // After reload the new agent is active and both originals are deletable.
   await openAppPath(page, "/settings");
   await openSettingsSection(page, "Overview");
   await expect(agentRow(page, "Fresh Agent")).toBeVisible({ timeout: 30_000 });
   await expect(agentRow(page, "Keeper")).toBeVisible();
+  await expect(agentRow(page, "Disposable")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Delete Fresh Agent" }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "Delete Keeper" }),
   ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Delete Disposable" }),
+  ).toBeEnabled();
 
-  // --- Delete the original; only the freshly provisioned agent survives.
+  // Delete both originals; only the explicitly created agent survives.
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Delete Disposable" }).click();
+  await expect(agentRow(page, "Disposable")).toHaveCount(0, {
+    timeout: 30_000,
+  });
   page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Delete Keeper" }).click();
   await expect(agentRow(page, "Keeper")).toHaveCount(0, { timeout: 30_000 });

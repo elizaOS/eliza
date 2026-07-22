@@ -431,6 +431,10 @@ function sorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort();
 }
 
+function routePathname(pathValue: string): string {
+  return new URL(pathValue, "http://app.local").pathname;
+}
+
 /**
  * Manager-visible gui views, keyed by id → declared path, parsed from the same
  * plugin manifests that feed GET /api/views. This is the static source of truth
@@ -458,7 +462,7 @@ describe("app route coverage gate", () => {
   it("route smoke matrix covers catalog and app-window routes", () => {
     const smokePaths = new Set([
       ...pathsFromSource(ALL_PAGES_SPEC),
-      ...DIRECT_ROUTE_CASES.map((routeCase) => routeCase.path),
+      ...DIRECT_ROUTE_CASES.map((routeCase) => routePathname(routeCase.path)),
     ]);
     if (smokePaths.has("/")) {
       smokePaths.add("/home");
@@ -469,7 +473,7 @@ describe("app route coverage gate", () => {
       ),
     );
     const appWindowPaths = unique([
-      ...DIRECT_ROUTE_CASES.map((routeCase) => routeCase.path),
+      ...DIRECT_ROUTE_CASES.map((routeCase) => routePathname(routeCase.path)),
       ...internalToolWindowPaths(),
       ...registeredAppShellPagePaths(),
       ...appWindowRoutePaths(),

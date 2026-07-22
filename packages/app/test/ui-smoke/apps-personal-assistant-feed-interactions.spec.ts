@@ -25,12 +25,8 @@ test("Feed route exposes reachable GUI state", async ({ page }) => {
   await assertReadyChecks(
     page,
     "feed gui no-run state",
-    [
-      { text: "Feed operator surface" },
-      { text: "@elizaos/plugin-feed dynamic view smoke surface is ready." },
-      { text: "Feed" },
-    ],
-    "any",
+    [{ text: "Ready to trade?" }, { text: "Spawn agent" }],
+    "all",
     90_000,
   );
 });

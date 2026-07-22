@@ -1298,6 +1298,63 @@ async function fetchIosMixedContentHealth(apiBase: string): Promise<
   }
 }
 
+const IOS_MIXED_CONTENT_TRANSPORT_TIMEOUT_MS = 15_000;
+
+function webSocketUrlForApiBase(apiBase: string): string {
+  const url = new URL("/ws", apiBase);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.href;
+}
+
+function isExpectedWebSocketEndpoint(
+  candidate: string,
+  expected: string,
+): boolean {
+  try {
+    const url = new URL(candidate);
+    url.search = "";
+    url.hash = "";
+    return url.href === expected;
+  } catch {
+    // error-policy:J3 smoke diagnostics treat an invalid constructor URL as
+    // non-matching evidence; the captured value is preserved in the result.
+    return false;
+  }
+}
+
+async function waitForIosMixedContentTransport(options: {
+  expectedWebSocketUrl: string;
+  webSocketExpected: boolean;
+  webSocketOpenCalls: string[];
+}): Promise<ReturnType<typeof client.getConnectionState>> {
+  const deadline = Date.now() + IOS_MIXED_CONTENT_TRANSPORT_TIMEOUT_MS;
+  let connectionState = client.getConnectionState();
+  while (Date.now() < deadline) {
+    connectionState = client.getConnectionState();
+    const expectedSocketOpened = options.webSocketOpenCalls.some((url) =>
+      isExpectedWebSocketEndpoint(url, options.expectedWebSocketUrl),
+    );
+    if (
+      connectionState.state === "connected" &&
+      (!options.webSocketExpected || expectedSocketOpened)
+    ) {
+      return connectionState;
+    }
+    if (connectionState.state === "failed") {
+      break;
+    }
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+  }
+  throw new Error(
+    `iOS mixed-content transport did not become connected: ${JSON.stringify({
+      connectionState,
+      expectedWebSocketUrl: options.expectedWebSocketUrl,
+      webSocketExpected: options.webSocketExpected,
+      webSocketOpenCalls: options.webSocketOpenCalls,
+    })}`,
+  );
+}
+
 async function runIosMixedContentSmokeIfRequested(options?: {
   apiBase?: string;
 }): Promise<boolean> {
@@ -1316,32 +1373,57 @@ async function runIosMixedContentSmokeIfRequested(options?: {
   });
 
   const wsConstructorCalls: string[] = [];
+  const wsOpenCalls: string[] = [];
   const originalWebSocket = window.WebSocket;
   const clientBaseUrl =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+  const expectedWebSocketUrl = webSocketUrlForApiBase(request.apiBase);
+  const webSocketExpected = window.location.protocol === "capacitor:";
   try {
     window.WebSocket = new Proxy(originalWebSocket, {
       construct(target, args) {
-        wsConstructorCalls.push(String(args[0] ?? ""));
-        return Reflect.construct(target, args);
+        const url = String(args[0] ?? "");
+        wsConstructorCalls.push(url);
+        const socket = Reflect.construct(target, args) as WebSocket;
+        socket.addEventListener(
+          "open",
+          () => {
+            wsOpenCalls.push(url);
+          },
+          { once: true },
+        );
+        return socket;
       },
     }) as typeof WebSocket;
 
-    client.connectWs();
-    const connectionState =
-      typeof client.getConnectionState === "function"
-        ? client.getConnectionState()
-        : null;
+    // Force a fresh transport after installing the constructor observer. The
+    // app may already have connected during hydration; re-pointing suppresses
+    // the old socket's close handler and proves the current origin's real path.
+    client.repointBaseUrl(request.apiBase);
+    const connectionState = await waitForIosMixedContentTransport({
+      expectedWebSocketUrl,
+      webSocketExpected,
+      webSocketOpenCalls: wsOpenCalls,
+    });
     const restHealth = await fetchIosMixedContentHealth(request.apiBase);
     const bodyText = document.body?.innerText ?? "";
     const lostBackendOverlayAbsent =
       !/Lost backend connection/i.test(bodyText) &&
       !document.querySelector('[data-testid="connection-lost-overlay"]');
+    const expectedSocketConstructed = wsConstructorCalls.some((url) =>
+      isExpectedWebSocketEndpoint(url, expectedWebSocketUrl),
+    );
+    const expectedSocketOpened = wsOpenCalls.some((url) =>
+      isExpectedWebSocketEndpoint(url, expectedWebSocketUrl),
+    );
+    const transportEvidenceValid = webSocketExpected
+      ? expectedSocketConstructed && expectedSocketOpened
+      : wsConstructorCalls.length === 0 && wsOpenCalls.length === 0;
 
     await writeIosMixedContentSmokeResult({
       ok:
         restHealth.ok === true &&
-        wsConstructorCalls.length === 0 &&
+        transportEvidenceValid &&
         connectionState?.state === "connected" &&
         lostBackendOverlayAbsent,
       phase: "complete",
@@ -1350,14 +1432,13 @@ async function runIosMixedContentSmokeIfRequested(options?: {
       webViewOrigin: window.location.origin,
       webViewProtocol: window.location.protocol,
       clientBaseUrl,
-      expectedInsecureWebSocketUrl: new URL(
-        "/ws",
-        request.apiBase,
-      ).href.replace(/^http:/, "ws:"),
+      expectedWebSocketUrl,
+      webSocketExpected,
       mixedContentWouldBlockWebSocket:
         window.location.protocol === "https:" &&
         request.apiBase.startsWith("http://"),
       webSocketConstructorCalls: wsConstructorCalls,
+      webSocketOpenCalls: wsOpenCalls,
       connectionState,
       lostBackendOverlayAbsent,
       restHealth,
@@ -1373,7 +1454,10 @@ async function runIosMixedContentSmokeIfRequested(options?: {
       apiBase: request.apiBase,
       webViewOrigin: window.location.origin,
       clientBaseUrl,
+      expectedWebSocketUrl,
+      webSocketExpected,
       webSocketConstructorCalls: wsConstructorCalls,
+      webSocketOpenCalls: wsOpenCalls,
       connectionState:
         typeof client.getConnectionState === "function"
           ? client.getConnectionState()

@@ -267,7 +267,7 @@ training, facewear, smartglasses.
   `orchestrator-gui-workbench`, `task-coordinator-gui`, `game-*`,
   `screenshare/screenshare-gui`, voice (`voice-*`, `tts-stt-e2e`).
 - Startup/auth: `auth-startup`, `first-run-startup`, `cloud-provisioning-startup`,
-  `warming-shell-startup`, `reset-returns-to-onboarding`.
+  `warming-shell-startup`, `backups-no-destructive-reset`.
 
 ### Gaps / no dedicated coverage
 - `/apps/logs` (Log Viewer): catalog-only.

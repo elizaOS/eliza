@@ -6,9 +6,14 @@ import { assertIosMixedContentSmokeResult } from "./ios-mixed-content-smoke-cont
 
 function validResult(overrides = {}) {
   return {
+    phase: "complete",
+    ok: true,
     webViewOrigin: "capacitor://localhost",
     mixedContentWouldBlockWebSocket: false,
-    webSocketConstructorCalls: [],
+    expectedWebSocketUrl: "ws://127.0.0.1:31338/ws",
+    webSocketExpected: true,
+    webSocketConstructorCalls: ["ws://127.0.0.1:31338/ws?clientId=ios-smoke"],
+    webSocketOpenCalls: ["ws://127.0.0.1:31338/ws?clientId=ios-smoke"],
     connectionState: { state: "connected" },
     lostBackendOverlayAbsent: true,
     restHealth: { ok: true },
@@ -17,7 +22,7 @@ function validResult(overrides = {}) {
 }
 
 describe("assertIosMixedContentSmokeResult", () => {
-  it("accepts the current iOS Capacitor WebView origin when REST is connected and no WebSocket is attempted", () => {
+  it("accepts the current iOS Capacitor origin after the realtime WebSocket opens", () => {
     expect(() => assertIosMixedContentSmokeResult(validResult())).not.toThrow();
   });
 
@@ -27,6 +32,9 @@ describe("assertIosMixedContentSmokeResult", () => {
         validResult({
           webViewOrigin: "https://localhost",
           mixedContentWouldBlockWebSocket: true,
+          webSocketExpected: false,
+          webSocketConstructorCalls: [],
+          webSocketOpenCalls: [],
         }),
       ),
     ).not.toThrow();
@@ -40,14 +48,30 @@ describe("assertIosMixedContentSmokeResult", () => {
     ).toThrow(/unsupported WebView origin/);
   });
 
-  it("rejects WebSocket construction even on capacitor://localhost", () => {
+  it("rejects a terminal unsuccessful result", () => {
+    expect(() =>
+      assertIosMixedContentSmokeResult(validResult({ ok: false })),
+    ).toThrow(/completed unsuccessfully/);
+  });
+
+  it("rejects a Capacitor result that never constructs the expected WebSocket", () => {
     expect(() =>
       assertIosMixedContentSmokeResult(
         validResult({
-          webSocketConstructorCalls: ["ws://127.0.0.1:31338/ws"],
+          webSocketConstructorCalls: [],
         }),
       ),
-    ).toThrow(/attempted a WebSocket/);
+    ).toThrow(/did not construct the expected WebSocket/);
+  });
+
+  it("rejects a Capacitor result whose expected WebSocket never opens", () => {
+    expect(() =>
+      assertIosMixedContentSmokeResult(
+        validResult({
+          webSocketOpenCalls: [],
+        }),
+      ),
+    ).toThrow(/did not open the expected WebSocket/);
   });
 
   it("rejects disconnected REST state", () => {
@@ -57,7 +81,7 @@ describe("assertIosMixedContentSmokeResult", () => {
           connectionState: { state: "disconnected" },
         }),
       ),
-    ).toThrow(/not connected-over-REST/);
+    ).toThrow(/transport was not connected/);
   });
 
   it("rejects lost-backend overlay visibility", () => {
@@ -86,8 +110,24 @@ describe("assertIosMixedContentSmokeResult", () => {
         validResult({
           webViewOrigin: "https://localhost",
           mixedContentWouldBlockWebSocket: false,
+          webSocketExpected: false,
+          webSocketConstructorCalls: [],
+          webSocketOpenCalls: [],
         }),
       ),
     ).toThrow(/did not prove an insecure ws/);
+  });
+
+  it("rejects an HTTPS mixed-content result that attempts the blocked socket", () => {
+    expect(() =>
+      assertIosMixedContentSmokeResult(
+        validResult({
+          webViewOrigin: "https://localhost",
+          mixedContentWouldBlockWebSocket: true,
+          webSocketExpected: false,
+          webSocketOpenCalls: [],
+        }),
+      ),
+    ).toThrow(/attempted a blocked WebSocket/);
   });
 });

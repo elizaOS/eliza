@@ -15,7 +15,10 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
-  await seedAppStorage(page);
+  // This test targets the desktop control itself. Mark the independent
+  // post-login permission primer complete so its delayed modal cannot cover
+  // the field between the readiness assertion and the user fill.
+  await seedAppStorage(page, { "eliza:permissions-primed": "1" });
   await installDefaultAppRoutes(page);
 });
 

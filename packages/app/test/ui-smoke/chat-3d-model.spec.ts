@@ -146,6 +146,15 @@ test("chat: a .glb attachment renders an inline three.js WebGL viewer (not just 
 
   await openAppPath(page, "/chat");
 
+  // A completed first-run session lands on the collapsed home detent. Open the
+  // real chat sheet before looking for transcript content; the attachment is
+  // intentionally not painted into the hidden/collapsed transcript.
+  const overlay = page.getByTestId("continuous-chat-overlay");
+  await page.getByTestId("chat-sheet-grabber").click();
+  await expect(overlay).toHaveAttribute("data-open", "true", {
+    timeout: 15_000,
+  });
+
   // The 3D tile renders for the .glb attachment.
   const tile = page.getByTestId("model3d-attachment").first();
   await expect(tile).toBeVisible({ timeout: 60_000 });

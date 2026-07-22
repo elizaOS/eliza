@@ -73,6 +73,7 @@ const VIEW_FIXTURES = [
 // localStorage key for the persisted BackgroundConfig (persistence.ts
 // UI_BACKGROUND_STORAGE_KEY). AppBackground reads this via useBackgroundConfig.
 const UI_BACKGROUND_STORAGE_KEY = "eliza:ui-background";
+const UI_SMOKE_STORAGE_SEEDED_KEY = "eliza:ui-smoke-storage-seeded";
 
 async function fulfillJson(
   route: Route,
@@ -508,12 +509,24 @@ test.describe("settings shares the unified app background (#9143)", () => {
     await screenshot(page, "mobile-shader");
 
     // -- 2) Photo / image background ------------------------------------------
-    await page.evaluate(
-      ({ key, value }) => {
-        localStorage.setItem(key, value);
+    // Shell-reserved background state must be seeded before the next document
+    // boots. A live Settings view correctly rejects raw localStorage writes
+    // from its surface realm.
+    await page.addInitScript(
+      ({ key, seededKey, value }) => {
+        try {
+          localStorage.setItem(key, value);
+          // Prevent the default smoke seed from overwriting this value if its
+          // init script happens to run after this one.
+          sessionStorage.setItem(seededKey, "1");
+        } catch {
+          // error-policy:J3 sandboxed or opaque-origin frames can deny Web
+          // Storage; those frames cannot participate in this visual contract.
+        }
       },
       {
         key: UI_BACKGROUND_STORAGE_KEY,
+        seededKey: UI_SMOKE_STORAGE_SEEDED_KEY,
         value: JSON.stringify({
           mode: "image",
           color: "#ef5a1f",
@@ -521,6 +534,7 @@ test.describe("settings shares the unified app background (#9143)", () => {
         }),
       },
     );
+    await page.reload({ waitUntil: "domcontentloaded" });
 
     await page.setViewportSize(DESKTOP_VIEWPORT);
     await gotoSettings(page);

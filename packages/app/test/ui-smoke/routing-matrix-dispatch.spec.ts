@@ -1,7 +1,7 @@
 // #8811 AC7 — flipping a RoutingMatrix slot's routing through the REAL settings
 // UI changes the dispatched provider for that modality.
 //
-// The RoutingMatrix (Settings → Models & Providers → "Model routing & devices"
+// The RoutingMatrix (Settings → Models & Providers → "Custom providers & model overrides"
 // disclosure, mounted via ProviderSwitcher) is the authoring surface for the
 // per-modality routing policy. Each slot has a Policy select and a Preferred
 // provider select. Changing either POSTs the modality→routing binding the agent
@@ -175,7 +175,7 @@ async function installStatefulRoutingMock(page: Page): Promise<RoutingMock> {
 // accessible name combines the slot label ("Large text" = TEXT_LARGE) with the
 // control ("Policy" / "Preferred provider") and whose text content shows the
 // current value. Activating it opens a PORTALED listbox of role "option" items.
-// The RoutingMatrix lives inside a LAZY "Model routing & devices" <details>
+// The RoutingMatrix lives inside a LAZY "Custom providers & model overrides" <details>
 // disclosure that only renders its children once open.
 const LARGE_TEXT_POLICY_LABEL = /^Large text Policy$/;
 const LARGE_TEXT_PREFERRED_LABEL = /^Large text Preferred provider$/;
@@ -185,11 +185,11 @@ interface RoutingMatrixControls {
   preferredTrigger: ReturnType<Page["getByRole"]>;
 }
 
-/** Expand the lazy "Model routing & devices" disclosure if it is collapsed. */
+/** Expand the lazy custom-provider/model-override disclosure if collapsed. */
 async function expandModelRoutingDisclosure(page: Page): Promise<void> {
   const summary = page
     .locator("#ai-model summary")
-    .filter({ hasText: /Model routing & devices/i })
+    .filter({ hasText: /Custom providers & model overrides/i })
     .first();
   await expect(summary).toBeVisible({ timeout: 15_000 });
   const isOpen = await summary.evaluate((el) => {

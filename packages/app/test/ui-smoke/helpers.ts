@@ -223,6 +223,10 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Apps", "apps"],
   ["Remote Plugins", "remote-plugins"],
   ["Connectors", "connectors"],
+  ["Cloud Connectors", "cloud-connectors"],
+  ["My Runtimes", "my-runtimes"],
+  ["Overview", "cloud-overview"],
+  ["Agents", "cloud-agents"],
   ["Wearables", "wearables"],
   ["App Permissions", "app-permissions"],
   ["Wallet & RPC", "wallet-rpc"],
@@ -489,6 +493,7 @@ export async function readLocalStorage(
 export async function openSettingsSection(
   page: Page,
   sectionName: string | RegExp,
+  expectedHeading: string | RegExp = sectionName,
 ): Promise<void> {
   const settingsShell = page.getByTestId("settings-shell");
   if (!(await locatorVisible(settingsShell, 2_000))) {
@@ -544,7 +549,7 @@ export async function openSettingsSection(
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }, sectionId);
     await expect(
-      settingsShell.getByRole("heading", { level: 1, name: sectionName }),
+      settingsShell.getByRole("heading", { level: 1, name: expectedHeading }),
     ).toBeVisible({
       timeout: READY_CHECK_TIMEOUT_MS,
     });

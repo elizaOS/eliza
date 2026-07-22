@@ -22,6 +22,17 @@ const CONVERSATION = {
   updatedAt: "2026-06-24T00:00:00.000Z",
 };
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function makeFakeClient(
   overrides: Partial<Record<keyof HydrateConversationClient, unknown>> = {},
 ) {
@@ -69,6 +80,7 @@ function makeDeps(client: ReturnType<typeof makeFakeClient>) {
     setConversationMessages,
     greetingFiredRef,
     activeConversationIdRef,
+    conversationHydrationEpochRef: deps.conversationHydrationEpochRef,
     loadedConversationIdRef,
   };
 }
@@ -134,6 +146,41 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     // empty-draft cleanup may legitimately judge it by these messages.
     expect(loadedConversationIdRef.current).toBe("c1");
     expect(result).toBeNull(); // already has messages
+  });
+
+  it("does not restore a stale thread after a cold send claims conversation selection", async () => {
+    const messageLoad = deferred<{ messages: ConversationMessage[] }>();
+    const client = makeFakeClient({
+      listConversations: vi.fn(async () => ({
+        conversations: [{ ...CONVERSATION }],
+      })),
+      getConversationMessages: vi.fn(() => messageLoad.promise),
+    });
+    const {
+      deps,
+      activeConversationIdRef,
+      conversationHydrationEpochRef,
+      setActiveConversationId,
+      setConversationMessages,
+    } = makeDeps(client);
+
+    const hydration = hydrateInitialConversation(deps);
+    await vi.waitFor(() => {
+      expect(client.getConversationMessages).toHaveBeenCalledWith("c1");
+    });
+
+    // useChatSend performs this claim before a cold conversation create. The
+    // newly-created thread owns selection even if this older fetch settles last.
+    conversationHydrationEpochRef.current += 1;
+    activeConversationIdRef.current = "cold-send-conversation";
+    messageLoad.resolve({
+      messages: [{ id: "old", role: "assistant", text: "stale", timestamp: 1 }],
+    });
+
+    expect(await hydration).toBeNull();
+    expect(setActiveConversationId).not.toHaveBeenCalled();
+    expect(setConversationMessages).not.toHaveBeenCalled();
+    expect(activeConversationIdRef.current).toBe("cold-send-conversation");
   });
 
   it("leaves the thread holder UNKNOWN when the restore fetch fails (placeholder [] must never feed draft cleanup)", async () => {

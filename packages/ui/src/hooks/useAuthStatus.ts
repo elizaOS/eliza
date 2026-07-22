@@ -67,6 +67,9 @@ const SERVER_UNAVAILABLE_RETRY_MS = 1000;
 const authStatusSubscribers = new Set<(state: AuthStatusState) => void>();
 let authStatusSnapshot: AuthStatusState = { phase: "loading" };
 let authStatusFetch: Promise<void> | null = null;
+let authStatusRefresh: Promise<void> | null = null;
+let authStatusProbeGeneration = 0;
+let authStatusRequiredGeneration = 0;
 let authStatusPrime: Promise<void> | null = null;
 let authStatusPrimeSettledAt = 0;
 // A primed result is only trusted by the activation path for a boot-scale
@@ -84,6 +87,16 @@ function publishAuthStatus(state: AuthStatusState): void {
 async function fetchAuthStatus(): Promise<void> {
   if (authStatusFetch) return authStatusFetch;
 
+  const generation = authStatusProbeGeneration + 1;
+  authStatusProbeGeneration = generation;
+  const publishProbeStatus = (state: AuthStatusState): void => {
+    // A session-changing refresh invalidates any probe that started before the
+    // change. Its transport may still finish, but its stale answer must never
+    // overwrite the result expected from the required follow-up generation.
+    if (generation < authStatusRequiredGeneration) return;
+    publishAuthStatus(state);
+  };
+
   publishAuthStatus(
     authStatusSnapshot.phase === "loading"
       ? authStatusSnapshot
@@ -91,37 +104,44 @@ async function fetchAuthStatus(): Promise<void> {
   );
 
   authStatusFetch = (async () => {
-    for (let attempt = 0; ; attempt += 1) {
-      const result = await authMe();
-      if (result.ok === true) {
-        publishAuthStatus({
-          phase: "authenticated",
-          identity: result.identity,
-          session: result.session,
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        const result = await authMe();
+        if (result.ok === true) {
+          publishProbeStatus({
+            phase: "authenticated",
+            identity: result.identity,
+            session: result.session,
+            access: result.access,
+          });
+          return;
+        }
+        if (result.status === 503) {
+          if (attempt < SERVER_UNAVAILABLE_RETRIES) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, SERVER_UNAVAILABLE_RETRY_MS),
+            );
+            continue;
+          }
+          publishProbeStatus({ phase: "server_unavailable" });
+          return;
+        }
+        publishProbeStatus({
+          phase: "unauthenticated",
+          reason:
+            result.reason === "remote_auth_required" ||
+            result.reason === "remote_password_not_configured"
+              ? result.reason
+              : undefined,
           access: result.access,
         });
         return;
       }
-      if (result.status === 503) {
-        if (attempt < SERVER_UNAVAILABLE_RETRIES) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, SERVER_UNAVAILABLE_RETRY_MS),
-          );
-          continue;
-        }
-        publishAuthStatus({ phase: "server_unavailable" });
-        return;
-      }
-      publishAuthStatus({
-        phase: "unauthenticated",
-        reason:
-          result.reason === "remote_auth_required" ||
-          result.reason === "remote_password_not_configured"
-            ? result.reason
-            : undefined,
-        access: result.access,
-      });
-      return;
+    } catch {
+      // error-policy:J4 A malformed auth payload must fail closed into the
+      // shell's explicit unavailable state instead of rejecting a detached
+      // startup refresh and leaving stale authenticated UI visible.
+      publishProbeStatus({ phase: "server_unavailable" });
     }
   })().finally(() => {
     authStatusFetch = null;
@@ -131,18 +151,54 @@ async function fetchAuthStatus(): Promise<void> {
 }
 
 /**
+ * Force a fresh auth probe after an out-of-band session change, such as the
+ * bootstrap token exchange setting the bearer directly on the client.
+ *
+ * A probe already in flight belongs to the pre-change auth generation: its
+ * terminal state is suppressed, then exactly one follow-up generation runs.
+ * Concurrent refresh requests coalesce, while a later request that arrives
+ * after the follow-up has started advances the required generation once more.
+ */
+export function refreshAuthStatus(): Promise<void> {
+  authStatusRequiredGeneration = Math.max(
+    authStatusRequiredGeneration,
+    authStatusProbeGeneration + 1,
+  );
+  if (authStatusRefresh) return authStatusRefresh;
+
+  // Defer the worker one microtask so the shared promise is installed before a
+  // probe's synchronous `loading` publish can trigger another refresh request.
+  authStatusRefresh = Promise.resolve()
+    .then(async () => {
+      for (;;) {
+        if (authStatusFetch) {
+          await authStatusFetch;
+          continue;
+        }
+        if (authStatusProbeGeneration >= authStatusRequiredGeneration) return;
+        await fetchAuthStatus();
+      }
+    })
+    .finally(() => {
+      authStatusRefresh = null;
+    });
+  return authStatusRefresh;
+}
+
+/**
  * Start the `/api/auth/me` probe early — during startup's restoring-session
  * phase, right after the restored connection is applied to the client — so it
  * overlaps the backend polling/hydration phases instead of serializing after
  * the shell becomes paintable (App.tsx's `useAuthStatus` skips until then).
  *
- * Only the two outcomes that are stable across the boot race are published
- * into the shared snapshot: `authenticated` and `unauthenticated` (a 401 is
- * authoritative). A 503/unreachable outcome is discarded — the backend may
- * legitimately still be binding mid-boot, and publishing `server_unavailable`
- * from here would flash the startup-failure screen for a backend that comes
- * up moments later. The hook's activation fetch re-probes with the full
- * 10×1s retry budget in that case, exactly as before priming existed.
+ * Stable protocol outcomes are published into the shared snapshot:
+ * `authenticated`, `unauthenticated` (a 401 is authoritative), and an explicit
+ * unavailable state for malformed successful responses. A 503/unreachable
+ * outcome is discarded — the backend may legitimately still be binding
+ * mid-boot, and publishing `server_unavailable` from here would flash the
+ * startup-failure screen for a backend that comes up moments later. The hook's
+ * activation fetch re-probes with the full 10×1s retry budget in that case,
+ * exactly as before priming existed.
  *
  * Fire-and-forget and single-shot: repeat calls, an in-flight real fetch, or
  * an already-resolved snapshot make it a no-op.
@@ -151,29 +207,36 @@ export function primeAuthStatusProbe(): void {
   if (authStatusPrime || authStatusFetch) return;
   if (authStatusSnapshot.phase !== "loading") return;
   authStatusPrime = (async () => {
-    const result = await authMe();
-    // A real fetch started (or a state was published) while the prime was in
-    // flight — that path owns the snapshot; drop the primed result.
-    if (authStatusFetch || authStatusSnapshot.phase !== "loading") return;
-    if (result.ok === true) {
+    try {
+      const result = await authMe();
+      // A real fetch started (or a state was published) while the prime was in
+      // flight — that path owns the snapshot; drop the primed result.
+      if (authStatusFetch || authStatusSnapshot.phase !== "loading") return;
+      if (result.ok === true) {
+        publishAuthStatus({
+          phase: "authenticated",
+          identity: result.identity,
+          session: result.session,
+          access: result.access,
+        });
+        return;
+      }
+      if (result.status === 503) return;
       publishAuthStatus({
-        phase: "authenticated",
-        identity: result.identity,
-        session: result.session,
+        phase: "unauthenticated",
+        reason:
+          result.reason === "remote_auth_required" ||
+          result.reason === "remote_password_not_configured"
+            ? result.reason
+            : undefined,
         access: result.access,
       });
-      return;
+    } catch {
+      // error-policy:J4 A syntactically successful but unreadable auth reply is
+      // a designed unavailable state; the prime is fire-and-forget and must
+      // never leak an unhandled rejection into startup.
+      publishAuthStatus({ phase: "server_unavailable" });
     }
-    if (result.status === 503) return;
-    publishAuthStatus({
-      phase: "unauthenticated",
-      reason:
-        result.reason === "remote_auth_required" ||
-        result.reason === "remote_password_not_configured"
-          ? result.reason
-          : undefined,
-      access: result.access,
-    });
   })().finally(() => {
     authStatusPrimeSettledAt = Date.now();
   });
@@ -268,6 +331,9 @@ export function __setAuthStatusForTests(state: AuthStatusState): () => void {
  */
 export function __resetAuthStatusForTests(): void {
   authStatusFetch = null;
+  authStatusRefresh = null;
+  authStatusProbeGeneration = 0;
+  authStatusRequiredGeneration = 0;
   authStatusPrime = null;
   authStatusPrimeSettledAt = 0;
   publishAuthStatus({ phase: "loading" });

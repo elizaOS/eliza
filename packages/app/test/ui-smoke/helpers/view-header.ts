@@ -89,11 +89,12 @@ export async function assertSharedViewHeaderContract(
  */
 export async function clickViewHeaderBack(
   page: Page,
-  { within }: { within?: string } = {},
+  { within, title }: { within?: string; title?: string } = {},
 ): Promise<void> {
-  const header = within
-    ? page.locator(within).getByTestId(VIEW_HEADER_TESTID).first()
-    : page.getByTestId(VIEW_HEADER_TESTID).first();
+  const scoped = within
+    ? page.locator(within).getByTestId(VIEW_HEADER_TESTID)
+    : page.getByTestId(VIEW_HEADER_TESTID);
+  const header = (title ? scoped.filter({ hasText: title }) : scoped).first();
   await expect(header).toBeVisible({ timeout: 30_000 });
   const back = header.getByRole("button").first();
   const urlBefore = page.url();

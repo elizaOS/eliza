@@ -39,7 +39,7 @@ type RouteProbe = {
    * this unset and are not asserted — matching `assertSharedViewHeader`'s
    * no-op-for-exempt-views semantics.
    */
-  requireViewHeader?: boolean;
+  requireViewHeader?: boolean | "mobile";
   /**
    * Scope for the ViewHeader assertion: the routed view's shell selector
    * (`viewHeaderWithin`) or the header's own title text (`viewHeaderTitle`).
@@ -165,19 +165,17 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     readyChecks: [{ selector: "#root" }],
   },
   {
-    name: "apps catalog",
+    name: "my apps",
     path: "/apps",
-    // /apps renders the launcher grid (HomeScreenMount initialPage="launcher");
-    // the old text probes ("Views" / "No views available") predate that surface
-    // and never match it — anchor on the launcher's own testid.
-    readyChecks: [{ selector: '[data-testid="launcher"]' }],
+    readyChecks: [{ text: "My Apps" }, { text: "Install, create, and run" }],
+    mode: "all",
     timeoutMs: 60_000,
   },
   {
     name: "automations",
     path: "/automations",
     readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
-    viewHeaderWithin: '[data-testid="automations-shell"]',
+    viewHeaderTitle: "Automations",
     timeoutMs: 60_000,
     requireViewHeader: true,
   },
@@ -206,7 +204,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "wallet",
     path: "/wallet",
     readyChecks: [{ selector: '[data-testid="wallet-shell"]' }],
-    viewHeaderWithin: '[data-testid="wallet-shell"]',
+    viewHeaderTitle: "Wallet",
     timeoutMs: 60_000,
     requireViewHeader: true,
   },
@@ -230,7 +228,9 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
     viewHeaderWithin: '[data-testid="settings-shell"]',
     timeoutMs: 60_000,
-    requireViewHeader: true,
+    // Mobile Settings owns a shared header; desktop deliberately uses the
+    // persistent settings sidebar/back affordance plus an in-pane title.
+    requireViewHeader: "mobile",
   },
   // Phone / Messages / Contacts are `androidOnly: true` overlay apps. Their
   // side-effect registrations only fire when `isElizaOS()` is true (an AOSP
@@ -281,13 +281,13 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "character documents deep link",
     path: "/character/documents",
-    readyChecks: [{ selector: '[data-testid="character-editor-view"]' }],
+    readyChecks: [{ selector: '[data-testid="documents-view"]' }],
     timeoutMs: 60_000,
   },
   {
     // Promoted top-level character tabs (character-skills / experience) render
-    // dedicated views with a standard ViewHeader — anchor on the header shell
-    // plus the view title.
+    // Character-family views share the family header/tab strip. The active tab
+    // text proves the routed child while the header title remains Character.
     name: "character skills deep link",
     path: "/character/skills",
     readyChecks: [
@@ -297,7 +297,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     mode: "all",
     timeoutMs: 60_000,
     requireViewHeader: true,
-    viewHeaderTitle: "Skills",
+    viewHeaderTitle: "Character",
   },
   {
     name: "character experience deep link",
@@ -309,7 +309,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     mode: "all",
     timeoutMs: 60_000,
     requireViewHeader: true,
-    viewHeaderTitle: "Experience",
+    viewHeaderTitle: "Character",
   },
   {
     name: "automation node catalog deep link",
@@ -420,6 +420,7 @@ const SAFE_VIEW_TILES: readonly {
 const SETTING_SECTIONS_TO_CLICK: readonly {
   label: RegExp;
   expectedHash: string;
+  expectedHeading?: RegExp;
 }[] = [
   { label: /^Basics$/, expectedHash: "identity" },
   { label: /^Models & Providers$/, expectedHash: "ai-model" },
@@ -434,9 +435,13 @@ const SETTING_SECTIONS_TO_CLICK: readonly {
   { label: /^Background$/, expectedHash: "background" },
   { label: /^Wallet & RPC\b/, expectedHash: "wallet-rpc" },
   { label: /^Updates$/, expectedHash: "updates" },
-  { label: /^Backup & Reset$/, expectedHash: "advanced" },
+  { label: /^Backups$/, expectedHash: "advanced" },
   { label: /^Overview$/, expectedHash: "cloud-overview" },
-  { label: /^Agents$/, expectedHash: "cloud-agents" },
+  {
+    label: /^Agents$/,
+    expectedHash: "cloud-agents",
+    expectedHeading: /^Eliza Cloud Agents$/,
+  },
 ];
 const SETTING_DEEP_LINKS: readonly {
   hash: string;
@@ -1502,9 +1507,12 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
   await expectMainShell(page, route);
   // A normal view must uphold the shared ViewHeader icon-only-back contract
   // (#13586). On the mobile viewport, also enforce the ≥44px tap target.
-  if (route.requireViewHeader) {
-    const viewport = page.viewportSize();
-    const isMobileViewport = Boolean(viewport && viewport.width <= 500);
+  const viewport = page.viewportSize();
+  const isMobileViewport = Boolean(viewport && viewport.width <= 500);
+  if (
+    route.requireViewHeader === true ||
+    (route.requireViewHeader === "mobile" && isMobileViewport)
+  ) {
     await assertSharedViewHeaderContract(page, {
       requireTapTarget: isMobileViewport,
       within: route.viewHeaderWithin,
@@ -1595,7 +1603,7 @@ async function clickSafeAllowlist(
   ).toBeVisible({ timeout: 60_000 });
   await expectNoPageIssues(issues, "chat safe toggle");
 
-  await probeRoute(page, coreRouteProbe("apps catalog"));
+  await probeRoute(page, coreRouteProbe("my apps"));
   const favoriteButton = page.getByRole("button", {
     name: "Add to favorites",
   });
@@ -1619,7 +1627,11 @@ async function clickSafeAllowlist(
 
   await probeRoute(page, coreRouteProbe("settings"));
   for (const section of SETTING_SECTIONS_TO_CLICK) {
-    await openSettingsSection(page, section.label);
+    await openSettingsSection(
+      page,
+      section.label,
+      section.expectedHeading ?? section.label,
+    );
     await expect(page.getByTestId("settings-shell")).toBeVisible({
       timeout: 60_000,
     });
@@ -1695,7 +1707,7 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
 
   for (const tile of SAFE_VIEW_TILES) {
     await test.step(tile.name, async () => {
-      await probeRoute(page, coreRouteProbe("apps catalog"));
+      await probeRoute(page, coreRouteProbe("views catalog deep link"));
       // A view may appear in both the "Pinned & recent" strip and a section
       // grid, so target the first matching card.
       const card = page.getByTestId(tile.testId).first();
@@ -1715,14 +1727,10 @@ test("shared ViewHeader back control navigates away without crashing (#13586)", 
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
 
-  // Settings is a canonical `normal` view with the shared ViewHeader. Open it,
-  // assert the icon-only-back contract on the SETTINGS shell's header (the route
-  // floats over the ambient home, which can carry its own header), then click
-  // back and assert the shell survives the navigation (no crash, no 404) and
-  // leaves the view.
-  const SETTINGS_SHELL = '[data-testid="settings-shell"]';
-  await probeRoute(page, coreRouteProbe("settings"));
-  await assertSharedViewHeaderContract(page, { within: SETTINGS_SHELL });
-  await clickViewHeaderBack(page, { within: SETTINGS_SHELL });
-  await expectNoPageIssues(issues, "settings view-header back");
+  // Automations uses the shared header at every viewport. Bind by title because
+  // the header sits immediately above (rather than inside) its routed shell.
+  await probeRoute(page, coreRouteProbe("automations"));
+  await assertSharedViewHeaderContract(page, { title: "Automations" });
+  await clickViewHeaderBack(page, { title: "Automations" });
+  await expectNoPageIssues(issues, "automations view-header back");
 });

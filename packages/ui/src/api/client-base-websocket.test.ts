@@ -61,6 +61,25 @@ async function flushMicrotasks(): Promise<void> {
   await new Promise<void>((resolve) => queueMicrotask(resolve));
 }
 
+function stubWindowProtocol(protocol: string): void {
+  const jsdomWindow = window;
+  const location = new Proxy(jsdomWindow.location, {
+    get(target, property) {
+      if (property === "protocol") return protocol;
+      return Reflect.get(target, property, target);
+    },
+  });
+  vi.stubGlobal(
+    "window",
+    new Proxy(jsdomWindow, {
+      get(target, property) {
+        if (property === "location") return location;
+        return Reflect.get(target, property, target);
+      },
+    }),
+  );
+}
+
 describe("ElizaClient websocket connection policy", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -127,6 +146,40 @@ describe("ElizaClient websocket connection policy", () => {
       maxReconnectAttempts: 15,
       disconnectedAt: null,
     });
+  });
+
+  it("opens ws for an ordinary HTTP agent from a Capacitor origin", () => {
+    const createdUrls = stubWebSocket();
+    const client = new ElizaClient("http://127.0.0.1:31338", "agent-token");
+    stubWindowProtocol("capacitor:");
+
+    client.connectWs();
+
+    expect(window.location.protocol).toBe("capacitor:");
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:31338/ws?");
+  });
+
+  it("still opens ws for an HTTP agent from an HTTP page", () => {
+    const createdUrls = stubWebSocket();
+    const client = new ElizaClient("http://127.0.0.1:31338", "agent-token");
+    stubWindowProtocol("http:");
+
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:31338/ws?");
+  });
+
+  it("still opens wss for an HTTPS agent from a Capacitor origin", () => {
+    const createdUrls = stubWebSocket();
+    const client = new ElizaClient("https://agent.example.test", "agent-token");
+    stubWindowProtocol("capacitor:");
+
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://agent.example.test/ws?");
   });
 
   it("treats a dedicated cloud agent base as connected without opening a websocket (its /ws is not proxied)", () => {

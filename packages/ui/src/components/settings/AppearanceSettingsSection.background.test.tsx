@@ -63,4 +63,16 @@ describe("AppearanceSettingsSection background controls", () => {
     expect(screen.queryByRole("button", { name: "Light" })).toBeNull();
     expect(screen.queryByRole("button", { name: "System" })).toBeNull();
   });
+
+  it("registers the home time toggle on the settings agent surface", () => {
+    seed();
+
+    render(<AppearanceSettingsSection />);
+
+    expect(
+      screen
+        .getByRole("switch", { name: "Show time & date" })
+        .getAttribute("data-agent-id"),
+    ).toBe("appearance-show-time-widget");
+  });
 });

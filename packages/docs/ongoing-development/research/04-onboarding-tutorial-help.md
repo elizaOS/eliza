@@ -104,7 +104,8 @@ the agent answers "how do I…" from retrieval.
 | Lane | What it covers | Real or mocked | Status |
 | --- | --- | --- | --- |
 | `onboarding-cloud-only.spec.ts` (3 tests) | Production-default flow: sign-in-only greeting, session-injection zero-tap, auto-adopt no-picker | Cloud login + provisioning **mocked** at network boundary | Green in keyless CI |
-| `onboarding-to-home.spec.ts` / `-mobile` / `onboarding-confused-user.spec.ts` / `first-run-startup.spec.ts` / `reset-returns-to-onboarding.spec.ts` | Chooser-mode local path, spam-tap/error recovery, factory reset → onboarding | All APIs **mocked** (`installDefaultAppRoutes`) | Green in keyless CI |
+| `onboarding-to-home.spec.ts` / `-mobile` / `onboarding-confused-user.spec.ts` / `first-run-startup.spec.ts` | Chooser-mode local path and spam-tap/error recovery | All APIs **mocked** (`installDefaultAppRoutes`) | Green in keyless CI |
+| `backups-no-destructive-reset.spec.ts` + packaged application-menu reset | Backups omits destructive reset; the real packaged macOS launcher resets to onboarding through the native menu | Renderer fixture for absence; real packaged launcher for reset | Keyless renderer lane + `desktop-packaged-reset.yml` |
 | `use-first-run-conductor.test.ts` + `.fuzz.test.ts` | Conductor state machine incl. cloud-only describe block | Unit (jsdom) | Green |
 | `tutorial-chat.spec.ts` | Chat-native tour end to end, typed commands, narration via SpeechSynthesis spy | Routes **mocked** | Green |
 | `cloud-live.spec.ts` | REAL login (ELIZAOS_CLOUD_API_KEY), REAL provisioning, REAL cloud chat turn asserting a non-stub reply | **Nothing mocked** | Only runs in nightly `app-live-e2e.yml` — see below |

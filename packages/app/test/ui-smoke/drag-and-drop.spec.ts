@@ -502,7 +502,11 @@ test.describe("chat overlay — real DataTransfer file drop", () => {
     // The dropped file lands in the SAME pending-attachment strip that paste
     // and the attach button feed (alt = file name).
     const pendingThumb = page.locator('img[alt="dropped.png"]');
+    const removePending = page.getByRole("button", {
+      name: "Remove dropped.png",
+    });
     await expect(pendingThumb).toBeVisible({ timeout: 10_000 });
+    await expect(removePending).toBeVisible();
     await evidenceShot(page, "chat-01-dropped-pending-thumbnail");
 
     const composer = page
@@ -536,8 +540,9 @@ test.describe("chat overlay — real DataTransfer file drop", () => {
       }),
     );
 
-    // Send clears the pending strip.
-    await expect(pendingThumb).toHaveCount(0, { timeout: 10_000 });
+    // The sent message keeps rendering the image; the remove control exists
+    // only on the pending strip and proves that composer state was cleared.
+    await expect(removePending).toHaveCount(0, { timeout: 10_000 });
     await evidenceShot(page, "chat-02-sent-after-drop");
     expect(pageErrors).toEqual([]);
   });
@@ -857,7 +862,7 @@ test.describe("knowledge view — real DataTransfer file drop", () => {
 
 async function launcherTileIds(page: Page): Promise<string[]> {
   return page
-    .getByTestId("launcher-page-0")
+    .getByTestId("launcher")
     .locator('[data-testid^="launcher-tile-"]')
     .evaluateAll((nodes) =>
       nodes
@@ -889,9 +894,11 @@ test.describe("production launcher — curated pages, reorder disabled by design
 
     await openAppPath(page, "/views");
     await expect(page.getByTestId("launcher")).toBeVisible({ timeout: 60_000 });
-    const firstPage = page.getByTestId("launcher-page-0");
+    // The curated launcher is one adaptive grid now; pagination wrappers were
+    // removed, so scope gestures to the launcher root itself.
+    const launcher = page.getByTestId("launcher");
     await expect(
-      firstPage.locator('[data-testid^="launcher-tile-"]').first(),
+      launcher.locator('[data-testid^="launcher-tile-"]').first(),
     ).toBeVisible({ timeout: 15_000 });
 
     const initialIds = await launcherTileIds(page);
@@ -900,7 +907,7 @@ test.describe("production launcher — curated pages, reorder disabled by design
     // REAL long-press: press and hold well past the 450ms threshold without
     // moving. In the curated production launcher this must NOT enter edit mode
     // (no jiggle animation, no pin/unpin chips).
-    const firstTile = firstPage
+    const firstTile = launcher
       .locator('[data-testid^="launcher-tile-"]')
       .first();
     const tileBox = await firstTile.boundingBox();
@@ -921,7 +928,7 @@ test.describe("production launcher — curated pages, reorder disabled by design
 
     // REAL drag of one tile onto a tile in another row: curated pages render
     // no Reorder wrapper, so the grid order must be unchanged.
-    const tiles = firstPage.locator('[data-testid^="launcher-tile-"]');
+    const tiles = launcher.locator('[data-testid^="launcher-tile-"]');
     const dragTargetIndex = Math.min(initialIds.length - 1, 4);
     await realMouseDrag(page, tiles.first(), tiles.nth(dragTargetIndex), {
       pathSegments: 6,

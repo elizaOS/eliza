@@ -13,11 +13,11 @@ import { ACCENT_PRESETS, useAppSelector, useContentPack } from "../../state";
 import type { AccentPreset } from "../../state/ui-preferences";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { Button } from "../ui/button";
-import { Switch } from "../ui/switch";
 import { selectableTileClass } from "./appearance-primitives.helpers";
 import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 import { LoadedPacksList } from "./LoadedPacksList";
-import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+import { SettingsSwitchRow } from "./settings-agent-rows";
+import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 function LanguageTileButton({
   languageId,
@@ -154,16 +154,14 @@ export function AppearanceSettingsSection() {
         bare
         title={t("settings.homeDashboard", { defaultValue: "Home" })}
       >
-        <SettingsRow
+        <SettingsSwitchRow
+          agentId="appearance-show-time-widget"
           label={t("settings.showTimeWidget", {
             defaultValue: "Show time & date",
           })}
-          control={
-            <Switch
-              checked={!homeTimeWidgetHidden}
-              onCheckedChange={(checked) => setHomeTimeWidgetHidden(!checked)}
-            />
-          }
+          group="appearance"
+          checked={!homeTimeWidgetHidden}
+          onCheckedChange={(checked) => setHomeTimeWidgetHidden(!checked)}
         />
       </SettingsGroup>
 

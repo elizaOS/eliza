@@ -215,7 +215,7 @@ async function installStreamingFetch(page: Page): Promise<void> {
 
 test.describe("dashboard shell interaction framerate", () => {
   test.beforeEach(async ({ page }) => {
-    await seedAppStorage(page);
+    await seedAppStorage(page, { "eliza:permissions-primed": "1" });
     await page.route("**/api/conversations", async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
@@ -369,8 +369,19 @@ test.describe("dashboard shell interaction framerate", () => {
     // --- Scenario E: /chat -> another-view transition -------------------------
     const viewTransitionSummary = await measureFrames(page, async () => {
       await page.evaluate(() => {
-        window.history.pushState(null, "", "/settings");
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        // Exercise the shell's supported in-process navigation bus. Raw
+        // history mutation is correctly denied inside the chat surface realm.
+        window.dispatchEvent(
+          new CustomEvent("eliza:navigate:view", {
+            detail: {
+              viewId: "settings",
+              viewPath: "/settings",
+              viewLabel: "Settings",
+              viewType: "gui",
+              alwaysOnTop: false,
+            },
+          }),
+        );
       });
       await expect(page.getByTestId("settings-shell")).toBeVisible({
         timeout: 20_000,

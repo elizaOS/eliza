@@ -677,6 +677,24 @@ describe("chat-view hook helpers", () => {
     expect(result.current.gameModalCarryoverOpacity).toBe(0);
   });
 
+  it("does not read the wall clock during the initial companion render", () => {
+    const nowSpy = vi.spyOn(Date, "now");
+
+    const { result } = renderHook(() =>
+      useGameModalMessages({
+        activeConversationId: "conversation-1",
+        companionMessageCutoffTs: 0,
+        isGameModal: true,
+        visibleMsgs: [message("only", 5)],
+      }),
+    );
+
+    expect(nowSpy).not.toHaveBeenCalled();
+    expect(result.current.companionCarryover).toBeNull();
+    expect(result.current.gameModalCarryoverOpacity).toBe(0);
+    nowSpy.mockRestore();
+  });
+
   it("carries prior messages when the companion cutoff advances", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-12T00:00:00Z"));

@@ -668,6 +668,10 @@ export interface UseChatSendDeps {
   chatReplyTargetRef: MutableRefObject<ChatReplyTarget | null>;
   conversationsRef: MutableRefObject<Conversation[]>;
   conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
+  /** Shared with boot hydration so a cold first send can claim conversation
+   *  selection before its create request settles. Isolated hook fixtures that
+   *  have no hydration lifecycle may omit it. */
+  conversationHydrationEpochRef?: MutableRefObject<number>;
   chatAbortRef: MutableRefObject<AbortController | null>;
   chatSendBusyRef: MutableRefObject<boolean>;
   chatSendNonceRef: MutableRefObject<number>;
@@ -725,6 +729,9 @@ export async function prewarmSharedChatScope(
 }
 
 export function useChatSend(deps: UseChatSendDeps) {
+  const isolatedConversationHydrationEpochRef = useRef(0);
+  const conversationHydrationEpochRef =
+    deps.conversationHydrationEpochRef ?? isolatedConversationHydrationEpochRef;
   const {
     t,
     uiLanguage,
@@ -1475,6 +1482,14 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
       }
 
+      if (!turn.conversationId && !activeConversationIdRef.current) {
+        // Boot hydration can be awaiting the restored thread's messages while
+        // the always-mounted composer accepts its first turn. Claim selection
+        // before painting or awaiting create so hydration cannot replace the
+        // transcript and strand this turn's stream in a hidden conversation.
+        conversationHydrationEpochRef.current += 1;
+      }
+
       const optimisticTurn =
         turn.optimisticTurn ??
         ({
@@ -2207,6 +2222,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       activeConversationIdRef,
       chatAbortRef,
       conversationMessagesRef.current.filter,
+      conversationHydrationEpochRef,
       conversationsRef,
       isConversationCommitActive,
       setActiveConversationId,
@@ -2434,9 +2450,13 @@ export function useChatSend(deps: UseChatSendDeps) {
       let convRoomId: string | null = null;
 
       try {
-        let convId: string = activeConversationId ?? "";
+        let convId: string = activeConversationIdRef.current ?? "";
         if (!convId) {
           try {
+            // This entry point shares the same cold-create ownership rule as
+            // queued composer sends; otherwise boot hydration can strand the
+            // action response in a conversation the UI no longer displays.
+            conversationHydrationEpochRef.current += 1;
             const actionTitle =
               trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
             // Defer the create the same way the fixed cold-open send path does
@@ -2701,8 +2721,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
     },
     [
-      activeConversationId,
+      activeConversationIdRef,
       chatSendQueueRef,
+      conversationHydrationEpochRef,
       elizaCloudEnabled,
       elizaCloudConnected,
       flushQueuedChatSends,

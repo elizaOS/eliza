@@ -7,6 +7,7 @@ export type ViewCase = {
   viewType: "gui";
   path: string;
   shellPill: "expected" | "suppressed";
+  minVisibleTextLength: number;
 };
 
 type ViewCaseTuple = readonly [
@@ -14,9 +15,12 @@ type ViewCaseTuple = readonly [
   viewType: ViewCase["viewType"],
   path: string,
   options?: {
-    shellPill: ViewCase["shellPill"];
+    shellPill?: ViewCase["shellPill"];
+    minVisibleTextLength?: number;
   },
 ];
+
+const DEFAULT_MIN_VISIBLE_TEXT_LENGTH = 21;
 
 export const VIEW_CASES: ViewCase[] = (
   [
@@ -27,7 +31,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["cloud", "gui", "/cloud"],
     ["contacts", "gui", "/contacts"],
     ["hyperliquid", "gui", "/hyperliquid"],
-    ["focus", "gui", "/focus"],
+    ["focus", "gui", "/focus", { minVisibleTextLength: 4 }],
     ["calendar", "gui", "/calendar"],
     ["documents", "gui", "/documents"],
     ["finances", "gui", "/finances"],
@@ -43,7 +47,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["polymarket", "gui", "/polymarket"],
     ["wallet", "gui", "/wallet"],
     ["vector-browser", "gui", "/vector-browser"],
-    ["feed", "gui", "/feed"],
+    ["feed", "gui", "/feed", { minVisibleTextLength: 4 }],
     ["views-manager", "gui", "/views"],
     ["screenshare", "gui", "/screenshare"],
     ["task-coordinator", "gui", "/task-coordinator"],
@@ -57,4 +61,6 @@ export const VIEW_CASES: ViewCase[] = (
   viewType,
   path: viewPath,
   shellPill: options?.shellPill === "suppressed" ? "suppressed" : "expected",
+  minVisibleTextLength:
+    options?.minVisibleTextLength ?? DEFAULT_MIN_VISIBLE_TEXT_LENGTH,
 }));
