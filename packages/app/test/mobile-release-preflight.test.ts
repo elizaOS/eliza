@@ -3,8 +3,6 @@
  * Android release branches with deterministic toolchain and filesystem edges.
  */
 
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -50,8 +48,9 @@ function successfulCommand(command: string, args: string[]) {
 
 async function runPreflight(args: string[]) {
   process.argv = ["node", "mobile-release-preflight.mjs", ...args];
-  const scriptUrl = pathToFileURL(
-    path.join(process.cwd(), "scripts/mobile-release-preflight.mjs"),
+  const scriptUrl = new URL(
+    "../scripts/mobile-release-preflight.mjs",
+    import.meta.url,
   );
   scriptUrl.searchParams.set("case", String(importSequence++));
   return import(scriptUrl.href);

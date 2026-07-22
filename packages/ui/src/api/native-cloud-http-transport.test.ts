@@ -96,15 +96,18 @@ describe("nativeCloudHttpTransportForUrl selection", () => {
     "https://staging.elizacloud.ai/api/events/stream",
     "https://api-staging.elizacloud.ai/api/events/stream",
     "https://app-staging.elizacloud.ai/api/events/stream",
-  ])("does not classify the control-plane host %s as a dedicated agent", async (url) => {
-    const transport = nativeCloudHttpTransportForUrl(url);
-    await transport?.request(url, {
-      method: "GET",
-      headers: { Accept: "text/event-stream" },
-    });
-    expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
-    expect(webFetchMock).not.toHaveBeenCalled();
-  });
+  ])(
+    "does not classify the control-plane host %s as a dedicated agent",
+    async (url) => {
+      const transport = nativeCloudHttpTransportForUrl(url);
+      await transport?.request(url, {
+        method: "GET",
+        headers: { Accept: "text/event-stream" },
+      });
+      expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
+      expect(webFetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns null off native platforms", () => {
     capacitorState.isNative = false;
