@@ -87,7 +87,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           show-progress: false
 
@@ -129,7 +129,7 @@ jobs:
       WHISPER_STT_MODEL: ${{ vars.ELIZA_VOICE_WHISPER_STT_MODEL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           show-progress: false
 
@@ -154,7 +154,7 @@ jobs:
     # Hard live lane: a missing GPU/model environment must be visible as a failure.
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
           show-progress: false
@@ -256,7 +256,7 @@ jobs:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
           show-progress: false
@@ -574,7 +574,7 @@ jobs:
       ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
           show-progress: false
@@ -623,7 +623,7 @@ jobs:
       ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
           show-progress: false
@@ -673,7 +673,7 @@ jobs:
       ELIZA_VOICE_IOS_APP_ID: ${{ vars.ELIZA_VOICE_IOS_APP_ID }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
           show-progress: false
@@ -723,7 +723,7 @@ jobs:
       ELIZA_VOICE_STAGE_B_REPORT: ${{ vars.ELIZA_VOICE_STAGE_B_REPORT }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
           show-progress: false
