@@ -278,7 +278,6 @@ export function buildViewScopedAction(
         );
         const dispatch = await dispatchViewInteract(
           entry,
-          viewId,
           capability,
           stepParams,
           {

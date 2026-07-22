@@ -14,8 +14,11 @@ import {
 } from "../../src/api/chat-routes.js";
 import { estimateTokenCount } from "../../src/runtime/prompt-optimization.js";
 
-type RuntimeOverrides = Partial<AgentRuntime> & {
-  messageService?: NonNullable<AgentRuntime["messageService"]>;
+type RuntimeOverrides = Omit<Partial<AgentRuntime>, "messageService"> & {
+  messageService?: Pick<
+    NonNullable<AgentRuntime["messageService"]>,
+    "handleMessage"
+  >;
 };
 
 function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
@@ -81,7 +84,7 @@ describe("generateChatResponse usage reporting", () => {
             responseMessages: [],
           };
         }),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(
@@ -109,7 +112,7 @@ describe("generateChatResponse usage reporting", () => {
           responseContent: { text: "estimated reply" },
           responseMessages: [],
         })),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
     const message = createChatMessage("count this prompt");
 
@@ -136,7 +139,7 @@ describe("generateChatResponse usage reporting", () => {
             responseMessages: [],
           };
         }),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(
@@ -164,7 +167,7 @@ describe("generateChatResponse usage reporting", () => {
             responseMessages: [],
           };
         }),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(
@@ -198,7 +201,7 @@ describe("generateChatResponse usage reporting", () => {
             },
           ],
         })),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(
@@ -229,7 +232,7 @@ describe("generateChatResponse usage reporting", () => {
             },
           ],
         })),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(
@@ -256,7 +259,7 @@ describe("generateChatResponse usage reporting", () => {
           },
           responseMessages: [],
         })),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(
@@ -293,7 +296,7 @@ describe("generateChatResponse usage reporting", () => {
             responseMessages: [],
           };
         }),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(
@@ -321,7 +324,7 @@ describe("generateChatResponse usage reporting", () => {
           },
           responseMessages: [],
         })),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(
@@ -352,7 +355,7 @@ describe("generateChatResponse usage reporting", () => {
           },
           responseMessages: [],
         })),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(runtime, message, "Chat Agent", {
@@ -380,7 +383,7 @@ describe("generateChatResponse usage reporting", () => {
           },
           responseMessages: [],
         })),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      },
     });
 
     const result = await generateChatResponse(runtime, message, "Chat Agent", {

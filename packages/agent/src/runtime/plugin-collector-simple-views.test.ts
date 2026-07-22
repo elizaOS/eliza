@@ -25,27 +25,25 @@ afterEach(() => {
 
 describe("collectPluginNames Simple Views gate", () => {
   it("stays disabled by default", () => {
-    expect(collectPluginNames({} as ElizaConfig).has(SIMPLE_VIEWS)).toBe(false);
+    expect(collectPluginNames({}).has(SIMPLE_VIEWS)).toBe(false);
   });
 
   it.each(["1", "true", "yes", "y", "on", "enabled"])(
     "loads on canonical truthy ELIZA_SIMPLE_VIEWS=%s",
     (value) => {
       process.env.ELIZA_SIMPLE_VIEWS = value;
-      expect(collectPluginNames({} as ElizaConfig).has(SIMPLE_VIEWS)).toBe(
-        true,
-      );
+      expect(collectPluginNames({}).has(SIMPLE_VIEWS)).toBe(true);
     },
   );
 
   it("does not load in a mobile runtime", () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_SIMPLE_VIEWS = "1";
-    expect(collectPluginNames({} as ElizaConfig).has(SIMPLE_VIEWS)).toBe(false);
+    expect(collectPluginNames({}).has(SIMPLE_VIEWS)).toBe(false);
   });
 
   it("cannot be enabled indirectly without the explicit developer gate", () => {
-    const config = {
+    const config: ElizaConfig = {
       plugins: {
         allow: [SIMPLE_VIEWS],
         installs: {
@@ -55,12 +53,15 @@ describe("collectPluginNames Simple Views gate", () => {
           },
         },
       },
-    } as ElizaConfig;
+    };
 
     expect(collectPluginNames(config).has(SIMPLE_VIEWS)).toBe(false);
   });
 
-  it.each([
+  it.each<{
+    label: string;
+    deploymentTarget: NonNullable<ElizaConfig["deploymentTarget"]>;
+  }>([
     {
       label: "remote",
       deploymentTarget: {
@@ -77,7 +78,7 @@ describe("collectPluginNames Simple Views gate", () => {
     "stays unavailable in a $label runtime even through additive plugin config",
     ({ deploymentTarget }) => {
       process.env.ELIZA_SIMPLE_VIEWS = "1";
-      const config = {
+      const config: ElizaConfig = {
         deploymentTarget,
         plugins: {
           allow: [SIMPLE_VIEWS],
@@ -88,7 +89,7 @@ describe("collectPluginNames Simple Views gate", () => {
             },
           },
         },
-      } as ElizaConfig;
+      };
 
       expect(collectPluginNames(config).has(SIMPLE_VIEWS)).toBe(false);
     },

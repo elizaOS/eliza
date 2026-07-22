@@ -14,6 +14,7 @@ import {
   isRealCaptureLoss,
   MOMENTUM_RELEASE_WINDOW_MS,
   type MomentumSample,
+  shouldCommitMomentumDetent,
   useClickSuppression,
   useRafCoalescer,
 } from "../gestures";
@@ -465,15 +466,14 @@ export function useHorizontalPager<
         MIN_DISTANCE_THRESHOLD,
         state.width * DISTANCE_THRESHOLD_RATIO,
       );
-      const shouldAdvance =
-        Math.abs(dx) >= distanceThreshold ||
-        // Flick escape hatch: a fast RELEASE (same direction as the drag) commits
-        // short of the distance threshold. Direction guard stops a
-        // drag-forward-then-fling-back release from committing the wrong way.
-        (Math.abs(dx) >= MIN_FLICK_DISTANCE &&
-          Math.abs(velocity) >= FLICK_VELOCITY &&
-          Math.sign(velocity) === Math.sign(dx) &&
-          Math.abs(dx) > Math.abs(dy) * AXIS_DOMINANCE_RATIO);
+      const shouldAdvance = shouldCommitMomentumDetent({
+        displacementPx: dx,
+        releaseVelocityPxPerMs: velocity,
+        distanceThresholdPx: distanceThreshold,
+        minimumFlickDistancePx: MIN_FLICK_DISTANCE,
+        flickVelocityThresholdPxPerMs: FLICK_VELOCITY,
+        isFlickAxisDominant: Math.abs(dx) > Math.abs(dy) * AXIS_DOMINANCE_RATIO,
+      });
 
       if (!shouldAdvance) {
         settleTo(base);

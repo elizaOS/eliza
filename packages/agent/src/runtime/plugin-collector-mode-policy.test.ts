@@ -76,7 +76,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
       plugins: {
         allow: ["local-ai"],
       },
-    } as ElizaConfig;
+    };
 
     const names = collectPluginNames(config);
 
@@ -112,7 +112,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
       plugins: {
         allow: ["local-ai"],
       },
-    } as ElizaConfig;
+    };
 
     const names = collectPluginNames(config);
 
@@ -130,7 +130,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const config: ElizaConfig = {
       deploymentTarget: { runtime: "local" },
       cloud: { enabled: false },
-    } as ElizaConfig;
+    };
 
     const names = collectPluginNames(config);
 
@@ -142,7 +142,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
   it("uses the canonical truthy env contract for the cloud provider gate", () => {
     process.env.ELIZAOS_CLOUD_ENABLED = "on";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
@@ -153,7 +153,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const config: ElizaConfig = {
       deploymentTarget: { runtime: "local" },
       cloud: { enabled: false },
-    } as ElizaConfig;
+    };
 
     const names = collectPluginNames(config);
 
@@ -163,7 +163,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
   it("loads the agent orchestrator when a coding-agent default is configured", () => {
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("agent-orchestrator")).toBe(true);
   });
@@ -172,7 +172,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "false";
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("agent-orchestrator")).toBe(false);
   });
@@ -182,7 +182,7 @@ describe("collectPluginNames cloud-container operator defaults", () => {
   it("defaults the operator surface ON for dedicated cloud containers", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("agent-orchestrator")).toBe(true);
     expect(names.has("@elizaos/plugin-pty")).toBe(true);
@@ -193,7 +193,7 @@ describe("collectPluginNames cloud-container operator defaults", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     process.env.ELIZA_AGENT_ORCHESTRATOR = "0";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("agent-orchestrator")).toBe(false);
     // The terminal + CLI-inference lanes are independent of the orchestrator gate.
@@ -205,7 +205,7 @@ describe("collectPluginNames cloud-container operator defaults", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("agent-orchestrator")).toBe(false);
     expect(names.has("@elizaos/plugin-pty")).toBe(false);
@@ -213,7 +213,7 @@ describe("collectPluginNames cloud-container operator defaults", () => {
   });
 
   it("does not add the operator surface off cloud containers", () => {
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("@elizaos/plugin-pty")).toBe(false);
     expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
@@ -222,7 +222,7 @@ describe("collectPluginNames cloud-container operator defaults", () => {
   it("drops local inference on cloud containers (cloud embeddings serve TEXT_EMBEDDING)", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
@@ -231,13 +231,13 @@ describe("collectPluginNames cloud-container operator defaults", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     process.env.ELIZA_LOCAL_LLAMA = "1";
 
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
   });
 
   it("keeps local inference off cloud containers (unchanged local boot)", () => {
-    const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({});
 
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
   });

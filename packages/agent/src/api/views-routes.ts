@@ -1598,7 +1598,7 @@ export async function handleViewsRoutes(
       `[ViewsRoutes] Activate element "${elementId}" on view "${id}"`,
     );
 
-    const dispatch = await dispatchViewInteract(entry, id, capability, params, {
+    const dispatch = await dispatchViewInteract(entry, capability, params, {
       broadcastWs: ctx.broadcastWs,
       broadcastWsToClientId: ctx.broadcastWsToClientId,
       clientId: resolveTargetViewClientId(id, entry.viewType, req, body),
@@ -1706,7 +1706,6 @@ export async function handleViewsRoutes(
     const usesServerInteract = typeof entry.serverInteract === "function";
     const dispatch = await dispatchViewInteract(
       entry,
-      id,
       capability,
       params,
       {
@@ -1752,18 +1751,6 @@ export async function handleViewsRoutes(
 // ---------------------------------------------------------------------------
 
 /**
- * Result of dispatching a capability to a view — the union of the two interact
- * paths (a `serverInteract` handler, or a frontend `view:interact` round-trip).
- */
-export interface ViewInteractDispatchResult {
-  requestId: string;
-  success: boolean;
-  result?: unknown;
-  error?: string;
-  timedOut?: true;
-}
-
-/**
  * Dispatch a capability to a view, reusing the established interact semantics:
  * a `serverInteract` handler when the view declares one, else a frontend
  * `view:interact` WebSocket round-trip resolved via the pending-request map.
@@ -1772,7 +1759,6 @@ export interface ViewInteractDispatchResult {
  */
 export async function dispatchViewInteract(
   entry: ViewRegistryEntry,
-  viewId: string,
   capability: string,
   params: Record<string, unknown> | undefined,
   transport: {
@@ -1782,7 +1768,14 @@ export async function dispatchViewInteract(
     runtime?: IAgentRuntime;
   },
   timeoutMs = 5_000,
-): Promise<ViewInteractDispatchResult> {
+): Promise<{
+  requestId: string;
+  success: boolean;
+  result?: unknown;
+  error?: string;
+  timedOut?: true;
+}> {
+  const viewId = entry.id;
   const requestId = randomUUID();
 
   if (!viewManifestAllowsCapability(entry, capability)) {
@@ -1857,7 +1850,7 @@ export async function dispatchViewInteract(
     });
   }
   try {
-    const result = (await resultPromise) as ViewInteractResult;
+    const result = await resultPromise;
     return {
       requestId,
       success: result.success,

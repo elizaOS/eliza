@@ -53,8 +53,8 @@ const inboxClient = vi.hoisted(() => ({
       limit?: number;
       roomId?: string;
       roomSource?: string;
-    }) => ({
-      messages: [] as ConversationMessage[],
+    }): Promise<{ messages: ConversationMessage[] }> => ({
+      messages: [],
     }),
   ),
   sendInboxMessage: vi.fn(async () => ({
