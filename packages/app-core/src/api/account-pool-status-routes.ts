@@ -17,6 +17,14 @@ import { sendJson, sendJsonError } from "./response.js";
 const STATUS_PATH = "/api/pool/status";
 const RETRY_AFTER_SECONDS = 60;
 
+export interface AccountPoolStatusRouteDependencies {
+  getPublicAccountPoolStatus: typeof getPublicAccountPoolStatus;
+}
+
+const DEFAULT_DEPENDENCIES: AccountPoolStatusRouteDependencies = {
+  getPublicAccountPoolStatus,
+};
+
 function publicPoolStatusEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
@@ -30,6 +38,7 @@ export async function handleAccountPoolStatusRoute(
   res: http.ServerResponse,
   method: string,
   pathname: string,
+  dependencies: AccountPoolStatusRouteDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<boolean> {
   if (pathname !== STATUS_PATH) return false;
   if (!publicPoolStatusEnabled()) {
@@ -43,7 +52,8 @@ export async function handleAccountPoolStatusRoute(
     return true;
   }
   try {
-    const status: PublicPoolStatus = await getPublicAccountPoolStatus();
+    const status: PublicPoolStatus =
+      await dependencies.getPublicAccountPoolStatus();
     res.setHeader("cache-control", "public, max-age=60");
     sendJson(res, 200, status);
   } catch (error) {
