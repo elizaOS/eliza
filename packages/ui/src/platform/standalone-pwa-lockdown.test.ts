@@ -200,6 +200,18 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     expect(panYBlock?.[0]).toContain("body.pwa-standalone");
   });
 
+  it("pins touch-pan-y to a literal value inside installed shells", () => {
+    // Some bundled WebViews parse Tailwind's custom-property declaration but
+    // resolve its empty slots to `auto`; a literal installed-shell rule keeps
+    // nested notification and launcher scroll regions on the pager contract.
+    const utilityBlock = stylesCss.match(
+      /body\.native \.touch-pan-y,[\s\S]*?touch-action: pan-y;/,
+    );
+    expect(utilityBlock).not.toBeNull();
+    expect(utilityBlock?.[0]).toContain("body.platform-android .touch-pan-y");
+    expect(utilityBlock?.[0]).toContain("body.pwa-standalone .touch-pan-y");
+  });
+
   it("fills #root to the viewport (100dvh) for the installed PWA — full-bleed to the bottom", () => {
     // With the non-fixed body there is no ICB collapse, so `#root` simply fills
     // the viewport (`100dvh`, `100vh` fallback) and the app paints to the true
