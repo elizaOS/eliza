@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "sharp": "^0.34.0"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@elizaos/plugin-computeruse": "workspace:*",

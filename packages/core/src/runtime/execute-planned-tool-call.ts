@@ -257,9 +257,12 @@ export async function executePlannedToolCall(
 	);
 	const validation = validateToolArgs(
 		action,
-		dropEmptyOptionalArgs(
+		normalizeParamAliases(
 			action,
-			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
+			dropEmptyOptionalArgs(
+				action,
+				dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
+			),
 		),
 	);
 	if (!validation.valid) {
@@ -765,6 +768,50 @@ function dropUndeclaredPlannerWrapperArgs(
 	}
 
 	return filtered ?? args;
+}
+
+/**
+ * Rename an incoming arg key to the declared parameter that claims it via its
+ * `aliases` list, so the planner isn't punished for a natural name variant
+ * (`to`/`recipient` for `target`, `description`/`prompt` for `instructions`,
+ * `scheduledFor` for `scheduledAtIso`). This is the same curated,
+ * structurally-gated remap the sibling `dropUndeclaredPlannerWrapperArgs`
+ * already performs for the `subaction`→discriminator shape.
+ *
+ * SAFETY: only renames a key to a declared param that explicitly claims it, and
+ * only when (a) that param is absent from args, (b) the key is not itself a
+ * declared param, and (c) exactly one declared param claims the key. Any arg no
+ * param's `aliases` claims flows through untouched and still hits
+ * `Unexpected argument` in `validateToolArgs` — the runaway-arg bound and its
+ * tests are unaffected. Never clobbers an explicitly-provided canonical value.
+ */
+export function normalizeParamAliases(
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	const parameters = action.parameters ?? [];
+	const hasAliases = parameters.some(
+		(p) => p.aliases && p.aliases.length > 0,
+	);
+	if (!hasAliases) return args;
+
+	const declaredNames = new Set(parameters.map((p) => p.name));
+	let renamed: Record<string, unknown> | undefined;
+
+	for (const key of Object.keys(args)) {
+		if (declaredNames.has(key)) continue; // key is itself a real param
+		const claimants = parameters.filter((p) => p.aliases?.includes(key));
+		if (claimants.length !== 1) continue; // unknown, or ambiguous → let it reject
+		const target = claimants[0].name;
+		// Don't overwrite a canonical value the planner already provided.
+		const current = (renamed ?? args)[target];
+		if (current !== undefined && current !== null) continue;
+		renamed ??= { ...args };
+		renamed[target] = renamed[key];
+		delete renamed[key];
+	}
+
+	return renamed ?? args;
 }
 
 function normalizeToolArgs(
