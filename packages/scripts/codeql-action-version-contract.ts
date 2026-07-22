@@ -10,6 +10,30 @@ import { fileURLToPath } from "node:url";
 const CODEQL_ACTION_PATTERN =
   /uses:\s*github\/codeql-action\/(init|analyze|upload-sarif)@([^\s#]+)/g;
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
+const SETUP_NODE_PATTERN = /uses:\s*actions\/setup-node@([^\s#]+)/;
+
+export function assertCodeqlRuntimeSetup(workflow: string): string {
+  const setupNode = workflow.match(SETUP_NODE_PATTERN);
+  if (!setupNode) {
+    throw new Error(
+      "CodeQL workflow must install Node.js before TypeScript extraction",
+    );
+  }
+
+  const version = setupNode[1];
+  if (!COMMIT_SHA_PATTERN.test(version)) {
+    throw new Error(
+      `CodeQL Node.js setup must use an immutable 40-character commit SHA; received ${version}`,
+    );
+  }
+
+  const initIndex = workflow.search(/uses:\s*github\/codeql-action\/init@/);
+  if (setupNode.index > initIndex) {
+    throw new Error("CodeQL workflow must install Node.js before initialization");
+  }
+
+  return version;
+}
 
 export function assertCodeqlActionVersions(workflow: string): string {
   const phases = [...workflow.matchAll(CODEQL_ACTION_PATTERN)].map((match) => ({
@@ -52,6 +76,7 @@ if (import.meta.main) {
     `${repositoryRoot}/.github/workflows/codeql.yml`,
     "utf8",
   );
+  assertCodeqlRuntimeSetup(workflow);
   const version = assertCodeqlActionVersions(workflow);
   process.stdout.write(`CodeQL action version contract passed (${version}).\n`);
 }

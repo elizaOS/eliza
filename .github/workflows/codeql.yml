@@ -49,6 +49,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
+      - name: Set up Node.js for TypeScript extraction
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
       - name: Report disk before CodeQL
         shell: bash
         run: |

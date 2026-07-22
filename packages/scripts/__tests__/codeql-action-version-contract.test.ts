@@ -6,14 +6,44 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { assertCodeqlActionVersions } from "../codeql-action-version-contract";
+import {
+  assertCodeqlActionVersions,
+  assertCodeqlRuntimeSetup,
+} from "../codeql-action-version-contract";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const WORKFLOW_PATH = `${REPOSITORY_ROOT}/.github/workflows/codeql.yml`;
 
 test("all CodeQL action phases use one immutable release", () => {
   const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+  expect(assertCodeqlRuntimeSetup(workflow)).toMatch(/^[0-9a-f]{40}$/);
   expect(assertCodeqlActionVersions(workflow)).toMatch(/^[0-9a-f]{40}$/);
+});
+
+test("missing Node.js setup fails the extraction contract", () => {
+  expect(() => assertCodeqlRuntimeSetup("uses: github/codeql-action/init@v4")).toThrow(
+    "must install Node.js before TypeScript extraction",
+  );
+});
+
+test("floating Node.js setup fails the extraction contract", () => {
+  const workflow = `
+    - uses: actions/setup-node@v6
+    - uses: github/codeql-action/init@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  `;
+  expect(() => assertCodeqlRuntimeSetup(workflow)).toThrow(
+    "must use an immutable 40-character commit SHA",
+  );
+});
+
+test("Node.js setup after initialization fails the extraction contract", () => {
+  const workflow = `
+    - uses: github/codeql-action/init@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    - uses: actions/setup-node@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  `;
+  expect(() => assertCodeqlRuntimeSetup(workflow)).toThrow(
+    "must install Node.js before initialization",
+  );
 });
 
 test("cross-version CodeQL phases fail the contract", () => {
