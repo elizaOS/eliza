@@ -31,6 +31,15 @@ export interface ViewInteractResult {
   error?: string;
 }
 
+/** Stable machine-readable failures returned by agent-surface element actions. */
+export const AGENT_ACTION_FAILURE_CODES = {
+  ELEMENT_NOT_FOUND: "element-not-found",
+  ELEMENT_NOT_MOUNTED: "element-not-mounted",
+} as const;
+
+export type AgentActionFailureCode =
+  (typeof AGENT_ACTION_FAILURE_CODES)[keyof typeof AGENT_ACTION_FAILURE_CODES];
+
 /** Standard capabilities that every view is expected to support. */
 export const STANDARD_CAPABILITIES = {
   /** Returns the current view state as JSON. */

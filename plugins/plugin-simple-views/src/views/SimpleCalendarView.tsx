@@ -2,7 +2,7 @@
  * Simple Calendar test view for exercising chat-driven view switching and
  * event CRUD. A deterministic 42-day grid, selected-day agenda, and compact
  * editor all consume the same server-owned snapshot, including changes made by
- * the agent while this view is mounted beside Notes.
+ * the agent while another app surface is active.
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -24,6 +24,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { todayDateKey } from "../date-key.js";
 import type { SimpleCalendarEvent, StickyColor } from "../types.js";
 import { useSimpleViewsState } from "./useSimpleViewsState.js";
 import {
@@ -33,6 +34,7 @@ import {
   COLOR_MATERIALS,
   ColorPicker,
   GLASS_PANEL_STYLE,
+  handleRenderedMutationFailure,
   LABEL_STYLE,
   SECONDARY_TEXT_STYLE,
   VIEW_ROOT_STYLE,
@@ -51,12 +53,6 @@ function parseDateKey(value: string): Date {
     .split("-")
     .map((part) => Number(part));
   return new Date(Date.UTC(year, month - 1, day));
-}
-
-function todayDateKey(date = new Date()): string {
-  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-    .toISOString()
-    .slice(0, 10);
 }
 
 function monthStart(date: Date): Date {
@@ -105,10 +101,6 @@ function formatTime(value: string): string {
     minute: "2-digit",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(2000, 0, 1, hour, minute)));
-}
-
-function handleRenderedMutationFailure(cause: unknown): void {
-  if (!(cause instanceof Error)) throw cause;
 }
 
 function eventsOnDate(

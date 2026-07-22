@@ -37,6 +37,7 @@ import {
   type RouteHelpers,
   readJsonBody,
   type ShellNavigateViewPayload,
+  VIEW_SCOPE_IDLE_TTL_MS,
 } from "@elizaos/shared";
 import {
   AGENT_SURFACE_CAPABILITY_IDS,
@@ -63,7 +64,10 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
-import { normalizeWsClientId } from "./server-helpers-auth.ts";
+import {
+  firstHeaderValue,
+  normalizeWsClientId,
+} from "./server-helpers-auth.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
   findHeroOnDisk,
@@ -353,7 +357,9 @@ export function isViewSwitchFresh(
 }
 
 const DEFAULT_VIEW_STATE_SCOPE = "__default__";
-export const VIEW_SCOPE_IDLE_TTL_MS = 30 * 60 * 1_000;
+
+export { VIEW_SCOPE_IDLE_TTL_MS } from "@elizaos/shared";
+
 const VIEW_SCOPE_PRUNE_INTERVAL_MS = 60_000;
 interface CurrentViewScopeState {
   currentView: CurrentViewState | null;
@@ -1692,117 +1698,49 @@ export async function handleViewsRoutes(
         ? body.timeoutMs
         : 5_000;
 
-    const requestId = randomUUID();
-
-    logger.info(
-      { src: "ViewsRoutes", viewId: id, capability, requestId },
-      `[ViewsRoutes] Interact with view "${id}" capability="${capability}"`,
-    );
-
     if (!viewManifestAllowsCapability(entry, capability)) {
       error(res, capabilityDeniedMessage(id, capability), 403);
       return true;
     }
 
-    if (typeof entry.serverInteract === "function") {
-      try {
-        const clientId = resolveViewInteractClientId(req, body) ?? undefined;
-        const result = await entry.serverInteract(capability, params, {
-          runtime: ctx.runtime ?? undefined,
-          ...(clientId ? { clientId } : {}),
-        });
-        ctx.broadcastWs?.({
-          type: "view:event",
-          viewEventType: `view:${id}:updated`,
-          payload: { viewId: id, capability },
-        });
-        json(res, {
-          requestId,
-          success: resultSuccess(result),
-          result,
-        });
-      } catch (err) {
-        logger.warn(
-          { src: "ViewsRoutes", viewId: id, capability, requestId, err },
-          `[ViewsRoutes] Server interaction failed for view "${id}"`,
-        );
-        json(res, {
-          requestId,
-          success: false,
-          error: err instanceof Error ? err.message : String(err),
-          result: {
-            success: false,
-            text: `Cannot invoke capability "${capability}" on view "${id}": ${
-              err instanceof Error ? err.message : String(err)
-            }.`,
-          },
-        });
-      }
-      return true;
-    }
-
-    // Register the pending slot before broadcasting — avoids a race where the
-    // frontend responds before we start waiting.
-    const targetClientId = resolveTargetViewClientId(
+    const usesServerInteract = typeof entry.serverInteract === "function";
+    const dispatch = await dispatchViewInteract(
+      entry,
       id,
-      entry.viewType,
-      req,
-      body,
-    );
-    const frame = {
-      type: "view:interact",
-      viewId: id,
-      viewType: entry.viewType,
       capability,
       params,
-      requestId,
-    };
+      {
+        broadcastWs: ctx.broadcastWs,
+        broadcastWsToClientId: ctx.broadcastWsToClientId,
+        clientId: usesServerInteract
+          ? resolveViewInteractClientId(req, body)
+          : resolveTargetViewClientId(id, entry.viewType, req, body),
+        runtime: ctx.runtime ?? undefined,
+      },
+      timeoutMs,
+    );
 
-    if (!targetClientId) {
-      json(res, {
-        requestId,
-        success: false,
-        error:
-          "Missing client id for frontend view interaction. Provide X-ElizaOS-Client-Id or clientId.",
-      });
-      return true;
-    }
+    logger.info(
+      {
+        src: "ViewsRoutes",
+        viewId: id,
+        capability,
+        requestId: dispatch.requestId,
+      },
+      `[ViewsRoutes] Interact with view "${id}" capability="${capability}"`,
+    );
 
-    if (typeof ctx.broadcastWsToClientId !== "function") {
-      json(res, {
-        requestId,
-        success: false,
-        error: "Targeted view interaction delivery is unavailable.",
-      });
-      return true;
-    }
-
-    // Register the pending slot before sending — avoids a race where the
-    // frontend responds before we start waiting.
-    const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
-    const delivered = ctx.broadcastWsToClientId(targetClientId, frame);
-    if (delivered <= 0) {
-      pendingInteractRequests.resolve(requestId, {
-        requestId,
-        success: false,
-        error: `No connected view client "${targetClientId}" is available for "${id}".`,
-      });
-    }
-
-    try {
-      const result = await resultPromise;
-      json(res, result);
-    } catch (err) {
-      logger.warn(
-        { src: "ViewsRoutes", viewId: id, requestId, err },
-        `[ViewsRoutes] Interact timed out for view "${id}"`,
-      );
+    if (dispatch.timedOut) {
       error(
         res,
-        `View "${id}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
+        dispatch.error ??
+          `View "${id}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
         504,
       );
+      return true;
     }
+
+    json(res, dispatch);
     return true;
   }
 
@@ -1822,13 +1760,7 @@ export interface ViewInteractDispatchResult {
   success: boolean;
   result?: unknown;
   error?: string;
-}
-
-interface ViewInteractTransport {
-  broadcastWs?: (payload: object) => void;
-  broadcastWsToClientId?: (clientId: string, payload: object) => number;
-  clientId?: string | null;
-  runtime?: IAgentRuntime;
+  timedOut?: true;
 }
 
 /**
@@ -1842,8 +1774,13 @@ export async function dispatchViewInteract(
   entry: ViewRegistryEntry,
   viewId: string,
   capability: string,
-  params: Record<string, unknown>,
-  transport: ViewInteractTransport,
+  params: Record<string, unknown> | undefined,
+  transport: {
+    broadcastWs?: (payload: object) => void;
+    broadcastWsToClientId?: (clientId: string, payload: object) => number;
+    clientId?: string | null;
+    runtime?: IAgentRuntime;
+  },
   timeoutMs = 5_000,
 ): Promise<ViewInteractDispatchResult> {
   const requestId = randomUUID();
@@ -1877,6 +1814,12 @@ export async function dispatchViewInteract(
         requestId,
         success: false,
         error: err instanceof Error ? err.message : String(err),
+        result: {
+          success: false,
+          text: `Cannot invoke capability "${capability}" on view "${viewId}": ${
+            err instanceof Error ? err.message : String(err)
+          }.`,
+        },
       };
     }
   }
@@ -1930,13 +1873,9 @@ export async function dispatchViewInteract(
       requestId,
       success: false,
       error: `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
+      timedOut: true,
     };
   }
-}
-
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
 }
 
 function resolveViewInteractClientId(

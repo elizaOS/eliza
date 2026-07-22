@@ -39,6 +39,15 @@ export function readViewTargetOption(
 	);
 }
 
+/** Normalize formatting differences without introducing semantic matching. */
+export function normalizeViewTargetTerm(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[-_./]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
 export function isViewNavigationOperation(operation: string | null): boolean {
 	return operation !== null && VIEW_NAVIGATION_OPERATIONS.has(operation);
 }

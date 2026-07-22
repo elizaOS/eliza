@@ -15,6 +15,10 @@ import type {
 } from "react";
 import type { StickyColor } from "../types.js";
 
+export function handleRenderedMutationFailure(cause: unknown): void {
+  if (!(cause instanceof Error)) throw cause;
+}
+
 export const VIEW_ROOT_STYLE: CSSProperties = {
   boxSizing: "border-box",
   width: "100%",

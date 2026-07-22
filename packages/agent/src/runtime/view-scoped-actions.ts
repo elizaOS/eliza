@@ -35,6 +35,7 @@ import {
   type ViewScopedActionStep,
   type ViewType,
 } from "@elizaos/core";
+import { AGENT_ACTION_FAILURE_CODES } from "@elizaos/shared/views/view-interact-protocol";
 import { getView } from "../api/views-registry.ts";
 import {
   dispatchViewInteract,
@@ -138,9 +139,11 @@ function isMissingElementResult(result: unknown): boolean {
   const payload = unwrapInteractResult(result);
   if (!payload || typeof payload !== "object") return false;
   const record = payload as Record<string, unknown>;
-  if (record.ok !== false) return false;
-  const reason = typeof record.reason === "string" ? record.reason : "";
-  return /not found|not mounted/i.test(reason);
+  return (
+    record.ok === false &&
+    (record.code === AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND ||
+      record.code === AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_MOUNTED)
+  );
 }
 
 /** The reason string from a `{ ok: false, reason }` agent-surface result, if any. */

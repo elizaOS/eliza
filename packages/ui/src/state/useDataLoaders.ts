@@ -128,15 +128,13 @@ function findNearestPriorLocalTempUser(
   return null;
 }
 
-interface LocalTempMessageResolution {
-  resolvedIds: Set<string>;
-  serverIndexByLocalId: Map<string, number>;
-}
-
 function resolveLocalTempMessages(
   serverMessages: ConversationMessage[],
   currentMessages: ConversationMessage[],
-): LocalTempMessageResolution {
+): {
+  resolvedIds: Set<string>;
+  serverIndexByLocalId: Map<string, number>;
+} {
   const resolvedIds = new Set<string>();
   const serverIndexByLocalId = new Map<string, number>();
   const serverIndexById = new Map<string, number>();

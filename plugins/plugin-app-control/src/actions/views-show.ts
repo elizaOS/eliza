@@ -20,14 +20,16 @@ import {
 	resolveServerOnlyPort,
 } from "@elizaos/core";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
-import { readViewTargetOption } from "./view-action-options.js";
+import {
+	normalizeViewTargetTerm,
+	readViewTargetOption,
+} from "./view-action-options.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	readViewClientId,
 	type ViewSummary,
 	type ViewsClient,
 } from "./views-client.js";
-import { scoreView } from "./views-search.js";
 
 const SHOW_VERBS = [
 	"show",
@@ -57,10 +59,6 @@ const FILLER_WORDS = new Set([
 	"an",
 ]);
 
-const DOCUMENT_SURFACE_WORDS =
-	/\b(?:documents?|docs?|files?|knowledge|uploads?|retrieval|papers?)\b/i;
-const NOTES_SURFACE_WORD = /\bnotes?\b/i;
-
 // Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
 // Anchoring with \b stops the bare verb "view" from firing inside words like
 // "overview"/"preview"/"review"/"interview" (which an unanchored indexOf scan
@@ -73,10 +71,6 @@ const SHOW_VERB_PATTERN = new RegExp(
 		.join("|")})\\b`,
 	"i",
 );
-
-export function isStandaloneNotesSurfaceRequest(text: string): boolean {
-	return NOTES_SURFACE_WORD.test(text) && !DOCUMENT_SURFACE_WORDS.test(text);
-}
 
 function extractViewTarget(
 	message: Memory | undefined,
@@ -289,52 +283,45 @@ export type NavigationViewResolution =
 	| { kind: "ambiguous"; candidates: ViewSummary[] }
 	| { kind: "none" };
 
+function resolveCandidateTier(
+	candidates: ViewSummary[],
+): NavigationViewResolution | null {
+	if (candidates.length === 0) return null;
+	if (candidates.length === 1) return { kind: "match", view: candidates[0] };
+	return { kind: "ambiguous", candidates };
+}
+
 /**
  * Resolve a navigation target against the live view catalog. Callers that need
- * to reason about an imminent switch use this same resolver as VIEWS/show so a
- * domain alias such as `calendar` cannot drift from a plugin's registered id
- * such as `simple-calendar`.
+ * to reason about an imminent switch use this same resolver as VIEWS/show.
+ * Only declaration-owned identifiers participate: id, label, and tags (the
+ * view contract's aliases/search terms). Semantic descriptions remain a Search
+ * concern and cannot silently redirect an exact navigation command.
  */
 export function resolveNavigationView(
 	target: string,
 	views: readonly ViewSummary[],
 ): NavigationViewResolution {
-	const q = target.toLowerCase();
+	const key = normalizeViewTargetTerm(target);
+	if (!key) return { kind: "none" };
 
-	// Exact id match.
-	const byId = views.find((v) => v.id.toLowerCase() === q);
-	if (byId) return { kind: "match", view: byId };
+	const byId = resolveCandidateTier(
+		views.filter((view) => normalizeViewTargetTerm(view.id) === key),
+	);
+	if (byId) return byId;
 
-	// Exact label match.
-	const byLabel = views.find((v) => v.label.toLowerCase() === q);
-	if (byLabel) return { kind: "match", view: byLabel };
+	const byLabel = resolveCandidateTier(
+		views.filter((view) => normalizeViewTargetTerm(view.label) === key),
+	);
+	if (byLabel) return byLabel;
 
-	// Scored fuzzy — reuse search scoring.
-	const scored = views
-		.map((v) => ({ view: v, score: scoreView(v, target) }))
-		.filter(({ score }) => score > 0)
-		.sort((a, b) => b.score - a.score);
-
-	if (scored.length === 0) return { kind: "none" };
-	if (scored.length === 1) return { kind: "match", view: scored[0].view };
-
-	// Top-score tie-break: single winner if top score is strictly higher.
-	const topScore = scored[0].score;
-	const topTied = scored.filter(({ score }) => score === topScore);
-	if (topTied.length === 1) return { kind: "match", view: topTied[0].view };
-
-	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
-}
-
-function resolveRegisteredNotesView(
-	views: readonly ViewSummary[],
-):
-	| { kind: "match"; view: ViewSummary }
-	| { kind: "ambiguous"; candidates: ViewSummary[] }
-	| { kind: "none" } {
-	const resolution = resolveNavigationView("notes", views);
-	if (resolution.kind !== "match") return resolution;
-	return resolution.view.id === "documents" ? { kind: "none" } : resolution;
+	return (
+		resolveCandidateTier(
+			views.filter((view) =>
+				(view.tags ?? []).some((tag) => normalizeViewTargetTerm(tag) === key),
+			),
+		) ?? { kind: "none" }
+	);
 }
 
 interface NavigateResult {
@@ -461,31 +448,20 @@ export async function runViewsShow({
 
 	const views = await client.listViews({ viewType });
 	let resolution = resolveNavigationView(target, views);
-	if (
-		!hasStructuredNavigationTarget &&
-		isStandaloneNotesSurfaceRequest(messageText) &&
-		resolution.kind === "match" &&
-		resolution.view.id === "documents"
-	) {
-		target = "notes";
-		resolution = resolveRegisteredNotesView(views);
-	}
 
 	// For an unstructured request, a recognized domain intent is a stronger
-	// fallback than fuzzy name scoring. Structured planner targets bypass this
-	// branch and are only validated against the registered catalog.
+	// deterministic fallback when the extracted phrase is not itself a declared
+	// catalog identifier. Structured planner targets are only validated against
+	// the registered catalog.
 	if (
 		!hasStructuredNavigationTarget &&
 		intentViewId &&
-		intentViewId !== target
+		intentViewId !== target &&
+		resolution.kind === "none"
 	) {
 		const intentResolution = resolveNavigationView(intentViewId, views);
-		const intentRegistered =
-			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
-		if (intentRegistered || resolution.kind === "none") {
-			resolution = intentResolution;
-			target = intentViewId;
-		}
+		resolution = intentResolution;
+		target = intentViewId;
 	}
 
 	if (resolution.kind === "none") {

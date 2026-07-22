@@ -184,6 +184,28 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
     );
   });
 
+  it("preserves the 504 response when a mounted frontend does not respond", async () => {
+    const { ctx, json, error, broadcastWsToClientId } = makeCtx(
+      "POST",
+      "/api/views/frontend-only/interact",
+      {
+        capability: "get-state",
+        clientId: "silent-client",
+        timeoutMs: 1,
+      },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWsToClientId).toHaveBeenCalledTimes(1);
+    expect(json).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      'View "frontend-only" did not respond to capability "get-state" within 1ms',
+      504,
+    );
+  });
+
   it("targets the mounted active-view owner within the requesting client scope", async () => {
     setActiveViewContext(
       {

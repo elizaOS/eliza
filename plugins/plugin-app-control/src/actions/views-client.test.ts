@@ -96,6 +96,7 @@ describe("views client", () => {
 					action: "open",
 					updatedAt: "2026-05-31T08:00:00.000Z",
 				},
+				revision: 3,
 			});
 		});
 		vi.stubGlobal("fetch", fetchMock);
@@ -122,6 +123,7 @@ describe("views client", () => {
 					subview: "voice",
 					updatedAt: "2026-05-31T08:00:00.000Z",
 				},
+				revision: 4,
 			}),
 		);
 		vi.stubGlobal("fetch", fetchMock);

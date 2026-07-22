@@ -301,7 +301,9 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
   return null;
 }
 
-function firstHeaderValue(value: string | string[] | undefined): string | null {
+export function firstHeaderValue(
+  value: string | string[] | undefined,
+): string | null {
   if (typeof value === "string") return value;
   if (Array.isArray(value) && typeof value[0] === "string") return value[0];
   return null;

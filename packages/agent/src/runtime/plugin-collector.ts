@@ -12,7 +12,10 @@
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
+import {
+  isTruthyEnvValue,
+  lifeOpsPassiveConnectorsEnabled,
+} from "@elizaos/core";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
   type: "json",
 };
@@ -158,8 +161,7 @@ function birdclawRequested(config: ElizaConfig): boolean {
 
 /** Developer view workbench stays absent unless a local lane explicitly opts in. */
 function simpleViewsRequested(): boolean {
-  const raw = process.env.ELIZA_SIMPLE_VIEWS?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes";
+  return isTruthyEnvValue(process.env.ELIZA_SIMPLE_VIEWS);
 }
 
 /**
@@ -200,12 +202,6 @@ function packageNameFromPluginConfigId(pluginId: string): string {
     return `@elizaos/${pluginId}`;
   }
   return `@elizaos/plugin-${pluginId}`;
-}
-
-function isTruthyCloudEnvValue(raw: string | undefined): boolean {
-  if (!raw) return false;
-  const value = raw.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
 }
 
 function isStoreBuildVariant(): boolean {
@@ -401,7 +397,7 @@ export function collectPluginNames(
     !hasCanonicalRuntimeConfig &&
     !cloudExplicitlyDisabled &&
     (Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim()) ||
-      isTruthyCloudEnvValue(process.env.ELIZAOS_CLOUD_ENABLED));
+      isTruthyEnvValue(process.env.ELIZAOS_CLOUD_ENABLED));
   const cloudEffectivelyEnabled =
     resolveCloudPluginRequirement(cloudTopology, cloudPluginRequestedByEnv) ||
     isCloudContainer;

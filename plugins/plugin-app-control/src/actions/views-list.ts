@@ -64,6 +64,7 @@ export async function runViewsList({
 	return {
 		success: true,
 		text,
+		transcriptVisibility: "internal",
 		values: {
 			mode: "list",
 			viewType: viewType ?? "gui",

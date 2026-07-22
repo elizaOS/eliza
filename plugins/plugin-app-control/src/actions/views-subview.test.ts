@@ -216,6 +216,7 @@ describe("VIEWS list — surfaces subviews for discoverable sections (#9945)", (
 		const client = clientFor(REGISTRY);
 		const result = await runViewsList({ client });
 		expect(result.success).toBe(true);
+		expect(result.transcriptVisibility).toBe("internal");
 		expect(result.text).toContain("subviews[");
 		expect(result.text).toMatch(/voice:Voice/);
 		const views = (result.data as { views: Array<Record<string, unknown>> })

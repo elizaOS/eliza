@@ -87,6 +87,7 @@ function mockLoopback(current: { viewId: string } | null) {
 								updatedAt: "2026-06-08T00:00:00.000Z",
 							}
 						: null,
+					revision: 1,
 				}),
 			} as Response;
 		}
@@ -189,6 +190,7 @@ describe("viewFollowupRoutingEvaluator", () => {
 								viewType: "gui",
 								updatedAt: "2026-07-17T12:00:00.000Z",
 							},
+							revision: 1,
 						}),
 					} as Response;
 				}

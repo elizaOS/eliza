@@ -24,6 +24,7 @@ import { MULTI_VIEW_LAYOUTS_ENABLED } from "@elizaos/shared/events";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import {
 	isViewNavigationOperation,
+	normalizeViewTargetTerm,
 	readViewOperationOption,
 	readViewTargetOption,
 } from "./view-action-options.js";
@@ -49,8 +50,12 @@ import { runViewsEdit } from "./views-edit.js";
 import { isViewIconRequest, runViewsIcon } from "./views-icon.js";
 import { runViewsList } from "./views-list.js";
 import { isRollbackRequest, runViewsRollback } from "./views-rollback.js";
-import { runViewsSearch, scoreView } from "./views-search.js";
-import { resolveIntentView, runViewsShow } from "./views-show.js";
+import { runViewsSearch } from "./views-search.js";
+import {
+	resolveIntentView,
+	resolveNavigationView,
+	runViewsShow,
+} from "./views-show.js";
 
 export type ViewsMode =
 	| "list"
@@ -531,7 +536,7 @@ function isSplitLayoutRequest(text: string): boolean {
 
 function normalizedWordSet(text: string): Set<string> {
 	return new Set(
-		normalizeLooseTerm(text)
+		normalizeViewTargetTerm(text)
 			.split(" ")
 			.map((token) => token.trim())
 			.filter(Boolean),
@@ -821,7 +826,7 @@ function resolveViewTarget(
 	views: readonly ViewSummary[],
 ): ViewSummary | null {
 	if (!target) return null;
-	const match = resolveCloseTargetView(target, views);
+	const match = resolveNavigationView(target, views);
 	return match.kind === "match" ? match.view : null;
 }
 
@@ -1451,53 +1456,6 @@ function extractCloseTarget(
 	return null;
 }
 
-function resolveCloseTargetView(
-	target: string,
-	views: readonly ViewSummary[],
-):
-	| { kind: "match"; view: ViewSummary }
-	| { kind: "ambiguous"; candidates: ViewSummary[] }
-	| { kind: "none" } {
-	const q = target.toLowerCase();
-	const byId = views.find((view) => view.id.toLowerCase() === q);
-	if (byId) return { kind: "match", view: byId };
-
-	const byLabel = views.find((view) => view.label.toLowerCase() === q);
-	if (byLabel) return { kind: "match", view: byLabel };
-
-	const normalizedTarget = normalizeLooseTerm(target);
-	const byLooseId = views.find(
-		(view) => normalizeLooseTerm(view.id) === normalizedTarget,
-	);
-	if (byLooseId) return { kind: "match", view: byLooseId };
-
-	const byLooseLabel = views.find(
-		(view) => normalizeLooseTerm(view.label) === normalizedTarget,
-	);
-	if (byLooseLabel) return { kind: "match", view: byLooseLabel };
-
-	const byTag = views.find((view) =>
-		(view.tags ?? []).some(
-			(tag) =>
-				tag.toLowerCase() === q || normalizeLooseTerm(tag) === normalizedTarget,
-		),
-	);
-	if (byTag) return { kind: "match", view: byTag };
-
-	const scored = views
-		.map((view) => ({ view, score: scoreView(view, target) }))
-		.filter(({ score }) => score > 0)
-		.sort((a, b) => b.score - a.score);
-	if (scored.length === 0) return { kind: "none" };
-	if (scored.length === 1) return { kind: "match", view: scored[0].view };
-
-	const topScore = scored[0].score;
-	const topTied = scored.filter(({ score }) => score === topScore);
-	if (topTied.length === 1) return { kind: "match", view: topTied[0].view };
-
-	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
-}
-
 function uniqueStrings(values: Iterable<string>): string[] {
 	const seen = new Set<string>();
 	const out: string[] = [];
@@ -1516,16 +1474,8 @@ function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function normalizeLooseTerm(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/[-_./]+/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
-}
-
 function textMentionsTerm(normalizedText: string, term: string): boolean {
-	const normalizedTerm = normalizeLooseTerm(term);
+	const normalizedTerm = normalizeViewTargetTerm(term);
 	if (normalizedTerm.length < 3) return false;
 	const re = new RegExp(`(?:^|\\W)${escapeRegExp(normalizedTerm)}(?:\\W|$)`);
 	return re.test(normalizedText);
@@ -1617,24 +1567,24 @@ function resolveLayoutTargets(
 	const explicit = readLayoutTargetsFromOptions(options);
 	const explicitResolved: ViewSummary[] = [];
 	for (const target of explicit) {
-		const match = resolveCloseTargetView(target, views);
+		const match = resolveNavigationView(target, views);
 		if (match.kind === "match") explicitResolved.push(match.view);
 	}
 
 	const requestText = viewRequestText(text);
 	const lower = requestText.toLowerCase();
-	const normalizedText = normalizeLooseTerm(requestText);
+	const normalizedText = normalizeViewTargetTerm(requestText);
 	const textResolved: ViewSummary[] = [];
 	for (const view of views) {
 		const id = view.id.toLowerCase();
 		const label = view.label.toLowerCase();
-		const normalizedLabel = normalizeLooseTerm(label);
+		const normalizedLabel = normalizeViewTargetTerm(label);
 		const labelIsGenericSurface = VIEW_SURFACE_TOKENS.has(normalizedLabel);
 		const terms = [
 			id,
 			...(labelIsGenericSurface ? [] : [label]),
 			...(view.tags ?? []).filter(
-				(tag) => !VIEW_SURFACE_TOKENS.has(normalizeLooseTerm(tag)),
+				(tag) => !VIEW_SURFACE_TOKENS.has(normalizeViewTargetTerm(tag)),
 			),
 		];
 		if (
@@ -1672,12 +1622,12 @@ function viewNameIsContainedBy(
 	moreSpecific: ViewSummary,
 ): boolean {
 	const candidateNames = uniqueStrings([
-		normalizeLooseTerm(candidate.id),
-		normalizeLooseTerm(candidate.label),
+		normalizeViewTargetTerm(candidate.id),
+		normalizeViewTargetTerm(candidate.label),
 	]);
 	const specificNames = uniqueStrings([
-		normalizeLooseTerm(moreSpecific.id),
-		normalizeLooseTerm(moreSpecific.label),
+		normalizeViewTargetTerm(moreSpecific.id),
+		normalizeViewTargetTerm(moreSpecific.label),
 	]);
 	return candidateNames.some((candidateName) =>
 		specificNames.some(
@@ -1738,7 +1688,7 @@ async function resolveSingleShellTargetView({
 	}
 
 	const views = await client.listViews({ viewType });
-	if (explicit) return resolveCloseTargetView(explicit, views);
+	if (explicit) return resolveNavigationView(explicit, views);
 
 	const targets = resolveLayoutTargets(requestText, undefined, views);
 	if (targets.length === 1) return { kind: "match", view: targets[0] };
@@ -1936,7 +1886,7 @@ async function runViewsClose({
 		}
 	} else {
 		const views = await client.listViews({ viewType });
-		const resolution = resolveCloseTargetView(target, views);
+		const resolution = resolveNavigationView(target, views);
 		if (resolution.kind === "none") {
 			const reply = `No view matches "${target}". Try action=list to see available views.`;
 			await callback?.({ text: reply });
@@ -2003,7 +1953,7 @@ async function runViewsLayout({
 	const views = await client.listViews({ viewType });
 	const structuredLayoutTargets = readLayoutTargetsFromOptions(options);
 	for (const target of structuredLayoutTargets) {
-		const resolution = resolveCloseTargetView(target, views);
+		const resolution = resolveNavigationView(target, views);
 		if (resolution.kind === "none") {
 			const reply = `No view matches "${target}". No layout was changed; use action=list to see available views.`;
 			await callback?.({ text: reply });
@@ -2875,7 +2825,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							capabilityCandidates(views, viewType),
 						);
 						if (viewId) {
-							const targetResolution = resolveCloseTargetView(viewId, views);
+							const targetResolution = resolveNavigationView(viewId, views);
 							if (targetResolution.kind === "none") {
 								const reply = `No view matches "${viewId}". No interaction was sent; use action=list to see available views.`;
 								await callback?.({ text: reply });

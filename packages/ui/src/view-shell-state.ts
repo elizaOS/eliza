@@ -8,17 +8,15 @@
 import { ElizaError } from "@elizaos/core";
 import { client } from "./api";
 
-export interface AuthoritativeShellViewPane {
-  viewId: string;
-  viewType: "gui" | "tui" | "xr";
-}
-
 export interface AuthoritativeShellViewState {
   viewId: string;
   viewPath: string;
   viewType: "gui" | "tui" | "xr";
   mode?: "split" | "tile";
-  panes?: AuthoritativeShellViewPane[];
+  panes?: Array<{
+    viewId: string;
+    viewType: "gui" | "tui" | "xr";
+  }>;
   layout?: string;
   placement?: string;
 }
@@ -31,11 +29,6 @@ type ViewStateRequest = (
 
 interface PublishDependencies {
   request?: ViewStateRequest;
-}
-
-interface AuthoritativeStateOptions {
-  /** The visible route/layout is known, but its exact registry metadata is not. */
-  pending?: boolean;
 }
 
 interface ReadinessWaiter {
@@ -63,7 +56,10 @@ function normalizedState(
 /** Replace the shell snapshot used by the next reconnect or chat-send barrier. */
 export function setAuthoritativeShellViewState(
   state: AuthoritativeShellViewState | null,
-  options: AuthoritativeStateOptions = {},
+  options: {
+    /** The visible route/layout is known, but its exact registry metadata is not. */
+    pending?: boolean;
+  } = {},
 ): void {
   authoritativeState = state ? normalizedState(state) : null;
   authoritativeStatePending = state === null && options.pending === true;
@@ -162,6 +158,9 @@ export function rehydrateAuthoritativeShellViewState(
   const publication = publicationTail.then(() =>
     postAuthoritativeState(snapshot, dependencies),
   );
+  // error-policy:J5 callers observe the returned `publication`; only the
+  // serialization tail absorbs rejection so a failed publish cannot poison
+  // every later route snapshot queued behind it.
   publicationTail = publication.then(
     () => undefined,
     () => undefined,

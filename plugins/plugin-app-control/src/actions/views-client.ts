@@ -369,16 +369,7 @@ export function createViewsClient(
 		},
 
 		async getCurrentView() {
-			const response = await fetch(`${getApiBase()}/api/views/current`, {
-				method: "GET",
-				headers: viewRequestHeaders(clientId),
-				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-			});
-			if (!response.ok) {
-				throw new Error(`Failed to get current view: HTTP ${response.status}`);
-			}
-			const body: unknown = await response.json();
-			return parseCurrentView(body);
+			return (await getCurrentViewSnapshot(clientId)).currentView;
 		},
 
 		async navigate(viewId, opts = {}) {

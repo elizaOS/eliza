@@ -160,12 +160,21 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
             path: "/declared-caps",
             capabilities: [
               { id: "do-thing", description: "The one declared capability." },
+              {
+                id: "fail-thing",
+                description: "A declared capability whose handler throws.",
+              },
             ],
-            serverInteract: async (capability) => ({
-              success: true,
-              text: `ran ${capability}`,
-              capability,
-            }),
+            serverInteract: async (capability) => {
+              if (capability === "fail-thing") {
+                throw new Error("synthetic server interaction failure");
+              }
+              return {
+                success: true,
+                text: `ran ${capability}`,
+                capability,
+              };
+            },
           },
         ],
       },
@@ -317,6 +326,29 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
       text: "ran do-thing",
       capability: "do-thing",
     });
+  });
+
+  it("preserves the server-interaction failure response contract", async () => {
+    const { ctx, json, error } = makeCtx(
+      "POST",
+      "/api/views/declared-caps/interact",
+      { capability: "fail-thing" },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        requestId: expect.any(String),
+        success: false,
+        error: "synthetic server interaction failure",
+        result: {
+          success: false,
+          text: 'Cannot invoke capability "fail-thing" on view "declared-caps": synthetic server interaction failure.',
+        },
+      }),
+    );
   });
 
   it("accepts a standard capability even when the view declares its own allowlist", async () => {

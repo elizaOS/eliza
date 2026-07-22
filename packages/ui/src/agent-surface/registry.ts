@@ -12,6 +12,8 @@ import {
   SENSITIVE_AGENT_ELEMENT_REASON,
 } from "./sensitive";
 import {
+  AGENT_ACTION_FAILURE_CODES,
+  type AgentActionFailureCode,
   type AgentActionResult,
   type AgentElementDescriptor,
   type AgentElementSnapshot,
@@ -25,6 +27,21 @@ interface ElementRecord {
   descriptor: AgentElementDescriptor;
   getElement: () => HTMLElement | null;
   registeredAt: number;
+}
+
+function missingElement(
+  id: string,
+  code: AgentActionFailureCode,
+): AgentActionResult {
+  return {
+    ok: false,
+    id,
+    code,
+    reason:
+      code === AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_MOUNTED
+        ? "element not mounted"
+        : "element not found",
+  };
 }
 
 function isFillable(descriptor: AgentElementDescriptor): boolean {
@@ -228,15 +245,19 @@ export class ViewAgentRegistry {
 
   focus(id: string): AgentActionResult {
     const record = this.elements.get(id);
-    const el = record?.getElement();
-    if (!el) return { ok: false, id, reason: "element not found" };
+    if (!record)
+      return missingElement(id, AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND);
+    const el = record.getElement();
+    if (!el)
+      return missingElement(id, AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_MOUNTED);
     el.focus();
     return { ok: true, id };
   }
 
   click(id: string): AgentActionResult {
     const record = this.elements.get(id);
-    if (!record) return { ok: false, id, reason: "element not found" };
+    if (!record)
+      return missingElement(id, AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND);
     if (!isClickable(record.descriptor)) {
       return { ok: false, id, reason: "element is not clickable" };
     }
@@ -245,14 +266,16 @@ export class ViewAgentRegistry {
       return { ok: true, id };
     }
     const el = record.getElement();
-    if (!el) return { ok: false, id, reason: "element not mounted" };
+    if (!el)
+      return missingElement(id, AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_MOUNTED);
     el.click();
     return { ok: true, id };
   }
 
   fill(id: string, value: string): AgentActionResult {
     const record = this.elements.get(id);
-    if (!record) return { ok: false, id, reason: "element not found" };
+    if (!record)
+      return missingElement(id, AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND);
     if (isSensitiveAgentElement(record.descriptor, record.getElement())) {
       return { ok: false, id, reason: SENSITIVE_AGENT_ELEMENT_REASON };
     }
@@ -288,8 +311,11 @@ export class ViewAgentRegistry {
 
   scrollTo(id: string): AgentActionResult {
     const record = this.elements.get(id);
-    const el = record?.getElement();
-    if (!el) return { ok: false, id, reason: "element not found" };
+    if (!record)
+      return missingElement(id, AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND);
+    const el = record.getElement();
+    if (!el)
+      return missingElement(id, AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_MOUNTED);
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     return { ok: true, id };
   }

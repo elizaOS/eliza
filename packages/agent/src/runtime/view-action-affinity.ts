@@ -396,27 +396,12 @@ function renderCapabilityParams(capability: ViewCapability): string {
   return ` { ${rendered.join("; ")} }`;
 }
 
-function serializeUntrustedElement(element: ActiveViewElement): string {
-  return JSON.stringify({
-    id: element.id,
-    role: element.role,
-    label: element.label,
-    ...(typeof element.value === "string" && element.value.length > 0
-      ? { value: element.value }
-      : {}),
-    ...(element.focused ? { focused: true } : {}),
-  })
-    .replaceAll("<", "\\u003c")
-    .replaceAll(">", "\\u003e");
-}
-
-function serializeUntrustedPaneElement(
-  pane: ActiveViewPane,
+function serializeUntrustedElement(
   element: ActiveViewElement,
+  pane?: Pick<ActiveViewPane, "viewId" | "viewType">,
 ): string {
   return JSON.stringify({
-    viewId: pane.viewId,
-    viewType: pane.viewType,
+    ...(pane ? { viewId: pane.viewId, viewType: pane.viewType } : {}),
     id: element.id,
     role: element.role,
     label: element.label,
@@ -610,7 +595,7 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
         `- ${
           panes.length === 1
             ? serializeUntrustedElement(element)
-            : serializeUntrustedPaneElement(pane, element)
+            : serializeUntrustedElement(element, pane)
         }`,
       );
     }

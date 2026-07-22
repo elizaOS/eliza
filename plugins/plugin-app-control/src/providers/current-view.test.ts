@@ -36,6 +36,7 @@ const SIMPLE_VIEWS = [
 		path: "/simple-calendar",
 		pluginName: "@elizaos/plugin-simple-views",
 		available: true,
+		tags: ["calendar", "calender"],
 	},
 	{
 		id: "notes",
@@ -43,6 +44,7 @@ const SIMPLE_VIEWS = [
 		path: "/notes",
 		pluginName: "@elizaos/plugin-simple-views",
 		available: true,
+		tags: ["notes", "notepad"],
 	},
 	{
 		id: "documents",

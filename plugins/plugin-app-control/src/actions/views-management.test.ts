@@ -282,6 +282,7 @@ describe("view management actions", () => {
 							action: "open",
 							updatedAt: "2026-06-08T00:00:00.000Z",
 						},
+						revision: 1,
 					}),
 				} as Response;
 			}
@@ -3020,11 +3021,13 @@ describe("view management actions", () => {
 						id: "alpha-board",
 						label: "Alpha Board",
 						path: "/alpha-board",
+						tags: ["board"],
 					}),
 					view({
 						id: "beta-board",
 						label: "Beta Board",
 						path: "/beta-board",
+						tags: ["board"],
 					}),
 				]),
 				getCurrentView: vi.fn(async () => null),

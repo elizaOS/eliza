@@ -31,6 +31,7 @@ import {
   COLOR_MATERIALS,
   ColorPicker,
   GLASS_PANEL_STYLE,
+  handleRenderedMutationFailure,
   LABEL_STYLE,
   SECONDARY_TEXT_STYLE,
   VIEW_ROOT_STYLE,
@@ -50,10 +51,6 @@ function formatUpdatedAt(value: string): string {
     month: "short",
     day: "numeric",
   }).format(new Date(timestamp));
-}
-
-function handleRenderedMutationFailure(cause: unknown): void {
-  if (!(cause instanceof Error)) throw cause;
 }
 
 function NoteCard({

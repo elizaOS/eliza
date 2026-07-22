@@ -3,9 +3,12 @@
  */
 
 import type {
+	EvaluatorProcessorContext,
 	EvaluatorPromptContext,
 	EvaluatorRunContext,
+	Memory,
 } from "@elizaos/core";
+import { VIEW_SCOPE_IDLE_TTL_MS } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	BASELINE_VIEW_CONTEXT_INSTRUCTION,
@@ -42,13 +45,15 @@ function viewSummary(id: string) {
 
 let nextTurn = 1_000_000;
 
-function turnMessage(text: string, roomId = "r1") {
+function turnMessage(text: string, roomId = "r1", clientId?: string): Memory {
 	const createdAt = ++nextTurn;
 	return {
 		id: `m-${createdAt}`,
+		entityId: "test-entity",
 		roomId,
 		createdAt,
 		content: { text },
+		...(clientId ? { metadata: { type: "message", clientId } } : {}),
 	};
 }
 
@@ -116,11 +121,28 @@ function ctx(
 	overrides: Partial<EvaluatorRunContext> = {},
 ): EvaluatorRunContext {
 	return {
-		runtime: { actions: [{ name: "VIEWS" }] },
+		runtime: { actions: [{ name: "VIEWS" }], reportError },
 		message: turnMessage(text),
 		options: { didRespond: true },
 		...overrides,
 	} as unknown as EvaluatorRunContext;
+}
+
+const reportError = vi.fn();
+
+function processorContext(
+	output: ViewContextOutput,
+	message: Memory,
+): EvaluatorProcessorContext<ViewContextOutput> {
+	return {
+		output,
+		message,
+		runtime: ctx("processor fixture").runtime,
+		state: { values: {}, data: {}, text: "" },
+		options: { didRespond: true },
+		prepared: undefined,
+		evaluatorName: viewContextEvaluator.name,
+	};
 }
 
 async function runProcessor(
@@ -129,14 +151,8 @@ async function runProcessor(
 ) {
 	const processor = viewContextEvaluator.processors?.[0];
 	if (!processor) throw new Error("no processor");
-	return processor.process({
-		output,
-		message: turnMessage(text),
-		runtime: { reportError },
-	} as never);
+	return processor.process(processorContext(output, turnMessage(text)));
 }
-
-const reportError = vi.fn();
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -418,14 +434,14 @@ describe("viewContextEvaluator processor — navigates on the (mock-LLM) decisio
 		expect(result).toBeUndefined();
 	});
 
-	it("does NOT navigate to documents when the user asked for notes", async () => {
+	it("navigates to explicitly selected Documents by its registered id", async () => {
 		const { navigated } = mockLoopback({ current: "chat" });
 		const result = await runProcessor(
-			{ viewId: "documents", reason: "user requested notes" },
-			"open notes",
+			{ viewId: "documents", reason: "documents fit the current activity" },
+			"review the documents for this project",
 		);
-		expect(navigated).toEqual([]);
-		expect(result).toBeUndefined();
+		expect(navigated).toEqual(["documents"]);
+		expect(result?.success).toBe(true);
 	});
 
 	it("does NOT re-navigate when already on the target view", async () => {
@@ -591,6 +607,126 @@ describe("viewContextEvaluator processor — navigates on the (mock-LLM) decisio
 		expect(JSON.parse(String(navigateCall?.[1]?.body))).toMatchObject({
 			clientId: "shell-a",
 		});
+	});
+
+	it("expires inactive client ownership on the shared view-scope lease", async () => {
+		const listStarted = deferred<void>();
+		const releaseList = deferred<void>();
+		const navigated: string[] = [];
+		const now = vi.spyOn(Date, "now").mockReturnValue(100_000);
+
+		vi.mocked(globalThis.fetch).mockImplementation(async (url: unknown) => {
+			const u = String(url);
+			if (u.endsWith("/api/views/current")) {
+				return Response.json({ currentView: null, revision: 1 });
+			}
+			if (u.endsWith("/api/views")) {
+				listStarted.resolve();
+				await releaseList.promise;
+				return Response.json({
+					views: REGISTERED_VIEW_IDS.map(viewSummary),
+				});
+			}
+			const nav = /\/api\/views\/([^/?]+)\/navigate/.exec(u);
+			if (nav) {
+				navigated.push(decodeURIComponent(nav[1]));
+				return new Response(null, { status: 200 });
+			}
+			throw new Error(`unexpected request: ${u}`);
+		});
+
+		const staleMessage = turnMessage(
+			"I have back-to-back meetings",
+			"r1",
+			"stale-shell",
+		);
+		const processor = viewContextEvaluator.processors?.[0];
+		if (!processor) throw new Error("no processor");
+		const staleNavigation = processor.process(
+			processorContext(
+				{ viewId: "calendar", reason: "meetings" },
+				staleMessage,
+			),
+		);
+		await listStarted.promise;
+
+		now.mockReturnValue(100_000 + VIEW_SCOPE_IDLE_TTL_MS);
+		const activeMessage = turnMessage(
+			"I keep getting distracted while working",
+			"r1",
+			"active-shell",
+		);
+		expect(
+			await viewContextEvaluator.shouldRun(
+				ctx("I keep getting distracted while working", {
+					message: activeMessage,
+				}),
+			),
+		).toBe(true);
+
+		releaseList.resolve();
+		expect(await staleNavigation).toBeUndefined();
+		expect(navigated).toEqual([]);
+	});
+
+	it("evicts least-recently-observed client ownership at the hard bound", async () => {
+		const listStarted = deferred<void>();
+		const releaseList = deferred<void>();
+		const navigated: string[] = [];
+
+		vi.mocked(globalThis.fetch).mockImplementation(async (url: unknown) => {
+			const u = String(url);
+			if (u.endsWith("/api/views/current")) {
+				return Response.json({ currentView: null, revision: 1 });
+			}
+			if (u.endsWith("/api/views")) {
+				listStarted.resolve();
+				await releaseList.promise;
+				return Response.json({
+					views: REGISTERED_VIEW_IDS.map(viewSummary),
+				});
+			}
+			const nav = /\/api\/views\/([^/?]+)\/navigate/.exec(u);
+			if (nav) {
+				navigated.push(decodeURIComponent(nav[1]));
+				return new Response(null, { status: 200 });
+			}
+			throw new Error(`unexpected request: ${u}`);
+		});
+
+		const oldestMessage = turnMessage(
+			"I have back-to-back meetings",
+			"r1",
+			"oldest-shell",
+		);
+		const processor = viewContextEvaluator.processors?.[0];
+		if (!processor) throw new Error("no processor");
+		const oldestNavigation = processor.process(
+			processorContext(
+				{ viewId: "calendar", reason: "meetings" },
+				oldestMessage,
+			),
+		);
+		await listStarted.promise;
+
+		for (let index = 0; index < 300; index += 1) {
+			const message = turnMessage(
+				"I keep getting distracted while working",
+				"r1",
+				`bounded-shell-${index}`,
+			);
+			expect(
+				await viewContextEvaluator.shouldRun(
+					ctx("I keep getting distracted while working", {
+						message,
+					}),
+				),
+			).toBe(true);
+		}
+
+		releaseList.resolve();
+		expect(await oldestNavigation).toBeUndefined();
+		expect(navigated).toEqual([]);
 	});
 
 	it("lets the server reject a stale navigation that races after the final preflight", async () => {

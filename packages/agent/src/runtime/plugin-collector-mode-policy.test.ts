@@ -139,6 +139,14 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });
 
+  it("uses the canonical truthy env contract for the cloud provider gate", () => {
+    process.env.ELIZAOS_CLOUD_ENABLED = "on";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
   it("keeps plugin-local-inference when only local embeddings are disabled", () => {
     process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
 

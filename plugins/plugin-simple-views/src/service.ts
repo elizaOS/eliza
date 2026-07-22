@@ -26,11 +26,9 @@ import {
 export const SIMPLE_VIEWS_SERVICE_TYPE = "simple-views";
 export const SIMPLE_VIEWS_STATE_UPDATED_EVENT = "simple-views:state-updated";
 
-interface BroadcastService {
-  broadcastWs(data: object): void;
-}
-
-function isBroadcastService(value: unknown): value is BroadcastService {
+function isBroadcastService(
+  value: unknown,
+): value is { broadcastWs(data: object): void } {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -39,27 +37,12 @@ function isBroadcastService(value: unknown): value is BroadcastService {
   );
 }
 
-export interface SimpleViewsServiceOptions {
-  store?: SimpleViewsStore;
-  stateDir?: string;
-  now?: () => Date;
-  createId?: (kind: "note" | "event") => string;
-}
-
 function notFound(kind: "note" | "calendar event", id: string): ElizaError {
   return new ElizaError(`Simple Views ${kind} "${id}" was not found.`, {
     code: "SIMPLE_VIEWS_NOT_FOUND",
     context: { kind, id },
     severity: "ephemeral",
   });
-}
-
-function cloneNote(note: StickyNote): StickyNote {
-  return { ...note };
-}
-
-function cloneEvent(event: SimpleCalendarEvent): SimpleCalendarEvent {
-  return { ...event };
 }
 
 export class SimpleViewsService extends Service {
@@ -76,7 +59,12 @@ export class SimpleViewsService extends Service {
 
   constructor(
     runtime?: IAgentRuntime,
-    options: SimpleViewsServiceOptions = {},
+    options: {
+      store?: SimpleViewsStore;
+      stateDir?: string;
+      now?: () => Date;
+      createId?: (kind: "note" | "event") => string;
+    } = {},
   ) {
     super(runtime);
     this.eventRuntime = runtime;
@@ -132,7 +120,7 @@ export class SimpleViewsService extends Service {
     const id = parseEntityId(idValue);
     const note = this.snapshot().notes.find((candidate) => candidate.id === id);
     if (!note) throw notFound("note", id);
-    return cloneNote(note);
+    return note;
   }
 
   async createNote(inputValue: unknown): Promise<StickyNote> {
@@ -159,7 +147,7 @@ export class SimpleViewsService extends Service {
         updatedAt: now,
       };
       draft.notes.unshift(note);
-      return cloneNote(note);
+      return note;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:created");
     return transaction.value;
@@ -181,7 +169,7 @@ export class SimpleViewsService extends Service {
       if (patch.body !== undefined) updated.body = patch.body;
       if (patch.color !== undefined) updated.color = patch.color;
       draft.notes[index] = updated;
-      return cloneNote(updated);
+      return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
     return transaction.value;
@@ -194,7 +182,7 @@ export class SimpleViewsService extends Service {
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound("note", id);
       draft.notes.splice(index, 1);
-      return cloneNote(existing);
+      return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
     return transaction.value;
@@ -228,7 +216,7 @@ export class SimpleViewsService extends Service {
     const events = this.snapshot().events;
     if (dateValue === undefined) return events;
     const date = parseDateKey(dateValue);
-    return events.filter((event) => event.date === date).map(cloneEvent);
+    return events.filter((event) => event.date === date);
   }
 
   getCalendarEvent(idValue: unknown): SimpleCalendarEvent {
@@ -237,7 +225,7 @@ export class SimpleViewsService extends Service {
       (candidate) => candidate.id === id,
     );
     if (!event) throw notFound("calendar event", id);
-    return cloneEvent(event);
+    return event;
   }
 
   async createCalendarEvent(inputValue: unknown): Promise<SimpleCalendarEvent> {
@@ -270,7 +258,7 @@ export class SimpleViewsService extends Service {
       };
       draft.events.push(event);
       draft.selectedDate = event.date;
-      return cloneEvent(event);
+      return event;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-created");
     return transaction.value;
@@ -298,7 +286,7 @@ export class SimpleViewsService extends Service {
       if (patch.color !== undefined) updated.color = patch.color;
       draft.events[index] = updated;
       if (patch.date !== undefined) draft.selectedDate = patch.date;
-      return cloneEvent(updated);
+      return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-updated");
     return transaction.value;
@@ -311,7 +299,7 @@ export class SimpleViewsService extends Service {
       const existing = draft.events[index];
       if (index < 0 || !existing) throw notFound("calendar event", id);
       draft.events.splice(index, 1);
-      return cloneEvent(existing);
+      return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-deleted");
     return transaction.value;

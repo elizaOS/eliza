@@ -6,6 +6,7 @@
  * component-only module to hot-reload without forcing a full page reload.
  */
 
+import { logger } from "@elizaos/logger";
 import { useEffect } from "react";
 import type { ViewAgentRegistry } from "./registry";
 
@@ -87,8 +88,13 @@ export function useAgentSurfaceElementReporter(
       // non-instrumented view) → skip the POST. Navigation clears server-side
       // elements on view switch, so we never need to push an empty snapshot.
       if (elements.length === 0) return;
-      void reportAgentSurfaceElementSnapshot(registry).catch(() => {
-        // Best-effort: planner awareness is an optimization, never a hard dep.
+      void reportAgentSurfaceElementSnapshot(registry).catch((error) => {
+        // error-policy:J7 element reporting is diagnostic planner context; a
+        // failed snapshot must be observable without terminating subscriptions.
+        logger.warn(
+          { error },
+          "[AgentSurfaceElementReporter] element snapshot failed",
+        );
       });
     };
 

@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-simple-views",
   "version": "2.0.4",
   "type": "module",
-  "description": "Developer Notes and Simple Calendar views for agent-driven view and window-management QA.",
+  "description": "Developer Notes and Simple Calendar views for agent-driven navigation and interaction QA.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

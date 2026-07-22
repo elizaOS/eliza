@@ -13,7 +13,11 @@ import {
   removeViewRegistry,
   ViewAgentRegistry,
 } from "./registry";
-import type { AgentElementSnapshot, AgentSurfaceSnapshot } from "./types";
+import {
+  AGENT_ACTION_FAILURE_CODES,
+  type AgentElementSnapshot,
+  type AgentSurfaceSnapshot,
+} from "./types";
 
 function makeRegistry() {
   return new ViewAgentRegistry("test-view", "gui");
@@ -285,8 +289,9 @@ describe("handleAgentSurfaceCapability", () => {
         registry,
         capability,
         params,
-      ) as { ok: boolean; reason?: string };
+      ) as { ok: boolean; code?: string; reason?: string };
       expect(result.ok).toBe(false);
+      expect(result.code).toBe(AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND);
       expect(result.reason ?? "").toMatch(/not found|not mounted/i);
     }
   });

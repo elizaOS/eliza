@@ -40,19 +40,15 @@ interface PersistedLlmCall {
   };
 }
 
-interface TrajectoryDetailLike {
-  steps?: Array<{ llmCalls?: PersistedLlmCall[] }>;
-}
-
 interface TrajectoryLogger {
   startTrajectory: (
     agentId: string,
     options?: { source?: string; metadata?: Record<string, unknown> },
   ) => Promise<string>;
   startStep: (trajectoryId: string) => string;
-  getTrajectoryDetail: (
-    trajectoryId: string,
-  ) => Promise<TrajectoryDetailLike | null>;
+  getTrajectoryDetail: (trajectoryId: string) => Promise<{
+    steps?: Array<{ llmCalls?: PersistedLlmCall[] }>;
+  } | null>;
   flushWriteQueue?: () => Promise<void>;
 }
 

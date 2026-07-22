@@ -14,13 +14,13 @@ import {
 	ModelType,
 	resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
+import { VIEW_SCOPE_IDLE_TTL_MS } from "@elizaos/shared";
 import {
 	createViewsClient,
 	getCurrentViewSnapshot,
 	readViewClientId,
 } from "../actions/views-client.js";
 import {
-	isStandaloneNotesSurfaceRequest,
 	resolveIntentView,
 	resolveNavigationView,
 } from "../actions/views-show.js";
@@ -34,14 +34,30 @@ interface ViewTurnStamp {
 	clientScope: string;
 }
 
-interface ViewTurnOwner {
-	/** Null means two accepted messages shared one millisecond and neither owns it. */
-	key: string | null;
-	createdAt: number;
-}
-
 const DEFAULT_VIEW_TURN_SCOPE = "__default__";
-const latestViewTurns = new Map<string, ViewTurnOwner>();
+const MAX_VIEW_TURN_SCOPES = 256;
+const latestViewTurns = new Map<
+	string,
+	{
+		/** Null means two accepted messages shared one millisecond and neither owns it. */
+		key: string | null;
+		createdAt: number;
+		observedAt: number;
+	}
+>();
+
+function pruneViewTurns(now: number): void {
+	for (const [scope, owner] of latestViewTurns) {
+		if (now - owner.observedAt >= VIEW_SCOPE_IDLE_TTL_MS) {
+			latestViewTurns.delete(scope);
+		}
+	}
+	while (latestViewTurns.size >= MAX_VIEW_TURN_SCOPES) {
+		const oldestScope = latestViewTurns.keys().next().value;
+		if (typeof oldestScope !== "string") return;
+		latestViewTurns.delete(oldestScope);
+	}
+}
 
 function viewTurnKey(message: Memory): string {
 	if (message.id) return String(message.id);
@@ -64,17 +80,25 @@ function observeViewTurn(message: Memory): ViewTurnStamp | null {
 			: null;
 	if (createdAt === null) return null;
 
+	const observedAt = Date.now();
+	pruneViewTurns(observedAt);
 	const key = viewTurnKey(message);
 	const clientScope = readViewClientId(message) ?? DEFAULT_VIEW_TURN_SCOPE;
 	const latestViewTurn = latestViewTurns.get(clientScope);
 	const candidate = { key, createdAt, clientScope };
 	if (!latestViewTurn || createdAt > latestViewTurn.createdAt) {
-		latestViewTurns.set(clientScope, candidate);
+		latestViewTurns.delete(clientScope);
+		latestViewTurns.set(clientScope, { key, createdAt, observedAt });
 	} else if (
 		createdAt === latestViewTurn.createdAt &&
 		latestViewTurn.key !== key
 	) {
-		latestViewTurns.set(clientScope, { key: null, createdAt });
+		latestViewTurns.delete(clientScope);
+		latestViewTurns.set(clientScope, { key: null, createdAt, observedAt });
+	} else {
+		latestViewTurn.observedAt = observedAt;
+		latestViewTurns.delete(clientScope);
+		latestViewTurns.set(clientScope, latestViewTurn);
 	}
 	return candidate;
 }
@@ -178,13 +202,6 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 				? output.viewId.trim().toLowerCase()
 				: "";
 		if (!viewId || viewId === NONE) return undefined;
-		const messageText = getUserMessageText(message);
-		if (
-			viewId === "documents" &&
-			isStandaloneNotesSurfaceRequest(messageText)
-		) {
-			return undefined;
-		}
 
 		const clientId = readViewClientId(message);
 		const client = createViewsClient({ clientId });
@@ -303,7 +320,6 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		if (turnRanViewsAction(state)) return false;
 		const text = getUserMessageText(message);
 		if (text.trim().length < 8) return false;
-		if (isStandaloneNotesSurfaceRequest(text)) return false;
 		// Direct nav commands belong to the VIEWS action — only infer contextually
 		// when the keyword resolver finds NO direct surface but the turn hints at a
 		// mappable activity.

@@ -28,10 +28,15 @@ describe("collectPluginNames Simple Views gate", () => {
     expect(collectPluginNames({} as ElizaConfig).has(SIMPLE_VIEWS)).toBe(false);
   });
 
-  it.each(["1", "true", "yes"])("loads on ELIZA_SIMPLE_VIEWS=%s", (value) => {
-    process.env.ELIZA_SIMPLE_VIEWS = value;
-    expect(collectPluginNames({} as ElizaConfig).has(SIMPLE_VIEWS)).toBe(true);
-  });
+  it.each(["1", "true", "yes", "y", "on", "enabled"])(
+    "loads on canonical truthy ELIZA_SIMPLE_VIEWS=%s",
+    (value) => {
+      process.env.ELIZA_SIMPLE_VIEWS = value;
+      expect(collectPluginNames({} as ElizaConfig).has(SIMPLE_VIEWS)).toBe(
+        true,
+      );
+    },
+  );
 
   it("does not load in a mobile runtime", () => {
     process.env.ELIZA_PLATFORM = "ios";

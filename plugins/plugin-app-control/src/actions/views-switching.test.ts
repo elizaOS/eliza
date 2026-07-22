@@ -8,7 +8,7 @@
  * with an active command, plus the product-spec passive intents.
  *
  * This is the seam the orchestrator/scenario harness stops short of: it drives
- * the real createViewsAction handler + resolveView/scoreView against a fake
+ * the real createViewsAction handler + exact catalog resolver against a fake
  * registry and a captured navigate fetch.
  */
 
@@ -655,6 +655,7 @@ describe("view switching — VIEWS action resolver", () => {
 					pluginName: "@elizaos/plugin-alpha-board",
 					available: true,
 					viewType: "gui" as const,
+					tags: ["board"],
 				},
 				{
 					id: "beta-board",
@@ -664,6 +665,7 @@ describe("view switching — VIEWS action resolver", () => {
 					pluginName: "@elizaos/plugin-beta-board",
 					available: true,
 					viewType: "gui" as const,
+					tags: ["board"],
 				},
 			];
 
@@ -803,12 +805,12 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(navigated).toEqual([]);
 		});
 
-		it("opens a registered notes view for standalone notes requests", async () => {
+		it("opens a view that declares notes as an exact tag", async () => {
 			const withNotes: ViewSummary[] = [
 				...REGISTRY,
 				{
-					id: "notes",
-					label: "Notes",
+					id: "simple-notes",
+					label: "Scratchpad",
 					description: "Simple notes",
 					path: "/notes",
 					pluginName: "@elizaos/plugin-shopify",
@@ -821,7 +823,7 @@ describe("view switching — VIEWS action resolver", () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(withNotes, "open notes");
 			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["notes"]);
+			expect(navigated).toEqual(["simple-notes"]);
 		});
 
 		it("does not rewrite a structured Documents target into Notes", async () => {
@@ -881,11 +883,8 @@ describe("view switching — VIEWS action resolver", () => {
 			];
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(ambiguousRegistry, "open notes view");
-			// scoreView: "notes" exact-label-matches notes-a (100) but only
-			// substring-matches notes-b (80) → unambiguous winner notes-a.
-			// This asserts the tie-break picks one rather than dispatching both.
-			expect(navigated.length).toBeLessThanOrEqual(1);
-			if (result?.success) expect(navigated).toEqual(["notes-a"]);
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["notes-a"]);
 		});
 	});
 

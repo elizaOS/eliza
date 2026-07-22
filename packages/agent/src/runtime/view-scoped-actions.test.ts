@@ -21,6 +21,7 @@ import {
   stringToUuid,
   type ViewScopedAction,
 } from "@elizaos/core";
+import { AGENT_ACTION_FAILURE_CODES } from "@elizaos/shared/views/view-interact-protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_VIEWS } from "../api/builtin-views.ts";
 import {
@@ -93,7 +94,12 @@ function makeInteractiveView(id: string, mountedIds: Set<string>) {
         if (!mountedIds.has(targetId)) {
           return {
             success: true,
-            result: { ok: false, id: targetId, reason: "element not found" },
+            result: {
+              ok: false,
+              id: targetId,
+              code: AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND,
+              reason: "element not found",
+            },
           };
         }
         if (capability === "agent-fill") {
@@ -671,7 +677,12 @@ function characterView() {
         if (!CHARACTER_MOUNTED_IDS.has(targetId)) {
           return {
             success: true,
-            result: { ok: false, id: targetId, reason: "element not found" },
+            result: {
+              ok: false,
+              id: targetId,
+              code: AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND,
+              reason: "element not found",
+            },
           };
         }
         if (capability === "agent-fill") {
@@ -863,6 +874,7 @@ describe("character view scoped actions (#14155)", () => {
         result: {
           ok: false,
           id: typeof params?.id === "string" ? params.id : "",
+          code: AGENT_ACTION_FAILURE_CODES.ELEMENT_NOT_FOUND,
           reason: "element not found",
         },
       }),

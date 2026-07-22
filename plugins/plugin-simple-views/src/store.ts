@@ -14,6 +14,7 @@ import {
   logger,
   resolveStateDir,
 } from "@elizaos/core";
+import { todayDateKey } from "./date-key.js";
 import {
   SIMPLE_VIEWS_SCHEMA_VERSION,
   type SimpleViewsDocument,
@@ -21,22 +22,10 @@ import {
   type SimpleViewsStorePhase,
   type SimpleViewsStoreStatus,
 } from "./types.js";
-import { parseSimpleViewsDocument, todayDateKey } from "./validation.js";
+import { parseSimpleViewsDocument } from "./validation.js";
 
 export const SIMPLE_VIEWS_STATE_DIRECTORY = "simple-views";
 export const SIMPLE_VIEWS_STATE_FILENAME = "state.json";
-
-export interface SimpleViewsStoreOptions {
-  filePath?: string;
-  stateDir?: string;
-  agentId?: string;
-  now?: () => Date;
-}
-
-export interface SimpleViewsTransaction<T> {
-  value: T;
-  snapshot: SimpleViewsSnapshot;
-}
 
 export function simpleViewsStateFilePath(
   stateDir = resolveStateDir(),
@@ -142,7 +131,14 @@ export class SimpleViewsStore {
   private readonly shared: SharedStoreState;
   private stopped = false;
 
-  constructor(options: SimpleViewsStoreOptions = {}) {
+  constructor(
+    options: {
+      filePath?: string;
+      stateDir?: string;
+      agentId?: string;
+      now?: () => Date;
+    } = {},
+  ) {
     this.filePath = options.filePath
       ? path.resolve(options.filePath)
       : simpleViewsStateFilePath(options.stateDir, options.agentId);
@@ -210,7 +206,7 @@ export class SimpleViewsStore {
 
   async transact<T>(
     mutate: (draft: SimpleViewsDocument) => T,
-  ): Promise<SimpleViewsTransaction<T>> {
+  ): Promise<{ value: T; snapshot: SimpleViewsSnapshot }> {
     await this.initialize();
     return this.serialize(async () => {
       const current = this.requireReadyDocument();

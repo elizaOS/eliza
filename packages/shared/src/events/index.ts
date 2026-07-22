@@ -90,6 +90,9 @@ export const NAVIGATE_VIEW_EVENT = "eliza:navigate:view" as const;
  */
 export const MULTI_VIEW_LAYOUTS_ENABLED = false;
 
+/** Inactive renderer scopes are released after this shared lifecycle lease. */
+export const VIEW_SCOPE_IDLE_TTL_MS = 30 * 60 * 1_000;
+
 export type NavigateViewType = "gui" | "tui" | "xr";
 
 export interface NavigateViewDetail {

@@ -7,20 +7,6 @@
 /** Grace period before an unconnected client's scoped view state is cleared. */
 export const DEFAULT_VIEW_SCOPE_DISCONNECT_GRACE_MS = 30_000;
 
-export interface ScheduleViewScopeClearOptions {
-  clientId: string;
-  pendingClears: Map<string, ReturnType<typeof setTimeout>>;
-  clientHasLiveConnection: () => boolean;
-  clearViewScope: (clientId: string) => void;
-  graceMs?: number;
-}
-
-export interface RegisterViewScopeConnectionOptions {
-  clientId: string;
-  pendingClears: Map<string, ReturnType<typeof setTimeout>>;
-  markViewScopeConnected: (clientId: string) => void;
-}
-
 /**
  * Register an authenticated socket and cancel any cleanup left by the socket
  * it replaces. The authoritative state module uses the registration to keep
@@ -30,7 +16,11 @@ export function registerViewScopeConnection({
   clientId,
   pendingClears,
   markViewScopeConnected,
-}: RegisterViewScopeConnectionOptions): boolean {
+}: {
+  clientId: string;
+  pendingClears: Map<string, ReturnType<typeof setTimeout>>;
+  markViewScopeConnected: (clientId: string) => void;
+}): boolean {
   const reconnected = cancelPendingViewScopeClear(clientId, pendingClears);
   markViewScopeConnected(clientId);
   return reconnected;
@@ -47,7 +37,13 @@ export function scheduleViewScopeClearAfterGrace({
   clientHasLiveConnection,
   clearViewScope,
   graceMs = DEFAULT_VIEW_SCOPE_DISCONNECT_GRACE_MS,
-}: ScheduleViewScopeClearOptions): void {
+}: {
+  clientId: string;
+  pendingClears: Map<string, ReturnType<typeof setTimeout>>;
+  clientHasLiveConnection: () => boolean;
+  clearViewScope: (clientId: string) => void;
+  graceMs?: number;
+}): void {
   if (clientHasLiveConnection()) return;
 
   const existing = pendingClears.get(clientId);

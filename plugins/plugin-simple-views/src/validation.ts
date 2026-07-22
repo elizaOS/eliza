@@ -18,6 +18,8 @@ import {
   type UpdateNoteInput,
 } from "./types.js";
 
+export { todayDateKey } from "./date-key.js";
+
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const ENTITY_ID_PATTERN = /^[a-z][a-z0-9-]{2,127}$/;
@@ -367,10 +369,4 @@ export function parseSimpleViewsDocument(value: unknown): SimpleViewsDocument {
     events,
     selectedDate: parseDateKey(record.selectedDate, "selectedDate"),
   };
-}
-
-export function todayDateKey(date = new Date()): string {
-  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-    .toISOString()
-    .slice(0, 10);
 }

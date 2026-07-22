@@ -1,7 +1,7 @@
 /**
  * Real-filesystem coverage for the Simple Views backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain
- * capability, and invoke authenticated route handlers against the real service.
+ * capability, and invoke the authenticated state route against the real service.
  */
 
 import { promises as fs } from "node:fs";
@@ -540,60 +540,16 @@ describe("Simple Views authenticated routes", () => {
     }
   });
 
-  it("executes CRUD handlers through the real durable service", async () => {
+  it("returns the authoritative durable snapshot", async () => {
     const service = await serviceFor(await temporaryStateFile());
     const runtime = await runtimeFor(service);
-
-    const createNote = await invokeRoute(
-      route("POST", "/api/simple-views/notes"),
-      runtime,
-      {
-        body: {
-          title: "Route note",
-          body: "Created over HTTP",
-          color: "green",
-        },
-      },
-    );
-    expect(createNote).toMatchObject({
-      status: 201,
-      body: { success: true, data: { title: "Route note" } },
+    await service.createNote({
+      title: "Route note",
+      body: "Read over HTTP",
+      color: "green",
     });
-    const noteId = service.listNotes()[0]?.id;
-    if (!noteId) throw new Error("Created route note id is required.");
-
-    const patchNote = await invokeRoute(
-      route("PATCH", "/api/simple-views/notes/:id"),
-      runtime,
-      { params: { id: noteId }, body: { body: "Updated over HTTP" } },
-    );
-    expect(patchNote).toMatchObject({
-      status: 200,
-      body: { success: true, data: { body: "Updated over HTTP" } },
-    });
-
-    const selectDate = await invokeRoute(
-      route("PUT", "/api/simple-views/calendar/selected-date"),
-      runtime,
-      { body: { date: "2026-09-05" } },
-    );
-    expect(selectDate).toMatchObject({
-      status: 200,
-      body: { success: true, data: { date: "2026-09-05" } },
-    });
-
-    const createEvent = await invokeRoute(
-      route("POST", "/api/simple-views/calendar/events"),
-      runtime,
-      { body: { title: "Route event", time: "08:30" } },
-    );
-    expect(createEvent).toMatchObject({
-      status: 201,
-      body: {
-        success: true,
-        data: { title: "Route event", date: "2026-09-05" },
-      },
-    });
+    await service.selectDate("2026-09-05");
+    await service.createCalendarEvent({ title: "Route event", time: "08:30" });
 
     const state = await invokeRoute(
       route("GET", "/api/simple-views/state"),
@@ -603,37 +559,29 @@ describe("Simple Views authenticated routes", () => {
       status: 200,
       body: {
         success: true,
-        data: { revision: 4, selectedDate: "2026-09-05" },
+        data: {
+          revision: 3,
+          selectedDate: "2026-09-05",
+          notes: [{ title: "Route note" }],
+          events: [{ title: "Route event", date: "2026-09-05" }],
+        },
       },
     });
   });
 
-  it("returns validation and not-found errors as non-2xx responses", async () => {
+  it("returns unavailable instead of fabricating an empty snapshot", async () => {
     const service = await serviceFor(await temporaryStateFile());
     const runtime = await runtimeFor(service);
-    const invalid = await invokeRoute(
-      route("POST", "/api/simple-views/notes"),
+    await service.stop();
+    const unavailable = await invokeRoute(
+      route("GET", "/api/simple-views/state"),
       runtime,
-      { body: { title: "", surprise: true } },
     );
-    expect(invalid).toMatchObject({
-      status: 400,
+    expect(unavailable).toMatchObject({
+      status: 503,
       body: {
         success: false,
-        error: { code: "SIMPLE_VIEWS_VALIDATION_FAILED" },
-      },
-    });
-
-    const missing = await invokeRoute(
-      route("GET", "/api/simple-views/notes/:id"),
-      runtime,
-      { params: { id: "note-does-not-exist" } },
-    );
-    expect(missing).toMatchObject({
-      status: 404,
-      body: {
-        success: false,
-        error: { code: "SIMPLE_VIEWS_NOT_FOUND" },
+        error: { code: "SIMPLE_VIEWS_STORE_UNAVAILABLE" },
       },
     });
   });

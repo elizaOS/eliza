@@ -32,7 +32,6 @@ import {
 	readViewClientId,
 } from "../actions/views-client.js";
 import {
-	isStandaloneNotesSurfaceRequest,
 	resolveIntentView,
 	resolveNavigationView,
 } from "../actions/views-show.js";
@@ -97,21 +96,7 @@ export const currentViewProvider: Provider = {
 				? humanizeViewId(requestedTargetId)
 				: null;
 			if (requestedTargetId && views) {
-				let resolution = resolveNavigationView(requestedTargetId, views);
-				// A standalone Notes request must never canonicalize to Documents just
-				// because that view happens to mention notes in its searchable metadata.
-				if (
-					isStandaloneNotesSurfaceRequest(text) &&
-					resolution.kind === "match" &&
-					resolution.view.id === "documents"
-				) {
-					const notesResolution = resolveNavigationView("notes", views);
-					resolution =
-						notesResolution.kind === "match" &&
-						notesResolution.view.id === "documents"
-							? { kind: "none" }
-							: notesResolution;
-				}
+				const resolution = resolveNavigationView(requestedTargetId, views);
 				if (resolution.kind === "match") {
 					intentTargetId = resolution.view.id;
 					intentTargetLabel = resolution.view.label;

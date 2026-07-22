@@ -9,6 +9,8 @@
  * shipping its own chat surface.
  */
 
+import type { AgentActionFailureCode } from "@elizaos/shared/views/view-interact-protocol";
+
 /** Semantic role of an addressable element — drives icons, affordances, search. */
 export type AgentElementRole =
   | "button"
@@ -131,6 +133,7 @@ export type AgentViewType = "gui" | "tui" | "xr";
 export interface AgentActionResult {
   ok: boolean;
   id?: string;
+  code?: AgentActionFailureCode;
   reason?: string;
   value?: unknown;
 }
@@ -139,4 +142,8 @@ export interface AgentActionResult {
 // canonical definition lives in @elizaos/shared so the agent server can dispatch
 // against it without importing UI internals (#12408); re-exported here for the
 // UI's agent-surface consumers.
-export { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/shared/views/view-interact-protocol";
+export {
+  AGENT_ACTION_FAILURE_CODES,
+  AGENT_SURFACE_CAPABILITY_IDS,
+  type AgentActionFailureCode,
+} from "@elizaos/shared/views/view-interact-protocol";
