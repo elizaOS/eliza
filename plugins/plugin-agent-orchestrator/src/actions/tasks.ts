@@ -2564,10 +2564,9 @@ async function runHistory(
   const window = historyWindowValue(params.window ?? content.window);
   const statuses = historyStatusesValue(params.statuses ?? content.statuses);
   const search = textValue(params.search) ?? textValue(content.search);
-  // The planner naturally scopes history to one session ("hows that sub-agent
-  // doing?" -> sessionId). Ignoring it silently returned the store's oldest
-  // unrelated task as if it were the answer (observed live: a July-10 app
-  // build relayed as the status of a just-spawned session).
+  // Session-scoped history resolves through the durable session index. A task
+  // may have several sessions, so comparing only its latest session would make
+  // older sessions disappear or allow an unrelated thread into the answer.
   const sessionId = textValue(params.sessionId) ?? textValue(content.sessionId);
   // Registered-project filter: restrict the thread listing to tasks bound to
   // one project (the store filters on the indexed/structural `projectId`).
@@ -2580,18 +2579,21 @@ async function runHistory(
   ) as OrchestratorTaskService | null | undefined;
   if (taskService && typeof taskService.listTasks === "function") {
     try {
-      const allTasks = (
-        await taskService.listTasks({
-          includeArchived,
-          ...(search ? { search } : {}),
-          ...(projectId ? { projectId } : {}),
-        })
-      ).filter(
+      const sessionTask = sessionId
+        ? await taskService.getTaskForSession(sessionId)
+        : undefined;
+      const taskCandidates =
+        sessionId && !sessionTask
+          ? []
+          : await taskService.listTasks({
+              includeArchived,
+              ...(search ? { search } : {}),
+              ...(projectId ? { projectId } : {}),
+            });
+      const allTasks = taskCandidates.filter(
         (task) =>
           taskMatchesHistoryFilters(task, statuses, windowFilters, search) &&
-          (!sessionId ||
-            task.latestSessionId === sessionId ||
-            task.id === sessionId),
+          (!sessionTask || task.id === sessionTask.id),
       );
       const count = allTasks.length;
       const tasks = allTasks.slice(0, limit);
@@ -2614,7 +2616,9 @@ async function runHistory(
       } else if (metric === "detail") {
         const task = tasks[0];
         responseText = [
-          `The most recent orchestrator task is "${task.title}" [${task.status}].`,
+          sessionId
+            ? `The orchestrator task containing session ${sessionId} is "${task.title}" [${task.status}].`
+            : `The most recent orchestrator task is "${task.title}" [${task.status}].`,
           `Task id: ${task.id}`,
           `Latest session: ${task.latestSessionLabel ?? task.latestSessionId ?? "none"}`,
           `Workspace: ${task.latestWorkdir ?? "none"}`,
@@ -2646,6 +2650,7 @@ async function runHistory(
             ...(statuses.length > 0 ? { statuses } : {}),
             ...(search ? { search } : {}),
             ...(projectId ? { projectId } : {}),
+            ...(sessionId ? { sessionId } : {}),
             includeArchived,
             limit,
           },
@@ -4010,7 +4015,7 @@ export const tasksAction: Action & {
     {
       name: "sessionId",
       description:
-        "Target session id for action=send / action=stop_agent / action=cancel / action=control / action=share.",
+        "Exact ACP session id for action=send / action=stop_agent / action=cancel / action=control / action=share / action=history. For history, returns the durable task containing that session even when it is not the task's latest session.",
       required: false,
       schema: { type: "string" as const },
     },

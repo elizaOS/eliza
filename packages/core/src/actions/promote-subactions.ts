@@ -14,9 +14,9 @@
 import type {
 	Action,
 	ActionExample,
-	ActionResult,
 	ActionParameter,
 	ActionParameters,
+	ActionResult,
 	Handler,
 	HandlerCallback,
 	HandlerOptions,
@@ -279,20 +279,18 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	) => {
-		// A virtual pins its own subaction; a CONTRADICTORY discriminator in the
-		// args means the planner picked the wrong virtual (observed live:
-		// TASKS_SPAWN_AGENT called with op:"list_agents" silently spawned a
-		// coding sub-agent to answer a listing question). Fail structurally so
-		// the planner re-routes to the virtual it actually meant.
+		// A virtual must reject a conflicting discriminator before its pinned
+		// value is merged, or a call routed to one operation can silently execute
+		// another. The structured failure lets the planner choose the intended
+		// virtual without invoking the parent handler.
 		const rawParams = (options as HandlerOptions | undefined)?.parameters as
 			| Record<string, unknown>
 			| undefined;
 		if (rawParams) {
 			for (const key of DEFAULT_SUBACTION_KEYS) {
-				// A parent may declare an alias-named parameter as a SECOND-level
-				// selector (e.g. TASKS' nested `op`) whose enum does not carry the
-				// pinned value — that is that param's own vocabulary, not a
-				// contradiction of this virtual's pin.
+				// An alias-named parameter can be a second-level selector. Its enum
+				// must include the pinned value before it is treated as a discriminator;
+				// otherwise its independent vocabulary remains untouched.
 				const declared = parent.parameters?.find((p) => p.name === key);
 				if (declared) {
 					const declaredEnum = (
