@@ -8,7 +8,7 @@ The plugin registers three umbrella actions and a set of supporting services:
 
 | Action | Operations | Description |
 |---|---|---|
-| **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Paths must be absolute. Optional `target=device` routes through a device filesystem bridge for mobile. |
+| **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Relative read/write/edit paths resolve against the conversation's session cwd before sandbox validation. Optional `target=device` routes through a device filesystem bridge for mobile. |
 | **SHELL** | `run`, `start_background`, `poll_background`, `write_background`, `kill_background`, `list_background`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). Background actions return stable per-conversation handles, poll incremental stdout/stderr offsets with truncation markers, write stdin, terminate process groups, and list sessions. `view_history`/`clear_history` read or clear per-conversation command history. |
 | **WORKTREE** | `enter`, `exit` | Creates and tears down git worktrees, updating the agent's session cwd and sandbox roots automatically. |
 
@@ -16,7 +16,7 @@ Supporting services (automatically started):
 
 - **SandboxService** — path policy engine. Blocks user-private and OS-system paths by default; optionally constrains access to configured workspace roots.
 - **FileStateService** — tracks file mtimes per conversation so write/edit operations are rejected if the file was externally modified since the agent last read it.
-- **SessionCwdService** — per-conversation working directory. Defaults to `process.cwd()`; updated by WORKTREE operations.
+- **SessionCwdService** — per-conversation working directory used by relative file operations and default-path tools. Defaults to `process.cwd()`; updated by WORKTREE operations.
 - **BackgroundShellService** — owns per-conversation background shell sessions and reaps all child process groups on plugin teardown.
 - **RipgrepService** — wraps the `@vscode/ripgrep` binary for fast regex search.
 

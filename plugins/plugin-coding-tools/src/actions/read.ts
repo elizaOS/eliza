@@ -169,7 +169,8 @@ export async function readFileHandler(
       message: "file_path is required",
     });
   }
-  const resolvedInput = resolveInputPath(runtime, conversationId, filePath);
+  const inputPath = resolveInputPath(runtime, conversationId, filePath);
+  if (!inputPath.ok) return failureToActionResult(inputPath.failure);
 
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService
@@ -184,7 +185,7 @@ export async function readFileHandler(
     });
   }
 
-  const validated = await sandbox.validatePath(conversationId, resolvedInput);
+  const validated = await sandbox.validatePath(conversationId, inputPath.value);
   if (validated.ok === false) {
     const reason =
       validated.reason === "blocked" ? "path_blocked" : "invalid_param";
