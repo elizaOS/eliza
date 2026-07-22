@@ -88,7 +88,7 @@ describe("useCloudState — backend-backed (unlocked) Cloud account sign-out", (
     expect(cloudDisconnectMock).toHaveBeenCalledTimes(1);
     // The account-only shortcut (clearStaleStewardSession) is reserved for the
     // locked runtime and must NOT be the path taken here.
-    expect(clearStaleStewardSession).not.toHaveBeenCalled();
+    expect(clearStaleStewardSessionMock).not.toHaveBeenCalled();
     expect(result.current.elizaCloudConnected).toBe(false);
     expect(result.current.elizaCloudEnabled).toBe(false);
     expect(result.current.elizaCloudUserId).toBeNull();
