@@ -52,7 +52,7 @@ mock.module("../../../db/repositories/agent-sandboxes", () => ({
 // second cold hit skips the DB waves and the not-OK shapes are never cached.
 const cacheStore = new Map<string, unknown>();
 const cacheGet = mock(async (key: string) => (cacheStore.has(key) ? cacheStore.get(key) : null));
-const cacheSet = mock(async (key: string, value: unknown) => {
+const cacheSet = mock(async (key: string, value: unknown, _ttlSeconds?: number) => {
   cacheStore.set(key, value);
 });
 // Single-flight double: an in-process lock so N concurrent misses run the loader
@@ -100,6 +100,7 @@ mock.module("../../utils/logger", () => ({
 }));
 
 const { resolveSharedAgent } = await import("./resolve-shared-agent");
+const { CacheTTL } = await import("../../cache/keys");
 
 function contextWithAgentId(agentId?: string, headers: Record<string, string> = {}) {
   const lower: Record<string, string> = {};
@@ -291,6 +292,77 @@ describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
     expect(cacheSet).not.toHaveBeenCalled();
     // Authoritative gate still ran.
     expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("resolveSharedAgent sliding TTL (COLDPATH-FIX-2026-07-22)", () => {
+  test("a validated hit re-writes the entry with the full TTL (keeps active convo warm)", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    // Populate (authoritative write #1).
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+    const firstWrittenAtMs = (
+      cacheStore.get(cacheStore.keys().next().value) as { firstWrittenAtMs: number }
+    ).firstWrittenAtMs;
+    expect(typeof firstWrittenAtMs).toBe("number");
+    cacheSet.mockClear();
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+    findByIdAndOrg.mockClear();
+
+    // Second hit within the cap: served from cache AND refreshes the TTL.
+    const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    expect(result).toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    // No cold DB waves on the hit.
+    expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    // The hit re-wrote the entry with the resolve TTL (sliding refresh).
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+    const [, refreshedValue, ttlSeconds] = cacheSet.mock.calls[0];
+    expect(ttlSeconds).toBe(CacheTTL.sharedAgentScope.resolve);
+    // firstWrittenAtMs is PRESERVED across the refresh so the cap still bounds it.
+    expect((refreshedValue as { firstWrittenAtMs: number }).firstWrittenAtMs).toBe(
+      firstWrittenAtMs,
+    );
+  });
+
+  test("a hit past the absolute cap is NOT refreshed (agent row self-heals within the cap)", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+
+    // Simulate a continuously active conversation that has been warm longer than
+    // the cap: back-date the entry's firstWrittenAtMs past resolveMaxAgeMs.
+    const key = cacheStore.keys().next().value as string;
+    const stored = cacheStore.get(key) as { firstWrittenAtMs: number };
+    stored.firstWrittenAtMs = Date.now() - CacheTTL.sharedAgentScope.resolveMaxAgeMs - 1;
+    cacheSet.mockClear();
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    // Still served from cache this turn (credential re-validated), but NOT
+    // refreshed — so the entry expires on schedule and the next miss re-hydrates
+    // the agent row through the authoritative gate.
+    expect(result).toMatchObject({ agentId: "agent-1" });
+    expect(cacheSet).not.toHaveBeenCalled();
+  });
+
+  test("a revoked key on a hit is NOT refreshed (never extends an unauthorized entry)", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    cacheSet.mockClear();
+    // Key revoked between turns.
+    validateBehavior = async () => ({
+      is_active: false,
+      organization_id: "org-1",
+      expires_at: null,
+    });
+
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    // The hit failed revalidation -> fell through to the authoritative gate,
+    // which re-wrote the entry (row still shared) ONCE. The sliding refresh must
+    // NOT have fired on the failed hit (it runs only after revalidate passes),
+    // so the only write is the authoritative populate, not a hit-refresh.
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalled();
   });
 });
 

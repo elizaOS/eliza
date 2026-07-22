@@ -42,6 +42,15 @@ interface CachedSharedAgentScope {
    * entries (those revalidate via the key's org instead).
    */
   stewardUserId?: string;
+  /**
+   * Epoch-ms of the entry's FIRST authoritative write (COLDPATH-FIX-2026-07-22).
+   * Preserved across sliding-TTL refreshes so the refresh can be capped at
+   * `resolveMaxAgeMs` past this instant — a continuously active conversation
+   * still self-heals the cached agent row within the cap. Absent on entries
+   * written before this field existed (treated as "write now", so a legacy
+   * entry simply gets one bounded refresh window before the cap applies).
+   */
+  firstWrittenAtMs?: number;
 }
 
 /**
@@ -137,11 +146,41 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     };
   };
 
+  // SLIDING-TTL refresh on a VALIDATED hit (COLDPATH-FIX-2026-07-22). The
+  // residual cold stall after #16743/#16763 is TTL expiry between turns: the
+  // 30s absolute TTL is not refreshed on read, so a conversation idled past 30s
+  // (demo Q&A pacing — read the reply, think, ask a follow-up — routinely does)
+  // re-pays the cold Hyperdrive waves on the NEXT turn. Refreshing the TTL when
+  // we serve a still-authorized hit keeps an ACTIVE conversation warm across
+  // human think-time. It is bounded: a hit only re-validates the CREDENTIAL, not
+  // the cached agent row, so we never refresh past `resolveMaxAgeMs` after the
+  // entry's FIRST write — a tier flip / row change still self-heals within the
+  // cap even under a continuously active conversation. Best-effort: a refresh
+  // failure only means the next turn may re-hydrate; it never fails the turn and
+  // never extends an UNAUTHORIZED entry (this runs only after revalidate passed).
+  const slidingRefreshValidatedHit = (cached: CachedSharedAgentScope): void => {
+    if (!scopeCacheKey) return;
+    const now = Date.now();
+    const firstWrittenAtMs = cached.firstWrittenAtMs ?? now;
+    // Do not refresh past the absolute cap; let the entry expire so the agent
+    // row self-heals via the authoritative gate.
+    if (now - firstWrittenAtMs >= CacheTTL.sharedAgentScope.resolveMaxAgeMs) return;
+    const refreshed: CachedSharedAgentScope = { ...cached, firstWrittenAtMs };
+    void cache.set(scopeCacheKey, refreshed, CacheTTL.sharedAgentScope.resolve).catch((error) => {
+      logger.debug("[resolveSharedAgent] scope cache sliding refresh failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
+
   if (scopeCacheKey) {
     const cached = await cache.get<CachedSharedAgentScope>(scopeCacheKey).catch(() => null);
     if (cached) {
       const resolved = await revalidateResolvedScope(cached);
-      if (resolved) return resolved;
+      if (resolved) {
+        slidingRefreshValidatedHit(cached);
+        return resolved;
+      }
     }
   }
 
@@ -176,15 +215,21 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
           // cache, and this caller falls through to the authoritative path
           // below to produce the correct 404 / bootstrap handling.
           if (!agent || agent.execution_tier !== "shared") return null;
-          return isSessionScope && typeof user.steward_id === "string"
-            ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
-            : { orgId: user.organization_id, agent };
+          const base =
+            isSessionScope && typeof user.steward_id === "string"
+              ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
+              : { orgId: user.organization_id, agent };
+          return { ...base, firstWrittenAtMs: Date.now() };
         },
         { singleflight: true },
       )
       .catch(() => null);
     if (hydrated) {
       const resolved = await revalidateResolvedScope(hydrated);
+      // No sliding refresh here: this branch either JUST populated the entry
+      // (fresh full TTL) or picked up a scope another cold caller populated
+      // microseconds ago (also fresh). The sliding refresh only exists to keep
+      // a pre-existing, idled entry warm and runs solely on the direct-get hit.
       if (resolved) return resolved;
     }
   }
@@ -205,10 +250,12 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     // JWT maps to the same user without a user/org DB read (#SHADOW-ACCOUNT-DEBUG).
     // Only write it when we actually have it (session path + a steward-linked
     // user); its absence just means the hit safely falls back to the slow gate.
-    const entry: CachedSharedAgentScope =
-      isSessionScope && typeof user.steward_id === "string"
+    const entry: CachedSharedAgentScope = {
+      ...(isSessionScope && typeof user.steward_id === "string"
         ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
-        : { orgId: user.organization_id, agent };
+        : { orgId: user.organization_id, agent }),
+      firstWrittenAtMs: Date.now(),
+    };
     void cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve).catch((error) => {
       logger.debug("[resolveSharedAgent] scope cache write failed", {
         error: error instanceof Error ? error.message : String(error),
