@@ -80,6 +80,15 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     vi.useRealTimers();
   });
 
+  it("rejects creation when triggers are disabled", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    runtime.getSetting = () => "0";
+    const result = await create(runtime, { instructions: "drink water" });
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("TRIGGERS_OFF");
+    expect(createdTasks).toHaveLength(0);
+  });
+
   it("creates a prompt-kind once trigger from delaySeconds with autonomy off", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const before = Date.now();
@@ -155,6 +164,14 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     expect(createdTasks).toHaveLength(0);
   });
 
+  it("rejects a trigger with no instructions or message text", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {}, "");
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("MISSING_INSTRUCTIONS");
+    expect(createdTasks).toHaveLength(0);
+  });
+
   it("rejects a sub-minute fractional delayMinutes instead of scheduling 'now'", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
@@ -188,6 +205,45 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     expect(createdTasks[0].metadata.trigger?.triggerType).toBe("once");
   });
 
+  it("rejects an unbounded relative delay instead of overflowing date math", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "far future reminder",
+      delaySeconds: 367 * 24 * 60 * 60,
+    });
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("INVALID_DELAY");
+    expect(createdTasks).toHaveLength(0);
+  });
+
+  it("rejects an invalid cron expression instead of creating a dead trigger", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "nightly report",
+      triggerType: "cron",
+      cronExpression: "not a cron schedule",
+    });
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("INVALID_CRON");
+    expect(createdTasks).toHaveLength(0);
+  });
+
+  it("creates a recurring prompt trigger from a valid cron expression", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "morning report",
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      wakeMode: "next_autonomy_cycle",
+    });
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger?.triggerType).toBe("cron");
+    expect(createdTasks[0].metadata.trigger?.cronExpression).toBe("0 9 * * *");
+    expect(createdTasks[0].metadata.trigger?.wakeMode).toBe(
+      "next_autonomy_cycle",
+    );
+  });
+
   it("dedupes an identical delay-derived reminder (planner retry double-emit)", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const first = await create(runtime, {
@@ -213,6 +269,28 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     });
     expect(second?.success).toBe(true);
     expect(second?.data?.duplicateTaskId).toBeDefined();
+    expect(createdTasks).toHaveLength(1);
+  });
+
+  it("enforces the active-trigger limit for the requesting user", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "baseline reminder",
+      delaySeconds: 90,
+    });
+    expect(first?.success).toBe(true);
+    const saturatedTasks = Array.from({ length: 100 }, (_, index) => ({
+      id: stringToUuid(`saturated-trigger-${index}`),
+      metadata: createdTasks[0].metadata,
+    })) as Task[];
+    vi.mocked(runtime.getTasks).mockResolvedValue(saturatedTasks);
+
+    const result = await create(runtime, {
+      instructions: "one reminder too many",
+      delaySeconds: 120,
+    });
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("LIMIT_REACHED");
     expect(createdTasks).toHaveLength(1);
   });
 });
@@ -241,9 +319,9 @@ describe("TRIGGER create — workflow triggers", () => {
     expect(result?.success).toBe(true);
     const trigger = createdTasks[0].metadata.trigger;
     expect(trigger?.kind).toBe("workflow");
-    expect(
-      trigger?.kind === "workflow" ? trigger.workflowId : undefined,
-    ).toBe("wf-1");
+    expect(trigger?.kind === "workflow" ? trigger.workflowId : undefined).toBe(
+      "wf-1",
+    );
     expect(createdTasks[0].roomId).toBe(AUTONOMY_ROOM_ID);
   });
 });

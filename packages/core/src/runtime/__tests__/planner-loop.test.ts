@@ -7,10 +7,10 @@
  * model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
-import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import {
 	__renderRoutingHintsBlockForTests,
 	PROGRESS_ONLY_ANSWER_REJECT,
@@ -1667,36 +1667,33 @@ describe("v5 planner loop skeleton", () => {
 		"I'm reviewing the conversation history to answer.",
 		"I'll look that up and get back to you.",
 		"Pulling up the info now, one sec.",
-	])(
-		"never surfaces native intent-narration as a refusal: %s (#9874)",
-		async (text) => {
-			// Regression: a native pre-tool/intent-narration text carries no leak
-			// markup and no "thinking through" marker, so a denylist would let it
-			// through and the agent would falsely claim it is doing work it never
-			// did. The positive-allowlist gate (must read as an inability) rejects
-			// it → the loop throws → caller emits the generic apology, never the
-			// phantom action claim.
-			const runtime = {
-				useModel: vi.fn(async () => ({ text, toolCalls: [] })),
-				logger: { warn: vi.fn() },
-			};
+	])("never surfaces native intent-narration as a refusal: %s (#9874)", async (text) => {
+		// Regression: a native pre-tool/intent-narration text carries no leak
+		// markup and no "thinking through" marker, so a denylist would let it
+		// through and the agent would falsely claim it is doing work it never
+		// did. The positive-allowlist gate (must read as an inability) rejects
+		// it → the loop throws → caller emits the generic apology, never the
+		// phantom action claim.
+		const runtime = {
+			useModel: vi.fn(async () => ({ text, toolCalls: [] })),
+			logger: { warn: vi.fn() },
+		};
 
-			await expect(
-				runPlannerLoop({
-					runtime,
-					context: { id: "ctx" },
-					tools: [{ name: "LOOKUP", description: "Lookup current status." }],
-					requireNonTerminalToolCall: true,
-					config: { maxRequiredToolMisses: 1 },
-					executeToolCall: vi.fn(),
-					evaluate: vi.fn(),
-				}),
-			).rejects.toMatchObject({
-				name: "TrajectoryLimitExceeded",
-				kind: "required_tool_misses",
-			});
-		},
-	);
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+	});
 
 	it("does not surface explicit messageToUser intent-narration at required-tool exhaustion (#9874)", async () => {
 		const runtime = {
@@ -3274,8 +3271,7 @@ describe("routing hints — promoted-family fallback", () => {
 				},
 			],
 		};
-		const [createVirtual, deleteVirtual] =
-			promoteSubactionsToActions(parent);
+		const [createVirtual, deleteVirtual] = promoteSubactionsToActions(parent);
 		const ctx = {
 			events: [createVirtual, deleteVirtual].map((action, i) => ({
 				id: `tool-${i}`,
@@ -3287,8 +3283,8 @@ describe("routing hints — promoted-family fallback", () => {
 		expect(block).toContain("# Routing hints");
 		expect(block).toContain("reminders -> TRIGGER_CREATE");
 		// One line for the whole family, not one per virtual.
-		expect(
-			(block ?? "").split("reminders -> TRIGGER_CREATE").length - 1,
-		).toBe(1);
+		expect((block ?? "").split("reminders -> TRIGGER_CREATE").length - 1).toBe(
+			1,
+		);
 	});
 });
