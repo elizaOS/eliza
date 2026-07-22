@@ -371,9 +371,12 @@ async function readVoiceSessionRevocation(jti: string, store?: CompatibleRedis):
   );
 }
 
-export async function isVoiceSessionTokenRevoked(jti: string): Promise<boolean> {
+export async function isVoiceSessionTokenRevoked(
+  jti: string,
+  store?: CompatibleRedis,
+): Promise<boolean> {
   try {
-    return await readVoiceSessionRevocation(jti);
+    return await readVoiceSessionRevocation(jti, store);
   } catch (error) {
     logger.error(
       `[voice-session-jwt] revocation check failed (fail-closed): ${
