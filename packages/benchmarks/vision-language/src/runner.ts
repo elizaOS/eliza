@@ -14,7 +14,13 @@
  *   3. iterate the loaded samples, ask the runtime, score, aggregate
  *   4. write the report under `results/<tier>-<benchmark>-<date>.json`
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ChartQaAdapter, predictChartQa } from "./adapters/chartqa_adapter.ts";
@@ -60,16 +66,16 @@ const VALID_TIERS = new Set<string>([
 ]);
 
 const EDGE_VARIANTS = [
-  "answer despite low contrast visual elements",
-  "ignore irrelevant decorative text in the image",
-  "handle rotated or off-center target content",
-  "resolve abbreviated labels and nearby distractors",
+  "please complete this visual task",
+  "use only evidence visible in the image",
+  "return the shortest sufficient answer",
+  "check the relevant visual region carefully",
   "prefer visible evidence over prior assumptions",
-  "handle mixed numeric and textual references",
-  "preserve coordinate precision for small UI targets",
-  "follow the final instruction when multiple cues appear",
-  "handle unicode and punctuation-heavy text",
-  "recover when the key evidence is near an image edge",
+  "preserve numeric and textual precision",
+  "distinguish the target from nearby distractors",
+  "follow the visual instruction exactly",
+  "preserve punctuation when it is part of the answer",
+  "double-check the answer against the image",
 ] as const;
 
 interface Args {
@@ -344,6 +350,7 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
   const baseSamples = await adapter.loadSamples(args.samples, {
     smoke: args.smoke,
   });
+  validateLoadedSamples(baseSamples, args.samples, args.benchmark);
   const counts = scenarioCounts(
     baseSamples.length,
     args.expandScenarios === true,
@@ -375,16 +382,39 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
     samples,
     args.smoke,
   );
+  if (predictions.length !== samples.length) {
+    throw new Error(
+      `${args.benchmark} prediction count mismatch: expected ${samples.length}, received ${predictions.length}`,
+    );
+  }
+  const predictionErrors = predictions
+    .map((prediction, index) => ({ prediction, index }))
+    .filter(({ prediction }) => Boolean(prediction.error));
+  if (predictionErrors.length > 0) {
+    const examples = predictionErrors
+      .slice(0, 3)
+      .map(
+        ({ prediction, index }) =>
+          `${samples[index].id}: ${prediction.error ?? "unknown error"}`,
+      )
+      .join("; ");
+    throw new Error(
+      `${args.benchmark} failed ${predictionErrors.length}/${samples.length} predictions; refusing a partial report. ${examples}`,
+    );
+  }
   const runtimeSec = (Date.now() - startedAt) / 1000;
   const sampleResults: SampleResult[] = [];
   let total = 0;
-  let errorCount = 0;
   const usage = aggregateUsage(predictions, args.runtime);
   for (let i = 0; i < samples.length; i += 1) {
     const sample = samples[i];
     const pred = predictions[i];
-    if (pred.error) errorCount += 1;
     const { score, detail } = adapter.scoreOne(sample, pred);
+    if (!Number.isFinite(score) || score < 0 || score > 1) {
+      throw new Error(
+        `${args.benchmark} scorer returned invalid score ${score} for sample ${sample.id}`,
+      );
+    }
     total += score;
     sampleResults.push({
       sampleId: sample.id,
@@ -394,7 +424,7 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
     });
   }
   const baseline = lookupBaseline(args.tier, args.benchmark);
-  const score = samples.length === 0 ? 0 : total / samples.length;
+  const score = total / samples.length;
   const baselineScore = baseline?.score ?? null;
   return {
     schemaVersion: "vision-language-bench-v1",
@@ -408,7 +438,7 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
     baseline_score: baselineScore,
     delta: baselineScore === null ? null : score - baselineScore,
     runtime_seconds: runtimeSec,
-    error_count: errorCount,
+    error_count: 0,
     include_edge_scenarios: args.expandScenarios === true,
     scenario_counts: counts,
     input_tokens: usage.input_tokens ?? 0,
@@ -423,6 +453,41 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
     llm_call_count: usage.llm_call_count ?? 0,
     samples: sampleResults,
   };
+}
+
+function validateLoadedSamples(
+  samples: Sample[],
+  expectedCount: number,
+  benchmark: BenchmarkName,
+): void {
+  if (samples.length !== expectedCount) {
+    throw new Error(
+      `${benchmark} dataset is incomplete: requested ${expectedCount} samples, loaded ${samples.length}`,
+    );
+  }
+  const ids = new Set<string>();
+  for (const [index, sample] of samples.entries()) {
+    if (!sample.id || ids.has(sample.id)) {
+      throw new Error(
+        `${benchmark} sample ${index} has a missing or duplicate id: ${sample.id}`,
+      );
+    }
+    ids.add(sample.id);
+    if (!sample.question.trim()) {
+      throw new Error(`${benchmark} sample ${sample.id} has an empty question`);
+    }
+    if (!sample.imagePath || !existsSync(sample.imagePath)) {
+      throw new Error(
+        `${benchmark} sample ${sample.id} image does not exist: ${sample.imagePath}`,
+      );
+    }
+    const image = statSync(sample.imagePath);
+    if (!image.isFile() || image.size === 0) {
+      throw new Error(
+        `${benchmark} sample ${sample.id} image is not a non-empty file: ${sample.imagePath}`,
+      );
+    }
+  }
 }
 
 function aggregateUsage(

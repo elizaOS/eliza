@@ -75,6 +75,11 @@ class Contact:
     importance: int = 0
     tags: list[str] = field(default_factory=list)
     birthday: str | None = None
+    notes: str | None = None
+    priority_flag: str | None = None
+    relationship_type: str | None = None
+    relationship_evidence: str | None = None
+    relationship_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -27,6 +27,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_ENV_CLI_KEYS: dict[AgentBenchEnvironment, str] = {
+    AgentBenchEnvironment.OS: "os",
+    AgentBenchEnvironment.DATABASE: "database",
+    AgentBenchEnvironment.KNOWLEDGE_GRAPH: "kg",
+    AgentBenchEnvironment.CARD_GAME: "card_game",
+    AgentBenchEnvironment.LATERAL_THINKING: "lateral",
+    AgentBenchEnvironment.HOUSEHOLDING: "householding",
+    AgentBenchEnvironment.WEB_SHOPPING: "webshop",
+    AgentBenchEnvironment.WEB_BROWSING: "web_browsing",
+}
+
 
 def _load_dotenv() -> None:
     """
@@ -77,9 +88,9 @@ def create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--env",
         action="append",
-        choices=["os", "database", "kg", "webshop", "lateral", "all"],
+        choices=[*_ENV_CLI_KEYS.values(), "all"],
         default=None,
-        help="Environments to run (can specify multiple, default: all implemented)",
+        help="Environments to run (can specify multiple, default: all eight)",
     )
     run_parser.add_argument(
         "--output",
@@ -104,7 +115,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--data-mode",
         choices=["auto", "fixture", "full"],
         default="auto",
-        help="Task data mode: auto uses full data when present and compact fixtures otherwise",
+        help="Task data mode: auto/full require pinned source data; fixture is explicit smoke data",
     )
     run_parser.add_argument(
         "--allow-empty",
@@ -201,28 +212,18 @@ async def run_benchmark(args: argparse.Namespace) -> int:
 
     # Configure environments
     selected_envs = args.env if args.env else ["all"]
+    if "all" in selected_envs and len(selected_envs) != 1:
+        logger.error("--env all cannot be combined with explicit environments")
+        return 1
 
     for env in AgentBenchEnvironment:
         env_config = config.get_env_config(env)
 
         # Check if environment should be enabled
-        env_key = {
-            AgentBenchEnvironment.OS: "os",
-            AgentBenchEnvironment.DATABASE: "database",
-            AgentBenchEnvironment.KNOWLEDGE_GRAPH: "kg",
-            AgentBenchEnvironment.WEB_SHOPPING: "webshop",
-            AgentBenchEnvironment.LATERAL_THINKING: "lateral",
-        }.get(env)
+        env_key = _ENV_CLI_KEYS[env]
 
         if "all" in selected_envs:
-            # Enable implemented environments
-            env_config.enabled = env in [
-                AgentBenchEnvironment.OS,
-                AgentBenchEnvironment.DATABASE,
-                AgentBenchEnvironment.KNOWLEDGE_GRAPH,
-                AgentBenchEnvironment.WEB_SHOPPING,
-                AgentBenchEnvironment.LATERAL_THINKING,
-            ]
+            env_config.enabled = True
         else:
             env_config.enabled = env_key in selected_envs
 
@@ -258,6 +259,37 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         print(json.dumps(summary, indent=2, sort_keys=True))
         if args.count_scenarios or args.validate_scenarios:
             return 0
+
+    if (
+        "all" in selected_envs
+        and config.data_mode != AgentBenchDataMode.FIXTURE
+        and not config.dry_run
+    ):
+        provenance = upstream_loader.dataset_provenance()
+        expected_by_split = provenance.get("expected_counts")
+        split_counts = (
+            expected_by_split.get(config.split.value)
+            if isinstance(expected_by_split, dict)
+            else None
+        )
+        if not isinstance(split_counts, dict):
+            raise RuntimeError(
+                f"AgentBench provenance has no counts for split={config.split.value!r}"
+            )
+        base_count = sum(
+            int(split_counts[env.value]) for env in AgentBenchEnvironment
+        )
+        total_count = base_count * (11 if config.include_edge_scenarios else 1)
+        logger.error(
+            "Full AgentBench execution is unsupported: --env all resolves to all "
+            "eight environments (%d base tasks, %d total scenarios), but this package "
+            "does not reproduce the upstream Avalon, ALFWorld, WebShop, and Mind2Web "
+            "runtime services with publication parity. No model calls or result files "
+            "were produced. Use explicit --env values only for diagnostic partial runs.",
+            base_count,
+            total_count,
+        )
+        return 1
 
     # Create runtime
     runtime = None

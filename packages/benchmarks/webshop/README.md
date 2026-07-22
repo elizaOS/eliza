@@ -41,31 +41,41 @@ cd packages/benchmarks/webshop
 pip install -e .
 ```
 
-You also need the spaCy English model — upstream's `engine.goal.get_reward`
-calls `nlp = spacy.load("en_core_web_sm")` at import time:
+You also need the pinned spaCy English model used by the scored reward path:
 
 ```bash
 python -m spacy download en_core_web_sm
 ```
 
-> **Note on models**: upstream's `setup.sh` installs `en_core_web_lg`. We
-> use the smaller `en_core_web_sm` because the reward function only uses
-> the POS tagger (no word vectors). If you want bit-identical behavior to
-> the published baselines, install `en_core_web_lg` instead and edit
-> `upstream/web_agent_site/engine/goal.py`'s `spacy.load(...)` call.
+Publication-grade runs require spaCy 3.8.7 and `en_core_web_sm` 3.8.0; the
+orchestrator records and validates both versions in every result.
 
 ### 2. Fetch the data
 
 ```bash
-python scripts/fetch_data.py --profile small        # 1k products (~9 MB)
+python scripts/fetch_data.py --profile small        # 1k products (~4.6 MB)
 # or
-python scripts/fetch_data.py --profile full         # 1.18M products (~2 GB)
+python scripts/fetch_data.py --profile full         # 1.18M products (~5.7 GB)
 # or just the 12k human instructions:
 python scripts/fetch_data.py --profile goals
 ```
 
 Files are written to `packages/benchmarks/webshop/data/` and skipped if
-already present. `gdown` is used under the hood (`pip install -e ".[fetch]"`).
+their exact size and SHA-256 match the pinned upstream corpus. Google Drive is
+the primary source; a revision-pinned Hugging Face mirror is accepted only
+when it produces the same bytes.
+
+Full runs also require the official Lucene projection and pinned runtime:
+
+```bash
+pip install -e ".[full,fetch]"
+python -m spacy download en_core_web_sm
+python scripts/build_search_index.py
+```
+
+The generated index contains 1,181,370 searchable documents. The remaining
+60 of 1,181,430 executable products have an empty official search projection;
+none is targeted by a human goal. The manifest records both counts.
 
 ### 3. Run
 
@@ -73,10 +83,10 @@ already present. `gdown` is used under the hood (`pip install -e ".[fetch]"`).
 # Smoke test — no downloads, ~6 products, deterministic mock agent.
 python -m elizaos_webshop --use-sample-tasks --mock --max-tasks 3
 
-# Full Princeton WebShop, 1k-product profile, via the eliza TS bridge.
+# Diagnostic 1k-product profile, via the eliza TS bridge.
 python -m elizaos_webshop --profile small --bridge --max-tasks 50
 
-# Full 1.18M-product profile (slow first load).
+# Publishable 500-task test split over the full 1.18M-product profile.
 python -m elizaos_webshop --profile full --bridge --max-tasks 500
 ```
 
@@ -102,8 +112,8 @@ The runner reports both.
 ```
 elizaos_webshop/
 ├─ cli.py                  CLI entry: --profile / --use-sample-tasks / --mock / --bridge
-├─ dataset.py              Loads upstream JSONs, resolves train/test split (90/10, seed=42)
-├─ environment.py          Adapter around upstream WebAgentTextEnv; BM25 fallback
+├─ dataset.py              Streams the corpus and reproduces the official shuffled splits
+├─ environment.py          Adapter around WebAgentTextEnv; required Lucene full-run path
 ├─ evaluator.py            Reports Score + SR following the paper
 ├─ runner.py               Orchestration; reuses one env across tasks
 ├─ eliza_agent.py          MockWebShopAgent driving the *real* upstream env
@@ -118,6 +128,7 @@ upstream/
 └─ UPSTREAM.md             Vendoring notes
 
 scripts/fetch_data.py      Downloads items_shuffle*, items_ins*, items_human_ins
+scripts/build_search_index.py  Builds and validates the full Lucene projection
 data/                      Created on first fetch; gitignored
 tests/                     pytest smoke tests
 ```
@@ -127,14 +138,14 @@ tests/                     pytest smoke tests
 | Dep            | When needed                                  | Install |
 |----------------|----------------------------------------------|--------|
 | `spacy` + `en_core_web_sm` | **Always** — upstream's reward function requires it | `pip install spacy && python -m spacy download en_core_web_sm` |
-| `rank_bm25`    | Always, unless pyserini is installed         | included in `dependencies` |
-| `pyserini` + Java 11+ | Optional: bit-identical Lucene search; reproduces published numbers exactly | `pip install -e ".[pyserini]"` + install JDK 11 |
+| `rank_bm25`    | Small/sample diagnostic profiles only | included in `dependencies` |
+| `pyserini` 2.1.0 + Java 21 | Required for the full publishable profile | `pip install -e ".[full]"` + install JDK 21 |
 | `chromedriver` | Optional: only if you want to use the Selenium-backed `WebAgentSiteEnv` (we wrap the headless `WebAgentTextEnv` instead) | OS package |
 | `elasticsearch`| Not required — the published env does not use it; legacy mention only | n/a |
 
-If `pyserini` is missing we transparently fall back to a `rank_bm25.BM25Okapi`
-index built in-process over each catalog's titles + descriptions. The reward
-function (the only thing the paper's numbers are sensitive to) is unchanged.
+The full profile fails closed if its Lucene index or pinned runtime provenance
+is missing or mismatched. BM25 is confined to small/sample diagnostics, whose
+reports are not publication-eligible.
 
 ## Running the tests
 

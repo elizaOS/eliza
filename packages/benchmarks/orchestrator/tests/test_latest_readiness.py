@@ -118,6 +118,7 @@ def test_latest_readiness_includes_publishability_and_comparability_findings(
     _write_json(latest / "woobench__eliza.json", _row("woobench", "eliza", 0.0))
     _write_json(latest / "woobench__hermes.json", _row("woobench", "hermes", 1.0))
     bad_openclaw = _row("woobench", "openclaw", 1.0)
+    bad_openclaw["comparison_signature"] = "different-input-config"
     bad_openclaw["metrics"] = {"sample": True}
     _write_json(latest / "woobench__openclaw.json", bad_openclaw)
 
@@ -129,7 +130,7 @@ def test_latest_readiness_includes_publishability_and_comparability_findings(
 
     reasons = {finding.reason for finding in report.findings}
     assert "truthy_non_real_flag" in reasons
-    assert "score_spread_exceeds_tolerance" in reasons
+    assert "mixed_comparison_signatures" in reasons
 
 
 def test_latest_readiness_includes_current_runtime_gate_findings(

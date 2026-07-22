@@ -289,8 +289,6 @@ function removeAllModelProviderSurfaces(pluginsToLoad: Set<string>): void {
  * into that entry's `shortIds` and delete the row here.
  */
 const LEGACY_HOST_OWNED_SHORT_ID_MAP: Readonly<Record<string, string>> = {
-  // plugin-personal-assistant (no registry-entry.json yet).
-  selfcontrol: "@elizaos/plugin-personal-assistant",
   // plugin-obsidian (no registry-entry.json yet).
   obsidian: "@elizaos/plugin-obsidian",
   // plugin-repoprompt (no registry-entry.json yet).

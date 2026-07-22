@@ -20,6 +20,7 @@ from eliza_lifeops_bench.clients import (
     BaseClient,
     CEREBRAS_PRICING,
     CerebrasClient,
+    ClaudeSubscriptionClient,
     ClientCall,
     ClientResponse,
     HERMES_PRICING,
@@ -803,22 +804,30 @@ def test_make_client_returns_correct_subclass() -> None:
     saved_cerebras = os.environ.get("CEREBRAS_API_KEY")
     saved_anthropic = os.environ.get("ANTHROPIC_API_KEY")
     saved_hermes = os.environ.get("HERMES_BASE_URL")
+    saved_subscription_token = os.environ.get("CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN")
+    saved_subscription_url = os.environ.get("CLAUDE_SUBSCRIPTION_GATEWAY_URL")
     os.environ["CEREBRAS_API_KEY"] = "sk-test"
     os.environ["ANTHROPIC_API_KEY"] = "sk-test"
     os.environ["HERMES_BASE_URL"] = "https://hermes.example.com/v1"
+    os.environ["CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN"] = "gateway-test"
+    os.environ["CLAUDE_SUBSCRIPTION_GATEWAY_URL"] = "http://127.0.0.1:18782"
     try:
         cerebras = make_client("cerebras")
         anthropic = make_client("anthropic")
         hermes = make_client("hermes")
+        subscription = make_client("claude-subscription", model="claude-opus-4-8")
         assert isinstance(cerebras, CerebrasClient)
         assert isinstance(anthropic, AnthropicClient)
         assert isinstance(hermes, HermesClient)
+        assert isinstance(subscription, ClaudeSubscriptionClient)
         assert isinstance(cerebras, BaseClient)
     finally:
         for name, value in (
             ("CEREBRAS_API_KEY", saved_cerebras),
             ("ANTHROPIC_API_KEY", saved_anthropic),
             ("HERMES_BASE_URL", saved_hermes),
+            ("CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN", saved_subscription_token),
+            ("CLAUDE_SUBSCRIPTION_GATEWAY_URL", saved_subscription_url),
         ):
             if value is None:
                 os.environ.pop(name, None)

@@ -12,6 +12,7 @@ from elizaos_adhdbench.scenarios import (
     get_scenarios,
     validate_scenarios,
 )
+from scripts.run_benchmark import _expected_real_result_count
 
 
 def test_expansion_adds_exactly_ten_variants_per_authored_scenario() -> None:
@@ -56,3 +57,7 @@ def test_config_can_opt_into_edge_scenarios() -> None:
     config = ADHDBenchConfig(include_edge_scenarios=True)
 
     assert config.include_edge_scenarios is True
+
+
+def test_default_real_full_run_has_420_scenario_config_scale_cells() -> None:
+    assert _expected_real_result_count(ADHDBenchConfig()) == 420

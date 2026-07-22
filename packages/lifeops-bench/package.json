@@ -6,7 +6,7 @@
   "description": "LifeOpsBench server-side harness: HTTP bench server, LifeOps fake backend, Cerebras autowirer, and bench plugin driven by the Python runners in packages/benchmarks/. Never published.",
   "main": "./src/server.ts",
   "scripts": {
-    "benchmark:server": "node --import tsx src/server.ts",
+    "benchmark:server": "TSX_TSCONFIG_PATH=../../tsconfig.json node --conditions=eliza-source --import tsx src/server.ts",
     "normalize-capture": "node --import tsx scripts/normalize-eliza-capture.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -15,6 +15,7 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/shared": "workspace:*",

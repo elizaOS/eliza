@@ -7,6 +7,7 @@
 import type http from 'node:http';
 import type { AgentRuntime } from '@elizaos/core';
 import { buildAutomationListResponse } from '../lib/automations-builder';
+import { getRouteOwnerEntityId } from './_helpers';
 
 type JsonResponder = (res: http.ServerResponse, body: unknown, status?: number) => void;
 
@@ -16,6 +17,8 @@ export interface AutomationsRouteContext {
   method: string;
   pathname: string;
   runtime: AgentRuntime | null;
+  /** Authenticated entity principal supplied by a non-HTTP dispatcher. */
+  principalId?: string;
   json: JsonResponder;
 }
 
@@ -35,9 +38,13 @@ export async function handleAutomationsRoutes(ctx: AutomationsRouteContext): Pro
     return true;
   }
   try {
-    const payload = await buildAutomationListResponse(ctx.runtime);
+    const payload = await buildAutomationListResponse(
+      ctx.runtime,
+      ctx.principalId?.trim() || getRouteOwnerEntityId(ctx.runtime)
+    );
     sendJson(ctx, 200, payload);
   } catch (error) {
+    // error-policy:J1 aggregate route boundary translation.
     sendJson(ctx, 500, {
       error: error instanceof Error ? error.message : String(error),
     });

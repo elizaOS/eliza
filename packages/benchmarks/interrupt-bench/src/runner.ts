@@ -4,7 +4,7 @@
  *
  * Usage:
  *
- *   bun run src/runner.ts                     # scripted mode (default)
+ *   bun run src/runner.ts                     # Cerebras mode (default)
  *   bun run src/runner.ts --mode=cerebras     # direct Cerebras mode
  *   bun run src/runner.ts --mode=harness      # Eliza/Hermes/OpenClaw bridge mode
  *   bun run src/runner.ts --mode=cerebras --judge
@@ -24,7 +24,7 @@ import {
   loadScenarios,
   validateInterruptBenchScenarios,
 } from "./scenarios.ts";
-import type { Scenario, ScenarioResult } from "./types.ts";
+import type { ScenarioResult } from "./types.ts";
 
 interface Args {
   mode: EvaluatorMode;
@@ -64,7 +64,7 @@ const HELP_TEXT = `InterruptBench runner
 
 Flags:
   --mode=scripted | --mode=cerebras | --mode=harness
-                                      choose LLM provider (default: scripted)
+                                      choose LLM provider (default: cerebras)
   --scenario=<id>                     run only this scenario id
   --judge                             enable LLM-as-judge bonus (requires CEREBRAS_API_KEY)
   --model=<id>                        override Cerebras model (default: gemma-4-31b)
@@ -91,6 +91,12 @@ async function main(): Promise<void> {
   }
 
   const args = parseArgs(argv);
+  const validation = validateInterruptBenchScenarios();
+  if (!validation.valid || validation.total !== 110) {
+    throw new Error(
+      `InterruptBench corpus validation failed: ${JSON.stringify(validation)}`,
+    );
+  }
   const all = loadScenarios();
   const scenarios = args.scenarioFilter
     ? all.filter((s) => s.id === args.scenarioFilter)
@@ -111,19 +117,11 @@ async function main(): Promise<void> {
   for (const scenario of scenarios) {
     const tag = `[${scenario.id}]`;
     process.stdout.write(`${tag} running...\n`);
-    let result: ScenarioResult;
-    try {
-      result = await runScenario(scenario, {
-        mode: args.mode,
-        runJudge: args.judge,
-        cerebrasModel: args.cerebrasModel,
-      });
-    } catch (err) {
-      process.stderr.write(
-        `${tag} ERROR: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      result = buildErrorResult(scenario, err);
-    }
+    const result = await runScenario(scenario, {
+      mode: args.mode,
+      runJudge: args.judge,
+      cerebrasModel: args.cerebrasModel,
+    });
     results.push(result);
     process.stdout.write(
       `${tag} score=${(result.score * 100).toFixed(1)} boundary=${result.boundaryViolated ? "VIOLATED" : "ok"} duration=${result.durationMs}ms\n`,
@@ -156,31 +154,9 @@ async function main(): Promise<void> {
   }
 }
 
-function buildErrorResult(scenario: Scenario, err: unknown): ScenarioResult {
-  const message = err instanceof Error ? err.message : String(err);
-  const zero = { raw: 0, weight: 0, weighted: 0, notes: [message] };
-  return {
-    scenarioId: scenario.id,
-    category: scenario.category,
-    weight: scenario.weight,
-    axes: {
-      state: zero,
-      intent: zero,
-      routing: zero,
-      trace: zero,
-      boundary: zero,
-      latency: zero,
-    },
-    rawScore: 0,
-    score: 0,
-    boundaryViolated: false,
-    trace: [],
-    durationMs: 0,
-  };
-}
-
 if (import.meta.main) {
   main().catch((err) => {
+    // error-policy:J1 CLI boundary makes harness failures non-publishable.
     process.stderr.write(
       `Fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
     );

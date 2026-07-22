@@ -50,7 +50,7 @@ pytest tests/ -v
 | `eliza_lifeops_bench/evaluator.py` | LIVE-mode simulated-user + judge wiring |
 | `eliza_lifeops_bench/scorer.py` | state_hash, output_substring, pass@k |
 | `eliza_lifeops_bench/lifeworld/` | Deterministic in-memory world state |
-| `eliza_lifeops_bench/scenarios/` | 1020 base scenarios (492 static + 528 live) by domain; `__init__.py` expands each 10x under fixed prompt-prefix framings into 11220 robustness runs (variant keeps its base's ground-truth/required-outputs/world-seed) |
+| `eliza_lifeops_bench/scenarios/` | 1434 base scenarios (744 static + 690 live) by domain; `__init__.py` expands each 10x under fixed prompt-prefix framings into 15774 robustness runs (variant keeps its base's ground-truth/required-outputs/world-seed) |
 | `eliza_lifeops_bench/agents/` | Adapters: eliza, hermes, openclaw, cerebras-direct, perfect, smithers, wrong |
 | `eliza_lifeops_bench/clients/` | Provider clients (Cerebras, Anthropic, Hermes) |
 | `data/snapshots/` | Seeded deterministic LifeWorld snapshots |
@@ -67,7 +67,7 @@ pytest tests/ -v
 - Results write to `lifeops_bench_results/` (default; override with `--output-dir`).
 - Registry result locator looks for `lifeops_*.json` in the output dir.
 - Scored by `_score_from_lifeops_bench_json` in `registry/scores.py`.
-- LIVE mode requires `CEREBRAS_API_KEY` (simulated user) + `ANTHROPIC_API_KEY` (judge). Without both, the CLI silently restricts to STATIC scenarios.
+- LIVE mode uses `CEREBRAS_API_KEY` + `ANTHROPIC_API_KEY` for direct API runs. A `BENCHMARK_MODEL_PROVIDER=claude-subscription` campaign instead routes both evaluator roles through `CLAUDE_SUBSCRIPTION_GATEWAY_URL` + `CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN`; it never requires API-billed Anthropic credentials.
 - Cost cap: `--max-cost-usd` (default $10). Use `--concurrency 4` for non-Cerebras providers; keep at 2 for Cerebras to avoid 429s.
 - See [SCENARIO_AUTHORING.md](SCENARIO_AUTHORING.md) to add scenarios and [ADAPTER_AUTHORING.md](ADAPTER_AUTHORING.md) to add agent adapters.
 - Full background: [README.md](README.md).

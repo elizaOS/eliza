@@ -363,6 +363,10 @@ class ElizaServerManager:
             "ELIZA_BENCH_HOST": self.host,
             "ELIZA_BENCH_PORT": str(self.port),
             "ELIZA_BENCH_TOKEN": self._token,
+            # tsx otherwise discovers packages/lifeops-bench/tsconfig.json and
+            # follows its declaration-only typecheck paths at runtime. Pinning
+            # the root config keeps workspace imports on executable source.
+            "TSX_TSCONFIG_PATH": str(self.repo_root / "tsconfig.json"),
         }
         _normalize_model_env(env)
         _normalize_task_agent_env(env)

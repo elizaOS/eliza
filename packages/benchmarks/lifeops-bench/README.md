@@ -19,8 +19,8 @@ clarification, and verifiable end-state correctness.
 ```
 +------------------+     +-------------------+     +----------------------+
 |  Scenario Corpus |---->|  LifeOpsBench     |<----|  Agent Adapter        |
-|  (492 static +   |     |  Runner           |     |  (Eliza | Hermes |    |
-|   528 live)      |     |  (orchestrator)   |     |   OpenClaw |       |
+|  (744 static +   |     |  Runner           |     |  (Eliza | Hermes |    |
+|   690 live)      |     |  (orchestrator)   |     |   OpenClaw |       |
 +------------------+     +-------------------+     |   PerfectAgent | …)   |
         |                        |                 +----------------------+
         v                        v                          |
@@ -59,8 +59,8 @@ uv sync
 # or
 pip install -e .[anthropic,test]
 
-# List all scenarios. 1020 base scenarios are expanded 10x under fixed
-# prompt-prefix framings (polite/urgent/mobile/…) into 11220 robustness runs;
+# List all scenarios. 1434 base scenarios are expanded 10x under fixed
+# prompt-prefix framings (polite/urgent/mobile/…) into 15774 robustness runs;
 # each edge variant shares its base's ground-truth actions, required outputs
 # and world seed — only the prompt wording differs. `--count-scenarios` prints
 # the base-vs-variant split explicitly.
@@ -92,8 +92,9 @@ Expected output (truncated) for an adapter-conformance run:
 Note: `--agent perfect` and `--agent wrong` use per-scenario agent
 factories, so they are valid CLI verification paths. LIVE-mode runs
 require both `CEREBRAS_API_KEY` for the simulated user and
-`ANTHROPIC_API_KEY` for the judge; without both keys, the CLI defaults
-to STATIC scenarios unless `--mode live` is specified explicitly.
+`ANTHROPIC_API_KEY` for the judge. A default or `--suite full` run includes
+LIVE scenarios and fails clearly when either credential is unavailable;
+pass `--mode static` when a deliberately static-only run is intended.
 
 ## Running with each backend
 
@@ -146,9 +147,9 @@ packages/benchmarks/lifeops-bench/
     evaluator.py             LIVE-mode simulated-user + judge wiring
     scorer.py                state_hash, output_substring, pass@k aggregation
     lifeworld/               In-memory hashable world (entities + snapshots)
-    scenarios/               1020 base scenarios (492 static + 528 live) by domain;
+    scenarios/               1434 base scenarios (744 static + 690 live) by domain;
                              __init__.py expands each 10x under fixed prompt-prefix
-                             framings into 11220 robustness runs (variant shares its
+                             framings into 15774 robustness runs (variant shares its
                              base's ground-truth/required-outputs/world-seed)
       _personas.py           10 reusable personas
       _smoke_scenarios.py    Two original smoke scenarios (kept at front of list)

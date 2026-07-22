@@ -43,6 +43,7 @@ const EMPTY_AUTOMATIONS: AutomationListResponse = {
   },
   workflowStatus: null,
   workflowFetchError: null,
+  executionFetchErrors: [],
 };
 
 const EMPTY_SCHEDULED: ScheduledTaskListResponse = { tasks: [] };

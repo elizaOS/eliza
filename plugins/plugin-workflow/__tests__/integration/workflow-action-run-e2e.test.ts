@@ -28,6 +28,7 @@ import { workflowAction } from '../../src/actions/workflow';
 import type { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, WorkflowService } from '../../src/services/workflow-service';
 import type { WorkflowExecution } from '../../src/types/index';
+import { getUserTagName } from '../../src/utils/context';
 import { type EmbeddedHarness, makeEmbeddedHarness } from './embedded-harness';
 
 setDefaultTimeout(60_000);
@@ -40,6 +41,7 @@ interface ActionHarness extends EmbeddedHarness {
 
 async function makeActionHarness(): Promise<ActionHarness> {
   const h = await makeEmbeddedHarness('workflow-action-run-agent');
+  h.runtime.setSetting('ELIZA_ADMIN_ENTITY_ID', String(message.entityId));
   await h.runtime.registerPlugin({
     name: 'workflow-action-integration-harness',
     description: 'Real WorkflowService for action integration coverage',
@@ -66,6 +68,7 @@ async function runOp(
 
 /** A manual-trigger workflow; `run` executes in manual mode. */
 async function createManualWorkflow(
+  runtime: IAgentRuntime,
   workflow: EmbeddedWorkflowService,
   name: string,
   secondNode: { type: string; parameters: Record<string, unknown> }
@@ -94,6 +97,10 @@ async function createManualWorkflow(
       'Manual Trigger': { main: [[{ node: 'Work', type: 'main', index: 0 }]] },
     },
   });
+  const ownerTag = await workflow.getOrCreateTag(
+    await getUserTagName(runtime, String(message.entityId))
+  );
+  await workflow.updateWorkflowTags(created.id, [ownerTag.id]);
   return created.id;
 }
 
@@ -109,7 +116,7 @@ describe('WORKFLOW action run op e2e (real WorkflowService + embedded engine, ke
   });
 
   test('(a) run executes the workflow and a real execution row is readable back through the service', async () => {
-    const workflowId = await createManualWorkflow(h.workflow, 'Run me', {
+    const workflowId = await createManualWorkflow(h.runtime, h.workflow, 'Run me', {
       type: 'workflows-nodes-base.set',
       parameters: { assignments: { assignments: [] } },
     });
@@ -147,7 +154,7 @@ describe('WORKFLOW action run op e2e (real WorkflowService + embedded engine, ke
   });
 
   test('(b) a workflow whose node throws yields success:false AND a real error-status execution row', async () => {
-    const workflowId = await createManualWorkflow(h.workflow, 'Run me broken', {
+    const workflowId = await createManualWorkflow(h.runtime, h.workflow, 'Run me broken', {
       type: 'workflows-nodes-base.code',
       parameters: { jsCode: 'throw new Error("boom")' },
     });

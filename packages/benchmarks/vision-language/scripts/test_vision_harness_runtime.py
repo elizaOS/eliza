@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 from pathlib import Path
+
+import pytest
 
 _SPEC = importlib.util.spec_from_file_location(
     "vision_harness_runtime",
@@ -19,6 +22,52 @@ assert _SPEC and _SPEC.loader
 vhr = importlib.util.module_from_spec(_SPEC)
 sys.modules["vision_harness_runtime"] = vhr
 _SPEC.loader.exec_module(vhr)
+
+
+def test_hermes_vision_runtime_uses_native_client_without_legacy_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeHermesClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    package = types.ModuleType("hermes_adapter")
+    client_module = types.ModuleType("hermes_adapter.client")
+    client_module.HermesClient = FakeHermesClient
+    monkeypatch.setitem(sys.modules, "hermes_adapter", package)
+    monkeypatch.setitem(sys.modules, "hermes_adapter.client", client_module)
+
+    client = vhr._client(
+        "hermes",
+        "claude-subscription",
+        "claude-opus-4-6",
+        120.0,
+        api_key="gateway-token",
+        base_url="http://127.0.0.1:43123/v1",
+    )
+
+    assert isinstance(client, FakeHermesClient)
+    assert captured == {
+        "provider": "claude-subscription",
+        "model": "claude-opus-4-6",
+        "api_key": "gateway-token",
+        "base_url": "http://127.0.0.1:43123/v1",
+        "timeout_s": 120.0,
+    }
+
+
+def test_openclaw_vision_runtime_fails_closed_without_native_image_support() -> None:
+    with pytest.raises(RuntimeError, match="N/A for OpenClaw publication"):
+        vhr._client(
+            "openclaw",
+            "claude-subscription",
+            "claude-opus-4-6",
+            120.0,
+            api_key="gateway-token",
+            base_url="http://127.0.0.1:43123/v1",
+        )
 
 
 def test_build_mtmd_command_uses_image_vqa_flags() -> None:

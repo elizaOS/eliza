@@ -79,7 +79,6 @@ def _build_client(harness: str, provider: str, model: str):
                 provider=provider,
                 model=model,
                 timeout_s=timeout_s,
-                direct_openai_compatible=True,
                 reasoning_effort=os.environ.get("FRAMEWORK_OPENCLAW_THINKING", "low"),
             ),
             None,
