@@ -158,10 +158,7 @@ function exactOccurrenceCount(haystack: string, needle: string): number {
   }
 }
 
-function occurrenceCount(
-  contents: readonly string[],
-  needle: string,
-): number {
+function occurrenceCount(contents: readonly string[], needle: string): number {
   return contents.reduce(
     (total, content) => total + exactOccurrenceCount(content, needle),
     0,
@@ -187,10 +184,7 @@ function categoryMatchCounts(
   return Object.fromEntries(
     Object.entries(categories).map(([category, texts]) => [
       category,
-      texts.reduce(
-        (total, text) => total + occurrenceCount(contents, text),
-        0,
-      ),
+      texts.reduce((total, text) => total + occurrenceCount(contents, text), 0),
     ]),
   );
 }
@@ -201,16 +195,16 @@ export function buildGatewayContentAttestation(
   messages: readonly NormalizedChatMessage[],
 ): GatewayContentAttestation {
   const instructionContents = messages
-    .filter((message) =>
-      message.role === "system" || message.role === "developer",
+    .filter(
+      (message) => message.role === "system" || message.role === "developer",
     )
     .map((message) => message.content ?? "");
   const userContents = messages
     .filter((message) => message.role === "user")
     .map((message) => message.content ?? "");
   const generatedContents = messages
-    .filter((message) =>
-      message.role === "assistant" || message.role === "tool",
+    .filter(
+      (message) => message.role === "assistant" || message.role === "tool",
     )
     .map((message) => message.content ?? "");
   const ingressContents = [...instructionContents, ...userContents];
@@ -239,7 +233,10 @@ export function buildGatewayContentAttestation(
       instructionContents,
       contract.systemHint,
     ),
-    systemHintUserOccurrences: occurrenceCount(userContents, contract.systemHint),
+    systemHintUserOccurrences: occurrenceCount(
+      userContents,
+      contract.systemHint,
+    ),
     systemHintGeneratedOccurrences: occurrenceCount(
       generatedContents,
       contract.systemHint,
@@ -259,10 +256,7 @@ export function buildGatewayContentAttestation(
     forbiddenIngressMatchCounts,
     forbiddenIngressMatchTotal: Object.values(
       forbiddenIngressMatchCounts,
-    ).reduce(
-      (total, count) => total + count,
-      0,
-    ),
+    ).reduce((total, count) => total + count, 0),
     forbiddenGeneratedMatchCounts,
     forbiddenGeneratedMatchTotal: Object.values(
       forbiddenGeneratedMatchCounts,

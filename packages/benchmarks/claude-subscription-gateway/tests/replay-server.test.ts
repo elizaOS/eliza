@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   type AuditSink,
-  canonicalizeChatCompletion,
-  DurableAuditStore,
   type ClaudeCompletionResult,
   type CompletionRunner,
+  canonicalizeChatCompletion,
+  DurableAuditStore,
   type GatewayAuditRecord,
   LogicalRequestAllocator,
   ReplayJournal,
@@ -18,29 +18,43 @@ import {
 
 const TOKEN = "eliza-replay-token-0000000000000000000000000001";
 
+function deferredSignal(): { wait: Promise<void>; signal: () => void } {
+  let resolveWait: (() => void) | null = null;
+  const wait = new Promise<void>((resolve) => {
+    resolveWait = () => resolve();
+  });
+  return {
+    wait,
+    signal() {
+      if (resolveWait === null) {
+        throw new Error("Deferred signal resolver was not initialized.");
+      }
+      resolveWait();
+    },
+  };
+}
+
 describe("gateway replay", () => {
   it("commits the private success before awaiting public audit and HTTP delivery", async () => {
     const directory = await mkdtemp(join(tmpdir(), "gateway-ordering-"));
     const journalPath = join(directory, "responses.jsonl");
-    let enterAudit: (() => void) | null = null;
-    const auditEntered = new Promise<void>((resolve) => {
-      enterAudit = resolve;
-    });
-    let releaseAudit: (() => void) | null = null;
-    const auditReleased = new Promise<void>((resolve) => {
-      releaseAudit = resolve;
-    });
+    const auditEntered = deferredSignal();
+    const auditReleased = deferredSignal();
     const auditSink: AuditSink = {
       append(_record: GatewayAuditRecord) {
-        enterAudit?.();
-        return auditReleased;
+        auditEntered.signal();
+        return auditReleased.wait;
       },
     };
 
     try {
       const journal = await ReplayJournal.open(journalPath);
       const gateway = await startClaudeSubscriptionGateway({
-        completionRunner: { async complete() { return completionResult(); } },
+        completionRunner: {
+          async complete() {
+            return completionResult();
+          },
+        },
         replayJournal: journal,
         auditSink,
         benchmarkNamespace: "ordering-test",
@@ -55,16 +69,16 @@ describe("gateway replay", () => {
         return response;
       });
 
-      await auditEntered;
+      await auditEntered.wait;
       expect((await readFile(journalPath, "utf8")).trim()).not.toBe("");
       await Promise.resolve();
       expect(delivered).toBe(false);
-      releaseAudit?.();
+      auditReleased.signal();
       expect((await pendingResponse).status).toBe(200);
       await gateway.close();
       await journal.close();
     } finally {
-      releaseAudit?.();
+      auditReleased.signal();
       await rm(directory, { recursive: true, force: true });
     }
   });

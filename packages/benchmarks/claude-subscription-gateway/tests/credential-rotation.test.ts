@@ -3,12 +3,12 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
-  canonicalizeChatCompletion,
   type ClaudeCompletionResult,
   ClaudeRateLimitError,
   type CompletionContext,
   type CompletionRunner,
   type CredentialLeaseBroker,
+  canonicalizeChatCompletion,
   RotatingCredentialCompletionRunner,
 } from "../src/index.js";
 
@@ -17,7 +17,9 @@ const HMAC_KEY = Buffer.alloc(32, 7);
 describe("RotatingCredentialCompletionRunner", () => {
   it("rotates linked leases on quota with one stable session key and token-only injection", async () => {
     const leases = [lease("a", "token-a"), lease("b", "token-b"), null];
-    const leaseBroker = vi.fn(async () => leases.shift() ?? null);
+    const leaseBroker = vi.fn<CredentialLeaseBroker["lease"]>(
+      async () => leases.shift() ?? null,
+    );
     const broker: CredentialLeaseBroker = {
       lease: leaseBroker,
       report: vi.fn(async () => ({ ok: true })),
@@ -29,10 +31,7 @@ describe("RotatingCredentialCompletionRunner", () => {
         contexts.push(context);
         context.credentialTierValidator?.("Claude Max");
         if (context.credentialOAuthToken === "token-a") {
-          throw new ClaudeRateLimitError(
-            2_000_000_000_000,
-            "seven_day",
-          );
+          throw new ClaudeRateLimitError(2_000_000_000_000, "seven_day");
         }
         return completionResult();
       },
@@ -136,9 +135,7 @@ describe("RotatingCredentialCompletionRunner", () => {
       broker: null,
       hmacKey: HMAC_KEY,
       expectedTierHmacSha256: expectedTier,
-      expectedCapabilityHmacSha256: hmac(
-        "firstParty:oauth:subscription",
-      ),
+      expectedCapabilityHmacSha256: hmac("firstParty:oauth:subscription"),
     });
 
     await expect(runner.complete(completionContext())).rejects.toMatchObject({

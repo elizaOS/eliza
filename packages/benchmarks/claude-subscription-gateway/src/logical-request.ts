@@ -25,7 +25,7 @@ export class LogicalRequestAllocator {
   private readonly nextOrdinalByHarness = new Map<string, number>();
   readonly namespaceSha256: string;
 
-  constructor(private readonly namespace: string) {
+  constructor(namespace: string) {
     if (!SAFE_NAMESPACE_PATTERN.test(namespace)) {
       throw new TypeError(
         "Benchmark namespace must be 1-128 safe identifier characters.",
