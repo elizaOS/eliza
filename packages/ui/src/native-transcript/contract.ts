@@ -1,9 +1,10 @@
 /**
  * The one cross-platform transcript-event contract (`eliza.native-transcript/v1`)
- * rendered identically by the iOS (SwiftUI), Android (Views), desktop, and web
- * shells. A voice/agent turn is expressed as an append-only log of typed events;
- * every shell decodes the same bytes (see `fixtures/native-transcript-golden.json`)
- * and folds them into the same ordered render model.
+ * consumed by the iOS, Android, desktop, and web hosts. A voice/agent turn is
+ * expressed as an append-only log of typed events; every host decodes the same
+ * bytes (see `fixtures/native-transcript-golden.json`) and folds them into the
+ * same ordered render model. The shipped React chat surface visibly renders the
+ * validated projection returned by its native host.
  *
  * Design rules that make cross-bridge rendering deterministic:
  *   - Behavior derives from STRUCTURAL fields only — the discriminant `type`, the

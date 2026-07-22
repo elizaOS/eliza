@@ -1,7 +1,7 @@
 /**
- * Capacitor boundary for iOS native transcript surfaces. Renderer envelopes are
- * independently reduced, persisted in the app group, and published as native
- * view-model events for SwiftUI extensions and diagnostics.
+ * Capacitor boundary for iOS transcript reduction. Renderer envelopes are
+ * independently reduced, persisted in the app group, and returned to the
+ * shipped WebView chat/voice surface so native-reduced state is visible.
  */
 
 import Capacitor
@@ -43,6 +43,11 @@ public final class NativeTranscriptPlugin: CAPPlugin, CAPBridgedPlugin {
                 "view": result.view,
                 "rejectedIndexes": result.rejectedIndexes,
             ]
+            NSLog(
+                "[NativeTranscript] Applied native transcript through seq=%@ rejected=%d",
+                String(describing: result.view["lastSeq"]),
+                result.rejectedIndexes.count
+            )
             notifyListeners("viewModel", data: response)
             call.resolve(response)
         } catch {

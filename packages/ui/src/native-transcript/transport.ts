@@ -17,6 +17,10 @@ import {
   type TranscriptEventStream,
   type TtsAudioEvent,
 } from "./contract";
+import {
+  applyRendererTranscriptEvents,
+  resetNativeTranscriptStoreForTests,
+} from "./live-store";
 
 export const NATIVE_TRANSCRIPT_RENDERER_EVENT =
   "eliza:native-transcript:event-stream" as const;
@@ -56,6 +60,7 @@ export function publishNativeTranscriptEvents(
     schema: NATIVE_TRANSCRIPT_SCHEMA,
     events: inputs.map(assignSequence),
   };
+  applyRendererTranscriptEvents(stream.events);
   if (typeof window !== "undefined" && stream.events.length > 0) {
     window.dispatchEvent(
       new CustomEvent<TranscriptEventStream>(NATIVE_TRANSCRIPT_RENDERER_EVENT, {
@@ -76,4 +81,5 @@ export function publishNativeTranscriptEvent(
 /** Test-only reset for deterministic stream sequence assertions. */
 export function resetNativeTranscriptSequenceForTests(): void {
   nextSequence = 1;
+  resetNativeTranscriptStoreForTests();
 }

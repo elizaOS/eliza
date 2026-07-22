@@ -34,6 +34,11 @@ interface ItemEntry {
   revSeq: number;
 }
 
+/** Namespace opaque wire ids by row kind inside the reducer. */
+function itemKey(kind: "user" | "agent" | "tool", id: string): string {
+  return `${kind}:${id}`;
+}
+
 /**
  * Internal accumulator. Kept separate from {@link TranscriptViewModel} so the
  * render model stays free of bookkeeping (dedupe set, per-item order/revSeq) and
@@ -130,11 +135,12 @@ export function applyTranscriptEvent(
       // A final/cancelled turn is terminal: a stray later partial is ignored
       // outright (not even its text is applied), so a committed utterance never
       // reverts to an interim hypothesis.
-      const prev = entries.get(event.turnId);
+      const key = itemKey("user", event.turnId);
+      const prev = entries.get(key);
       if (prev && prev.item.kind === "user" && prev.item.status !== "partial") {
         break;
       }
-      upsert(event.turnId, (existing) => ({
+      upsert(key, (existing) => ({
         kind: "user",
         id: event.turnId,
         status: "partial",
@@ -145,7 +151,7 @@ export function applyTranscriptEvent(
     }
 
     case "stt.final":
-      upsert(event.turnId, () => ({
+      upsert(itemKey("user", event.turnId), () => ({
         kind: "user",
         id: event.turnId,
         status: "final",
@@ -154,37 +160,67 @@ export function applyTranscriptEvent(
       }));
       break;
 
-    case "agent.text":
-      upsert(event.messageId, (prev) => ({
-        kind: "agent",
-        id: event.messageId,
-        status: event.final ? "final" : "streaming",
-        text: event.text,
-        turnId:
+    case "agent.text": {
+      const key = itemKey("agent", event.messageId);
+      const prev = entries.get(key);
+      // Completion is terminal for a message. A later non-final callback is a
+      // stale producer transition even when its stream sequence is newer.
+      if (
+        prev?.item.kind === "agent" &&
+        prev.item.status === "final" &&
+        !event.final
+      ) {
+        break;
+      }
+      upsert(key, (previous) => {
+        const turnId =
           event.turnId ??
-          (prev && prev.kind === "agent" ? prev.turnId : undefined),
-      }));
+          (previous && previous.kind === "agent" ? previous.turnId : undefined);
+        return {
+          kind: "agent",
+          id: event.messageId,
+          status: event.final ? "final" : "streaming",
+          text: event.text,
+          ...(turnId === undefined ? {} : { turnId }),
+        };
+      });
       break;
+    }
 
-    case "tool.state":
-      upsert(event.callId, (prev) => ({
-        kind: "tool",
-        id: event.callId,
-        status:
-          event.phase === "started"
-            ? "running"
-            : event.phase === "succeeded"
-              ? "succeeded"
-              : "failed",
-        name: event.name,
-        detail:
+    case "tool.state": {
+      const key = itemKey("tool", event.callId);
+      const prev = entries.get(key);
+      // A completed call cannot start again under the same stable call id.
+      if (
+        prev?.item.kind === "tool" &&
+        (prev.item.status === "succeeded" || prev.item.status === "failed") &&
+        event.phase === "started"
+      ) {
+        break;
+      }
+      upsert(key, (previous) => {
+        const detail =
           event.detail ??
-          (prev && prev.kind === "tool" ? prev.detail : undefined),
-        turnId:
+          (previous && previous.kind === "tool" ? previous.detail : undefined);
+        const turnId =
           event.turnId ??
-          (prev && prev.kind === "tool" ? prev.turnId : undefined),
-      }));
+          (previous && previous.kind === "tool" ? previous.turnId : undefined);
+        return {
+          kind: "tool",
+          id: event.callId,
+          status:
+            event.phase === "started"
+              ? "running"
+              : event.phase === "succeeded"
+                ? "succeeded"
+                : "failed",
+          name: event.name,
+          ...(detail === undefined ? {} : { detail }),
+          ...(turnId === undefined ? {} : { turnId }),
+        };
+      });
       break;
+    }
 
     case "tts.audio":
       // Playback is transient view state, not a row. `started` sets the

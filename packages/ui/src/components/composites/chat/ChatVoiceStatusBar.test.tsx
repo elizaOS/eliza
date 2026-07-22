@@ -2,17 +2,34 @@
 // @vitest-environment jsdom
 /**
  * Renders ChatVoiceStatusBar in jsdom (real component, no live voice pipeline)
- * to assert visibility gating, status dot/label, interim transcript, the OWNER
- * crown on matching entityId, and the traffic-light latency badge tones.
+ * to assert visibility gating, typed live captions, status, speaker identity,
+ * audio recovery, and latency feedback in the shipped chat surface.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  acceptNativeTranscriptViewModel,
+  getNativeTranscriptSnapshot,
+} from "../../../native-transcript/live-store";
+import {
+  publishNativeTranscriptEvents,
+  resetNativeTranscriptSequenceForTests,
+} from "../../../native-transcript/transport";
 
 import { ChatVoiceStatusBar } from "./ChatVoiceStatusBar";
 
 afterEach(() => {
   cleanup();
 });
+
+beforeEach(resetNativeTranscriptSequenceForTests);
 
 describe("ChatVoiceStatusBar", () => {
   it("does not render when visible=false", () => {
@@ -37,6 +54,51 @@ describe("ChatVoiceStatusBar", () => {
     );
     const t = screen.getByTestId("chat-voice-interim-transcript");
     expect(t.textContent).toContain("hello there");
+  });
+
+  it("renders the real typed stream as live captions and accepts desktop-host parity", () => {
+    render(<ChatVoiceStatusBar status="listening" />);
+    act(() => {
+      publishNativeTranscriptEvents([
+        {
+          type: "stt.partial",
+          turnId: "turn-1",
+          text: "hello from voice",
+        },
+        {
+          type: "tool.state",
+          callId: "call-1",
+          turnId: "turn-1",
+          name: "weather",
+          phase: "started",
+          detail: "Checking New York",
+        },
+      ]);
+    });
+
+    const activity = screen.getByTestId("native-transcript-activity");
+    expect(activity.getAttribute("data-transcript-source")).toBe("web");
+    expect(
+      screen.getByTestId("native-transcript-activity-summary").textContent,
+    ).toContain("weather · running");
+    const summary = activity.querySelector("summary");
+    if (!summary) throw new Error("live captions summary was not rendered");
+    fireEvent.click(summary);
+    fireEvent(activity, new Event("toggle"));
+    expect(
+      screen.getByRole("log", { name: "Live voice transcript" }),
+    ).toBeTruthy();
+    expect(screen.getByText("hello from voice")).toBeTruthy();
+    expect(screen.getByText("Checking New York")).toBeTruthy();
+
+    act(() => {
+      const accepted = acceptNativeTranscriptViewModel(
+        structuredClone(getNativeTranscriptSnapshot().view),
+        "desktop",
+      );
+      if (!accepted.ok) throw new Error(accepted.error.message);
+    });
+    expect(activity.getAttribute("data-transcript-source")).toBe("desktop");
   });
 
   it("renders OWNER crown when speaker entityId matches ownerEntityId", () => {

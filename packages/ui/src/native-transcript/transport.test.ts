@@ -103,8 +103,14 @@ describe("native transcript producer transport", () => {
     };
     publishNativeToolState(tool, "t1");
 
-    const first = (dispatch.mock.calls[0][0] as CustomEvent).detail;
-    const second = (dispatch.mock.calls[1][0] as CustomEvent).detail;
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    const firstCall = dispatch.mock.calls[0];
+    const secondCall = dispatch.mock.calls[1];
+    if (!firstCall || !secondCall) {
+      throw new Error("expected renderer transcript events");
+    }
+    const first = (firstCall[0] as CustomEvent).detail;
+    const second = (secondCall[0] as CustomEvent).detail;
     expect(first.events[0]).toMatchObject({
       type: "agent.text",
       messageId: "m1",

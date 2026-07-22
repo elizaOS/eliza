@@ -1,15 +1,12 @@
 /**
- * iOS decoder, reducer, and SwiftUI renderer for
- * `eliza.native-transcript/v1`. The reducer mirrors the shared structural
- * ordering, dedupe, late-event, and cancellation rules and never interprets
- * transcript text as control state.
+ * iOS decoder and reducer for `eliza.native-transcript/v1`. Its validated view
+ * model crosses back through Capacitor into the shipped chat/voice surface, so
+ * the actual app renders native-reduced state without a duplicate UIKit or
+ * SwiftUI transcript overlay.
  */
 
 import CoreFoundation
 import Foundation
-#if canImport(SwiftUI)
-import SwiftUI
-#endif
 
 public struct NativeTranscriptApplyResult {
     public let view: [String: Any]
@@ -383,54 +380,3 @@ public final class NativeTranscriptReducer {
     private func key(_ kind: String, _ id: String) -> String { "\(kind):\(id)" }
     private static func invalid(_ message: String) -> NativeTranscriptReducerError { .invalidEvent(message) }
 }
-
-#if canImport(SwiftUI)
-/// SwiftUI projection of the shared view model for app-owned native surfaces.
-public struct NativeTranscriptView: View {
-    public let viewModel: [String: Any]
-
-    public init(viewModel: [String: Any]) { self.viewModel = viewModel }
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                row(item)
-            }
-            if (viewModel["connection"] as? String) == "lost" {
-                Text("Connection lost").foregroundStyle(.secondary)
-            }
-            if !(viewModel["speaking"] is NSNull) {
-                Text("Eliza is speaking").foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private var items: [[String: Any]] { viewModel["items"] as? [[String: Any]] ?? [] }
-
-    @ViewBuilder
-    private func row(_ item: [String: Any]) -> some View {
-        let kind = item["kind"] as? String ?? ""
-        let text: String = {
-            if kind == "tool" {
-                return "\(item["name"] as? String ?? "") · \(item["status"] as? String ?? "")"
-            }
-            if kind == "error" {
-                return item["message"] as? String ?? item["code"] as? String ?? "Error"
-            }
-            if kind == "reconnect" {
-                return "Connection \(item["phase"] as? String ?? "")"
-            }
-            return item["text"] as? String ?? ""
-        }()
-        HStack {
-            if kind == "user" { Spacer(minLength: 24) }
-            Text(text)
-                .foregroundStyle(kind == "error" ? Color.red : Color.primary)
-                .multilineTextAlignment(kind == "user" ? .trailing : .leading)
-                .accessibilityLabel("\(kind): \(text)")
-            if kind != "user" { Spacer(minLength: 24) }
-        }
-    }
-}
-#endif

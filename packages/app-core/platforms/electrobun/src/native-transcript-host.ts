@@ -1,7 +1,7 @@
 /**
- * Electrobun's native transcript host. It validates and reduces renderer
- * envelopes with the dependency-light shared contract, retaining an inspectable
- * native view model for desktop-owned windows and diagnostics.
+ * Electrobun's transcript host. It validates and reduces renderer envelopes
+ * with the dependency-light contract, then returns that view model to the
+ * shipped desktop chat/voice surface for visible rendering.
  */
 
 import {
@@ -12,6 +12,7 @@ import {
   type TranscriptViewModel,
   toViewModel,
 } from "../../../../ui/src/native-transcript/core";
+import { logger } from "./logger";
 
 let reducerState: TranscriptReducerState = initialReducerState();
 
@@ -28,8 +29,13 @@ export function publishNativeTranscriptStream(
   for (const event of decoded.events) {
     reducerState = applyTranscriptEvent(reducerState, event);
   }
+  const view = structuredClone(toViewModel(reducerState));
+  logger.debug("[NativeTranscript] Applied desktop transcript batch", {
+    lastSeq: view.lastSeq,
+    rejectedIndexes: decoded.rejected.map((rejection) => rejection.index),
+  });
   return {
-    view: structuredClone(toViewModel(reducerState)),
+    view,
     rejectedIndexes: decoded.rejected.map((rejection) => rejection.index),
   };
 }

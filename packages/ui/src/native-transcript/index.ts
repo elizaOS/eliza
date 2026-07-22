@@ -1,8 +1,7 @@
 /**
- * `eliza.native-transcript/v1` — the one typed transcript-event contract shared
- * by the iOS, Android, desktop, and web shells. Types + schema (`contract`),
- * boundary decoder (`decode`), pure reducer (`reduce`), and the web/DOM renderer
- * (`TranscriptEventView`).
+ * `eliza.native-transcript/v1` — the typed event and projection contract shared
+ * by the iOS, Android, desktop, and web hosts, plus the product renderer that
+ * displays each validated host projection in the common React chat surface.
  */
 
 export {
@@ -52,6 +51,24 @@ export {
   type TranscriptStreamDecodeResult,
 } from "./decode";
 export {
+  hasLiveNativeTranscriptContent,
+  LiveNativeTranscript,
+  type LiveNativeTranscriptProps,
+  LiveNativeTranscriptView,
+  type LiveNativeTranscriptViewProps,
+  useLiveNativeTranscript,
+} from "./LiveNativeTranscript";
+export {
+  acceptNativeTranscriptViewModel,
+  applyRendererTranscriptEvents,
+  getNativeTranscriptSnapshot,
+  type NativeTranscriptSnapshot,
+  type NativeTranscriptViewAcceptanceResult,
+  type NativeTranscriptViewSource,
+  resetNativeTranscriptStoreForTests,
+  subscribeNativeTranscript,
+} from "./live-store";
+export {
   applyTranscriptEvent,
   initialReducerState,
   reduceTranscriptEvents,
@@ -61,6 +78,8 @@ export {
 export {
   TranscriptEventView,
   type TranscriptEventViewProps,
+  TranscriptView,
+  type TranscriptViewProps,
   useTranscriptEvents,
 } from "./TranscriptEventView";
 export {
@@ -70,6 +89,11 @@ export {
   publishNativeTranscriptEvents,
   resetNativeTranscriptSequenceForTests,
 } from "./transport";
+export {
+  decodeTranscriptViewModel,
+  type TranscriptViewModelDecodeError,
+  type TranscriptViewModelDecodeResult,
+} from "./view-model-decode";
 export {
   nativeTranscriptInputFromVoiceServerEvent,
   publishVoiceServerTranscriptEvent,
