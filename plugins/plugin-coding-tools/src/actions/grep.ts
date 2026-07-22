@@ -51,7 +51,7 @@ export async function grepHandler(
   // reach the model via the ActionResult and the user via the planner's final
   // message; posting each mid-turn dump spammed chat channels (one message per
   // exploratory call).
-  callback?: HandlerCallback,
+  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const conversationId =
     message.roomId !== undefined && message.roomId !== null

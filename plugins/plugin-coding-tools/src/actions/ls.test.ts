@@ -272,7 +272,13 @@ describe("lsHandler — read-only query stays silent", () => {
   it("does not invoke the visible chat callback", async () => {
     const { runtime, message } = await buildRuntime();
     const callback = vi.fn();
-    const result = await lsHandler(runtime, message, undefined, { parameters: {} }, callback);
+    const result = await lsHandler(
+      runtime,
+      message,
+      undefined,
+      { parameters: {} },
+      callback,
+    );
     expect(result.success).toBe(true);
     expect(callback).not.toHaveBeenCalled();
   });

@@ -69,7 +69,7 @@ afterEach(async () => {
 const state: State | undefined = undefined;
 
 describe("GLOB", () => {
-    it("matches **/*.ts and returns expected count", async () => {
+  it("matches **/*.ts and returns expected count", async () => {
     const { runtime, message } = await buildRuntime();
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "**/*.ts" },
@@ -172,7 +172,13 @@ describe("globHandler — read-only query stays silent", () => {
   it("does not invoke the visible chat callback", async () => {
     const { runtime, message } = await buildRuntime();
     const callback = vi.fn();
-    const result = await globHandler(runtime, message, undefined, { parameters: { pattern: "**/*.ts" } }, callback);
+    const result = await globHandler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { pattern: "**/*.ts" } },
+      callback,
+    );
     expect(result.success).toBe(true);
     expect(callback).not.toHaveBeenCalled();
   });
