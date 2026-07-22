@@ -721,7 +721,13 @@ export function shouldKeepPackageRelativePath(
   if (packageName === "ffprobe-static") {
     const ffprobeMatch = normalizedPath.match(/^bin\/([^/]+)\/([^/]+)(?:\/|$)/);
     if (ffprobeMatch) {
-      return matchesRuntimeVariant(`${ffprobeMatch[1]}-${ffprobeMatch[2]}`);
+      // Explicit cross-platform packaging must not fall back to the build
+      // host's platform when selecting the bundled ffprobe binary.
+      return matchesRuntimeVariant(
+        `${ffprobeMatch[1]}-${ffprobeMatch[2]}`,
+        targetOS,
+        targetArch,
+      );
     }
   }
 

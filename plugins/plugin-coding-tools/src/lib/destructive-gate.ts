@@ -19,6 +19,14 @@ export interface DestructiveVerdict {
 const RECURSIVE_RM_FLAG = /^-[a-z]*[rR][a-z]*$/;
 const FORCE_ONLY_FLAG = /^-[a-z]*f[a-z]*$/;
 const DESTRUCTIVE_BINS = new Set(["mkfs", "shred", "wipefs"]);
+const POWERSHELL_REMOVE_ITEM_BINS = new Set([
+  "remove-item",
+  "ri",
+  "del",
+  "erase",
+  "rd",
+  "rmdir",
+]);
 const DROP_SQL = /\bdrop\s+(database|table|schema)\s+(\S+)/i;
 
 function splitSegments(command: string): string[] {
@@ -75,8 +83,40 @@ export function classifyDestructiveCommand(
       /^[A-Za-z_][A-Za-z0-9_]*=/.test(argv[i] as string)
     )
       i += 1;
-    const bin = (argv[i] ?? "").split("/").pop() ?? "";
+    const bin = ((argv[i] ?? "").split(/[\\/]/).pop() ?? "").toLowerCase();
     const rest = argv.slice(i + 1);
+
+    if (POWERSHELL_REMOVE_ITEM_BINS.has(bin)) {
+      const recursive = rest.some((arg) => {
+        const normalized = arg.toLowerCase();
+        return normalized === "-recurse" || normalized === "-r";
+      });
+      if (recursive) {
+        return {
+          destructive: true,
+          reason: "recursive delete",
+          targets: rest.filter((arg) => !arg.startsWith("-")),
+        };
+      }
+    }
+
+    if (bin === "cmd" || bin === "cmd.exe") {
+      const commandIndex = rest.findIndex((arg) =>
+        ["/c", "/k"].includes(arg.toLowerCase()),
+      );
+      const nested = commandIndex >= 0 ? rest.slice(commandIndex + 1) : [];
+      const nestedBin = nested[0]?.toLowerCase();
+      if (
+        (nestedBin === "rmdir" || nestedBin === "rd") &&
+        nested.some((arg) => arg.toLowerCase() === "/s")
+      ) {
+        return {
+          destructive: true,
+          reason: "recursive delete",
+          targets: nested.slice(1).filter((arg) => !arg.startsWith("/")),
+        };
+      }
+    }
 
     if (bin === "rm") {
       const recursive = rest.some((a) => RECURSIVE_RM_FLAG.test(a));

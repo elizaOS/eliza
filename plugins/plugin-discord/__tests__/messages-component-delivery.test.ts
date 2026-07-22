@@ -64,6 +64,7 @@ function makeRuntime(
 		// The callback persists outbound memories via createDiscordMessageMemoryOnce.
 		getMemoryById: async () => null,
 		createMemory: async (memory: Memory) => memory.id,
+		upsertMemory: async () => {},
 		// Invoking the production response callback with a crafted reply reaches
 		// the same outbound branches that connector messages use at runtime.
 		messageService: {

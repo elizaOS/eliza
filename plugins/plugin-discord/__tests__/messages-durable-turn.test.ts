@@ -105,6 +105,12 @@ function makeDurableHarness(): DurableHarness {
 				return id;
 			},
 		),
+		upsertMemory: vi.fn(async (memory: Memory, tableName: string) => {
+			const id =
+				memory.id ??
+				(createUniqueUuid(runtime as ICompatRuntime, randomUUID()) as UUID);
+			indexMemory(memory, id, tableName);
+		}),
 		getMemories: vi.fn(async (params: { roomId?: UUID; tableName: string }) => {
 			if (params.tableName !== "messages" || !params.roomId) return [];
 			return memoriesByRoom.get(params.roomId) ?? [];

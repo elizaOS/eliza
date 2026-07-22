@@ -1189,7 +1189,7 @@ export class MessageManager {
 					newMessage,
 					message.id,
 				);
-				const claim = await claimDiscordTurn(this.runtime, message.id);
+				const claim = await claimDiscordTurn(this.runtime, message.id, roomId);
 				turnRecord = claim.record;
 				if (!claim.created) {
 					const deliveredReplyId = newMessage.id

@@ -17,6 +17,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -59,7 +60,12 @@ function writeManifest(
 }
 
 beforeEach(() => {
-  tmpDir = mkdtempSync(path.join(tmpdir(), "copy-runtime-cov-"));
+  // Windows exposes the temp directory in 8.3 form while the copier resolves
+  // long paths. Canonicalizing the fixture keeps expectations on that same
+  // filesystem identity on every host.
+  tmpDir = realpathSync.native(
+    mkdtempSync(path.join(tmpdir(), "copy-runtime-cov-")),
+  );
 });
 
 afterEach(() => {

@@ -38,11 +38,16 @@ function tempRoot(): string {
   return root;
 }
 
-function runtimeStub(baseDir: string): ReturnType<typeof runtimeWith> {
+function runtimeStub(
+  baseDir: string,
+  githubToken?: string,
+): ReturnType<typeof runtimeWith> {
   const runtime = runtimeWith();
-  runtime.getSetting = vi.fn((key: string) =>
-    key === "ELIZA_WORKSPACE_DIR" ? baseDir : undefined,
-  );
+  runtime.getSetting = vi.fn((key: string) => {
+    if (key === "ELIZA_WORKSPACE_DIR") return baseDir;
+    if (key === "GITHUB_TOKEN") return githubToken;
+    return undefined;
+  });
   return runtime;
 }
 
@@ -73,6 +78,13 @@ afterEach(() => {
 });
 
 describe("CodingWorkspaceService GitHub provider registration", () => {
+  it("starts with a configured GitHub token without making a request", async () => {
+    const service = await CodingWorkspaceService.start(
+      runtimeStub(tempRoot(), "workspace-token"),
+    );
+    await service.stop();
+  });
+
   it("registers the GitHub provider missing from a bare CredentialService", async () => {
     expect(credentialService().getProvider("github")).toBeUndefined();
 

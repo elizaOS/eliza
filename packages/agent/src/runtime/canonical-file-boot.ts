@@ -286,8 +286,8 @@ export function applyCanonicalFileBootToConfig(
   const { text, audit } = composeCanonicalBootContext(manifest, deps);
   if (!text) return config;
 
-  const agents = (config.agents ?? {}) as NonNullable<ElizaConfig["agents"]>;
-  const list = Array.isArray(agents.list) ? [...agents.list] : [];
+  const agents = config.agents;
+  const list = Array.isArray(agents?.list) ? [...agents.list] : [];
   let idx = list.findIndex((a) => a?.default);
   if (idx < 0) {
     // No primary entry yet: create a minimal one so the composed identity
@@ -301,7 +301,7 @@ export function applyCanonicalFileBootToConfig(
     typeof existing?.system === "string" ? existing.system : "";
   const nextSystem = priorSystem ? `${priorSystem}\n\n${text}` : text;
   list[idx] = { ...existing, system: nextSystem };
-  config.agents = { ...agents, list };
+  config.agents = agents ? { ...agents, list } : { list };
 
   const present = audit.filter((a) => a.present).length;
   if (deps.log ?? true) {

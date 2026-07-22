@@ -62,6 +62,11 @@ function makeRuntime(options?: {
 			memories.set(id, { ...memory, id });
 			return id;
 		}),
+		upsertMemory: vi.fn(async (memory: Memory) => {
+			const id =
+				memory.id ?? createUniqueUuid(runtime as ICompatRuntime, randomUUID());
+			memories.set(id, { ...memory, id });
+		}),
 		messageService: {
 			handleMessage: async (
 				_runtime: unknown,

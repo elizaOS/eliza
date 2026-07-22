@@ -7,6 +7,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
+    conditions: ["eliza-source"],
     alias: {
       "@elizaos/auth/token-expiry": fileURLToPath(
         new URL("../../packages/auth/src/token-expiry.ts", import.meta.url),
@@ -18,6 +19,11 @@ export default defineConfig({
       "@elizaos/shared": fileURLToPath(
         new URL("./__tests__/shared-runtime-env.ts", import.meta.url),
       ),
+    },
+  },
+  ssr: {
+    resolve: {
+      conditions: ["eliza-source"],
     },
   },
   test: {

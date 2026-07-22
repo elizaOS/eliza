@@ -17,4 +17,7 @@ export default createViewBundleConfig({
 	outDir: "dist/views",
 	componentExport: "ViewManagerView",
 	additionalExternals: ["@elizaos/core"],
+	// The view validates server DTOs fail-closed; stronger compression keeps that
+	// boundary safety within the committed 3 kB transport budget.
+	minify: "terser",
 });

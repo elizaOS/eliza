@@ -1,4 +1,4 @@
-// Exercises tests view bundle single chunk.test automation behavior with deterministic script fixtures.
+/** Exercises the shared plugin-view bundling contract without invoking Vite. */
 import { describe, expect, test } from "bun:test";
 import { createViewBundleConfig } from "../view-bundle-vite.config.ts";
 
@@ -76,5 +76,15 @@ describe("view-bundle Vite config: single self-contained bundle", () => {
       });
       expect(output.codeSplitting).toBe(false);
     }
+  });
+
+  test("passes an explicitly selected minifier to Vite", () => {
+    const cfg = createViewBundleConfig({
+      packageName: "@elizaos/plugin-example",
+      viewId: "example-view",
+      entry: "./src/views/example-view-bundle.ts",
+      minify: "terser",
+    });
+    expect(cfg.build?.minify).toBe("terser");
   });
 });

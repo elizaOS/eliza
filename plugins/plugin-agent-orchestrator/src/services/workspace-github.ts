@@ -10,7 +10,7 @@
 import { createRequire } from "node:module";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
-import { Octokit } from "@octokit/rest";
+import type { Octokit as OctokitInstance } from "@octokit/rest";
 import type {
   CreateIssueOptions,
   GitHubPatClient as GitHubPatClientInstance,
@@ -27,6 +27,19 @@ import type { ParsedPullRequestLink } from "./pull-request-link.js";
 const { GitHubPatClient, OAuthDeviceFlow } = createRequire(import.meta.url)(
   "git-workspace-service",
 ) as typeof import("git-workspace-service");
+
+let cachedOctokitConstructor: typeof OctokitInstance | undefined;
+
+function loadOctokit(): typeof OctokitInstance {
+  if (!cachedOctokitConstructor) {
+    cachedOctokitConstructor = (
+      createRequire(import.meta.url)(
+        "@octokit/rest",
+      ) as typeof import("@octokit/rest")
+    ).Octokit;
+  }
+  return cachedOctokitConstructor;
+}
 
 /**
  * Callback for surfacing auth prompts to the user.
@@ -88,7 +101,13 @@ export type GitHubRequest = <T>(
   parameters: Record<string, unknown>,
 ) => Promise<GitHubResponse<T>>;
 
-function createGitHubRequest(token: string): GitHubRequest {
+/**
+ * Builds the typed Octokit request transport on first GitHub use. Keeping the
+ * optional integration out of module initialization lets non-GitHub workspace
+ * operations load even when a resolver cannot traverse Octokit's transitives.
+ */
+export function createGitHubRequest(token: string): GitHubRequest {
+  const Octokit = loadOctokit();
   const octokit = new Octokit({ auth: token });
   return octokit.request.bind(octokit) as GitHubRequest;
 }

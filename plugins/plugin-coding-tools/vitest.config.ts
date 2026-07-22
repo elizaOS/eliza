@@ -30,11 +30,11 @@ export default defineConfig({
         replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
       },
     ],
-    conditions: ["node"],
+    conditions: ["eliza-source", "node"],
   },
   ssr: {
     resolve: {
-      conditions: ["node"],
+      conditions: ["eliza-source", "node"],
     },
   },
   test: {

@@ -236,6 +236,7 @@ describe("ensureGitHubClient", () => {
       k === "GITHUB_TOKEN" ? "ghp_test" : undefined;
     const client = await ensureGitHubClient(ctx);
     expect(client).toBeInstanceOf(GitHubPatClient);
+    expect(ctx.githubRequest).toBeTypeOf("function");
     // The context caches the client for subsequent calls.
     expect(await ensureGitHubClient(ctx)).toBe(client);
   });

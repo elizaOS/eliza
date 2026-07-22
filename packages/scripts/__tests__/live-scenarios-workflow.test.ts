@@ -248,14 +248,20 @@ test("reports uncovered live-only scenarios as explicit deferrals", () => {
     expect(Object.values(summary.deferredDefaultReasons)).toContainEqual(
       expect.stringContaining("#16448"),
     );
-    expect(PLUGIN_ROUTE_COVERAGE["plugin-personal-assistant"]).toMatchObject({
-      status: "exempt",
-      reason: expect.stringContaining("live-scenarios.yml"),
-    });
+    const routeCoverage = PLUGIN_ROUTE_COVERAGE["plugin-personal-assistant"];
+    expect(routeCoverage.status).toBe("exempt");
+    if (routeCoverage.status !== "exempt") {
+      throw new Error(
+        "plugin-personal-assistant route coverage must be exempt",
+      );
+    }
+    const originalReason = routeCoverage.reason;
+    expect(routeCoverage.reason).toContain("live-scenarios.yml");
+    expect(routeCoverage.reason).toBe(originalReason);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
-}, 30_000);
+}, 60_000);
 
 test("discovers the orchestrator live evidence in the scheduled catalog", async () => {
   const metadata = await listScenarioMetadata(

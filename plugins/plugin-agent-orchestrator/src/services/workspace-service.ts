@@ -17,7 +17,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import { Octokit } from "@octokit/rest";
 import type {
   CreateIssueOptions,
   CredentialService as CredentialServiceInstance,
@@ -75,6 +74,7 @@ import type { RemotePullRequest } from "./ground-truth-verifier.js";
 import type { ParsedPullRequestLink } from "./pull-request-link.js";
 import type { AuthPromptCallback, GitHubRequest } from "./workspace-github.js";
 import {
+  createGitHubRequest as createOctokitRequest,
   type GitHubContext,
   addComment as ghAddComment,
   addLabels as ghAddLabels,
@@ -297,12 +297,7 @@ export function createGitHubPatProvider(
 ): GitProviderAdapter {
   const createClient =
     options.createClient ?? ((token) => new GitHubPatClient({ token }));
-  const createRequest =
-    options.createRequest ??
-    ((token) => {
-      const octokit = new Octokit({ auth: token });
-      return octokit.request.bind(octokit) as GitHubRequest;
-    });
+  const createRequest = options.createRequest ?? createOctokitRequest;
 
   return {
     name: "github",
@@ -1121,8 +1116,7 @@ export class CodingWorkspaceService {
   }
 
   private createGitHubRequest(token: string): GitHubRequest {
-    const octokit = new Octokit({ auth: token });
-    return octokit.request.bind(octokit) as GitHubRequest;
+    return createOctokitRequest(token);
   }
 
   /** Set a callback to surface OAuth auth prompts to the user. */

@@ -73,6 +73,7 @@ function makeHangingRuntime(settings: Record<string, string> = {}): {
 		ensureConnection: async () => {},
 		getMemoryById: async () => null,
 		createMemory: async (memory: Memory) => memory.id,
+		upsertMemory: async () => {},
 		messageService: {
 			handleMessage: (
 				_runtime: unknown,
@@ -215,6 +216,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			ensureConnection: async () => {},
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
+			upsertMemory: async () => {},
 			messageService: {
 				handleMessage: async (
 					_runtime: unknown,
@@ -267,6 +269,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			ensureConnection: async () => {},
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
+			upsertMemory: async () => {},
 			messageService: {
 				handleMessage: (
 					_r: unknown,
@@ -333,6 +336,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			ensureConnection: async () => {},
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
+			upsertMemory: async () => {},
 			messageService: {
 				handleMessage: (
 					_r: unknown,
@@ -405,6 +409,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			ensureConnection: async () => {},
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
+			upsertMemory: async () => {},
 			messageService: {
 				handleMessage: (
 					_r: unknown,

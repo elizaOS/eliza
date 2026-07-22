@@ -20,6 +20,15 @@ describe("classifyDestructiveCommand — fires", () => {
     const v = classifyDestructiveCommand("ls && rm -rf ./data");
     expect(v.destructive).toBe(true);
   });
+  it.each([
+    ['Remove-Item -Recurse -Force "$env:TEMP\\old-project"'],
+    ["ri -r C:\\Temp\\old-project"],
+    ["cmd.exe /c rmdir /s /q C:\\Temp\\old-project"],
+  ])("Windows recursive delete: %s", (command) => {
+    const verdict = classifyDestructiveCommand(command);
+    expect(verdict.destructive).toBe(true);
+    expect(verdict.reason).toBe("recursive delete");
+  });
   it("forced glob delete", () => {
     expect(
       classifyDestructiveCommand("rm -f /var/log/app/*.log").destructive,

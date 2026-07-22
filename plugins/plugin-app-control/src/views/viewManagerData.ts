@@ -71,13 +71,11 @@ export interface ViewEntry {
  * of duplicate rows for future alternate modalities.
  */
 export function collapseViewEntries(entries: ViewEntry[]): ViewEntry[] {
-	const order: string[] = [];
 	const byId = new Map<string, ViewEntry>();
 	for (const entry of entries) {
 		const mods = entry.modalities ?? [entry.viewType ?? "gui"];
 		const existing = byId.get(entry.id);
 		if (!existing) {
-			order.push(entry.id);
 			byId.set(entry.id, { ...entry, modalities: dedupeModalities(mods) });
 			continue;
 		}
@@ -90,16 +88,24 @@ export function collapseViewEntries(entries: ViewEntry[]): ViewEntry[] {
 		const base = isGui && !baseWasGui ? entry : existing;
 		byId.set(entry.id, { ...base, modalities: merged });
 	}
-	return order.map((id) => {
-		const entry = byId.get(id);
-		if (!entry) {
-			throw new ElizaError("Collapsed view entry is missing", {
-				code: "VIEW_MANAGER_COLLAPSE_INVARIANT_FAILED",
-				context: { viewId: id },
-			});
-		}
-		return entry;
-	});
+	// Replacing an existing Map value preserves insertion order, including when
+	// a later GUI declaration becomes the preferred representation.
+	return [...byId.values()];
+}
+
+function requiredString(
+	record: Record<string, unknown>,
+	key: string,
+	index: number,
+): string {
+	const value = record[key];
+	if (typeof value !== "string" || value.trim().length === 0) {
+		return invalidViewListResponse(
+			`View entry ${index}.${key} must be a non-empty string`,
+			{ index, field: key },
+		);
+	}
+	return value;
 }
 
 function optionalString(
@@ -124,32 +130,14 @@ function parseViewEntry(value: unknown, index: number): ViewEntry {
 			index,
 		});
 	}
-	const id = value.id;
-	const label = value.label;
+	const id = requiredString(value, "id", index);
+	const label = requiredString(value, "label", index);
 	const available = value.available;
-	const pluginName = value.pluginName;
-	if (typeof id !== "string" || id.trim().length === 0) {
-		return invalidViewListResponse(
-			`View entry ${index}.id must be a non-empty string`,
-			{ index, field: "id" },
-		);
-	}
-	if (typeof label !== "string" || label.trim().length === 0) {
-		return invalidViewListResponse(
-			`View entry ${index}.label must be a non-empty string`,
-			{ index, field: "label" },
-		);
-	}
+	const pluginName = requiredString(value, "pluginName", index);
 	if (typeof available !== "boolean") {
 		return invalidViewListResponse(
 			`View entry ${index}.available must be a boolean`,
 			{ index, field: "available" },
-		);
-	}
-	if (typeof pluginName !== "string" || pluginName.trim().length === 0) {
-		return invalidViewListResponse(
-			`View entry ${index}.pluginName must be a non-empty string`,
-			{ index, field: "pluginName" },
 		);
 	}
 
@@ -188,20 +176,21 @@ function parseViewEntry(value: unknown, index: number): ViewEntry {
 	const bundleUrl = optionalString(value, "bundleUrl", index);
 	const heroImageUrl = optionalString(value, "heroImageUrl", index);
 
-	return {
+	const entry: ViewEntry = {
 		id,
 		label,
 		available,
 		pluginName,
-		...(viewType ? { viewType } : {}),
-		...(modalities ? { modalities } : {}),
-		...(description !== undefined ? { description } : {}),
-		...(icon !== undefined ? { icon } : {}),
-		...(viewPath !== undefined ? { path: viewPath } : {}),
-		...(order !== undefined ? { order } : {}),
-		...(bundleUrl !== undefined ? { bundleUrl } : {}),
-		...(heroImageUrl !== undefined ? { heroImageUrl } : {}),
 	};
+	if (viewType !== undefined) entry.viewType = viewType;
+	if (modalities !== undefined) entry.modalities = modalities;
+	if (description !== undefined) entry.description = description;
+	if (icon !== undefined) entry.icon = icon;
+	if (viewPath !== undefined) entry.path = viewPath;
+	if (order !== undefined) entry.order = order;
+	if (bundleUrl !== undefined) entry.bundleUrl = bundleUrl;
+	if (heroImageUrl !== undefined) entry.heroImageUrl = heroImageUrl;
+	return entry;
 }
 
 export async function fetchViewEntries(

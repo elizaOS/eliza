@@ -62,6 +62,8 @@ export function isTerminalTurnState(state: DiscordTurnState): boolean {
 export interface DiscordTurnRecord {
 	/** Deterministic UUID derived from the Discord message id. */
 	id: UUID;
+	/** Ensured runtime room that owns both the inbound message and this record. */
+	roomId: UUID;
 	/** Raw Discord message id (idempotency key). */
 	platformMessageId: string;
 	state: DiscordTurnState;
@@ -78,7 +80,7 @@ export interface DiscordTurnRecord {
 /** Minimal runtime surface this module needs; keeps unit tests trivial. */
 export type DiscordTurnRuntime = Pick<
 	IAgentRuntime,
-	"agentId" | "createMemory" | "getMemoryById" | "getMemories"
+	"agentId" | "createMemory" | "getMemoryById" | "getMemories" | "upsertMemory"
 >;
 
 /** Deterministic turn id from the Discord message id. */
@@ -105,6 +107,7 @@ function decodeTurnRecord(memory: Memory): DiscordTurnRecord | null {
 	}
 	return {
 		id: memory.id,
+		roomId: memory.roomId,
 		platformMessageId: data.platformMessageId,
 		state: data.state,
 		attempts: typeof data.attempts === "number" ? data.attempts : 0,
@@ -126,11 +129,12 @@ function encodeTurnRecord(
 		id: record.id,
 		entityId: runtime.agentId,
 		agentId: runtime.agentId,
-		roomId: record.id,
+		roomId: record.roomId,
 		content: {
 			text: `discord-turn ${record.platformMessageId} ${record.state}`,
 			source: "discord-turn",
 			data: {
+				roomId: record.roomId,
 				platformMessageId: record.platformMessageId,
 				state: record.state,
 				attempts: record.attempts,
@@ -155,11 +159,21 @@ export async function loadDiscordTurn(
 	return decodeTurnRecord(existing);
 }
 
-/**
- * Persist (upsert) a turn record. `createMemory` on our store is an upsert by
- * id (unique row), so the same call both claims and advances the record.
- */
+/** Persist a turn record without treating an existing deterministic id as a no-op. */
 async function writeDiscordTurn(
+	runtime: DiscordTurnRuntime,
+	record: DiscordTurnRecord,
+): Promise<DiscordTurnRecord> {
+	const stamped: DiscordTurnRecord = { ...record, updatedAt: Date.now() };
+	await runtime.upsertMemory(
+		encodeTurnRecord(runtime, stamped),
+		DISCORD_TURN_TABLE,
+	);
+	return stamped;
+}
+
+/** Create the initial claim without overwriting a record won by another delivery. */
+async function createDiscordTurn(
 	runtime: DiscordTurnRuntime,
 	record: DiscordTurnRecord,
 ): Promise<DiscordTurnRecord> {
@@ -180,21 +194,27 @@ async function writeDiscordTurn(
 export async function claimDiscordTurn(
 	runtime: DiscordTurnRuntime,
 	platformMessageId: string,
+	roomId: UUID,
 ): Promise<{ record: DiscordTurnRecord; created: boolean }> {
 	const existing = await loadDiscordTurn(runtime, platformMessageId);
 	if (existing) {
-		return { record: existing, created: false };
+		const record =
+			existing.roomId === roomId
+				? existing
+				: await writeDiscordTurn(runtime, { ...existing, roomId });
+		return { record, created: false };
 	}
 	const now = Date.now();
 	const record: DiscordTurnRecord = {
 		id: discordTurnId(runtime, platformMessageId),
+		roomId,
 		platformMessageId,
 		state: "RECEIVED",
 		attempts: 0,
 		createdAt: now,
 		updatedAt: now,
 	};
-	const stored = await writeDiscordTurn(runtime, record);
+	const stored = await createDiscordTurn(runtime, record);
 	return { record: stored, created: true };
 }
 

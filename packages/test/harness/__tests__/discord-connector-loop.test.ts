@@ -18,6 +18,7 @@
  * so capturing `channel.send` IS the correct outbound seam — no bot token, no
  * discord.com, no network.
  */
+import { createUniqueUuid } from "@elizaos/core";
 import {
   DiscordService,
   type DiscordSettings,
@@ -29,6 +30,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // Vitest aliases @elizaos/plugin-discord to the same source tree, so the
 // DiscordService/types above and this MessageManager share module identity.
 import { MessageManager } from "../../../../plugins/plugin-discord/messages.ts";
+import { loadDiscordTurn } from "../../../../plugins/plugin-discord/turn-state.ts";
 import { type MockLlmRuntime, withMockLlmRuntime } from "../index.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -239,5 +241,8 @@ describe("discord connector loop (keyless)", () => {
       sent[0]?.channelId,
       "the reply went back to the inbound channel",
     ).toBe(channelId);
+    const turnRecord = await loadDiscordTurn(runtime, messageId);
+    expect(turnRecord?.roomId).toBe(createUniqueUuid(runtime, channelId));
+    expect(turnRecord?.state).toBe("REPLIED");
   }, 60_000);
 });

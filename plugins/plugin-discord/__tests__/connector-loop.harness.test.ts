@@ -21,7 +21,7 @@
  * sanitizer is gone, so this proves the shared boundary covers Discord.
  */
 
-import { ModelType } from "@elizaos/core";
+import { createUniqueUuid, ModelType, type UUID } from "@elizaos/core";
 import {
 	type LlmProxyFixture,
 	type MockLlmRuntime,
@@ -31,6 +31,7 @@ import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MessageManager } from "../messages.ts";
 import { DiscordService } from "../service.ts";
+import { type DiscordTurnRecord, loadDiscordTurn } from "../turn-state.ts";
 import type { DiscordSettings, IDiscordService } from "../types.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -84,7 +85,12 @@ async function driveDiscordTurn(options: {
 	// author — used to reproduce a co-mention (`@other @bot`) where the bot is
 	// not the first-mentioned user.
 	coMentionedUserIds?: string[];
-}): Promise<{ sent: SentMessage[]; channelId: string }> {
+}): Promise<{
+	sent: SentMessage[];
+	channelId: string;
+	expectedRoomId: UUID;
+	turnRecord: DiscordTurnRecord | null;
+}> {
 	const channelKind = options.channelKind ?? "guild";
 	// Heuristic (non-strict) proxy: the reply turn makes several model calls;
 	// callers pin only the calls they need via fixtures and the proxy answers
@@ -265,7 +271,9 @@ async function driveDiscordTurn(options: {
 	// The same entrypoint the gateway MessageCreate listener calls.
 	await manager.handleMessage(message);
 
-	return { sent, channelId };
+	const expectedRoomId = createUniqueUuid(runtime, channelId);
+	const turnRecord = await loadDiscordTurn(runtime, messageId);
+	return { sent, channelId, expectedRoomId, turnRecord };
 }
 
 describe("discord connector loop (keyless harness)", () => {
@@ -299,9 +307,10 @@ describe("discord connector loop (keyless harness)", () => {
 	}, 120_000);
 
 	it("drives a synthetic Discord message through the mock LLM to a delivered reply", async () => {
-		const { sent, channelId } = await driveDiscordTurn({
-			inboundText: "Hello agent, please reply.",
-		});
+		const { sent, channelId, expectedRoomId, turnRecord } =
+			await driveDiscordTurn({
+				inboundText: "Hello agent, please reply.",
+			});
 
 		expect(
 			sent.length,
@@ -315,6 +324,8 @@ describe("discord connector loop (keyless harness)", () => {
 			sent[0]?.channelId,
 			"the reply went back to the inbound channel",
 		).toBe(channelId);
+		expect(turnRecord?.roomId).toBe(expectedRoomId);
+		expect(turnRecord?.state).toBe("REPLIED");
 	}, 120_000);
 
 	it("delivers a drifted tool-call reply to the Discord wire seam already sanitized (#15888)", async () => {

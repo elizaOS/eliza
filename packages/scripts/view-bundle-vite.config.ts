@@ -9,6 +9,7 @@ type ViewBundleOptions = {
   outDir?: string;
   componentExport?: string;
   additionalExternals?: string[];
+  minify?: boolean | "oxc" | "terser" | "esbuild";
   /**
    * Module specifiers this bundle resolves to a local replacement (e.g. a stub)
    * and bundles inline instead of leaving external. Lets a plugin own a
@@ -57,6 +58,7 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
       emptyOutDir: false,
       outDir,
       sourcemap: true,
+      minify: options.minify,
       chunkSizeWarningLimit: 4000,
       lib: {
         entry: path.resolve(process.cwd(), options.entry),

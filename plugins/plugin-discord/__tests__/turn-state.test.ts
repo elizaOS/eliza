@@ -26,6 +26,7 @@ import {
 } from "../turn-state.ts";
 
 const AGENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" as UUID;
+const ROOM_ID = "11111111-2222-3333-4444-555555555555" as UUID;
 
 interface Store {
 	runtime: DiscordTurnRuntime;
@@ -41,13 +42,24 @@ function makeStore(): Store {
 		getMemoryById: async (id: UUID) => byId.get(id) ?? null,
 		createMemory: async (memory: Memory, tableName: string) => {
 			const id = memory.id ?? (randomUUID() as UUID);
+			if (!byId.has(id)) {
+				byId.set(id, { ...memory, id });
+				if (tableName === "messages") {
+					const list = byRoom.get(memory.roomId) ?? [];
+					list.unshift({ ...memory, id });
+					byRoom.set(memory.roomId, list);
+				}
+			}
+			return id;
+		},
+		upsertMemory: async (memory: Memory, tableName: string) => {
+			const id = memory.id ?? (randomUUID() as UUID);
 			byId.set(id, { ...memory, id });
 			if (tableName === "messages") {
 				const list = byRoom.get(memory.roomId) ?? [];
 				list.unshift({ ...memory, id });
 				byRoom.set(memory.roomId, list);
 			}
-			return id;
 		},
 		getMemories: async (params: { roomId?: UUID; tableName: string }) => {
 			if (params.tableName !== "messages" || !params.roomId) return [];
@@ -96,22 +108,27 @@ describe("durable turn state machine", () => {
 
 	it("claims a fresh turn as RECEIVED then reloads the same record", async () => {
 		const store = makeStore();
-		const claim = await claimDiscordTurn(store.runtime, "msg-1");
+		const claim = await claimDiscordTurn(store.runtime, "msg-1", ROOM_ID);
 		expect(claim.created).toBe(true);
+		expect(claim.record.roomId).toBe(ROOM_ID);
 		expect(claim.record.state).toBe("RECEIVED");
 		expect(claim.record.attempts).toBe(0);
+		expect(store.byId.get(claim.record.id)?.roomId).toBe(ROOM_ID);
+		expect(store.byId.get(claim.record.id)?.content.data).toEqual(
+			expect.objectContaining({ roomId: ROOM_ID }),
+		);
 
 		const reloaded = await loadDiscordTurn(store.runtime, "msg-1");
 		expect(reloaded?.state).toBe("RECEIVED");
 
-		const second = await claimDiscordTurn(store.runtime, "msg-1");
+		const second = await claimDiscordTurn(store.runtime, "msg-1", ROOM_ID);
 		expect(second.created).toBe(false);
 		expect(second.record.state).toBe("RECEIVED");
 	});
 
 	it("advances RECEIVED -> DISPATCHED (attempt++) -> REPLIED", async () => {
 		const store = makeStore();
-		const { record } = await claimDiscordTurn(store.runtime, "msg-2");
+		const { record } = await claimDiscordTurn(store.runtime, "msg-2", ROOM_ID);
 		const dispatched = await markDiscordTurnDispatched(store.runtime, record);
 		expect(dispatched.state).toBe("DISPATCHED");
 		expect(dispatched.attempts).toBe(1);
@@ -129,7 +146,7 @@ describe("durable turn state machine", () => {
 
 	it("records a terminal FAILED with a reason", async () => {
 		const store = makeStore();
-		const { record } = await claimDiscordTurn(store.runtime, "msg-3");
+		const { record } = await claimDiscordTurn(store.runtime, "msg-3", ROOM_ID);
 		const failed = await markDiscordTurnFailed(store.runtime, record, "boom");
 		expect(failed.state).toBe("FAILED");
 		expect(failed.failureReason).toBe("boom");
@@ -138,6 +155,7 @@ describe("durable turn state machine", () => {
 	it("decideResume: terminal REPLIED/FAILED are no-ops", () => {
 		const base: DiscordTurnRecord = {
 			id: "x" as UUID,
+			roomId: ROOM_ID,
 			platformMessageId: "m",
 			state: "REPLIED",
 			attempts: 1,
@@ -157,6 +175,7 @@ describe("durable turn state machine", () => {
 	it("decideResume: existing delivered reply reconciles to REPLIED without resend", () => {
 		const record: DiscordTurnRecord = {
 			id: "x" as UUID,
+			roomId: ROOM_ID,
 			platformMessageId: "m",
 			state: "DISPATCHED",
 			attempts: 1,
@@ -172,6 +191,7 @@ describe("durable turn state machine", () => {
 	it("decideResume: resumes when no reply exists and budget remains", () => {
 		const record: DiscordTurnRecord = {
 			id: "x" as UUID,
+			roomId: ROOM_ID,
 			platformMessageId: "m",
 			state: "DISPATCHED",
 			attempts: 1,
@@ -185,6 +205,7 @@ describe("durable turn state machine", () => {
 	it("decideResume: exhausts when attempts reach the bound with no reply", () => {
 		const record: DiscordTurnRecord = {
 			id: "x" as UUID,
+			roomId: ROOM_ID,
 			platformMessageId: "m",
 			state: "DISPATCHED",
 			attempts: DISCORD_TURN_MAX_ATTEMPTS,

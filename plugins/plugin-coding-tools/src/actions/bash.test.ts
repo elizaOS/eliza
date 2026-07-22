@@ -57,6 +57,18 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+function recursiveDeleteCommand(): string {
+  return resolveCommandPlatform() === "windows"
+    ? "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:TEMP 'coding-tools-gate-test-nonexistent')"
+    : "rm -rf /tmp/coding-tools-gate-test-nonexistent";
+}
+
+function ordinaryListCommand(): string {
+  return resolveCommandPlatform() === "windows"
+    ? "Get-ChildItem $env:TEMP | Out-Null"
+    : "ls /tmp";
+}
+
 interface RuntimeOptions {
   blockedPaths?: string;
   shellTimeoutMs?: number;
@@ -1848,7 +1860,7 @@ describe("destructive-bulk confirm gate", () => {
       runtime,
       makeMessage(undefined, "clean up the old projects"),
       undefined,
-      { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+      { command: recursiveDeleteCommand() },
     );
     expect(result.success).toBe(false);
     expect(result.text).toContain("needs_confirmation");
@@ -1863,13 +1875,10 @@ describe("destructive-bulk confirm gate", () => {
       runtime,
       makeMessage(undefined, "yes do it"),
       undefined,
-      {
-        command: "rm -rf /tmp/coding-tools-gate-test-nonexistent",
-        confirm: true,
-      },
+      { command: recursiveDeleteCommand(), confirm: true },
     );
-    // The path does not exist; rm -rf exits 0 on nonexistent targets — the
-    // point is the gate let it through to real execution.
+    // Each platform's command treats the absent target as success; the point
+    // is that explicit confirmation reaches real execution.
     expect(result.success).toBe(true);
   });
 
@@ -1881,7 +1890,7 @@ describe("destructive-bulk confirm gate", () => {
         runtime,
         makeMessage(undefined, "build step"),
         undefined,
-        { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+        { command: recursiveDeleteCommand() },
       );
       expect(result.success).toBe(true);
     } finally {
@@ -1897,7 +1906,7 @@ describe("destructive-bulk confirm gate", () => {
         runtime,
         makeMessage(undefined, "clean up"),
         undefined,
-        { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+        { command: recursiveDeleteCommand() },
       );
       expect(result.success).toBe(true);
     } finally {
@@ -1911,7 +1920,7 @@ describe("destructive-bulk confirm gate", () => {
       runtime,
       makeMessage(undefined, "whats here"),
       undefined,
-      { command: "ls /tmp" },
+      { command: ordinaryListCommand() },
     );
     expect(result.success).toBe(true);
   });

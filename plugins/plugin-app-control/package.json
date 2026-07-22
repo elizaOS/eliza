@@ -76,6 +76,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.5.4",
 		"@types/node": "24.12.2",
+		"terser": "5.48.0",
 		"tsup": "8.5.1",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",

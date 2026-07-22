@@ -149,7 +149,10 @@ function isFunctionLike(node) {
 /** Is `fn` an argument to a deferred caller, a JSX on* handler, or async? */
 function isDeferredCallback(fn) {
   if (
-    (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) &&
+    (ts.isArrowFunction(fn) ||
+      ts.isFunctionExpression(fn) ||
+      ts.isFunctionDeclaration(fn) ||
+      ts.isMethodDeclaration(fn)) &&
     fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
   ) {
     return true;
@@ -374,6 +377,18 @@ function runSelfTest() {
       "function Foo(){ setTimeout(()=>{ Math.random(); }, 10); return <div/>; }",
       "deferred",
       "Math.random()",
+    ],
+    [
+      "async function declaration deferred",
+      "function Foo(){ async function handleClick(){ const t = Date.now(); return t; } return <button onClick={handleClick}/>; }",
+      "deferred",
+      "Date.now()",
+    ],
+    [
+      "async method deferred",
+      "class Handler { async run(){ return Date.now(); } } function Foo(){ return <button onClick={()=>new Handler().run()}/>; }",
+      "deferred",
+      "Date.now()",
     ],
   ];
   let failed = 0;
