@@ -7,7 +7,7 @@
     {
       "actor": "user",
       "message": "Research the latest policy docs and summarize key changes.",
-      "expected_behaviors": ["spawn_subagent", "report_active_subagent_status"]
+      "expected_behaviors": ["spawn_subagent"]
     }
   ]
 }

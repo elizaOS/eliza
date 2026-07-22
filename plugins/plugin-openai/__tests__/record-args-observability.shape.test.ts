@@ -32,6 +32,32 @@ function entriesValueSchema(schema: Record<string, unknown>): Record<string, unk
 }
 
 describe("#13111 strict-safe record/map tool args", () => {
+  it("preserves an explicitly non-strict tool schema byte-for-byte", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["create", "status"] },
+        task: { type: "string" },
+        instruction: { type: "string" },
+      },
+      required: ["action"],
+      additionalProperties: false,
+    };
+    const toolSet = normalizeNativeTools([
+      {
+        name: "TASKS",
+        strict: false,
+        parameters: schema,
+      },
+    ]) as Record<string, { inputSchema: { jsonSchema: unknown }; strict?: boolean }>;
+
+    expect(toolSet.TASKS?.strict).toBe(false);
+    expect(toolSet.TASKS?.inputSchema.jsonSchema).toEqual(schema);
+    expect((toolSet.TASKS?.inputSchema.jsonSchema as { required?: string[] }).required).toEqual([
+      "action",
+    ]);
+  });
+
   it("turns additionalProperties:true into a strict entries array", () => {
     const toolSet = normalizeNativeTools([
       {

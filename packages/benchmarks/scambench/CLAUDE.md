@@ -28,8 +28,9 @@ python -m benchmarks.scambench.cli \
     --out /tmp/scambench-smoke
 ```
 
-The CLI also falls back automatically to two embedded records when the training
-corpus (`packages/training/data/normalized/scambench.jsonl`) is absent.
+Embedded records are selected only by explicit `--provider mock`. Real runs use
+the requested split of `packages/training/data/normalized/scambench.jsonl` and
+fail closed on a missing, malformed, empty, or count-mismatched corpus.
 
 ## Test the harness
 

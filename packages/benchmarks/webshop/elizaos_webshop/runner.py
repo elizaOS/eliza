@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -9,7 +10,12 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from elizaos_webshop.dataset import WebShopDataset, expand_tasks, validate_tasks
+from elizaos_webshop.dataset import (
+    UPSTREAM_GDRIVE_FILE_IDS,
+    WebShopDataset,
+    expand_tasks,
+    validate_tasks,
+)
 from elizaos_webshop.environment import WebShopEnvironment
 from elizaos_webshop.evaluator import WebShopEvaluator
 from elizaos_webshop.eliza_agent import create_webshop_agent
@@ -93,7 +99,8 @@ class WebShopRunner:
     ) -> None:
         self.config = config
         self.split = split
-        self.use_hf = use_hf
+        self.hf_requested = use_hf
+        self.use_hf = False
         self.profile = profile
         self.use_sample_tasks = use_sample_tasks
 
@@ -133,7 +140,12 @@ class WebShopRunner:
     async def run_benchmark(self) -> WebShopReport:
         self._start_time = time.time()
         try:
-            await self.dataset.load(use_huggingface=self.use_hf)
+            self.dataset.load_manifest_sync()
+            env = self._ensure_env()
+            self.dataset.install_runtime_goals(
+                env.upstream_goals,
+                catalog_product_count=env.catalog_product_count,
+            )
 
             tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
             if not tasks:
@@ -181,6 +193,9 @@ class WebShopRunner:
             human_attr_path=paths.human_instructions,
             human_goals=bool(self.dataset.human_goals and paths.has_human_goals),
             observation_mode="text",
+            require_official_search=(
+                self.profile == "full" and not self.use_sample_tasks
+            ),
         )
         return self._env
 
@@ -227,19 +242,10 @@ class WebShopRunner:
                 final_response="",
                 error="Task timed out",
             )
-        except Exception as e:
-            return WebShopResult(
-                task_id=task.task_id,
-                trial_number=trial_number,
-                success=False,
-                purchased_product_id=env.purchased_product_id,
-                reward=env.final_reward,
-                turns_used=len(steps),
-                duration_ms=(time.time() - start) * 1000,
-                steps=list(steps),
-                final_response=final_response,
-                error=str(e),
-            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"WebShop task {task.task_id} trial {trial_number} failed in the harness"
+            ) from exc
 
         duration_ms = (time.time() - start) * 1000
         result = self.evaluator.evaluate(
@@ -264,7 +270,13 @@ class WebShopRunner:
 
     def _generate_report(self, results: list[WebShopResult]) -> WebShopReport:
         total_trials = len(results)
-        total_tasks = len(set(r.task_id for r in results))
+        task_ids = {result.task_id for result in results}
+        scenario_id_manifest_sha256 = hashlib.sha256(
+            "\n".join(sorted(task_ids)).encode("utf-8")
+        ).hexdigest()
+        total_tasks = len(task_ids)
+        edge_scenario_count = sum("__edge_" in task_id for task_id in task_ids)
+        base_task_count = total_tasks - edge_scenario_count
         success_count = sum(1 for r in results if r.success)
         avg_reward = sum(r.reward for r in results) / total_trials if total_trials else 0.0
         avg_turns = sum(r.turns_used for r in results) / total_trials if total_trials else 0.0
@@ -295,8 +307,19 @@ class WebShopRunner:
             "sample": self.use_sample_tasks,
             "split": self.split,
             "profile": self.profile,
-            "use_hf": self.use_hf,
+            "dataset_source": "sample-files" if self.use_sample_tasks else "upstream-files",
+            "hf_requested": self.hf_requested,
+            "use_hf": False,
+            "catalog_product_count": self.dataset.catalog_product_count,
+            "published_goal_count": self.dataset.published_goal_count,
             "include_edge_scenarios": self.config.include_edge_scenarios,
+            "base_task_count": base_task_count,
+            "edge_scenario_count": edge_scenario_count,
+            "scenario_count": total_tasks,
+            "scenario_id_manifest_count": len(task_ids),
+            "scenario_id_manifest_sha256": scenario_id_manifest_sha256,
+            "num_trials": self.config.num_trials,
+            "max_turns_per_task": self.config.max_turns_per_task,
             "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
             "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
             "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
@@ -304,6 +327,27 @@ class WebShopRunner:
                 "ELIZA_AGENT_SELECTION_STRATEGY", ""
             ),
         }
+        summary.update(self.dataset.data_provenance)
+        if self._env is None:
+            raise RuntimeError("WebShop report cannot be generated before environment setup")
+        summary.update(self._env.runtime_provenance)
+        if self.dataset.paths is not None:
+            summary.update(
+                {
+                    "items_source_id": UPSTREAM_GDRIVE_FILE_IDS.get(
+                        self.dataset.paths.items.name, "bundled-sample"
+                    ),
+                    "attributes_source_id": UPSTREAM_GDRIVE_FILE_IDS.get(
+                        self.dataset.paths.attributes.name, "bundled-sample"
+                    ),
+                    "human_goals_source_id": UPSTREAM_GDRIVE_FILE_IDS.get(
+                        self.dataset.paths.human_instructions.name, "bundled-sample"
+                    ),
+                    "items_file_size": self.dataset.paths.items.stat().st_size,
+                    "attributes_file_size": self.dataset.paths.attributes.stat().st_size,
+                    "human_goals_file_size": self.dataset.paths.human_instructions.stat().st_size,
+                }
+            )
 
         return WebShopReport(
             total_tasks=total_tasks,
@@ -354,6 +398,8 @@ class WebShopRunner:
             "split": str(report.summary.get("split", "")),
             "profile": str(report.summary.get("profile", "")),
             "use_hf": bool(report.summary.get("use_hf", False)),
+            "hf_requested": bool(report.summary.get("hf_requested", False)),
+            "dataset_source": str(report.summary.get("dataset_source", "")),
             "include_edge_scenarios": bool(report.summary.get("include_edge_scenarios", False)),
             "summary": report.summary,
         }

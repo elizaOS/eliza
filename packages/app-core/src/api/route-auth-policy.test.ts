@@ -88,6 +88,9 @@ describe("compat route auth policy table", () => {
       resolveCompatRouteAuthPolicy("POST", "/api/cloud/login"),
     ).toMatchObject({ id: "cloud.login", tier: "session" });
     expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/cloud/login/status"),
+    ).toMatchObject({ id: "cloud.login.status", tier: "session" });
+    expect(
       resolveCompatRouteAuthPolicy("POST", "/api/cloud/disconnect"),
     ).toMatchObject({ id: "cloud.disconnect", tier: "session" });
     expect(

@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from benchmarks.publication_contracts import webshop_workload_quarantine_reason
+
 from .types import ExistingRun
+
+SQLITE_BUSY_TIMEOUT_SECONDS = 30.0
 
 
 def _json_dumps(value: Any) -> str:
@@ -15,8 +20,9 @@ def _json_dumps(value: Any) -> str:
 
 def connect_database(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=SQLITE_BUSY_TIMEOUT_SECONDS)
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}")
     return conn
 
 
@@ -36,7 +42,9 @@ def ensure_comparison_id_column(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
+def _ensure_column(
+    conn: sqlite3.Connection, table: str, column: str, declaration: str
+) -> None:
     if not _column_exists(conn, table, column):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
 
@@ -73,7 +81,16 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             request_json TEXT NOT NULL,
             benchmarks_json TEXT NOT NULL,
             repo_meta_json TEXT NOT NULL,
-            created_by TEXT NOT NULL
+            created_by TEXT NOT NULL,
+            execution_namespace TEXT,
+            execution_contract_json TEXT,
+            checkpoint_relpath TEXT,
+            cohort_status TEXT NOT NULL DEFAULT 'running',
+            pause_retry_at TEXT,
+            pause_reason TEXT,
+            pause_metadata_json TEXT NOT NULL DEFAULT '{}',
+            storage_preflight_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS benchmark_runs (
@@ -151,6 +168,23 @@ def initialize_database(conn: sqlite3.Connection) -> None:
     conn.commit()
     ensure_comparison_id_column(conn)
     ensure_metrics_columns(conn)
+    for column, declaration in (
+        ("execution_namespace", "TEXT"),
+        ("execution_contract_json", "TEXT"),
+        ("checkpoint_relpath", "TEXT"),
+        ("cohort_status", "TEXT NOT NULL DEFAULT 'running'"),
+        ("pause_retry_at", "TEXT"),
+        ("pause_reason", "TEXT"),
+        ("pause_metadata_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("storage_preflight_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("updated_at", "TEXT"),
+    ):
+        _ensure_column(conn, "run_groups", column, declaration)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_run_groups_execution_namespace "
+        "ON run_groups(execution_namespace, finished_at, created_at)"
+    )
+    conn.commit()
 
 
 def create_run_group(
@@ -161,6 +195,10 @@ def create_run_group(
     request: dict[str, Any],
     benchmarks: list[str],
     repo_meta: dict[str, Any],
+    execution_namespace: str | None = None,
+    execution_contract: dict[str, Any] | None = None,
+    checkpoint_relpath: str | None = None,
+    storage_preflight: dict[str, Any] | None = None,
 ) -> None:
     conn.execute(
         """
@@ -170,8 +208,15 @@ def create_run_group(
             request_json,
             benchmarks_json,
             repo_meta_json,
-            created_by
-        ) VALUES (?, ?, ?, ?, ?, ?)
+            created_by,
+            execution_namespace,
+            execution_contract_json,
+            checkpoint_relpath,
+            cohort_status,
+            pause_metadata_json,
+            storage_preflight_json,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', '{}', ?, ?)
         """,
         (
             run_group_id,
@@ -180,20 +225,265 @@ def create_run_group(
             _json_dumps(benchmarks),
             _json_dumps(repo_meta),
             "benchmarks.orchestrator",
+            execution_namespace,
+            _json_dumps(execution_contract) if execution_contract is not None else None,
+            checkpoint_relpath,
+            _json_dumps(storage_preflight or {}),
+            created_at,
         ),
     )
     conn.commit()
 
 
-def finish_run_group(conn: sqlite3.Connection, *, run_group_id: str, finished_at: str) -> None:
+def finish_run_group(
+    conn: sqlite3.Connection,
+    *,
+    run_group_id: str,
+    finished_at: str,
+    status: str = "succeeded",
+) -> None:
     conn.execute(
-        "UPDATE run_groups SET finished_at = ? WHERE run_group_id = ?",
-        (finished_at, run_group_id),
+        """
+        UPDATE run_groups
+        SET finished_at = ?, cohort_status = ?, pause_retry_at = NULL,
+            pause_reason = NULL, updated_at = ?
+        WHERE run_group_id = ?
+        """,
+        (finished_at, status, finished_at, run_group_id),
     )
     conn.commit()
 
 
-def get_latest_run_for_signature(conn: sqlite3.Connection, signature: str) -> ExistingRun | None:
+def find_resumable_run_group(
+    conn: sqlite3.Connection,
+    *,
+    execution_namespace: str,
+) -> dict[str, Any] | None:
+    """Return the one unfinished execution for a deterministic namespace."""
+
+    rows = conn.execute(
+        """
+        SELECT run_group_id, execution_namespace, execution_contract_json,
+               checkpoint_relpath, cohort_status, pause_retry_at, pause_reason,
+               pause_metadata_json, storage_preflight_json, request_json,
+               created_at, updated_at
+        FROM run_groups
+        WHERE execution_namespace = ? AND finished_at IS NULL
+        ORDER BY created_at DESC, run_group_id DESC
+        """,
+        (execution_namespace,),
+    ).fetchall()
+    if not rows:
+        return None
+    if len(rows) != 1:
+        raise RuntimeError(
+            "Multiple unfinished cohorts share one execution namespace; "
+            "manual repair is required before quota can be spent"
+        )
+    record = dict(rows[0])
+    for key in (
+        "execution_contract_json",
+        "pause_metadata_json",
+        "storage_preflight_json",
+        "request_json",
+    ):
+        raw = record.pop(key, None)
+        decoded_key = key.removesuffix("_json")
+        if raw is None:
+            record[decoded_key] = None
+            continue
+        try:
+            record[decoded_key] = json.loads(str(raw))
+        except json.JSONDecodeError as error:
+            raise RuntimeError(
+                f"Run-group {decoded_key} is not valid JSON"
+            ) from error
+    return record
+
+
+def resume_run_group(
+    conn: sqlite3.Connection,
+    *,
+    run_group_id: str,
+    execution_namespace: str,
+    execution_contract: Mapping[str, Any],
+    checkpoint_relpath: str,
+    resumed_at: str,
+    storage_preflight: Mapping[str, Any],
+) -> None:
+    """Resume only an exact stored execution contract in its original group."""
+
+    row = conn.execute(
+        """
+        SELECT execution_namespace, execution_contract_json, checkpoint_relpath,
+               cohort_status, finished_at
+        FROM run_groups
+        WHERE run_group_id = ?
+        """,
+        (run_group_id,),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("Resumable run group no longer exists")
+    exact_contract = _json_dumps(dict(execution_contract))
+    if (
+        row["finished_at"] is not None
+        or str(row["execution_namespace"] or "") != execution_namespace
+        or str(row["execution_contract_json"] or "") != exact_contract
+        or str(row["checkpoint_relpath"] or "") != checkpoint_relpath
+        or str(row["cohort_status"] or "")
+        not in {"running", "paused", "paused_unknown"}
+    ):
+        raise RuntimeError(
+            "Stored checkpoint identity does not exactly match this phase execution"
+        )
+    conn.execute(
+        """
+        UPDATE run_groups
+        SET cohort_status = 'running', pause_retry_at = NULL,
+            pause_reason = NULL, storage_preflight_json = ?, updated_at = ?
+        WHERE run_group_id = ?
+        """,
+        (_json_dumps(dict(storage_preflight)), resumed_at, run_group_id),
+    )
+    conn.commit()
+
+
+def pause_run_group(
+    conn: sqlite3.Connection,
+    *,
+    run_group_id: str,
+    status: str,
+    paused_at: str,
+    retry_at: str | None,
+    reason: str,
+    metadata: Mapping[str, Any],
+) -> int:
+    """Persist a quota pause without completing or publishing the cohort."""
+
+    if status not in {"paused", "paused_unknown"}:
+        raise ValueError(f"Invalid cohort pause status: {status}")
+    if status == "paused" and retry_at is None:
+        raise ValueError("Known pauses require retry_at")
+    if status == "paused_unknown" and retry_at is not None:
+        raise ValueError("Unknown pauses may not fabricate retry_at")
+    row_error = {
+        "rate_limit": "Claude subscription quota paused the cohort before completion",
+        "rate_limit_unknown": (
+            "Claude subscription quota paused the cohort without a known reset time"
+        ),
+        "storage_reserve": (
+            "Benchmark storage reserve paused the cohort before completion"
+        ),
+        "orchestrator_interrupted": (
+            "The interrupted orchestrator left this cohort resumable"
+        ),
+    }.get(reason, "The benchmark cohort paused before completion")
+    cursor = conn.execute(
+        """
+        UPDATE benchmark_runs
+        SET status = ?, ended_at = COALESCE(ended_at, ?),
+            error = ?
+        WHERE run_group_id = ?
+          AND status IN ('running', 'failed', 'succeeded')
+        """,
+        (
+            status,
+            paused_at,
+            row_error,
+            run_group_id,
+        ),
+    )
+    group_cursor = conn.execute(
+        """
+        UPDATE run_groups
+        SET cohort_status = ?, pause_retry_at = ?, pause_reason = ?,
+            pause_metadata_json = ?, updated_at = ?, finished_at = NULL
+        WHERE run_group_id = ? AND finished_at IS NULL
+        """,
+        (
+            status,
+            retry_at,
+            reason,
+            _json_dumps(dict(metadata)),
+            paused_at,
+            run_group_id,
+        ),
+    )
+    if group_cursor.rowcount != 1:
+        conn.rollback()
+        raise RuntimeError("Quota pause targeted a missing or completed run group")
+    conn.commit()
+    return max(0, int(cursor.rowcount))
+
+
+def record_run_group_storage_preflight(
+    conn: sqlite3.Connection,
+    *,
+    run_group_id: str,
+    storage_preflight: Mapping[str, Any],
+    checked_at: str,
+) -> None:
+    cursor = conn.execute(
+        """
+        UPDATE run_groups
+        SET storage_preflight_json = ?, updated_at = ?
+        WHERE run_group_id = ? AND finished_at IS NULL
+        """,
+        (_json_dumps(dict(storage_preflight)), checked_at, run_group_id),
+    )
+    if cursor.rowcount != 1:
+        conn.rollback()
+        raise RuntimeError("Storage preflight targeted a missing or completed run group")
+    conn.commit()
+
+
+def fail_running_runs_in_group(
+    conn: sqlite3.Connection,
+    *,
+    run_group_id: str,
+    ended_at: str,
+    error: str,
+) -> int:
+    """Make worker crashes observable without touching other active cohorts."""
+
+    cursor = conn.execute(
+        """
+        UPDATE benchmark_runs
+        SET status = 'failed', ended_at = ?, error = ?
+        WHERE run_group_id = ? AND status = 'running'
+        """,
+        (ended_at, error, run_group_id),
+    )
+    conn.commit()
+    return max(0, int(cursor.rowcount))
+
+
+def fail_succeeded_runs_for_publication(
+    conn: sqlite3.Connection,
+    *,
+    reasons: Mapping[str, str],
+) -> int:
+    """Persist final publication-integrity failures before snapshots rebuild."""
+
+    repaired = 0
+    for run_id, reason in reasons.items():
+        cursor = conn.execute(
+            """
+            UPDATE benchmark_runs
+            SET status = 'failed', error = ?
+            WHERE run_id = ? AND status = 'succeeded'
+            """,
+            (reason, run_id),
+        )
+        repaired += max(0, int(cursor.rowcount))
+    if repaired:
+        conn.commit()
+    return repaired
+
+
+def get_latest_run_for_signature(
+    conn: sqlite3.Connection, signature: str
+) -> ExistingRun | None:
     row = conn.execute(
         """
         SELECT run_id, signature, status, attempt
@@ -214,7 +504,9 @@ def get_latest_run_for_signature(conn: sqlite3.Connection, signature: str) -> Ex
     )
 
 
-def get_latest_succeeded_run_for_signature(conn: sqlite3.Connection, signature: str) -> ExistingRun | None:
+def get_latest_succeeded_run_for_signature(
+    conn: sqlite3.Connection, signature: str
+) -> ExistingRun | None:
     row = conn.execute(
         """
         SELECT run_id, signature, status, attempt
@@ -619,9 +911,13 @@ def list_runs(
             raw = record.get(key)
             if isinstance(raw, str):
                 try:
-                    record[key.removesuffix("_json") if key.endswith("_json") else key] = json.loads(raw)
+                    record[
+                        key.removesuffix("_json") if key.endswith("_json") else key
+                    ] = json.loads(raw)
                 except json.JSONDecodeError:
-                    record[key.removesuffix("_json") if key.endswith("_json") else key] = raw
+                    record[
+                        key.removesuffix("_json") if key.endswith("_json") else key
+                    ] = raw
             if key in record:
                 del record[key]
         hib = record.get("higher_is_better")
@@ -742,11 +1038,20 @@ def _nonpublishable_success_reason(
     benchmark_id: str,
     metrics: dict[str, Any],
 ) -> str | None:
+    if benchmark_id == "webshop" and not (
+        metrics.get("sample") is True
+        or str(metrics.get("dataset_source") or "").strip().lower()
+        in {"sample", "sample-files"}
+    ):
+        return webshop_workload_quarantine_reason(metrics)
+
     if benchmark_id == "solana":
         messages = metrics.get("messages")
         cumulative_rewards = metrics.get("cumulative_rewards")
         final_programs = metrics.get("final_programs")
-        if final_programs is None and isinstance(metrics.get("programs_discovered"), dict):
+        if final_programs is None and isinstance(
+            metrics.get("programs_discovered"), dict
+        ):
             final_programs = len(metrics["programs_discovered"])
         empty_rollout = (
             isinstance(messages, list)
@@ -755,7 +1060,11 @@ def _nonpublishable_success_reason(
             and len(cumulative_rewards) == 0
             and (final_programs in (None, 0, 0.0))
         )
-        return "Solana benchmark produced an empty rollout artifact" if empty_rollout else None
+        return (
+            "Solana benchmark produced an empty rollout artifact"
+            if empty_rollout
+            else None
+        )
 
     positive_sample_keys: dict[str, tuple[str, ...]] = {
         "abliteration-robustness": ("n",),
@@ -780,10 +1089,16 @@ def _nonpublishable_success_reason(
     return None
 
 
-def list_run_groups(conn: sqlite3.Connection, *, limit: int = 2000) -> list[dict[str, Any]]:
+def list_run_groups(
+    conn: sqlite3.Connection, *, limit: int = 2000
+) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT run_group_id, created_at, finished_at, request_json, benchmarks_json, repo_meta_json
+        SELECT run_group_id, created_at, finished_at, request_json,
+               benchmarks_json, repo_meta_json, execution_namespace,
+               execution_contract_json, checkpoint_relpath, cohort_status,
+               pause_retry_at, pause_reason, pause_metadata_json,
+               storage_preflight_json, updated_at
         FROM run_groups
         ORDER BY created_at DESC, run_group_id DESC
         LIMIT ?
@@ -793,7 +1108,14 @@ def list_run_groups(conn: sqlite3.Connection, *, limit: int = 2000) -> list[dict
     out: list[dict[str, Any]] = []
     for row in rows:
         record = dict(row)
-        for key in ("request_json", "benchmarks_json", "repo_meta_json"):
+        for key in (
+            "request_json",
+            "benchmarks_json",
+            "repo_meta_json",
+            "execution_contract_json",
+            "pause_metadata_json",
+            "storage_preflight_json",
+        ):
             raw = record.get(key)
             if isinstance(raw, str):
                 try:
@@ -872,28 +1194,38 @@ def summarize_latest_scores(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         if completion_tokens is None:
             completion_tokens = _int_or_none(record.get("total_completion_tokens"))
         total_tokens = _int_or_none(token_metrics.get("total_tokens"))
-        if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
+        if (
+            total_tokens is None
+            and prompt_tokens is not None
+            and completion_tokens is not None
+        ):
             total_tokens = prompt_tokens + completion_tokens
         cached_tokens = _int_or_none(
-            token_metrics.get("cached_tokens", token_metrics.get("cache_read_input_tokens"))
+            token_metrics.get(
+                "cached_tokens", token_metrics.get("cache_read_input_tokens")
+            )
         )
         if cached_tokens is None:
             cached_tokens = _int_or_none(record.get("total_cache_read_input_tokens"))
-        calls = _int_or_none(token_metrics.get("llm_call_count", token_metrics.get("call_count")))
+        calls = _int_or_none(
+            token_metrics.get("llm_call_count", token_metrics.get("call_count"))
+        )
         if calls is None:
             calls = _int_or_none(record.get("llm_call_count"))
 
         record["input_tokens"] = prompt_tokens if prompt_tokens is not None else 0
-        record["output_tokens"] = completion_tokens if completion_tokens is not None else 0
+        record["output_tokens"] = (
+            completion_tokens if completion_tokens is not None else 0
+        )
         record["total_tokens"] = total_tokens if total_tokens is not None else 0
         record["cached_tokens"] = cached_tokens if cached_tokens is not None else 0
         record["cache_creation_input_tokens"] = _int_or_none(
             token_metrics.get("cache_creation_input_tokens")
         )
         if record["cache_creation_input_tokens"] is None:
-            record["cache_creation_input_tokens"] = _int_or_none(
-                record.get("total_cache_creation_input_tokens")
-            ) or 0
+            record["cache_creation_input_tokens"] = (
+                _int_or_none(record.get("total_cache_creation_input_tokens")) or 0
+            )
         record["llm_call_count"] = calls if calls is not None else 0
         record["call_count"] = _int_or_none(token_metrics.get("call_count"))
         if record["call_count"] is None:
@@ -919,11 +1251,13 @@ def recover_stale_running_runs(
 ) -> list[str]:
     rows = conn.execute(
         """
-        SELECT run_id, run_group_id, started_at
-        FROM benchmark_runs
-        WHERE status = 'running'
-          AND started_at < ?
-        ORDER BY started_at ASC
+        SELECT r.run_id, r.run_group_id, r.started_at,
+               g.execution_namespace
+        FROM benchmark_runs r
+        JOIN run_groups g ON g.run_group_id = r.run_group_id
+        WHERE r.status = 'running'
+          AND r.started_at < ?
+        ORDER BY r.started_at ASC
         """,
         (stale_before,),
     ).fetchall()
@@ -931,7 +1265,8 @@ def recover_stale_running_runs(
         return []
 
     recovered_ids: list[str] = []
-    touched_groups: set[str] = set()
+    failed_groups: set[str] = set()
+    resumable_groups: set[str] = set()
     metrics_json = _json_dumps({"reason": "orchestrator_interrupted"})
 
     ended_dt = datetime.fromisoformat(ended_at)
@@ -952,11 +1287,13 @@ def recover_stale_running_runs(
         except ValueError:
             duration_seconds = None
 
+        is_resumable = bool(str(row["execution_namespace"] or "").strip())
+        recovered_status = "paused_unknown" if is_resumable else "failed"
         conn.execute(
             """
             UPDATE benchmark_runs
             SET
-                status = 'failed',
+                status = ?,
                 ended_at = ?,
                 duration_seconds = ?,
                 metrics_json = ?,
@@ -965,6 +1302,7 @@ def recover_stale_running_runs(
             WHERE run_id = ?
             """,
             (
+                recovered_status,
                 ended_at,
                 duration_seconds,
                 metrics_json,
@@ -973,9 +1311,33 @@ def recover_stale_running_runs(
             ),
         )
         recovered_ids.append(run_id)
-        touched_groups.add(run_group_id)
+        if is_resumable:
+            resumable_groups.add(run_group_id)
+        else:
+            failed_groups.add(run_group_id)
 
-    for run_group_id in sorted(touched_groups):
+    for run_group_id in sorted(resumable_groups):
+        conn.execute(
+            """
+            UPDATE run_groups
+            SET cohort_status = 'paused_unknown', pause_retry_at = NULL,
+                pause_reason = 'orchestrator_interrupted',
+                pause_metadata_json = ?, updated_at = ?, finished_at = NULL
+            WHERE run_group_id = ?
+            """,
+            (
+                _json_dumps(
+                    {
+                        "reset_category": "orchestrator_interrupted",
+                        "operator_action": "resume_same_phase",
+                    }
+                ),
+                ended_at,
+                run_group_id,
+            ),
+        )
+
+    for run_group_id in sorted(failed_groups):
         still_running = conn.execute(
             """
             SELECT 1
@@ -989,10 +1351,11 @@ def recover_stale_running_runs(
             conn.execute(
                 """
                 UPDATE run_groups
-                SET finished_at = COALESCE(finished_at, ?)
+                SET finished_at = COALESCE(finished_at, ?),
+                    cohort_status = 'failed', updated_at = ?
                 WHERE run_group_id = ?
                 """,
-                (ended_at, run_group_id),
+                (ended_at, ended_at, run_group_id),
             )
 
     conn.commit()

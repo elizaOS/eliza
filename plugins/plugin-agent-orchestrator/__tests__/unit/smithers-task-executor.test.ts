@@ -15,6 +15,7 @@ type SpawnOpts = Parameters<AcpLike["spawnSession"]>[0];
 class FakeAcp implements AcpLike {
   spawns: SpawnOpts[] = [];
   prompts: Array<{ sessionId: string; text: string }> = [];
+  cancellations: string[] = [];
   resumable: { sessionId: string } | null = null;
 
   constructor(
@@ -32,6 +33,10 @@ class FakeAcp implements AcpLike {
   async sendPrompt(sessionId: string, text: string): Promise<PromptOut> {
     this.prompts.push({ sessionId, text });
     return this.promptResult;
+  }
+
+  async cancelSession(sessionId: string): Promise<void> {
+    this.cancellations.push(sessionId);
   }
 
   async findResumableSessionByLabel(
@@ -139,5 +144,37 @@ describe("SmithersTaskExecutor", () => {
     expect(await executor.submit({ taskId: "t", runId: "t" })).toEqual({
       output: { pr: "https://pr/x" },
     });
+  });
+
+  it("cancels the ACP session when the parent aborts an in-flight prompt", async () => {
+    const acp = new FakeAcp();
+    let resolvePrompt: ((result: PromptOut) => void) | undefined;
+    const prompt = new Promise<PromptOut>((resolve) => {
+      resolvePrompt = resolve;
+    });
+    acp.sendPrompt = async (sessionId, text) => {
+      acp.prompts.push({ sessionId, text });
+      return prompt;
+    };
+    const controller = new AbortController();
+    const executor = new SmithersTaskExecutor(acp, { sessionId: "session-1" });
+
+    const turn = executor.runTurn({
+      taskId: "t",
+      runId: "r",
+      turn: 1,
+      prompt: "P",
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    await expect(turn).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "ACP_TASK_PROMPT_ABORTED",
+    });
+    expect(acp.cancellations).toEqual(["session-1"]);
+    resolvePrompt?.({ stopReason: "end_turn", finalText: "too late" });
+    await Promise.resolve();
+    expect(executor.lastResponse).toBeUndefined();
   });
 });

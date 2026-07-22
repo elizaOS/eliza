@@ -1,7 +1,7 @@
 /**
  * Route-level e2e for plugin-workflow (issue #8802).
  *
- * Boots the plugin's declared `workflowRoutes` through the real production
+ * Boots the plugin's relative and raw route tables through the real production
  * dispatcher (`tryHandleRuntimePluginRoute`) over a loopback `http.createServer`
  * — exercising the real auth gate, JSON body parsing, query/param parsing, and
  * handler dispatch — with a faked `WorkflowService` standing in for the only
@@ -15,10 +15,12 @@ import type { AddressInfo } from 'node:net';
 import type { AgentRuntime } from '@elizaos/core';
 
 import { tryHandleRuntimePluginRoute } from '../../../../packages/agent/src/api/runtime-plugin-routes';
+import { workflowRoutePlugin } from '../../src/plugin-routes';
 import { workflowRoutes } from '../../src/routes/index';
 import { createValidWorkflow, createWorkflowResponse } from '../fixtures/workflows';
 
 const servers: http.Server[] = [];
+const OWNER_ENTITY_ID = 'route-owner-test';
 
 afterEach(async () => {
   await Promise.all(
@@ -80,6 +82,33 @@ function makeWorkflowService(state: FakeServiceState) {
       status: 'success',
       workflowId: 'wf-001',
     }),
+    runWorkflow: record('runWorkflow', {
+      id: 'exec-001',
+      finished: true,
+      mode: 'manual',
+      startedAt: '2025-01-01T12:00:00.000Z',
+      stoppedAt: '2025-01-01T12:00:01.000Z',
+      status: 'success',
+      workflowId: 'wf-001',
+    }),
+    listWorkflowRevisions: record('listWorkflowRevisions', [
+      {
+        id: 'revision-001',
+        workflowId: 'wf-001',
+        versionId: 'version-old',
+        name: 'Test Workflow',
+        active: false,
+        workflow: createValidWorkflow(),
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
+        capturedAt: '2025-01-01T01:00:00.000Z',
+        operation: 'update',
+      },
+    ]),
+    restoreWorkflowRevision: record(
+      'restoreWorkflowRevision',
+      createWorkflowResponse({ id: 'wf-001', versionId: 'version-restored' })
+    ),
   };
 }
 
@@ -89,7 +118,13 @@ function makeRuntime(
   const { withService = true, state } = options;
   const service = state ? makeWorkflowService(state) : makeWorkflowService({ calls: [] });
   return {
-    routes: workflowRoutes,
+    agentId: 'agent-test',
+    character: {
+      name: 'Route Test Agent',
+      settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ENTITY_ID },
+    },
+    routes: [...workflowRoutes, ...(workflowRoutePlugin.routes ?? [])],
+    getSetting: (key: string) => (key === 'ELIZA_ADMIN_ENTITY_ID' ? OWNER_ENTITY_ID : null),
     // The WorkflowService key is "workflow" (WORKFLOW_SERVICE_TYPE).
     getService: (key: string) => (withService && key === 'workflow' ? service : null),
   } as unknown as AgentRuntime;
@@ -130,11 +165,82 @@ async function postJson(base: string, path: string, body: unknown) {
 }
 
 describe('plugin-workflow routes (real dispatch)', () => {
-  // NOTE: workflow CRUD (list/create/get/update/delete/activate/deactivate) is
-  // served canonically by the rawPath `/api/workflow/*` surface
-  // (routes/workflow-routes.ts) and tested there. The former plugin-relative
-  // `/workflows*` CRUD duplicate was removed in #12177; the relative surfaces
-  // exercised below (executions, validate) have no rawPath twin and stay here.
+  // Workflow CRUD is canonical on the rawPath `/api/workflow/*` surface; node
+  // validation and the legacy execution readers remain plugin-relative.
+
+  test('POST /api/workflow/workflows consumes the dispatcher-attached JSON body', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+    const workflow = createValidWorkflow();
+
+    const res = await postJson(base, '/api/workflow/workflows', { workflow });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { id: string }).toMatchObject({ id: 'wf-001' });
+    const call = state.calls.find((candidate) => candidate.method === 'deployWorkflow');
+    expect(call?.args).toEqual([workflow, OWNER_ENTITY_ID, { activate: undefined }]);
+  });
+
+  test('POST /api/workflow/workflows/:id/run mounts the manual execution route', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await fetch(`${base}/api/workflow/workflows/wf-001/run`, { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { execution: { id: string } }).toMatchObject({
+      execution: { id: 'exec-001' },
+    });
+    const call = state.calls.find((candidate) => candidate.method === 'runWorkflow');
+    expect(call?.args).toEqual([
+      'wf-001',
+      { mode: 'manual', throwOnError: false },
+      OWNER_ENTITY_ID,
+    ]);
+  });
+
+  test('GET /api/workflow/executions/:id mounts execution detail', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await fetch(`${base}/api/workflow/executions/exec-001`);
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { execution: { id: string } }).toMatchObject({
+      execution: { id: 'exec-001' },
+    });
+    const call = state.calls.find((candidate) => candidate.method === 'getExecutionDetail');
+    expect(call?.args).toEqual(['exec-001', OWNER_ENTITY_ID]);
+  });
+
+  test('GET revisions and POST restore mount the revision lifecycle routes', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const revisions = await fetch(`${base}/api/workflow/workflows/wf-001/revisions?limit=5`);
+    expect(revisions.status).toBe(200);
+    expect(
+      (await revisions.json()) as { currentVersionId: string; revisions: unknown[] }
+    ).toMatchObject({
+      currentVersionId: 'v1',
+      revisions: [{ versionId: 'version-old' }],
+    });
+    const listCall = state.calls.find((candidate) => candidate.method === 'listWorkflowRevisions');
+    expect(listCall?.args).toEqual(['wf-001', 5, OWNER_ENTITY_ID]);
+
+    const restore = await fetch(
+      `${base}/api/workflow/workflows/wf-001/revisions/version-old/restore`,
+      { method: 'POST' }
+    );
+    expect(restore.status).toBe(200);
+    expect((await restore.json()) as { versionId: string }).toMatchObject({
+      versionId: 'version-restored',
+    });
+    const restoreCall = state.calls.find(
+      (candidate) => candidate.method === 'restoreWorkflowRevision'
+    );
+    expect(restoreCall?.args).toEqual(['wf-001', 'version-old', OWNER_ENTITY_ID]);
+  });
 
   test('GET /executions lists executions and forwards query params', async () => {
     const state: FakeServiceState = { calls: [] };
@@ -151,6 +257,7 @@ describe('plugin-workflow routes (real dispatch)', () => {
 
     const call = state.calls.find((c) => c.method === 'listExecutions');
     expect(call?.args[0]).toMatchObject({ workflowId: 'wf-001', status: 'success', limit: 10 });
+    expect(call?.args[1]).toBe(OWNER_ENTITY_ID);
   });
 
   test('GET /executions/:id returns execution detail', async () => {
@@ -164,7 +271,7 @@ describe('plugin-workflow routes (real dispatch)', () => {
     expect(body.data.id).toBe('exec-001');
 
     const call = state.calls.find((c) => c.method === 'getExecutionDetail');
-    expect(call?.args[0]).toBe('exec-001');
+    expect(call?.args).toEqual(['exec-001', OWNER_ENTITY_ID]);
   });
 
   test('POST /workflows/validate runs the real validator without a service', async () => {

@@ -7,20 +7,14 @@ import type { ReactNode } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { shouldUseHashNavigation } from "../../navigation";
-import { goLauncher } from "../../state/shell-surface-store";
 import { shellHistory } from "../../surface-realm-channel";
 
 /**
- * Return to the launcher grid — the default "back" for any top-level view.
- *
- * The global corner back button was removed (#11876); each view now owns its
- * own header + back control (this module). Back always lands on the launcher
- * surface: set the shell-surface rail to its launcher half, then route to
- * `/views` (which mounts the launcher grid — `/apps` is now the My Apps
- * management view). One helper so every view agrees.
+ * Return to the combined home/apps surface — the default "back" for any
+ * top-level view. `/views` keeps the launcher route stable while rendering the
+ * same inline apps region used by chat; `/apps` remains My Apps management.
  */
 export function navigateBackToLauncher(): void {
-  goLauncher();
   if (typeof window === "undefined") return;
   const path = "/views";
   try {

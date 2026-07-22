@@ -112,8 +112,8 @@ modification.
 | Profile | Files | Size |
 |---|---|---:|
 | `goals` | `items_human_ins.json` | ~5 MB |
-| `small` | `items_shuffle_1000.json`, `items_ins_v2_1000.json`, `items_human_ins.json` | ~15 MB |
-| `full`  | `items_shuffle.json`, `items_ins_v2.json`, `items_human_ins.json` | ~2 GB |
+| `small` | `items_shuffle_1000.json`, `items_ins_v2_1000.json`, `items_human_ins.json` | ~9.8 MB |
+| `full`  | `items_shuffle.json`, `items_ins_v2.json`, `items_human_ins.json` | ~5.7 GB |
 
 Nothing is bundled in the repo — even `items_human_ins.json` is fetched on
 demand. The `--use-sample-tasks` flag exposes a hand-written 6-product
@@ -121,23 +121,27 @@ sample catalog for tests.
 
 ### Split
 
-We perform a deterministic 90/10 train/test split over the goal list
-(seed=42, `WebShopDataset.SPLIT_SEED`) after applying upstream's own
-`random.seed(233)` shuffle. The paper used a fixed held-out 500-instruction
-test set generated similarly; numbers will not be bit-identical, but the
-overall difficulty is matched.
+The adapter reproduces upstream's `random.seed(233)` goal shuffle exactly.
+The first 500 shuffled goals are the official test split, the next 1,000 are
+evaluation, and the remainder are training goals. Task IDs retain their
+global shuffled index, so every harness receives the same instructions and
+expanded edge scenarios in the same cohort.
 
 ### Search engine
 
-Upstream uses Lucene via `pyserini`, which requires Java 11+ and a built
-index under `search_engine/indexes*/`. To keep the adapter installable
-without Java, we monkey-patch `engine.init_search_engine` and
-`SimServer.__init__` so that when `pyserini` is unavailable we transparently
-fall back to `rank_bm25.BM25Okapi` over titles + descriptions + categories.
-This affects the *retrieval* step only; reward computation is unchanged.
-Empirically the ranking is similar enough for evaluation, but if you want
-to reproduce published numbers to within noise, install `pyserini` and
-run upstream's `search_engine/run_indexing.sh`.
+Full runs require the local Lucene index built by
+`scripts/build_search_index.py` with Pyserini 2.1.0, Anserini 2.1.1, and
+Java 21. The builder streams the checksum-pinned 1.18M-product catalog and
+reproduces Princeton's title + description + primary bullet + options text
+projection. It submits 1,181,430 executable products; Anserini indexes
+1,181,370 and omits the 60 projections with no searchable text. None of
+those 60 products has a human goal.
+
+The index manifest pins the source SHA-256, document counts, Anserini jar,
+versions, and build options. Environment startup reopens the index and
+validates that provenance before a full run. A mismatch fails the run.
+Small and sample profiles use `rank_bm25.BM25Okapi` for diagnostics only and
+are not publication-eligible.
 
 ### Agent boundary
 

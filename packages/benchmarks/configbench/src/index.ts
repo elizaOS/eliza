@@ -44,6 +44,13 @@ async function main(): Promise<void> {
     return;
   }
 
+  const scenarioValidation = validateConfigBenchScenarios();
+  if (!scenarioValidation.valid || scenarioValidation.total !== 682) {
+    throw new Error(
+      `ConfigBench corpus validation failed: ${JSON.stringify(scenarioValidation)}`,
+    );
+  }
+
   const useEliza = args.includes("--eliza") || args.includes("--all");
   const verbose = args.includes("--verbose") || args.includes("-v");
   const harnessIndex = args.indexOf("--harness");
@@ -234,6 +241,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  // error-policy:J1 CLI boundary translates any harness failure to exit code 3.
   console.error(
     `\n${R}Fatal error:${X} ${err instanceof Error ? err.message : String(err)}`,
   );

@@ -38,6 +38,7 @@ class SWEBenchEvaluator:
     """Evaluate patches using the SWE-bench harness (Docker)."""
 
     DEFAULT_DATASET_NAME = "SWE-bench/SWE-bench_Lite"
+    HARNESS_OVERHEAD_SECONDS = 900
 
     def __init__(
         self,
@@ -334,16 +335,17 @@ class SWEBenchEvaluator:
         """
         model_name_or_path = "elizaos"
         run_id = self._safe_run_id(instance.instance_id)
+        official_instance_id = instance.official_instance_id
 
         # Best-effort speedup: use Epoch's prebuilt images when configured.
-        await self._maybe_prepare_epoch_prebuilt_image(instance.instance_id)
+        await self._maybe_prepare_epoch_prebuilt_image(official_instance_id)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
             predictions_path = tmp_path / "predictions.jsonl"
 
             record = {
-                "instance_id": instance.instance_id,
+                "instance_id": official_instance_id,
                 "model_name_or_path": model_name_or_path,
                 "model_patch": patch,
             }
@@ -358,7 +360,7 @@ class SWEBenchEvaluator:
                 "--split",
                 self.dataset_split,
                 "--instance_ids",
-                instance.instance_id,
+                official_instance_id,
                 "--predictions_path",
                 str(predictions_path),
                 "--max_workers",
@@ -396,8 +398,30 @@ class SWEBenchEvaluator:
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
             )
-            stdout_bytes, stderr_bytes = await process.communicate()
-            stdout = stdout_bytes.decode("utf-8", errors="replace")
+            wall_timeout = self.timeout_seconds + self.HARNESS_OVERHEAD_SECONDS
+            try:
+                _stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(), timeout=wall_timeout
+                )
+            except TimeoutError:
+                process.kill()
+                await process.wait()
+                return SWEBenchResult(
+                    instance_id=instance.instance_id,
+                    generated_patch=patch,
+                    patch_status=PatchStatus.GENERATED,
+                    tests_passed=[],
+                    tests_failed=[],
+                    success=False,
+                    duration_seconds=time.time() - start_time,
+                    tokens_used=None,
+                    error=(
+                        "SWE-bench harness exceeded its wall-clock limit "
+                        f"({wall_timeout}s, including image preparation); the child "
+                        "process was terminated instead of hanging the campaign."
+                    ),
+                    status="incompatible",
+                )
             stderr = stderr_bytes.decode("utf-8", errors="replace")
 
             # Locate the per-instance report file.
@@ -407,7 +431,7 @@ class SWEBenchEvaluator:
                 / "run_evaluation"
                 / run_id
                 / model_name_or_path.replace("/", "__")
-                / instance.instance_id
+                / official_instance_id
                 / "report.json"
             )
 
@@ -428,7 +452,7 @@ class SWEBenchEvaluator:
                 )
 
             report_obj = json.loads(report_path.read_text(encoding="utf-8"))
-            instance_report = report_obj.get(instance.instance_id, {})
+            instance_report = report_obj.get(official_instance_id, {})
 
             resolved = bool(instance_report.get("resolved", False))
             applied = bool(instance_report.get("patch_successfully_applied", False))

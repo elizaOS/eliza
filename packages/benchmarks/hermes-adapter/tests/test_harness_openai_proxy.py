@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sys
+import types
 from types import SimpleNamespace
 
+from hermes_adapter import harness_openai_proxy
 from hermes_adapter.harness_openai_proxy import HarnessOpenAIProxy
 
 
@@ -25,6 +28,35 @@ class _FakeClient:
                 "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
             },
         )
+
+
+def test_openclaw_proxy_factory_keeps_native_transport(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeOpenClawClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    package = types.ModuleType("openclaw_adapter")
+    client_module = types.ModuleType("openclaw_adapter.client")
+    client_module.OpenClawClient = FakeOpenClawClient
+    monkeypatch.setitem(sys.modules, "openclaw_adapter", package)
+    monkeypatch.setitem(sys.modules, "openclaw_adapter.client", client_module)
+
+    client, server = harness_openai_proxy._build_client(
+        harness="openclaw",
+        provider="claude-subscription",
+        model="claude-opus-4-6",
+        upstream_base_url="http://127.0.0.1:43123/v1",
+    )
+
+    assert isinstance(client, FakeOpenClawClient)
+    assert server is None
+    assert captured == {
+        "provider": "claude-subscription",
+        "model": "claude-opus-4-6",
+        "base_url": "http://127.0.0.1:43123/v1",
+    }
 
 
 def test_proxy_completion_forwards_messages_tools_and_returns_openai_shape() -> None:
@@ -55,4 +87,3 @@ def test_proxy_completion_forwards_messages_tools_and_returns_openai_shape() -> 
     assert message["tool_calls"][0]["function"]["name"] == "terminal"
     assert message["tool_calls"][0]["function"]["arguments"] == '{"cmd": "pytest -q"}'
     assert response["usage"]["total_tokens"] == 5
-

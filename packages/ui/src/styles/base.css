@@ -66,6 +66,7 @@
 
   /* Status */
   --ok: #22c55e;
+  --ok-foreground: #15803d;
   --ok-muted: rgba(34, 197, 94, 0.72);
   --ok-subtle: rgba(34, 197, 94, 0.12);
   --destructive: var(--brand-orange);
@@ -233,6 +234,7 @@
   --primary-foreground: var(--brand-white);
 
   --ok: #4ade80;
+  --ok-foreground: var(--ok);
   --ok-muted: rgba(74, 222, 128, 0.7);
   --ok-subtle: rgba(74, 222, 128, 0.12);
   --destructive: var(--brand-orange);

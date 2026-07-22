@@ -1,10 +1,10 @@
 # openclaw-adapter — Agent Guide
 
-Python bridge that wraps the [OpenClaw](https://docs.openclaw.ai/) CLI agent as
-a drop-in replacement for `eliza-adapter` and `hermes-adapter`. Benchmarks import
-factory functions from this package; the adapter spawns `openclaw agent --local
---json` once per turn and maps the JSON output into a `MessageResponse`. Not
-registered in the suite registry — consumed as a library by other benchmarks.
+Python bridge that runs benchmark turns through OpenClaw's embedded agent and
+native plugin loop. Benchmarks import this package through the shared
+`ElizaClient` surface; each turn gets an isolated OpenClaw state directory and
+a generated plugin exposing only that turn's benchmark tools. The adapter is a
+library, not a standalone registry benchmark.
 
 ## Run
 
@@ -14,16 +14,21 @@ from a benchmark that supports the openclaw agent:
 ```python
 from openclaw_adapter import OpenClawClient
 
-client = OpenClawClient(provider="cerebras", model="gpt-oss-120b")
+client = OpenClawClient(
+    provider="claude-subscription",
+    model="claude-opus-4-6",
+    base_url="http://127.0.0.1:43123/v1",
+    api_key="ephemeral-gateway-token",
+)
 client.wait_until_ready(timeout=60)
 print(client.send_message("Reply with the single word: PONG").text)
 ```
 
-The underlying CLI invocation it produces:
+The underlying embedded-runtime invocation is equivalent to:
 
 ```bash
-openclaw agent --local --json \
-    --model cerebras/gpt-oss-120b \
+openclaw agent --local --json --agent benchmark \
+    --model eliza-benchmark-gateway/claude-opus-4-6 \
     --thinking medium \
     --timeout 600 \
     --message "Reply with the single word: PONG"
@@ -32,9 +37,12 @@ openclaw agent --local --json \
 ## Test the harness
 
 ```bash
-# From the adapter directory (tests are fully mocked — no API keys needed)
+# From the adapter directory (unit tests need no provider credentials)
 pip install -e .
 pytest tests/ -v
+
+# Installed-runtime contract: real OpenClaw + generated plugin, local model stub
+OPENCLAW_E2E_BIN=/path/to/openclaw pytest tests/test_native_openclaw_e2e.py -v
 
 # Or from the benchmarks root
 pytest openclaw-adapter/tests/ -v
@@ -44,7 +52,8 @@ pytest openclaw-adapter/tests/ -v
 
 | Path | Role |
 | --- | --- |
-| `openclaw_adapter/client.py` | `OpenClawClient` — spawns `openclaw agent --local --json` per turn |
+| `openclaw_adapter/client.py` | `OpenClawClient` — orchestrates one isolated embedded-runtime turn |
+| `openclaw_adapter/native_runtime.py` | Isolated config and generated native benchmark-tool plugin |
 | `openclaw_adapter/server_manager.py` | `OpenClawCLIManager` — lifecycle (start = validate binary; stop = clear started state) |
 | `openclaw_adapter/clawbench.py` | `build_clawbench_agent_fn` — ClawBench factory |
 | `openclaw_adapter/bfcl.py` | `build_bfcl_agent_fn` — function-call benchmark factory |
@@ -52,15 +61,16 @@ pytest openclaw-adapter/tests/ -v
 | `openclaw_adapter/swe_bench.py` | `build_swe_bench_agent_fn` — SWE-bench factory |
 | `openclaw_adapter/terminal_bench.py` | `OpenClawTerminalAgent`, `build_terminal_bench_agent_fn` |
 | `openclaw_adapter/_retry.py` | Shared retry logic |
-| `tests/` | pytest suite (all subprocess calls mocked) |
+| `tests/` | Offline unit coverage plus an opt-in installed-runtime/local-stub contract |
 | `pyproject.toml` | Package definition; `pip install -e .` to develop |
 
 ## Notes
 
-- Binary resolution order: `OPENCLAW_BIN` env → `~/.eliza/agents/openclaw/manifest.json` → an `openclaw` on `PATH` → `~/.eliza/agents/openclaw/v2026.5.7/node_modules/.bin/openclaw`.
-- Set `OPENCLAW_DIRECT_OPENAI_COMPAT=1` (or pass `direct_openai_compatible=True`) to bypass the CLI for hermetic testing or native function-call benchmarks.
-- Set `OPENCLAW_USE_CLI=1` to force the production CLI path even when a direct path is also configured.
-- Native function-call benchmarks (BFCL etc.) must use the direct OpenAI-compatible path; the CLI path flattens `messages`/`tools` into a single `--message` string.
+- Binary resolution order: `OPENCLAW_BIN` env → `~/.eliza/agents/openclaw/manifest.json` → an `openclaw` on `PATH` → the packaged fallback.
+- Publishable runs require a loopback completion gateway. The generated config rejects remote base URLs and references the bearer token by env var rather than persisting it.
+- `OPENCLAW_DIRECT_OPENAI_COMPAT=1` and `direct_openai_compatible=True` exist only for parser/retry tests. Their telemetry sets `publishable_native=false`, so the orchestrator quarantines those results.
+- Full message history is canonicalized into the isolated turn prompt. Benchmark tools remain structured native plugin tools and only plugin-captured executions become scored tool calls.
+- Provenance records identify `openclaw.agent.embedded`, the generated config hash, native plugin bridge, model, provider, and transport on every turn.
 - No results are written by this package — results are the responsibility of the benchmark that consumes it.
 - Full background: [README.md](README.md).
 

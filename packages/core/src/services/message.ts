@@ -202,7 +202,10 @@ import type {
 	MessageProcessingResult,
 	ShouldRespondModelType,
 } from "../types/message-service";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "../types/message-source";
+import {
+	MESSAGE_SOURCE_CLIENT_CHAT,
+	MESSAGE_SOURCE_TRIGGER_PROMPT,
+} from "../types/message-source";
 import type {
 	ChatMessage,
 	GenerateTextAttachment,
@@ -10919,8 +10922,15 @@ export class DefaultMessageService implements IMessageService {
 			ChannelType.API,
 		];
 
-		// Sources that always trigger a response
-		const alwaysRespondSources = [MESSAGE_SOURCE_CLIENT_CHAT];
+		// Sources that always trigger a response. A trigger-prompt message is
+		// the agent's OWN scheduled intent firing (a reminder or prompt
+		// automation it created earlier) — gating it behind "should I respond
+		// to this ambient message?" is a category error and silently eats
+		// reminders.
+		const alwaysRespondSources = [
+			MESSAGE_SOURCE_CLIENT_CHAT,
+			MESSAGE_SOURCE_TRIGGER_PROMPT,
+		];
 
 		// Support runtime-configurable overrides via env settings
 		const customChannels = normalizeEnvList(

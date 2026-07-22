@@ -28,7 +28,6 @@ class Agent:
             provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
             model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
             timeout_s=float(os.environ.get("OPENCLAW_TIMEOUT_S", "600") or "600"),
-            direct_openai_compatible=os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "1") != "0",
         )
         self._scenario: "ScenarioContext | None" = None
         self._last_explanation: str | None = None

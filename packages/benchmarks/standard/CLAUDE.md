@@ -80,8 +80,9 @@ No extra install step — the `standard/` package is part of the `benchmarks` na
   `gsm8k-results.json`, or `mt-bench-results.json` respectively.
 - Scored by `_score_from_mmlu_json`, `_score_from_humaneval_json`,
   `_score_from_gsm8k_json`, `_score_from_mt_bench_json` in `registry/scores.py`.
-- MMLU and GSM8K load datasets lazily via `datasets` (HuggingFace); built-in
-  fixtures are used as fallback when the package is absent or `--mock` is set.
+- Real runs load all four upstream corpora from commit-pinned HuggingFace
+  revisions and fail closed if data is missing or incomplete. Built-in fixtures
+  are available only through explicit `--mock` runners.
 - HumanEval prefers `bigcode-evaluation-harness` when installed; falls back to a
   built-in sandboxed execution loop.
 - MT-Bench requires a separate judge model/endpoint; the judge and candidate model
