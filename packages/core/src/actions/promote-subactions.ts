@@ -14,6 +14,7 @@
 import type {
 	Action,
 	ActionExample,
+	ActionResult,
 	ActionParameter,
 	ActionParameters,
 	Handler,
@@ -267,6 +268,14 @@ function mergeOptionsWithSubaction(
 	};
 }
 
+const DISCRIMINATOR_ALIASES = [
+	"action",
+	"subaction",
+	"op",
+	"operation",
+	"verb",
+] as const;
+
 function buildVirtualHandler(parent: Action, subaction: string): Handler {
 	const parentHandler = parent.handler;
 	return async (
@@ -277,6 +286,32 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	) => {
+		// A virtual pins its own subaction; a CONTRADICTORY discriminator in the
+		// args means the planner picked the wrong virtual (observed live:
+		// TASKS_SPAWN_AGENT called with op:"list_agents" silently spawned a
+		// coding sub-agent to answer a listing question). Fail structurally so
+		// the planner re-routes to the virtual it actually meant.
+		const rawParams = (options as HandlerOptions | undefined)?.parameters as
+			| Record<string, unknown>
+			| undefined;
+		if (rawParams) {
+			for (const key of DISCRIMINATOR_ALIASES) {
+				const value = rawParams[key];
+				if (
+					typeof value === "string" &&
+					value.trim() !== "" &&
+					normalizeSubaction(value) !== normalizeSubaction(subaction)
+				) {
+					const wanted = `${toUpperSnake(parent.name)}_${toUpperSnake(value.trim())}`;
+					const text = `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${toUpperSnake(parent.name)} with ${key}=${value}) instead.`;
+					return {
+						success: false,
+						text,
+						error: new Error(text),
+					} as ActionResult;
+				}
+			}
+		}
 		const merged = mergeOptionsWithSubaction(parent, options, subaction);
 		return parentHandler(runtime, message, state, merged, callback, responses);
 	};

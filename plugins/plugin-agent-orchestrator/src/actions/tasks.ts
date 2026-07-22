@@ -1984,15 +1984,14 @@ async function runSend(
       };
     }
 
-    await callbackText(
-      callback,
-      "No input provided. Specify 'input', 'task', or 'keys' parameter.",
-    );
+    // Planner-input error: the failure reaches the model via the ActionResult
+    // and the planner corrects or reports — posting the raw diagnostic mid-turn
+    // produced a bare "Failed to send to agent: …" message before the answer.
     return errorResult("NO_INPUT");
   } catch (error) {
-    // error-policy:J1 send action boundary → user-facing error + structured failure.
+    // error-policy:J1 send action boundary → structured failure to the planner;
+    // no raw callback text (the turn's final message reports honestly).
     const msg = failureMessage(error);
-    await callbackText(callback, `Failed to send to agent: ${msg}`);
     return { success: false, error: msg };
   }
 }
@@ -2146,7 +2145,7 @@ async function runListAgents(
   if (sessions.length === 0) {
     const text =
       'No active task agents. Use TASKS { action: "create" } when the user needs anything more involved than a simple direct reply.';
-    await callbackText(callback, text);
+    // Read-only query: no visible callback (see history).
     return {
       success: true,
       text,
@@ -2161,7 +2160,8 @@ async function runListAgents(
     );
   }
   const text = lines.join("\n");
-  await callbackText(callback, text);
+  // Read-only query: no visible callback. The listing reaches the model via
+  // the ActionResult; posting it raw produced a double reply (dump, answer).
 
   return {
     success: true,
@@ -2564,6 +2564,11 @@ async function runHistory(
   const window = historyWindowValue(params.window ?? content.window);
   const statuses = historyStatusesValue(params.statuses ?? content.statuses);
   const search = textValue(params.search) ?? textValue(content.search);
+  // The planner naturally scopes history to one session ("hows that sub-agent
+  // doing?" -> sessionId). Ignoring it silently returned the store's oldest
+  // unrelated task as if it were the answer (observed live: a July-10 app
+  // build relayed as the status of a just-spawned session).
+  const sessionId = textValue(params.sessionId) ?? textValue(content.sessionId);
   // Registered-project filter: restrict the thread listing to tasks bound to
   // one project (the store filters on the indexed/structural `projectId`).
   const projectId = textValue(params.projectId) ?? textValue(content.projectId);
@@ -2581,8 +2586,12 @@ async function runHistory(
           ...(search ? { search } : {}),
           ...(projectId ? { projectId } : {}),
         })
-      ).filter((task) =>
-        taskMatchesHistoryFilters(task, statuses, windowFilters, search),
+      ).filter(
+        (task) =>
+          taskMatchesHistoryFilters(task, statuses, windowFilters, search) &&
+          (!sessionId ||
+            task.latestSessionId === sessionId ||
+            task.id === sessionId),
       );
       const count = allTasks.length;
       const tasks = allTasks.slice(0, limit);
@@ -2591,6 +2600,7 @@ async function runHistory(
         statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
         search ? `search "${search}"` : undefined,
         projectId ? `project ${projectId}` : undefined,
+        sessionId ? `session ${sessionId}` : undefined,
         includeArchived ? "including archived" : undefined,
       ].filter((part): part is string => Boolean(part));
       const filterSuffix =
@@ -2620,7 +2630,9 @@ async function runHistory(
         ].join("\n");
       }
 
-      if (callback) await callback({ text: responseText });
+      // Read-only query: no visible callback. The listing reaches the model
+      // via the ActionResult and the user via the planner's final message —
+      // posting the raw dump produced a double reply (dump, then answer).
       return {
         success: true,
         text: responseText,
@@ -2688,7 +2700,7 @@ async function runHistory(
     ].join("\n");
   }
 
-  if (callback) await callback({ text: responseText });
+  // Read-only query: no visible callback (same contract as history).
   return {
     success: true,
     text: responseText,
