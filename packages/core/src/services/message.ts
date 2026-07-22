@@ -4999,7 +4999,7 @@ function shouldUseStage1PlannerFallback(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): boolean {
-	const content = message.content ?? {};
+	const { content } = message;
 	const channelType = String(content.channelType ?? "").toLowerCase();
 	if (
 		channelType === ChannelType.DM.toLowerCase() ||

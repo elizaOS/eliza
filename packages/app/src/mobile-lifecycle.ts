@@ -40,7 +40,14 @@ const COLD_LAUNCH_URL_REPLAY_MS = 15_000;
 const COLD_LAUNCH_URL_REPLAY_INTERVAL_MS = 1_000;
 
 function unrefTimer(timer: ReturnType<typeof setInterval>): void {
-  (timer as unknown as { unref?: () => void }).unref?.();
+  if (
+    typeof timer === "object" &&
+    timer !== null &&
+    "unref" in timer &&
+    typeof timer.unref === "function"
+  ) {
+    timer.unref();
+  }
 }
 
 function shouldBridgeVisibilityLifecycle(ctx: MobileLifecycleContext): boolean {
