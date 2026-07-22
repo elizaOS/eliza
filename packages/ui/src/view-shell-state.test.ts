@@ -206,19 +206,20 @@ describe("authoritative shell view rehydrate", () => {
     }
   });
 
-  it.each([
-    404, 501,
-  ])("treats an unsupported shell registry HTTP %i as a safe no-op", async (status) => {
-    setAuthoritativeShellViewState({
-      viewId: "notes",
-      viewPath: "/notes",
-      viewType: "gui",
-    });
+  it.each([404, 501])(
+    "treats an unsupported shell registry HTTP %i as a safe no-op",
+    async (status) => {
+      setAuthoritativeShellViewState({
+        viewId: "notes",
+        viewPath: "/notes",
+        viewType: "gui",
+      });
 
-    await expect(
-      rehydrateAuthoritativeShellViewState({
-        request: async () => new Response("", { status }),
-      }),
-    ).resolves.toBe(false);
-  });
+      await expect(
+        rehydrateAuthoritativeShellViewState({
+          request: async () => new Response("", { status }),
+        }),
+      ).resolves.toBe(false);
+    },
+  );
 });

@@ -49,18 +49,18 @@ describe("resolveCharacterVoiceConfigFromAppConfig", () => {
     ).toEqual({ elevenlabs: { voiceId: JIN_VOICE_ID } });
   });
 
-  it.each([
-    "cloud",
-    "own-key",
-  ] as const)("preserves an explicit ElevenLabs %s mode", (mode) => {
-    const voiceConfig = {
-      provider: "elevenlabs" as const,
-      mode,
-      elevenlabs: { voiceId: JIN_VOICE_ID },
-    };
+  it.each(["cloud", "own-key"] as const)(
+    "preserves an explicit ElevenLabs %s mode",
+    (mode) => {
+      const voiceConfig = {
+        provider: "elevenlabs" as const,
+        mode,
+        elevenlabs: { voiceId: JIN_VOICE_ID },
+      };
 
-    expect(resolveJinVoice(voiceConfig)).toEqual(voiceConfig);
-  });
+      expect(resolveJinVoice(voiceConfig)).toEqual(voiceConfig);
+    },
+  );
 
   it("preserves an explicit ElevenLabs choice with a usable key", () => {
     const voiceConfig = {
