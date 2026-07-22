@@ -22,6 +22,7 @@ import type { ElizaConfig } from "../config/config.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
+import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
 
 type CloudHealthApi = {
@@ -586,28 +587,42 @@ export async function handleHealthRoutes(
       }
     }
 
+    const databaseLiveness = await probeRuntimeDatabaseLiveness(runtime);
     const ready =
-      state.agentState !== "starting" && state.agentState !== "restarting";
+      state.agentState !== "starting" &&
+      state.agentState !== "restarting" &&
+      !databaseLiveness.terminal;
 
-    json(res, {
-      ready,
-      canRespond: computeCanRespond(runtime, state.agentState),
-      runtime: runtime ? "ok" : "not_initialized",
-      database: runtime ? "ok" : "unknown",
-      plugins: {
-        loaded: loadedPluginCount,
-        failed: failedPluginCount,
+    json(
+      res,
+      {
+        ready,
+        canRespond: databaseLiveness.terminal
+          ? false
+          : computeCanRespond(runtime, state.agentState),
+        runtime: runtime ? "ok" : "not_initialized",
+        database: databaseLiveness.ok
+          ? runtime
+            ? "ok"
+            : "unknown"
+          : databaseLiveness.status,
+        databaseLiveness,
+        plugins: {
+          loaded: loadedPluginCount,
+          failed: failedPluginCount,
+        },
+        coordinator: coordinatorStatus,
+        connectors,
+        uptime,
+        agentState: state.agentState,
+        startup: state.startup,
+        // Deferred capabilities (feature routes, connectors, non-essential
+        // plugins) register AFTER `ready` flips. Poll `deferredBoot.settled`
+        // before hitting feature routes right after boot instead of sleeping.
+        deferredBoot: getDeferredBootStatus(),
       },
-      coordinator: coordinatorStatus,
-      connectors,
-      uptime,
-      agentState: state.agentState,
-      startup: state.startup,
-      // Deferred capabilities (feature routes, connectors, non-essential
-      // plugins) register AFTER `ready` flips. Poll `deferredBoot.settled`
-      // before hitting feature routes right after boot instead of sleeping.
-      deferredBoot: getDeferredBootStatus(),
-    });
+      databaseLiveness.terminal ? 503 : 200,
+    );
     return true;
   }
 

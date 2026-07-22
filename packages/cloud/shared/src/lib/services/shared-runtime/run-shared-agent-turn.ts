@@ -23,7 +23,7 @@
 import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
-  getLanguageModel,
+  getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
 
@@ -85,6 +85,43 @@ export interface RunSharedAgentTurnStreamResult {
  * gateway hop). Big-model agents can still set another bare Cerebras model.
  */
 const DEFAULT_SHARED_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
+
+/**
+ * Retry budget for the shared-runtime (Tier 0) chat turn.
+ *
+ * WHY THIS IS NOT THE AI-SDK DEFAULT (2): the shared turn is the interactive
+ * chat / voice hot path with a sub-1.5s TTFT budget, and it runs the Cerebras
+ * default route with NO cross-provider fallback (`withRateLimitFailFast` only
+ * short-circuits 429; 5xx/network keep the SDK's retry). The AI SDK's default
+ * exponential backoff is `initialDelayInMs=2000, backoffFactor=2`, so a single
+ * transient Cerebras 5xx/network blip costs +2s (1 retry) or +6s (2 retries)
+ * of pure sleep BEFORE the turn can succeed or surface. That is the exact
+ * bimodal 5-10s warm-stall signature measured on staging (fast turns ~1s;
+ * stalled turns ~5s single-retry / ~7-9s double-retry) — a promotion blocker.
+ *
+ * COLD-PATH stall-B fix (COLDPATH-FIX-2026-07-21): the default is now ZERO.
+ * #16713 capped the SDK retry at ONE, which still cost a ~2s `initialDelayInMs`
+ * SLEEP that then retried the SAME dead Cerebras upstream. The interactive turn
+ * now routes through `getInteractiveCerebrasLanguageModel`, whose middleware
+ * fails over to OpenRouter IMMEDIATELY (no backoff) on a transient 5xx/network
+ * error — so the SDK's sleeping retry is redundant and, worse, additive. With
+ * `maxRetries: 0` a transient blip costs one instant cross-provider failover
+ * instead of a 2s–6s sleep, and a hard failure surfaces fast to the refund path.
+ * Still tunable via `SHARED_TURN_MAX_RETRIES` for ops without a redeploy;
+ * clamped to [0, 2] so it can never re-introduce the SDK default it bounds.
+ * Ops can raise it, but the healthy default keeps zero SDK backoff on the
+ * interactive path since the failover wrapper owns resilience now.
+ */
+function resolveSharedTurnMaxRetries(
+  raw: string | undefined = process.env.SHARED_TURN_MAX_RETRIES,
+): number {
+  if (raw === undefined || raw.trim() === "") return 0;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.min(parsed, 2);
+}
+
+export const SHARED_TURN_MAX_RETRIES = resolveSharedTurnMaxRetries();
 
 /** Token counts the shared-runtime billing path consumes (input/output/total). */
 export interface SharedAgentTurnUsage {
@@ -162,7 +199,11 @@ export async function runSharedAgentTurn(
 
   try {
     const { text, usage } = await generateText({
-      model: getLanguageModel(modelId),
+      model: getInteractiveCerebrasLanguageModel(modelId),
+      // Zero SDK backoff on the interactive turn (see SHARED_TURN_MAX_RETRIES):
+      // the model wrapper fails over to a healthy provider INSTANTLY on a 5xx,
+      // so the SDK's 2-6s sleeping retry is redundant and only adds latency.
+      maxRetries: SHARED_TURN_MAX_RETRIES,
       system: buildSystemPrompt(input.character),
       messages: [
         ...input.history.map((m) => ({ role: m.role, content: m.content })),
@@ -215,7 +256,11 @@ export async function runSharedAgentTurnStream(
 
   try {
     const result = streamText({
-      model: getLanguageModel(modelId),
+      model: getInteractiveCerebrasLanguageModel(modelId),
+      // Zero SDK backoff on the interactive turn (see SHARED_TURN_MAX_RETRIES):
+      // the model wrapper fails over to a healthy provider INSTANTLY on a 5xx,
+      // so the SDK's 2-6s sleeping retry is redundant and only adds latency.
+      maxRetries: SHARED_TURN_MAX_RETRIES,
       system: buildSystemPrompt(input.character),
       messages: [
         ...input.history.map((m) => ({ role: m.role, content: m.content })),

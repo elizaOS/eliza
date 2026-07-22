@@ -50,8 +50,8 @@
     }
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck --outDir dist --rootDir src",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "build": "tsup --config tsup.config.ts && tsc6 --declaration --emitDeclarationOnly --noEmit false --noCheck --outDir dist --rootDir src",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "test:watch": "vitest --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -69,6 +69,7 @@
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   },

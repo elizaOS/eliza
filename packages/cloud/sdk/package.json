@@ -15,7 +15,7 @@
     "build": "bun run build.ts",
     "clean": "rm -rf dist",
     "prepack": "bun run build",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun test src",
     "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -61,5 +61,8 @@
     "scripts": {
       "coreBuild": true
     }
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2"
   }
 }

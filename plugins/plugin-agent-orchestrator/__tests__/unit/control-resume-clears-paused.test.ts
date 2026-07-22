@@ -12,6 +12,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { tasksAction } from "../../src/actions/tasks.js";
+import { AcpService } from "../../src/services/acp-service.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import {
@@ -151,10 +152,13 @@ async function harness(): Promise<{
   const acp = new FakeAcp();
   let taskService: OrchestratorTaskService | null = null;
   const runtime = {
-    getService: vi.fn((type: string) =>
-      type === OrchestratorTaskService.serviceType ? taskService : acp,
-    ),
+    getService: vi.fn((type: string) => {
+      if (type === OrchestratorTaskService.serviceType) return taskService;
+      if (type === AcpService.serviceType) return acp;
+      return null;
+    }),
     hasService: vi.fn(() => true),
+    getSetting: vi.fn(() => undefined),
     getRoom: vi.fn(async () => null),
     reportError: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

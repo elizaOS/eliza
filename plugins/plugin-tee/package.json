@@ -54,16 +54,17 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.4",
     "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build:typescript": "tsc --noCheck -p tsconfig.build.json",
+    "build:typescript": "tsc6 --noCheck -p tsconfig.build.json",
     "dev": "bun --hot build.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun run test:typescript",
     "test:typescript": "vitest run --config vitest.config.ts",
     "test:watch": "vitest",

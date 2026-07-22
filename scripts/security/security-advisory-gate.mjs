@@ -8,13 +8,13 @@ const LABELS = new Set([
   "payment integration",
 ]);
 const REVIEWED_FILE =
-  /\.(ts|tsx|js|jsx|mjs|cjs|json|ya?ml)$|(^|\/)Dockerfile$|(^|\/)\.env\.example$/i;
+  /\.(ts|tsx|js|jsx|mjs|cjs|json|sql|ya?ml)$|(^|\/)Dockerfile$|(^|\/)\.env\.example$/i;
 const PATHS = [
   /(^|\/)[^/]*(auth|oauth|security|payments?|billing|wallets?|secrets?|credentials?|tokens?|connectors?|trusted-routing)[^/]*(\/|$)/i,
   /^\.github\/(workflows|actions)\//,
   /(^|\/)(contracts?|migrations)(\/|$)/i,
 ];
-const ADVISORIES = ["security", "claude-review"];
+const REQUIRED_CHECKS = ["gitleaks"];
 const SUCCESS = new Set(["success"]);
 const TERMINAL = new Set([
   "success",
@@ -55,11 +55,11 @@ export function evaluate(checks) {
   for (const check of checks) {
     if (!byName.has(check.name)) byName.set(check.name, check);
   }
-  const waiting = ADVISORIES.filter((name) => {
+  const waiting = REQUIRED_CHECKS.filter((name) => {
     const check = byName.get(name);
     return !check || !TERMINAL.has(check.conclusion);
   });
-  const failed = ADVISORIES.filter((name) => {
+  const failed = REQUIRED_CHECKS.filter((name) => {
     const check = byName.get(name);
     return (
       check && TERMINAL.has(check.conclusion) && !SUCCESS.has(check.conclusion)
@@ -125,12 +125,12 @@ async function live() {
     }
     const state = evaluate(checkRuns);
     if (state.failed.length)
-      throw new Error(`advisory checks failed: ${state.failed.join(", ")}`);
+      throw new Error(`deterministic security checks failed: ${state.failed.join(", ")}`);
     if (state.passed) {
-      console.log("security advisories completed successfully");
+      console.log("deterministic security checks completed successfully");
       return;
     }
-    console.log(`waiting for advisory checks: ${state.waiting.join(", ")}`);
+    console.log(`waiting for deterministic security checks: ${state.waiting.join(", ")}`);
     await new Promise((resolve) => setTimeout(resolve, interval * 1000));
   }
   throw new Error("timed out waiting for security advisory checks");
@@ -144,17 +144,14 @@ export async function canary(name) {
         .protected === false,
     protected: () => classify(protectedInput).protected === true,
     waiting: () =>
-      evaluate([{ name: "security", conclusion: "success" }]).waiting.includes(
-        "claude-review",
-      ),
+      evaluate([]).waiting.includes("gitleaks"),
     success: () =>
-      evaluate(ADVISORIES.map((x) => ({ name: x, conclusion: "success" })))
+      evaluate(REQUIRED_CHECKS.map((x) => ({ name: x, conclusion: "success" })))
         .passed,
     failure: () =>
       evaluate([
-        { name: "security", conclusion: "failure" },
-        { name: "claude-review", conclusion: "success" },
-      ]).failed.includes("security"),
+        { name: "gitleaks", conclusion: "failure" },
+      ]).failed.includes("gitleaks"),
   };
   if (!cases[name] || !cases[name]()) throw new Error(`canary failed: ${name}`);
   console.log(`canary passed: ${name}`);

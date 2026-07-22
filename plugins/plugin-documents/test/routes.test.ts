@@ -95,26 +95,25 @@ describe("document routes", () => {
     __setDocumentFetchImplForTests(undefined);
   });
 
-  it.each([
-    {},
-    { url: {} },
-    { url: "   " },
-  ])("rejects malformed URL upload body %# with a 400", async (body) => {
-    const fetchDocument = vi.fn();
-    __setDocumentFetchImplForTests(fetchDocument);
-    const { ctx, res } = buildCtx({
-      method: "POST",
-      pathname: "/api/documents/url",
-      body,
-    });
+  it.each([{}, { url: {} }, { url: "   " }])(
+    "rejects malformed URL upload body %# with a 400",
+    async (body) => {
+      const fetchDocument = vi.fn();
+      __setDocumentFetchImplForTests(fetchDocument);
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/documents/url",
+        body,
+      });
 
-    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
 
-    expect(res.statusCode).toBe(400);
-    expect(res.body).toEqual({ error: "url is required" });
-    expect(fetchDocument).not.toHaveBeenCalled();
-    expect(addDocument).not.toHaveBeenCalled();
-  });
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: "url is required" });
+      expect(fetchDocument).not.toHaveBeenCalled();
+      expect(addDocument).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     { content: {}, filename: "doc.md" },
@@ -230,19 +229,24 @@ describe("document routes", () => {
     ["GET", "/api/documents/%E0%A4%A/fragments"],
     ["PATCH", "/api/documents/%E0%A4%A"],
     ["DELETE", "/api/documents/%E0%A4%A"],
-  ])("rejects malformed document id encoding for %s %s", async (method, pathname) => {
-    const { ctx, res } = buildCtx({ method, pathname });
-    const runtime = ctx.runtime as NonNullable<DocumentRouteContext["runtime"]>;
-    const getMemoryById = vi.mocked(runtime.getMemoryById);
+  ])(
+    "rejects malformed document id encoding for %s %s",
+    async (method, pathname) => {
+      const { ctx, res } = buildCtx({ method, pathname });
+      const runtime = ctx.runtime as NonNullable<
+        DocumentRouteContext["runtime"]
+      >;
+      const getMemoryById = vi.mocked(runtime.getMemoryById);
 
-    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
 
-    expect(res.statusCode).toBe(400);
-    expect(res.body).toEqual({
-      error: "Invalid document id: malformed URL encoding",
-    });
-    expect(getMemoryById).not.toHaveBeenCalled();
-  });
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error: "Invalid document id: malformed URL encoding",
+      });
+      expect(getMemoryById).not.toHaveBeenCalled();
+    },
+  );
 
   it("links original bytes (mediaUrl/mediaHash/mediaFileName) when a file-storage service is present", async () => {
     const store = vi.fn(
@@ -368,35 +372,33 @@ describe("document routes", () => {
     expect(passedMetadata.mediaUrl).toBeUndefined();
   });
 
-  it.each([
-    null,
-    42,
-    "not a document",
-    ["hello"],
-  ])("rejects non-object bulk item %# without throwing", async (document) => {
-    const { ctx, res } = buildCtx({
-      method: "POST",
-      pathname: "/api/documents/bulk",
-      body: { documents: [document] },
-    });
+  it.each([null, 42, "not a document", ["hello"]])(
+    "rejects non-object bulk item %# without throwing",
+    async (document) => {
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/documents/bulk",
+        body: { documents: [document] },
+      });
 
-    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({
-      ok: false,
-      total: 1,
-      successCount: 0,
-      failureCount: 1,
-      results: [
-        {
-          index: 0,
-          ok: false,
-          filename: "document-1",
-          error: "content and filename must be non-empty strings",
-        },
-      ],
-    });
-    expect(addDocument).not.toHaveBeenCalled();
-  });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toEqual({
+        ok: false,
+        total: 1,
+        successCount: 0,
+        failureCount: 1,
+        results: [
+          {
+            index: 0,
+            ok: false,
+            filename: "document-1",
+            error: "content and filename must be non-empty strings",
+          },
+        ],
+      });
+      expect(addDocument).not.toHaveBeenCalled();
+    },
+  );
 });

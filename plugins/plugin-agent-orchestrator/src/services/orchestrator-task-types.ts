@@ -200,6 +200,10 @@ export function readSessionRetryCount(
  * dead sessions still fill the budget (#14104). */
 export const RETRY_BUDGET_EPOCH_METADATA_KEY = "retryBudgetEpochMs";
 
+/** Session boundary for the current retry-budget run. Unlike an epoch alone,
+ * this remains unambiguous when the restart and an old spawn share a millisecond. */
+export const RETRY_BUDGET_SESSION_METADATA_KEY = "retryBudgetFirstSessionId";
+
 /** Read the current run's budget epoch (epoch ms) off a task-metadata bag.
  * Absent/non-positive reads to 0 — every session then counts, which is the
  * correct pre-restart lifetime behavior. */
@@ -208,6 +212,13 @@ export function readRetryBudgetEpoch(
 ): number {
   const raw = metadata?.[RETRY_BUDGET_EPOCH_METADATA_KEY];
   return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
+}
+
+export function readRetryBudgetFirstSessionId(
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  const raw = metadata?.[RETRY_BUDGET_SESSION_METADATA_KEY];
+  return typeof raw === "string" && raw.length > 0 ? raw : undefined;
 }
 
 export interface TaskProviderPolicy {

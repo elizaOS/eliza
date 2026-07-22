@@ -413,6 +413,35 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("duplicate final events for one semantic turn dispatch and persist exactly once", async () => {
+    const requests: Array<{ body: unknown }> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: (async (url: string, init?: RequestInit) => {
+        requests.push({
+          body: JSON.parse(String(init?.body)),
+        });
+        return makeCanonicalChunkFetch(["Only once."])(url, init);
+      }) as unknown as typeof fetch,
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "hello agent");
+    flux.emitTurn("EndOfTurn", "hello agent");
+    await flush();
+    await flush();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      body: { text: "hello agent" },
+    });
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_final"),
+    ).toHaveLength(1);
+  });
+
   test("hello -> ready -> full turn produces stt_final, llm_first_text, speaking, usage", async () => {
     const client = new FakeClientSocket();
     await connectSession({

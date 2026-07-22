@@ -24,6 +24,23 @@ import type {
 const MAX_RECENT_ERRORS = 5;
 /** Entries older than this are ignored (stale failures shouldn't linger). */
 const ERROR_MAX_AGE_MS = 30 * 60 * 1000;
+
+/**
+ * Internal scheduler/plumbing failure codes that must NEVER be narrated into the
+ * owner's chat (#SHADOW-ACCOUNT-DEBUG). These are self-healing or
+ * operator-facing, not user-actionable: surfacing them made the agent post
+ * near-identical "a scheduled task failed … TASK_WORKER_MISSING" messages 9×
+ * into Shadow's chat. The failures are still logged and still flow to the
+ * ERROR_REPORTED escalation path (which has its own owner-facing threshold);
+ * they just don't get turned into assistant messages every turn. Matching is
+ * done on the error `code`, so app-level/actionable failures are unaffected.
+ */
+export const QUIET_ERROR_CODES: ReadonlySet<string> = new Set([
+	"TASK_TICK_FAILED",
+	"TASK_WORKER_MISSING",
+	"TASK_QUERY_FAILED",
+	"TASK_ORPHAN_QUARANTINE_FAILED",
+]);
 /** Cap serialized context length so a large payload can't blow up the prompt. */
 const MAX_CONTEXT_CHARS = 400;
 
@@ -61,6 +78,9 @@ function selectRecentErrors(
 	const newestByCode = new Map<string, ReportedError>();
 	for (const entry of entries) {
 		if (now - entry.at > ERROR_MAX_AGE_MS) continue;
+		// Internal scheduler plumbing is self-healing / operator-facing, never
+		// narrated into chat (#SHADOW-ACCOUNT-DEBUG). Still logged + escalated.
+		if (QUIET_ERROR_CODES.has(entry.code)) continue;
 		const existing = newestByCode.get(entry.code);
 		if (!existing || entry.at >= existing.at) {
 			newestByCode.set(entry.code, entry);

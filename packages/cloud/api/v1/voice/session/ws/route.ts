@@ -55,11 +55,9 @@ import { VoiceSession } from "../lib/session";
 const app = new Hono<AppEnv>();
 
 /**
- * Per-worker fallback usage store, used ONLY when no eval-capable durable Redis
- * is configured (SocketRedis lacks Lua). Module-scoped so daily org/user caps
- * are shared across ALL sessions on this worker isolate, instead of resetting
- * per connection. Cross-worker aggregation still requires an Upstash durable
- * store; this bounds abuse to per-worker caps rather than none.
+ * Per-worker fallback usage store, used only when no eval-capable durable Redis
+ * is configured. Module-scoped so daily org/user caps are shared across all
+ * sessions on this worker isolate instead of resetting per connection.
  */
 let workerFallbackUsageStore: InMemoryVoiceUsageStore | null = null;
 function getWorkerFallbackUsageStore(): InMemoryVoiceUsageStore {
@@ -159,29 +157,16 @@ app.get("/", (c) => {
   server.accept();
 
   const usageLimits = resolveVoiceUsageLimits(env);
-  // Prefer the durable cross-worker store, but ONLY when its backing Redis
-  // supports the atomic `eval` (Lua) the RedisVoiceUsageStore requires. The
-  // Railway TCP SocketRedis client has no `eval`, so using it would make every
-  // admission throw and close sessions as `metering_unavailable`. In that case
-  // fall back to the per-worker InMemory store: metering is still enforced
-  // (fail-closed, per-worker caps) rather than the session being unusable.
+  // Prefer durable, atomic cross-worker metering whenever the configured Redis
+  // exposes EVAL. SocketRedis and Upstash do; the non-Lua test mock does not.
   const durableStore = createDurableVoiceUsageStore(
     env as unknown as Parameters<typeof createDurableVoiceUsageStore>[0],
   );
-  // The RedisVoiceUsageStore uses atomic `eval` (Lua). Only the Upstash REST
-  // client implements it; the Railway TCP SocketRedis (REDIS_URL) does not, and
-  // using it would make every admission throw `eval is not a function` and
-  // close sessions as `metering_unavailable`. Confirm eval before trusting the
-  // durable store; otherwise fall back to the per-worker InMemory store so
-  // metering is still enforced (fail-closed) instead of the session being dead.
+  const usageStore: VoiceUsageStore =
+    durableStore ?? getWorkerFallbackUsageStore();
   const rawRedis = buildRedisClient(
     env as unknown as Parameters<typeof buildRedisClient>[0],
   );
-  const evalCapable =
-    typeof (rawRedis as unknown as { eval?: unknown } | null)?.eval ===
-    "function";
-  const usageStore: VoiceUsageStore =
-    durableStore && evalCapable ? durableStore : getWorkerFallbackUsageStore();
 
   const maxSessions = resolveMaxSessions(env);
   // Capture Worker bindings while this upgrade request is live. The returned

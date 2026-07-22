@@ -285,12 +285,15 @@ describe("SceneBuilder reports a11y scan failures once per scan", () => {
       (r) => r.scope === "Computeruse.a11yScan",
     );
     expect(scanReports).toHaveLength(1);
-    expect(scanReports[0]?.context).toMatchObject({
+    const scanReport = scanReports[0];
+    expect(scanReport).toBeDefined();
+    if (!scanReport) throw new Error("Expected an accessibility scan report");
+    expect(scanReport.context).toMatchObject({
       failedWindows: 4,
       totalWindows: 6,
       provider: "darwin",
     });
-    expect(String((scanReports[0]?.error as Error).message)).toContain("4/6");
+    expect(String((scanReport.error as Error).message)).toContain("4/6");
   });
 
   it("an all-windows-failed scan (empty node list, non-zero counts) is reported, not read as a clean empty desktop", async () => {

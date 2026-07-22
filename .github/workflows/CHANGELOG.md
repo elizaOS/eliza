@@ -4,6 +4,21 @@ This changelog tracks meaningful CI policy and workflow-architecture changes.
 It is intentionally scoped to `.github/workflows` so product/package changelogs
 do not have to carry CI-only history.
 
+## 2026-07-21
+
+### Changed
+
+- Changed-file Bun coverage now runs every test file in a fresh process and
+  union-merges their line-level LCOV outputs. Bun module mocks are process-global
+  despite `--isolate`; replacing the per-suite exception list prevents one
+  changed test from rewriting another test's imports and turning a real gate
+  into an order-dependent failure.
+
+- Required lint jobs now use the read-only `lint:check` task before the separate
+  format gate. This prevents lint from mutating a checkout into a state that
+  makes a subsequent check falsely green, and the merge-gate contract rejects
+  conditional, masked, redirected, or alternate-YAML spellings of those steps.
+
 ## 2026-07-04
 
 ### Changed

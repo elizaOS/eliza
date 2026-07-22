@@ -10,7 +10,7 @@ import {
   runDeployGate,
 } from "../src/deploy-gate.ts";
 import type { ReachabilityResult } from "../src/reachability.ts";
-import { makeApp } from "./helpers";
+import { makeApp, requireDefined } from "./helpers";
 
 const FAST_CONFIG: DeployGateConfig = {
   maxAttempts: 5,
@@ -241,7 +241,9 @@ describe("runDeployGate — poll robustness (transient errors + per-request time
     expect(result.attempts).toBe(3);
     expect(pollErrors).toHaveLength(1);
     expect(pollErrors[0]?.attempt).toBe(1);
-    expect((pollErrors[0]?.error as Error).message).toContain("ECONNRESET");
+    expect(
+      (requireDefined(pollErrors[0], "poll error").error as Error).message,
+    ).toContain("ECONNRESET");
   });
 
   it("a stalled status poll is cut off by the per-request timeout (signal aborts) and the gate continues", async () => {

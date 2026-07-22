@@ -9,6 +9,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setGetAppDeployStatus,
   setListApps,
@@ -104,7 +105,10 @@ describe("GET_APP_DEPLOY_STATUS", () => {
       cb.fn,
     );
     expect(result?.success).toBe(true);
-    expect((result?.data as { status: string }).status).toBe("READY");
+    expect(
+      (requireDefined(result, "action result").data as { status: string })
+        .status,
+    ).toBe("READY");
     expect(cb.calls[0]?.text).toContain("live at https://acme.elizacloud.ai");
   });
 
@@ -132,7 +136,10 @@ describe("GET_APP_DEPLOY_STATUS", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   it("returns not-found for an unknown app", async () => {
@@ -145,6 +152,9 @@ describe("GET_APP_DEPLOY_STATUS", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("not_found");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
   });
 });

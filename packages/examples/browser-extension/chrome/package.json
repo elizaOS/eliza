@@ -13,7 +13,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -29,6 +29,7 @@
     "@types/node": "^25.0.3",
     "@types/chrome": "^0.2.1",
     "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "engines": {

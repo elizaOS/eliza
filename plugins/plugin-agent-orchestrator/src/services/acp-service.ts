@@ -94,13 +94,13 @@ import {
   type SessionStoreBackend,
 } from "./session-store.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
-import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
-  canonicalForwardedEnvKey,
   forwardableSubAgentEnv as applySubAgentEnvPolicy,
+  canonicalForwardedEnvKey,
   isCloudKeyForwardingOptIn,
   isDeniedSubAgentEnvKey,
 } from "./sub-agent-env-policy.js";
+import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
   appendSubagentStdout,
   isSubagentStdoutLoggingEnabled,

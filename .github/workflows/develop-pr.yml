@@ -106,8 +106,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Run lint
-        run: bun run lint
+      - name: Run lint (read-only)
+        run: bun run lint:check
 
       - name: Check formatting
         run: bun run format:check

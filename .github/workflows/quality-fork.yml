@@ -26,7 +26,10 @@ jobs:
     name: Lint
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 10
+    # Fresh Turbo-cold attempt 5 was still linting successfully when the old
+    # 10m ceiling canceled it at 10m26s. Keep every ratchet/lint/format step and
+    # allow a finite 15m cold window; attempt 4 completed the same lane in 8m30s.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -92,8 +95,8 @@ jobs:
       - name: Run type-duplication finder self-test
         run: bun run audit:type-duplication:self-test
 
-      - name: Run lint
-        run: bun run lint
+      - name: Run lint (read-only)
+        run: bun run lint:check
 
       - name: Run format check
         run: bun run format:check
@@ -102,7 +105,11 @@ jobs:
     name: Type Check
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
+    # Fresh attempt #16657 measured 4m15s of setup (including a wasteful 2m50s
+    # stale 1.6 GiB Bun-cache fallback restore) plus 13m28s of still-running
+    # full-graph typecheck. Skip that stale restore below and retain a finite
+    # 25m cold ceiling for the unfiltered graph; warm runs remain much faster.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -118,6 +125,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          cache-bun-install: "false"
 
       # @elizaos/core's package.json points "main"/"types" at dist/ files
       # that don't exist until the build runs. Plugins that resolve core
@@ -137,7 +145,10 @@ jobs:
     name: Build
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 20
+    # Fresh attempt 3 completed the entire two-worker suite and failed closed
+    # on three bounded mobile visual diffs in 25m38s total. Retain the complete
+    # 48-test suite and a finite 32m ceiling, a measured 25% cold-run margin.
+    timeout-minutes: 32
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -153,6 +164,10 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          cache-bun-install: "false"
+
+      - name: Validate fork-safe browser contract
+        run: bun run audit:quality-fork-browser
 
       - name: Build
         run: bun run build
@@ -165,11 +180,14 @@ jobs:
 
       - name: Install homepage browser
         working-directory: packages/homepage
-        run: ./node_modules/.bin/playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install chromium
 
       - name: Test homepage downloads
         working-directory: packages/homepage
-        run: bun run test:e2e
+        # The provisioned runner reported six default workers. Heavy animated
+        # visual routes then contended, timed out, and multiplied into retries.
+        # Two workers preserve every test while bounding per-test CPU pressure.
+        run: bun run test:e2e --workers=2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

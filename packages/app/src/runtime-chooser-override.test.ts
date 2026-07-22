@@ -29,6 +29,7 @@ describe("runtime chooser override", () => {
 
   it("persists and removes the URL param when the packaged test injection is present", () => {
     window.__ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER__ = true;
+    window.localStorage.setItem("eliza:first-run-complete", "1");
     window.history.replaceState(
       { from: "test" },
       "",
@@ -40,6 +41,7 @@ describe("runtime chooser override", () => {
     expect(window.localStorage.getItem("eliza:enable-runtime-chooser")).toBe(
       "1",
     );
+    expect(window.localStorage.getItem("eliza:first-run-complete")).toBeNull();
     expect(window.location.href).toBe(
       `${window.location.origin}/?runtime=first-run`,
     );

@@ -1,10 +1,18 @@
 /**
- * `TEXT_EMBEDDING` handler backed by Google's `text-embedding-004` (768-dim).
+ * `TEXT_EMBEDDING` handler backed by Google's embedding model (default
+ * `gemini-embedding-001`; overridable via `GOOGLE_EMBEDDING_MODEL`).
  * A `null`/empty-object input is treated as an initialization probe and answered
  * with a fixed 768-length marker vector so the runtime can size its embedding
  * column without a network call; real text is truncated to the model's ~8192
  * token limit, embedded, and reported via `emitModelUsageEvent`. Throws on empty
  * text and on an empty API response rather than fabricating a vector.
+ *
+ * A 404 / NOT_FOUND from the provider (e.g. a decommissioned model id like
+ * `text-embedding-004` on the current `v1beta` route) fails CLOSED with one
+ * clear, model-named error instead of surfacing the raw SDK 404 on every call.
+ * The runtime treats a thrown probe as "this provider cannot embed" and advances
+ * to the next TEXT_EMBEDDING provider (or disables embedding generation), so a
+ * misconfigured model id can no longer produce an infinite 404 retry spam.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
@@ -98,9 +106,22 @@ export async function handleTextEmbedding(
   } catch (error) {
     // error-policy:J2 context-adding rethrow — never fabricate a vector; the
     // provider failure surfaces to the caller (#9324: throw, never fabricate).
-    logger.error(
-      `Error generating embedding: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    // Fail CLOSED on a 404 / NOT_FOUND with one clear, model-named error rather
+    // than propagating the raw SDK 404 on every subsequent call. This is the
+    // "invalid model id for the API version" case (e.g. text-embedding-004 on
+    // v1beta): retrying can never succeed, so surface an actionable message once
+    // and let the runtime advance to the next provider / disable embeddings
+    // instead of spamming 404s.
+    if (/\b404\b|NOT_FOUND|not found/i.test(message)) {
+      const failClosed = new Error(
+        `Google embedding model "${embeddingModelName}" is not available on the current API version (404 NOT_FOUND). ` +
+          `Set GOOGLE_EMBEDDING_MODEL to a supported id (e.g. gemini-embedding-001), or disable the Google embedding provider. Original error: ${message}`,
+      );
+      logger.error(`Error generating embedding: ${failClosed.message}`);
+      throw failClosed;
+    }
+    logger.error(`Error generating embedding: ${message}`);
     throw error instanceof Error ? error : new Error(String(error));
   }
 }

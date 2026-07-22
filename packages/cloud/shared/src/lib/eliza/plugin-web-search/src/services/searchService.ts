@@ -1,10 +1,8 @@
 // Wires hosted Eliza agent searchService behavior for cloud runtime services.
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import {
-  executeHostedGoogleSearch,
-  type HostedSearchResult,
-} from "../../../../services/google-search";
+import type { HostedSearchResult } from "../../../../services/google-search";
 import type { IWebSearchService, SearchOptions, SearchResponse } from "../types";
+import { executeKeylessMcpSearch } from "./keyless-search";
 
 function getGoogleSearchApiKey(runtime: IAgentRuntime): string | null {
   const candidates = [
@@ -56,20 +54,40 @@ export class WebSearchService extends Service implements IWebSearchService {
   }
 
   async initialize(runtime: IAgentRuntime): Promise<void> {
-    const apiKey = getGoogleSearchApiKey(runtime);
-    if (!apiKey) {
-      throw new Error("GOOGLE_API_KEY, GEMINI_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY is not set");
+    // No key required: without a Google/Gemini key the service serves the
+    // keyless MCP path (Parallel → Exa) instead of refusing to start, so a
+    // hosted agent always has working web search.
+    if (!getGoogleSearchApiKey(runtime)) {
+      logger.info(
+        { src: "webSearchService:initialize" },
+        "No Google search key configured; using keyless MCP search (Parallel → Exa)",
+      );
     }
   }
 
   get capabilityDescription(): string {
-    return "Hosted Google-grounded web search via Gemini. Returns grounded answers, citations, and search metadata.";
+    return "Web search: Google-grounded via Gemini when a key is configured, otherwise keyless MCP search (Parallel with Exa fallback).";
   }
 
   async stop(): Promise<void> {}
 
   async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
+    if (!getGoogleSearchApiKey(this.runtime)) {
+      const started = Date.now();
+      const keyless = await executeKeylessMcpSearch(query, options?.max_results ?? 5);
+      return {
+        answer: keyless.answer,
+        query,
+        responseTime: (Date.now() - started) / 1000,
+        images: [],
+        results: [],
+        provider: keyless.provider,
+      };
+    }
     try {
+      // Lazy import: the Google-grounded path drags the cloud services/db
+      // graph; keyless deployments never pay that module cost.
+      const { executeHostedGoogleSearch } = await import("../../../../services/google-search");
       const result = await executeHostedGoogleSearch(
         {
           query,
