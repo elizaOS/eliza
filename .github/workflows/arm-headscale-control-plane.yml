@@ -63,7 +63,7 @@ jobs:
       # var to keep working).
       CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Preflight
         run: |
