@@ -113,7 +113,10 @@ export class RotatingCredentialCompletionRunner implements CompletionRunner {
             providerId: "anthropic-subscription",
             sessionKey: `claude-benchmark:${context.requestId}`,
             strategy: "quota-aware",
-            ...(excluded.length > 0 ? { exclude: excluded } : {}),
+            // Snapshot the exclusions per request: this array is mutated
+            // (excluded.push) after each lease, so passing the live reference
+            // would let the broker observe accounts excluded on LATER attempts.
+            ...(excluded.length > 0 ? { exclude: [...excluded] } : {}),
           })
         : null;
       if (lease === null) break;
