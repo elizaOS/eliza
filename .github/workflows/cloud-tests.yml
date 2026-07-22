@@ -136,7 +136,9 @@ jobs:
         run: bun run test:cloud:integration
 
   e2e-tests:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # Fork PRs cannot read repository variables. Route them to a hosted runner
+    # so this real-Postgres lane never lands on a fleet worker without Docker.
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) || vars.HETZNER_FLEET_ONLINE == 'false') && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     needs: [lint-and-types]
     env:
