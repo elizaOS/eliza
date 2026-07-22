@@ -99,13 +99,21 @@ describe("nativeCloudHttpTransportForUrl selection", () => {
   ])(
     "does not classify the control-plane host %s as a dedicated agent",
     async (url) => {
+      capacitorHttpRequestMock.mockResolvedValueOnce({
+        status: 207,
+        headers: { "x-transport": "capacitor" },
+        data: '{"transport":"capacitor"}',
+      });
       const transport = nativeCloudHttpTransportForUrl(url);
-      await transport?.request(url, {
+      const response = await transport?.request(url, {
         method: "GET",
         headers: { Accept: "text/event-stream" },
       });
-      expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
-      expect(webFetchMock).not.toHaveBeenCalled();
+      expect(response?.status).toBe(207);
+      expect(response?.headers.get("x-transport")).toBe("capacitor");
+      await expect(response?.json()).resolves.toEqual({
+        transport: "capacitor",
+      });
     },
   );
 

@@ -6,10 +6,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  evaluateStagedIosSideloadBundle: vi.fn(() => ({
-    ok: true,
-    reason: "staged Cloud bundle is reachable",
-  })),
   existsSync: vi.fn(() => true),
   readFileSync: vi.fn(() => "{}"),
   spawnSync: vi.fn(),
@@ -25,10 +21,6 @@ vi.mock("node:fs", () => ({
     readFileSync: mocks.readFileSync,
   },
 }));
-vi.mock("../../app-core/scripts/lib/mobile-lane-stamp.mjs", () => ({
-  evaluateStagedIosSideloadBundle: mocks.evaluateStagedIosSideloadBundle,
-}));
-
 const originalArgv = [...process.argv];
 const originalEnv = { ...process.env };
 let importSequence = 0;
@@ -123,15 +115,25 @@ describe("iOS release preflight", () => {
   });
 
   it("checks a staged iOS sideload bundle without rebuilding", async () => {
+    mocks.readFileSync.mockImplementation((filePath: string) =>
+      filePath.endsWith("capacitor.config.json")
+        ? JSON.stringify({
+            plugins: {
+              Agent: { apiBase: "https://agent.elizacloud.ai" },
+            },
+          })
+        : JSON.stringify({ runtimeMode: "cloud" }),
+    );
     await expect(
       runPreflight(["--platform=ios", "--staged-only"]),
     ).resolves.toBeDefined();
-    expect(mocks.evaluateStagedIosSideloadBundle).toHaveBeenCalledWith({
-      agentConfig: null,
-      rendererManifest: {},
-    });
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("Staged bundle agent reachability"),
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "staged Agent.apiBase is configured (https://agent.elizacloud.ai)",
+      ),
     );
   });
 });

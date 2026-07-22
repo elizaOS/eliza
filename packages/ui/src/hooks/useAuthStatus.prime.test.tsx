@@ -113,6 +113,11 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     await waitFor(() =>
       expect(result.current.state.phase).toBe("authenticated"),
     );
+    expect(result.current.state).toMatchObject({
+      phase: "authenticated",
+      identity: { id: "owner" },
+      session: { id: "s1" },
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -134,7 +139,12 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     await waitFor(() =>
       expect(result.current.state.phase).toBe("authenticated"),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.state).toMatchObject({
+      phase: "authenticated",
+      identity: { id: "owner" },
+      session: { id: "s1" },
+    });
+    expect(fetchMock.mock.calls).toHaveLength(2);
   });
 
   it("overlaps: an activation while the prime is in flight joins it instead of racing a second probe", async () => {
