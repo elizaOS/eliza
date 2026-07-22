@@ -1121,7 +1121,10 @@ export function useGameModalMessages(options: {
   const previousCompanionCutoffTsRef = useRef(companionMessageCutoffTs);
   const previousGameModalVisibleMsgsRef = useRef<ConversationMessage[]>([]);
   const previousActiveConversationIdRef = useRef(activeConversationId);
-  const [companionNowMs, setCompanionNowMs] = useState(() => Date.now());
+  // Initialized to 0 (not Date.now()) to keep the render pass deterministic; the
+  // companion tick effect below seeds the real clock via setCompanionNowMs(Date.now())
+  // the moment a carryover exists, before companionNowMs is ever compared.
+  const [companionNowMs, setCompanionNowMs] = useState(0);
   const [companionCarryover, setCompanionCarryover] =
     useState<CompanionCarryoverState | null>(null);
   const docVisible = useDocumentVisibility();

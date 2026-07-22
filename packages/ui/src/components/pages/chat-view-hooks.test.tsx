@@ -677,6 +677,24 @@ describe("chat-view hook helpers", () => {
     expect(result.current.gameModalCarryoverOpacity).toBe(0);
   });
 
+  it("renders a deterministic initial companion clock (no render-time Date.now)", () => {
+    // companionNowMs seeds to 0, not Date.now(), so the first render is identical
+    // regardless of wall clock. With no carryover the opacity is a stable 0.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2031-01-01T00:00:00Z"));
+    const { result } = renderHook(() =>
+      useGameModalMessages({
+        activeConversationId: "conversation-1",
+        companionMessageCutoffTs: 0,
+        isGameModal: true,
+        visibleMsgs: [message("only", 5)],
+      }),
+    );
+    expect(result.current.companionCarryover).toBeNull();
+    expect(result.current.gameModalCarryoverOpacity).toBe(0);
+    vi.useRealTimers();
+  });
+
   it("carries prior messages when the companion cutoff advances", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-12T00:00:00Z"));
