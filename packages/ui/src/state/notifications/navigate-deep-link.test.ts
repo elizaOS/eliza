@@ -64,8 +64,12 @@ describe("navigateDeepLink", () => {
     const evt = dispatchSpy.mock.calls
       .map((c: unknown[]) => c[0])
       .find((e: unknown): e is CustomEvent => e instanceof CustomEvent);
-    expect(evt?.type).toBe("eliza:navigate:view");
-    expect((evt?.detail as { viewId?: string }).viewId).toBe("apps");
+    expect(evt).toBeDefined();
+    if (!evt) {
+      throw new Error("Expected an in-app navigation event");
+    }
+    expect(evt.type).toBe("eliza:navigate:view");
+    expect((evt.detail as { viewId?: string }).viewId).toBe("apps");
     expect(openSpy).not.toHaveBeenCalled();
   });
 
@@ -87,7 +91,11 @@ describe("navigateDeepLink", () => {
         (e: unknown): e is CustomEvent =>
           e instanceof CustomEvent && e.type === "eliza:chat:prefill",
       );
-    expect((evt?.detail as { text?: string }).text).toBe("Connect my calendar");
+    expect(evt).toBeDefined();
+    if (!evt) {
+      throw new Error("Expected a chat prefill event");
+    }
+    expect((evt.detail as { text?: string }).text).toBe("Connect my calendar");
     const types = dispatchSpy.mock.calls
       .map((c: unknown[]) => c[0])
       .filter((e: unknown): e is CustomEvent => e instanceof CustomEvent)

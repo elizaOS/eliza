@@ -1489,13 +1489,17 @@ describe("installPromptOptimizations telemetry", () => {
 
     expect(seenPayloads).toHaveLength(1);
     expect(summarizerCalls).toBe(1);
-    expect(seenPayloads[0]?.tools).toEqual([{ name: "HANDLE_RESPONSE" }]);
-    expect(seenPayloads[0]?.toolChoice).toBe("required");
-    expect(seenPayloads[0]?.messages).not.toBe(originalMessages);
-    expect((seenPayloads[0]?.messages as unknown[]).length).toBeLessThan(
+    const [seenPayload] = seenPayloads;
+    if (!seenPayload) {
+      throw new Error("Expected the compacted model payload to be captured");
+    }
+    expect(seenPayload.tools).toEqual([{ name: "HANDLE_RESPONSE" }]);
+    expect(seenPayload.toolChoice).toBe("required");
+    expect(seenPayload.messages).not.toBe(originalMessages);
+    expect((seenPayload.messages as unknown[]).length).toBeLessThan(
       originalMessages.length,
     );
-    const providerOptions = seenPayloads[0]?.providerOptions as Record<
+    const providerOptions = seenPayload.providerOptions as Record<
       string,
       unknown
     >;
@@ -1561,9 +1565,13 @@ describe("installPromptOptimizations telemetry", () => {
     );
     expect(stored).toContain("LIME-4421");
     const room = rooms.get(roomId);
+    expect(room).toBeDefined();
+    if (!room) {
+      throw new Error("Expected the compacted conversation room to exist");
+    }
     expect(
       (
-        (room?.metadata as Record<string, unknown>)
+        (room.metadata as Record<string, unknown>)
           .conversationCompaction as Record<string, unknown>
       ).priorLedger,
     ).toContain("LIME-4421");

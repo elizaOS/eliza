@@ -318,8 +318,10 @@ describe("SETTINGS action: list", () => {
 	it("lists writable sections with how each is written", async () => {
 		const { result } = await invoke({ action: "list" });
 		expect(result?.success).toBe(true);
+		expect(result).toBeDefined();
+		if (!result) throw new Error("Expected SETTINGS list result");
 		const sections = (
-			result?.data as { sections: Array<Record<string, unknown>> }
+			result.data as { sections: Array<Record<string, unknown>> }
 		).sections;
 		expect(sections).toHaveLength(SETTINGS_SECTION_META.length);
 		const model = sections.find((s) => s.id === "ai-model");
@@ -1000,22 +1002,22 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(result?.success).toBe(true);
 	});
 
-	it.each([
-		"computerUse",
-		"computer-use",
-	])("accepts %s as the computer-use capability key", async (key) => {
-		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result } = await invoke(
-			{ action: "set", section: "capabilities", key, value: "off" },
-			routeFetch,
-		);
-		expect(routeFetch).toHaveBeenCalledWith({
-			method: "PUT",
-			path: "/api/config",
-			body: { ui: { capabilities: { computerUse: false } } },
-		});
-		expect(result?.success).toBe(true);
-	});
+	it.each(["computerUse", "computer-use"])(
+		"accepts %s as the computer-use capability key",
+		async (key) => {
+			const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+			const { result } = await invoke(
+				{ action: "set", section: "capabilities", key, value: "off" },
+				routeFetch,
+			);
+			expect(routeFetch).toHaveBeenCalledWith({
+				method: "PUT",
+				path: "/api/config",
+				body: { ui: { capabilities: { computerUse: false } } },
+			});
+			expect(result?.success).toBe(true);
+		},
+	);
 
 	it("updates one wallet RPC provider through the wallet config route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {

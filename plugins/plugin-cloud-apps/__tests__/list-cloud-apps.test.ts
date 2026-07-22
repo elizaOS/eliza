@@ -8,6 +8,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setListApps,
   unkeyedRuntime,
@@ -84,7 +85,10 @@ describe("LIST_CLOUD_APPS", () => {
       expect(reply).toContain("deployed");
       // userFacingText mirrors the reply for the planner terminal fallback.
       expect(result?.userFacingText).toBe(reply);
-      expect((result?.data as { count: number }).count).toBe(2);
+      expect(
+        (requireDefined(result, "action result").data as { count: number })
+          .count,
+      ).toBe(2);
     });
 
     it("prefers production_url over app_url when both exist", async () => {
@@ -126,7 +130,10 @@ describe("LIST_CLOUD_APPS", () => {
       );
 
       expect(result?.success).toBe(true);
-      expect((result?.data as { count: number }).count).toBe(0);
+      expect(
+        (requireDefined(result, "action result").data as { count: number })
+          .count,
+      ).toBe(0);
       expect(cb.calls[0]?.text).toContain("haven't created any apps");
     });
 
@@ -141,7 +148,10 @@ describe("LIST_CLOUD_APPS", () => {
       );
 
       expect(result?.success).toBe(false);
-      expect((result?.data as { reason: string }).reason).toBe("no_key");
+      expect(
+        (requireDefined(result, "action result").data as { reason: string })
+          .reason,
+      ).toBe("no_key");
       expect(cb.calls[0]?.text).toContain("no Cloud API key");
     });
 
@@ -158,7 +168,10 @@ describe("LIST_CLOUD_APPS", () => {
       );
 
       expect(result?.success).toBe(false);
-      expect((result?.data as { reason: string }).reason).toBe("error");
+      expect(
+        (requireDefined(result, "action result").data as { reason: string })
+          .reason,
+      ).toBe("error");
       expect(cb.calls[0]?.text).toContain("couldn't fetch");
     });
   });

@@ -509,7 +509,12 @@ describe("PAYMENT", () => {
 
 		expect(result.success).toBe(true);
 		expect(cancel).toHaveBeenCalledWith("pay_1", "user changed mind");
-		expect((result.data?.envelope as PaymentRequestEnvelope).status).toBe(
+		const responseEnvelope = result.data?.envelope;
+		expect(responseEnvelope).toBeDefined();
+		if (!responseEnvelope) {
+			throw new Error("Expected the canceled payment-request envelope");
+		}
+		expect((responseEnvelope as PaymentRequestEnvelope).status).toBe(
 			"canceled",
 		);
 	});

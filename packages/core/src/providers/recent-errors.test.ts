@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReportedError } from "../errors";
 import type { IAgentRuntime, Memory, State } from "../types";
-import { recentErrorsProvider } from "./recent-errors";
+import { QUIET_ERROR_CODES, recentErrorsProvider } from "./recent-errors";
 
 function runtimeWith(entries: ReportedError[]): IAgentRuntime {
 	return { getRecentReportedErrors: () => entries } as unknown as IAgentRuntime;
@@ -95,5 +95,64 @@ describe("RECENT_ERRORS provider", () => {
 			state,
 		);
 		expect(result.text).toBe("");
+	});
+
+	it("never narrates internal scheduler-plumbing codes into chat (SHADOW-ACCOUNT-DEBUG)", async () => {
+		const now = Date.now();
+		// The exact codes that spammed Shadow's chat 9x.
+		const entries: ReportedError[] = [
+			{
+				scope: "TaskService.timer",
+				code: "TASK_TICK_FAILED",
+				message: "1 scheduled task failure(s)",
+				at: now - 100,
+			},
+			{
+				scope: "validateTasks",
+				code: "TASK_WORKER_MISSING",
+				message: "No worker registered for task X",
+				at: now - 90,
+			},
+		];
+		const result = await recentErrorsProvider.get(
+			runtimeWith(entries),
+			message,
+			state,
+		);
+		expect(result.text).toBe("");
+		expect(result.data?.recentErrors).toEqual([]);
+	});
+
+	it("still surfaces a genuinely actionable error even when quiet codes are present", async () => {
+		const now = Date.now();
+		const entries: ReportedError[] = [
+			{
+				scope: "TaskService.timer",
+				code: "TASK_TICK_FAILED",
+				message: "noise",
+				at: now - 100,
+			},
+			{
+				scope: "WalletPlugin",
+				code: "WALLET_RPC_DOWN",
+				message: "upstream RPC unreachable",
+				at: now - 50,
+			},
+		];
+		const result = await recentErrorsProvider.get(
+			runtimeWith(entries),
+			message,
+			state,
+		);
+		const surfaced = result.data?.recentErrors as ReportedError[];
+		expect(surfaced).toHaveLength(1);
+		expect(surfaced[0].code).toBe("WALLET_RPC_DOWN");
+		expect(result.text).not.toContain("TASK_TICK_FAILED");
+	});
+
+	it("exports the quiet-code set with the scheduler plumbing codes", () => {
+		expect(QUIET_ERROR_CODES.has("TASK_TICK_FAILED")).toBe(true);
+		expect(QUIET_ERROR_CODES.has("TASK_WORKER_MISSING")).toBe(true);
+		expect(QUIET_ERROR_CODES.has("WALLET_RPC_DOWN")).toBe(false);
 	});
 });

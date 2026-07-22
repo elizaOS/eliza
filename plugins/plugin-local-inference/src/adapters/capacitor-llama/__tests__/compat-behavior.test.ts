@@ -119,20 +119,17 @@ describe("local-ai compat adapter behavior", () => {
 		mocks.initCapacitorLlama.mockImplementation(async () => makeCtx());
 	});
 
-	it.each([
-		null,
-		"",
-		"   ",
-		{ text: "" },
-		{ text: "   " },
-	])("rejects empty embedding input %# instead of returning a fake vector", async (params) => {
-		await expect(
-			localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(
-				makeRuntime(),
-				params as never,
-			),
-		).rejects.toThrow("Embedding text must be a non-empty string");
-	});
+	it.each([null, "", "   ", { text: "" }, { text: "   " }])(
+		"rejects empty embedding input %# instead of returning a fake vector",
+		async (params) => {
+			await expect(
+				localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(
+					makeRuntime(),
+					params as never,
+				),
+			).rejects.toThrow("Embedding text must be a non-empty string");
+		},
+	);
 
 	it("routes non-empty embedding input to the real embedding context", async () => {
 		const result = await localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(

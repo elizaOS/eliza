@@ -289,15 +289,16 @@ describe("view switching — VIEWS action resolver", () => {
 			["show the logs view", "logs"],
 		];
 
-		it.each(
-			ACTIVE_CASES,
-		)('"%s" navigates to view "%s"', async (phrase, expectedId) => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, phrase);
-			expect(result?.success).toBe(true);
-			expect(result?.values?.viewId).toBe(expectedId);
-			expect(navigated).toEqual([expectedId]);
-		});
+		it.each(ACTIVE_CASES)(
+			'"%s" navigates to view "%s"',
+			async (phrase, expectedId) => {
+				const { navigated } = installNavigateCapture();
+				const { result } = await runShow(REGISTRY, phrase);
+				expect(result?.success).toBe(true);
+				expect(result?.values?.viewId).toBe(expectedId);
+				expect(navigated).toEqual([expectedId]);
+			},
+		);
 
 		it("dispatches navigate to the exact /api/views/<id>/navigate endpoint", async () => {
 			installNavigateCapture();
@@ -330,18 +331,19 @@ describe("view switching — VIEWS action resolver", () => {
 			["how much money do I have", "wallet"],
 		];
 
-		it.each(
-			PASSIVE_PLANNER_CASES,
-		)('planner-routed intent "%s" opens view "%s"', async (phrase, viewId) => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, phrase, {
-				action: "show",
-				view: viewId,
-			});
-			expect(result?.success).toBe(true);
-			expect(result?.values?.viewId).toBe(viewId);
-			expect(navigated).toEqual([viewId]);
-		});
+		it.each(PASSIVE_PLANNER_CASES)(
+			'planner-routed intent "%s" opens view "%s"',
+			async (phrase, viewId) => {
+				const { navigated } = installNavigateCapture();
+				const { result } = await runShow(REGISTRY, phrase, {
+					action: "show",
+					view: viewId,
+				});
+				expect(result?.success).toBe(true);
+				expect(result?.values?.viewId).toBe(viewId);
+				expect(navigated).toEqual([viewId]);
+			},
+		);
 
 		// The deterministic intent->view fallback (resolveIntentView) routes the
 		// spec's passive examples even when the planner does NOT pre-resolve the
@@ -384,17 +386,18 @@ describe("view switching — VIEWS action resolver", () => {
 			["muéstrame mi calendario", "wallet", "calendar"],
 			["我的钱包", "calendar", "wallet"],
 		];
-		it.each(
-			HALLUCINATION_CASES,
-		)('"%s" + bogus view param "%s" still navigates to "%s"', async (phrase, bogusView, expected) => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, phrase, {
-				action: "show",
-				view: bogusView,
-			});
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual([expected]);
-		});
+		it.each(HALLUCINATION_CASES)(
+			'"%s" + bogus view param "%s" still navigates to "%s"',
+			async (phrase, bogusView, expected) => {
+				const { navigated } = installNavigateCapture();
+				const { result } = await runShow(REGISTRY, phrase, {
+					action: "show",
+					view: bogusView,
+				});
+				expect(result?.success).toBe(true);
+				expect(navigated).toEqual([expected]);
+			},
+		);
 
 		// But when the intent maps to a surface this deployment does NOT have, the
 		// planner's explicit, registered target is honored (no over-correction).
@@ -598,21 +601,24 @@ describe("view switching — VIEWS action resolver", () => {
 			["delete", { action: "delete", view: "wallet" }, "remove wallet"],
 			["create", { action: "create" }, "make me a habit tracker"],
 			["edit", { action: "edit", view: "wallet" }, "change the wallet color"],
-		])("owner-gates %s supplied via planner options (text has no view noun)", async (_label, options, text) => {
-			const owner = vi.fn(async () => false);
-			const action = createViewsAction({
-				client: clientFor(REGISTRY),
-				hasOwnerAccess: owner,
-			});
-			const ok = await action.validate(
-				{ agentId: "agent-1" } as never,
-				message(text) as never,
-				undefined as never,
-				options as never,
-			);
-			expect(ok).toBe(false);
-			expect(owner).toHaveBeenCalled();
-		});
+		])(
+			"owner-gates %s supplied via planner options (text has no view noun)",
+			async (_label, options, text) => {
+				const owner = vi.fn(async () => false);
+				const action = createViewsAction({
+					client: clientFor(REGISTRY),
+					hasOwnerAccess: owner,
+				});
+				const ok = await action.validate(
+					{ agentId: "agent-1" } as never,
+					message(text) as never,
+					undefined as never,
+					options as never,
+				);
+				expect(ok).toBe(false);
+				expect(owner).toHaveBeenCalled();
+			},
+		);
 
 		it("still allows read modes supplied via planner options for any user", async () => {
 			const owner = vi.fn(async () => false);
@@ -650,19 +656,22 @@ describe("view switching — VIEWS action resolver", () => {
 			["slack", { action: "split", view: "wallet" }, "split the wallet view"],
 			["whatsapp", { action: "tile" }, "tile my views"],
 			["x", { action: "manager" }, "show the view manager"],
-		])("gates desktop-only mode off the %s connector (no view surface)", async (source, options, text) => {
-			const action = createViewsAction({
-				client: clientFor(REGISTRY),
-				hasOwnerAccess: vi.fn(async () => true),
-			});
-			const ok = await action.validate(
-				{ agentId: "agent-1" } as never,
-				sourcedMessage(text, source) as never,
-				undefined as never,
-				options as never,
-			);
-			expect(ok).toBe(false);
-		});
+		])(
+			"gates desktop-only mode off the %s connector (no view surface)",
+			async (source, options, text) => {
+				const action = createViewsAction({
+					client: clientFor(REGISTRY),
+					hasOwnerAccess: vi.fn(async () => true),
+				});
+				const ok = await action.validate(
+					{ agentId: "agent-1" } as never,
+					sourcedMessage(text, source) as never,
+					undefined as never,
+					options as never,
+				);
+				expect(ok).toBe(false);
+			},
+		);
 
 		it("keeps text-producing read modes available on a text connector", async () => {
 			const action = createViewsAction({
@@ -790,27 +799,25 @@ describe("view switching — VIEWS action resolver", () => {
 		// source="client_chat" (a view-capable local surface), so the relay's
 		// originSource is view-capable and desktop navigation stays available — the
 		// user is in the app and CAN see views. Only text connectors are restricted.
-		it.each([
-			"client_chat",
-			"app",
-			"chat",
-			"user_chat",
-		])("keeps desktop navigation for a sub-agent relay that originated in the app (%s)", async (originSource) => {
-			const action = createViewsAction({
-				client: clientFor(REGISTRY),
-				hasOwnerAccess: vi.fn(async () => true),
-			});
-			const ok = await action.validate(
-				{ agentId: "agent-1" } as never,
-				relayMessage("show my wallet", {
-					subAgent: true,
-					originSource,
-				}) as never,
-				undefined as never,
-				{ action: "show", view: "wallet" } as never,
-			);
-			expect(ok).toBe(true);
-		});
+		it.each(["client_chat", "app", "chat", "user_chat"])(
+			"keeps desktop navigation for a sub-agent relay that originated in the app (%s)",
+			async (originSource) => {
+				const action = createViewsAction({
+					client: clientFor(REGISTRY),
+					hasOwnerAccess: vi.fn(async () => true),
+				});
+				const ok = await action.validate(
+					{ agentId: "agent-1" } as never,
+					relayMessage("show my wallet", {
+						subAgent: true,
+						originSource,
+					}) as never,
+					undefined as never,
+					{ action: "show", view: "wallet" } as never,
+				);
+				expect(ok).toBe(true);
+			},
+		);
 
 		// The runtime composes the planner's action surface by calling validate
 		// WITHOUT planner options: the mode is inferable from the message text
@@ -832,25 +839,23 @@ describe("view switching — VIEWS action resolver", () => {
 			};
 		}
 
-		it.each([
-			"discord",
-			"telegram",
-			"slack",
-			"whatsapp",
-		])("keeps VIEWS off the planner surface for a no-view-intent turn on %s (surface-composition validate: no options)", async (source) => {
-			const action = createViewsAction({
-				client: clientFor(REGISTRY),
-				hasOwnerAccess: vi.fn(async () => true),
-			});
-			const ok = await action.validate(
-				runtimeWithTasks([]) as never,
-				sourcedMessage(
-					"lol did you catch what happened on the server last night",
-					source,
-				) as never,
-			);
-			expect(ok).toBe(false);
-		});
+		it.each(["discord", "telegram", "slack", "whatsapp"])(
+			"keeps VIEWS off the planner surface for a no-view-intent turn on %s (surface-composition validate: no options)",
+			async (source) => {
+				const action = createViewsAction({
+					client: clientFor(REGISTRY),
+					hasOwnerAccess: vi.fn(async () => true),
+				});
+				const ok = await action.validate(
+					runtimeWithTasks([]) as never,
+					sourcedMessage(
+						"lol did you catch what happened on the server last night",
+						source,
+					) as never,
+				);
+				expect(ok).toBe(false);
+			},
+		);
 
 		it("still exposes VIEWS for a no-view-intent turn on a local view-capable surface", async () => {
 			const action = createViewsAction({
@@ -1081,25 +1086,23 @@ describe("resolveIntentView — expanded surfaces + multilingual", () => {
 	// the shared CURATED_MULTILINGUAL fixture so this block can never drift from
 	// the canonical view-matrix data. Each curated phrase must resolve to its
 	// view id under the deterministic intent fallback.
-	describe.each([
-		"ja",
-		"ko",
-		"vi",
-		"tl",
-		"pt",
-	] as const)("%s (from CURATED_MULTILINGUAL fixture)", (lang) => {
-		const cases = CURATED_MULTILINGUAL.filter((c) => c.lang === lang);
+	describe.each(["ja", "ko", "vi", "tl", "pt"] as const)(
+		"%s (from CURATED_MULTILINGUAL fixture)",
+		(lang) => {
+			const cases = CURATED_MULTILINGUAL.filter((c) => c.lang === lang);
 
-		it("has curated coverage for this language", () => {
-			expect(cases.length).toBeGreaterThan(0);
-		});
+			it("has curated coverage for this language", () => {
+				expect(cases.length).toBeGreaterThan(0);
+			});
 
-		it.each(
-			cases.map((c) => [c.phrase, c.viewId] as const),
-		)('"%s" -> %s', (phrase, viewId) => {
-			expect(resolveIntentView(phrase)).toBe(viewId);
-		});
-	});
+			it.each(cases.map((c) => [c.phrase, c.viewId] as const))(
+				'"%s" -> %s',
+				(phrase, viewId) => {
+					expect(resolveIntentView(phrase)).toBe(viewId);
+				},
+			);
+		},
+	);
 
 	it("returns null for non-navigational text (no false routing)", () => {
 		expect(resolveIntentView("thanks, that's all for now")).toBeNull();

@@ -10,6 +10,7 @@
     "build": "tsc6 --noCheck -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
+    "lint:check": "biome check src/",
     "test": "vitest run --config ./vitest.config.ts"
   },
   "exports": {
@@ -28,7 +29,7 @@
     "@elizaos/core": "latest"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.4",
     "@types/node": "^25.0.6",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",

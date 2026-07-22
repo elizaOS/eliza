@@ -37,41 +37,49 @@ describe("Google Gmail mock fault injection", () => {
     ["server_error", 500, "INTERNAL"],
     ["auth_expired", 401, "UNAUTHENTICATED"],
     ["rate_limit", 429, "RESOURCE_EXHAUSTED"],
-  ] as const)("returns a typed %s failure for configured Gmail list requests", async (mode, expectedStatus, expectedGoogleStatus) => {
-    activeMocks = await startMocks({ envs: ["google"] });
-    const baseUrl = activeMocks.baseUrls.google;
+  ] as const)(
+    "returns a typed %s failure for configured Gmail list requests",
+    async (mode, expectedStatus, expectedGoogleStatus) => {
+      activeMocks = await startMocks({ envs: ["google"] });
+      const baseUrl = activeMocks.baseUrls.google;
 
-    const configured = await jsonRequest(
-      `${baseUrl}/__mock/google/gmail/fault`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          mode,
-          method: "GET",
-          path: "/gmail/v1/users/me/messages",
+      const configured = await jsonRequest(
+        `${baseUrl}/__mock/google/gmail/fault`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            mode,
+            method: "GET",
+            path: "/gmail/v1/users/me/messages",
+          }),
+        },
+      );
+      expect(configured.response.status).toBe(200);
+
+      const failed = await jsonRequest(`${baseUrl}/gmail/v1/users/me/messages`);
+      expect(failed.response.status).toBe(expectedStatus);
+      expect(errorBody(failed.body)).toEqual(
+        expect.objectContaining({
+          code: expectedStatus,
+          status: expectedGoogleStatus,
         }),
-      },
-    );
-    expect(configured.response.status).toBe(200);
+      );
 
-    const failed = await jsonRequest(`${baseUrl}/gmail/v1/users/me/messages`);
-    expect(failed.response.status).toBe(expectedStatus);
-    expect(errorBody(failed.body)).toEqual(
-      expect.objectContaining({
-        code: expectedStatus,
-        status: expectedGoogleStatus,
-      }),
-    );
+      const cleared = await jsonRequest(
+        `${baseUrl}/__mock/google/gmail/fault`,
+        {
+          method: "DELETE",
+        },
+      );
+      expect(cleared.response.status).toBe(200);
 
-    const cleared = await jsonRequest(`${baseUrl}/__mock/google/gmail/fault`, {
-      method: "DELETE",
-    });
-    expect(cleared.response.status).toBe(200);
-
-    const healthy = await jsonRequest(`${baseUrl}/gmail/v1/users/me/messages`);
-    expect(healthy.response.status).toBe(200);
-    expect(Array.isArray(healthy.body.messages)).toBe(true);
-  });
+      const healthy = await jsonRequest(
+        `${baseUrl}/gmail/v1/users/me/messages`,
+      );
+      expect(healthy.response.status).toBe(200);
+      expect(Array.isArray(healthy.body.messages)).toBe(true);
+    },
+  );
 
   it("honors the Mockoon-compatible Gmail fault header", async () => {
     activeMocks = await startMocks({ envs: ["google"] });

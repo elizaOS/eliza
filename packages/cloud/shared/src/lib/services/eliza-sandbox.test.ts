@@ -1103,7 +1103,10 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
         (c) => (c[1] as { status?: string }).status === "error",
       );
       expect(errorUpdate).toBeDefined();
-      expect((errorUpdate?.[1] as { error_message?: string }).error_message).toContain(
+      if (!errorUpdate) {
+        throw new Error("Expected the empty-node attribution error update");
+      }
+      expect((errorUpdate[1] as { error_message?: string }).error_message).toContain(
         "provision attribution guard:",
       );
 
@@ -1134,7 +1137,11 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
       const errorUpdate = updateSpy.mock.calls.find(
         (c) => (c[1] as { status?: string }).status === "error",
       );
-      expect((errorUpdate?.[1] as { error_message?: string }).error_message).toContain(
+      expect(errorUpdate).toBeDefined();
+      if (!errorUpdate) {
+        throw new Error("Expected the incomplete-metadata attribution error update");
+      }
+      expect((errorUpdate[1] as { error_message?: string }).error_message).toContain(
         "provision attribution guard:",
       );
       expect(create).toHaveBeenCalledTimes(1);
@@ -1161,7 +1168,10 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
         (c) => (c[1] as { status?: string }).status === "running",
       );
       expect(runningUpdate).toBeDefined();
-      expect((runningUpdate?.[1] as { node_id?: string }).node_id).toBe("node-1");
+      if (!runningUpdate) {
+        throw new Error("Expected the running sandbox update");
+      }
+      expect((runningUpdate[1] as { node_id?: string }).node_id).toBe("node-1");
     },
   );
 });
@@ -3903,7 +3913,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
         ([, data]) => (data as { status?: string }).status === "error",
       );
       expect(errorWrite).toBeDefined();
-      expect(String((errorWrite?.[1] as { error_message?: string }).error_message)).toContain(
+      if (!errorWrite) {
+        throw new Error("Expected the failed-provision error write");
+      }
+      expect(String((errorWrite[1] as { error_message?: string }).error_message)).toContain(
         "provision attribution guard:",
       );
     } finally {
@@ -3977,7 +3990,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
         ([, data]) => (data as { status?: string }).status === "running",
       );
       expect(runningWrite).toBeDefined();
-      expect((runningWrite?.[1] as { sandbox_id?: string }).sandbox_id).toBe("sandbox-blue-1");
+      if (!runningWrite) {
+        throw new Error("Expected the adopted sandbox running write");
+      }
+      expect((runningWrite[1] as { sandbox_id?: string }).sandbox_id).toBe("sandbox-blue-1");
     } finally {
       findSpy.mockRestore();
       lockSpy.mockRestore();
@@ -4062,7 +4078,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
         ([, data]) => (data as { status?: string }).status === "error",
       );
       expect(errorWrite).toBeDefined();
-      expect(String((errorWrite?.[1] as { error_message?: string }).error_message)).toContain(
+      if (!errorWrite) {
+        throw new Error("Expected the invalid-adoption error write");
+      }
+      expect(String((errorWrite[1] as { error_message?: string }).error_message)).toContain(
         "provision attribution guard:",
       );
     } finally {
@@ -5167,7 +5186,11 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       expect(updateSpy).toHaveBeenCalledWith(existing.id, {
         environment_vars: { MY_FLAG: "on" },
       });
-      expect((result?.environment_vars as Record<string, string>).MY_FLAG).toBe("on");
+      expect(result).toBeDefined();
+      if (!result) {
+        throw new Error("Expected the updated sandbox environment row");
+      }
+      expect((result.environment_vars as Record<string, string>).MY_FLAG).toBe("on");
     } finally {
       findSpy.mockRestore();
       updateSpy.mockRestore();

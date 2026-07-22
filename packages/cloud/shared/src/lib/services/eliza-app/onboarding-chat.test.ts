@@ -391,15 +391,18 @@ describe("runOnboardingChat", () => {
         userId: "user-1",
       });
       expect(rememberRequests).toHaveLength(1);
-      expect(rememberRequests[0]?.url).toBe("https://agent-1.example/api/memory/remember");
-      expect(rememberRequests[0]?.authorization).toBe("Bearer agent-token");
-      expect((rememberRequests[0]?.body as { text: string }).text).toContain(
+      const rememberRequest = rememberRequests[0];
+      expect(rememberRequest).toBeDefined();
+      if (!rememberRequest) {
+        throw new Error("Expected the onboarding memory request");
+      }
+      expect(rememberRequest.url).toBe("https://agent-1.example/api/memory/remember");
+      expect(rememberRequest.authorization).toBe("Bearer agent-token");
+      expect((rememberRequest.body as { text: string }).text).toContain(
         "Onboarding conversation transcript copied from Eliza Cloud.",
       );
-      expect((rememberRequests[0]?.body as { text: string }).text).toContain(
-        "User: My name is Sam",
-      );
-      expect((rememberRequests[0]?.body as { text: string }).text).toContain(
+      expect((rememberRequest.body as { text: string }).text).toContain("User: My name is Sam");
+      expect((rememberRequest.body as { text: string }).text).toContain(
         "User's preferred name: Sam",
       );
 
