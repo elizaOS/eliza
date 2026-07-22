@@ -2,16 +2,20 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, statfs } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  type GatewayReadinessDocument,
   inspectBrokerReadiness,
+  MinimumFreeSpaceGuard,
+  parseGatewayCliArguments,
   runGatewayCli,
   writeAuditJsonl,
+  writeReadinessFile,
 } from "../src/cli.js";
 import {
   buildClaudeCodeManagedEnvironment,
@@ -117,6 +121,156 @@ describe("gateway CLI", () => {
         tool_schema_sha256_by_name: { weather: "e".repeat(64) },
         queue_wait_ms: 12,
         service_ms: 34,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("parses every lifecycle option and rejects unsafe artifact layouts", () => {
+    const root = join(tmpdir(), "claude-gateway-cli-arguments");
+    const readyFile = join(root, "cohort.ready.json");
+    const auditFile = join(root, "cohort.audit.jsonl");
+    const replayFile = join(root, "cohort.replay.jsonl");
+    const hmacKeyFile = join(root, "cohort.hmac-key");
+    const contentContractFile = join(root, "content-contract.json");
+
+    expect(
+      parseGatewayCliArguments([
+        "--",
+        "--ready-file",
+        readyFile,
+        "--audit-file",
+        auditFile,
+        "--content-contract-file",
+        contentContractFile,
+        "--replay-file",
+        replayFile,
+        "--hmac-key-file",
+        hmacKeyFile,
+        "--benchmark-namespace",
+        "cohort-7",
+        "--storage-root",
+        root,
+        "--minimum-free-bytes",
+        "4096",
+      ]),
+    ).toEqual({
+      readyFile,
+      auditFile,
+      contentContractFile,
+      replayFile,
+      hmacKeyFile,
+      benchmarkNamespace: "cohort-7",
+      storageRoot: root,
+      minimumFreeBytes: 4096,
+    });
+
+    const required = ["--ready-file", readyFile, "--audit-file", auditFile];
+    const invalid: Array<{ argv: string[]; message: string }> = [
+      {
+        argv: ["--ready-file"],
+        message: "Gateway file flags require absolute paths.",
+      },
+      {
+        argv: ["--unsupported", root, ...required],
+        message: "An unsupported gateway lifecycle flag was supplied.",
+      },
+      {
+        argv: ["--ready-file", readyFile, "--audit-file", readyFile],
+        message:
+          "Distinct absolute --ready-file and --audit-file paths are required.",
+      },
+      {
+        argv: [...required, "--replay-file", readyFile],
+        message:
+          "Gateway readiness, audit, replay, and HMAC-key paths must be distinct.",
+      },
+      {
+        argv: [...required, "--content-contract-file", auditFile],
+        message:
+          "The content contract path must be distinct from gateway artifacts.",
+      },
+      {
+        argv: [...required, "--minimum-free-bytes", "-1"],
+        message: "--minimum-free-bytes must be a non-negative safe integer.",
+      },
+      {
+        argv: ["--ready-file", "relative.json", "--audit-file", auditFile],
+        message: "--ready-file must be an absolute path.",
+      },
+    ];
+    for (const scenario of invalid) {
+      expect(() => parseGatewayCliArguments(scenario.argv)).toThrowError(
+        scenario.message,
+      );
+    }
+  });
+
+  it("atomically publishes the complete readiness contract as private JSON", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "claude-gateway-ready-"));
+    const readyFile = join(directory, "cohort.ready.json");
+    const readiness: GatewayReadinessDocument = {
+      schema_version: 1,
+      status: "ready",
+      pid: 42,
+      origin: "http://127.0.0.1:43123",
+      base_url: "http://127.0.0.1:43123/v1",
+      health_url: "http://127.0.0.1:43123/health",
+      transport: {
+        provider: "claude-agent-sdk",
+        sdk_version: "0.3.200",
+        credential_policy: "claude-code-oauth-only",
+        fresh_session_per_request: true,
+        tool_execution: "capture-only",
+        response_modes: ["json", "sse"],
+      },
+      harness_tokens: {
+        eliza: "eliza-private-token",
+        hermes: "hermes-private-token",
+        openclaw: "openclaw-private-token",
+      },
+      credential_readiness: {
+        linked_pool_configured: true,
+        linked_pool_selectable: true,
+        ambient_keychain_required: false,
+      },
+    };
+
+    try {
+      await writeReadinessFile(readyFile, readiness);
+
+      expect(statMode(await stat(readyFile))).toBe(PRIVATE_MODE);
+      expect(await readFile(readyFile, "utf8")).toBe(
+        `${JSON.stringify(readiness)}\n`,
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("checks the real filesystem reserve and fails closed below it", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "claude-gateway-storage-"));
+
+    try {
+      await expect(
+        new MinimumFreeSpaceGuard(
+          join(directory, "not-created"),
+          0,
+        ).assertReady(),
+      ).resolves.toBeUndefined();
+      const fileSystem = await statfs(directory);
+      const availableBytes =
+        BigInt(fileSystem.bavail) * BigInt(fileSystem.bsize);
+      expect(availableBytes).toBeLessThan(BigInt(Number.MAX_SAFE_INTEGER));
+      await expect(
+        new MinimumFreeSpaceGuard(
+          directory,
+          Number(availableBytes) + 1,
+        ).assertReady(),
+      ).rejects.toMatchObject({
+        code: "insufficient_storage",
+        statusCode: 507,
       });
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -267,6 +421,49 @@ describe("gateway CLI", () => {
       linkedPoolConfigured: true,
       linkedPoolSelectable: false,
     });
+  });
+
+  it("preflights and releases one selectable subscription lease", async () => {
+    const leaseRequests: Array<Parameters<CredentialLeaseBroker["lease"]>[0]> =
+      [];
+    const releasedLeaseIds: string[] = [];
+    const broker: CredentialLeaseBroker = {
+      async lease(request) {
+        leaseRequests.push(request);
+        return {
+          leaseId: "lease-7",
+          providerId: "anthropic-subscription",
+          accountId: "account-7",
+          accessToken: "private-token",
+        };
+      },
+      report: async () => ({ ok: true }),
+      release({ leaseId }) {
+        releasedLeaseIds.push(leaseId);
+      },
+      health: () => ({
+        providers: [
+          {
+            providerId: "anthropic-subscription",
+            total: 2,
+            selectable: 1,
+          },
+        ],
+      }),
+    };
+
+    await expect(inspectBrokerReadiness(broker)).resolves.toEqual({
+      linkedPoolConfigured: true,
+      linkedPoolSelectable: true,
+    });
+    expect(leaseRequests).toEqual([
+      {
+        providerId: "anthropic-subscription",
+        sessionKey: "claude-benchmark:startup-preflight",
+        strategy: "quota-aware",
+      },
+    ]);
+    expect(releasedLeaseIds).toEqual(["lease-7"]);
   });
 });
 
