@@ -1,5 +1,8 @@
 /** Exercises iOS build policy both directly and through a fresh real runner process. */
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,33 +30,40 @@ function readIosPolicyFromFreshProcess(overrides = {}) {
   const env = { ...process.env };
   for (const key of IOS_POLICY_ENV_KEYS) delete env[key];
   Object.assign(env, overrides);
-  const stdout = execFileSync(
-    process.execPath,
-    [
-      "--input-type=module",
-      "--eval",
-      `
-        import {
-          configureIosAppStoreBuildDefaults,
-          isIosAppStoreBuild,
-          resolveIosDeploymentTarget,
-          resolveMobileBuildPolicy,
-          shouldIncludeIosFullBunEngine,
-        } from ${JSON.stringify(runnerUrl)};
-        configureIosAppStoreBuildDefaults();
-        process.stdout.write(JSON.stringify({
-          appStoreBuild: isIosAppStoreBuild(),
-          deploymentTarget: resolveIosDeploymentTarget(),
-          includeFullBunEngine: shouldIncludeIosFullBunEngine(),
-          localRuntime: process.env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME,
-          policy: resolveMobileBuildPolicy("ios"),
-          runtimeMode: process.env.VITE_ELIZA_IOS_RUNTIME_MODE,
-        }));
-      `,
-    ],
-    { encoding: "utf8", env },
-  );
-  return JSON.parse(stdout);
+  const resultDirectory = mkdtempSync(join(tmpdir(), "eliza-ios-policy-"));
+  const resultPath = join(resultDirectory, "result.json");
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `
+          import { writeFileSync } from "node:fs";
+          import {
+            configureIosAppStoreBuildDefaults,
+            isIosAppStoreBuild,
+            resolveIosDeploymentTarget,
+            resolveMobileBuildPolicy,
+            shouldIncludeIosFullBunEngine,
+          } from ${JSON.stringify(runnerUrl)};
+          configureIosAppStoreBuildDefaults();
+          writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify({
+            appStoreBuild: isIosAppStoreBuild(),
+            deploymentTarget: resolveIosDeploymentTarget(),
+            includeFullBunEngine: shouldIncludeIosFullBunEngine(),
+            localRuntime: process.env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME,
+            policy: resolveMobileBuildPolicy("ios"),
+            runtimeMode: process.env.VITE_ELIZA_IOS_RUNTIME_MODE,
+          }));
+        `,
+      ],
+      { env },
+    );
+    return JSON.parse(readFileSync(resultPath, "utf8"));
+  } finally {
+    rmSync(resultDirectory, { force: true, recursive: true });
+  }
 }
 
 // Launch builds intentionally omit the local runtime. The gate still guarantees

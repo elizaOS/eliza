@@ -66,6 +66,7 @@ import { getStylePresets } from "@elizaos/shared";
 import { App } from "@elizaos/ui/App";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
+import { supportsFullAppShellRoutes } from "@elizaos/ui/api/app-shell-capabilities";
 import {
   isElectrobunRuntime,
   shellLocalStorage,
@@ -412,6 +413,7 @@ const IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY =
 const IOS_MIXED_CONTENT_SMOKE_RESULT_KEY =
   "eliza:ios-mixed-content-smoke:result";
 const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
+const IOS_CLOUD_ONBOARDING_STABLE_MS = 2_000;
 const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
@@ -852,7 +854,8 @@ async function boundedPreferenceGet(key: string): Promise<string | null> {
     return result?.value ?? null;
   } catch {
     // error-policy:J7 smoke-harness preference probe — a blocked Preferences
-    // bridge must not wedge the smoke; the poll loop retries
+    // bridge must not wedge app boot; the storage bridge remains the primary
+    // cold-start hydration path
     return null;
   }
 }
@@ -865,11 +868,13 @@ function parseIosOnboardingSmokeRequest(raw: string | null): {
   // non-stub assertion. Default false — the deterministic host is stub-backed.
   liveness: boolean;
   livenessPrompt: string;
+  runId: string | null;
 } {
   const fallback = {
     apiBase: "http://127.0.0.1:31338",
     liveness: false,
     livenessPrompt: "In one short sentence, say hello.",
+    runId: null,
   };
   if (!raw || raw === "1") return fallback;
   try {
@@ -877,6 +882,7 @@ function parseIosOnboardingSmokeRequest(raw: string | null): {
       apiBase?: unknown;
       liveness?: unknown;
       livenessPrompt?: unknown;
+      runId?: unknown;
     };
     return {
       apiBase:
@@ -889,11 +895,21 @@ function parseIosOnboardingSmokeRequest(raw: string | null): {
         parsed.livenessPrompt.trim()
           ? parsed.livenessPrompt.trim()
           : fallback.livenessPrompt,
+      runId: parseIosSmokeRunId(parsed.runId),
     };
   } catch {
     // error-policy:J3 corrupt smoke-request blob — run with the defaults
     return fallback;
   }
+}
+
+function parseIosSmokeRunId(value: unknown): string | null {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+    ? value
+    : null;
 }
 
 async function readIosMixedContentSmokeRequest(
@@ -930,10 +946,17 @@ async function waitForIosOnboardingElement<T extends Element>(
   while (Date.now() < deadline) {
     lastElement = document.querySelector(selector);
     if (lastElement) {
+      const style = window.getComputedStyle(lastElement);
+      // Fixed-position dialogs have no offsetParent in WebKit even while they
+      // are visibly painted. Client rects plus computed visibility cover both
+      // normal-flow controls and native-shell overlays.
       const visible =
         !options?.visible ||
         (lastElement instanceof HTMLElement &&
-          lastElement.offsetParent !== null);
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          style.visibility !== "collapse" &&
+          lastElement.getClientRects().length > 0);
       if (visible) return lastElement as T;
     }
     await new Promise((resolve) => window.setTimeout(resolve, 250));
@@ -950,19 +973,48 @@ function readIosOnboardingSmokeStorageSnapshot(): Record<
   const keys = [
     "eliza:first-run-complete",
     "eliza:setup:step",
+    "eliza:permissions-primed",
     "eliza:mobile-runtime-mode",
     "elizaos:active-server",
   ];
   return Object.fromEntries(
     keys.map((key) => {
       try {
-        return [key, window.localStorage.getItem(key)];
+        const value = window.localStorage.getItem(key);
+        return [
+          key,
+          key === "elizaos:active-server"
+            ? sanitizeActiveServerStorageValue(value)
+            : value,
+        ];
       } catch {
         // error-policy:J7 diagnostics snapshot — an unreadable key reports null
         return [key, null];
       }
     }),
   );
+}
+
+function sanitizeActiveServerStorageValue(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return JSON.stringify({ invalid: true });
+    }
+    return JSON.stringify({
+      id: typeof parsed.id === "string" ? parsed.id : null,
+      kind: typeof parsed.kind === "string" ? parsed.kind : null,
+      label: typeof parsed.label === "string" ? parsed.label : null,
+      apiBase: typeof parsed.apiBase === "string" ? parsed.apiBase : null,
+      accessTokenPresent:
+        typeof parsed.accessToken === "string" && parsed.accessToken.length > 0,
+    });
+  } catch {
+    // error-policy:J3 malformed persisted server state is reported as invalid;
+    // the raw value is never copied into evidence because it may contain a token
+    return JSON.stringify({ invalid: true });
+  }
 }
 
 function readIosCloudOnboardingSmokeStorageSnapshot(): Record<
@@ -1027,7 +1079,10 @@ function setReactTextareaValue(el: HTMLTextAreaElement, value: string): void {
  * live-provider host. Only invoked when the smoke request opts in
  * (`liveness: true`); against the deterministic stub host it is skipped.
  */
-async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
+async function driveIosLivenessChatTurn(
+  prompt: string,
+  expectedReply: string | null = null,
+): Promise<string> {
   const composer = await waitForIosOnboardingElement<HTMLTextAreaElement>(
     '[data-testid="chat-composer-textarea"]',
     { visible: true },
@@ -1054,9 +1109,16 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
     const replies = document.querySelectorAll<HTMLElement>(
       IOS_LIVENESS_ASSISTANT_SELECTOR,
     );
-    if (replies.length > priorReplies) {
-      const text = replies[replies.length - 1]?.textContent?.trim() ?? "";
-      if (text.length > 0) return text;
+    const candidates = expectedReply
+      ? Array.from(replies)
+      : Array.from(replies).slice(priorReplies);
+    for (const reply of candidates) {
+      const text = reply.textContent?.trim() ?? "";
+      // A per-run marker prevents asynchronously loaded conversation history
+      // from being mistaken for the response to the turn just submitted.
+      if (text.length > 0 && (!expectedReply || text.includes(expectedReply))) {
+        return text;
+      }
     }
     await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
@@ -1065,15 +1127,75 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   );
 }
 
+async function collapseIosChatForHomeProof(): Promise<void> {
+  const sheet = await waitForIosOnboardingElement<HTMLElement>(
+    '[data-testid="chat-sheet"]',
+  );
+  if (sheet.getAttribute("data-detent") !== "collapsed") {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }
+
+  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (
+      sheet.getAttribute("data-detent") === "collapsed" &&
+      sheet.getAttribute("data-maximized") !== "true"
+    ) {
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  throw new Error("Timed out collapsing iOS chat before home visual proof");
+}
+
 function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
   mode: "tap" | "autologin";
+  runId: string | null;
+  liveness: boolean;
+  livenessPrompt: string;
+  livenessExpectedReply: string | null;
+  completePermissionPriming: boolean;
 } {
-  if (!raw || raw === "1") return { mode: "tap" };
+  const fallback = {
+    mode: "tap" as const,
+    runId: null,
+    liveness: false,
+    livenessPrompt: "Reply with exactly these words: IOS CLOUD CHAT OK",
+    livenessExpectedReply: null,
+    completePermissionPriming: false,
+  };
+  if (!raw || raw === "1") return fallback;
   try {
-    const parsed = JSON.parse(raw) as { mode?: unknown };
-    return parsed.mode === "autologin"
-      ? { mode: "autologin" }
-      : { mode: "tap" };
+    const parsed = JSON.parse(raw) as {
+      mode?: unknown;
+      runId?: unknown;
+      liveness?: unknown;
+      livenessPrompt?: unknown;
+      livenessExpectedReply?: unknown;
+      completePermissionPriming?: unknown;
+    };
+    return {
+      mode: parsed.mode === "autologin" ? "autologin" : "tap",
+      runId: parseIosSmokeRunId(parsed.runId),
+      liveness: parsed.liveness === true,
+      livenessPrompt:
+        typeof parsed.livenessPrompt === "string" &&
+        parsed.livenessPrompt.trim()
+          ? parsed.livenessPrompt.trim()
+          : fallback.livenessPrompt,
+      livenessExpectedReply:
+        typeof parsed.livenessExpectedReply === "string" &&
+        /^IOS-CLOUD-[0-9A-F]{8}$/.test(parsed.livenessExpectedReply)
+          ? parsed.livenessExpectedReply
+          : null,
+      completePermissionPriming: parsed.completePermissionPriming === true,
+    };
   } catch (error) {
     // error-policy:J2 corrupt smoke-request blob cannot drive a valid path
     throw new Error("Invalid iOS cloud-onboarding smoke request", {
@@ -1082,34 +1204,25 @@ function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
   }
 }
 
-function installFirstRunPostCounter(): {
+function installFirstRunSubmitCounter(): {
   getCount: () => number;
   restore: () => void;
 } {
-  const originalFetch = window.fetch.bind(window);
-  let firstRunPostCount = 0;
-  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const method =
-      init?.method ??
-      (typeof input === "object" && "method" in input ? input.method : "GET");
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-    if (
-      String(method).toUpperCase() === "POST" &&
-      /\/api\/first-run(?:[?#]|$)/.test(url)
-    ) {
-      firstRunPostCount += 1;
-    }
-    return originalFetch(input, init);
-  }) as typeof window.fetch;
+  const originalSubmitFirstRun = client.submitFirstRun;
+  let firstRunSubmitCount = 0;
+  const countedSubmitFirstRun: typeof client.submitFirstRun = async (
+    ...args
+  ) => {
+    firstRunSubmitCount += 1;
+    return originalSubmitFirstRun.apply(client, args);
+  };
+  client.submitFirstRun = countedSubmitFirstRun;
   return {
-    getCount: () => firstRunPostCount,
+    getCount: () => firstRunSubmitCount,
     restore: () => {
-      window.fetch = originalFetch;
+      if (client.submitFirstRun === countedSubmitFirstRun) {
+        client.submitFirstRun = originalSubmitFirstRun;
+      }
     },
   };
 }
@@ -1133,19 +1246,456 @@ async function triggerIosCloudSignInAction(): Promise<void> {
   throw new Error("Timed out waiting for the cloud sign-in action handler");
 }
 
-async function waitForIosCloudOnboardingHome(): Promise<{
-  home: HTMLElement;
-  composer: HTMLElement;
+function isVisibleIosSmokeElement(selector: string): boolean {
+  const element = document.querySelector(selector);
+  return element instanceof HTMLElement && element.offsetParent !== null;
+}
+
+function readIosCloudOnboardingRuntimeSnapshot(): {
+  agentState: string | null;
+  connected: boolean | null;
+  firstRunComplete: boolean | null;
+  firstRunLoading: boolean | null;
+  startupError: string | null;
+  startupPhase: string | null;
+  startupTarget: string | null;
+  tab: string | null;
+} {
+  const appStore = (
+    globalThis as typeof globalThis & {
+      __ELIZAOS_UI_APP_STORE__?: {
+        value?: {
+          agentStatus?: { state?: unknown } | null;
+          connected?: unknown;
+          firstRunComplete?: unknown;
+          firstRunLoading?: unknown;
+          startupCoordinator?: {
+            phase?: unknown;
+            target?: unknown;
+          };
+          startupError?: { message?: unknown } | null;
+          tab?: unknown;
+        } | null;
+      };
+    }
+  ).__ELIZAOS_UI_APP_STORE__?.value;
+  return {
+    agentState:
+      typeof appStore?.agentStatus?.state === "string"
+        ? appStore.agentStatus.state
+        : null,
+    connected:
+      typeof appStore?.connected === "boolean" ? appStore.connected : null,
+    firstRunComplete:
+      typeof appStore?.firstRunComplete === "boolean"
+        ? appStore.firstRunComplete
+        : null,
+    firstRunLoading:
+      typeof appStore?.firstRunLoading === "boolean"
+        ? appStore.firstRunLoading
+        : null,
+    startupError:
+      typeof appStore?.startupError?.message === "string"
+        ? appStore.startupError.message
+        : null,
+    startupPhase:
+      typeof appStore?.startupCoordinator?.phase === "string"
+        ? appStore.startupCoordinator.phase
+        : null,
+    startupTarget:
+      typeof appStore?.startupCoordinator?.target === "string"
+        ? appStore.startupCoordinator.target
+        : null,
+    tab: typeof appStore?.tab === "string" ? appStore.tab : null,
+  };
+}
+
+async function waitForIosCloudRuntimeReady(): Promise<
+  ReturnType<typeof readIosCloudOnboardingRuntimeSnapshot>
+> {
+  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  let stableSince: number | null = null;
+  let lastSnapshot = readIosCloudOnboardingRuntimeSnapshot();
+  while (Date.now() < deadline) {
+    lastSnapshot = readIosCloudOnboardingRuntimeSnapshot();
+    if (lastSnapshot.startupError) {
+      throw new Error(
+        `Cloud runtime failed during cold relaunch: ${lastSnapshot.startupError}`,
+      );
+    }
+    const ready =
+      lastSnapshot.startupPhase === "ready" &&
+      lastSnapshot.agentState === "running" &&
+      lastSnapshot.connected === true;
+    if (ready) {
+      stableSince ??= Date.now();
+      if (Date.now() - stableSince >= IOS_CLOUD_ONBOARDING_STABLE_MS) {
+        return lastSnapshot;
+      }
+    } else {
+      stableSince = null;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out waiting for Cloud runtime after cold relaunch: ${JSON.stringify(lastSnapshot)}`,
+  );
+}
+
+interface IosCloudHomeVisualProof {
+  ready: true;
+  homePageLeft: number;
+  homePageWidth: number;
+  notificationState: "count" | "empty" | "unavailable";
+  timeTop: number;
+  weatherStatus: string;
+}
+
+interface IosCloudHomeVisualState {
+  page: string | null;
+  homePageLeft: number;
+  homePageWidth: number;
+  homeScrollTop: number;
+  notificationState: "count" | "empty" | "unavailable" | null;
+  timeTextPresent: boolean;
+  timeTop: number;
+  weatherStatus: string | null;
+}
+
+function roundedRect(element: Element | null): DOMRect | null {
+  return element?.getBoundingClientRect() ?? null;
+}
+
+function rectIsInsideViewport(rect: DOMRect | null): boolean {
+  if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+  const tolerance = 1;
+  return (
+    rect.left >= -tolerance &&
+    rect.top >= -tolerance &&
+    rect.right <= window.innerWidth + tolerance &&
+    rect.bottom <= window.innerHeight + tolerance
+  );
+}
+
+async function waitForIosCloudHomeVisualReady(): Promise<IosCloudHomeVisualProof> {
+  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  let stableSince: number | null = null;
+  let stableSignature: string | null = null;
+  let lastState: IosCloudHomeVisualState = {
+    page: null,
+    homePageLeft: Number.NaN,
+    homePageWidth: Number.NaN,
+    homeScrollTop: Number.NaN,
+    notificationState: null,
+    timeTextPresent: false,
+    timeTop: Number.NaN,
+    weatherStatus: null,
+  };
+  while (Date.now() < deadline) {
+    const surface = document.querySelector(
+      '[data-testid="home-launcher-surface"]',
+    );
+    const homePage = document.querySelector(
+      '[data-testid="home-launcher-home-page"]',
+    );
+    const homeScreen = document.querySelector<HTMLElement>(
+      '[data-testid="home-screen"]',
+    );
+    const time = document.querySelector('[data-testid="home-time-widget"]');
+    const timeText = time?.querySelector("span") ?? null;
+    const weather = document.querySelector('[data-testid="home-weather"]');
+    const notificationState = document.querySelector(
+      '[data-testid="notifications-count-button"]',
+    )
+      ? "count"
+      : document.querySelector('[data-testid="notifications-empty"]')
+        ? "empty"
+        : document.querySelector('[data-testid="notifications-unavailable"]')
+          ? "unavailable"
+          : null;
+    const homePageRect = roundedRect(homePage);
+    const timeRect = roundedRect(timeText);
+    const weatherRect = roundedRect(weather);
+    const state: IosCloudHomeVisualState = {
+      page: surface?.getAttribute("data-page") ?? null,
+      homePageLeft: Math.round(homePageRect?.left ?? Number.NaN),
+      homePageWidth: Math.round(homePageRect?.width ?? Number.NaN),
+      homeScrollTop: Math.round(homeScreen?.scrollTop ?? Number.NaN),
+      timeTop: Math.round(timeRect?.top ?? Number.NaN),
+      timeTextPresent: Boolean(time?.textContent?.trim()),
+      weatherStatus: weather?.getAttribute("data-status") ?? null,
+      notificationState,
+    };
+    lastState = state;
+    const ready =
+      state.page === "home" &&
+      Math.abs(state.homePageLeft) <= 1 &&
+      Math.abs(state.homePageWidth - window.innerWidth) <= 1 &&
+      Math.abs(state.homeScrollTop) <= 1 &&
+      rectIsInsideViewport(timeRect) &&
+      rectIsInsideViewport(weatherRect) &&
+      state.timeTextPresent &&
+      state.weatherStatus !== null &&
+      state.weatherStatus !== "loading" &&
+      notificationState !== null;
+    const signature = ready ? JSON.stringify(state) : null;
+    if (ready && signature === stableSignature) {
+      stableSince ??= Date.now();
+      if (Date.now() - stableSince >= IOS_CLOUD_ONBOARDING_STABLE_MS) {
+        if (state.weatherStatus === null || notificationState === null) {
+          throw new Error("Visual readiness lost its rendered home state");
+        }
+        return {
+          ready: true,
+          homePageLeft: state.homePageLeft,
+          homePageWidth: state.homePageWidth,
+          notificationState,
+          timeTop: state.timeTop,
+          weatherStatus: state.weatherStatus,
+        };
+      }
+    } else {
+      stableSignature = signature;
+      stableSince = ready ? Date.now() : null;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out waiting for visually settled Cloud home: ${JSON.stringify(lastState)}`,
+  );
+}
+
+function readIosCloudOnboardingDomSnapshot(): {
+  bootFailurePresent: boolean;
+  bodyChildCount: number;
+  bodyText: string;
+  composerPresent: boolean;
+  homePresent: boolean;
+  rootPresent: boolean;
+  rootChildCount: number;
+  startupLoadingPhase: string | null;
+  startupLoadingPresent: boolean;
+} {
+  const startupLoading = document.querySelector(
+    '[data-testid="startup-shell-loading"]',
+  );
+  const root = document.getElementById("root");
+  return {
+    bootFailurePresent: Boolean(
+      document.querySelector('[data-testid="boot-failure"]'),
+    ),
+    bodyChildCount: document.body?.childElementCount ?? 0,
+    bodyText: (document.body?.innerText ?? "").trim().slice(0, 500),
+    composerPresent: Boolean(
+      document.querySelector('[data-testid="chat-composer-textarea"]'),
+    ),
+    homePresent: Boolean(
+      document.querySelector('[data-testid="home-launcher-surface"]'),
+    ),
+    rootPresent: root !== null,
+    rootChildCount: root?.childElementCount ?? 0,
+    startupLoadingPhase:
+      startupLoading?.getAttribute("data-startup-phase") ?? null,
+    startupLoadingPresent: startupLoading !== null,
+  };
+}
+
+function readCloudActiveServerSmokeProof(value: unknown): {
+  firstRunPostExpectedCount: 0 | 1;
+} | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value) as {
+      kind?: unknown;
+      apiBase?: unknown;
+    };
+    if (parsed.kind !== "cloud" || typeof parsed.apiBase !== "string") {
+      return null;
+    }
+    return {
+      firstRunPostExpectedCount: supportsFullAppShellRoutes(parsed.apiBase)
+        ? 1
+        : 0,
+    };
+  } catch {
+    // error-policy:J3 malformed persisted server state is an explicit
+    // not-ready signal for the smoke harness
+    return null;
+  }
+}
+
+async function waitForIosCloudOnboardingCompletion(firstRunCounter: {
+  getCount: () => number;
+}): Promise<{
+  homeVisible: boolean;
+  composerVisible: boolean;
+  onboardingHidden: boolean;
+  firstRunPostCount: number;
+  firstRunPostExpectedCount: 0 | 1;
+  cloudActiveServer: boolean;
+  dom: ReturnType<typeof readIosCloudOnboardingDomSnapshot>;
+  runtime: ReturnType<typeof readIosCloudOnboardingRuntimeSnapshot>;
+  storage: ReturnType<typeof readIosCloudOnboardingSmokeStorageSnapshot>;
 }> {
-  const home = await waitForIosOnboardingElement<HTMLElement>(
-    '[data-testid="home-launcher-surface"][data-page="home"]',
-    { visible: true, timeoutMs: IOS_ONBOARDING_SMOKE_TIMEOUT_MS },
+  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  let lastState = {
+    homeVisible: false,
+    composerVisible: false,
+    onboardingHidden: false,
+    firstRunPostCount: 0,
+    firstRunPostExpectedCount: null as 0 | 1 | null,
+    cloudActiveServer: false,
+    dom: readIosCloudOnboardingDomSnapshot(),
+    runtime: readIosCloudOnboardingRuntimeSnapshot(),
+    storage: readIosCloudOnboardingSmokeStorageSnapshot(),
+  };
+  let readySince: number | null = null;
+  let readyUiSince: number | null = null;
+
+  while (Date.now() < deadline) {
+    const storage = readIosCloudOnboardingSmokeStorageSnapshot();
+    const firstRunPostCount = firstRunCounter.getCount();
+    const activeServerProof = readCloudActiveServerSmokeProof(
+      storage["elizaos:active-server"],
+    );
+    const state = {
+      homeVisible: isVisibleIosSmokeElement(
+        '[data-testid="home-launcher-surface"][data-page="home"]',
+      ),
+      composerVisible: isVisibleIosSmokeElement(
+        '[data-testid="chat-composer-textarea"]',
+      ),
+      onboardingHidden: !document.querySelector(
+        '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
+      ),
+      firstRunPostCount,
+      firstRunPostExpectedCount:
+        activeServerProof?.firstRunPostExpectedCount ?? null,
+      cloudActiveServer: activeServerProof !== null,
+      dom: readIosCloudOnboardingDomSnapshot(),
+      runtime: readIosCloudOnboardingRuntimeSnapshot(),
+      storage,
+    };
+    const now = Date.now();
+    if (state.runtime.startupPhase === "ready") {
+      readySince ??= now;
+      if (
+        !state.homeVisible &&
+        !state.composerVisible &&
+        !state.dom.startupLoadingPresent &&
+        now - readySince >= IOS_CLOUD_ONBOARDING_STABLE_MS
+      ) {
+        throw new Error(
+          `Cloud onboarding reached ready with a blank React root: ${JSON.stringify(state)}`,
+        );
+      }
+    } else {
+      readySince = null;
+    }
+    if (firstRunPostCount > 1) {
+      throw new Error(
+        `Cloud onboarding submitted first-run ${firstRunPostCount} times`,
+      );
+    }
+    const uiIsReady =
+      state.homeVisible &&
+      state.composerVisible &&
+      state.onboardingHidden &&
+      state.runtime.startupPhase === "ready" &&
+      state.runtime.agentState === "running" &&
+      state.runtime.connected === true &&
+      state.firstRunPostExpectedCount !== null &&
+      state.firstRunPostCount === state.firstRunPostExpectedCount &&
+      state.cloudActiveServer &&
+      state.storage["eliza:first-run-complete"] === "1";
+    if (uiIsReady) {
+      readyUiSince ??= now;
+    } else {
+      readyUiSince = null;
+    }
+    if (
+      readyUiSince !== null &&
+      now - readyUiSince >= IOS_CLOUD_ONBOARDING_STABLE_MS &&
+      state.firstRunPostExpectedCount !== null
+    ) {
+      return {
+        ...state,
+        firstRunPostExpectedCount: state.firstRunPostExpectedCount,
+      };
+    }
+    lastState = state;
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+
+  throw new Error(
+    `Timed out waiting for completed Cloud onboarding: ${JSON.stringify(lastState)}`,
   );
-  const composer = await waitForIosOnboardingElement<HTMLElement>(
-    '[data-testid="chat-composer-textarea"]',
-    { visible: true, timeoutMs: IOS_ONBOARDING_SMOKE_TIMEOUT_MS },
+}
+
+async function probeIosCloudNotificationRoute(): Promise<{
+  ok: boolean;
+  status?: number;
+  contentType?: string | null;
+  error?: string;
+}> {
+  try {
+    const response = await client.rawRequest(
+      "/api/notifications?limit=1",
+      { method: "GET" },
+      { allowNonOk: true, timeoutMs: 10_000 },
+    );
+    return {
+      ok: response.ok,
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+    };
+  } catch (error) {
+    // error-policy:J7 smoke evidence records only the transport shape; auth
+    // material and response bodies never cross into the result artifact.
+    return {
+      ok: false,
+      error: error instanceof Error ? error.name : "UnknownError",
+    };
+  }
+}
+
+async function completeIosPermissionPriming(): Promise<{
+  shown: true;
+  skipped: true;
+  hidden: true;
+}> {
+  await waitForIosOnboardingElement<HTMLElement>(
+    '[data-testid="permission-priming-modal"]',
+    { visible: true, timeoutMs: 30_000 },
   );
-  return { home, composer };
+  const skipAll = await waitForIosOnboardingElement<HTMLButtonElement>(
+    '[data-testid="priming-skip-all"]',
+    { visible: true, timeoutMs: 10_000 },
+  );
+  skipAll.click();
+
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const hidden = !document.querySelector(
+      '[data-testid="permission-priming-modal"]',
+    );
+    let persisted = false;
+    try {
+      persisted =
+        window.localStorage.getItem("eliza:permissions-primed") === "1";
+    } catch {
+      // error-policy:J7 the visible modal transition remains observable; the
+      // smoke waits for the mirrored storage value before accepting completion
+      persisted = false;
+    }
+    if (hidden && persisted) {
+      return { shown: true, skipped: true, hidden: true };
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+  throw new Error(
+    "iOS Cloud permission priming did not close and persist after Skip for now",
+  );
 }
 
 async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
@@ -1171,11 +1721,12 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
 
   iosCloudOnboardingSmokeStarted = true;
   const request = parseIosCloudOnboardingSmokeRequest(rawRequest);
-  const firstRunCounter = installFirstRunPostCounter();
+  const firstRunCounter = installFirstRunSubmitCounter();
   await writeIosCloudOnboardingSmokeResult({
     ok: false,
     phase: "running",
     mode: request.mode,
+    runId: request.runId,
     startedAt: new Date().toISOString(),
   });
 
@@ -1186,34 +1737,38 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       await triggerIosCloudSignInAction();
     }
 
-    const { home, composer } = await waitForIosCloudOnboardingHome();
-    const storage = readIosCloudOnboardingSmokeStorageSnapshot();
-    const firstRunPostCount = firstRunCounter.getCount();
-    const activeServer = storage["elizaos:active-server"];
-    const cloudActiveServer =
-      typeof activeServer === "string" &&
-      activeServer.includes('"kind":"cloud"');
-    const onboardingHidden = !document.querySelector(
-      '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
-    );
+    const completion =
+      await waitForIosCloudOnboardingCompletion(firstRunCounter);
+    const notificationRoute = await probeIosCloudNotificationRoute();
+    const permissionPriming = request.completePermissionPriming
+      ? await completeIosPermissionPriming()
+      : null;
+    const livenessReply = request.liveness
+      ? await driveIosLivenessChatTurn(
+          request.livenessPrompt,
+          request.livenessExpectedReply,
+        )
+      : null;
+    await collapseIosChatForHomeProof();
+    const visual = await waitForIosCloudHomeVisualReady();
 
     await writeIosCloudOnboardingSmokeResult({
-      ok:
-        Boolean(home) &&
-        Boolean(composer) &&
-        onboardingHidden &&
-        cloudActiveServer &&
-        firstRunPostCount === 1,
+      ok: true,
       phase: "complete",
       mode: request.mode,
+      runId: request.runId,
       finishedAt: new Date().toISOString(),
       signInGreetingVisible,
-      homeVisible: Boolean(home),
-      composerVisible: Boolean(composer),
-      onboardingHidden,
-      firstRunPostCount,
-      cloudActiveServer,
-      storage,
+      notificationRoute,
+      ...completion,
+      permissionPriming,
+      livenessRequested: request.liveness,
+      livenessExpectedReply: request.livenessExpectedReply,
+      livenessReply,
+      visual,
+      dom: readIosCloudOnboardingDomSnapshot(),
+      runtime: readIosCloudOnboardingRuntimeSnapshot(),
+      storage: readIosCloudOnboardingSmokeStorageSnapshot(),
     });
   } catch (error) {
     // error-policy:J1 smoke boundary — the failure is written to the
@@ -1222,9 +1777,12 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       ok: false,
       phase: "failed",
       mode: request.mode,
+      runId: request.runId,
       finishedAt: new Date().toISOString(),
       firstRunPostCount: firstRunCounter.getCount(),
       error: error instanceof Error ? error.message : String(error),
+      dom: readIosCloudOnboardingDomSnapshot(),
+      runtime: readIosCloudOnboardingRuntimeSnapshot(),
       storage: readIosCloudOnboardingSmokeStorageSnapshot(),
     });
   } finally {
@@ -1418,6 +1976,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     phase: "running",
     startedAt: new Date().toISOString(),
     apiBase: request.apiBase,
+    runId: request.runId,
   });
   try {
     // WKWebView is not CDP-drivable, and recent iOS simulators can stop
@@ -1458,6 +2017,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
       phase: "complete",
       finishedAt: new Date().toISOString(),
       apiBase: request.apiBase,
+      runId: request.runId,
       homeVisible: Boolean(home),
       composerVisible: Boolean(composer),
       onboardingHidden,
@@ -1473,6 +2033,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
       phase: "failed",
       finishedAt: new Date().toISOString(),
       apiBase: request.apiBase,
+      runId: request.runId,
       error: error instanceof Error ? error.message : String(error),
       storage: readIosOnboardingSmokeStorageSnapshot(),
     });
@@ -1518,6 +2079,7 @@ async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
     phase: "running",
     startedAt: new Date().toISOString(),
     apiBase: request.apiBase,
+    runId: request.runId,
   });
   try {
     const home = await waitForIosOnboardingElement<HTMLElement>(
@@ -1534,15 +2096,29 @@ async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
     const storage = await waitForIosOnboardingSmokeStorageSnapshot(
       request.apiBase,
     );
+    const runtime = await waitForIosCloudRuntimeReady();
+    const visual = await waitForIosCloudHomeVisualReady();
 
     await writeIosOnboardingRelaunchSmokeResult({
       ok: true,
       phase: "complete",
       finishedAt: new Date().toISOString(),
       apiBase: request.apiBase,
-      homeVisible: Boolean(home),
-      composerVisible: Boolean(composer),
+      runId: request.runId,
+      homeVisible:
+        Boolean(home) &&
+        isVisibleIosSmokeElement(
+          '[data-testid="home-launcher-surface"][data-page="home"]',
+        ),
+      composerVisible:
+        Boolean(composer) &&
+        isVisibleIosSmokeElement('[data-testid="chat-composer-textarea"]'),
       onboardingHidden,
+      permissionPrimingHidden: !document.querySelector(
+        '[data-testid="permission-priming-modal"]',
+      ),
+      runtime,
+      visual,
       storage,
     });
   } catch (error) {
@@ -1553,6 +2129,7 @@ async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
       phase: "failed",
       finishedAt: new Date().toISOString(),
       apiBase: request.apiBase,
+      runId: request.runId,
       error: error instanceof Error ? error.message : String(error),
       storage: readIosOnboardingSmokeStorageSnapshot(),
     });

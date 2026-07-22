@@ -8,7 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   captureIosSimulatorScreenshot: vi.fn(),
   execFileSync: vi.fn(),
+  randomUUID: vi.fn(() => "00000000-0000-4000-8000-000000000001"),
   readFileSync: vi.fn(),
+  runState: {
+    mode: "tap" as "tap" | "autologin",
+    runId: "00000000-0000-4000-8000-000000000001",
+  },
   spawnSync: vi.fn(),
   startIosSimulatorVideo: vi.fn(),
   stopVideo: vi.fn(async () => "/evidence/cloud-onboarding.mov"),
@@ -31,6 +36,10 @@ vi.mock("node:child_process", () => ({
   execFileSync: mocks.execFileSync,
   spawnSync: mocks.spawnSync,
 }));
+vi.mock("node:crypto", () => ({
+  default: { randomUUID: mocks.randomUUID },
+  randomUUID: mocks.randomUUID,
+}));
 vi.mock("node:fs", () => ({
   default: {
     existsSync: vi.fn(() => true),
@@ -50,10 +59,14 @@ import {
   ensureSimulatorBooted,
   findSimulator,
   main,
+  readSimulatorPreferenceString,
 } from "../scripts/ios-cloud-onboarding-smoke.mjs";
 
 const originalArgv = [...process.argv];
 const originalEnv = { ...process.env };
+const REQUEST_KEY = "eliza:ios-cloud-onboarding-smoke:request";
+const RESULT_KEY = "eliza:ios-cloud-onboarding-smoke:result";
+const RELAUNCH_RESULT_KEY = "eliza:ios-onboarding-relaunch-smoke:result";
 
 function simulatorInventory(state = "Booted") {
   return JSON.stringify({
@@ -76,12 +89,52 @@ function simulatorInventory(state = "Booted") {
   });
 }
 
-function completedResult() {
+function completedResult(
+  overrides: Partial<{
+    firstRunPostCount: number;
+    firstRunPostExpectedCount: number;
+    livenessExpectedReply: string;
+    livenessReply: string;
+    mode: "tap" | "autologin";
+    runId: string;
+  }> = {},
+) {
   return JSON.stringify({
-    firstRunPostCount: 1,
+    firstRunPostCount: 0,
+    firstRunPostExpectedCount: 0,
+    mode: mocks.runState.mode,
     ok: true,
     phase: "complete",
+    runId: mocks.runState.runId,
     signInGreetingVisible: true,
+    notificationRoute: { ok: true, status: 200 },
+    permissionPriming: { shown: true, skipped: true, hidden: true },
+    visual: { ready: true },
+    storage: {
+      "elizaos:active-server": JSON.stringify({
+        kind: "cloud",
+        apiBase: "https://agent.elizacloud.ai",
+      }),
+    },
+    ...overrides,
+  });
+}
+
+function completedRelaunchResult() {
+  return JSON.stringify({
+    ok: true,
+    phase: "complete",
+    runId: mocks.runState.runId,
+    homeVisible: true,
+    composerVisible: true,
+    onboardingHidden: true,
+    permissionPrimingHidden: true,
+    runtime: {
+      startupPhase: "ready",
+      agentState: "running",
+      connected: true,
+    },
+    visual: { ready: true },
   });
 }
 
@@ -102,10 +155,35 @@ beforeEach(() => {
   process.env.IOS_CLOUD_ONBOARDING_ATTEMPTS = "1";
   process.env.IOS_CLOUD_ONBOARDING_DELAY_MS = "0";
   readFileSync.mockReturnValue('appId: "ai.elizaos.app"');
-  spawnSync.mockReturnValue({ status: 0, stdout: "", stderr: "" });
-  execFileSync.mockImplementation((_command, args: string[]) => {
+  mocks.runState.mode = "tap";
+  mocks.runState.runId = "00000000-0000-4000-8000-000000000001";
+  spawnSync.mockImplementation((_command: string, args: string[]) => {
+    const requestIndex = args.findIndex(
+      (arg) => arg === REQUEST_KEY || arg === `CapacitorStorage.${REQUEST_KEY}`,
+    );
+    if (requestIndex >= 0) {
+      const value = args[requestIndex + 2];
+      if (typeof value === "string") {
+        const request = JSON.parse(value) as {
+          mode?: "tap" | "autologin";
+          runId?: string;
+        };
+        if (request.mode) mocks.runState.mode = request.mode;
+        if (request.runId) mocks.runState.runId = request.runId;
+      }
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  });
+  execFileSync.mockImplementation((command: string, args: string[]) => {
     if (args.join(" ").includes("list devices available --json")) {
       return simulatorInventory();
+    }
+    if (args.includes("get_app_container")) return "/sim/data/app";
+    if (command === "plutil") {
+      return JSON.stringify({
+        [`CapacitorStorage.${RESULT_KEY}`]: completedResult(),
+        [`CapacitorStorage.${RELAUNCH_RESULT_KEY}`]: completedRelaunchResult(),
+      });
     }
     if (args.includes("read")) return completedResult();
     return "";
@@ -167,12 +245,48 @@ describe("dedicated Simulator selection", () => {
 });
 
 describe("Cloud onboarding orchestration", () => {
+  it("reads the app plist before a stale defaults cache", () => {
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") {
+        return JSON.stringify({
+          [`CapacitorStorage.${RESULT_KEY}`]: completedResult(),
+        });
+      }
+      if (args.includes("read")) {
+        return JSON.stringify({ ok: false, phase: "requested" });
+      }
+      return "";
+    });
+
+    expect(
+      readSimulatorPreferenceString("LANE-UDID", "ai.elizaos.app", RESULT_KEY),
+    ).toBe(completedResult());
+    expect(
+      execFileSync.mock.calls.some(
+        ([, args]) => Array.isArray(args) && args.includes("read"),
+      ),
+    ).toBe(false);
+  });
+
   it("runs tap and autologin through install, launch, result, and capture", async () => {
     await expect(main()).resolves.toBeUndefined();
 
-    expect(startIosSimulatorVideo).toHaveBeenCalledTimes(2);
-    expect(stopVideo).toHaveBeenCalledTimes(2);
-    expect(captureIosSimulatorScreenshot).toHaveBeenCalledTimes(4);
+    expect(startIosSimulatorVideo).toHaveBeenCalledTimes(4);
+    expect(stopVideo).toHaveBeenCalledTimes(4);
+    expect(captureIosSimulatorScreenshot).toHaveBeenCalledTimes(6);
+    expect(stopVideo.mock.invocationCallOrder[0]).toBeLessThan(
+      captureIosSimulatorScreenshot.mock.invocationCallOrder[1],
+    );
+    expect(stopVideo.mock.invocationCallOrder[1]).toBeLessThan(
+      captureIosSimulatorScreenshot.mock.invocationCallOrder[2],
+    );
+    expect(stopVideo.mock.invocationCallOrder[2]).toBeLessThan(
+      captureIosSimulatorScreenshot.mock.invocationCallOrder[4],
+    );
+    expect(stopVideo.mock.invocationCallOrder[3]).toBeLessThan(
+      captureIosSimulatorScreenshot.mock.invocationCallOrder[5],
+    );
     expect(spawnSync).toHaveBeenCalledWith(
       "xcrun",
       ["simctl", "install", "LANE-UDID", "/build/App.app"],
@@ -180,9 +294,58 @@ describe("Cloud onboarding orchestration", () => {
     );
     expect(spawnSync).toHaveBeenCalledWith(
       "xcrun",
+      ["simctl", "keychain", "LANE-UDID", "reset"],
+      expect.any(Object),
+    );
+    expect(spawnSync).toHaveBeenCalledWith(
+      "xcrun",
       ["simctl", "launch", "LANE-UDID", "ai.elizaos.app"],
       expect.any(Object),
     );
+  });
+
+  it("rejects a first-run submission count that contradicts the selected backend", async () => {
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.join(" ").includes("list devices available --json")) {
+        return simulatorInventory();
+      }
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") {
+        return JSON.stringify({
+          [`CapacitorStorage.${RESULT_KEY}`]: completedResult({
+            firstRunPostCount: 1,
+          }),
+        });
+      }
+      return "";
+    });
+
+    await expect(main()).rejects.toThrow(
+      "expected 0 /api/first-run POSTs for the selected backend, got 1",
+    );
+  });
+
+  it("rejects a live reply that is not correlated to the current run", async () => {
+    process.argv.push("--liveness");
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (args.join(" ").includes("list devices available --json")) {
+        return simulatorInventory();
+      }
+      if (args.includes("get_app_container")) return "/sim/data/app";
+      if (command === "plutil") {
+        return JSON.stringify({
+          [`CapacitorStorage.${RESULT_KEY}`]: completedResult({
+            livenessExpectedReply: "IOS-CLOUD-00000000",
+            livenessReply: "an older conversation reply",
+          }),
+          [`CapacitorStorage.${RELAUNCH_RESULT_KEY}`]:
+            completedRelaunchResult(),
+        });
+      }
+      return "";
+    });
+
+    await expect(main()).rejects.toThrow("was not correlated to run");
   });
 
   it("refuses accidental non-live execution", async () => {
