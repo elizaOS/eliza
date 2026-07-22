@@ -45,7 +45,7 @@
     "@huggingface/hub": "^2.6.12",
     "@langchain/anthropic": "1.5.1",
     "@langchain/core": "1.1.36",
-    "@langchain/openai": "1.3.1",
+    "@langchain/openai": "1.5.5",
     "@neondatabase/serverless": "^1.0.2",
     "@prb/math": "^4.1.0",
     "@radix-ui/react-avatar": "^1.1.11",
