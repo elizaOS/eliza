@@ -644,71 +644,67 @@ describe("deterministic LLM proxy plugin", () => {
       action: "delete",
       view: "remote-ledger",
     },
-  ])("generates semantic arguments for unified VIEWS action: $action", async ({
-    action,
-    alwaysOnTop,
-    capability,
-    params,
-    text,
-    view,
-  }) => {
-    const plugin = createDeterministicLlmProxyPlugin();
-    const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
-      messages: [
-        {
-          role: "user",
-          content: text,
-        },
-      ],
-      tools: [
-        {
-          name: "VIEWS",
-          description:
-            "Manage views: list, show, manager, interact, pin, window, create, edit, delete",
-          parameters: {
-            type: "object",
-            properties: {
-              action: {
-                type: "string",
-                enum: [
-                  "list",
-                  "current",
-                  "show",
-                  "manager",
-                  "interact",
-                  "pin",
-                  "window",
-                  "create",
-                  "edit",
-                  "delete",
-                ],
+  ])(
+    "generates semantic arguments for unified VIEWS action: $action",
+    async ({ action, alwaysOnTop, capability, params, text, view }) => {
+      const plugin = createDeterministicLlmProxyPlugin();
+      const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+        messages: [
+          {
+            role: "user",
+            content: text,
+          },
+        ],
+        tools: [
+          {
+            name: "VIEWS",
+            description:
+              "Manage views: list, show, manager, interact, pin, window, create, edit, delete",
+            parameters: {
+              type: "object",
+              properties: {
+                action: {
+                  type: "string",
+                  enum: [
+                    "list",
+                    "current",
+                    "show",
+                    "manager",
+                    "interact",
+                    "pin",
+                    "window",
+                    "create",
+                    "edit",
+                    "delete",
+                  ],
+                },
+                view: { type: "string" },
+                capability: { type: "string" },
+                alwaysOnTop: { type: "boolean" },
+                params: { type: "object" },
+                viewType: { type: "string", enum: ["gui", "tui"] },
               },
-              view: { type: "string" },
-              capability: { type: "string" },
-              alwaysOnTop: { type: "boolean" },
-              params: { type: "object" },
-              viewType: { type: "string", enum: ["gui", "tui"] },
             },
           },
-        },
-      ],
-    });
+        ],
+      });
 
-    const result = JSON.parse(String(raw));
-    expect(result.toolCalls).toEqual([
-      expect.objectContaining({
-        name: "VIEWS",
-        arguments: {
-          action,
-          alwaysOnTop: alwaysOnTop ?? false,
-          capability: capability ?? "get-text",
-          params: params ?? {},
-          view,
-          viewType: "gui",
-        },
-      }),
-    ]);
-  });
+      const result = JSON.parse(String(raw));
+      expect(result.toolCalls).toEqual([
+        expect.objectContaining({
+          name: "VIEWS",
+          arguments: {
+            action,
+            alwaysOnTop: alwaysOnTop ?? false,
+            capability: capability ?? "get-text",
+            params: params ?? {},
+            view,
+            viewType: "gui",
+          },
+        }),
+      ]);
+    },
+  );
 
   it.each([
     { text: "can you show me the settings?", view: "settings" },
@@ -725,54 +721,54 @@ describe("deterministic LLM proxy plugin", () => {
     { text: "go to training", view: "training" },
     { text: "show me the apps", view: "apps" },
     { text: "take me home", view: "home" },
-  ])("navigates to built-in view $view with exact show action and params", async ({
-    text,
-    view,
-  }) => {
-    const plugin = createDeterministicLlmProxyPlugin();
-    const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
-      messages: [{ role: "user", content: text }],
-      tools: [
-        {
-          name: "VIEWS",
-          description:
-            "Manage and navigate UI views: list, show, open, search, manager, broadcast, interact, pin, window, create, edit, delete",
-          parameters: {
-            type: "object",
-            properties: {
-              action: {
-                type: "string",
-                enum: [
-                  "list",
-                  "current",
-                  "show",
-                  "open",
-                  "search",
-                  "manager",
-                  "broadcast",
-                  "interact",
-                  "pin",
-                  "window",
-                  "create",
-                  "edit",
-                  "delete",
-                ],
+  ])(
+    "navigates to built-in view $view with exact show action and params",
+    async ({ text, view }) => {
+      const plugin = createDeterministicLlmProxyPlugin();
+      const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+        messages: [{ role: "user", content: text }],
+        tools: [
+          {
+            name: "VIEWS",
+            description:
+              "Manage and navigate UI views: list, show, open, search, manager, broadcast, interact, pin, window, create, edit, delete",
+            parameters: {
+              type: "object",
+              properties: {
+                action: {
+                  type: "string",
+                  enum: [
+                    "list",
+                    "current",
+                    "show",
+                    "open",
+                    "search",
+                    "manager",
+                    "broadcast",
+                    "interact",
+                    "pin",
+                    "window",
+                    "create",
+                    "edit",
+                    "delete",
+                  ],
+                },
+                view: { type: "string" },
               },
-              view: { type: "string" },
             },
           },
-        },
-      ],
-    });
+        ],
+      });
 
-    const result = JSON.parse(String(raw));
-    expect(result.toolCalls).toEqual([
-      expect.objectContaining({
-        name: "VIEWS",
-        arguments: { action: "show", view },
-      }),
-    ]);
-  });
+      const result = JSON.parse(String(raw));
+      expect(result.toolCalls).toEqual([
+        expect.objectContaining({
+          name: "VIEWS",
+          arguments: { action: "show", view },
+        }),
+      ]);
+    },
+  );
 
   it("feeds Stage 1 candidateActionNames from the intent-ranked action tool", async () => {
     const plugin = createDeterministicLlmProxyPlugin();

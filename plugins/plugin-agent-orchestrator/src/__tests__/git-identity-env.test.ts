@@ -79,17 +79,16 @@ describe("resolveGitIdentityConfig", () => {
     expect(cfg).toEqual({ coAuthor: "Pair <pair@x.dev>" });
   });
 
-  it.each([
-    "bad\nname",
-    "bad\remail",
-    "bad\0trailer",
-  ])("rejects control characters in configured identity values", (value) => {
-    expect(() =>
-      resolveGitIdentityConfig(
-        source({ [GIT_IDENTITY_AUTHOR_NAME_KEY]: value }),
-      ),
-    ).toThrow("Coding git identity contains a control character");
-  });
+  it.each(["bad\nname", "bad\remail", "bad\0trailer"])(
+    "rejects control characters in configured identity values",
+    (value) => {
+      expect(() =>
+        resolveGitIdentityConfig(
+          source({ [GIT_IDENTITY_AUTHOR_NAME_KEY]: value }),
+        ),
+      ).toThrow("Coding git identity contains a control character");
+    },
+  );
 });
 
 describe("buildGitIdentityEnvPatch", () => {

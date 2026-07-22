@@ -8,6 +8,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setGetAppEarnings,
   setListApps,
@@ -78,7 +79,11 @@ describe("GET_APP_EARNINGS", () => {
     expect(text).toContain("$58.00");
     expect(text.toLowerCase()).toContain("withdraw now");
     expect(
-      (result?.data as { withdrawableBalance: number }).withdrawableBalance,
+      (
+        requireDefined(result, "action result").data as {
+          withdrawableBalance: number;
+        }
+      ).withdrawableBalance,
     ).toBe(42);
   });
 
@@ -136,7 +141,10 @@ describe("GET_APP_EARNINGS", () => {
       undefined,
       cb.fn,
     );
-    expect((result?.data as { reason: string }).reason).toBe("not_found");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
   });
 
   it("degrades gracefully with no Cloud API key", async () => {
@@ -147,7 +155,10 @@ describe("GET_APP_EARNINGS", () => {
       undefined,
       captureCallback().fn,
     );
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   it("surfaces an earnings API error", async () => {
@@ -160,6 +171,9 @@ describe("GET_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
   });
 });

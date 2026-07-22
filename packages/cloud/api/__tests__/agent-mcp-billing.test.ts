@@ -223,31 +223,34 @@ describe("Agent MCP billing", () => {
     [1024, 5120, 1024],
     [4096, 8192, 4096],
     [8000, 12096, 8000],
-  ] as const)("reserves and caps the provider at one ceiling (budget=%p → cap=%p)", async (budget, expectedCap, expectedProviderBudget) => {
-    makeReservation({ adjustmentType: "none" });
-    resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
+  ] as const)(
+    "reserves and caps the provider at one ceiling (budget=%p → cap=%p)",
+    async (budget, expectedCap, expectedProviderBudget) => {
+      makeReservation({ adjustmentType: "none" });
+      resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
 
-    const response = await callChat();
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      result?: { _meta?: { admittedOutputTokens?: number } };
-    };
+      const response = await callChat();
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        result?: { _meta?: { admittedOutputTokens?: number } };
+      };
 
-    // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
-    expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
-    // ...and the provider is capped at the identical value — always sent.
-    expect(streamText).toHaveBeenCalledTimes(1);
-    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
-    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
-      estimateRequestCost.mock.calls[0]?.[2],
-    );
-    expect(body.result?._meta?.admittedOutputTokens).toBe(expectedCap);
-    // Provider thinking policy uses the already-resolved effective budget
-    // (`effectiveThinkingBudget ?? 0`), not a recomputed value.
-    expect(mergeAnthropicCotProviderOptions.mock.calls[0]?.[2]).toBe(
-      expectedProviderBudget,
-    );
-  });
+      // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
+      expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
+      // ...and the provider is capped at the identical value — always sent.
+      expect(streamText).toHaveBeenCalledTimes(1);
+      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
+      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
+        estimateRequestCost.mock.calls[0]?.[2],
+      );
+      expect(body.result?._meta?.admittedOutputTokens).toBe(expectedCap);
+      // Provider thinking policy uses the already-resolved effective budget
+      // (`effectiveThinkingBudget ?? 0`), not a recomputed value.
+      expect(mergeAnthropicCotProviderOptions.mock.calls[0]?.[2]).toBe(
+        expectedProviderBudget,
+      );
+    },
+  );
 
   test("does not record creator earnings when final overage is uncollected", async () => {
     makeReservation({ adjustmentType: "uncollected_overage" });

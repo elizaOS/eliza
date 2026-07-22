@@ -44,19 +44,19 @@ describe("AgentWeb fallback", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    "",
-    "   ",
-  ])("rejects blank chat text %s before fetch", async (text) => {
-    setWindow();
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+  it.each(["", "   "])(
+    "rejects blank chat text %s before fetch",
+    async (text) => {
+      setWindow();
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
 
-    await expect(new AgentWeb().chat({ text })).rejects.toThrow(
-      "Agent.chat requires non-empty text",
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      await expect(new AgentWeb().chat({ text })).rejects.toThrow(
+        "Agent.chat requires non-empty text",
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     "",
@@ -77,23 +77,21 @@ describe("AgentWeb fallback", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    "POST /evil",
-    "TRACE\nX",
-    "",
-    "x".repeat(17),
-  ])("rejects unsafe request method %s before fetch", async (method) => {
-    setWindow({
-      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
-    } as Partial<Window>);
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+  it.each(["POST /evil", "TRACE\nX", "", "x".repeat(17)])(
+    "rejects unsafe request method %s before fetch",
+    async (method) => {
+      setWindow({
+        __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+      } as Partial<Window>);
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      new AgentWeb().request({ path: "/api/status", method }),
-    ).rejects.toThrow("Unsupported HTTP method");
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      await expect(
+        new AgentWeb().request({ path: "/api/status", method }),
+      ).rejects.toThrow("Unsupported HTTP method");
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("sends normalized path-only requests with bearer auth", async () => {
     setWindow({

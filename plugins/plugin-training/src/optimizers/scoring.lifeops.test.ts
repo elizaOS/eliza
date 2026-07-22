@@ -227,13 +227,14 @@ describe("scoreLifeOpsTask", () => {
     );
   });
 
-  it.each(
-    LIFEOPS_STRUCTURED_SCORER_TASKS,
-  )("uses structured-field match for %s", (task) => {
-    const expected = JSON.stringify({ title: "Lunch", start: "noon" });
-    const actual = JSON.stringify({ title: "Lunch", start: "1pm" });
-    expect(scoreLifeOpsTask(task, actual, expected)).toBe(0.5);
-  });
+  it.each(LIFEOPS_STRUCTURED_SCORER_TASKS)(
+    "uses structured-field match for %s",
+    (task) => {
+      const expected = JSON.stringify({ title: "Lunch", start: "noon" });
+      const actual = JSON.stringify({ title: "Lunch", start: "1pm" });
+      expect(scoreLifeOpsTask(task, actual, expected)).toBe(0.5);
+    },
+  );
 
   it("falls back to token agreement for the chat-shaped morning brief", () => {
     const text = "Top priority: ship the release. Then review inbox.";

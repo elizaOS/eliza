@@ -30,8 +30,7 @@ const apiKeyScopeHashPrefix = mock(() => scopeHashPrefixBehavior());
 // unless a test opts into the session shape.
 let sessionHashPrefixBehavior: () => Promise<string | null> = async () => null;
 const sessionScopeHashPrefix = mock(() => sessionHashPrefixBehavior());
-let sessionRevalidateBehavior: (cachedStewardUserId: string) => Promise<boolean> = async () =>
-  true;
+let sessionRevalidateBehavior: (cachedStewardUserId: string) => Promise<boolean> = async () => true;
 const revalidateSessionScope = mock((_: unknown, cachedStewardUserId: string) =>
   sessionRevalidateBehavior(cachedStewardUserId),
 );

@@ -123,12 +123,15 @@ describe("compilePatches", () => {
       { op: "add", path: "/state/count", value: 1 },
     ] as never);
     expect(spec).not.toBeNull();
-    expect(spec?.root).toBe("n1");
-    expect((spec?.elements as Record<string, unknown>).n1).toEqual({
+    if (!spec) {
+      throw new Error("Expected the compiled UI specification");
+    }
+    expect(spec.root).toBe("n1");
+    expect((spec.elements as Record<string, unknown>).n1).toEqual({
       type: "Text",
       text: "hi",
     });
-    expect((spec?.state as Record<string, unknown>).count).toBe(1);
+    expect((spec.state as Record<string, unknown>).count).toBe(1);
   });
 
   it("returns null when no string root is set (not a valid UiSpec)", () => {
@@ -145,7 +148,11 @@ describe("compilePatches", () => {
       { op: "add", path: "/elements/n1", value: { type: "Text" } },
       { op: "remove", path: "/elements/n1" },
     ] as never);
-    expect((spec?.elements as Record<string, unknown>).n1).toEqual({
+    expect(spec).not.toBeNull();
+    if (!spec) {
+      throw new Error("Expected a UI specification after ignored remove ops");
+    }
+    expect((spec.elements as Record<string, unknown>).n1).toEqual({
       type: "Text",
     });
   });

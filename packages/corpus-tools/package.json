@@ -18,6 +18,7 @@
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src fixtures",
+    "lint:check": "bunx @biomejs/biome check src fixtures",
     "lint:fix": "bunx @biomejs/biome check --write src fixtures",
     "format": "bunx @biomejs/biome format --write src fixtures",
     "format:check": "bunx @biomejs/biome format src fixtures"

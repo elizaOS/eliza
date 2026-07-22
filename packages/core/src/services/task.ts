@@ -324,12 +324,10 @@ export class TaskService extends Service {
 		const isRepeat = task.tags?.includes("repeat") === true;
 		try {
 			if (isRepeat) {
-				const meta = (task.metadata ?? {}) as TaskMetadata &
-					Record<string, unknown>;
-				if (meta.paused !== true) {
+				if (task.metadata?.paused !== true) {
 					await this.runtime.updateTask(task.id, {
 						metadata: {
-							...meta,
+							...task.metadata,
 							paused: true,
 							lastError: `No worker registered for task ${task.name} (orphan auto-paused)`,
 							updatedAt: Date.now(),
@@ -361,15 +359,12 @@ export class TaskService extends Service {
 			// the tick to fatal on its own). Report via the collected errors list so
 			// it flows through the SAME single-diagnostic path, not a per-tick spam.
 			errors.push(
-				new ElizaError(
-					`Failed to quarantine orphaned task ${task.name}`,
-					{
-						code: "TASK_ORPHAN_QUARANTINE_FAILED",
-						context,
-						cause,
-						severity: "ephemeral",
-					},
-				),
+				new ElizaError(`Failed to quarantine orphaned task ${task.name}`, {
+					code: "TASK_ORPHAN_QUARANTINE_FAILED",
+					context,
+					cause,
+					severity: "ephemeral",
+				}),
 			);
 		}
 		this.quarantinedOrphans.add(task.id);

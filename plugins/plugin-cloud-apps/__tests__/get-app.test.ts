@@ -8,6 +8,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setGetApp,
   setListApps,
@@ -72,7 +73,10 @@ describe("GET_APP", () => {
     expect(reply).toContain("deployed");
     expect(reply).toContain("$12.40");
     expect(reply).toContain("$3.50");
-    expect((result?.data as { app: { id: string } }).app.id).toBe("id-acme");
+    expect(
+      (requireDefined(result, "action result").data as { app: { id: string } })
+        .app.id,
+    ).toBe("id-acme");
   });
 
   it("resolves an app via an explicit planner option", async () => {
@@ -141,7 +145,10 @@ describe("GET_APP", () => {
     );
 
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("not_found");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
     const reply = cb.calls[0]?.text ?? "";
     expect(reply).toContain("couldn't find an app");
     expect(reply).toContain("Acme Bot");
@@ -157,7 +164,10 @@ describe("GET_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
     expect(cb.calls[0]?.text).toContain("no Cloud API key");
   });
 
@@ -172,6 +182,9 @@ describe("GET_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
   });
 });
