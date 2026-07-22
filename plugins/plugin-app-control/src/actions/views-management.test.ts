@@ -197,6 +197,10 @@ function createRepoFixture() {
 		JSON.stringify({
 			name: "@local/plugin-__PLUGIN_NAME__",
 			displayName: "__PLUGIN_DISPLAY_NAME__",
+			// seedGuiViewScaffold validates a semver-pinned biome devDep on the
+			// scaffolded template (matches the repo-canonical pin in root
+			// package.json). scripts/dependencies are auto-created by objectField.
+			devDependencies: { "@biomejs/biome": "2.5.4" },
 		}),
 	);
 	writeFileSync(
