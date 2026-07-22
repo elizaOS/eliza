@@ -70,6 +70,7 @@ import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
+import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
@@ -224,6 +225,7 @@ import {
   isCharacterSectionPath,
 } from "./components/character/CharacterSectionNav";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
+import { LauncherSurface } from "./components/pages/LauncherSurface";
 import {
   isWalletSectionPath,
   WalletSectionNav,
@@ -1967,9 +1969,8 @@ function ContinuousChatOverlayMount(): ReactNode {
 }
 
 /**
- * The iOS-style home dashboard for chat and launcher routes. Notifications,
- * apps, and ranked widgets share one vertical surface behind the always-present
- * chat overlay. Host-provided tile taps still route through the real nav:
+ * The iOS-style home dashboard sits beside the launcher behind the
+ * always-present chat overlay. Host-provided tile taps still route through the real nav:
  * builtin tabs via setTab, plugin/remote views via the navigate-view event.
  */
 function HomeScreenMount({
@@ -2008,8 +2009,9 @@ function HomeScreenMount({
     ),
     [Home, onOpenTile],
   );
+  const launcher = useMemo(() => <LauncherSurface />, []);
   // Keep the dashboard warm during first-run, but hide its clock, widgets, and
-  // apps so the onboarding overlay reveals only the shared wallpaper.
+  // launcher so the onboarding overlay reveals only the shared wallpaper.
   return (
     <div
       aria-hidden={firstRunOpen ? "true" : undefined}
@@ -2019,18 +2021,11 @@ function HomeScreenMount({
         firstRunOpen && "invisible",
       )}
     >
-      <section
-        data-testid="home-launcher-surface"
-        data-page={initialSection === "apps" ? "launcher" : "home"}
-        className="absolute inset-0"
-      >
-        {/* Native harnesses read the route intent through the accessibility
-            tree; the combined visual surface has no separate horizontal page. */}
-        <span className="sr-only" data-testid="home-launcher-page-probe">
-          {`home-launcher-page:${initialSection === "apps" ? "launcher" : "home"}`}
-        </span>
-        {home}
-      </section>
+      <HomeLauncherSurface
+        home={home}
+        launcher={launcher}
+        initialPage={initialSection === "apps" ? "launcher" : "home"}
+      />
     </div>
   );
 }

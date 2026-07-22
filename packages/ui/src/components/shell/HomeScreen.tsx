@@ -17,7 +17,6 @@ import { cn } from "../../lib/utils";
 import { useNotifications } from "../../state/notifications/notification-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
-import { LauncherSurface } from "../pages/LauncherSurface";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
@@ -100,13 +99,11 @@ export interface HomeScreenProps {
 
 /**
  * The /chat home sits behind the always-present floating chat. Time/weather is
- * fixed at the top, the notification shade follows inline, and the complete
- * launcher grid owns the remaining vertical space. Rested notifications stay
- * compact; expanding the shade takes that remaining space and makes the app
- * region inert until the shade collapses. The app region keeps its scroll
- * position, scrolls vertically without visible chrome, and contains the ranked
- * home widgets after the launcher grid so those signals remain available
- * without separating apps from notifications.
+ * fixed at the top, the notification shade follows inline, and ranked widgets
+ * own the remaining vertical space. Rested notifications stay compact;
+ * expanding the shade takes that remaining space and makes secondary home
+ * content inert until the shade collapses. The separate launcher page is owned
+ * by HomeLauncherSurface, not this dashboard.
  */
 export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // The live activity stream feeds the home ranker's attention signals.
@@ -256,7 +253,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
 
         <section
           ref={appsRegionRef}
-          aria-label="Apps"
+          aria-label="Home content"
           aria-hidden={appsDisplaced || undefined}
           inert={appsDisplaced || undefined}
           onBlurCapture={handleAppsBlurCapture}
@@ -270,7 +267,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
               : "min-h-0 flex-1 opacity-100",
           )}
         >
-          {apps ?? <LauncherSurface layout="embedded" />}
+          {apps}
           <div
             className={cn(enterClass, "flex min-h-32 flex-col py-6")}
             style={{ animationDelay: "110ms" }}
