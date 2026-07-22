@@ -76,9 +76,7 @@ describe("notification boot boundaries", () => {
 
   it("boots native push and removes notification-center routing on unmount", async () => {
     const rendered = render(<NotificationsShellBoot />);
-    await waitFor(() =>
-      expect(harness.state.pushRegistrationBoots).toBe(1),
-    );
+    await waitFor(() => expect(harness.state.pushRegistrationBoots).toBe(1));
 
     expect(harness.state.notificationBoots).toBe(0);
 
