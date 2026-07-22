@@ -247,7 +247,7 @@
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/capacitor-talkmode": "workspace:*",
     "@elizaos/capacitor-websiteblocker": "workspace:*",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
@@ -309,7 +309,7 @@
     "playwright-core": "^1.58.2",
     "puppeteer-core": "^24.43.1",
     "react-test-renderer": "^19.2.4",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4.3.1",
     "tsx": "^4.21.0",
     "@typescript/native": "npm:typescript@^7.0.2",

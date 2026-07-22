@@ -73,7 +73,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "jimp": "^1.6.0",
-    "sharp": "^0.34.3"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.4",
