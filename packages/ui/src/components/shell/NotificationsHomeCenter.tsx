@@ -66,6 +66,7 @@ import {
   shouldCommitMomentumDetent,
   useRafCoalescer,
 } from "../../gestures";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import {
   isSafeDeepLink,
@@ -539,41 +540,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 
 let notificationsHomeCenterRenderObserverForTests: (() => void) | null = null;
 
-function usePrefersReducedMotion(): boolean {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return false;
-    }
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  });
-
-  useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return undefined;
-    }
-
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setPrefersReducedMotion(mediaQuery.matches);
-    update();
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", update);
-      return () => mediaQuery.removeEventListener("change", update);
-    }
-
-    mediaQuery.addListener(update);
-    return () => mediaQuery.removeListener(update);
-  }, []);
-
-  return prefersReducedMotion;
-}
-
 export function __setNotificationsHomeCenterRenderObserverForTests(
   observer: (() => void) | null,
 ): void {
@@ -605,7 +571,7 @@ export function NotificationsHomeCenter({
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated, hydrationStatus } = useNotifications();
   const inboxEmpty = notifications.length === 0;
-  const reduceMotion = usePrefersReducedMotion();
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);

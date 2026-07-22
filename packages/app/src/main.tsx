@@ -2404,9 +2404,8 @@ function shouldMountWebShell(): boolean {
 function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
-  type ReactAppRoot = ReturnType<typeof createRoot>;
   const hotData = import.meta.hot?.data as
-    | { reactRoot?: ReactAppRoot }
+    | { reactRoot?: ReturnType<typeof createRoot> }
     | undefined;
 
   const phoneCompanion = isPhoneCompanionMode();

@@ -9,7 +9,11 @@ import {
   PAGER_AXIS_DOMINANCE_RATIO as AXIS_DOMINANCE_RATIO,
   OVERSHOOT_RESISTANCE as EDGE_RESISTANCE,
   PAGER_FLICK_VELOCITY as FLICK_VELOCITY,
+  getMomentumReleaseVelocity,
+  getVelocityAwareSettleDuration,
   isRealCaptureLoss,
+  MOMENTUM_RELEASE_WINDOW_MS,
+  type MomentumSample,
   useClickSuppression,
   useRafCoalescer,
 } from "../gestures";
@@ -30,28 +34,6 @@ const SETTLE_MS = 460;
 const SETTLE_EASING = "cubic-bezier(0.25, 0.1, 0.25, 1)";
 const REDUCED_MOTION_SETTLE_MS = 420;
 const REDUCED_MOTION_SETTLE_EASING = "cubic-bezier(0.25, 0.1, 0.25, 1)";
-// Velocity-aware momentum settle (#10717): after a drag release, the settle
-// duration is derived from the release velocity instead of a constant rate — a
-// fast flick settles quickly, a slow drag eases in — so the rail's snap-home
-// speed reflects how the finger left it.
-const MIN_SETTLE_MS = 320;
-const MAX_SETTLE_MS = 600;
-// Slowest settle speed (px/ms): a near-zero release velocity eases the
-// remaining distance in at this floor (→ up to MAX_SETTLE_MS), while a faster
-// flick divides through to a shorter duration (down to MIN_SETTLE_MS).
-const MIN_SETTLE_SPEED = 0.6;
-
-/** Rolling pointer sample used to derive RELEASE velocity (not the whole-gesture
- *  average) so a slow drag finished with a fast flick still commits. */
-interface PointerSample {
-  x: number;
-  y: number;
-  t: number;
-}
-/** Only samples from the last RELEASE_VELOCITY_WINDOW_MS before release feed the
- *  release-velocity estimate. */
-const RELEASE_VELOCITY_WINDOW_MS = 100;
-
 /** True when the OS/browser requests reduced motion. Read fresh per rail write
  *  (matchMedia is a cheap synchronous query) so an OS-setting toggle takes effect
  *  without a remount, and so it's never stale in tests. Returns false when
@@ -82,7 +64,7 @@ interface DragState {
   captureTarget: HTMLDivElement | null;
   axis: "pending" | "horizontal" | "vertical";
   /** Trailing pointer samples (post-axis-commit), pruned to the velocity window. */
-  samples: PointerSample[];
+  samples: MomentumSample[];
   /** True when a mouse/pen button was pressed at pointerdown. Only then does a
    *  later `buttons === 0` move mean the button was RELEASED off-surface (stale
    *  drag) rather than a synthetic event that simply omits `buttons`. */
@@ -136,33 +118,6 @@ function pageOffset(page: number, width: number): number {
   return -page * width;
 }
 
-/**
- * Release velocity (px/ms) from the trailing sample window — the finger's speed
- * as it LEFT the surface, not averaged over the whole gesture. This is what lets
- * "drag slowly to 40%, then flick" commit: the aggregate would read slow, but the
- * final samples read fast. Falls back to the start-anchored average when there
- * are too few samples (a tap-flick with no intermediate moves).
- */
-function releaseVelocity(
-  samples: PointerSample[],
-  endX: number,
-  endT: number,
-  fallback: number,
-): number {
-  // Need at least two points spanning the window to estimate release speed; with
-  // one (a tap-flick, or a single synthetic move whose position equals release)
-  // the window delta is degenerate, so use the whole-gesture average instead.
-  if (samples.length < 2) return fallback;
-  // Oldest sample still inside the window (samples are already pruned to it).
-  const oldest = samples[0];
-  const dt = endT - oldest.t;
-  if (dt <= 0) return fallback;
-  const v = (endX - oldest.x) / dt;
-  // A degenerate window (finger ended exactly where the window started) carries
-  // no directional signal — defer to the average rather than reporting 0.
-  return v === 0 ? fallback : v;
-}
-
 /** Live horizontal translate of the rail (m41), for catching a settle mid-flight
  *  on pointerdown so the grab never teleports to the animation's end. */
 function liveRailOffset(rail: HTMLDivElement, fallback: number): number {
@@ -182,49 +137,6 @@ function liveRailOffset(rail: HTMLDivElement, fallback: number): number {
 
 function clampPage(page: number, pageCount: number): number {
   return Math.max(0, Math.min(Math.max(0, pageCount - 1), page));
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-export function getVelocityAwarePagerTransitionMs({
-  velocityPxPerMs,
-  remainingDistancePx,
-  fallbackMs,
-}: {
-  velocityPxPerMs: number;
-  remainingDistancePx: number;
-  fallbackMs: number;
-}): number {
-  const remaining = Math.abs(remainingDistancePx);
-  const speed = Math.abs(velocityPxPerMs);
-  if (remaining < 1 || speed < 0.01) {
-    return clamp(Math.round(fallbackMs), MIN_SETTLE_MS, MAX_SETTLE_MS);
-  }
-
-  const effectiveSpeed = Math.max(MIN_SETTLE_SPEED, speed);
-  return clamp(
-    Math.round(remaining / effectiveSpeed),
-    MIN_SETTLE_MS,
-    MAX_SETTLE_MS,
-  );
-}
-
-/**
- * Settle duration (ms) for the remaining travel at a given release velocity.
- * Fast flick → short, snappy settle; slow release → longer ease, clamped to a
- * comfortable [MIN_SETTLE_MS, MAX_SETTLE_MS] band.
- */
-function momentumSettleMs(
-  remainingPx: number,
-  velocityPxPerMs: number,
-): number {
-  return getVelocityAwarePagerTransitionMs({
-    velocityPxPerMs,
-    remainingDistancePx: remainingPx,
-    fallbackMs: SETTLE_MS,
-  });
 }
 
 /**
@@ -511,12 +423,12 @@ export function useHorizontalPager<
       // RELEASE velocity from the trailing window — how fast the finger left,
       // not the gesture average. This is what lets "drag slowly to 40%, then
       // flick" commit even though the average reads slow.
-      const velocity = releaseVelocity(
-        state.samples,
-        event.clientX,
-        endT,
-        avgVelocity,
-      );
+      const velocity = getMomentumReleaseVelocity({
+        samples: state.samples,
+        endPositionPx: event.clientX,
+        endTimeMs: endT,
+        fallbackVelocityPxPerMs: avgVelocity,
+      });
       // Where the rail physically sits at release (incl. edge rubber-band), so
       // the momentum settle covers the ACTUAL remaining distance to the target.
       const lastVisual =
@@ -528,7 +440,11 @@ export function useHorizontalPager<
       const settleTo = (offset: number) => {
         writeOffset(
           offset,
-          momentumSettleMs(Math.abs(offset - lastVisual), velocity),
+          getVelocityAwareSettleDuration({
+            velocityPxPerMs: velocity,
+            remainingDistancePx: Math.abs(offset - lastVisual),
+            fallbackDurationMs: SETTLE_MS,
+          }),
         );
         // If the rail is released exactly where it rests (a horizontal-committed
         // gesture that dragged out and back to 0), the transform doesn't change,
@@ -575,10 +491,11 @@ export function useHorizontalPager<
         // settles with the flick's velocity rather than the fixed rate.
         pendingSettleRef.current = {
           targetPage,
-          durationMs: momentumSettleMs(
-            Math.abs(targetOffset - lastVisual),
-            velocity,
-          ),
+          durationMs: getVelocityAwareSettleDuration({
+            velocityPxPerMs: velocity,
+            remainingDistancePx: Math.abs(targetOffset - lastVisual),
+            fallbackDurationMs: SETTLE_MS,
+          }),
         };
         // A committed page change is a gesture commit — swallow the synthesized
         // click so the flick doesn't also tap-launch the element under it.
@@ -731,10 +648,10 @@ export function useHorizontalPager<
       // Record a trailing sample for the release-velocity estimate, pruned to the
       // window so `finish()` reads the finger's speed as it LEFT, not the average.
       const t = now();
-      state.samples.push({ x: event.clientX, y: event.clientY, t });
+      state.samples.push({ positionPx: event.clientX, timeMs: t });
       while (
         state.samples.length > 1 &&
-        t - state.samples[0].t > RELEASE_VELOCITY_WINDOW_MS
+        t - state.samples[0].timeMs > MOMENTUM_RELEASE_WINDOW_MS
       ) {
         state.samples.shift();
       }

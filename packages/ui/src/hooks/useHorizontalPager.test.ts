@@ -3,19 +3,19 @@
  * no harness.
  */
 import { describe, expect, it } from "vitest";
-import { getVelocityAwarePagerTransitionMs } from "./useHorizontalPager";
+import { getVelocityAwareSettleDuration } from "../gestures";
 
-describe("getVelocityAwarePagerTransitionMs", () => {
+describe("getVelocityAwareSettleDuration pager tuning", () => {
   it("settles a fast flick faster than a slow drag across the same distance", () => {
-    const slow = getVelocityAwarePagerTransitionMs({
+    const slow = getVelocityAwareSettleDuration({
       velocityPxPerMs: 0.18,
       remainingDistancePx: 260,
-      fallbackMs: 360,
+      fallbackDurationMs: 360,
     });
-    const fast = getVelocityAwarePagerTransitionMs({
+    const fast = getVelocityAwareSettleDuration({
       velocityPxPerMs: 1.8,
       remainingDistancePx: 260,
-      fallbackMs: 360,
+      fallbackDurationMs: 360,
     });
 
     expect(fast).toBeLessThan(slow);
@@ -25,10 +25,10 @@ describe("getVelocityAwarePagerTransitionMs", () => {
 
   it("falls back to the bounded default when release velocity is unavailable", () => {
     expect(
-      getVelocityAwarePagerTransitionMs({
+      getVelocityAwareSettleDuration({
         velocityPxPerMs: 0,
         remainingDistancePx: 260,
-        fallbackMs: 360,
+        fallbackDurationMs: 360,
       }),
     ).toBe(360);
   });

@@ -20,13 +20,6 @@ export const MOMENTUM_MIN_SETTLE_MS = 320;
 export const MOMENTUM_MAX_SETTLE_MS = 600;
 export const MOMENTUM_MIN_SETTLE_SPEED_PX_PER_MS = 0.6;
 
-interface ReleaseVelocityOptions {
-  samples: readonly MomentumSample[];
-  endPositionPx: number;
-  endTimeMs: number;
-  fallbackVelocityPxPerMs: number;
-}
-
 /**
  * Estimates how fast the pointer left the surface from its trailing samples.
  * Samples are expected to have already been retained within
@@ -38,7 +31,12 @@ export function getMomentumReleaseVelocity({
   endPositionPx,
   endTimeMs,
   fallbackVelocityPxPerMs,
-}: ReleaseVelocityOptions): number {
+}: {
+  samples: readonly MomentumSample[];
+  endPositionPx: number;
+  endTimeMs: number;
+  fallbackVelocityPxPerMs: number;
+}): number {
   if (samples.length < 2) return fallbackVelocityPxPerMs;
 
   const oldest = samples[0];
@@ -47,15 +45,6 @@ export function getMomentumReleaseVelocity({
 
   const velocityPxPerMs = (endPositionPx - oldest.positionPx) / elapsedMs;
   return velocityPxPerMs === 0 ? fallbackVelocityPxPerMs : velocityPxPerMs;
-}
-
-interface VelocityAwareSettleOptions {
-  velocityPxPerMs: number;
-  remainingDistancePx: number;
-  fallbackDurationMs: number;
-  minimumDurationMs?: number;
-  maximumDurationMs?: number;
-  minimumSpeedPxPerMs?: number;
 }
 
 /**
@@ -70,7 +59,14 @@ export function getVelocityAwareSettleDuration({
   minimumDurationMs = MOMENTUM_MIN_SETTLE_MS,
   maximumDurationMs = MOMENTUM_MAX_SETTLE_MS,
   minimumSpeedPxPerMs = MOMENTUM_MIN_SETTLE_SPEED_PX_PER_MS,
-}: VelocityAwareSettleOptions): number {
+}: {
+  velocityPxPerMs: number;
+  remainingDistancePx: number;
+  fallbackDurationMs: number;
+  minimumDurationMs?: number;
+  maximumDurationMs?: number;
+  minimumSpeedPxPerMs?: number;
+}): number {
   const clampDuration = (durationMs: number) =>
     Math.max(
       minimumDurationMs,
@@ -86,17 +82,6 @@ export function getVelocityAwareSettleDuration({
   return clampDuration(remaining / Math.max(minimumSpeedPxPerMs, speed));
 }
 
-interface MomentumDetentOptions {
-  displacementPx: number;
-  releaseVelocityPxPerMs: number;
-  distanceThresholdPx: number;
-  minimumFlickDistancePx: number;
-  flickVelocityThresholdPxPerMs: number;
-  /** Axis ownership is determined by the pointer recognizer; only the
-   * short-distance flick escape hatch requires it again at release. */
-  isFlickAxisDominant?: boolean;
-}
-
 /**
  * Resolves a detent commit from distance or a same-direction release flick.
  * Reversing velocity never commits the original drag direction, which keeps a
@@ -109,7 +94,16 @@ export function shouldCommitMomentumDetent({
   minimumFlickDistancePx,
   flickVelocityThresholdPxPerMs,
   isFlickAxisDominant = true,
-}: MomentumDetentOptions): boolean {
+}: {
+  displacementPx: number;
+  releaseVelocityPxPerMs: number;
+  distanceThresholdPx: number;
+  minimumFlickDistancePx: number;
+  flickVelocityThresholdPxPerMs: number;
+  /** Axis ownership is determined by the pointer recognizer; only the
+   * short-distance flick escape hatch requires it again at release. */
+  isFlickAxisDominant?: boolean;
+}): boolean {
   if (Math.abs(displacementPx) >= distanceThresholdPx) return true;
 
   return (
