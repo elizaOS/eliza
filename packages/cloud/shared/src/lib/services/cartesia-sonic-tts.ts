@@ -61,6 +61,16 @@ export interface CartesiaSonicMetricEvent {
 
 export type CartesiaSonicMetricsHook = (event: CartesiaSonicMetricEvent) => void;
 
+/**
+ * Production cap on Cartesia's server-side buffer aggregation window (#16607).
+ * Without it Cartesia holds sentence-by-sentence `continue:true` streams for
+ * its 3000ms default window before first audio. Exported from the adapter so
+ * every consumer that opens a stream (production session, evidence-harness
+ * reference server) shares one value instead of re-typing a literal that can
+ * drift (#16667).
+ */
+export const VOICE_TTS_MAX_BUFFER_DELAY_MS = 250;
+
 export interface CartesiaSonicStreamOptions {
   readonly contextId?: string;
   readonly traceId?: string;
