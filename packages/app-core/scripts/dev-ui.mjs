@@ -30,6 +30,7 @@ import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
+import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
@@ -1007,17 +1008,16 @@ function buildCapacitorPluginsIfNeeded(childEnv) {
 function startVite() {
   const childEnv = createDevChildEnv(process.env);
 
-  const viteCmd = hasBun ? "bun" : "npx";
-  const viteForce =
-    process.env.ELIZA_VITE_FORCE === "1" ||
-    process.env.ELIZA_VITE_FORCE === "1";
-  const viteArgs = hasBun
-    ? viteForce
-      ? ["--bun", "vite", "--force", "--port", String(UI_PORT)]
-      : ["--bun", "vite", "--port", String(UI_PORT)]
-    : viteForce
-      ? ["vite", "--force", "--port", String(UI_PORT)]
-      : ["vite", "--port", String(UI_PORT)];
+  // Vite's WebSocket proxy depends on Node's HTTP upgrade semantics. Under
+  // Bun, `/ws` can remain pending while ordinary HTTP proxying succeeds,
+  // silently disconnecting live notifications and chat events in the UI.
+  const viteForce = process.env.ELIZA_VITE_FORCE === "1";
+  const { command: viteCmd, args: viteArgs } = resolveViteCommand({
+    appDir: path.join(cwd, appDir),
+    force: viteForce,
+    nodePath: which("node"),
+    port: UI_PORT,
+  });
   if (viteForce) {
     console.log(
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,
