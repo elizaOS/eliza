@@ -26,6 +26,32 @@ bun install
 
 ## Configuration
 
+### Enabling the connector (boot contract)
+
+`plugin-discord` is an **optional** core plugin: it is not loaded by default just
+because a token is present. To boot the connector you must opt in via the agent
+config, not only through env:
+
+```jsonc
+// eliza.json
+{
+  "connectors": {
+    "discord": { "enabled": true }
+  }
+}
+```
+
+The config key `connectors.discord` is what maps the agent to
+`@elizaos/plugin-discord` (via `channel-plugin-map.json`); a character with an
+empty `plugins: []` and no `connectors.discord` entry will boot with
+`connectors: {}` and emit zero Discord log lines even with valid credentials.
+
+> **Note:** `ELIZA_DISABLE_DISCORD=0` is **necessary but not sufficient**. It
+> only clears the kill-switch; it does not add the plugin to the load set. You
+> still need `connectors.discord.enabled` (or the plugin explicitly in the
+> character's `plugins`). Setting `ELIZA_DISABLE_DISCORD=0` alone leaves the
+> connector unloaded.
+
 The plugin requires the following environment variables:
 
 ```bash
