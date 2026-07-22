@@ -9,6 +9,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { promotedParentRoutingHint } from "../actions/promote-subactions";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
@@ -1248,9 +1249,18 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
-		const hint = tool.action?.routingHint?.trim();
+		// A promoted virtual (TRIGGER_CREATE, MESSAGE_SEND, …) carries no hint
+		// of its own; fall back to its umbrella parent's hint, deduped by the
+		// parent so a whole promoted family contributes one line.
+		const own = tool.action?.routingHint?.trim();
+		const promoted = tool.action
+			? promotedParentRoutingHint(tool.action)
+			: undefined;
+		const hint = own || promoted?.hint;
 		if (!hint) continue;
-		const key = normalizePlannerToolName(tool.name);
+		const key = normalizePlannerToolName(
+			own ? tool.name : (promoted?.parent ?? tool.name),
+		);
 		if (seen.has(key)) continue;
 		seen.add(key);
 		lines.push(`- ${hint}`);
