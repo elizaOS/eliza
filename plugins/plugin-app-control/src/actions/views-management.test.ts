@@ -208,10 +208,9 @@ function createRepoFixture() {
 		JSON.stringify({
 			name: "@local/plugin-__PLUGIN_NAME__",
 			displayName: "__PLUGIN_DISPLAY_NAME__",
-			// seedGuiViewScaffold validates a semver-pinned biome devDep on the
-			// scaffolded template (matches the repo-canonical pin in root
-			// package.json). scripts/dependencies are auto-created by objectField.
-			devDependencies: { "@biomejs/biome": "2.5.4" },
+			devDependencies: {
+				"@biomejs/biome": "2.5.4",
+			},
 		}),
 	);
 	writeFileSync(
@@ -528,63 +527,62 @@ describe("view management actions", () => {
 		}
 	});
 
-	it.each([
-		"capability",
-		"interact",
-		"invoke",
-	])("keeps explicit view authoring authoritative when its description mentions %s", async (term) => {
-		const repo = createRepoFixture();
-		try {
-			const { runtime, codingHandler } = createRuntime({
-				modelText: "name: notes-qa\ndisplayName: Notes QA",
-			});
-			const callback = vi.fn();
-			const listViews = vi.fn(async () => [
-				view({
-					id: "notes",
-					label: "Notes",
-					capabilities: [
-						{
-							id: "create-note",
-							description: "Create a sticky note.",
-							params: {
-								title: {
-									type: "string",
-									description: "Note title.",
+	it.each(["capability", "interact", "invoke"])(
+		"keeps explicit view authoring authoritative when its description mentions %s",
+		async (term) => {
+			const repo = createRepoFixture();
+			try {
+				const { runtime, codingHandler } = createRuntime({
+					modelText: "name: notes-qa\ndisplayName: Notes QA",
+				});
+				const callback = vi.fn();
+				const listViews = vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						capabilities: [
+							{
+								id: "create-note",
+								description: "Create a sticky note.",
+								params: {
+									title: {
+										type: "string",
+										description: "Note title.",
+									},
 								},
 							},
-						},
-					],
-				}),
-			]);
-			const action = createViewsAction({
-				client: {
-					listViews,
-					getCurrentView: vi.fn(async () => null),
-				},
-				hasOwnerAccess: vi.fn(async () => true),
-				repoRoot: repo.repoRoot,
-			});
+						],
+					}),
+				]);
+				const action = createViewsAction({
+					client: {
+						listViews,
+						getCurrentView: vi.fn(async () => null),
+					},
+					hasOwnerAccess: vi.fn(async () => true),
+					repoRoot: repo.repoRoot,
+				});
 
-			const result = await action.handler(
-				runtime as never,
-				message(`create a Notes view for testing ${term} routing`) as never,
-				undefined,
-				{ action: "create", view: "notes", title: "Capability QA" },
-				callback,
-			);
+				const result = await action.handler(
+					runtime as never,
+					message(`create a Notes view for testing ${term} routing`) as never,
+					undefined,
+					{ action: "create", view: "notes", title: "Capability QA" },
+					callback,
+				);
 
-			expect(result?.success).toBe(true);
-			expect(result?.values).toMatchObject({
-				mode: "create",
-				subMode: "choice",
-			});
-			expect(codingHandler).not.toHaveBeenCalled();
-			expect(globalThis.fetch).not.toHaveBeenCalled();
-		} finally {
-			repo.cleanup();
-		}
-	});
+				expect(result?.success).toBe(true);
+				expect(result?.values).toMatchObject({
+					mode: "create",
+					subMode: "choice",
+				});
+				expect(codingHandler).not.toHaveBeenCalled();
+				expect(globalThis.fetch).not.toHaveBeenCalled();
+			} finally {
+				repo.cleanup();
+			}
+		},
+	);
 
 	it("resolves an existing view to a local plugin directory and dispatches an edit task", async () => {
 		const repo = createRepoFixture();
