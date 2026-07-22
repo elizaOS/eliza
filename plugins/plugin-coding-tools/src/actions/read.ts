@@ -25,13 +25,11 @@ import {
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
-import { resolveRelativeToCwd } from "../lib/path-utils.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type { FileStateService } from "../services/file-state-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
-import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
   CODING_TOOLS_LOG_PREFIX,
-  SESSION_CWD_SERVICE,
   FILE_STATE_SERVICE,
   SANDBOX_SERVICE,
 } from "../types.js";
@@ -171,13 +169,7 @@ export async function readFileHandler(
       message: "file_path is required",
     });
   }
-  const cwdService = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
-    typeof SessionCwdService
-  > | null;
-  const resolvedInput = resolveRelativeToCwd(
-    filePath,
-    cwdService?.getCwd(conversationId) ?? process.cwd(),
-  );
+  const resolvedInput = resolveInputPath(runtime, conversationId, filePath);
 
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService

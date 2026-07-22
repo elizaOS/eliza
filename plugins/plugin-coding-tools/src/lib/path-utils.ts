@@ -82,7 +82,24 @@ export function relativeFromRoot(p: string, root: string): string {
  * paths pass through untouched; sandbox validation still runs on the result.
  */
 export function resolveRelativeToCwd(filePath: string, cwd: string): string {
+  return isAbsolutePath(filePath) ? filePath : path.resolve(cwd, filePath);
+}
+
+/**
+ * Resolve a handler's `file_path` input to an absolute path using the
+ * conversation's working directory. Owns the SessionCwdService lookup so
+ * read/write/edit share one definition; `getCwd` itself defaults to
+ * `process.cwd()` when the conversation has no recorded cwd.
+ */
+export function resolveInputPath(
+  runtime: {
+    getService(type: string): { getCwd(id: string | undefined): string } | null;
+  },
+  conversationId: string | undefined,
+  filePath: string,
+): string {
   if (isAbsolutePath(filePath)) return filePath;
-  const joined = `${cwd.replace(/\/+$/, "")}/${filePath}`;
-  return joined;
+  const cwdService = runtime.getService("CODING_TOOLS_SESSION_CWD");
+  const cwd = cwdService?.getCwd(conversationId) ?? process.cwd();
+  return path.resolve(cwd, filePath);
 }
