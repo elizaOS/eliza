@@ -215,7 +215,6 @@ describe("WRITE", () => {
     expect(written).toBe("x");
   });
 
-
   it("rejects paths under the blocklist", async () => {
     const result = await writeFileHandler(env.runtime, env.message, undefined, {
       parameters: {
