@@ -18,6 +18,7 @@ import {
 } from "@elizaos/core";
 
 import {
+  capTranscriptForChat,
   failureToActionResult,
   fencePreformatted,
   readNumberParam,
@@ -83,9 +84,11 @@ async function finalizeReadResult(params: {
   if (params.callback) {
     // Fenced (#16563): line-numbered file content is the richest preformatted
     // payload of all — unfenced, Discord's markdown pass eats `*`/`_` pairs
-    // and embedded fences break the message layout.
+    // and embedded fences break the message layout. Capped: a 2000-line read
+    // otherwise splits into a flood of follow-up messages; the model still
+    // sees the full content via the ActionResult.
     await params.callback({
-      text: fencePreformatted(formatted),
+      text: fencePreformatted(capTranscriptForChat(formatted)),
       source: "coding-tools",
     });
   }
