@@ -18,14 +18,15 @@ import { analyzeInvestigationNarrative } from "../analyzers/investigationNarrati
 import { analyzeInvestigationReplay } from "../analyzers/investigationReplay";
 import { analyzeInvestigationReport } from "../analyzers/investigationReport";
 import { analyzeWalletPortfolio } from "../analyzers/portfolio";
+import { analyzeWalletProtocols } from "../analyzers/protocols";
 import { analyzeWalletRelationships } from "../analyzers/relationships";
 import { analyzeWalletRisk } from "../analyzers/risk";
 import { analyzeWalletSmartMoney } from "../analyzers/smartMoney";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
-import { getWalletIntelligenceSources } from "../sources/registry";
 import { SolanaParsedTransaction } from "../helius";
+import { getWalletIntelligenceSources } from "../sources/registry";
 import {
   SupportedChain,
   WalletBalance,
@@ -66,6 +67,9 @@ export type WalletWhalePipelineResult =
 
 export type WalletDeFiPipelineResult =
   ReturnType<typeof analyzeWalletDeFi>;
+
+export type WalletProtocolsPipelineResult =
+  ReturnType<typeof analyzeWalletProtocols>;
 
 export type WalletBehaviorPipelineResult =
   ReturnType<typeof analyzeWalletBehavior>;
@@ -141,6 +145,7 @@ export interface WalletPipelineOutput {
   risk: WalletRiskPipelineResult;
   whale: WalletWhalePipelineResult;
   defi: WalletDeFiPipelineResult;
+  protocols: WalletProtocolsPipelineResult;
   behavior: WalletBehaviorPipelineResult;
   exposure: WalletExposurePipelineResult;
   relationships: WalletRelationshipsPipelineResult;
