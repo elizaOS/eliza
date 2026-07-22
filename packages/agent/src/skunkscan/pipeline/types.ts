@@ -18,6 +18,7 @@ import { analyzeInvestigationNarrative } from "../analyzers/investigationNarrati
 import { analyzeInvestigationReplay } from "../analyzers/investigationReplay";
 import { analyzeInvestigationReport } from "../analyzers/investigationReport";
 import { analyzeWalletPortfolio } from "../analyzers/portfolio";
+import { analyzeProtocolIntelligence } from "../analyzers/protocolIntelligence";
 import { analyzeWalletProtocols } from "../analyzers/protocols";
 import { analyzeWalletRelationships } from "../analyzers/relationships";
 import { analyzeWalletRisk } from "../analyzers/risk";
@@ -70,6 +71,9 @@ export type WalletDeFiPipelineResult =
 
 export type WalletProtocolsPipelineResult =
   ReturnType<typeof analyzeWalletProtocols>;
+
+export type WalletProtocolIntelligencePipelineResult =
+  ReturnType<typeof analyzeProtocolIntelligence>;
 
 export type WalletBehaviorPipelineResult =
   ReturnType<typeof analyzeWalletBehavior>;
@@ -146,6 +150,8 @@ export interface WalletPipelineOutput {
   whale: WalletWhalePipelineResult;
   defi: WalletDeFiPipelineResult;
   protocols: WalletProtocolsPipelineResult;
+  protocolIntelligence:
+    WalletProtocolIntelligencePipelineResult;
   behavior: WalletBehaviorPipelineResult;
   exposure: WalletExposurePipelineResult;
   relationships: WalletRelationshipsPipelineResult;
