@@ -38,8 +38,8 @@ test("lander renders elizaOS hero and primary copy", async ({ page }) => {
 
   const hero = page.locator(".hero-cloud");
   await expect(hero).toBeVisible();
-  await expect(hero.locator(".cloud-background img")).toHaveCount(1);
-  await expect(hero.locator(".cloud-background video")).toHaveCount(1);
+  await expect(hero).toHaveAttribute("data-hero", "cloud");
+  await expect(hero.locator(".cloud-scrim")).toHaveCount(1);
   await expect(hero.getByRole("link", { name: /^Download/i })).toHaveAttribute(
     "href",
     "#download",
@@ -104,7 +104,7 @@ test("footer renders wordmark, link nav, and social links", async ({
   await expect(footer.locator("img")).toHaveCount(1);
   await expect(footer.getByRole("link", { name: "App" })).toHaveAttribute(
     "href",
-    "https://elizaos.ai",
+    "https://app.elizacloud.ai",
   );
   await expect(footer.getByRole("link", { name: "Cloud" })).toHaveAttribute(
     "href",
@@ -148,6 +148,13 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
     "/brand/concepts/concept_usbdrive_900.jpg",
   );
 
+  await page.getByRole("button", { name: /ElizaOS mini PC/i }).click();
+  await expect(page).toHaveURL(/\/checkout\?sku=elizaos-mini-pc$/);
+  await expect(
+    page.getByRole("heading", { name: "ElizaOS mini PC" }),
+  ).toBeVisible();
+
+  await page.goto("/checkout?sku=elizaos-usb");
   await Promise.all([
     page.waitForURL(
       /api\.elizacloud\.ai\/steward\/auth\/oauth\/google\/authorize.*code_challenge=/,
@@ -158,12 +165,6 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
   expect(page.url()).toMatch(
     /redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A4455%2Fcheckout%3Fsku%3Delizaos-usb/,
   );
-
-  await page.getByRole("button", { name: /ElizaOS mini PC/i }).click();
-  await expect(page).toHaveURL(/\/checkout\?sku=elizaos-mini-pc$/);
-  await expect(
-    page.getByRole("heading", { name: "ElizaOS mini PC" }),
-  ).toBeVisible();
 });
 
 test("checkout result pages return to hardware", async ({ page }) => {
