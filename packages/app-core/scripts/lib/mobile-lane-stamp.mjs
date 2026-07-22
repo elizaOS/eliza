@@ -4,11 +4,11 @@
  *
  * The renderer bundle carries a machine-readable build stamp
  * (`dist/eliza-renderer-build.json`, written by the vite
- * `renderer-build-manifest` plugin) with `variant`, `capacitorTarget`, and
- * `runtimeMode`. Issue #11030's root operational cause: a cloud/store renderer
- * left in `packages/app/dist` by one lane was cap-synced into a DIFFERENT lane
- * (`build:ios:local`), so the device booted a cloud-mode bundle with no agent
- * endpoint and hung at "Booting up…".
+ * `renderer-build-manifest` plugin) with `variant`, `capacitorTarget`,
+ * `runtimeMode`, and `cloudBase`. A renderer left in `packages/app/dist` by one
+ * lane must not be reused by another runtime lane or Cloud environment: either
+ * mistake bakes the wrong behavior into a native artifact while still looking
+ * fresh by source timestamp.
  *
  * This module answers four questions without touching the filesystem, so all
  * are unit-testable:
@@ -28,6 +28,7 @@
  * `packages/app/scripts/mobile-release-preflight.mjs` uses (4) for the
  * sideload lane.
  */
+import { resolveConfiguredCloudBase } from "./renderer-build-manifest.mjs";
 
 /**
  * Compute the renderer stamp a `buildWeb(platform)` invocation will produce.
@@ -43,7 +44,8 @@
  *           iosRuntimeMode: string|null, androidRuntimeMode: string|null,
  *           runtimeExecutionMode: string|null },
  *           env?: Record<string, string|undefined> }} opts
- * @returns {{ variant: string, capacitorTarget: string|null, runtimeMode: string|null }}
+ * @returns {{ variant: string, capacitorTarget: string|null,
+ *             runtimeMode: string|null, cloudBase: string|null }}
  */
 export function resolveExpectedRendererStamp({ policy, env = {} }) {
   if (!policy || typeof policy !== "object") {
@@ -69,7 +71,8 @@ export function resolveExpectedRendererStamp({ policy, env = {} }) {
       : env.ELIZA_RUNTIME_MODE;
   const runtimeMode =
     viteIosRuntimeMode ?? viteAndroidRuntimeMode ?? executionMode ?? null;
-  return { variant, capacitorTarget, runtimeMode };
+  const cloudBase = resolveConfiguredCloudBase(env);
+  return { variant, capacitorTarget, runtimeMode, cloudBase };
 }
 
 function describeStampValue(value) {
@@ -82,9 +85,9 @@ function describeStampValue(value) {
  * carries exactly the stamp this lane should bake.
  *
  * @param {{ variant?: string|null, capacitorTarget?: string|null,
- *           runtimeMode?: string|null } | null} manifest
+ *           runtimeMode?: string|null, cloudBase?: string|null } | null} manifest
  * @param {{ variant: string|null, capacitorTarget: string|null,
- *           runtimeMode: string|null }} expected
+ *           runtimeMode: string|null, cloudBase: string|null }} expected
  * @returns {string[]}
  */
 export function rendererLaneStampMismatches(manifest, expected) {
@@ -105,6 +108,19 @@ export function rendererLaneStampMismatches(manifest, expected) {
     if (actual !== wanted) {
       mismatches.push(
         `dist ${label} is ${describeStampValue(actual)} but this lane bakes ${describeStampValue(wanted)}`,
+      );
+    }
+  }
+  if (!Object.hasOwn(manifest, "cloudBase")) {
+    mismatches.push(
+      `dist manifest is missing Cloud base but this lane bakes ${describeStampValue(expected.cloudBase)}`,
+    );
+  } else {
+    const actualCloudBase = manifest.cloudBase ?? null;
+    const wantedCloudBase = expected.cloudBase ?? null;
+    if (actualCloudBase !== wantedCloudBase) {
+      mismatches.push(
+        `dist Cloud base is ${describeStampValue(actualCloudBase)} but this lane bakes ${describeStampValue(wantedCloudBase)}`,
       );
     }
   }

@@ -40,6 +40,7 @@ function makeAppDist(
     variant?: string;
     capacitorTarget?: string;
     runtimeMode?: string;
+    cloudBase?: string | null;
   } = {},
 ) {
   const appDir = path.join(tmp, "app");
@@ -224,6 +225,79 @@ describe("mobileWebDistReuseStatus", () => {
     expect(status.problems).toContain(
       "dist built for runtime mode 'cloud-hybrid' but this build targets an unset runtime mode",
     );
+  });
+
+  it("never reuses renderer output across Cloud environments", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud",
+      cloudBase: "https://staging.elizacloud.ai",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "cloud",
+      expectedCloudBase: null,
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist built for Cloud base 'https://staging.elizacloud.ai' but this build targets the default production origin",
+    );
+  });
+
+  it("requires an explicit Cloud-base stamp before mobile reuse", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud",
+    });
+    const manifestPath = path.join(
+      appDir,
+      "dist",
+      RENDERER_BUILD_MANIFEST_FILENAME,
+    );
+    const legacyManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    delete legacyManifest.cloudBase;
+    fs.writeFileSync(manifestPath, `${JSON.stringify(legacyManifest)}\n`);
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "cloud",
+      expectedCloudBase: null,
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist manifest is missing Cloud base; this build targets the default production Cloud base",
+    );
+  });
+
+  it("reuses a renderer whose explicit Cloud-base stamp matches", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud",
+      cloudBase: null,
+    });
+
+    expect(
+      mobileWebDistReuseStatus({
+        appDir,
+        repoRoot: tmp,
+        expectedVariant: "direct",
+        expectedTarget: "ios",
+        expectedRuntimeMode: "cloud",
+        expectedCloudBase: null,
+      }).reusable,
+    ).toBe(true);
   });
 
   it("reports stale dist using the existing Vite staleness check", () => {

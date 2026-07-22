@@ -1082,6 +1082,9 @@ async function buildWeb(platform) {
       // bundle left behind by an ios cloud build) must never be reused into
       // this lane — it falls through to a fresh rebuild instead (#11030).
       expectedRuntimeMode: laneExpected.runtimeMode,
+      // Vite bakes the control-plane origin into the renderer. A staging dist
+      // is source-fresh but still invalid for a production native artifact.
+      expectedCloudBase: laneExpected.cloudBase,
     });
     if (autoStatus.reusable) {
       console.log(
@@ -1098,6 +1101,7 @@ async function buildWeb(platform) {
       expectedVariant: laneExpected.variant,
       expectedTarget: laneExpected.capacitorTarget,
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedCloudBase: laneExpected.cloudBase,
     });
     if (!fs.existsSync(status.indexPath)) {
       throw new Error(
@@ -1266,7 +1270,7 @@ async function ensureRendererDistMatchesLane(platform) {
       if (mismatches.length > 0) {
         throw new Error(
           `[mobile-build] packages/app/dist still does not match the '${platform}' lane after a rebuild:\n${formatMobileWebDistProblems(mismatches)}\n` +
-            `An env override (ELIZA_BUILD_VARIANT / VITE_ELIZA_IOS_RUNTIME_MODE / VITE_ELIZA_ANDROID_RUNTIME_MODE / ELIZA_RUNTIME_MODE) ` +
+            `An env override (ELIZA_BUILD_VARIANT / VITE_ELIZA_IOS_RUNTIME_MODE / VITE_ELIZA_ANDROID_RUNTIME_MODE / ELIZA_RUNTIME_MODE / VITE_ELIZA_CLOUD_BASE / VITE_CLOUD_BASE) ` +
             `is forcing a different stamp than this lane expects — unset it or use the matching build lane.`,
         );
       }

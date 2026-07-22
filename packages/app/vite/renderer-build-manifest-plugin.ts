@@ -6,6 +6,7 @@ import { execSync } from "node:child_process";
 import type { Plugin } from "vite";
 import {
   RENDERER_BUILD_MANIFEST_FILENAME,
+  resolveConfiguredCloudBase,
   writeRendererBuildManifest,
 } from "../../app-core/scripts/lib/renderer-build-manifest.mjs";
 
@@ -57,6 +58,7 @@ export function rendererBuildManifestPlugin(): Plugin {
             process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE ??
             process.env.ELIZA_RUNTIME_MODE ??
             null,
+          cloudBase: resolveConfiguredCloudBase(process.env),
         });
         this.info?.(
           `[renderer-build-manifest] wrote ${RENDERER_BUILD_MANIFEST_FILENAME} buildId=${manifest.buildId.slice(0, 12)} (${manifest.assetCount} assets)`,

@@ -30,6 +30,22 @@ import path from "node:path";
 export const RENDERER_BUILD_MANIFEST_FILENAME = "eliza-renderer-build.json";
 export const RENDERER_BUILD_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
 
+/**
+ * Resolve the Cloud control-plane origin baked into a renderer bundle.
+ * This mirrors the renderer runtime's precedence and treats an unset value as
+ * the production default without hard-coding that default into build tooling.
+ *
+ * @param {Record<string, string|undefined>} env
+ * @returns {string|null}
+ */
+export function resolveConfiguredCloudBase(env = {}) {
+  for (const key of ["VITE_ELIZA_CLOUD_BASE", "VITE_CLOUD_BASE"]) {
+    const value = env[key]?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
 function sha256(buf) {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
@@ -74,7 +90,8 @@ export function computeRendererFingerprint(distDir) {
  * Build the manifest object for a renderer dir (does not write it).
  * @param {string} distDir
  * @param {{ builtAt?: string, commit?: string|null, variant?: string|null,
- *           capacitorTarget?: string|null, runtimeMode?: string|null }} [meta]
+ *           capacitorTarget?: string|null, runtimeMode?: string|null,
+ *           cloudBase?: string|null }} [meta]
  */
 export function buildRendererManifest(distDir, meta = {}) {
   const fingerprint = computeRendererFingerprint(distDir);
@@ -88,6 +105,7 @@ export function buildRendererManifest(distDir, meta = {}) {
     variant: meta.variant ?? null,
     capacitorTarget: meta.capacitorTarget ?? null,
     runtimeMode: meta.runtimeMode ?? null,
+    cloudBase: meta.cloudBase ?? null,
   };
 }
 

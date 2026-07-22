@@ -108,6 +108,7 @@ describe("writeRendererBuildManifest / readRendererBuildManifest", () => {
       commit: "deadbeef",
       variant: "store",
       capacitorTarget: "ios",
+      cloudBase: "https://staging.elizacloud.ai",
     });
     expect(
       fs.existsSync(path.join(dist, RENDERER_BUILD_MANIFEST_FILENAME)),
@@ -116,7 +117,14 @@ describe("writeRendererBuildManifest / readRendererBuildManifest", () => {
     expect(read).toEqual(written);
     expect(read?.variant).toBe("store");
     expect(read?.capacitorTarget).toBe("ios");
+    expect(read?.cloudBase).toBe("https://staging.elizacloud.ai");
     expect(read?.buildId).toBe(computeRendererFingerprint(dist).buildId);
+  });
+
+  it("records an explicit production-default Cloud base when unset", () => {
+    const dist = path.join(tmp, "dist-default-cloud");
+    makeDist(dist);
+    expect(buildRendererManifest(dist).cloudBase).toBeNull();
   });
 
   it("returns null when no manifest is present", () => {

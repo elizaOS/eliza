@@ -64,6 +64,7 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "direct",
       capacitorTarget: "ios",
       runtimeMode: "local",
+      cloudBase: null,
     });
   });
 
@@ -74,6 +75,7 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "store",
       capacitorTarget: "ios",
       runtimeMode: "cloud",
+      cloudBase: null,
     });
   });
 
@@ -93,6 +95,27 @@ describe("resolveExpectedRendererStamp", () => {
         env: { ELIZA_BUILD_VARIANT: "store" },
       }).variant,
     ).toBe("store");
+  });
+
+  it("records the first configured Cloud base using renderer runtime precedence", () => {
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES.ios,
+        env: {
+          VITE_ELIZA_CLOUD_BASE: " https://staging.elizacloud.ai ",
+          VITE_CLOUD_BASE: "https://ignored.example",
+        },
+      }).cloudBase,
+    ).toBe("https://staging.elizacloud.ai");
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES.ios,
+        env: {
+          VITE_ELIZA_CLOUD_BASE: " ",
+          VITE_CLOUD_BASE: "https://alt.example",
+        },
+      }).cloudBase,
+    ).toBe("https://alt.example");
   });
 
   it("android lanes take the policy android runtime mode unconditionally", () => {
@@ -142,12 +165,18 @@ describe("rendererLaneStampMismatches", () => {
     variant: "direct",
     capacitorTarget: "ios",
     runtimeMode: "local",
+    cloudBase: null,
   };
 
   it("returns no mismatches for an exact match", () => {
     expect(
       rendererLaneStampMismatches(
-        { variant: "direct", capacitorTarget: "ios", runtimeMode: "local" },
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+          cloudBase: null,
+        },
         expected,
       ),
     ).toEqual([]);
@@ -165,6 +194,7 @@ describe("rendererLaneStampMismatches", () => {
         variant: "store",
         capacitorTarget: "ios",
         runtimeMode: "cloud-hybrid",
+        cloudBase: null,
       },
       expected,
     );
@@ -176,7 +206,7 @@ describe("rendererLaneStampMismatches", () => {
 
   it("flags a manifest with no runtime mode when the lane bakes one", () => {
     const mismatches = rendererLaneStampMismatches(
-      { variant: "direct", capacitorTarget: "ios" },
+      { variant: "direct", capacitorTarget: "ios", cloudBase: null },
       expected,
     );
     expect(mismatches).toEqual([
@@ -184,11 +214,16 @@ describe("rendererLaneStampMismatches", () => {
     ]);
   });
 
-  it("treats null and missing as equal when the lane bakes no mode", () => {
+  it("treats null and missing runtime modes as equal when the lane bakes no mode", () => {
     expect(
       rendererLaneStampMismatches(
-        { variant: "direct", capacitorTarget: null },
-        { variant: "direct", capacitorTarget: null, runtimeMode: null },
+        { variant: "direct", capacitorTarget: null, cloudBase: null },
+        {
+          variant: "direct",
+          capacitorTarget: null,
+          runtimeMode: null,
+          cloudBase: null,
+        },
       ),
     ).toEqual([]);
   });
@@ -196,10 +231,39 @@ describe("rendererLaneStampMismatches", () => {
   it("flags a wrong capacitor target", () => {
     expect(
       rendererLaneStampMismatches(
-        { variant: "direct", capacitorTarget: "android", runtimeMode: "local" },
+        {
+          variant: "direct",
+          capacitorTarget: "android",
+          runtimeMode: "local",
+          cloudBase: null,
+        },
         expected,
       ),
     ).toEqual(["dist capacitor target is 'android' but this lane bakes 'ios'"]);
+  });
+
+  it("rejects a staging renderer for production and a legacy unstamped origin", () => {
+    expect(
+      rendererLaneStampMismatches(
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+          cloudBase: "https://staging.elizacloud.ai",
+        },
+        expected,
+      ),
+    ).toEqual([
+      "dist Cloud base is 'https://staging.elizacloud.ai' but this lane bakes (unset)",
+    ]);
+    expect(
+      rendererLaneStampMismatches(
+        { variant: "direct", capacitorTarget: "ios", runtimeMode: "local" },
+        expected,
+      ),
+    ).toEqual([
+      "dist manifest is missing Cloud base but this lane bakes (unset)",
+    ]);
   });
 });
 

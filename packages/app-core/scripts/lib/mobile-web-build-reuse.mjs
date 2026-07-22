@@ -19,6 +19,11 @@ function targetLabel(expectedTarget) {
  * with no runtime-mode lane at all (plain web/desktop dist reuse) — when
  * omitted the runtime-mode check is skipped, which is how a stale cloud-mode
  * dist once leaked into `build:ios:local` via cap sync.
+ *
+ * `expectedCloudBase` follows the same omit-versus-null contract. Mobile lanes
+ * always pass it: `null` means the production default, while a string names an
+ * explicit environment such as staging. A legacy manifest without the field is
+ * never reusable because its baked environment cannot be proven.
  */
 export function mobileWebDistReuseStatus({
   appDir,
@@ -26,6 +31,7 @@ export function mobileWebDistReuseStatus({
   expectedVariant,
   expectedTarget,
   expectedRuntimeMode,
+  expectedCloudBase,
   readManifest = readRendererBuildManifest,
   buildNeeded = viteRendererBuildNeeded,
 } = {}) {
@@ -80,6 +86,21 @@ export function mobileWebDistReuseStatus({
             ? `dist manifest is missing runtime mode; this build targets ${wantedLabel}`
             : `dist built for runtime mode '${manifestRuntimeMode}' but this build targets ${wantedLabel}`,
         );
+      }
+    }
+    if (expectedCloudBase !== undefined) {
+      const wantedCloudBase = expectedCloudBase ?? null;
+      if (!Object.hasOwn(manifest, "cloudBase")) {
+        problems.push(
+          `dist manifest is missing Cloud base; this build targets ${wantedCloudBase == null ? "the default production Cloud base" : `'${wantedCloudBase}'`}`,
+        );
+      } else {
+        const manifestCloudBase = manifest.cloudBase ?? null;
+        if (manifestCloudBase !== wantedCloudBase) {
+          problems.push(
+            `dist built for Cloud base ${manifestCloudBase == null ? "the default production origin" : `'${manifestCloudBase}'`} but this build targets ${wantedCloudBase == null ? "the default production origin" : `'${wantedCloudBase}'`}`,
+          );
+        }
       }
     }
   }
