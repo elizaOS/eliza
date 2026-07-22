@@ -81,8 +81,9 @@ describe("AgentRuntime component precedence — undeclared collisions (first-win
 		expect(matches).toHaveLength(1);
 		// Incumbent (first) is authoritative.
 		const dup = matches[0];
-		expect(dup).toBeDefined();
-		const result = await dup!.get(runtime, {} as never, {} as never);
+		if (!dup)
+			throw new Error("Expected the duplicate provider to be registered");
+		const result = await dup.get(runtime, {} as never, {} as never);
 		expect(result.text).toBe("first");
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(warn.mock.calls[0]?.[1]).toMatch(/name collision/i);
@@ -132,8 +133,9 @@ describe("AgentRuntime component precedence — declared override:true supersede
 		const matches = runtime.providers.filter((p) => p.name === "OVR");
 		expect(matches).toHaveLength(1);
 		const ovr = matches[0];
-		expect(ovr).toBeDefined();
-		const result = await ovr!.get(runtime, {} as never, {} as never);
+		if (!ovr)
+			throw new Error("Expected the override provider to be registered");
+		const result = await ovr.get(runtime, {} as never, {} as never);
 		expect(result.text).toBe("second");
 		// Declared override logs at info, never warns.
 		expect(info).toHaveBeenCalled();
