@@ -41,7 +41,7 @@ train = [
   # resolves to (torch 2.11+cu130 in practice) when --extra serve is
   # also selected (smoke), and 2.10+cu126 when train is alone (Vast
   # SFT path). Both wheels run on Vast Blackwell driver 570.x.
-  "torch>=2.5.0,<2.13",
+  "torch>=2.5.0,<2.14",
   "transformers>=4.46.0",
   "accelerate>=1.1.0",
   "peft>=0.14.0",
@@ -112,7 +112,7 @@ rl = [
   # GRPO trainer needs vLLM for rollouts; pin separately so users running RL
   # without serving don't have to install the full `serve` extra (which has
   # an incompatible torch ABI). vllm>=0.6 is what verl 0.5+ requires.
-  "vllm>=0.6.0,<0.8.0",
+  "vllm>=0.6.0,<0.26.0",
   # Atropos — continuous RL environment server. Drives the GRPO loop in
   # scripts/rl/atropos_trainer.py against eliza-native trajectory JSONL
   # exports under $ELIZA_STATE_DIR/trajectories. Config:
@@ -153,7 +153,7 @@ serve = [
   # Pin a minor floor that captures all of these. See
   # scripts/inference/serve_vllm.py for the canonical flag set per model +
   # GPU target.
-  "vllm>=0.20.0,<0.21.0",
+  "vllm>=0.20.0,<0.26.0",
   # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
   "transformers>=4.46.0",
