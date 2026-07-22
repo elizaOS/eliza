@@ -79,7 +79,7 @@
     "exceljs": "^4.4.0",
     "expletives": "^0.1.5",
     "gray-matter": "^4.0.3",
-    "hono": "4.12.25",
+    "hono": "4.12.27",
     "jose": "^6.0.0",
     "json-schema": "^0.4.0",
     "json5": "^2.2.3",
