@@ -22,6 +22,7 @@ type StrategyInput = {
 export function analyzeWalletStrategy(
   input: StrategyInput,
 ): WalletStrategySummary {
+
   let score = 0;
 
   const supportingSignals: string[] = [];
@@ -31,17 +32,93 @@ export function analyzeWalletStrategy(
   let strategy: WalletStrategySummary["primaryStrategy"] =
     "unknown";
 
-  if (input.smartMoney.level === "high") {
-    score += 25;
+  // -----------------------------
+  // Dormant
+  // -----------------------------
+
+  if (input.activity.activityLevel === "none") {
+    strategy = "dormant";
+    score = 15;
+
+    conflictingSignals.push(
+      "No recent on-chain activity was detected.",
+    );
+  }
+
+  // -----------------------------
+  // Long-term holder
+  // -----------------------------
+
+  else if (
+    input.age.classification === "established" &&
+    input.activity.activityLevel === "low"
+  ) {
+    strategy = "holding";
+    score += 70;
+
     supportingSignals.push(
-      "Wallet exhibits strong smart money characteristics.",
+      "Established wallet with limited recent trading activity.",
+    );
+  }
+
+  // -----------------------------
+  // Active trader
+  // -----------------------------
+
+  else if (
+    input.activity.activityLevel === "high"
+  ) {
+    strategy = "active_trading";
+    score += 70;
+
+    supportingSignals.push(
+      "High recent transaction activity suggests active trading.",
+    );
+  }
+
+  // -----------------------------
+  // Accumulating
+  // -----------------------------
+
+  else if (
+    input.age.classification === "established" &&
+    input.portfolio.diversityLevel !== "low"
+  ) {
+    strategy = "accumulating";
+    score += 60;
+
+    supportingSignals.push(
+      "Established wallet with diversified holdings.",
+    );
+  }
+
+  // -----------------------------
+  // Supporting evidence
+  // -----------------------------
+
+  if (input.smartMoney.level === "high") {
+    score += 15;
+
+    supportingSignals.push(
+      "Strong Smart Money profile detected.",
     );
   }
 
   if (input.whale.isWhale) {
-    score += 15;
+    score += 10;
+
     supportingSignals.push(
-      "Large portfolio indicates strategic positioning.",
+      "Whale characteristics strengthen the strategy assessment.",
+    );
+  }
+
+  if (
+    input.defi.profile === "power_user"
+  ) {
+    score += 10;
+
+    supportingSignals.push(
+      "Regular DeFi usage supports strategic participation.",
     );
   }
 
@@ -49,41 +126,14 @@ export function analyzeWalletStrategy(
     input.behavior.primaryProfile ===
     "long_term_investor"
   ) {
-    score += 25;
-    strategy = "holding";
+    score += 10;
   }
 
   if (
     input.behavior.primaryProfile ===
     "active_trader"
   ) {
-    score += 25;
-    strategy = "active_trading";
-  }
-
-  if (
-    input.defi.profile === "power_user"
-  ) {
     score += 10;
-    supportingSignals.push(
-      "Uses multiple DeFi protocols.",
-    );
-  }
-
-  if (
-    input.activity.activityLevel === "none"
-  ) {
-    strategy = "dormant";
-    conflictingSignals.push(
-      "Little recent on-chain activity.",
-    );
-  }
-
-  if (
-    strategy === "unknown" &&
-    input.portfolio.diversityLevel === "high"
-  ) {
-    strategy = "accumulating";
   }
 
   if (score > 100) {
@@ -91,11 +141,17 @@ export function analyzeWalletStrategy(
   }
 
   const confidence =
-    score >= 70
+    score >= 75
       ? "high"
-      : score >= 40
+      : score >= 45
       ? "medium"
       : "low";
+
+  if (strategy === "unknown") {
+    limitations.push(
+      "Available evidence was insufficient to confidently identify a dominant investment strategy.",
+    );
+  }
 
   return {
     primaryStrategy: strategy,
@@ -118,9 +174,9 @@ export function analyzeWalletStrategy(
       .replace(/_/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase()),
     investorSummary:
-      "Current strategy is inferred from observable on-chain behaviour.",
+      "The strategy classification is inferred from wallet age, activity, portfolio composition, Smart Money indicators, DeFi participation, and behavioral evidence.",
     investorTakeaway:
-      "Use this together with Smart Money and Conviction when evaluating whether to follow this wallet.",
+      "Treat this as an evidence-based view of how the wallet appears to invest, not as a prediction of future performance.",
     supportingSignals,
     conflictingSignals,
     limitations,
