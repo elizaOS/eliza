@@ -25,6 +25,7 @@ export default defineConfig({
     include: [
       "src/lib/services/__tests__/direct-wallet-payments.integration.test.ts",
       "src/lib/utils/default-eliza-character.test.ts",
+      "src/lib/eliza/config.canonical-model-pair.test.ts",
     ],
     environment: "node",
     testTimeout: 120_000,
