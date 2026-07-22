@@ -13,6 +13,7 @@ from .adapters import (
     OSWORLD_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_OPENCLAW_NATIVE_MULTIMODAL_UNAVAILABLE_REASON,
     VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
     discover_adapters,
 )
@@ -27,6 +28,7 @@ from .random_baseline_runner import (
     CALIBRATION_HARNESSES,
     CALIBRATION_SPEC_VERSION,
     SYNTHETIC_HARNESSES,
+    synthetic_score_for_benchmark_harness,
 )
 
 REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
@@ -117,7 +119,9 @@ def _snapshot_rows(snapshot_dir: Path) -> dict[tuple[str, str], dict[str, Any]]:
     return rows
 
 
-def _published_latest_by_benchmark_agent(workspace_root: Path) -> dict[tuple[str, str], dict[str, Any]]:
+def _published_latest_by_benchmark_agent(
+    workspace_root: Path,
+) -> dict[tuple[str, str], dict[str, Any]]:
     results_root = workspace_root / "benchmarks" / "benchmark_results"
     published: dict[tuple[str, str], dict[str, Any]] = {}
     published.update(_snapshot_rows(results_root / "latest"))
@@ -125,8 +129,12 @@ def _published_latest_by_benchmark_agent(workspace_root: Path) -> dict[tuple[str
     return published
 
 
-def _quarantine_by_benchmark_agent(workspace_root: Path) -> dict[tuple[str, str], dict[str, Any]]:
-    return _snapshot_rows(workspace_root / "benchmarks" / "benchmark_results" / "quarantine")
+def _quarantine_by_benchmark_agent(
+    workspace_root: Path,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    return _snapshot_rows(
+        workspace_root / "benchmarks" / "benchmark_results" / "quarantine"
+    )
 
 
 def _is_close(a: float | None, b: float | None, tolerance: float) -> bool:
@@ -135,14 +143,10 @@ def _is_close(a: float | None, b: float | None, tolerance: float) -> bool:
     return math.isclose(float(a), float(b), rel_tol=tolerance, abs_tol=tolerance)
 
 
-def _expected_for(agent: str) -> float:
-    if agent == "perfect_v1":
-        return 1.0
-    if agent == "wrong_v1":
-        return 0.0
-    if agent == "half_v1":
-        return 0.5
-    raise ValueError(f"not a calibration agent: {agent}")
+def _expected_for(benchmark_id: str, agent: str) -> float:
+    if agent not in CALIBRATION_HARNESSES:
+        raise ValueError(f"not a calibration agent: {agent}")
+    return synthetic_score_for_benchmark_harness(benchmark_id, agent)
 
 
 def _comparison_signature_for_run(run: dict[str, Any]) -> str:
@@ -154,17 +158,22 @@ def _comparison_signature_for_run(run: dict[str, Any]) -> str:
     )
     payload = {
         "benchmark_id": run.get("benchmark_id"),
-        "benchmark_directory": run.get("benchmark_directory") or run.get("benchmark_id"),
+        "benchmark_directory": run.get("benchmark_directory")
+        or run.get("benchmark_id"),
         "provider": run.get("provider") or "",
         "model": run.get("model") or "",
         "extra_config": extra_config,
     }
     return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
     ).hexdigest()
 
 
-def _comparison_extra_config(extra_config: dict[str, Any], *, agent: str) -> dict[str, Any]:
+def _comparison_extra_config(
+    extra_config: dict[str, Any], *, agent: str
+) -> dict[str, Any]:
     extra_config = dict(extra_config)
     comparable_agents = set(REAL_HARNESSES) | set(SYNTHETIC_HARNESSES)
     injected_agent = str(extra_config.get("agent") or "").strip().lower()
@@ -252,13 +261,17 @@ def _unsupported_real_reasons(
             for agent in unsupported_real_harnesses
         }
     if benchmark_id == "vision_language" and unsupported_real_harnesses:
-        reason = (
-            VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
-            if not supported_real_harnesses
-            else VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
-        )
+        if not supported_real_harnesses:
+            return {
+                agent: VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
+                for agent in unsupported_real_harnesses
+            }
         return {
-            agent: reason
+            agent: (
+                VISION_LANGUAGE_OPENCLAW_NATIVE_MULTIMODAL_UNAVAILABLE_REASON
+                if agent == "openclaw"
+                else VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
+            )
             for agent in unsupported_real_harnesses
         }
     return {}
@@ -294,7 +307,9 @@ def build_calibration_report(
     agent_compatibility: dict[str, tuple[str, ...]] | None = None,
     repair: bool = False,
 ) -> dict[str, Any]:
-    db_path = workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
+    db_path = (
+        workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
+    )
     conn = connect_database(db_path)
     initialize_database(conn)
     if repair:
@@ -352,7 +367,7 @@ def build_calibration_report(
         flat_scores: list[float] = []
         for agent in CALIBRATION_HARNESSES:
             run = latest.get((benchmark_id, agent))
-            expected = _expected_for(agent)
+            expected = _expected_for(benchmark_id, agent)
             if run is None or run.get("status") != "succeeded":
                 missing_calibration.append(agent)
                 calibration[agent] = {
@@ -410,8 +425,7 @@ def build_calibration_report(
         counts[calibration_status] += 1
 
         real_runs = {
-            agent: latest.get((benchmark_id, agent))
-            for agent in REAL_HARNESSES
+            agent: latest.get((benchmark_id, agent)) for agent in REAL_HARNESSES
         }
         real_scores = [
             float(run["score"])
@@ -434,7 +448,9 @@ def build_calibration_report(
         real_score_map = {
             agent: (
                 float(run["score"])
-                if agent in supported_real_harnesses and run and isinstance(run.get("score"), (int, float))
+                if agent in supported_real_harnesses
+                and run
+                and isinstance(run.get("score"), (int, float))
                 else None
             )
             for agent, run in real_runs.items()
@@ -453,7 +469,9 @@ def build_calibration_report(
             elif run is None:
                 state = "missing"
                 missing_required_real.append(agent)
-            elif run.get("status") == "succeeded" and isinstance(run.get("score"), (int, float)):
+            elif run.get("status") == "succeeded" and isinstance(
+                run.get("score"), (int, float)
+            ):
                 if non_real_warnings:
                     state = "warned"
                     warned_required_real[agent] = non_real_warnings
@@ -475,7 +493,9 @@ def build_calibration_report(
         real_comparison_signatures = {
             agent: _comparison_signature_for_run(run)
             for agent, run in real_runs.items()
-            if run and agent in supported_real_harnesses and run.get("status") == "succeeded"
+            if run
+            and agent in supported_real_harnesses
+            and run.get("status") == "succeeded"
         }
         mixed_real_config = (
             len(real_comparison_signatures) == len(supported_real_harnesses)
@@ -484,7 +504,9 @@ def build_calibration_report(
         )
         real_pattern = "incomplete"
         if len(real_scores) == len(supported_real_harnesses):
-            real_pattern = _real_pattern_for_scores(scores=real_scores, tolerance=tolerance)
+            real_pattern = _real_pattern_for_scores(
+                scores=real_scores, tolerance=tolerance
+            )
             if mixed_real_config:
                 real_pattern = f"{real_pattern}_mixed_config"
         counts[real_pattern] += 1
@@ -495,7 +517,12 @@ def build_calibration_report(
         matrix_summary["failed_required_real_cells"] += len(failed_required_real)
         matrix_summary["warned_required_real_cells"] += len(warned_required_real)
         no_required_real_harnesses = not supported_real_harnesses
-        if no_required_real_harnesses or missing_required_real or failed_required_real or warned_required_real:
+        if (
+            no_required_real_harnesses
+            or missing_required_real
+            or failed_required_real
+            or warned_required_real
+        ):
             matrix_summary["incomplete_benchmarks"] += 1
         else:
             matrix_summary["complete_benchmarks"] += 1
@@ -592,17 +619,15 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         if failed:
             print(f"  failed required real harnesses: {', '.join(failed)}")
         if warned:
-            formatted = {
-                agent: warnings
-                for agent, warnings in sorted(warned.items())
-            }
-            print(f"  warned required real harnesses: {json.dumps(formatted, sort_keys=True)}")
+            formatted = {agent: warnings for agent, warnings in sorted(warned.items())}
+            print(
+                f"  warned required real harnesses: {json.dumps(formatted, sort_keys=True)}"
+            )
         if unsupported:
             print(f"  unsupported real harnesses: {', '.join(unsupported)}")
         if unsupported_reasons:
             formatted = {
-                agent: reason
-                for agent, reason in sorted(unsupported_reasons.items())
+                agent: reason for agent, reason in sorted(unsupported_reasons.items())
             }
             print(f"  unsupported reasons: {json.dumps(formatted, sort_keys=True)}")
         extras = row.get("non_leaderboard_db_labels") or []

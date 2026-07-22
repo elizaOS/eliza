@@ -49,6 +49,10 @@ export interface AcpActionService {
   getSession(
     sessionId: string,
   ): SessionInfo | undefined | Promise<SessionInfo | null | undefined>;
+  updateSessionMetadata?(
+    sessionId: string,
+    patch: Record<string, unknown>,
+  ): Promise<void>;
   findResumableSessionByLabel?(
     label: string,
     workdir: string,

@@ -23,7 +23,13 @@ import {
 type EventHandler = (payload: EventPayload) => Promise<void>;
 type CredentialStoreRuntime = Pick<
   IAgentRuntime,
-  'agentId' | 'db' | 'getService' | 'getSetting' | 'registerEvent' | 'unregisterEvent'
+  | 'agentId'
+  | 'db'
+  | 'getService'
+  | 'getSetting'
+  | 'registerEvent'
+  | 'unregisterEvent'
+  | 'reportError'
 >;
 type DeleteMethod = typeof WorkflowCredentialStore.prototype.delete;
 
@@ -71,6 +77,7 @@ function createEventBusRuntime(agentId = 'agent-001'): {
     },
     getService: () => null,
     getSetting: () => null,
+    reportError: mock(() => undefined),
     registerEvent: ((eventName: string, handler: EventHandler) => {
       const list = events.get(eventName) ?? [];
       list.push(handler);
@@ -176,16 +183,19 @@ describe('WorkflowCredentialStore event-driven eviction', () => {
 
     try {
       const store = await WorkflowCredentialStore.start(runtime);
-      await bus.emit(CONNECTOR_DISCONNECTED_EVENT, {
-        userId: 'agent-evict-4',
-        credTypes: ['discordApi', 'discordBotApi', 'discordWebhookApi'],
-        connectorName: 'discord',
-      });
+      await expect(
+        bus.emit(CONNECTOR_DISCONNECTED_EVENT, {
+          userId: 'agent-evict-4',
+          credTypes: ['discordApi', 'discordBotApi', 'discordWebhookApi'],
+          connectorName: 'discord',
+        })
+      ).rejects.toThrow('Workflow credential eviction failed');
 
       const seen = new Set(calls.map(([, credType]) => credType));
       expect(seen.has('discordApi')).toBe(true);
       expect(seen.has('discordBotApi')).toBe(true);
       expect(seen.has('discordWebhookApi')).toBe(true);
+      expect(runtime.reportError).toHaveBeenCalledTimes(1);
 
       await store.stop();
     } finally {

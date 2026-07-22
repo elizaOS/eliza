@@ -79,3 +79,17 @@ def test_official_data_can_require_prepopulated_local_files(tmp_path, monkeypatc
         data_assets.ensure_official_data("airline")
 
     assert "populate TAU_BENCH_DATA_DIR" in str(exc.value)
+
+
+def test_data_provenance_hashes_every_consumed_asset(monkeypatch):
+    monkeypatch.setenv("TAU_BENCH_DATA_MODE", "smoke")
+
+    provenance = data_assets.data_provenance(["retail", "airline"])
+
+    assert provenance["mode"] == "smoke"
+    assert provenance["upstream_ref"] == data_assets.UPSTREAM_REF
+    assert set(provenance["domains"]) == {"retail", "airline"}
+    for domain in ("retail", "airline"):
+        hashes = provenance["domains"][domain]["files_sha256"]
+        assert set(hashes) == set(data_assets.DATA_FILES[domain])
+        assert all(len(digest) == 64 for digest in hashes.values())

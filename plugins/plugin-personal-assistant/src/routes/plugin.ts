@@ -12,8 +12,7 @@
 
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
-import { handleConnectorAccountRoutes } from "@elizaos/agent";
-import { AuthStore } from "@elizaos/app-core";
+import { handleConnectorAccountRoutes } from "@elizaos/agent/api/connector-account-routes";
 import {
   ensureRouteAuthorized,
   ensureSessionForRequest,
@@ -22,6 +21,7 @@ import {
   tokenMatches,
 } from "@elizaos/app-core/api/auth";
 import { isTrustedLocalRequest } from "@elizaos/app-core/api/compat-route-shared";
+import { AuthStore } from "@elizaos/app-core/services/auth-store";
 import type {
   AgentRuntime,
   LegacyRouteHandler,

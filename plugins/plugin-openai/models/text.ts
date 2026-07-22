@@ -13,8 +13,10 @@ import type {
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
+  attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
   dropDuplicateLeadingSystemMessage,
+  ElizaError,
   logActiveTrajectoryLlmCall,
   logger,
   ModelType,
@@ -672,8 +674,26 @@ function normalizeNativeToolsForCall(
     // 'anyOf' with a list of possible properties`.
     const rawSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
+    const strict =
+      typeof tool.strict === "boolean"
+        ? tool.strict
+        : typeof functionTool.strict === "boolean"
+          ? functionTool.strict
+          : undefined;
     const recordArgTransforms: RecordArgTransform[] = [];
-    let inputSchema = sanitizeJsonSchema(rawSchema, true, "$", recordArgTransforms);
+    let inputSchema: JSONSchema7;
+    if (strict === false) {
+      if (!rawSchema || typeof rawSchema !== "object" || Array.isArray(rawSchema)) {
+        throw new ElizaError("[OpenAI] Non-strict native tool schema must be a JSON object.", {
+          code: "OPENAI_INVALID_NON_STRICT_TOOL_SCHEMA",
+          context: { toolName: name },
+          severity: "ephemeral",
+        });
+      }
+      inputSchema = rawSchema as JSONSchema7;
+    } else {
+      inputSchema = sanitizeJsonSchema(rawSchema, true, "$", recordArgTransforms);
+    }
     if (options.cerebrasMode) {
       // User-supplied schemas may still contain empty-properties subobjects
       // even after sanitizeJsonSchema. Apply Cerebras-specific normalization
@@ -697,6 +717,7 @@ function normalizeNativeToolsForCall(
     toolSet[registeredName] = {
       ...(description ? { description } : {}),
       inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      ...(strict === undefined ? {} : { strict }),
     };
   }
 
@@ -1596,11 +1617,13 @@ function isTransientProviderError(error: unknown): boolean {
  */
 async function generateTextWithTransientRetry(
   generateParams: NativeGenerateTextParams,
-  maxRetries = 3
+  maxRetries = 3,
+  beforeAttempt?: () => void
 ): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
   let attempt = 0;
   for (;;) {
     try {
+      beforeAttempt?.();
       return (await generateText(
         generateParams as Parameters<typeof generateText>[0]
         // biome-ignore lint/suspicious/noExplicitAny: see above.
@@ -1644,7 +1667,8 @@ interface BufferedStreamResult {
 async function consumeStreamWithTransientRetry(
   generateParams: NativeGenerateTextParams,
   onChunk: ((chunk: string) => void) | undefined,
-  maxRetries = 5
+  maxRetries = 5,
+  beforeAttempt?: () => void
 ): Promise<BufferedStreamResult> {
   let attempt = 0;
   for (;;) {
@@ -1655,6 +1679,7 @@ async function consumeStreamWithTransientRetry(
       // and rethrow after consumption so the retry below can act on it. (This
       // is the same reason opencode attaches an onError to its streamText.)
       let capturedError: unknown;
+      beforeAttempt?.();
       const result = streamText({
         ...(generateParams as Parameters<typeof streamText>[0]),
         onError: ({ error }: { error: unknown }) => {
@@ -1815,7 +1840,9 @@ async function generateTextByModelType(
       const buffered = await recordLlmCall(runtime, details, () =>
         consumeStreamWithTransientRetry(
           generateParams,
-          hasResponseTransform ? undefined : params.onStreamChunk
+          hasResponseTransform ? undefined : params.onStreamChunk,
+          5,
+          () => attestLlmInputSubstring(details)
         )
       );
       const restoredText = restoreResponseText(buffered.text);
@@ -1883,6 +1910,7 @@ async function generateTextByModelType(
     let firstItem: IteratorResult<unknown> | undefined;
     for (let attempt = 0; ; attempt++) {
       capturedStreamError = undefined;
+      attestLlmInputSubstring(details);
       result = await streamText({
         ...generateParams,
         onError: ({ error }: { error: unknown }) => {
@@ -2076,7 +2104,9 @@ async function generateTextByModelType(
     generateParams
   );
   const result = await recordLlmCall(runtime, details, async () => {
-    const result = await generateTextWithTransientRetry(generateParams);
+    const result = await generateTextWithTransientRetry(generateParams, 3, () =>
+      attestLlmInputSubstring(details)
+    );
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(
       result.toolCalls,

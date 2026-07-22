@@ -8,7 +8,7 @@ If Perfect doesn't get 100%, the benchmark framework has a bug.
 If Random gets high scores, the benchmark isn't discriminating.
 """
 
-import warnings
+import pytest
 
 from elizaos_trust_bench.baselines import PerfectHandler, RandomHandler
 from elizaos_trust_bench.corpus import TEST_CORPUS
@@ -226,77 +226,67 @@ class _EmptyHandler:
 
 
 class TestBrokenHandler:
-    """Verify the runner handles broken handlers gracefully."""
+    """Verify broken handler output cannot become a publishable score."""
 
-    def test_broken_handler_doesnt_crash(self) -> None:
-        """Runner should NOT crash when a handler raises exceptions."""
+    def test_broken_handler_fails_closed(self) -> None:
         handler = _BrokenHandler()
         runner = TrustBenchmarkRunner(BenchmarkConfig())
-        # Should complete without raising
-        detections = runner._run_all(handler, TEST_CORPUS)
-        assert len(detections) == len(TEST_CORPUS)
+        with pytest.raises(RuntimeError, match="failed on test"):
+            runner._run_all(handler, TEST_CORPUS)
 
-    def test_broken_handler_produces_results(self) -> None:
-        """Even broken handlers should produce detection results (defaulting to not-detected)."""
-        handler = _BrokenHandler()
-        runner = TrustBenchmarkRunner(BenchmarkConfig())
-        detections = runner._run_all(handler, TEST_CORPUS)
-        result = score_results(TEST_CORPUS, detections, handler.name)
-        # Should have a valid F1 (not NaN or error)
-        assert 0.0 <= result.overall_f1 <= 1.0
-
-    def test_empty_handler_warns_about_missing_methods(self) -> None:
-        """Empty handler should trigger warnings about missing methods."""
+    def test_empty_handler_fails_validation(self) -> None:
         handler = _EmptyHandler()
         runner = TrustBenchmarkRunner(BenchmarkConfig())
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with pytest.raises(TypeError, match="missing methods"):
             runner.run(handler)
 
-        warning_texts = [str(w.message) for w in caught]
-        assert any("missing methods" in t for t in warning_texts), (
-            f"Expected 'missing methods' warning, got: {warning_texts}"
-        )
-
-    def test_empty_corpus_filter_warns(self) -> None:
-        """Filtering to zero cases should produce a warning."""
+    def test_empty_corpus_filter_fails_closed(self) -> None:
         handler = PerfectHandler()
         config = BenchmarkConfig(tags=["nonexistent_tag_xyz"])
         runner = TrustBenchmarkRunner(config)
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            result = runner.run(handler)
-
-        assert result.total_tests == 0
-        warning_texts = [str(w.message) for w in caught]
-        assert any("empty" in t.lower() for t in warning_texts), (
-            f"Expected empty corpus warning, got: {warning_texts}"
-        )
+        with pytest.raises(ValueError, match="empty"):
+            runner.run(handler)
 
 
 class TestDetectorNormalization:
     """Verify handler return coercion cannot create verifier false positives."""
 
-    def test_string_false_detected_is_false(self) -> None:
+    def test_non_numeric_confidence_fails_closed(self) -> None:
         class Handler:
             def detect_injection(self, message: str) -> dict[str, str]:
                 return {"detected": "false", "confidence": "not-a-number"}
 
-        result = _safe_call_detector(Handler(), "detect_injection", "ignore me")
-        assert result == {"detected": False, "confidence": 0.0}
+        with pytest.raises(ValueError, match="non-numeric confidence"):
+            _safe_call_detector(Handler(), "detect_injection", "ignore me")
 
-    def test_truthy_string_and_confidence_are_normalized(self) -> None:
+    def test_out_of_range_confidence_fails_closed(self) -> None:
         class Handler:
             def detect_injection(self, message: str) -> dict[str, str]:
                 return {"detected": "yes", "confidence": "2.5"}
 
-        result = _safe_call_detector(Handler(), "detect_injection", "ignore me")
-        assert result == {"detected": True, "confidence": 1.0}
+        with pytest.raises(ValueError, match=r"outside \[0, 1\]"):
+            _safe_call_detector(Handler(), "detect_injection", "ignore me")
 
-    def test_nan_confidence_normalizes_to_zero(self) -> None:
+    def test_nan_confidence_fails_closed(self) -> None:
         class Handler:
             def detect_injection(self, message: str) -> dict[str, str]:
                 return {"detected": "true", "confidence": "nan"}
 
-        result = _safe_call_detector(Handler(), "detect_injection", "ignore me")
-        assert result == {"detected": True, "confidence": 0.0}
+        with pytest.raises(ValueError, match=r"outside \[0, 1\]"):
+            _safe_call_detector(Handler(), "detect_injection", "ignore me")
+
+    def test_ambiguous_numeric_detected_value_fails_closed(self) -> None:
+        class Handler:
+            def detect_injection(self, message: str) -> dict[str, object]:
+                return {"detected": 2, "confidence": 0.5}
+
+        with pytest.raises(ValueError, match="must be 0 or 1"):
+            _safe_call_detector(Handler(), "detect_injection", "ignore me")
+
+    def test_empty_detected_value_fails_closed(self) -> None:
+        class Handler:
+            def detect_injection(self, message: str) -> dict[str, object]:
+                return {"detected": "", "confidence": 0.5}
+
+        with pytest.raises(ValueError, match="must be boolean-like"):
+            _safe_call_detector(Handler(), "detect_injection", "ignore me")

@@ -86,7 +86,13 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument("--hf", action="store_true", help="(deprecated) Load tasks from HuggingFace (tasks only)")
-    p.add_argument("--split", type=str, default="test", choices=["train", "test"], help="Data split")
+    p.add_argument(
+        "--split",
+        type=str,
+        default="test",
+        choices=["train", "eval", "test"],
+        help="Canonical upstream split: test=0..499, eval=500..1499, train=1500+",
+    )
     p.add_argument("--max-tasks", type=int, default=None, help="Maximum tasks to run")
     p.add_argument("--trials", type=int, default=1, help="Trials per task (default: 1)")
     p.add_argument("--max-turns", type=int, default=20, help="Max turns per task (default: 20)")
@@ -103,12 +109,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--count-scenarios",
         action="store_true",
-        help="Print base/edge/total task counts before running.",
+        help="Print base/edge/total task counts and exit.",
     )
     p.add_argument(
         "--validate-scenarios",
         action="store_true",
-        help="Validate task ids and edge scenario metadata before running.",
+        help="Validate task ids and edge scenario metadata and exit.",
     )
 
     # Eliza integration
@@ -128,7 +134,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "cerebras"],
+        choices=["openai", "groq", "openrouter", "cerebras", "claude-subscription"],
         default=None,
         help="Force provider (auto-detect if unset)",
     )
@@ -224,12 +230,13 @@ def main() -> int:
             profile=str(args.profile),
             use_sample_tasks=bool(args.use_sample_tasks),
         )
-        ds.load_sync()
+        ds.load_manifest_sync()
         base_tasks = ds.get_tasks(limit=config.max_tasks)
         if args.validate_scenarios:
             validate_tasks(base_tasks, include_edge_scenarios=bool(args.expand_scenarios))
         if args.count_scenarios:
             print(json.dumps(count_tasks(base_tasks, bool(args.expand_scenarios))))
+        return 0
 
     provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
     if not provider:

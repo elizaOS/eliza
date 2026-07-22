@@ -196,13 +196,25 @@ describe("WRITE", () => {
     await expect(fs.access(file)).rejects.toBeDefined();
   });
 
-  it("rejects relative paths", async () => {
-    const result = await writeFileHandler(env.runtime, env.message, undefined, {
+  it("resolves relative paths against the session cwd", async () => {
+    const cwdRuntime = {
+      ...env.runtime,
+      getService: <T>(serviceType: string): T | null =>
+        serviceType === "CODING_TOOLS_SESSION_CWD"
+          ? ({ getCwd: () => env.tmpDir } as T)
+          : env.runtime.getService<T>(serviceType),
+    } as typeof env.runtime;
+    const result = await writeFileHandler(cwdRuntime, env.message, undefined, {
       parameters: { file_path: "rel/path.txt", content: "x" },
     });
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("invalid_param");
+    expect(result.success).toBe(true);
+    const written = await fs.readFile(
+      path.join(env.tmpDir, "rel/path.txt"),
+      "utf8",
+    );
+    expect(written).toBe("x");
   });
+
 
   it("rejects paths under the blocklist", async () => {
     const result = await writeFileHandler(env.runtime, env.message, undefined, {

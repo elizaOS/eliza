@@ -94,6 +94,7 @@ import {
   type SessionStoreBackend,
 } from "./session-store.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
+import { SMITHERS_DURABLE_RUN_METADATA_KEY } from "./smithers-task-integration.js";
 import {
   forwardableSubAgentEnv as applySubAgentEnvPolicy,
   canonicalForwardedEnvKey,
@@ -2314,6 +2315,14 @@ export class AcpService extends Service {
     let skipped = 0;
     for (const session of sessions) {
       if (!ORPHAN_RESUME_STATUSES.has(session.status)) continue;
+      // Smithers owns prompt replay for these sessions. Its persisted graph
+      // knows whether to recover a terminal answer or send a continuation;
+      // injecting the generic orphan prompt here would race that recovery and
+      // can duplicate the task's first external effect.
+      if (session.metadata?.[SMITHERS_DURABLE_RUN_METADATA_KEY] !== undefined) {
+        skipped += 1;
+        continue;
+      }
       const transportMode = sessionTransportMode(session, this.transportMode);
       if (transportMode === "native") {
         if (this.nativeClients.has(session.id)) {
@@ -2444,6 +2453,29 @@ export class AcpService extends Service {
       previousSessionId: sessionId,
     });
     return respawn;
+  }
+
+  /**
+   * Return a prompt-capable session after a host restart without sending any
+   * prompt. CLI sessions reuse their persisted ACP stream; native sessions
+   * need a fresh transport process, but preserve the prior metadata so Smithers
+   * can decide from its graph whether any continuation is actually required.
+   */
+  async prepareSessionForDurableRecovery(
+    sessionId: string,
+  ): Promise<SpawnResult> {
+    const session = await this.requireSession(sessionId);
+    if (this.transportMode === "native") {
+      if (this.nativeClients.has(sessionId)) return toSpawnResult(session);
+      return this.reattachSession(sessionId);
+    }
+    if (
+      session.acpxSessionId &&
+      (await this.hasAcpxSessionState(session.acpxSessionId))
+    ) {
+      return toSpawnResult(session);
+    }
+    return this.reattachSession(sessionId);
   }
 
   async getAvailableAgents(): Promise<AvailableAgentInfo[]> {

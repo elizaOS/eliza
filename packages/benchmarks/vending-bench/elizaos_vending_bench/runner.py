@@ -4,6 +4,7 @@ Vending-Bench Runner
 Orchestrates the full Vending-Bench benchmark evaluation.
 """
 
+import inspect
 import json
 import logging
 import statistics
@@ -18,7 +19,7 @@ from elizaos_vending_bench.agent import LLMProvider, VendingAgent
 from elizaos_vending_bench.environment import VendingEnvironment
 from elizaos_vending_bench.evaluator import CoherenceEvaluator
 from elizaos_vending_bench.reporting import VendingBenchReporter
-from elizaos_vending_bench.scenarios import expanded_run_configs
+from elizaos_vending_bench.scenarios import count_scenarios, expanded_run_configs
 from elizaos_vending_bench.types import (
     LEADERBOARD_SCORES,
     LeaderboardComparison,
@@ -240,12 +241,21 @@ class VendingBenchRunner:
             environment=environment,
             llm_provider=self.llm_provider,
             temperature=config.temperature,
+            context_window_tokens=config.context_window_tokens,
         )
+
+        if self.llm_provider is not None:
+            reset = getattr(self.llm_provider, "reset", None)
+            if callable(reset):
+                reset_result = reset(run_id)
+                if inspect.isawaitable(reset_result):
+                    await reset_result
 
         # Run simulation
         result = await agent.run_simulation(
             max_days=config.max_days_per_run,
             max_actions_per_day=config.max_actions_per_day,
+            max_messages=config.max_messages_per_run,
             run_id=run_id,
         )
 
@@ -574,9 +584,22 @@ class VendingBenchRunner:
 
         return {
             "metadata": report.metadata,
+            "scenario_counts": count_scenarios(report.config),
+            "comparability": {
+                "scope": "elizaos-local-reimplementation",
+                "official_leaderboard_comparable": False,
+                "reason": (
+                    "The local simulator uses deterministic supplier/search models and a "
+                    "structured action bridge rather than Andon Labs' private environment."
+                ),
+            },
             "config": {
                 "num_runs": report.config.num_runs,
                 "max_days_per_run": report.config.max_days_per_run,
+                "max_actions_per_day": report.config.max_actions_per_day,
+                "max_messages_per_run": report.config.max_messages_per_run,
+                "context_window_tokens": report.config.context_window_tokens,
+                "random_seed": report.config.random_seed,
                 "initial_cash": str(report.config.initial_cash),
                 "include_edge_scenarios": report.config.include_edge_scenarios,
                 "model_name": report.config.model_name,
@@ -638,6 +661,7 @@ class VendingBenchRunner:
                     "stockout_days": r.stockout_days,
                     "coherence_errors": len(r.coherence_errors),
                     "total_tokens": r.total_tokens,
+                    "messages_used": r.messages_used,
                     "error": r.error,
                 }
                 for r in report.results

@@ -77,6 +77,22 @@ describe('rankWorkflowsByQuery', () => {
     expect(ranked.map((w) => w.id)).toEqual(['b', 'c']);
   });
 
+  test('exact trimmed case-insensitive names dominate weaker fuzzy matches', () => {
+    const smithersWorkflows = [
+      wf({ id: 'exact', name: 'Smithers Integrated Acceptance 20260717 2155' }),
+      wf({ id: 'shared-date', name: 'Final Smithers Chat Proof 20260717' }),
+      wf({ id: 'shared-name', name: 'Chat-created Smithers proof' }),
+      wf({ id: 'unrelated', name: 'Device health check' }),
+    ];
+
+    const ranked = rankWorkflowsByQuery(
+      smithersWorkflows,
+      '  SMITHERS INTEGRATED ACCEPTANCE 20260717 2155  '
+    );
+
+    expect(ranked.map((workflow) => workflow.id)).toEqual(['exact']);
+  });
+
   test('generic workflow query returns the input unchanged', () => {
     const ranked = rankWorkflowsByQuery(workflows, 'what workflows do I have?');
     expect(ranked.map((w) => w.id)).toEqual(['a', 'b', 'c']);

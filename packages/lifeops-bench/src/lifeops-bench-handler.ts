@@ -86,6 +86,15 @@ export interface PlannerInvocationResult {
     /** Anthropic-only ``cache_creation_input_tokens``. */
     cacheCreationInputTokens?: number;
   };
+  runtimeProvenance: {
+    native_runtime_class: "@elizaos/core.AgentRuntime";
+    native_runtime_api: "messageService.handleMessage" | "useModel";
+    transport: "eliza_benchmark_http";
+    tool_bridge: "native_action_capture" | "runtime_model_native_tools";
+    direct_model_bypass: false;
+    stand_in: boolean;
+    release_evidence: boolean;
+  };
 }
 
 /**
@@ -383,6 +392,7 @@ export class LifeOpsBenchHandler {
       text: plannerResult.text,
       tool_calls: executed,
       usage: plannerResult.usage ?? {},
+      runtime_provenance: plannerResult.runtimeProvenance,
       world_hash: session.backend.stateHash(),
     });
   }

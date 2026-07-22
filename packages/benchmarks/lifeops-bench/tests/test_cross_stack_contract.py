@@ -183,7 +183,7 @@ EXPECTED_CONTRACT: dict[str, Any] = {
             "field": "subaction",
             "values": sorted([
                 "create", "add", "create_contact", "read", "list",
-                "set_identity", "set_relationship", "log_interaction", "merge",
+                "update", "set_identity", "set_relationship", "log_interaction", "merge",
             ]),
         },
         "HEALTH": {

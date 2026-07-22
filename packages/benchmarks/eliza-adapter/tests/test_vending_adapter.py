@@ -24,17 +24,18 @@ class _FakeClient:
         self.messages.append(text)
         self.contexts.append(context)
         if self.response is not None:
+            self.response.params.setdefault("usage", {"total_tokens": 7})
             return self.response
         return MessageResponse(
             text='{"action":"VIEW_BUSINESS_STATE"}',
             thought=None,
             actions=[],
-            params={},
+            params={"usage": {"total_tokens": 7}},
             metadata={},
         )
 
 
-def test_vending_provider_sends_to_the_per_turn_reset_session() -> None:
+def test_vending_provider_sends_the_unmodified_prompt_to_the_per_turn_session() -> None:
     client = _FakeClient()
     provider = ElizaVendingProvider(client=client)
 
@@ -44,7 +45,7 @@ def test_vending_provider_sends_to_the_per_turn_reset_session() -> None:
     assert client.reset_task_ids
     assert client.contexts[0]["task_id"] == client.reset_task_ids[-1]
     assert client.contexts[0]["benchmark"] == "vending-bench"
-    assert "## Eliza short-run benchmark strategy" in client.contexts[0]["system_prompt"]
+    assert client.contexts[0]["system_prompt"] == ""
     assert client.contexts[0]["messages"][1]["content"] == "What next?"
     assert "What next?" in client.messages[0]
 
@@ -130,7 +131,7 @@ def test_vending_provider_does_not_synthesize_profitable_fallback() -> None:
     assert response == "I am not sure."
 
 
-def test_vending_provider_uses_short_run_fallback_for_empty_structured_response() -> None:
+def test_vending_provider_does_not_replace_empty_model_output_with_an_action() -> None:
     client = _FakeClient(
         MessageResponse(
             text="",
@@ -149,8 +150,32 @@ def test_vending_provider_uses_short_run_fallback_for_empty_structured_response(
         )
     )
 
-    assert response == (
-        '{"action": "PLACE_ORDER", "supplier_id": "beverage_dist", '
-        '"items": {"water": 20, "soda_cola": 20, "juice_orange": 10, '
-        '"energy_drink": 10}}'
+    assert response == ""
+
+
+def test_vending_provider_fails_closed_when_usage_is_missing() -> None:
+    client = _FakeClient(
+        MessageResponse(
+            text='{"action":"ADVANCE_DAY"}',
+            thought=None,
+            actions=[],
+            params={},
+            metadata={},
+        )
     )
+    provider = ElizaVendingProvider(client=client)
+    original_send = client.send_message
+
+    def send_without_usage(text: str, context: dict[str, object]) -> MessageResponse:
+        response = original_send(text, context)
+        response.params.pop("usage", None)
+        return response
+
+    client.send_message = send_without_usage  # type: ignore[method-assign]
+
+    try:
+        asyncio.run(provider.generate("system", "What next?"))
+    except RuntimeError as exc:
+        assert "missing token usage" in str(exc)
+    else:
+        raise AssertionError("missing token usage must fail the benchmark turn")

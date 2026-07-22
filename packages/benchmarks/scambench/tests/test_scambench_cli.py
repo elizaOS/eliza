@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib
 import json
+from pathlib import Path
+
+import pytest
 
 
 cli = importlib.import_module("benchmarks.scambench.cli")
@@ -79,12 +82,56 @@ def test_write_summary_includes_processed_count_and_interruption(tmp_path) -> No
         failures=[],
         processed=2,
         interrupted=True,
+        data_provenance={"split": "test", "sources": []},
+        scenario_counts={"base": 2, "edge": 0, "total": 2, "edge_multiplier": 10},
     )
 
-    payload = json.loads((tmp_path / "scambench-results.json").read_text(encoding="utf-8"))
+    payload = json.loads(
+        (tmp_path / "scambench-results.json").read_text(encoding="utf-8")
+    )
     assert summary["interrupted"] is True
     assert payload["metrics"]["n"] == 2
     assert payload["metrics"]["processed_records"] == 2
+    assert payload["data_provenance"]["split"] == "test"
+
+
+def _write_records(path: Path, records: list[dict]) -> None:
+    path.write_text(
+        "".join(f"{json.dumps(record)}\n" for record in records),
+        encoding="utf-8",
+    )
+
+
+def test_dataset_loader_filters_split_and_records_provenance(tmp_path: Path) -> None:
+    path = tmp_path / "scambench.jsonl"
+    records = [
+        {
+            "metadata": {"split": split, "should_trigger_scam_defense": True},
+            "currentMessage": {"content": f"prompt {split}"},
+        }
+        for split in ("test", "train", "test")
+    ]
+    _write_records(path, records)
+
+    loaded, sources = cli._iter_records([path], limit=None, split="test")
+
+    assert len(loaded) == 2
+    assert sources[0]["raw_rows"] == 3
+    assert sources[0]["matching_rows"] == 2
+    assert len(sources[0]["sha256"]) == 64
+
+
+def test_dataset_loader_fails_closed_on_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        cli._iter_records([tmp_path / "missing.jsonl"], limit=None, split="test")
+
+
+def test_dataset_loader_fails_closed_on_invalid_json(tmp_path: Path) -> None:
+    path = tmp_path / "broken.jsonl"
+    path.write_text("{broken\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid ScamBench JSON"):
+        cli._iter_records([path], limit=None, split="test")
 
 
 def test_expand_records_adds_ten_label_preserving_edges() -> None:

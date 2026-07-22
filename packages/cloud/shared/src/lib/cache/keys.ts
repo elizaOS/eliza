@@ -277,6 +277,18 @@ export const CacheTTL = {
    */
   sharedAgentScope: {
     resolve: 30,
+    /**
+     * SLIDING-TTL CAP (COLDPATH-FIX-2026-07-22): a validated scope-cache hit
+     * refreshes the entry's TTL back to `resolve` so an ACTIVE conversation
+     * whose turns are spaced by human think-time (demo Q&A pacing routinely
+     * exceeds the 30s absolute TTL) stays warm and never re-pays the cold
+     * Hyperdrive waves. To keep the agent-row self-heal bounded (a hit only
+     * re-validates the CREDENTIAL, not the cached agent row), the sliding
+     * refresh is capped: an entry is never refreshed past `resolveMaxAgeMs`
+     * after its FIRST write, so a tier flip / row change self-heals within the
+     * cap even under a continuously active conversation.
+     */
+    resolveMaxAgeMs: 5 * 60 * 1000,
   },
   /**
    * Inference hot-path TTLs (#9899). The IAC entry caches a fully-authorized

@@ -3,7 +3,7 @@
  * and CRUD facade the `WORKFLOW` action and rawPath routes call into. Turns a
  * natural-language prompt into a runnable workflow via keyword extraction →
  * catalog search → LLM generation → validate/repair → deploy, then persists and
- * activates it.
+ * owner-tags it as an inactive draft until activation is explicitly requested.
  *
  * Generation and modification both run up to three LLM-retry passes through
  * `validateAndRepair` + `fixWorkflowErrors` to correct typeVersion
@@ -12,7 +12,7 @@
  * EmbeddedWorkflowService; credential resolution goes through the registered
  * WorkflowCredentialStore.
  */
-import { type IAgentRuntime, logger, Service } from '@elizaos/core';
+import { ElizaError, type IAgentRuntime, logger, Service } from '@elizaos/core';
 import type {
   NodeDefinition,
   NodeSearchResult,
@@ -35,9 +35,13 @@ import {
   WORKFLOW_RUNTIME_CONTEXT_PROVIDER_TYPE,
   WorkflowApiError,
 } from '../types/index';
-import { filterNodesByIntegrationSupport, searchNodes } from '../utils/catalog';
+import {
+  filterNodesByIntegrationSupport,
+  getDefaultRequiredCredentialTypes,
+  searchNodes,
+} from '../utils/catalog';
 import { CATALOG_CLARIFICATION_SUFFIX, isCatalogClarification } from '../utils/clarification';
-import { getUserTagName } from '../utils/context';
+import { getLocalOwnerEntityId, getUserTagName } from '../utils/context';
 import { resolveCredentials } from '../utils/credentialResolver';
 import { buildWorkflowEvaluationSuite } from '../utils/evaluation-samples';
 import {
@@ -50,6 +54,7 @@ import {
   generateWorkflow,
   modifyWorkflow,
 } from '../utils/generation';
+import { normalizeSetNodeParametersInWorkflow } from '../utils/setNodeParameters';
 import { validateAndRepair } from '../utils/validateAndRepair';
 import {
   correctOptionParameters,
@@ -65,6 +70,7 @@ import {
   validateWorkflow,
 } from '../utils/workflow';
 import {
+  DEVICE_HEALTH_CHECK_WORKFLOW_ID,
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   EmbeddedWorkflowService,
 } from './embedded-workflow-service';
@@ -259,14 +265,24 @@ export function scoreWorkflowMatch(workflow: WorkflowDefinitionResponse, query: 
 
 /**
  * Rank workflows best-match-first for a free-text query, dropping non-matches.
- * An empty or generic query returns the input order unchanged. Pure + exported
- * (#8913).
+ * Exact trimmed, case-insensitive names dominate weaker token matches so a
+ * lifecycle request naming one workflow cannot collect every similarly-named
+ * workflow. An empty or generic query returns the input order unchanged. Pure
+ * + exported (#8913).
  */
 export function rankWorkflowsByQuery(
   workflows: WorkflowDefinitionResponse[],
   query: string
 ): WorkflowDefinitionResponse[] {
-  if (!query.trim()) return workflows;
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return workflows;
+  const exactNameMatches = workflows.filter(
+    (workflow) =>
+      String(workflow.name ?? '')
+        .trim()
+        .toLowerCase() === normalizedQuery
+  );
+  if (exactNameMatches.length > 0) return exactNameMatches;
   if (tokenizeWorkflowSearchQuery(query).length === 0) return workflows;
   return workflows
     .map((workflow) => ({ workflow, score: scoreWorkflowMatch(workflow, query) }))
@@ -302,9 +318,14 @@ export class WorkflowService extends Service {
     const credentials = workflowSettings?.credentials;
 
     const service = new WorkflowService(runtime);
-    const embedded =
-      (runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE) as EmbeddedWorkflowService | null) ??
-      (await EmbeddedWorkflowService.start(runtime));
+    const loadedEmbedded = await runtime.getServiceLoadPromise(EMBEDDED_WORKFLOW_SERVICE_TYPE);
+    if (!(loadedEmbedded instanceof EmbeddedWorkflowService)) {
+      throw new ElizaError('Embedded workflow service resolved to an incompatible service', {
+        code: 'WORKFLOW_EMBEDDED_SERVICE_INVALID',
+        context: { serviceType: EMBEDDED_WORKFLOW_SERVICE_TYPE },
+      });
+    }
+    const embedded = loadedEmbedded;
     service.serviceConfig = {
       apiKey: 'embedded',
       host: 'in-process',
@@ -502,8 +523,8 @@ export class WorkflowService extends Service {
     if (credProvider?.checkCredentialTypes) {
       const credTypes = new Set<string>();
       for (const { node } of relevantNodes) {
-        for (const cred of node.credentials ?? []) {
-          credTypes.add(cred.name);
+        for (const credentialType of getDefaultRequiredCredentialTypes(node)) {
+          credTypes.add(credentialType);
         }
       }
 
@@ -517,7 +538,9 @@ export class WorkflowService extends Service {
             supportedSet
           );
 
-          const remainingServiceNodes = remaining.filter((r) => r.node.credentials?.length);
+          const remainingServiceNodes = remaining.filter(
+            (result) => getDefaultRequiredCredentialTypes(result.node).length > 0
+          );
 
           if (remainingServiceNodes.length === 0) {
             throw new UnsupportedIntegrationError(
@@ -619,7 +642,8 @@ export class WorkflowService extends Service {
           this.runtime,
           workflow,
           repairResult.errors,
-          finalNodeDefs
+          finalNodeDefs,
+          prompt
         );
       } catch (err) {
         logger.warn(
@@ -688,7 +712,15 @@ export class WorkflowService extends Service {
     }
 
     this.injectCatalogClarifications(workflow);
-    return positionNodes(workflow);
+    const draft = positionNodes(workflow);
+    // The generation prompt describes the persisted workflow shape, so weak
+    // models sometimes invent a top-level placeholder id such as
+    // `workflow-001`. A create draft has no storage identity yet; retaining the
+    // placeholder makes deployWorkflow correctly interpret it as an update and
+    // fail with a misleading 404 instead of creating the new workflow. Node ids
+    // remain intact because they identify graph edges, not persisted workflows.
+    delete draft.id;
+    return draft;
   }
 
   async modifyWorkflowDraft(
@@ -794,7 +826,8 @@ export class WorkflowService extends Service {
           this.runtime,
           workflow,
           repairResult.errors,
-          combinedDefs
+          combinedDefs,
+          modificationRequest
         );
       } catch (err) {
         logger.warn(
@@ -862,7 +895,8 @@ export class WorkflowService extends Service {
 
   async deployWorkflow(
     workflow: WorkflowDefinition,
-    userId: string
+    userId: string,
+    options?: { activate?: boolean }
   ): Promise<WorkflowCreationResult> {
     logger.info(
       { src: 'plugin:workflow:service:main' },
@@ -877,6 +911,11 @@ export class WorkflowService extends Service {
 
     const rawProvider = this.runtime.getService(WORKFLOW_CREDENTIAL_PROVIDER_TYPE);
     const credProvider = isCredentialProvider(rawProvider) ? rawProvider : null;
+
+    // An explicit id is an update contract, not permission to create a
+    // replacement. Loading it through the owner-scoped facade also captures
+    // the state that an update without a lifecycle instruction must preserve.
+    const existingWorkflow = workflow.id ? await this.getWorkflow(workflow.id, userId) : null;
 
     // Compute tag name once - reused for credentials and workflow tagging
     const tagName = await getUserTagName(this.runtime, userId);
@@ -902,22 +941,36 @@ export class WorkflowService extends Service {
       };
     }
 
-    // Determine if this is an update (existing workflow) or create (new workflow).
-    // If update fails (workflow deleted on workflows), fallback to create.
+    const setParameterResult = normalizeSetNodeParametersInWorkflow(credentialResult.workflow);
+    if (setParameterResult.corrections > 0) {
+      logger.debug(
+        { src: 'plugin:workflow:service:main' },
+        `Normalized ${setParameterResult.corrections} Set/Edit Fields parameter shape(s) before deploy`
+      );
+    }
+    if (setParameterResult.issues.length > 0) {
+      throw new ElizaError('Workflow contains invalid Set/Edit Fields parameters', {
+        code: 'WORKFLOW_SET_PARAMETERS_INVALID',
+        context: {
+          workflowId: workflow.id,
+          issues: setParameterResult.issues,
+        },
+        severity: 'ephemeral',
+      });
+    }
+
     let deployedWorkflow: WorkflowDefinitionResponse;
     let wasUpdate = false;
     if (workflow.id) {
-      try {
-        deployedWorkflow = await client.updateWorkflow(workflow.id, credentialResult.workflow);
-        wasUpdate = true;
-      } catch {
-        logger.warn(
-          { src: 'plugin:workflow:service:main' },
-          `Update failed for workflow ${workflow.id}, creating new workflow instead`
-        );
-        const { id: _, ...rest } = credentialResult.workflow;
-        deployedWorkflow = await client.createWorkflow(rest);
-      }
+      // The editor DTO intentionally omits persisted metadata. Carry tags
+      // forward so saving cannot erase the ownership tag and immediately make
+      // the workflow disappear from both chat and HTTP owner scopes.
+      const updateDefinition: WorkflowDefinition = {
+        ...credentialResult.workflow,
+        ...(existingWorkflow?.tags ? { tags: existingWorkflow.tags } : {}),
+      };
+      deployedWorkflow = await client.updateWorkflow(workflow.id, updateDefinition);
+      wasUpdate = true;
     } else {
       deployedWorkflow = await client.createWorkflow(credentialResult.workflow);
     }
@@ -927,23 +980,7 @@ export class WorkflowService extends Service {
       `Workflow ${wasUpdate ? 'updated' : 'created'}: ${deployedWorkflow.id}`
     );
 
-    // Activate (publish) the workflow immediately after creation/update
-    let active = false;
-    try {
-      await client.activateWorkflow(deployedWorkflow.id);
-      active = true;
-      logger.info(
-        { src: 'plugin:workflow:service:main' },
-        `Workflow ${deployedWorkflow.id} activated`
-      );
-    } catch (error) {
-      logger.warn(
-        { src: 'plugin:workflow:service:main' },
-        `Failed to activate workflow: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
-    // Only tag new workflows (existing ones should already have tags)
+    // Ownership must persist before a newly-created definition can become active.
     if (userId && !wasUpdate) {
       try {
         const userTag = await client.getOrCreateTag(tagName);
@@ -953,9 +990,67 @@ export class WorkflowService extends Service {
           `Tagged workflow ${deployedWorkflow.id} with "${tagName}"`
         );
       } catch (error) {
-        logger.warn(
+        // error-policy:J2 ownership persistence failure is rethrown with the
+        // created workflow and user context after compensating the orphan.
+        try {
+          await client.deleteWorkflow(deployedWorkflow.id);
+        } catch (cleanupError) {
+          // error-policy:J6 compensation is best-effort; the ownership failure
+          // below remains the primary error while the orphan cleanup is logged.
+          logger.error(
+            { src: 'plugin:workflow:service:main', cleanupError },
+            `Failed to remove unowned workflow ${deployedWorkflow.id}`
+          );
+        }
+        throw new ElizaError('Workflow ownership could not be persisted', {
+          code: 'WORKFLOW_OWNERSHIP_PERSIST_FAILED',
+          cause: error,
+          context: { workflowId: deployedWorkflow.id, userId },
+        });
+      }
+    }
+
+    // Saving a definition is not a lifecycle operation. New workflows remain
+    // drafts, while updates retain their prior state. Activation/deactivation
+    // occurs only when a caller explicitly supplies `activate` (or when a
+    // backend violates the update-preserves-state contract and needs repair).
+    const desiredActive =
+      options?.activate ?? (wasUpdate ? Boolean(existingWorkflow?.active) : false);
+    const lifecycleNeeded = Boolean(deployedWorkflow.active) !== desiredActive;
+    if (lifecycleNeeded) {
+      try {
+        if (desiredActive) {
+          await client.activateWorkflow(deployedWorkflow.id);
+        } else {
+          await client.deactivateWorkflow(deployedWorkflow.id);
+        }
+        logger.info(
           { src: 'plugin:workflow:service:main' },
-          `Failed to tag workflow: ${error instanceof Error ? error.message : String(error)}`
+          `Workflow ${deployedWorkflow.id} ${desiredActive ? 'activated' : 'deactivated'}`
+        );
+      } catch (error) {
+        // error-policy:J2 lifecycle failure is rethrown with the workflow,
+        // owner, and create/update context after any create compensation.
+        if (!wasUpdate) {
+          try {
+            await client.deleteWorkflow(deployedWorkflow.id);
+          } catch (cleanupError) {
+            // error-policy:J6 compensation is best-effort; the lifecycle
+            // failure remains primary while orphan cleanup is observable here.
+            logger.error(
+              { src: 'plugin:workflow:service:main', cleanupError },
+              `Failed to remove workflow ${deployedWorkflow.id} after lifecycle failure`
+            );
+          }
+        }
+        throw new ElizaError(
+          desiredActive ? 'Workflow activation failed' : 'Workflow deactivation failed',
+          {
+            code: desiredActive ? 'WORKFLOW_ACTIVATION_FAILED' : 'WORKFLOW_DEACTIVATION_FAILED',
+            cause: error,
+            context: { workflowId: deployedWorkflow.id, userId, wasUpdate },
+            severity: 'ephemeral',
+          }
         );
       }
     }
@@ -963,31 +1058,35 @@ export class WorkflowService extends Service {
     return {
       id: deployedWorkflow.id,
       name: deployedWorkflow.name,
-      active,
-      nodeCount: deployedWorkflow.nodes.length || 0,
+      active: desiredActive,
+      nodeCount: deployedWorkflow.nodes.length,
       missingCredentials: credentialResult.missingConnections,
     };
   }
 
   async listWorkflows(userId?: string): Promise<WorkflowDefinitionResponse[]> {
     const client = this.getClient();
+    const workflowsResponse = await client.listWorkflows();
 
     if (userId) {
       const tagName = await getUserTagName(this.runtime, userId);
       const tagsResponse = await client.listTags();
       const userTag = tagsResponse.data.find((t) => t.name === tagName);
 
-      if (!userTag) {
-        return []; // No workflows for this user
-      }
-
-      // Get all workflows and filter by tag
-      const workflowsResponse = await client.listWorkflows();
-      return workflowsResponse.data.filter((w) => w.tags?.some((t) => t.id === userTag.id));
+      // The install-time health check predates user tags and must remain usable
+      // after an upgrade. Its fixed system id is visible only to this agent's
+      // canonical local owner; all other rows still require an exact owner tag.
+      const includeSystemDefault = userId.trim() === getLocalOwnerEntityId(this.runtime);
+      return workflowsResponse.data.filter(
+        (workflow) =>
+          (includeSystemDefault &&
+            workflow.id === DEVICE_HEALTH_CHECK_WORKFLOW_ID &&
+            (!workflow.tags || workflow.tags.length === 0)) ||
+          (userTag !== undefined && workflow.tags?.some((tag) => tag.id === userTag.id))
+      );
     }
 
-    const response = await client.listWorkflows();
-    return response.data;
+    return workflowsResponse.data;
   }
 
   /**
@@ -1000,30 +1099,45 @@ export class WorkflowService extends Service {
     return rankWorkflowsByQuery(workflows, query);
   }
 
-  async activateWorkflow(workflowId: string): Promise<void> {
+  private async assertWorkflowOwned(workflowId: string, userId: string): Promise<void> {
+    const workflows = await this.listWorkflows(userId);
+    if (workflows.some((workflow) => workflow.id === workflowId)) return;
+    throw new WorkflowApiError(`Workflow not found: ${workflowId}`, 404);
+  }
+
+  async activateWorkflow(workflowId: string, userId?: string): Promise<void> {
+    if (userId) await this.assertWorkflowOwned(workflowId, userId);
     const client = this.getClient();
     await client.activateWorkflow(workflowId);
     logger.info({ src: 'plugin:workflow:service:main' }, `Workflow ${workflowId} activated`);
   }
 
-  async deactivateWorkflow(workflowId: string): Promise<void> {
+  async deactivateWorkflow(workflowId: string, userId?: string): Promise<void> {
+    if (userId) await this.assertWorkflowOwned(workflowId, userId);
     const client = this.getClient();
     await client.deactivateWorkflow(workflowId);
     logger.info({ src: 'plugin:workflow:service:main' }, `Workflow ${workflowId} deactivated`);
   }
 
-  async deleteWorkflow(workflowId: string): Promise<void> {
+  async deleteWorkflow(workflowId: string, userId?: string): Promise<void> {
+    if (userId) await this.assertWorkflowOwned(workflowId, userId);
     const client = this.getClient();
     await client.deleteWorkflow(workflowId);
     logger.info({ src: 'plugin:workflow:service:main' }, `Workflow ${workflowId} deleted`);
   }
 
-  async getWorkflow(workflowId: string): Promise<WorkflowDefinitionResponse> {
+  async getWorkflow(workflowId: string, userId?: string): Promise<WorkflowDefinitionResponse> {
+    if (userId) await this.assertWorkflowOwned(workflowId, userId);
     const client = this.getClient();
     return client.getWorkflow(workflowId);
   }
 
-  async listWorkflowRevisions(workflowId: string, limit?: number): Promise<WorkflowRevision[]> {
+  async listWorkflowRevisions(
+    workflowId: string,
+    limit?: number,
+    userId?: string
+  ): Promise<WorkflowRevision[]> {
+    if (userId) await this.assertWorkflowOwned(workflowId, userId);
     const client = this.getClient();
     const response = await client.listWorkflowRevisions(workflowId, limit);
     return response.data;
@@ -1031,8 +1145,10 @@ export class WorkflowService extends Service {
 
   async restoreWorkflowRevision(
     workflowId: string,
-    versionId: string
+    versionId: string,
+    userId?: string
   ): Promise<WorkflowDefinitionResponse> {
+    if (userId) await this.assertWorkflowOwned(workflowId, userId);
     const client = this.getClient();
     return client.restoreWorkflowRevision(workflowId, versionId);
   }
@@ -1044,8 +1160,10 @@ export class WorkflowService extends Service {
       triggerData?: Record<string, unknown>;
       idempotencyKey?: string;
       throwOnError?: boolean;
-    }
+    },
+    userId?: string
   ): Promise<WorkflowExecution> {
+    if (userId) await this.assertWorkflowOwned(workflowId, userId);
     const client = this.getClient();
     return client.executeWorkflow(workflowId, {
       mode: options?.mode ?? 'manual',
@@ -1055,7 +1173,12 @@ export class WorkflowService extends Service {
     });
   }
 
-  async getWorkflowExecutions(workflowId: string, limit?: number): Promise<WorkflowExecution[]> {
+  async getWorkflowExecutions(
+    workflowId: string,
+    limit?: number,
+    userId?: string
+  ): Promise<WorkflowExecution[]> {
+    if (userId) await this.assertWorkflowOwned(workflowId, userId);
     const client = this.getClient();
     const response = await client.listExecutions({ workflowId, limit });
     return response.data;
@@ -1063,27 +1186,81 @@ export class WorkflowService extends Service {
 
   async getWorkflowEvaluationSuite(
     workflowId: string,
-    limit?: number
+    limit?: number,
+    userId?: string
   ): Promise<WorkflowEvaluationSuite> {
     const [workflow, executions] = await Promise.all([
-      this.getWorkflow(workflowId),
-      this.getWorkflowExecutions(workflowId, limit),
+      this.getWorkflow(workflowId, userId),
+      this.getWorkflowExecutions(workflowId, limit, userId),
     ]);
     return buildWorkflowEvaluationSuite(workflow, executions, { limit });
   }
 
-  async listExecutions(params?: {
-    workflowId?: string;
-    status?: 'canceled' | 'error' | 'running' | 'success' | 'waiting';
-    limit?: number;
-    cursor?: string;
-  }): Promise<{ data: WorkflowExecution[]; nextCursor?: string }> {
+  async listExecutions(
+    params?: {
+      workflowId?: string;
+      status?: 'canceled' | 'error' | 'running' | 'success' | 'waiting';
+      limit?: number;
+      cursor?: string;
+    },
+    userId?: string
+  ): Promise<{ data: WorkflowExecution[]; nextCursor?: string }> {
+    if (userId && params?.workflowId) {
+      await this.assertWorkflowOwned(params.workflowId, userId);
+    }
     const client = this.getClient();
-    return client.listExecutions(params);
+    if (!userId || params?.workflowId) return client.listExecutions(params);
+
+    const ownedIds = new Set((await this.listWorkflows(userId)).map((workflow) => workflow.id));
+    const requestedLimit = params?.limit;
+    const collected: WorkflowExecution[] = [];
+    const seenCursors = new Set<string>();
+    let cursor = params?.cursor;
+
+    while (true) {
+      const remaining =
+        typeof requestedLimit === 'number' ? requestedLimit - collected.length : undefined;
+      if (remaining !== undefined && remaining <= 0) {
+        return { data: collected, ...(cursor ? { nextCursor: cursor } : {}) };
+      }
+
+      const response = await client.listExecutions({
+        ...params,
+        ...(remaining !== undefined ? { limit: remaining } : {}),
+        ...(cursor ? { cursor } : {}),
+      });
+      collected.push(...response.data.filter((execution) => ownedIds.has(execution.workflowId)));
+
+      const nextCursor = response.nextCursor;
+      if (!nextCursor) return { data: collected };
+      if (requestedLimit !== undefined && collected.length >= requestedLimit) {
+        return { data: collected, nextCursor };
+      }
+      if (seenCursors.has(nextCursor) || nextCursor === cursor) {
+        throw new ElizaError('Workflow execution pagination cursor did not advance', {
+          code: 'WORKFLOW_EXECUTION_CURSOR_STALLED',
+          context: { userId, cursor: nextCursor },
+          severity: 'ephemeral',
+        });
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
   }
 
-  async getExecutionDetail(executionId: string): Promise<WorkflowExecution> {
+  async getExecutionDetail(executionId: string, userId?: string): Promise<WorkflowExecution> {
     const client = this.getClient();
-    return client.getExecution(executionId);
+    try {
+      const execution = await client.getExecution(executionId);
+      if (userId) await this.assertWorkflowOwned(execution.workflowId, userId);
+      return execution;
+    } catch (error) {
+      // error-policy:J3 an untrusted execution id receives one explicit
+      // not-found signal whether the row is absent or belongs to another user.
+      if (userId && error instanceof WorkflowApiError && error.statusCode === 404) {
+        throw new WorkflowApiError(`Execution not found: ${executionId}`, 404);
+      }
+      throw error;
+    }
   }
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -12,11 +13,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from agent_command import run_sandboxed_command
 from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
 
 
 DATASET_VERSION = "app-eval-coding-v1"
 EXPANDED_DATASET_VERSION = "app-eval-coding-edge-v1"
+EXPECTED_CODING_TASKS = 10
 EDGE_VARIANTS = (
     (
         "edge-ambiguous-user-wording",
@@ -148,6 +151,32 @@ def validate_tasks(tasks: list[dict[str, Any]]) -> None:
         seen.add(task_id)
         if not str(task.get("prompt") or "").strip():
             raise ValueError(f"{task_id}: missing prompt")
+        context = task.get("context")
+        if not isinstance(context, dict):
+            raise ValueError(f"{task_id}: context must be an object")
+        workspace = context.get("workspace")
+        if not isinstance(workspace, dict) or not isinstance(workspace.get("files"), dict):
+            raise ValueError(f"{task_id}: context.workspace.files must be an object")
+        evaluation = task.get("evaluation")
+        if not isinstance(evaluation, dict):
+            raise ValueError(f"{task_id}: evaluation must be an object")
+        assertions = evaluation.get("test_assertions")
+        if not isinstance(assertions, list) or not assertions:
+            raise ValueError(f"{task_id}: evaluation.test_assertions must be non-empty")
+        for index, assertion in enumerate(assertions):
+            if not isinstance(assertion, dict):
+                raise ValueError(f"{task_id}: assertion {index} must be an object")
+            if assertion.get("type") not in {
+                "file_exists",
+                "file_contains",
+                "command_output",
+                "test_passes",
+            }:
+                raise ValueError(f"{task_id}: assertion {index} has unsupported type")
+            if not isinstance(assertion.get("target"), str) or not assertion["target"].strip():
+                raise ValueError(f"{task_id}: assertion {index} has no target")
+            if "expected" not in assertion:
+                raise ValueError(f"{task_id}: assertion {index} has no expected value")
 
 
 def load_tasks(
@@ -155,11 +184,20 @@ def load_tasks(
     max_tasks: int | None = None,
     include_edge_scenarios: bool = False,
 ) -> list[dict[str, Any]]:
+    if max_tasks is not None and (isinstance(max_tasks, bool) or max_tasks <= 0):
+        raise ValueError("max_tasks must be a positive integer when provided")
     path = app_eval_root() / "tasks" / "coding-tasks.json"
     tasks = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(tasks, list):
         raise ValueError("App Eval coding task file must contain a JSON array")
-    selected = [task for task in tasks if isinstance(task, dict)]
+    if len(tasks) != EXPECTED_CODING_TASKS or not all(
+        isinstance(task, dict) for task in tasks
+    ):
+        raise ValueError(
+            "App Eval coding manifest must contain exactly "
+            f"{EXPECTED_CODING_TASKS} task objects"
+        )
+    selected = list(tasks)
     if max_tasks is not None:
         selected = selected[:max_tasks]
     return expand_tasks(selected) if include_edge_scenarios else selected
@@ -174,13 +212,20 @@ def _format_command(template: str, values: dict[str, str]) -> list[str]:
 
 
 def _read_agent_result(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    if not path.is_file():
+        raise FileNotFoundError(f"agent did not write its required result: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"agent result must be a JSON object: {path}")
+    return payload
+
+
+def _workspace_path(workspace: Path, relative: str) -> Path:
+    root = workspace.resolve()
+    candidate = (root / relative).resolve(strict=False)
+    if not candidate.is_relative_to(root):
+        raise ValueError(f"workspace path escapes task root: {relative!r}")
+    return candidate
 
 
 def _write_task_workspace(task: dict[str, Any], workspace: Path) -> None:
@@ -191,40 +236,49 @@ def _write_task_workspace(task: dict[str, Any], workspace: Path) -> None:
         .get("files", {})
     )
     if not isinstance(files, dict):
-        return
+        raise ValueError("task context.workspace.files must be an object")
     for relative, content in files.items():
-        target = workspace / str(relative)
+        target = _workspace_path(workspace, str(relative))
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(str(content), encoding="utf-8")
 
 
 def _write_prompt(task: dict[str, Any], prompt_path: Path) -> None:
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    evaluation = task.get("evaluation") if isinstance(task.get("evaluation"), dict) else {}
+    # Assertions are hidden evaluation data. Giving their commands and exact
+    # expected outputs to the agent would turn implementation into answer
+    # reconstruction and materially inflate the score.
     payload = {
         "id": task.get("id"),
         "prompt": task.get("prompt"),
         "context": task.get("context", {}),
-        "must_produce_files": evaluation.get("must_produce_files", []),
-        "test_commands": evaluation.get("test_commands", []),
-        "test_assertions": evaluation.get("test_assertions", []),
-        "quality_criteria": evaluation.get("quality_criteria", {}),
     }
     prompt_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def _command_output(command: str, *, cwd: Path, timeout_seconds: int) -> tuple[int, str, str]:
-    completed = subprocess.run(
+def _command_output(
+    command: str,
+    *,
+    cwd: Path,
+    timeout_seconds: int,
+) -> tuple[int, str, str, dict[str, object]]:
+    result = run_sandboxed_command(
         command,
-        cwd=cwd,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=timeout_seconds,
-        check=False,
+        workspace=cwd,
+        timeout_seconds=timeout_seconds,
     )
-    return completed.returncode, completed.stdout, completed.stderr
+    exit_code = result.get("exit_code")
+    if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+        exit_code = 124 if result.get("timed_out") is True else 1
+    sandbox = result.get("sandbox")
+    if not isinstance(sandbox, dict):
+        raise RuntimeError("sandboxed evaluator command omitted Docker provenance")
+    return (
+        exit_code,
+        str(result.get("stdout") or ""),
+        str(result.get("stderr") or ""),
+        sandbox,
+    )
 
 
 def _evaluate_assertion(assertion: dict[str, Any], *, workspace: Path, timeout_seconds: int) -> dict[str, Any]:
@@ -238,20 +292,53 @@ def _evaluate_assertion(assertion: dict[str, Any], *, workspace: Path, timeout_s
         "passed": False,
     }
     if kind == "file_exists":
-        result["passed"] = (workspace / target).exists() is bool(expected)
+        try:
+            path = _workspace_path(workspace, target)
+        except ValueError as exc:
+            result["error"] = str(exc)
+            return result
+        result["passed"] = path.exists() is bool(expected)
     elif kind == "file_contains":
-        path = workspace / target
+        try:
+            path = _workspace_path(workspace, target)
+        except ValueError as exc:
+            result["error"] = str(exc)
+            return result
         text = path.read_text(encoding="utf-8") if path.exists() else ""
         result["passed"] = bool(re.search(str(expected), text))
     elif kind == "command_output":
-        code, stdout, stderr = _command_output(target, cwd=workspace, timeout_seconds=timeout_seconds)
+        code, stdout, stderr, sandbox = _command_output(
+            target,
+            cwd=workspace,
+            timeout_seconds=timeout_seconds,
+        )
         combined = stdout + stderr
         actual = combined.strip()
-        result.update({"exit_code": code, "actual": actual[-2000:]})
-        result["passed"] = str(expected) in actual
+        result.update(
+            {"exit_code": code, "actual": actual[-2000:], "sandbox": sandbox}
+        )
+        expected_text = str(expected)
+        if expected_text in actual:
+            result["passed"] = True
+        else:
+            try:
+                result["passed"] = re.search(expected_text, actual) is not None
+            except re.error as exc:
+                result["error"] = f"invalid expected-output pattern: {exc}"
     elif kind == "test_passes":
-        code, stdout, stderr = _command_output(target, cwd=workspace, timeout_seconds=timeout_seconds)
-        result.update({"exit_code": code, "stdout": stdout[-2000:], "stderr": stderr[-2000:]})
+        code, stdout, stderr, sandbox = _command_output(
+            target,
+            cwd=workspace,
+            timeout_seconds=timeout_seconds,
+        )
+        result.update(
+            {
+                "exit_code": code,
+                "stdout": stdout[-2000:],
+                "stderr": stderr[-2000:],
+                "sandbox": sandbox,
+            }
+        )
         result["passed"] = code == 0
     else:
         result["error"] = f"unsupported assertion type: {kind}"
@@ -286,7 +373,7 @@ def _write_trajectory(
     agent_result: dict[str, Any],
 ) -> str:
     usage = agent_result.get("usage")
-    if trajectory_dir is None or not isinstance(usage, dict) or not usage:
+    if trajectory_dir is None:
         return ""
     trajectory_dir.mkdir(parents=True, exist_ok=True)
     path = trajectory_dir / f"trajectory-{_safe_task_id(task_id)}.jsonl"
@@ -295,8 +382,9 @@ def _write_trajectory(
             {
                 "task": task_id,
                 "prompt_path": str(prompt_path),
-                "usage": usage,
+                "usage": usage if isinstance(usage, dict) else {},
                 "agent_status": agent_result.get("status"),
+                "agent_result": agent_result,
             },
             sort_keys=True,
         )
@@ -343,25 +431,55 @@ def run_agent_app_eval_coding(
                 "model": model,
             },
         )
-        completed = subprocess.run(
-            command,
-            cwd=workspace,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
+        command_error: str | None = None
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=workspace,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # error-policy:J1 The task boundary records the timeout and the CLI
+            # rejects the incomplete run after producing a complete report.
+            stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+            stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            command_error = f"agent command timed out after {timeout_seconds}s"
+            completed = subprocess.CompletedProcess(
+                command,
+                124,
+                stdout,
+                f"{stderr}\n{command_error}".strip(),
+            )
+        except OSError as exc:
+            # error-policy:J1 The task boundary records spawn failures and the
+            # CLI rejects the incomplete run after producing a complete report.
+            command_error = f"agent command failed to start: {type(exc).__name__}: {exc}"
+            completed = subprocess.CompletedProcess(command, 127, "", command_error)
         stdout_path = logs_dir / f"{_safe_task_id(task_id)}.stdout.log"
         stderr_path = logs_dir / f"{_safe_task_id(task_id)}.stderr.log"
         stdout_path.write_text(completed.stdout or "", encoding="utf-8")
         stderr_path.write_text(completed.stderr or "", encoding="utf-8")
-        agent_result = _read_agent_result(agent_result_path)
+        try:
+            agent_result = _read_agent_result(agent_result_path)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            # error-policy:J1 A missing or malformed boundary artifact is a
+            # visible task failure; it is never treated as an empty success.
+            agent_result = {}
+            command_error = command_error or f"{type(exc).__name__}: {exc}"
         usage = agent_result.get("usage") if isinstance(agent_result, dict) else None
         token_metrics = token_metrics_from_usage(usage) if isinstance(usage, dict) else {}
         workspace_eval = evaluate_workspace(task, workspace=workspace, timeout_seconds=eval_timeout_seconds)
-        success = completed.returncode == 0 and workspace_eval["success"]
+        agent_completed = agent_result.get("status") == "completed"
+        success = (
+            completed.returncode == 0
+            and agent_completed
+            and workspace_eval["success"]
+        )
         trajectory_path = _write_trajectory(
             trajectory_dir=trajectory_dir,
             task_id=task_id,
@@ -374,9 +492,9 @@ def run_agent_app_eval_coding(
                 "status": "completed" if success else "failed",
                 "success": success,
                 "score": 1.0 if success else 0.0,
-                "passed": workspace_eval["passed"] if completed.returncode == 0 else 0,
-                "failed": workspace_eval["failed"] if completed.returncode == 0 else workspace_eval["total"],
-                "errors": 0 if completed.returncode == 0 else 1,
+                "passed": workspace_eval["passed"],
+                "failed": workspace_eval["failed"],
+                "errors": 0 if completed.returncode == 0 and agent_completed else 1,
                 "total": workspace_eval["total"],
                 "workspace_score": workspace_eval["score"],
                 "assertions": workspace_eval["assertions"],
@@ -386,6 +504,7 @@ def run_agent_app_eval_coding(
                 "stderr_path": str(stderr_path),
                 "agent_result_path": str(agent_result_path),
                 "agent_result_status": agent_result.get("status"),
+                "agent_error": command_error or agent_result.get("error"),
                 "token_metrics": token_metrics,
                 "trajectory_path": trajectory_path,
             }
@@ -404,6 +523,7 @@ def build_result(
 ) -> dict[str, Any]:
     total = len(results)
     resolved = sum(1 for item in results if item.get("success") is True)
+    manifest_path = app_eval_root() / "tasks" / "coding-tasks.json"
     return {
         "benchmark": "app_eval_coding",
         "adapter": task_agent,
@@ -411,6 +531,13 @@ def build_result(
         "model": model,
         "mode": mode,
         "dataset_version": EXPANDED_DATASET_VERSION if include_edge_scenarios else DATASET_VERSION,
+        "dataset_provenance": {
+            "source": "packages/benchmarks/app-eval/tasks/coding-tasks.json",
+            "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+            "expected_base_tasks": EXPECTED_CODING_TASKS,
+            "selected_instances": total,
+            "edge_variants_per_base": len(EDGE_VARIANTS) if include_edge_scenarios else 0,
+        },
         "summary": {
             "total_instances": total,
             "resolved": resolved,
@@ -429,7 +556,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", default="gemma-4-31b")
     parser.add_argument("--output", required=True)
     parser.add_argument("--trajectory-dir", default="")
-    parser.add_argument("--max-tasks", type=int, default=1)
+    parser.add_argument(
+        "--max-tasks",
+        type=int,
+        default=0,
+        help="Optional smoke cap; 0 runs the complete 10-task coding corpus",
+    )
     parser.add_argument("--agent-command-template", default="")
     parser.add_argument("--timeout-seconds", type=int, default=7200)
     parser.add_argument("--eval-timeout-seconds", type=int, default=120)
@@ -446,10 +578,13 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output)
     trajectory_dir = Path(args.trajectory_dir) if args.trajectory_dir else None
     output_dir.mkdir(parents=True, exist_ok=True)
-    base_tasks = load_tasks(max_tasks=args.max_tasks)
-    tasks = load_tasks(max_tasks=args.max_tasks, include_edge_scenarios=args.expand_scenarios)
-    if args.validate_scenarios:
-        validate_tasks(tasks)
+    max_tasks = args.max_tasks if args.max_tasks > 0 else None
+    base_tasks = load_tasks(max_tasks=max_tasks)
+    tasks = load_tasks(
+        max_tasks=max_tasks,
+        include_edge_scenarios=args.expand_scenarios,
+    )
+    validate_tasks(tasks)
     if args.count_scenarios or args.validate_scenarios:
         print(
             json.dumps(
@@ -526,6 +661,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(f"wrote {result_path}")
+    if not args.mock and any(item.get("success") is not True for item in results):
+        return 1
     return 0
 
 

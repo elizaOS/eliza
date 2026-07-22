@@ -1,7 +1,15 @@
+"""Projects benchmark database rows and published snapshots into viewer data.
+
+The viewer consumes diagnostic run history from SQLite but accepts latest
+scores only from the fail-closed publication directory.
+"""
+
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from .db import list_run_groups, list_runs, summarize_latest_scores
@@ -109,6 +117,7 @@ def build_viewer_dataset(
     conn,
     *,
     benchmark_ids: set[str] | None = None,
+    latest_dir: Path | None = None,
 ) -> dict[str, Any]:
     runs = [_with_flat_token_metrics(row) for row in list_runs(conn, limit=10000)]
     if benchmark_ids is not None:
@@ -118,11 +127,19 @@ def build_viewer_dataset(
             if str(row.get("benchmark_id") or "") in benchmark_ids
         ]
     groups = _filter_run_groups(list_run_groups(conn, limit=3000), benchmark_ids)
-    latest_scores = [
-        row
-        for row in summarize_latest_scores(conn)
-        if benchmark_ids is None or str(row.get("benchmark_id") or "") in benchmark_ids
-    ]
+    if latest_dir is None:
+        latest_scores = [
+            row
+            for row in summarize_latest_scores(conn)
+            if benchmark_ids is None
+            or str(row.get("benchmark_id") or "") in benchmark_ids
+        ]
+    else:
+        latest_scores = _published_latest_scores(
+            runs,
+            latest_dir=latest_dir,
+            benchmark_ids=benchmark_ids,
+        )
 
     by_benchmark: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_model: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -195,6 +212,53 @@ def build_viewer_dataset(
         "agent_summary": agent_summary,
         "calibration_summary": calibration_summary,
     }
+
+
+def _published_latest_scores(
+    runs: list[dict[str, Any]],
+    *,
+    latest_dir: Path,
+    benchmark_ids: set[str] | None,
+) -> list[dict[str, Any]]:
+    """Mirror the fail-closed ``latest/`` publication set in the viewer.
+
+    SQLite retains failed and quarantined attempts for diagnosis. The viewer's
+    Latest Scores table must not recompute a looser definition from every row
+    whose subprocess happened to finish with a score.
+    """
+
+    runs_by_id = {str(row.get("run_id") or ""): row for row in runs}
+    published: list[dict[str, Any]] = []
+    paths = sorted(latest_dir.glob("*.json")) if latest_dir.exists() else []
+    for path in paths:
+        if path.name == "index.json":
+            continue
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"Published snapshot must be a JSON object: {path}")
+        benchmark_id = str(payload.get("benchmark_id") or "")
+        score = payload.get("score")
+        if (
+            payload.get("status") != "succeeded"
+            or not isinstance(score, (int, float))
+            or isinstance(score, bool)
+            or (
+                benchmark_ids is not None
+                and benchmark_id not in benchmark_ids
+            )
+        ):
+            continue
+        run_id = str(payload.get("run_id") or "")
+        source = runs_by_id.get(run_id, payload)
+        published.append(_with_flat_token_metrics(source))
+    return sorted(
+        published,
+        key=lambda row: (
+            str(row.get("benchmark_id") or ""),
+            str(row.get("agent") or ""),
+            str(row.get("run_id") or ""),
+        ),
+    )
 
 
 def _build_calibration_summary(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:

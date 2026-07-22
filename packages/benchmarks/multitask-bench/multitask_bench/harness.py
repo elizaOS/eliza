@@ -14,8 +14,8 @@ harnesses differ only in isolation, which the report discloses:
   sessions and must not be published — the CLI gates it behind
   ``MULTITASK_ELIZA_USAGE_FIX=1``.
 - **hermes / openclaw** — one client shared across the lane, each task's
-  ``agent_fn`` driving a per-turn subprocess/in-process call. Process-isolated;
-  interference is only the shared rate/cost budget.
+  ``agent_fn`` driving an isolated native-runtime process per turn.
+  Interference is only the shared rate/cost budget.
 
 The hermetic ``perfect`` / ``wrong`` factories need no client and no keys —
 they are the conformance path the tests and no-key smoke runs use, and they
@@ -127,8 +127,7 @@ def _hermes_factory(model: str | None) -> AgentFactory:
         or "cerebras"
     ).strip().lower()
     model_name = model or os.environ.get("BENCHMARK_MODEL_NAME") or "gemma-4-31b"
-    mode = (os.environ.get("HERMES_ADAPTER_MODE") or "in_process").strip() or "in_process"
-    shared_client = HermesClient(provider=provider, model=model_name, mode=mode)
+    shared_client = HermesClient(provider=provider, model=model_name)
     shared_client.wait_until_ready(timeout=60)
 
     def factory(_scenario: Scenario) -> AgentFn:
@@ -140,20 +139,9 @@ def _hermes_factory(model: str | None) -> AgentFactory:
 def _openclaw_factory(model: str | None) -> AgentFactory:
     """One shared OpenClawClient; each task gets its own per-turn agent_fn.
 
-    Transport default is the **direct OpenAI-compatible path**, because it is
-    the only one that produces a *scored* LifeOpsBench lane: it returns the
-    structured ``tool_calls`` the runner executes against the harness-owned
-    LifeWorld. That path is disclosed as ``partial`` (not CLI-native tool-call
-    parity), which the report records.
-
-    Set ``OPENCLAW_USE_CLI=1`` to run the **real ``openclaw agent --local``
-    CLI** instead (needs a custom provider registered in the openclaw config —
-    see the adapter README's "CLI-native provider registration"). Those turns
-    are genuinely live, but the CLI owns its own tool execution and returns
-    natural-language ``payloads``: it cannot surface the harness tool catalog
-    as executable ``tool_calls``, so the lane completes every task yet scores
-    ``mean_score=0.000``. Use it to exercise the real CLI path, not to publish
-    a scalar. See ``test-results/evidence/13777-multitask-live/openclaw-cli-native/``.
+    Each isolated embedded-runtime turn receives the LifeOps tool catalog as a
+    generated native plugin. Captured plugin executions are returned to the
+    harness-owned LifeWorld for deterministic scoring.
     """
     ensure_benchmark_adapter_importable("openclaw")
     from openclaw_adapter.client import OpenClawClient
@@ -165,12 +153,9 @@ def _openclaw_factory(model: str | None) -> AgentFactory:
         or "cerebras"
     ).strip().lower()
     model_name = model or os.environ.get("BENCHMARK_MODEL_NAME") or "gpt-oss-120b"
-    # CLI-native only when explicitly opted in; otherwise the scoring path.
-    cli_native = os.environ.get("OPENCLAW_USE_CLI") == "1"
     shared_client = OpenClawClient(
         provider=provider,
         model=model_name,
-        direct_openai_compatible=not cli_native,
     )
     shared_client.wait_until_ready(timeout=120)
 

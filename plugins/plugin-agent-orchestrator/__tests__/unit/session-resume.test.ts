@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../src/services/acp-service.js";
+import { smithersDurableRunMetadata } from "../../src/services/smithers-task-integration.js";
 import type { SessionInfo } from "../../src/services/types.js";
 
 function runtime(settings: Record<string, string | undefined> = {}) {
@@ -306,6 +307,41 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
         "s-tool",
       ]);
       expect(calls[0]?.text).toMatch(/previous turn was interrupted/);
+    });
+  });
+
+  it("leaves Smithers-owned busy sessions to durable graph recovery", async () => {
+    await withSessionState(async (root) => {
+      const service = new AcpService(runtime());
+      pointStateRootAt(service, root);
+      const calls = stubSendPrompt(service);
+      const store = getStore(service);
+      await writeStateFile(root, "acpx-smithers");
+      await store.create(
+        baseSession({
+          id: "s-smithers",
+          status: "busy",
+          acpxSessionId: "acpx-smithers",
+          metadata: {
+            label: "durable",
+            ...smithersDurableRunMetadata({
+              version: 1,
+              orchestratorTaskId: "task-owner",
+              taskId: "smithers-task",
+              runId: "smithers-run",
+              tenantId: "tenant",
+              initialPrompt: "perform once",
+              state: "running",
+              keepAliveAfterComplete: false,
+            }),
+          },
+        }),
+      );
+
+      const result = await service.resumeOrphanedBusySessions();
+
+      expect(result).toEqual({ resumed: 0, skipped: 1 });
+      expect(calls).toHaveLength(0);
     });
   });
 

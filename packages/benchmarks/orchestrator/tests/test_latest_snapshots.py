@@ -4,22 +4,35 @@ import json
 from pathlib import Path
 from typing import Any
 
+from benchmarks.publication_contracts import (
+    WEBSHOP_FULL_REPORT_CONTRACT,
+    WEBSHOP_FULL_SCENARIO_ID_MANIFEST_SHA256,
+)
 from benchmarks.orchestrator.db import (
     connect_database,
     create_run_group,
+    fail_succeeded_runs_for_publication,
     initialize_database,
     insert_run_start,
     recover_stale_running_runs,
+    repair_nonpublishable_success_statuses,
     update_run_result,
 )
 from benchmarks.orchestrator.adapters import (
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
 )
 from benchmarks.orchestrator.runner import (
+    _build_latest_matrix_contract,
     _complete_token_metrics,
+    _promote_latest_comparable_real_cohorts,
     _rebuild_latest_result_snapshots,
+    _subscription_group_quarantine_reason,
 )
-from benchmarks.orchestrator.types import BenchmarkAdapter, ExecutionContext, ScoreSummary
+from benchmarks.orchestrator.types import (
+    BenchmarkAdapter,
+    ExecutionContext,
+    ScoreSummary,
+)
 
 
 def _adapter(
@@ -27,7 +40,9 @@ def _adapter(
     *,
     agent_compatibility: tuple[str, ...] = ("eliza", "hermes", "openclaw"),
 ) -> BenchmarkAdapter:
-    def command_builder(_ctx: ExecutionContext, _adapter: BenchmarkAdapter) -> list[str]:
+    def command_builder(
+        _ctx: ExecutionContext, _adapter: BenchmarkAdapter
+    ) -> list[str]:
         return []
 
     def result_locator(
@@ -108,6 +123,22 @@ def _seed_run(
     )
 
 
+def _complete_webshop_metrics() -> dict[str, Any]:
+    return {
+        **WEBSHOP_FULL_REPORT_CONTRACT,
+        "java_version": "openjdk version 21.0.8",
+        "total_tasks": 5_500,
+        "total_trials": 5_500,
+        "runtime_provenance": {
+            "telemetry_records": 5_500,
+            "task_id_records": 5_500,
+            "missing_task_id_records": 0,
+            "task_id_manifest_count": 5_500,
+            "task_id_manifest_sha256": WEBSHOP_FULL_SCENARIO_ID_MANIFEST_SHA256,
+        },
+    }
+
+
 def test_complete_token_metrics_marks_all_zero_telemetry_missing() -> None:
     metrics = _complete_token_metrics(
         {},
@@ -122,6 +153,88 @@ def test_complete_token_metrics_marks_all_zero_telemetry_missing() -> None:
     assert metrics["telemetry_missing"] is True
 
 
+def test_database_repairs_non_sample_webshop_rows_without_full_proof(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["webshop"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="webshop",
+        agent="eliza",
+        run_id="run_incomplete_webshop",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={
+            "sample": False,
+            "profile": "full",
+            "total_tasks": 5_500,
+            "total_trials": 5_500,
+        },
+    )
+
+    assert repair_nonpublishable_success_statuses(conn) == 1
+    row = conn.execute(
+        "SELECT status, error FROM benchmark_runs WHERE run_id = ?",
+        ("run_incomplete_webshop",),
+    ).fetchone()
+    assert row["status"] == "failed"
+    assert row["error"] == "webshop_workload_contract_mismatch:mode"
+
+
+def test_database_persists_publication_rejection_before_snapshot_rebuild(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["webshop"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="webshop",
+        agent="openclaw",
+        run_id="run_rejected",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics=_complete_webshop_metrics(),
+    )
+    reason = "subscription_gateway_audit_sha256_mismatch"
+
+    assert (
+        fail_succeeded_runs_for_publication(
+            conn,
+            reasons={"run_rejected": reason},
+        )
+        == 1
+    )
+    row = conn.execute(
+        "SELECT status, error FROM benchmark_runs WHERE run_id = ?",
+        ("run_rejected",),
+    ).fetchone()
+    assert row["status"] == "failed"
+    assert row["error"] == reason
+    assert (
+        fail_succeeded_runs_for_publication(
+            conn,
+            reasons={"run_rejected": "different-reason"},
+        )
+        == 0
+    )
+    conn.close()
+
+
 def test_complete_token_metrics_marks_estimated_telemetry_missing() -> None:
     metrics = _complete_token_metrics(
         {},
@@ -134,6 +247,105 @@ def test_complete_token_metrics_marks_estimated_telemetry_missing() -> None:
     assert metrics["total_tokens"] == 100
     assert metrics["token_estimate_source"] == "prompt_chars_div_4"
     assert metrics["telemetry_missing"] is True
+
+
+def test_subscription_latest_selection_uses_one_complete_run_group() -> None:
+    adapter = _adapter("bfcl")
+
+    def row(agent: str, run_group_id: str, started_at: str) -> dict[str, Any]:
+        return {
+            "benchmark_id": "bfcl",
+            "benchmark_directory": "bfcl",
+            "agent": agent,
+            "provider": "claude-subscription",
+            "model": "claude-opus-4-6",
+            "extra_config": {"dataset": "full"},
+            "status": "succeeded",
+            "score": 0.5,
+            "run_group_id": run_group_id,
+            "started_at": started_at,
+        }
+
+    old = {
+        agent: row(agent, "rg-complete", "2026-07-20T00:00:00+00:00")
+        for agent in ("eliza", "hermes", "openclaw")
+    }
+    mixed = {
+        "eliza": row("eliza", "rg-eliza", "2026-07-20T01:00:00+00:00"),
+        "hermes": row("hermes", "rg-hermes", "2026-07-20T01:00:00+00:00"),
+        "openclaw": row("openclaw", "rg-openclaw", "2026-07-20T01:00:00+00:00"),
+    }
+    latest_by_key = {("bfcl", agent): value for agent, value in mixed.items()}
+    rows_by_signature = {
+        "bfcl": {
+            "same-inputs": {
+                agent: [mixed[agent], old[agent]]
+                for agent in ("eliza", "hermes", "openclaw")
+            }
+        }
+    }
+
+    _promote_latest_comparable_real_cohorts(
+        latest_by_key=latest_by_key,
+        rows_by_comparison_signature=rows_by_signature,
+        adapters={"bfcl": adapter},
+    )
+
+    assert {
+        latest_by_key[("bfcl", agent)]["run_group_id"]
+        for agent in ("eliza", "hermes", "openclaw")
+    } == {"rg-complete"}
+
+
+def test_matrix_contract_rejects_mixed_subscription_run_groups() -> None:
+    latest = {
+        ("bfcl", agent): {
+            "status": "succeeded",
+            "score": 0.5,
+            "provider": "claude-subscription",
+            "run_group_id": f"rg-{agent}",
+        }
+        for agent in ("eliza", "hermes", "openclaw")
+    }
+
+    contract = _build_latest_matrix_contract(
+        latest_by_key=latest,
+        quarantine_by_key={},
+        adapters={"bfcl": _adapter("bfcl")},
+    )
+
+    assert contract["status"] == "incomplete"
+    assert contract["summary"]["invalid_subscription_cohort_benchmarks"] == 1
+    assert contract["benchmarks"]["bfcl"]["cohort_reason"] == (
+        "subscription_rows_not_single_cohort"
+    )
+
+
+def test_subscription_rows_wait_for_durable_group_completion() -> None:
+    assert (
+        _subscription_group_quarantine_reason(
+            provider="claude-subscription",
+            run_group_id="rg-running",
+            finished_run_group_ids={"rg-finished"},
+        )
+        == "subscription_unfinished_cohort"
+    )
+    assert (
+        _subscription_group_quarantine_reason(
+            provider="claude-subscription",
+            run_group_id="rg-finished",
+            finished_run_group_ids={"rg-finished"},
+        )
+        is None
+    )
+    assert (
+        _subscription_group_quarantine_reason(
+            provider="cerebras",
+            run_group_id="rg-running",
+            finished_run_group_ids=set(),
+        )
+        is None
+    )
 
 
 def test_rebuild_latest_preserves_existing_snapshots_when_db_has_no_rows(
@@ -229,6 +441,9 @@ def test_rebuild_latest_preserves_valid_snapshots_missing_from_partial_db(
                 "agent": "eliza",
                 "status": "succeeded",
                 "score": 1.0,
+                "provider": "test",
+                "model": "test-model",
+                "metrics": _complete_webshop_metrics(),
                 "run_id": "run_webshop_old",
                 "run_group_id": "rg_old",
                 "signature": "sig-webshop-old",
@@ -243,7 +458,10 @@ def test_rebuild_latest_preserves_valid_snapshots_missing_from_partial_db(
     _rebuild_latest_result_snapshots(
         conn,
         tmp_path,
-        {"bfcl": _adapter("bfcl"), "webshop": _adapter("webshop", agent_compatibility=("eliza",))},
+        {
+            "bfcl": _adapter("bfcl"),
+            "webshop": _adapter("webshop", agent_compatibility=("eliza",)),
+        },
     )
 
     assert (tmp_path / "latest" / "bfcl__eliza.json").exists()
@@ -300,14 +518,18 @@ def test_rebuild_latest_prunes_preserved_snapshot_excluded_by_current_compatibil
         tmp_path,
         {
             "bfcl": _adapter("bfcl"),
-            "vision_language": _adapter("vision_language", agent_compatibility=("eliza",)),
+            "vision_language": _adapter(
+                "vision_language", agent_compatibility=("eliza",)
+            ),
         },
     )
 
     assert not preserved.exists()
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert "vision_language::hermes" not in index["latest"]
-    assert index["matrix_contract"]["benchmarks"]["vision_language"]["cells"]["hermes"] == {
+    assert index["matrix_contract"]["benchmarks"]["vision_language"]["cells"][
+        "hermes"
+    ] == {
         "required": False,
         "state": "unsupported",
         "status": "unsupported",
@@ -371,7 +593,9 @@ def test_rebuild_latest_prunes_mislabeled_hermes_native_env_snapshots(
     assert not preserved.exists()
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert "hermes_tblite::eliza" not in index["latest"]
-    assert index["matrix_contract"]["benchmarks"]["hermes_tblite"]["cells"]["eliza"] == {
+    assert index["matrix_contract"]["benchmarks"]["hermes_tblite"]["cells"][
+        "eliza"
+    ] == {
         "required": False,
         "state": "unsupported",
         "status": "unsupported",
@@ -479,13 +703,13 @@ def test_rebuild_latest_repairs_zero_sample_hermes_successes(
         metrics={"score": 0.0, "n": 0, "passed": 0},
     )
 
-    _rebuild_latest_result_snapshots(conn, tmp_path, {"humaneval": _adapter("humaneval")})
+    _rebuild_latest_result_snapshots(
+        conn, tmp_path, {"humaneval": _adapter("humaneval")}
+    )
 
     assert not (tmp_path / "latest" / "humaneval__hermes.json").exists()
     quarantine = json.loads(
-        (tmp_path / "quarantine" / "humaneval__hermes.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "quarantine" / "humaneval__hermes.json").read_text(encoding="utf-8")
     )
     assert quarantine["status"] == "failed"
     assert "zero-sample success artifact" in quarantine["error"]
@@ -514,15 +738,18 @@ def test_rebuild_latest_is_byte_stable_when_inputs_do_not_change(
 
     _rebuild_latest_result_snapshots(conn, tmp_path, {"bfcl": _adapter("bfcl")})
     first_index = (tmp_path / "latest" / "index.json").read_text(encoding="utf-8")
-    first_snapshot = (tmp_path / "latest" / "bfcl__eliza.json").read_text(encoding="utf-8")
+    first_snapshot = (tmp_path / "latest" / "bfcl__eliza.json").read_text(
+        encoding="utf-8"
+    )
 
     _rebuild_latest_result_snapshots(conn, tmp_path, {"bfcl": _adapter("bfcl")})
 
-    assert (tmp_path / "latest" / "index.json").read_text(encoding="utf-8") == first_index
-    assert (
-        (tmp_path / "latest" / "bfcl__eliza.json").read_text(encoding="utf-8")
-        == first_snapshot
-    )
+    assert (tmp_path / "latest" / "index.json").read_text(
+        encoding="utf-8"
+    ) == first_index
+    assert (tmp_path / "latest" / "bfcl__eliza.json").read_text(
+        encoding="utf-8"
+    ) == first_snapshot
 
 
 def test_rebuild_latest_routes_synthetic_to_baselines_and_prunes_stale_latest(
@@ -569,12 +796,9 @@ def test_rebuild_latest_routes_synthetic_to_baselines_and_prunes_stale_latest(
     assert json.loads(baseline.read_text(encoding="utf-8"))["synthetic"] is True
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert set(index["latest"]) == {"bfcl::eliza"}
+    assert all("perfect_v1" not in key for key in index["latest_by_signature"])
     assert all(
-        "perfect_v1" not in key for key in index["latest_by_signature"]
-    )
-    assert all(
-        "perfect_v1" not in key
-        for key in index["latest_by_comparison_signature"]
+        "perfect_v1" not in key for key in index["latest_by_comparison_signature"]
     )
 
 
@@ -617,7 +841,9 @@ def test_rebuild_latest_publishes_estimated_token_rows_with_warning(
     assert latest.exists()
     assert not quarantine.exists()
     payload = json.loads(latest.read_text(encoding="utf-8"))
-    assert "estimated_token_metrics:prompt_chars_div_4" in payload["publication_warnings"]
+    assert (
+        "estimated_token_metrics:prompt_chars_div_4" in payload["publication_warnings"]
+    )
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert set(index["latest"]) == {"action-calling::eliza"}
 
@@ -832,7 +1058,9 @@ def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
         tmp_path,
         {
             "framework": _adapter("framework", agent_compatibility=("eliza",)),
-            "personality_bench": _adapter("personality_bench", agent_compatibility=("eliza",)),
+            "personality_bench": _adapter(
+                "personality_bench", agent_compatibility=("eliza",)
+            ),
             "social_alpha": _adapter("social_alpha"),
             "solana": _adapter("solana"),
         },
@@ -864,12 +1092,16 @@ def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
         tmp_path,
         {
             "framework": _adapter("framework", agent_compatibility=("eliza",)),
-            "personality_bench": _adapter("personality_bench", agent_compatibility=("eliza",)),
+            "personality_bench": _adapter(
+                "personality_bench", agent_compatibility=("eliza",)
+            ),
         },
     )
 
     payload = json.loads(
-        (tmp_path / "latest" / "personality_bench__eliza.json").read_text(encoding="utf-8")
+        (tmp_path / "latest" / "personality_bench__eliza.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert "publication_warnings" not in payload
 
@@ -895,7 +1127,9 @@ def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
         tmp_path,
         {
             "framework": _adapter("framework", agent_compatibility=("eliza",)),
-            "personality_bench": _adapter("personality_bench", agent_compatibility=("eliza",)),
+            "personality_bench": _adapter(
+                "personality_bench", agent_compatibility=("eliza",)
+            ),
             "social_alpha": _adapter("social_alpha"),
             "solana": _adapter("solana"),
         },
@@ -947,11 +1181,17 @@ def test_rebuild_latest_allows_tokenless_vision_language_runtime_rows(
     _rebuild_latest_result_snapshots(
         conn,
         tmp_path,
-        {"vision_language": _adapter("vision_language", agent_compatibility=("eliza",))},
+        {
+            "vision_language": _adapter(
+                "vision_language", agent_compatibility=("eliza",)
+            )
+        },
     )
 
     payload = json.loads(
-        (tmp_path / "latest" / "vision_language__eliza.json").read_text(encoding="utf-8")
+        (tmp_path / "latest" / "vision_language__eliza.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert "publication_warnings" not in payload
 
@@ -992,7 +1232,11 @@ def test_rebuild_latest_allows_tokenless_voiceagentbench_real_rows(
     _rebuild_latest_result_snapshots(
         conn,
         tmp_path,
-        {"voiceagentbench": _adapter("voiceagentbench", agent_compatibility=("openclaw",))},
+        {
+            "voiceagentbench": _adapter(
+                "voiceagentbench", agent_compatibility=("openclaw",)
+            )
+        },
     )
 
     payload = json.loads(
@@ -1040,7 +1284,11 @@ def test_rebuild_latest_allows_tokenless_hermes_yc_bench_rows(
     _rebuild_latest_result_snapshots(
         conn,
         tmp_path,
-        {"hermes_yc_bench": _adapter("hermes_yc_bench", agent_compatibility=("hermes",))},
+        {
+            "hermes_yc_bench": _adapter(
+                "hermes_yc_bench", agent_compatibility=("hermes",)
+            )
+        },
     )
 
     payload = json.loads(
@@ -1075,7 +1323,11 @@ def test_rebuild_latest_indexes_cross_harness_comparison_signature(
                 "agent": agent,
                 "harness": agent,
                 "scenario": "skeptic_tarot_01",
-                **({"openclaw_timeout_s": 60, "reasoning_effort": "low"} if agent == "hermes" else {}),
+                **(
+                    {"openclaw_timeout_s": 60, "reasoning_effort": "low"}
+                    if agent == "hermes"
+                    else {}
+                ),
             },
         )
 
@@ -1188,7 +1440,7 @@ def test_rebuild_latest_prefers_newest_complete_comparable_real_cohort(
     assert index["benchmark_comparability"]["woobench"]["comparable"] is True
 
 
-def test_rebuild_latest_prefers_within_tolerance_real_cohort(
+def test_rebuild_latest_keeps_newest_aligned_rows_regardless_of_score(
     tmp_path: Path,
 ) -> None:
     conn = connect_database(tmp_path / "orchestrator.sqlite")
@@ -1238,11 +1490,9 @@ def test_rebuild_latest_prefers_within_tolerance_real_cohort(
     )
 
     openclaw = json.loads(
-        (tmp_path / "latest" / "woobench__openclaw.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "latest" / "woobench__openclaw.json").read_text(encoding="utf-8")
     )
-    assert openclaw["run_id"] == "run_mid_openclaw"
+    assert openclaw["run_id"] == "run_newer_openclaw_high"
 
 
 def test_rebuild_latest_ignores_newer_running_rows(tmp_path: Path) -> None:
@@ -1348,7 +1598,9 @@ def test_recover_stale_running_run_quarantines_without_replacing_latest(
         stale_before="2026-05-12T00:06:00+00:00",
         ended_at="2026-05-12T00:10:00+00:00",
     )
-    _rebuild_latest_result_snapshots(conn, tmp_path, {"adhdbench": _adapter("adhdbench")})
+    _rebuild_latest_result_snapshots(
+        conn, tmp_path, {"adhdbench": _adapter("adhdbench")}
+    )
 
     assert recovered == ["run_stale"]
     latest_payload = json.loads(
@@ -1363,7 +1615,9 @@ def test_recover_stale_running_run_quarantines_without_replacing_latest(
     assert quarantine_payload["quarantine_reason"] == "unsucceeded_run"
 
 
-def test_rebuild_latest_keeps_success_when_newer_failed_row_exists(tmp_path: Path) -> None:
+def test_rebuild_latest_keeps_success_when_newer_failed_row_exists(
+    tmp_path: Path,
+) -> None:
     conn = connect_database(tmp_path / "orchestrator.sqlite")
     initialize_database(conn)
     create_run_group(
@@ -1786,9 +2040,7 @@ def test_rebuild_latest_skips_stale_compatibility_incompatible_rows(
     )
 
     payload = json.loads(
-        (tmp_path / "latest" / "loca_bench__openclaw.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "latest" / "loca_bench__openclaw.json").read_text(encoding="utf-8")
     )
     assert payload["run_id"] == "run_success"
     assert payload["status"] == "succeeded"
@@ -1840,7 +2092,9 @@ def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
     assert payload["quarantine_reason"] == "incompatible_harness"
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert index["latest"] == {}
-    assert index["matrix_contract"]["benchmarks"]["loca_bench"]["cells"]["openclaw"] == {
+    assert index["matrix_contract"]["benchmarks"]["loca_bench"]["cells"][
+        "openclaw"
+    ] == {
         "required": False,
         "state": "unsupported",
         "status": "unsupported",
@@ -1940,7 +2194,9 @@ def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(
     assert payload["quarantine_reason"] == "incompatible_harness"
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert index["latest"] == {}
-    assert index["matrix_contract"]["benchmarks"]["loca_bench"]["cells"]["openclaw"] == {
+    assert index["matrix_contract"]["benchmarks"]["loca_bench"]["cells"][
+        "openclaw"
+    ] == {
         "required": False,
         "state": "unsupported",
         "status": "unsupported",
@@ -2055,7 +2311,9 @@ def test_rebuild_latest_restores_voice_scores_from_saved_result_metrics(
         conn,
         tmp_path,
         {
-            "voiceagentbench": _adapter("voiceagentbench", agent_compatibility=("eliza",)),
+            "voiceagentbench": _adapter(
+                "voiceagentbench", agent_compatibility=("eliza",)
+            ),
             "voicebench": _adapter("voicebench", agent_compatibility=("eliza",)),
         },
     )
@@ -2066,9 +2324,7 @@ def test_rebuild_latest_restores_voice_scores_from_saved_result_metrics(
         )
     )
     voicebench = json.loads(
-        (tmp_path / "latest" / "voicebench__eliza.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "latest" / "voicebench__eliza.json").read_text(encoding="utf-8")
     )
     assert voiceagent["status"] == "succeeded"
     assert voiceagent["score"] == 1.0
@@ -2169,9 +2425,7 @@ def test_rebuild_latest_restores_swe_score_from_saved_result_metrics(
     )
 
     latest = json.loads(
-        (tmp_path / "latest" / "swe_bench__hermes.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "latest" / "swe_bench__hermes.json").read_text(encoding="utf-8")
     )
     assert latest["status"] == "succeeded"
     assert latest["score"] == 0.5
@@ -2218,8 +2472,5 @@ def test_rebuild_latest_prunes_unknown_benchmark_snapshots(
         for path in (tmp_path / "latest").glob("*.json")
         if path.name != "index.json"
     }
-    indexed_files = {
-        Path(row["path"]).name
-        for row in index["latest"].values()
-    }
+    indexed_files = {Path(row["path"]).name for row in index["latest"].values()}
     assert latest_files == indexed_files == {"bfcl__eliza.json"}

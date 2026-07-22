@@ -1686,6 +1686,12 @@ export interface AutomationItem {
   schedules: TriggerSummary[];
   room?: AutomationRoomBinding | null;
   lastExecution?: AutomationLastExecution;
+  executionFetchError?: string;
+}
+
+export interface AutomationExecutionFetchError {
+  workflowId: string;
+  error: string;
 }
 
 export interface AutomationSummary {
@@ -1701,6 +1707,7 @@ export interface AutomationListResponse {
   summary: AutomationSummary;
   workflowStatus: import("./client-types-chat").WorkflowStatusResponse | null;
   workflowFetchError: string | null;
+  executionFetchErrors: AutomationExecutionFetchError[];
 }
 
 export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared";

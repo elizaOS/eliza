@@ -1041,6 +1041,7 @@ export class MessageManager {
 			type = ChannelType.DM;
 			messageServerId = message.channel.id;
 		}
+		const worldId = createUniqueUuid(this.runtime, messageServerId ?? roomId);
 
 		try {
 			let { processedContent, attachments } =
@@ -1157,7 +1158,7 @@ export class MessageManager {
 					? stringToUuid(messageServerId)
 					: undefined,
 				type,
-				worldId: createUniqueUuid(this.runtime, messageServerId ?? roomId),
+				worldId,
 				worldName: message.guild?.name,
 				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
 				userId: message.author.id as UUID,
@@ -1189,7 +1190,11 @@ export class MessageManager {
 					newMessage,
 					message.id,
 				);
-				const claim = await claimDiscordTurn(this.runtime, message.id);
+				const claim = await claimDiscordTurn(this.runtime, message.id, {
+					entityId: newMessage.entityId,
+					roomId: newMessage.roomId,
+					worldId,
+				});
 				turnRecord = claim.record;
 				if (!claim.created) {
 					const deliveredReplyId = newMessage.id

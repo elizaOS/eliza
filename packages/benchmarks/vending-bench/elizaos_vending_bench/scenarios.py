@@ -124,6 +124,10 @@ def validate_scenarios(config: VendingBenchConfig) -> None:
         raise ValueError("initial_cash must be positive")
     if config.max_actions_per_day < 1:
         raise ValueError("max_actions_per_day must be at least 1")
+    if config.max_messages_per_run < 1:
+        raise ValueError("max_messages_per_run must be at least 1")
+    if config.context_window_tokens < 1:
+        raise ValueError("context_window_tokens must be at least 1")
     if config.machine_rows < 1 or config.machine_columns < 1:
         raise ValueError("machine dimensions must be positive")
 

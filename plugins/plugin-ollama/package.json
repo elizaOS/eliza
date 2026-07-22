@@ -67,7 +67,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",
     "bun-types": "^1.3.12",

@@ -74,7 +74,27 @@ export interface PromoteSubactionsOptions {
 const PROMOTED_MARKER = Symbol.for("@elizaos/core/promote-subactions/marker");
 
 interface PromotedAction extends Action {
-	[PROMOTED_MARKER]?: { parent: string; virtuals: readonly string[] };
+	[PROMOTED_MARKER]?: {
+		parent: string;
+		virtuals: readonly string[];
+		parentRoutingHint?: string;
+	};
+}
+
+/**
+ * The umbrella parent's `routingHint` for a promoted virtual, carried on the
+ * non-enumerable promotion marker rather than on the virtual itself so tool
+ * rendering (which prepends `routingHint` to each tool's description) never
+ * duplicates it across every virtual. The planner's routing-hints block reads
+ * it through this accessor and dedupes by parent, so a promoted family like
+ * TRIGGER_* contributes exactly one hint line when any virtual is exposed.
+ */
+export function promotedParentRoutingHint(
+	action: Action,
+): { parent: string; hint: string } | undefined {
+	const marker = (action as PromotedAction)[PROMOTED_MARKER];
+	const hint = marker?.parentRoutingHint?.trim();
+	return marker && hint ? { parent: marker.parent, hint } : undefined;
 }
 
 /**
@@ -322,7 +342,9 @@ export function promoteSubactionsToActions(
 		// finds virtuals through their similes (parent name + subaction) and
 		// through the parent's own search text, and tool rendering falls back
 		// to the short composed `description` when no per-subaction
-		// `descriptionCompressed` override is provided.
+		// `descriptionCompressed` override is provided. The parent's
+		// routingHint instead rides the promotion marker below, where the
+		// planner's routing-hints block picks it up once per family.
 		const virtual: PromotedAction = {
 			name: virtualName,
 			description,
@@ -346,7 +368,11 @@ export function promoteSubactionsToActions(
 			accountPolicy: parent.accountPolicy,
 		};
 		Object.defineProperty(virtual, PROMOTED_MARKER, {
-			value: { parent: parent.name, virtuals: [virtualName] },
+			value: {
+				parent: parent.name,
+				virtuals: [virtualName],
+				parentRoutingHint: parent.routingHint,
+			},
 			enumerable: false,
 			configurable: false,
 			writable: false,

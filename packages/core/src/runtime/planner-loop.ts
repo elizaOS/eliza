@@ -9,6 +9,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { promotedParentRoutingHint } from "../actions/promote-subactions";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
@@ -1248,9 +1249,18 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
-		const hint = tool.action?.routingHint?.trim();
+		// A promoted virtual (TRIGGER_CREATE, MESSAGE_SEND, …) carries no hint
+		// of its own; fall back to its umbrella parent's hint, deduped by the
+		// parent so a whole promoted family contributes one line.
+		const own = tool.action?.routingHint?.trim();
+		const promoted = tool.action
+			? promotedParentRoutingHint(tool.action)
+			: undefined;
+		const hint = own || promoted?.hint;
 		if (!hint) continue;
-		const key = normalizePlannerToolName(tool.name);
+		const key = normalizePlannerToolName(
+			own ? tool.name : (promoted?.parent ?? tool.name),
+		);
 		if (seen.has(key)) continue;
 		seen.add(key);
 		lines.push(`- ${hint}`);
@@ -3776,6 +3786,10 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		return true;
 	}
 	return [
+		// Models sometimes serialize a namespaced client action as
+		// `call:automation:GET_WORKFLOW{...}`. It is still an invocation, not a
+		// user reply, even when its loose argument object is not valid JSON.
+		/^\s*(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/i,
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,
 		/"action"\s*:\s*"functions\.[A-Z0-9_]+"/i,

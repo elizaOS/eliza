@@ -348,7 +348,6 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             provider=provider,
             model=model,
             base_url=base_url_override,
-            direct_openai_compatible=True,
         )
         client.wait_until_ready(timeout=120)
         return build_lifeops_bench_agent_fn(
@@ -563,6 +562,27 @@ async def _run(args: argparse.Namespace) -> None:
         scenarios = list(ALL_SCENARIOS)
 
     tier_spec = resolve_tier()
+    campaign_provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    subscription_transport = campaign_provider == "claude-subscription"
+    if subscription_transport:
+        gateway_base_url = (
+            os.environ.get("OPENAI_BASE_URL", "").strip()
+            or os.environ.get("CLAUDE_SUBSCRIPTION_GATEWAY_URL", "").strip()
+        )
+        if gateway_base_url and not gateway_base_url.rstrip("/").endswith("/v1"):
+            gateway_base_url = f"{gateway_base_url.rstrip('/')}/v1"
+        tier_spec = TierSpec(
+            tier=tier_spec.tier,
+            provider="openai",
+            model_name=(
+                os.environ.get("BENCHMARK_MODEL_NAME", "").strip()
+                or tier_spec.model_name
+            ),
+            base_url=gateway_base_url or None,
+            bundle_path=tier_spec.bundle_path,
+            context_window=tier_spec.context_window,
+            notes="Claude subscription gateway campaign transport",
+        )
     # When ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
     # so the harness boots the mtp local-llama-cpp server pointing at the
     # bundle's GGUF weights. The bundle manifest's pre-release flag is
@@ -573,17 +593,6 @@ async def _run(args: argparse.Namespace) -> None:
 
     domain = Domain(args.domain) if args.domain else None
     mode = ScenarioMode(args.mode) if args.mode else None
-
-    # When the operator hasn't wired live-judge clients (no Cerebras +
-    # Anthropic in env), LIVE scenarios will crash inside the runner. Default
-    # to STATIC-only in that case so `--agent perfect` works out of the box.
-    # Operator can opt back in with `--mode live` once they wire the clients.
-    if mode is None and not (os.environ.get("CEREBRAS_API_KEY") and os.environ.get("ANTHROPIC_API_KEY")):
-        mode = ScenarioMode.STATIC
-        logging.getLogger(__name__).info(
-            "No CEREBRAS_API_KEY+ANTHROPIC_API_KEY in env; restricting to STATIC scenarios. "
-            "Pass --mode live to override (will need both keys for the live judge)."
-        )
 
     # Apply --limit after --scenario/--domain/--mode resolution so the cap
     # lands on the post-filter set. We have to mirror the runner's domain+mode
@@ -648,9 +657,24 @@ async def _run(args: argparse.Namespace) -> None:
                 f"import client factory: {exc}"
             ) from exc
         try:
-            simulated_user_client = make_client("cerebras", model=evaluator_model)
-            judge_client = make_client("anthropic", model=args.judge_model)
+            evaluator_provider = (
+                "claude-subscription" if subscription_transport else "cerebras"
+            )
+            judge_provider = (
+                "claude-subscription" if subscription_transport else "anthropic"
+            )
+            simulated_user_client = make_client(
+                evaluator_provider, model=evaluator_model
+            )
+            judge_client = make_client(judge_provider, model=args.judge_model)
         except ProviderError as exc:
+            if subscription_transport:
+                raise SystemExit(
+                    "LIVE mode under the subscription campaign requires "
+                    "CLAUDE_SUBSCRIPTION_GATEWAY_URL and "
+                    "CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN. "
+                    f"Client setup failed: {exc}"
+                ) from exc
             raise SystemExit(
                 "LIVE mode requires CEREBRAS_API_KEY for the simulated user "
                 "and ANTHROPIC_API_KEY for the judge. "

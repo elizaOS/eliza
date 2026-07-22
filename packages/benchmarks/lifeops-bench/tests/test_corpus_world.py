@@ -15,8 +15,8 @@ from eliza_lifeops_bench.lifeworld.corpus import (
 )
 
 NOW_ISO = "2026-05-10T12:00:00Z"
-SAMPLE_HASH = "4f3973da15e68f32f825ec86c11fbce54ae5468f73460b2a1edfa51bd9d5782f"
-SAMPLE_SUBSET_HASH = "31f55d0113abf5544d9675ce36cafe9af3d058c42593d8c41cebdd0c7f670f6c"
+SAMPLE_HASH = "f1bef71e5bde237afd0323c191c93effe0e56b85756cc0cedc334a72af5ee75e"
+SAMPLE_SUBSET_HASH = "3bd3722835557b0f3fa7d9084814445175968c4c8f1415460012fb42100922aa"
 
 
 def test_sample_corpus_world_is_hash_pinned() -> None:

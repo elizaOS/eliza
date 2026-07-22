@@ -21,8 +21,6 @@ from eliza_adapter.client import ElizaClient
 logger = logging.getLogger(__name__)
 
 
-_NOT_DETECTED: dict[str, bool | float] = {"detected": False, "confidence": 0.0}
-
 _ALL_MESSAGE_CATEGORIES: tuple[str, ...] = (
     "prompt_injection",
     "social_engineering",
@@ -44,26 +42,45 @@ _CATEGORIES_DESC = """Categories to evaluate:
 
 
 def _parse_detection_entry(raw: dict[str, object]) -> dict[str, bool | float]:
-    detected_raw = raw.get("detected", False)
-    if isinstance(detected_raw, str):
-        detected = detected_raw.lower() in ("true", "1", "yes")
+    if "detected" not in raw or "confidence" not in raw:
+        raise ValueError("trust detection entry must contain detected and confidence")
+    detected_raw = raw["detected"]
+    if isinstance(detected_raw, bool):
+        detected = detected_raw
+    elif isinstance(detected_raw, str):
+        normalized = detected_raw.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            detected = True
+        elif normalized in {"false", "0", "no"}:
+            detected = False
+        else:
+            raise ValueError(
+                f"trust detected must be boolean-like, got {detected_raw!r}"
+            )
     elif isinstance(detected_raw, (int, float)):
+        if detected_raw not in (0, 1):
+            raise ValueError(
+                f"trust detected numeric value must be 0 or 1, got {detected_raw!r}"
+            )
         detected = bool(detected_raw)
     else:
-        detected = bool(detected_raw)
+        raise ValueError(f"trust detected must be boolean-like, got {detected_raw!r}")
 
-    confidence_raw = raw.get("confidence", 0.0)
+    confidence_raw = raw["confidence"]
     if isinstance(confidence_raw, str):
         try:
             confidence = float(confidence_raw)
-        except ValueError:
-            confidence = 0.0
+        except ValueError as exc:
+            raise ValueError(
+                f"trust confidence must be numeric, got {confidence_raw!r}"
+            ) from exc
     elif isinstance(confidence_raw, (int, float)):
         confidence = float(confidence_raw)
     else:
-        confidence = 0.0
+        raise ValueError(f"trust confidence must be numeric, got {confidence_raw!r}")
 
-    confidence = max(0.0, min(1.0, confidence))
+    if not 0.0 <= confidence <= 1.0:
+        raise ValueError(f"trust confidence must be in [0, 1], got {confidence!r}")
     return {"detected": detected, "confidence": confidence}
 
 
@@ -243,11 +260,9 @@ class ElizaBridgeTrustHandler:
         if cached is not None:
             return cached
 
-        # Reset session so per-test state doesn't leak into trust analyses
-        try:
-            self._client.reset(task_id=key, benchmark="trust")
-        except Exception as exc:
-            logger.debug("[eliza-trust] reset failed (continuing): %s", exc)
+        # Session isolation is part of the benchmark contract: a failed reset
+        # would let one adversarial case contaminate the next case's verdict.
+        self._client.reset(task_id=key, benchmark="trust")
 
         if analysis_type == "impersonation":
             users_list = "\n".join(f"- {u}" for u in (existing_users or []))
@@ -298,12 +313,7 @@ class ElizaBridgeTrustHandler:
                 "categories": list(_ALL_MESSAGE_CATEGORIES),
             }
 
-        try:
-            response = self._client.send_message(text=prompt, context=context)
-        except Exception:
-            logger.exception("[eliza-trust] send_message failed for: %.80s", message)
-            self._cache[key] = {}
-            return {}
+        response = self._client.send_message(text=prompt, context=context)
 
         # Extraction precedence:
         #   1. the captured structured action (`BENCHMARK_ACTION.arguments`) —
@@ -323,18 +333,40 @@ class ElizaBridgeTrustHandler:
         if not results and response.text:
             results = _parse_analysis_json(response.text)
 
+        required = (
+            {"impersonation"}
+            if analysis_type == "impersonation"
+            else set(_ALL_MESSAGE_CATEGORIES)
+        )
+        missing = sorted(required - set(results))
+        if missing:
+            raise ValueError(
+                "trust bridge returned an incomplete or unparseable verdict; "
+                "missing categories: " + ", ".join(missing)
+            )
+
         self._cache[key] = results
         return results
+
+    @staticmethod
+    def _required_result(
+        results: dict[str, dict[str, bool | float]],
+        category: str,
+    ) -> dict[str, bool | float]:
+        result = results.get(category)
+        if result is None:
+            raise ValueError(f"trust bridge verdict omitted category {category!r}")
+        return result
 
     # -------------------------------------------------------------------
     # TrustHandler protocol methods
     # -------------------------------------------------------------------
 
     def detect_injection(self, message: str) -> dict[str, bool | float]:
-        return self._analyze(message).get("prompt_injection", dict(_NOT_DETECTED))
+        return self._required_result(self._analyze(message), "prompt_injection")
 
     def detect_social_engineering(self, message: str) -> dict[str, bool | float]:
-        return self._analyze(message).get("social_engineering", dict(_NOT_DETECTED))
+        return self._required_result(self._analyze(message), "social_engineering")
 
     def detect_impersonation(
         self, username: str, existing_users: list[str]
@@ -344,22 +376,22 @@ class ElizaBridgeTrustHandler:
             analysis_type="impersonation",
             existing_users=existing_users,
         )
-        return results.get("impersonation", dict(_NOT_DETECTED))
+        return self._required_result(results, "impersonation")
 
     def detect_credential_theft(self, message: str) -> dict[str, bool | float]:
-        return self._analyze(message).get("credential_theft", dict(_NOT_DETECTED))
+        return self._required_result(self._analyze(message), "credential_theft")
 
     def detect_privilege_escalation(self, message: str) -> dict[str, bool | float]:
-        return self._analyze(message).get("privilege_escalation", dict(_NOT_DETECTED))
+        return self._required_result(self._analyze(message), "privilege_escalation")
 
     def detect_data_exfiltration(self, message: str) -> dict[str, bool | float]:
-        return self._analyze(message).get("data_exfiltration", dict(_NOT_DETECTED))
+        return self._required_result(self._analyze(message), "data_exfiltration")
 
     def detect_resource_abuse(self, message: str) -> dict[str, bool | float]:
-        return self._analyze(message).get("resource_abuse", dict(_NOT_DETECTED))
+        return self._required_result(self._analyze(message), "resource_abuse")
 
     def detect_content_policy_violation(self, message: str) -> dict[str, bool | float]:
-        return self._analyze(message).get("content_policy", dict(_NOT_DETECTED))
+        return self._required_result(self._analyze(message), "content_policy")
 
     def close(self) -> None:
         """No-op — the bridge subprocess outlives this handler."""
