@@ -381,31 +381,31 @@ describe("pendant transcript session storage", () => {
     );
   });
 
-  it.each([
-    "QuotaExceededError",
-    "SecurityError",
-  ])("surfaces a setItem failure with %s", (errorName) => {
-    const storage = new ThrowingSetStorage(errorName);
-    const state = sessionWithSegments(1);
+  it.each(["QuotaExceededError", "SecurityError"])(
+    "surfaces a setItem failure with %s",
+    (errorName) => {
+      const storage = new ThrowingSetStorage(errorName);
+      const state = sessionWithSegments(1);
 
-    expect(() => savePendantTranscriptSession(state, storage)).toThrow(
-      "Pendant transcript cache could not be saved.",
-    );
-    expect(loadPendantTranscriptSession(storage)).toEqual(
-      EMPTY_PENDANT_TRANSCRIPT_SESSION,
-    );
-  });
+      expect(() => savePendantTranscriptSession(state, storage)).toThrow(
+        "Pendant transcript cache could not be saved.",
+      );
+      expect(loadPendantTranscriptSession(storage)).toEqual(
+        EMPTY_PENDANT_TRANSCRIPT_SESSION,
+      );
+    },
+  );
 
-  it.each([
-    "SecurityError",
-    "UnknownError",
-  ])("surfaces a getItem failure with %s", (errorName) => {
-    const storage = new ThrowingGetStorage(errorName);
+  it.each(["SecurityError", "UnknownError"])(
+    "surfaces a getItem failure with %s",
+    (errorName) => {
+      const storage = new ThrowingGetStorage(errorName);
 
-    expect(() => loadPendantTranscriptSession(storage)).toThrow(
-      "Pendant transcript cache could not be read.",
-    );
-  });
+      expect(() => loadPendantTranscriptSession(storage)).toThrow(
+        "Pendant transcript cache could not be read.",
+      );
+    },
+  );
 
   it("surfaces a blocked window.localStorage getter", () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage");

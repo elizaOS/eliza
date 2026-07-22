@@ -42,13 +42,14 @@ describe("shared view glyph cleanup", () => {
   // check/cross glyphs anywhere; use Lucide icon components instead. (× is the
   // multiplication sign and is intentionally not banned globally; close/delete
   // controls use the X icon.)
-  it.each(
-    listViewFiles(),
-  )("%s uses Lucide icons, not raw check/cross glyphs", (fileName) => {
-    const source = readPageSource(fileName);
-    expect(source, `${fileName} contains a raw ✓`).not.toContain("✓");
-    expect(source, `${fileName} contains a raw ✗`).not.toContain("✗");
-    expect(source, `${fileName} contains a raw ✘`).not.toContain("✘");
-    expect(source, `${fileName} contains a raw ✕`).not.toContain("✕");
-  });
+  it.each(listViewFiles())(
+    "%s uses Lucide icons, not raw check/cross glyphs",
+    (fileName) => {
+      const source = readPageSource(fileName);
+      expect(source, `${fileName} contains a raw ✓`).not.toContain("✓");
+      expect(source, `${fileName} contains a raw ✗`).not.toContain("✗");
+      expect(source, `${fileName} contains a raw ✘`).not.toContain("✘");
+      expect(source, `${fileName} contains a raw ✕`).not.toContain("✕");
+    },
+  );
 });

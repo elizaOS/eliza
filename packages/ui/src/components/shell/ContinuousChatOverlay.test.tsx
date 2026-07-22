@@ -812,12 +812,15 @@ describe("ContinuousChatOverlay", () => {
     it.each([
       ["recording", { recording: true }],
       ["transcribing", { transcriptionMode: true }],
-    ] as const)("keeps the pulsing waveform neutral while %s", (_label, override) => {
-      render(<ContinuousChatOverlay controller={makeController(override)} />);
-      const waveform = screen.getByTestId("chat-composer-mic");
-      expect(waveform.className).toContain("animate-pulse");
-      expect(waveform.className).not.toContain("text-accent");
-    });
+    ] as const)(
+      "keeps the pulsing waveform neutral while %s",
+      (_label, override) => {
+        render(<ContinuousChatOverlay controller={makeController(override)} />);
+        const waveform = screen.getByTestId("chat-composer-mic");
+        expect(waveform.className).toContain("animate-pulse");
+        expect(waveform.className).not.toContain("text-accent");
+      },
+    );
 
     it("drops the pulse the moment the capture predicate clears", () => {
       const { rerender } = render(
