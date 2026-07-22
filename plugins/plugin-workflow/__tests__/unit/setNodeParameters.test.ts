@@ -21,7 +21,7 @@ function workflow(parameters: Record<string, unknown>, type = 'workflows-nodes-b
 
 function assignments(definition: WorkflowDefinition): Array<Record<string, unknown>> {
   return (
-    definition.nodes[0]?.parameters.assignments as {
+    definition.nodes[0]!.parameters.assignments as {
       assignments: Array<Record<string, unknown>>;
     }
   ).assignments;

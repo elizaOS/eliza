@@ -790,9 +790,7 @@ export function normalizeParamAliases(
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
 	const parameters = action.parameters ?? [];
-	const hasAliases = parameters.some(
-		(p) => p.aliases && p.aliases.length > 0,
-	);
+	const hasAliases = parameters.some((p) => p.aliases && p.aliases.length > 0);
 	if (!hasAliases) return args;
 
 	const declaredNames = new Set(parameters.map((p) => p.name));
