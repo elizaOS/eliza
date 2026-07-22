@@ -30,6 +30,14 @@ function workspaceServiceMock(overrides: Record<string, unknown> = {}) {
 }
 
 describe("TASKS:provision_workspace", () => {
+  it("keeps provision_workspace planner-visible on the umbrella action", () => {
+    expect(
+      provisionWorkspaceAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("provision_workspace");
+  });
+
   it("uses planner parameters before legacy message content", async () => {
     const service = workspaceServiceMock();
 
