@@ -15,7 +15,8 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ElizaError, logger } from '@elizaos/core';
+import { stripVTControlCharacters } from 'node:util';
+import { ElizaError, logger, redactSensitiveText } from '@elizaos/core';
 import type {
   WorkflowDefinition,
   WorkflowExecution,
@@ -59,6 +60,7 @@ export interface SmithersWorkflowRunOptions {
 }
 
 const DEFAULT_SMITHERS_TIMEOUT_MS = 300_000;
+const MAX_SMITHERS_WORKER_STDERR_CHARS = 4_096;
 const SMITHERS_WORKER_ENV_KEYS = [
   'PATH',
   'HOME',
@@ -200,6 +202,49 @@ async function resolvePluginRoot(): Promise<string> {
 function toErrorPayload(error: unknown): { message: string; stack?: string } {
   if (error instanceof Error) return { message: error.message, stack: error.stack };
   return { message: String(error) };
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function sanitizeSmithersWorkerStderr(stderr: string, truncated = false): string {
+  const sanitized = stripVTControlCharacters(redactSensitiveText(stderr)).trim();
+  if (!sanitized) return '';
+  const bounded = sanitized.slice(0, MAX_SMITHERS_WORKER_STDERR_CHARS);
+  return truncated || sanitized.length > MAX_SMITHERS_WORKER_STDERR_CHARS ? `${bounded}…` : bounded;
+}
+
+function writeSmithersPayload(input: NodeJS.WritableStream, payload: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const settle = (error?: Error | null): void => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve();
+    };
+    function onError(error: Error): void {
+      settle(error);
+    }
+    function onClose(): void {
+      input.off('error', onError);
+      settle(
+        Object.assign(new Error('Smithers worker payload pipe closed before write completed'), {
+          code: 'ERR_STREAM_PREMATURE_CLOSE',
+        })
+      );
+    }
+    input.once('error', onError);
+    input.once('close', onClose);
+    try {
+      input.end(payload, settle);
+    } catch (error) {
+      // error-policy:J1 translate a synchronous payload-pipe write failure into
+      // the promise observed by the worker-process boundary.
+      settle(toError(error));
+    }
+  });
 }
 
 export function buildSmithersWorkerEnv(): NodeJS.ProcessEnv {
@@ -566,7 +611,7 @@ export async function runWorkflowWithSmithers({
       context: { workflowId: workflow.id ?? '', executionId },
     });
   }
-  (payloadInput as NodeJS.WritableStream).end(payload);
+  const payloadStream = payloadInput as NodeJS.WritableStream;
   const byName = new Map(plan.enabledNodes.map((node) => [node.name, node]));
   let executionResult: WorkflowExecution | null = null;
   let runMetrics: SmithersRunMetrics | null = null;
@@ -589,11 +634,6 @@ export async function runWorkflowWithSmithers({
     externallyAborted = true;
     killWorker(externalSignal?.reason);
   };
-  if (externalSignal) {
-    if (externalSignal.aborted) onExternalAbort();
-    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
-  }
-
   const endStdin = (): void => {
     if (stdinEnded) return;
     stdinEnded = true;
@@ -668,6 +708,7 @@ export async function runWorkflowWithSmithers({
 
   let stdoutBuffer = '';
   let stderr = '';
+  let stderrTruncated = false;
   proc.stdout.setEncoding('utf8');
   proc.stdout.on('data', (chunk: string) => {
     stdoutBuffer += chunk;
@@ -677,25 +718,54 @@ export async function runWorkflowWithSmithers({
   });
   proc.stderr.setEncoding('utf8');
   proc.stderr.on('data', (chunk: string) => {
-    stderr += chunk;
+    const remaining = MAX_SMITHERS_WORKER_STDERR_CHARS - stderr.length;
+    if (remaining <= 0) {
+      stderrTruncated = true;
+      return;
+    }
+    stderr += chunk.slice(0, remaining);
+    if (chunk.length > remaining) stderrTruncated = true;
   });
 
   let timedOut = false;
-  const exitCode = await new Promise<number>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      killWorker(new Error(`Smithers workflow deadline exceeded after ${timeoutMs}ms`));
-    }, timeoutMs);
-    proc.once('error', (error) => {
-      clearTimeout(timeout);
-      if (!executionAbort.signal.aborted) executionAbort.abort(error);
-      reject(error);
-    });
-    proc.once('close', (code) => {
-      clearTimeout(timeout);
-      resolve(code ?? 1);
-    });
-  });
+  const exitOutcomePromise = new Promise<{ exitCode: number; processError: Error | null }>(
+    (resolve) => {
+      let settled = false;
+      let processError: Error | null = null;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        killWorker(new Error(`Smithers workflow deadline exceeded after ${timeoutMs}ms`));
+      }, timeoutMs);
+      const settle = (exitCode: number, processError: Error | null): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve({ exitCode, processError });
+      };
+      proc.once('error', (error) => {
+        processError ??= error;
+        if (!executionAbort.signal.aborted) executionAbort.abort(error);
+      });
+      proc.once('close', (code) => {
+        settle(code ?? 1, processError);
+      });
+    }
+  );
+  if (externalSignal) {
+    if (externalSignal.aborted) onExternalAbort();
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
+  const payloadErrorPromise = writeSmithersPayload(payloadStream, payload).then(
+    () => null,
+    (error: Error) => {
+      killWorker(error);
+      return error;
+    }
+  );
+  const [{ exitCode, processError: workerProcessError }, payloadError] = await Promise.all([
+    exitOutcomePromise,
+    payloadErrorPromise,
+  ]);
   externalSignal?.removeEventListener('abort', onExternalAbort);
   if (stdoutBuffer.trim()) handleLine(stdoutBuffer);
   if (exitCode === 0) {
@@ -730,12 +800,54 @@ export async function runWorkflowWithSmithers({
     });
   }
 
-  if (exitCode !== 0) {
+  const workerStderr = sanitizeSmithersWorkerStderr(stderr, stderrTruncated);
+  if (workerProcessError) {
     throw new ElizaError(
-      `Smithers workflow execution failed: ${stderr.trim() || `exit ${exitCode}`}`,
+      `Smithers workflow execution failed: ${workerStderr || sanitizeSmithersWorkerStderr(workerProcessError.message)}`,
       {
         code: 'SMITHERS_WORKFLOW_FAILED',
-        context: { workflowId: workflow.id ?? '', executionId, exitCode },
+        cause: workerProcessError,
+        context: {
+          workflowId: workflow.id ?? '',
+          executionId,
+          exitCode,
+          phase: 'spawn',
+          ...(workerStderr ? { workerStderr } : {}),
+        },
+        severity: 'ephemeral',
+      }
+    );
+  }
+  if (payloadError) {
+    throw new ElizaError(
+      `Smithers workflow execution failed: ${workerStderr || sanitizeSmithersWorkerStderr(payloadError.message)}`,
+      {
+        code: 'SMITHERS_WORKFLOW_FAILED',
+        cause: payloadError,
+        context: {
+          workflowId: workflow.id ?? '',
+          executionId,
+          exitCode,
+          phase: 'payload',
+          ...(workerStderr ? { workerStderr } : {}),
+        },
+        severity: 'ephemeral',
+      }
+    );
+  }
+
+  if (exitCode !== 0) {
+    throw new ElizaError(
+      `Smithers workflow execution failed: ${workerStderr || `exit ${exitCode}`}`,
+      {
+        code: 'SMITHERS_WORKFLOW_FAILED',
+        context: {
+          workflowId: workflow.id ?? '',
+          executionId,
+          exitCode,
+          phase: 'worker',
+          ...(workerStderr ? { workerStderr } : {}),
+        },
         severity: 'ephemeral',
       }
     );
