@@ -88,7 +88,11 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
       bundleUrl?: string;
       frameUrl?: string;
       reserveChatClearance?: boolean;
-      surface?: { capabilities?: string[]; isolation?: string };
+      surface?: {
+        capabilities?: string[];
+        header?: string;
+        isolation?: string;
+      };
       viewId: string;
       viewType?: string;
     }) => (
@@ -169,6 +173,17 @@ const calendarView = {
   pluginName: "@elizaos/plugin-calendar",
   path: "/calendar",
   bundleUrl: "/api/views/calendar/bundle.js",
+  viewType: "gui" as const,
+};
+
+const simpleCalendarView = {
+  id: "simple-calendar",
+  label: "Simple Calendar",
+  available: true,
+  pluginName: "@elizaos/plugin-simple-views",
+  path: "/simple-calendar",
+  bundleUrl: "/api/views/simple-calendar/bundle.js",
+  surface: { header: "fullscreen" as const },
   viewType: "gui" as const,
 };
 
@@ -673,6 +688,30 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("lets a fullscreen plugin view fill behind the floating composer", async () => {
+    mockAvailableViews.push(simpleCalendarView);
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/simple-calendar");
+
+    const { container, getByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(
+      container
+        .querySelector('[data-shell-content-region="true"]')
+        ?.className.includes("pb-[var(--eliza-continuous-chat-clearance"),
+    ).toBe(false);
+    expect(
+      container
+        .querySelector('[data-shell-content-region="true"]')
+        ?.className.includes("pe-[var(--eliza-continuous-chat-side-clearance"),
+    ).toBe(false);
+    expect(
+      container.querySelector<HTMLElement>("[data-app-shell-root]")?.style
+        .paddingTop,
+    ).toBe("0px");
   });
 
   it("routes frame-only sandboxed views through DynamicViewLoader with frameUrl", async () => {

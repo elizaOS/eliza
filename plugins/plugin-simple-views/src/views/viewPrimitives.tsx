@@ -28,6 +28,15 @@ export const VIEW_ROOT_STYLE: CSSProperties = {
   overflowY: "auto",
   overscrollBehavior: "contain",
   padding: "clamp(8px, 2.4vw, 24px)",
+  paddingTop: "calc(clamp(8px, 2.4vw, 24px) + var(--safe-area-top, 0px))",
+  paddingBottom:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-continuous-chat-clearance, 5.25rem))",
+  paddingInlineEnd:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-continuous-chat-side-clearance, 0px))",
+  scrollPaddingBottom:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-continuous-chat-clearance, 5.25rem))",
+  scrollPaddingInlineEnd:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-continuous-chat-side-clearance, 0px))",
   color: "var(--txt, #f5f5f5)",
   fontFamily: "inherit",
 };

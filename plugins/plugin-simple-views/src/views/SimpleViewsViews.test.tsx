@@ -55,12 +55,24 @@ describe("Simple Views state labels", () => {
   it("lets each view own scrolling inside the overflow-hidden host", () => {
     stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
     const notes = render(<NotesView />);
-    expect(notes.getByTestId("simple-notes-view").style.overflowY).toBe("auto");
+    const notesRoot = notes.getByTestId("simple-notes-view");
+    expect(notesRoot.style.overflowY).toBe("auto");
+    expect(notesRoot.style.paddingBottom).toContain(
+      "--eliza-continuous-chat-clearance",
+    );
+    expect(notesRoot.style.paddingInlineEnd).toContain(
+      "--eliza-continuous-chat-side-clearance",
+    );
     notes.unmount();
 
     const calendar = render(<SimpleCalendarView />);
-    expect(calendar.getByTestId("simple-calendar-view").style.overflowY).toBe(
-      "auto",
+    const calendarRoot = calendar.getByTestId("simple-calendar-view");
+    expect(calendarRoot.style.overflowY).toBe("auto");
+    expect(calendarRoot.style.paddingBottom).toContain(
+      "--eliza-continuous-chat-clearance",
+    );
+    expect(calendarRoot.style.paddingInlineEnd).toContain(
+      "--eliza-continuous-chat-side-clearance",
     );
   });
 
