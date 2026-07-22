@@ -40,6 +40,8 @@ import {
 	selectConnector,
 	sourceParam,
 	textParam,
+	trustedConnectorAccountId,
+	trustedConnectorSource,
 } from "./connectorActionUtils.ts";
 
 const POST_OPS = ["send", "read", "search"] as const;
@@ -128,36 +130,22 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
 		: undefined;
 }
 
-function connectorSendAsMetadata(
-	message: Memory,
-): Record<string, unknown> | undefined {
-	const metadata = recordValue(message.content.metadata);
-	return (
-		recordValue(metadata?.connectorSendAs) ??
-		recordValue(metadata?.connectorAccount)
-	);
-}
-
 function accountIdParam(
 	params: ParamRecord,
 	message: Memory,
 ): string | undefined {
-	const metadata = recordValue(message.content.metadata);
-	const sendAs = connectorSendAsMetadata(message);
 	return (
 		textParam(params.accountId) ??
 		textParam(params.connectorAccountId) ??
-		textParam(sendAs?.accountId) ??
-		textParam(metadata?.accountId)
+		trustedConnectorAccountId(message)
 	);
 }
 
 function sourceParamForMessage(
 	params: ParamRecord,
-	message: Memory,
+	_message: Memory,
 ): string | undefined {
-	const sendAs = connectorSendAsMetadata(message);
-	return sourceParam(params) ?? textParam(sendAs?.source);
+	return sourceParam(params);
 }
 
 function buildPostContent(
@@ -279,6 +267,9 @@ async function persistPostMemory(
 			type: "message",
 			source: connector.source,
 			provider: connector.source,
+			accountId:
+				connector.accountId ??
+				textParam(recordValue(content.metadata)?.accountId),
 		},
 		createdAt: sentMemory?.createdAt ?? Date.now(),
 	};
@@ -375,16 +366,18 @@ async function persistChatActionMemory(params: {
 async function handleSend(
 	runtime: IAgentRuntime,
 	message: Memory,
+	state: State | undefined,
 	options?: HandlerOptions,
 ): Promise<ActionResult> {
 	const params = paramsFromOptions(options);
 	const connectors = getPostConnectorsWithHook(runtime, "postHandler");
+	const accountId = accountIdParam(params, message);
 	const selected = selectConnector(
 		"POST",
 		connectors,
 		sourceParamForMessage(params, message),
-		message.content.source,
-		accountIdParam(params, message),
+		trustedConnectorSource(message),
+		accountId,
 	);
 	if ("result" in selected) return selected.result;
 	const content = applyPostContentShaping(
@@ -407,7 +400,15 @@ async function handleSend(
 			{ source: selected.connector.source },
 		);
 	}
-	const sentMemory = (await postHandler(runtime, content)) as
+	const context = buildPostQueryContext(
+		runtime,
+		message,
+		state,
+		selected.connector.source,
+		selected.connector.accountId ?? accountId,
+		selected.connector.account,
+	);
+	const sentMemory = (await postHandler(runtime, content, context)) as
 		| Memory
 		| undefined;
 	const persisted = await persistPostMemory(
@@ -437,7 +438,7 @@ async function handleSend(
 			action: "send",
 			op: "send",
 			source: selected.connector.source,
-			accountId: selected.connector.accountId,
+			accountId: selected.connector.accountId ?? accountId,
 			memoryId: persisted?.id,
 			responseMessageId: platformMessageId,
 		},
@@ -452,12 +453,13 @@ async function handleRead(
 ): Promise<ActionResult> {
 	const params = paramsFromOptions(options);
 	const connectors = getPostConnectorsWithHook(runtime, "fetchFeed");
+	const accountId = accountIdParam(params, message);
 	const selected = selectConnector(
 		"POST",
 		connectors,
 		sourceParamForMessage(params, message),
-		message.content.source,
-		accountIdParam(params, message),
+		trustedConnectorSource(message),
+		accountId,
 	);
 	if ("result" in selected) return selected.result;
 	const fetchFeed = selected.connector.fetchFeed;
@@ -469,22 +471,19 @@ async function handleRead(
 			{ source: selected.connector.source },
 		);
 	}
-	const context = {
-		...buildPostQueryContext(
-			runtime,
-			message,
-			state,
-			selected.connector.source,
-		),
-		accountId: selected.connector.accountId,
-		account: selected.connector.account,
-	};
+	const context = buildPostQueryContext(
+		runtime,
+		message,
+		state,
+		selected.connector.source,
+		selected.connector.accountId ?? accountId,
+		selected.connector.account,
+	);
 	const target = explicitTargetFromParams(
 		selected.connector.source,
 		params,
 	).target;
-	if (target && selected.connector.accountId)
-		target.accountId = selected.connector.accountId;
+	if (target) target.accountId = selected.connector.accountId ?? accountId;
 	const posts = await fetchFeed(context, {
 		feed: textParam(params.feed),
 		target,
@@ -523,12 +522,13 @@ async function handleSearch(
 		);
 	}
 	const connectors = getPostConnectorsWithHook(runtime, "searchPosts");
+	const accountId = accountIdParam(params, message);
 	const selected = selectConnector(
 		"POST",
 		connectors,
 		sourceParamForMessage(params, message),
-		message.content.source,
-		accountIdParam(params, message),
+		trustedConnectorSource(message),
+		accountId,
 	);
 	if ("result" in selected) return selected.result;
 	const searchPosts = selected.connector.searchPosts;
@@ -540,16 +540,14 @@ async function handleSearch(
 			{ source: selected.connector.source },
 		);
 	}
-	const context = {
-		...buildPostQueryContext(
-			runtime,
-			message,
-			state,
-			selected.connector.source,
-		),
-		accountId: selected.connector.accountId,
-		account: selected.connector.account,
-	};
+	const context = buildPostQueryContext(
+		runtime,
+		message,
+		state,
+		selected.connector.source,
+		selected.connector.accountId ?? accountId,
+		selected.connector.account,
+	);
 	const posts = await searchPosts(context, {
 		query,
 		limit: limitParam(params),
@@ -679,7 +677,7 @@ export const postAction: Action = {
 		const op = resolveOp(options);
 		switch (op) {
 			case "send":
-				return handleSend(runtime, message, options);
+				return handleSend(runtime, message, state, options);
 			case "read":
 				return handleRead(runtime, message, state, options);
 			case "search":

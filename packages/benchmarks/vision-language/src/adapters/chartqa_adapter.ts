@@ -114,23 +114,42 @@ function loadSmoke(n: number): Sample<ChartQaPayload>[] {
 }
 
 function loadOfficial(n: number): Sample<ChartQaPayload>[] {
-  const dir = process.env.CHARTQA_DATA_DIR;
-  if (!dir) {
+  const configuredDir = process.env.CHARTQA_DATA_DIR;
+  if (!configuredDir) {
     throw new Error(
       "CHARTQA_DATA_DIR is not set. Point it at a local ChartQA checkout " +
-        "with `ChartQA Dataset/test/test_human.json` and `png/`, or pass --smoke.",
+        "with both test annotation files and `png/`, or pass --smoke.",
     );
   }
-  const annPath = path.join(dir, "test", "test_human.json");
-  if (!existsSync(annPath)) {
+  const roots = [configuredDir, path.join(configuredDir, "ChartQA Dataset")];
+  const dir = roots.find(
+    (candidate) =>
+      existsSync(path.join(candidate, "test", "test_human.json")) &&
+      existsSync(path.join(candidate, "test", "test_augmented.json")),
+  );
+  if (!dir) {
     throw new Error(
-      `ChartQA test annotations not found at ${annPath}. ` +
-        "See https://github.com/vis-nlp/ChartQA for layout.",
+      `ChartQA requires both test_human.json and test_augmented.json under ${configuredDir}. ` +
+        "See https://github.com/vis-nlp/ChartQA for the canonical layout.",
     );
   }
-  const raw = JSON.parse(readFileSync(annPath, "utf8")) as OfficialAnnotation[];
-  return raw.slice(0, n).map((entry, i) => ({
-    id: `chartqa-test-${i}`,
+  const human = readAnnotations(path.join(dir, "test", "test_human.json"));
+  const augmented = readAnnotations(
+    path.join(dir, "test", "test_augmented.json"),
+  );
+  const rows: Array<{
+    split: "human" | "augmented";
+    entry: OfficialAnnotation;
+  }> = [];
+  const maxLength = Math.max(human.length, augmented.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    if (human[index]) rows.push({ split: "human", entry: human[index] });
+    if (augmented[index]) {
+      rows.push({ split: "augmented", entry: augmented[index] });
+    }
+  }
+  return rows.slice(0, n).map(({ split, entry }, index) => ({
+    id: `chartqa-test-${split}-${index}`,
     imagePath: path.join(dir, "png", entry.imgname),
     question: entry.query,
     payload: {
@@ -142,4 +161,12 @@ function loadOfficial(n: number): Sample<ChartQaPayload>[] {
           : "categorical"),
     },
   }));
+}
+
+function readAnnotations(file: string): OfficialAnnotation[] {
+  const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error(`ChartQA annotation file is not an array: ${file}`);
+  }
+  return parsed as OfficialAnnotation[];
 }

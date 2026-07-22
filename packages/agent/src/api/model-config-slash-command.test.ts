@@ -158,7 +158,7 @@ describe("/model slash handler ↔ real /api/models/config route", () => {
     expect(h.managerStart).not.toHaveBeenCalled();
   });
 
-  it("surfaces the route's real codex-acp effort-pin 400 verbatim", async () => {
+  it("surfaces the managed codex-acp effort-contract 400 verbatim", async () => {
     const h = await startHarness();
 
     const r = await resolveCommand(
@@ -167,7 +167,7 @@ describe("/model slash handler ↔ real /api/models/config route", () => {
       OWNER,
     );
 
-    expect(r.reply).toContain("pinned codex-acp adapter");
+    expect(r.reply).toContain("managed codex-acp contract");
     expect(r.reply).toContain("low, medium, high, xhigh");
     expect(h.saveElizaConfig).not.toHaveBeenCalled();
   });
@@ -229,16 +229,14 @@ describe("/model slash handler ↔ real /api/models/config route", () => {
 
     const r = await resolveCommand(h.runtime, msg("/model show"), OWNER);
 
-    expect(r.reply).toContain("**small**");
-    expect(r.reply).toContain("**large**");
-    expect(r.reply).toContain("**coding**");
-    expect(r.reply).toContain("OPENAI_LARGE_MODEL = zai-glm-4.7 (config.env)");
-    expect(r.reply).toContain(
-      "ANTHROPIC_SMALL_MODEL = claude-haiku-4-5-20251001 (config.env.vars)",
-    );
-    // The route's designed codex default surfaces even with nothing written.
-    expect(r.reply).toContain("ELIZA_CODEX_MODEL_POWERFUL = ");
-    expect(r.reply).toContain("(default)");
-    expect(r.reply).toContain("OPENAI_SMALL_MODEL unset");
+    // Humanized slots (#16243): model + friendly source per slot — raw env
+    // keys must never reach the operator.
+    expect(r.reply).toContain("small: claude-haiku-4-5-20251001 (app config");
+    expect(r.reply).toContain("large: zai-glm-4.7 (app config");
+    // The route's designed coding defaults surface even with nothing written.
+    expect(r.reply).toContain("codex: gpt-5.6-sol (default)");
+    expect(r.reply).toContain("claude: claude-opus-4-8 (default)");
+    expect(r.reply).not.toContain("MODEL_POWERFUL");
+    expect(r.reply).not.toContain("unset");
   });
 });

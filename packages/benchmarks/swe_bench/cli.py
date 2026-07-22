@@ -1581,6 +1581,8 @@ def _expand_instances(
             expanded.append(
                 replace(
                     instance,
+                    instance_id=f"{instance.instance_id}--edge-{index:02d}",
+                    source_instance_id=instance.official_instance_id,
                     problem_statement=(
                         instance.problem_statement
                         + "\n\n"
@@ -1782,25 +1784,16 @@ def _report_to_dict(report: SWEBenchReport) -> dict[str, object]:
 
 async def _load_instances_or_fallback(
     config: SWEBenchConfig,
-) -> list[SWEBenchInstance]:
-    """Load instances from HuggingFace; on failure, fall back to a synthetic one.
-
-    The fallback is a single tiny synthetic instance so harness-completion
-    smoke tests still run on hosts without network access to HuggingFace.
-    """
-    try:
-        dataset = SWEBenchDataset(variant=config.variant)
-        await dataset.load()
-        instances = list(
-            dataset.get_instances(
-                repo_filter=config.repo_filter, limit=config.max_instances
-            )
+) -> tuple[list[SWEBenchInstance], SWEBenchDataset]:
+    """Load the pinned official dataset; synthetic data is ``--mock`` only."""
+    dataset = SWEBenchDataset(variant=config.variant)
+    await dataset.load()
+    instances = list(
+        dataset.get_instances(
+            repo_filter=config.repo_filter, limit=config.max_instances
         )
-        if instances:
-            return instances
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[swe_bench] dataset load failed (%s); using fallback", exc)
-    return [_mock_instance()]
+    )
+    return instances, dataset
 
 
 def _build_client_for_harness(
@@ -1831,31 +1824,25 @@ def _build_client_for_harness(
         normalized_model = _openai_compat_model_name(model_name)
         if normalized_model:
             client_kwargs["model"] = normalized_model
-        client_kwargs["mode"] = "in_process"
         client = HermesClient(**client_kwargs)
-        try:
-            client.wait_until_ready(timeout=60)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[swe_bench] hermes wait_until_ready failed: %s", exc)
+        client.wait_until_ready(timeout=60)
         return client, None
 
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
-        client_kwargs: dict[str, object] = {}
-        if model_name:
-            client_kwargs["model"] = model_name
-        client_kwargs["direct_openai_compatible"] = True
+        client_kwargs: dict[str, object] = {
+            "provider": (
+                os.environ.get("BENCHMARK_MODEL_PROVIDER")
+                or os.environ.get("ELIZA_PROVIDER")
+                or "cerebras"
+            ).strip().lower(),
+        }
+        normalized_model = _openai_compat_model_name(model_name)
+        if normalized_model:
+            client_kwargs["model"] = normalized_model
         client = OpenClawClient(**client_kwargs)
-        # OpenClawClient.wait_until_ready requires the binary on disk; the
-        # direct-OpenAI-compat path doesn't, so we skip the readiness probe
-        # whenever direct mode is enabled by env or config.
-        direct_mode = os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
-        if not direct_mode:
-            try:
-                client.wait_until_ready(timeout=60)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("[swe_bench] openclaw wait_until_ready failed: %s", exc)
+        client.wait_until_ready(timeout=60)
         return client, None
 
     if harness == "smithers":
@@ -1931,6 +1918,7 @@ async def _run(args: argparse.Namespace) -> int:
     Path(config.output_dir).mkdir(parents=True, exist_ok=True)
 
     if args.mock:
+        loaded_dataset = None
         base_instances = [_mock_instance()]
         counts = _scenario_counts(base_instances, expand_scenarios=expand_scenarios)
         if args.count_scenarios or _truthy_env("COUNT_SCENARIOS"):
@@ -1960,7 +1948,7 @@ async def _run(args: argparse.Namespace) -> int:
             client = _MockClient()
         eliza_server = None
     else:
-        base_instances = await _load_instances_or_fallback(config)
+        base_instances, loaded_dataset = await _load_instances_or_fallback(config)
         if not base_instances:
             print("No instances matched filters; aborting.", file=sys.stderr)
             return 2
@@ -2004,6 +1992,11 @@ async def _run(args: argparse.Namespace) -> int:
         workspace_dir=config.workspace_dir,
         timeout_seconds=config.timeout_seconds,
         use_docker=config.use_docker_eval,
+        dataset_name=(
+            str(loaded_dataset.snapshot_path)
+            if loaded_dataset is not None and loaded_dataset.snapshot_path is not None
+            else SWEBenchDataset.DATASET_MAPPING[config.variant]
+        ),
     )
     instances_by_id = {instance.instance_id: instance for instance in instances}
     docker_ok = (
@@ -2130,6 +2123,11 @@ async def _run(args: argparse.Namespace) -> int:
             )
             payload = {
                 "summary": summary_payload["summary"],
+                "dataset_provenance": (
+                    loaded_dataset.provenance
+                    if loaded_dataset is not None
+                    else {"dataset": "synthetic", "revision": None, "actual_count": 1}
+                ),
                 "include_edge_scenarios": expand_scenarios,
                 "scenario_counts": counts,
                 "metrics": {
@@ -2155,6 +2153,11 @@ async def _run(args: argparse.Namespace) -> int:
             )
             report = _build_report(config, results, instances_by_id)
             payload = _report_to_dict(report)
+            payload["dataset_provenance"] = (
+                loaded_dataset.provenance
+                if loaded_dataset is not None
+                else {"dataset": "synthetic", "revision": None, "actual_count": 1}
+            )
             payload["include_edge_scenarios"] = expand_scenarios
             payload["scenario_counts"] = counts
             if config.baseline is not None:
@@ -2191,8 +2194,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Adapter that drives patch generation. eliza: TS bridge "
             "(default; preserves current behavior). hermes: HermesClient "
-            "(in-process or subprocess Cerebras chat). openclaw: "
-            "OpenClawClient (direct OpenAI-compat or CLI). smithers: "
+            "(native pinned AIAgent subprocess). openclaw: "
+            "OpenClawClient embedded runtime. smithers: "
             "SmithersClient (Cerebras chat via smithers harness)."
         ),
     )

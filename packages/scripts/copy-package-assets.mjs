@@ -1,50 +1,49 @@
-// Drives repo automation copy package assets with explicit CLI and CI behavior.
+/** Copies publishable package assets while excluding generated local state. */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 
-const [packageDirArg, ...assetPaths] = process.argv.slice(2);
-
-if (!packageDirArg || assetPaths.length === 0) {
-  console.error(
-    "usage: node packages/scripts/copy-package-assets.mjs <package-dir> <src-path> [<src-path> ...]",
-  );
-  process.exit(1);
-}
-
-const packageDir = path.resolve(repoRoot, packageDirArg);
-const distDir = path.join(packageDir, "dist");
-const cleanupHelperScript = path.join(
-  repoRoot,
-  "packages",
-  "scripts",
-  "rm-path-recursive.mjs",
-);
 const COPY_RETRY_ATTEMPTS = 3;
 const COPY_RETRY_DELAY_MS = 100;
 const EXCLUDED_ASSET_DIRS = new Set([
   ".gradle",
   ".kotlin",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
   ".turbo",
+  ".venv",
+  "ENV",
+  "__pycache__",
   "artifacts",
   "build",
   "dist",
+  "env",
   "node_modules",
+  "venv",
 ]);
+const EXCLUDED_ASSET_EXTENSIONS = new Set([".pyc", ".pyo"]);
 
-function shouldCopyAsset(src) {
+export function shouldCopyAsset(packageDir, src) {
   const relative = path.relative(packageDir, src);
   if (!relative || relative.startsWith("..")) {
     return true;
   }
-  return !relative
-    .split(path.sep)
-    .some((segment) => EXCLUDED_ASSET_DIRS.has(segment));
+  const segments = relative.split(path.sep);
+  const leaf = segments.at(-1) ?? "";
+  return (
+    !segments.some(
+      (segment) =>
+        EXCLUDED_ASSET_DIRS.has(segment) || segment.endsWith(".egg-info"),
+    ) &&
+    !leaf.startsWith(".coverage") &&
+    !EXCLUDED_ASSET_EXTENSIONS.has(path.extname(leaf))
+  );
 }
 
 function shouldRetryCopy(error, sourcePath, attempt) {
@@ -57,12 +56,18 @@ function shouldRetryCopy(error, sourcePath, attempt) {
   );
 }
 
-function removePathRecursive(targetPath) {
+function removePathRecursive(repositoryRoot, targetPath) {
+  const cleanupHelperScript = path.join(
+    repositoryRoot,
+    "packages",
+    "scripts",
+    "rm-path-recursive.mjs",
+  );
   const completed = spawnSync(
     "node",
-    [cleanupHelperScript, path.relative(repoRoot, targetPath)],
+    [cleanupHelperScript, path.relative(repositoryRoot, targetPath)],
     {
-      cwd: repoRoot,
+      cwd: repositoryRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -81,17 +86,22 @@ function removePathRecursive(targetPath) {
   }
 }
 
-async function copyAssetWithRetry(sourcePath, targetPath) {
+async function copyAssetWithRetry({
+  repositoryRoot,
+  packageDir,
+  sourcePath,
+  targetPath,
+}) {
   let lastError;
   for (let attempt = 1; attempt <= COPY_RETRY_ATTEMPTS; attempt++) {
     try {
       if (existsSync(targetPath)) {
-        removePathRecursive(targetPath);
+        removePathRecursive(repositoryRoot, targetPath);
       }
       mkdirSync(path.dirname(targetPath), { recursive: true });
       cpSync(sourcePath, targetPath, {
         recursive: true,
-        filter: shouldCopyAsset,
+        filter: (src) => shouldCopyAsset(packageDir, src),
       });
       return;
     } catch (error) {
@@ -105,14 +115,57 @@ async function copyAssetWithRetry(sourcePath, targetPath) {
   throw lastError;
 }
 
-for (const assetPath of assetPaths) {
-  const sourcePath = path.join(packageDir, assetPath);
-  if (!existsSync(sourcePath)) {
-    console.error(`missing asset path: ${sourcePath}`);
-    process.exit(1);
+export async function copyPackageAssets({
+  repositoryRoot,
+  packageDirectory,
+  assetPaths,
+}) {
+  if (
+    !packageDirectory ||
+    !Array.isArray(assetPaths) ||
+    assetPaths.length === 0
+  ) {
+    throw new TypeError(
+      "usage: node packages/scripts/copy-package-assets.mjs <package-dir> <src-path> [<src-path> ...]",
+    );
   }
+  const packageDir = path.resolve(repositoryRoot, packageDirectory);
+  const distDir = path.join(packageDir, "dist");
 
-  const relativeTarget = assetPath.replace(/^src\//, "");
-  const targetPath = path.join(distDir, relativeTarget);
-  await copyAssetWithRetry(sourcePath, targetPath);
+  for (const assetPath of assetPaths) {
+    const sourcePath = path.join(packageDir, assetPath);
+    if (!existsSync(sourcePath)) {
+      throw new Error(`missing asset path: ${sourcePath}`);
+    }
+
+    const relativeTarget = assetPath.replace(/^src\//, "");
+    const targetPath = path.join(distDir, relativeTarget);
+    await copyAssetWithRetry({
+      repositoryRoot,
+      packageDir,
+      sourcePath,
+      targetPath,
+    });
+  }
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  try {
+    const [packageDirectory, ...assetPaths] = process.argv.slice(2);
+    await copyPackageAssets({
+      repositoryRoot: repoRoot,
+      packageDirectory,
+      assetPaths,
+    });
+  } catch (error) {
+    // error-policy:J1 the CLI boundary exposes invalid inputs or copy failures
+    // to the invoking build instead of leaving a partial package silently.
+    const message =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exitCode = 1;
+  }
 }

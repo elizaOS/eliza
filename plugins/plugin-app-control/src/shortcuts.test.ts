@@ -30,6 +30,7 @@ describe("viewNavigationShortcuts (#8791)", () => {
 			"hey can you open settings please",
 			"open app builder",
 			"check my messages",
+			"go to my email",
 			"what's on my calendar",
 			"abre ajustes",
 			"打开设置",
@@ -72,6 +73,3 @@ describe("viewNavigationShortcuts (#8791)", () => {
 		).toBeNull();
 	});
 });
-/**
- * Natural-language shortcut tests for direct view navigation commands.
- */

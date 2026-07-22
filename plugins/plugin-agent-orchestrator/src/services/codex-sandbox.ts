@@ -1,8 +1,7 @@
 /**
- * Codex ACP sandbox configuration: normalizes `sandbox_mode` / `approval_policy`
- * overrides and probes Linux Landlock availability so the orchestrator can hand
- * a spawned Codex agent a safe-but-workable filesystem sandbox, falling back to
- * `danger-full-access` where Landlock is unavailable.
+ * Normalizes managed Codex ACP sandbox settings and probes Linux Landlock
+ * availability so the orchestrator can select a supported successor mode,
+ * falling back to `danger-full-access` where Landlock is unavailable.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { platform } from "node:os";
@@ -92,48 +91,6 @@ export function detectLandlockAvailability(
   }
 }
 
-export function commandHasCodexConfigKey(
-  command: string,
-  key: string,
-): boolean {
-  const args = splitCommandLineArgs(command);
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] !== "-c" && args[i] !== "--config") continue;
-    const value = args[i + 1]?.trim();
-    if (value?.startsWith(`${key}=`)) return true;
-  }
-  return false;
-}
-
-export function commandHasCodexSandboxConfig(command: string): boolean {
-  const args = splitCommandLineArgs(command);
-  return (
-    commandHasCodexConfigKey(command, "sandbox_mode") ||
-    args.includes("--dangerously-bypass-approvals-and-sandbox") ||
-    args.some(
-      (arg, index) =>
-        arg === "-s" &&
-        CODEX_SANDBOX_MODES.has(args[index + 1] as CodexSandboxMode),
-    )
-  );
-}
-
-export function appendCodexAcpSandboxConfig(
-  command: string,
-  sandboxMode: CodexSandboxMode,
-  approvalPolicy?: string,
-): string {
-  const args: string[] = [];
-  if (!commandHasCodexSandboxConfig(command)) {
-    args.push("-c", `sandbox_mode=${sandboxMode}`);
-  }
-  if (approvalPolicy && !commandHasCodexConfigKey(command, "approval_policy")) {
-    args.push("-c", `approval_policy=${approvalPolicy}`);
-  }
-  if (args.length === 0) return command.trim();
-  return [command.trim(), ...args].filter(Boolean).join(" ");
-}
-
 export function isCodexLandlockPanic(text: string): boolean {
   const normalized = text.toLowerCase();
   return (
@@ -144,11 +101,5 @@ export function isCodexLandlockPanic(text: string): boolean {
     (normalized.includes("panicked") ||
       normalized.includes("code 101") ||
       normalized.includes("exited with code 101"))
-  );
-}
-
-function splitCommandLineArgs(input: string): string[] {
-  return (input.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? []).map((part) =>
-    part.replace(/^(['"])(.*)\1$/u, "$2"),
   );
 }

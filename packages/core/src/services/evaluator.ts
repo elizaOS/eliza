@@ -96,63 +96,103 @@ function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
 	};
 }
 
-// Every input to the merged prompt is count- and render-bounded upstream
-// (recent-message window, fact lookback, reflection entity slice, relationship
-// render), so a healthy merged prompt stays far under this cap. A prompt beyond
-// it means some section regressed to unbounded growth, and the TEXT_SMALL tier
-// this call targets cannot hold it anyway — the call is guaranteed to fail
-// (observed live: a 310KB merged prompt 400-ing 3× per turn, every turn, in a
-// room whose entity table had grown to 861 rows, #15087). The guard turns that
-// failure mode into one diagnosable log line with per-section sizes instead of
-// three doomed model round-trips per turn.
 export const EVALUATOR_PROMPT_MAX_CHARS = 120_000;
+const EVALUATOR_PROMPT_SHARED_RATIO = 0.5;
+const EVALUATOR_PROMPT_TRUNCATION_MARKER =
+	"\n[... truncated; kept latest tail ...]\n";
 
-function buildPrompt(params: {
+type PromptSection = {
+	name: string;
+	description: string;
+	body: string;
+};
+
+type BoundedPrompt = {
+	prompt: string;
+	sectionChars: Record<string, number>;
+	originalSectionChars: Record<string, number>;
+};
+
+function trimTailForPrompt(text: string, maxChars: number): string {
+	if (maxChars <= 0) return "";
+	if (text.length <= maxChars) return text;
+	if (maxChars <= EVALUATOR_PROMPT_TRUNCATION_MARKER.length) {
+		return EVALUATOR_PROMPT_TRUNCATION_MARKER.slice(0, maxChars);
+	}
+	return `${EVALUATOR_PROMPT_TRUNCATION_MARKER}${text.slice(
+		-(maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length),
+	)}`;
+}
+
+function trimHeadAndTailForPrompt(text: string, maxChars: number): string {
+	if (maxChars <= 0) return "";
+	if (text.length <= maxChars) return text;
+	if (maxChars <= EVALUATOR_PROMPT_TRUNCATION_MARKER.length) {
+		return EVALUATOR_PROMPT_TRUNCATION_MARKER.slice(0, maxChars);
+	}
+	const contentBudget = maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length;
+	const headBudget = Math.ceil(contentBudget / 3);
+	const tailBudget = contentBudget - headBudget;
+	const tail = tailBudget > 0 ? text.slice(-tailBudget) : "";
+	return `${text.slice(0, headBudget)}${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tail}`;
+}
+
+function allocateFairBudgets(lengths: number[], totalBudget: number): number[] {
+	const budgets = lengths.map(() => 0);
+	let remaining = Math.max(0, totalBudget);
+	let open = lengths
+		.map((length, index) => ({ index, length }))
+		.filter(({ length }) => length > 0);
+
+	while (remaining > 0 && open.length > 0) {
+		const share = Math.max(1, Math.floor(remaining / open.length));
+		const nextOpen: typeof open = [];
+		for (const item of open) {
+			if (remaining <= 0) {
+				nextOpen.push(item);
+				continue;
+			}
+			const missing = item.length - budgets[item.index];
+			const granted = Math.min(missing, share, remaining);
+			budgets[item.index] += granted;
+			remaining -= granted;
+			if (budgets[item.index] < item.length) nextOpen.push(item);
+		}
+		open = nextOpen;
+	}
+
+	return budgets;
+}
+
+function splitSharedBudget(
+	sharedBudget: number,
+	parts: Record<string, string>,
+): Record<string, number> {
+	const keys = Object.keys(parts);
+	const budgets = allocateFairBudgets(
+		keys.map((key) => parts[key]?.length ?? 0),
+		sharedBudget,
+	);
+	return Object.fromEntries(
+		keys.map((key, index) => [key, budgets[index] ?? 0]),
+	);
+}
+
+function renderSharedContext(params: {
 	runtime: IAgentRuntime;
 	message: Memory;
-	state: State;
-	active: PreparedEntry[];
+	agentName: string;
 	options: EvaluatorRunOptions;
-}): { prompt: string; sectionChars: Record<string, number> } {
-	const { runtime, message, state, active, options } = params;
-	const agentName = runtime.character.name ?? "Agent";
-	const latestMessage = message.content.text ?? "";
-	const responseTexts = (options.responses ?? [])
-		.map((response) => response.content.text)
-		.filter(
-			(text): text is string => typeof text === "string" && text.length > 0,
-		)
-		.join("\n");
-	const actionResults = isRecord(state.data)
-		? state.data.actionResults
-		: undefined;
-	const providerContext = state.text.trim() || "(none)";
+	parts: Record<string, string>;
+	budgets: Record<string, number>;
+}): string {
+	const { runtime, message, agentName, options, parts, budgets } = params;
+	const part = (name: string, fallback = "(none)") => {
+		const text = trimTailForPrompt(parts[name] ?? "", budgets[name] ?? 0);
+		return text || fallback;
+	};
 
-	const sections = active.map(({ evaluator, prepared }) => {
-		const section = evaluator.prompt({
-			runtime,
-			message,
-			state,
-			options,
-			prepared,
-		});
-		return {
-			name: evaluator.name,
-			text: [
-				`### ${evaluator.name}`,
-				evaluator.description,
-				"",
-				section,
-				"",
-				`Put result under "${evaluator.name}".`,
-			].join("\n"),
-		};
-	});
-	const evaluatorSections = sections
-		.map((section) => section.text)
-		.join("\n\n");
-
-	const prompt = `# Task: Post-turn evaluation
+	return `# Task: Post-turn evaluation
 
 Evaluate just-finished turn for ${agentName}.
 
@@ -169,31 +209,193 @@ Sender entity ID: ${message.entityId}
 Did respond: ${options.didRespond === true ? "true" : "false"}
 
 Latest message:
-${latestMessage || "(none)"}
+${part("latestMessage")}
 
 Agent response messages:
-${responseTexts || "(none)"}
+${part("responseTexts")}
 
 Action results:
-${stringifyForPrompt(actionResults ?? [])}
+${part("actionResults", "[]")}
 
 Provider context:
-${providerContext}
+${part("providerContext")}
+`;
+}
+
+function renderEvaluatorSection(
+	section: PromptSection,
+	contentBudget: number,
+): string {
+	const rawContent = [section.description, "", section.body].join("\n");
+	// Evaluators put extraction rules first and potentially unbounded context
+	// last. Keep both so truncation never strips the rules needed to interpret
+	// the newest context retained at the tail.
+	const content = trimHeadAndTailForPrompt(rawContent, contentBudget);
+	return [
+		`### ${section.name}`,
+		content,
+		"",
+		`Put result under "${section.name}".`,
+	].join("\n");
+}
+
+function renderPrompt(
+	sharedContext: string,
+	evaluatorSections: string,
+): string {
+	return `${sharedContext}
 
 ## Active Evaluators
 
 ${evaluatorSections}
 `;
-	// The shared entry covers everything outside the evaluator sections (latest
-	// message, agent responses, action results, provider context) so a blowup
-	// there is attributable too.
-	const sectionChars: Record<string, number> = {
-		shared: prompt.length - evaluatorSections.length,
+}
+
+function buildPrompt(params: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	active: PreparedEntry[];
+	options: EvaluatorRunOptions;
+}): BoundedPrompt {
+	const { runtime, message, state, active, options } = params;
+	const agentName = runtime.character.name ?? "Agent";
+	const latestMessage = message.content.text ?? "";
+	const responseTexts = (options.responses ?? [])
+		.map((response) => response.content.text)
+		.filter(
+			(text): text is string => typeof text === "string" && text.length > 0,
+		)
+		.join("\n");
+	const actionResults = isRecord(state.data)
+		? state.data.actionResults
+		: undefined;
+	const providerContext = state.text.trim() || "(none)";
+	const sharedParts = {
+		latestMessage,
+		responseTexts,
+		actionResults: stringifyForPrompt(actionResults ?? []),
+		providerContext,
 	};
-	for (const section of sections) {
-		sectionChars[section.name] = section.text.length;
+
+	const sections: PromptSection[] = active.map(({ evaluator, prepared }) => {
+		const section = evaluator.prompt({
+			runtime,
+			message,
+			state,
+			options,
+			prepared,
+		});
+		return {
+			name: evaluator.name,
+			description: evaluator.description,
+			body: section,
+		};
+	});
+
+	const emptySharedBudgets = splitSharedBudget(0, sharedParts);
+	const emptyEvaluatorSections = sections
+		.map((section) => renderEvaluatorSection(section, 0))
+		.join("\n\n");
+	const basePrompt = renderPrompt(
+		renderSharedContext({
+			runtime,
+			message,
+			agentName,
+			options,
+			parts: sharedParts,
+			budgets: emptySharedBudgets,
+		}),
+		emptyEvaluatorSections,
+	);
+
+	const remainingBudget = Math.max(
+		0,
+		EVALUATOR_PROMPT_MAX_CHARS - basePrompt.length,
+	);
+	const sharedRawLength = Object.values(sharedParts).reduce(
+		(total, text) => total + text.length,
+		0,
+	);
+	const evaluatorRawLengths = sections.map(
+		(section) => [section.description, "", section.body].join("\n").length,
+	);
+	const evaluatorRawLength = evaluatorRawLengths.reduce(
+		(total, length) => total + length,
+		0,
+	);
+
+	let sharedBudget = Math.min(
+		sharedRawLength,
+		Math.floor(remainingBudget * EVALUATOR_PROMPT_SHARED_RATIO),
+	);
+	let evaluatorBudget = Math.min(
+		evaluatorRawLength,
+		remainingBudget - sharedBudget,
+	);
+	let unusedBudget = Math.max(
+		0,
+		remainingBudget - sharedBudget - evaluatorBudget,
+	);
+	if (unusedBudget > 0 && sharedBudget < sharedRawLength) {
+		sharedBudget = Math.min(sharedRawLength, sharedBudget + unusedBudget);
+		unusedBudget = Math.max(
+			0,
+			remainingBudget - sharedBudget - evaluatorBudget,
+		);
 	}
-	return { prompt, sectionChars };
+	if (unusedBudget > 0 && evaluatorBudget < evaluatorRawLength) {
+		evaluatorBudget = Math.min(
+			evaluatorRawLength,
+			evaluatorBudget + unusedBudget,
+		);
+	}
+
+	const sharedBudgets = splitSharedBudget(sharedBudget, sharedParts);
+	const evaluatorBudgets = allocateFairBudgets(
+		evaluatorRawLengths,
+		evaluatorBudget,
+	);
+	const sharedContext = renderSharedContext({
+		runtime,
+		message,
+		agentName,
+		options,
+		parts: sharedParts,
+		budgets: sharedBudgets,
+	});
+	const boundedEvaluatorSections = sections.map((section, index) =>
+		renderEvaluatorSection(section, evaluatorBudgets[index] ?? 0),
+	);
+	const evaluatorSections = boundedEvaluatorSections.join("\n\n");
+	const prompt = renderPrompt(sharedContext, evaluatorSections);
+
+	const sectionChars: Record<string, number> = {
+		shared: renderPrompt(sharedContext, "").length,
+	};
+	const unboundedSharedBudgets = splitSharedBudget(
+		sharedRawLength,
+		sharedParts,
+	);
+	const unboundedSharedContext = renderSharedContext({
+		runtime,
+		message,
+		agentName,
+		options,
+		parts: sharedParts,
+		budgets: unboundedSharedBudgets,
+	});
+	const originalSectionChars: Record<string, number> = {
+		shared: renderPrompt(unboundedSharedContext, "").length,
+	};
+	for (const [index, section] of sections.entries()) {
+		sectionChars[section.name] = boundedEvaluatorSections[index]?.length ?? 0;
+		originalSectionChars[section.name] = renderEvaluatorSection(
+			section,
+			evaluatorRawLengths[index] ?? 0,
+		).length;
+	}
+	return { prompt, sectionChars, originalSectionChars };
 }
 
 // Schema-SPECIFIC rejection tokens: a HIGH-CONFIDENCE signal that the provider
@@ -743,16 +945,18 @@ export class EvaluatorService extends BaseService {
 				}),
 			);
 
-		const { prompt, sectionChars } = buildPrompt({
+		const { prompt, sectionChars, originalSectionChars } = buildPrompt({
 			runtime: this.runtime,
 			message,
 			state: composedState,
 			active: preparedEntries,
 			options,
 		});
-		if (prompt.length > EVALUATOR_PROMPT_MAX_CHARS) {
-			const failure = `Merged evaluator prompt is ${prompt.length} chars and exceeds the ${EVALUATOR_PROMPT_MAX_CHARS}-char cap; skipped the doomed TEXT_SMALL call`;
-			this.runtime.logger.error(
+		const wasTrimmed = Object.entries(sectionChars).some(
+			([name, chars]) => (originalSectionChars[name] ?? chars) > chars,
+		);
+		if (wasTrimmed) {
+			this.runtime.logger.debug(
 				{
 					src: "service:evaluator",
 					agentId: this.runtime.agentId,
@@ -760,16 +964,34 @@ export class EvaluatorService extends BaseService {
 					promptChars: prompt.length,
 					maxChars: EVALUATOR_PROMPT_MAX_CHARS,
 					sectionChars,
+					originalSectionChars,
 				},
-				"Merged evaluator prompt exceeds the size cap — a section has grown unbounded; post-turn evaluation skipped for this turn",
+				"Merged evaluator prompt was bounded before model evaluation",
 			);
-			await this.emitEvaluatorCompleted(evaluatorId, false, new Error(failure));
-			return this.failedResult({ preparedEntries, errors, error: failure });
+		}
+		const promptForModel =
+			prompt.length <= EVALUATOR_PROMPT_MAX_CHARS
+				? prompt
+				: trimTailForPrompt(prompt, EVALUATOR_PROMPT_MAX_CHARS);
+		if (promptForModel !== prompt) {
+			this.runtime.logger.error(
+				{
+					src: "service:evaluator",
+					agentId: this.runtime.agentId,
+					roomId: message.roomId,
+					promptChars: prompt.length,
+					boundedPromptChars: promptForModel.length,
+					maxChars: EVALUATOR_PROMPT_MAX_CHARS,
+					sectionChars,
+					originalSectionChars,
+				},
+				"Merged evaluator prompt exceeded the cap after bounded assembly; clipped defensively before model evaluation",
+			);
 		}
 		const schema = buildMergedSchema(preparedEntries);
 		const { output, error } = await this.readEvaluatorOutput({
 			evaluatorId,
-			prompt,
+			prompt: promptForModel,
 			schema,
 		});
 		if (!output) {

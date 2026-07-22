@@ -12,10 +12,10 @@ This plugin registers **model handlers only** (no actions, providers, services, 
 
 | `ModelType` | Default model | Handler |
 |---|---|---|
-| `TEXT_SMALL` | `gpt-5.4-mini` | `handleTextSmall` |
+| `TEXT_SMALL` | `gpt-5.6-luna` | `handleTextSmall` |
 | `TEXT_NANO` | falls back to small | `handleTextNano` |
 | `TEXT_MEDIUM` | falls back to small | `handleTextMedium` |
-| `TEXT_LARGE` | `gpt-5` | `handleTextLarge` |
+| `TEXT_LARGE` | `gpt-5.6-sol` | `handleTextLarge` |
 | `TEXT_MEGA` | falls back to large | `handleTextMega` |
 | `RESPONSE_HANDLER` | falls back to small | `handleResponseHandler` |
 | `ACTION_PLANNER` | falls back to medium | `handleActionPlanner` |
@@ -87,10 +87,10 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `CEREBRAS_API_KEY` | one-of | — | Auth when using Cerebras endpoint |
 | `EVOLINK_API_KEY` | one-of | — | Auth when using EvoLink endpoint |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | Override API endpoint |
-| `OPENAI_SMALL_MODEL` / `SMALL_MODEL` | no | `gpt-5.4-mini` | TEXT_SMALL model |
+| `OPENAI_SMALL_MODEL` / `SMALL_MODEL` | no | `gpt-5.6-luna` | TEXT_SMALL model |
 | `OPENAI_NANO_MODEL` / `NANO_MODEL` | no | falls back to small | TEXT_NANO model |
 | `OPENAI_MEDIUM_MODEL` / `MEDIUM_MODEL` | no | falls back to small | TEXT_MEDIUM model |
-| `OPENAI_LARGE_MODEL` / `LARGE_MODEL` | no | `gpt-5` | TEXT_LARGE model |
+| `OPENAI_LARGE_MODEL` / `LARGE_MODEL` | no | `gpt-5.6-sol` | TEXT_LARGE model |
 | `OPENAI_MEGA_MODEL` / `MEGA_MODEL` | no | falls back to large | TEXT_MEGA model |
 | `OPENAI_RESPONSE_HANDLER_MODEL` | no | falls back to small | RESPONSE_HANDLER model |
 | `OPENAI_ACTION_PLANNER_MODEL` | no | falls back to medium | ACTION_PLANNER model |
@@ -116,7 +116,8 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_ALLOW_BROWSER_API_KEY` | no | `false` | Send auth header in browser (opt-in) |
 | `ELIZA_PROVIDER` | no | — | Set to `cerebras` or `evolink` to force that provider mode |
 | `CEREBRAS_BASE_URL` | no | `https://api.cerebras.ai/v1` | Cerebras API base |
-| `CEREBRAS_MODEL` | no | — | Override model name in Cerebras mode |
+| `CEREBRAS_SMALL_MODEL` / `CEREBRAS_LARGE_MODEL` | no | — | Per-tier Cerebras model overrides |
+| `CEREBRAS_MODEL` | no | — | Legacy Cerebras small-tier fallback; also used for large when no large-tier override exists |
 | `EVOLINK_BASE_URL` | no | `https://direct.evolink.ai/v1` | EvoLink API base |
 | `EVOLINK_MODEL` | no | `gpt-5.2` | Override model name in EvoLink mode |
 
@@ -139,7 +140,8 @@ Model tiers (nano/medium/mega/response-handler/action-planner) all call the shar
 
 - **Dual build (node + browser).** Exports differ: `dist/node/index.node.js` and `dist/browser/index.browser.js`. Browser build avoids sending `Authorization` headers by default; set `OPENAI_BROWSER_BASE_URL` to a server-side proxy.
 - **Cerebras mode.** Detected automatically from `ELIZA_PROVIDER=cerebras`, `OPENAI_BASE_URL` matching `*.cerebras.ai`, or presence of `CEREBRAS_API_KEY` without `OPENAI_API_KEY`. In Cerebras mode: structured output via `response_format: json_object` (not `json_schema`); `reasoning_effort` defaults to `"low"` for reasoning-capable models; `promptCacheRetention` is stripped (Cerebras rejects it); embeddings fall back to a deterministic local hash when no explicit embedding URL is set.
-- **Strict-schema stripping (unconditional, ALL providers).** `sanitizeJsonSchema` in `models/text.ts` is the single wire choke point for every `response_format` schema (`buildStructuredOutput`) and every tool schema (`normalizeNativeTools`). It strips the constraint keywords strict-grammar providers (Cerebras via Eliza Cloud, OpenAI strict) 400 on — `maxItems`, `minItems`, `maxLength`, `minLength`, `pattern`, `format`, `minProperties`, `maxProperties` — folding each into the node's `description` so the model keeps the intent, and recurses through `properties`/`items`/`anyOf`/`oneOf`/`allOf`/`$defs`/`patternProperties`/`contains`/`if`-`then`-`else`. Numeric bounds (`minimum`/`maximum`/`multipleOf`/`uniqueItems`) pass through untouched. This is **not** gated on Cerebras mode — `isCerebrasMode` is proxy-blind (an agent on `api.elizacloud.ai` with `OPENAI_API_KEY` looks like plain OpenAI, which is exactly where the 400s fired). Real bounds are still enforced app-side: `parseAndValidate` re-checks the caller's ORIGINAL schema. So do NOT add per-schema constraint-stripping — the choke point already does it (#11123 / #11153).
+- **Strict-schema stripping (default for strict/unspecified tools, ALL providers).** `sanitizeJsonSchema` in `models/text.ts` is the single wire choke point for every `response_format` schema (`buildStructuredOutput`) and every strict or unspecified tool schema (`normalizeNativeTools`). It strips the constraint keywords strict-grammar providers (Cerebras via Eliza Cloud, OpenAI strict) 400 on — `maxItems`, `minItems`, `maxLength`, `minLength`, `pattern`, `format`, `minProperties`, `maxProperties` — folding each into the node's `description` so the model keeps the intent, and recurses through `properties`/`items`/`anyOf`/`oneOf`/`allOf`/`$defs`/`patternProperties`/`contains`/`if`-`then`-`else`. Numeric bounds (`minimum`/`maximum`/`multipleOf`/`uniqueItems`) pass through untouched. This is **not** gated on Cerebras mode — `isCerebrasMode` is proxy-blind (an agent on `api.elizacloud.ai` with `OPENAI_API_KEY` looks like plain OpenAI, which is exactly where the 400s fired). Real bounds are still enforced app-side: `parseAndValidate` re-checks the caller's ORIGINAL schema. So do NOT add per-schema constraint-stripping — the choke point already does it (#11123 / #11153).
+- **Explicit non-strict tools preserve their schema.** A core `ToolDefinition` with `strict: false` bypasses strict-schema rewriting and reaches a non-Cerebras OpenAI-compatible endpoint with the caller's exact parameter schema and `strict: false`. This is reserved for transports whose contract requires optional fields to remain optional; strict/unspecified tools continue through the sanitizer above, and Cerebras mode still applies its compatibility normalization.
 - **Free-form record/map tool args use the #13111 strict-safe transform.** `sanitizeJsonSchema` still forces `additionalProperties: false` on every object for strict-grammar providers, but `normalizeNativeTools` rewrites declared free-form record/map tool args (`additionalProperties: true` or a value schema, e.g. contact `customFields`) into a model-facing `__eliza_record_entries` key/value array. Returned tool calls are reverse-mapped back to the original object shape before runtime validation, so tool authors still receive the schema they declared without reopening #11123/#11156 strict-schema 400s. Scoped to **tool parameters only** — `response_format` has no returned tool args to reverse-map and still uses plain sanitization.
 - **EvoLink mode.** Detected automatically from `ELIZA_PROVIDER=evolink`, `OPENAI_BASE_URL` matching `*.evolink.ai`, or presence of `EVOLINK_API_KEY` without a conflicting key. Uses `EVOLINK_BASE_URL` (default `https://direct.evolink.ai/v1`) and defaults to `gpt-5.2` as the model.
 - **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated calls such as Cerebras `gpt-oss-120b` without changing every OpenAI text call.

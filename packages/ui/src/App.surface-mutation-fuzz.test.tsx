@@ -35,6 +35,16 @@
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubOfflineAppFetch } from "../test/offline-app-fetch";
+
+// The offline fetch stub keeps every probe permanently pending; withTimeout's
+// real timer would fire seconds later — after this file's jsdom env is torn
+// down — and reject that pending probe into a post-teardown setState that reads
+// the deleted `window`. Pass it through so the probe simply stays pending.
+vi.mock("./utils/with-timeout", () => ({
+  withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
+}));
+
 import type { BuiltinTab } from "./navigation";
 import type { BackgroundConfig } from "./state/ui-preferences";
 import {
@@ -159,6 +169,11 @@ vi.mock("./hooks/useAuthStatus", () => ({
     refetch: vi.fn(),
   }),
   useIsAuthenticated: () => true,
+  // notification-store (#16242) reads these to gate + re-arm its boot hydration
+  // probe from the mounted App's notifications-boot effect; the mock must
+  // provide them or the probe throws mid-effect. Authenticated => probe on.
+  isAuthenticatedNow: () => true,
+  subscribeAuthStatus: () => vi.fn(),
 }));
 vi.mock("./hooks/useActivityEvents", () => ({
   useActivityEvents: () => ({ events: [], clearEvents: vi.fn() }),
@@ -294,6 +309,9 @@ vi.mock("./components/character/CharacterEditor", () => ({
 }));
 vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
+}));
+vi.mock("./widgets/WidgetHost", () => ({
+  WidgetHost: () => <div data-testid="home-widget-host" />,
 }));
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   VaultModal: () => null,
@@ -482,6 +500,7 @@ describe("App in-process host-realm mutation isolation (#14179)", () => {
       value: new MemoryStorage(),
     });
     window.localStorage.setItem(SHELL_STORAGE_KEY, SHELL_STORAGE_VALUE);
+    stubOfflineAppFetch();
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     vi.stubGlobal(
       "requestAnimationFrame",

@@ -1,0 +1,10 @@
+{
+  "package": "@wealthville/plugin-wealthville",
+  "repository": "github:amitesh-m/wealthville-integrations",
+  "kind": "plugin",
+  "description": "Wealthville liquidity-pool scores, ENTER/HOLD/EXIT verdicts, and public miss-inclusive track record for DeFi agents (Solana + EVM).",
+  "homepage": "https://wealthville.net/developers",
+  "version": "0.2.0",
+  "directory": "elizaos-plugin",
+  "tags": ["solana", "defi", "liquidity-pools", "scoring", "wealthville"]
+}

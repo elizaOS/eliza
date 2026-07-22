@@ -149,8 +149,17 @@ describe("OwnerBindingService.verifyOwnerBindFromConnector", () => {
     });
     expect(result.success).toBe(true);
     const owner = runtime._entities.get(OWNER_ID);
-    expect(owner?.metadata?.default).toEqual({ name: "Owner" });
-    expect((owner?.metadata?.telegram as Record<string, unknown>).userId).toBe(
+    expect(owner).toBeDefined();
+    if (!owner) {
+      throw new Error("Expected the owner entity to exist after binding");
+    }
+    const metadata = owner.metadata;
+    expect(metadata).toBeDefined();
+    if (!metadata) {
+      throw new Error("Expected the owner entity metadata after binding");
+    }
+    expect(metadata.default).toEqual({ name: "Owner" });
+    expect((metadata.telegram as Record<string, unknown>).userId).toBe(
       "424242",
     );
   });

@@ -96,8 +96,8 @@ Steps to produce `mtp/drafter-2b.gguf`:
 ## Fused engine (`libelizainference`) — built + validated on Metal (2026-06-23)
 
 The canonical fused FFI engine now builds and runs the Gemma-4 text path on a
-real Apple M4 Max (records:
-`native/verify/evidence/platform/darwin-arm64-metal-fused-llm.log`):
+real Apple M4 Max. Reproduce it with the build and generation sequence below;
+generated logs belong in the reviewing issue or PR rather than source control:
 
 - **Build:** `cmake -DGGML_METAL=ON -DLLAMA_BUILD_OMNIVOICE=ON
   -DOMNIVOICE_SHARED=ON --target elizainference` →
@@ -164,7 +164,7 @@ ships with `google/gemma-4-E2B-it-assistant`, converted to GGUF:
 either an upstream rebase/cherry-pick or a targeted `LLM_ARCH_GEMMA4_ASSISTANT`
 port. That targeted port has now been completed and validated in the elizaOS
 llama.cpp fork (see `gemma4-assistant-fork-port-plan.md` and
-`native/verify/evidence/platform/gemma4-assistant-fork-draft-mtp.log`). The
+elizaOS/llama.cpp#32 / eliza#9268). The
 remaining product work is packaging and policy: ship the GGUF as
 `mtp/drafter-2b.gguf` under the existing `mtp: "separate-drafter"` manifest
 contract, choose where draft-MTP is beneficial by tier, and keep the Q4-target
@@ -214,15 +214,15 @@ port is done, so the amaranus GGUF can become `mtp/drafter-2b.gguf` under the
 `mtp: "separate-drafter"` manifest (PR #9172). No H200 or in-house distillation
 is required for the release-shaped path; H200 work would be for a better
 all-tier optimization, not for first functionality.
-Evidence: `native/verify/evidence/platform/amaranus-draft-mtp-metal.log`.
+The reproduction command is shown above; attach its generated platform log to
+the reviewing issue or PR.
 
 ## 2026-06-24 correction — the fast-tier "regression" was a draft-window mistuning, not a head problem
 
 The "regresses on fast / Q4 targets" caveat above (and the implied "needs an
 H200-trained better head to win on the fast tiers") is **superseded**. A draft-
 window sweep on Apple M-series Metal (fork @ `0864259de`, llama-cli, eliza-1-2b
-Q8 target, the converted `drafter-2b.gguf`, greedy, 3 prompts —
-`native/verify/evidence/platform/gemma4-mtp-draft-metal-repro-2026-06-24.log`):
+Q8 target, the converted `drafter-2b.gguf`, greedy, 3 prompts):
 
 | draft window | result vs baseline |
 |---|---|

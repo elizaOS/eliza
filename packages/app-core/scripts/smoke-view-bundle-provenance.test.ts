@@ -1,9 +1,9 @@
 /**
  * End-to-end contract for the UI-smoke stub's view-bundle route: boots the real
  * stub server (no mocks) and asserts the provenance the stub actually emits over
- * HTTP. Proves that audit mode fails observably instead of fabricating a bundle
- * for a production-declared view, and that synthesized placeholders are marked
- * as such on the wire (issue #15791).
+ * HTTP. Proves that audit mode fails observably instead of fabricating a bundle,
+ * synthesized placeholders are marked on the wire, and registry fixtures match
+ * the production view-capability transport contract (issue #15791).
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -102,7 +102,41 @@ async function bundleRootWithWallet(): Promise<string> {
   return root;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 describe("smoke view bundle provenance over HTTP (#15791)", () => {
+  it("advertises canonical view capability objects", async () => {
+    const bundleRoot = await emptyBundleRoot();
+    const { child, port } = await bootStub({
+      ELIZA_UI_SMOKE_VIEW_BUNDLE_ROOT: bundleRoot,
+    });
+    running = child;
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/views`);
+    expect(response.status).toBe(200);
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || !Array.isArray(payload.views)) {
+      throw new Error("smoke view registry must return a views array");
+    }
+
+    for (const view of payload.views) {
+      if (!isRecord(view) || !Array.isArray(view.capabilities)) {
+        throw new Error("each smoke view must advertise capabilities");
+      }
+      for (const capability of view.capabilities) {
+        if (!isRecord(capability)) {
+          throw new Error("view capabilities must be objects");
+        }
+        expect(capability.id).toEqual(expect.any(String));
+        expect(String(capability.id).trim()).not.toBe("");
+        expect(capability.description).toEqual(expect.any(String));
+        expect(String(capability.description).trim()).not.toBe("");
+      }
+    }
+  });
+
   it("audit mode returns an observable failure, never a fabricated bundle", async () => {
     const bundleRoot = await emptyBundleRoot();
     const { child, port } = await bootStub({

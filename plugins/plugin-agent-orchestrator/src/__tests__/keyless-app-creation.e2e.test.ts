@@ -98,7 +98,16 @@ describe("keyless app-creation e2e (fake ACP agent, no LLM)", () => {
     expect(events).toContain("tool_running");
     expect(events).toContain("task_complete");
     expect(result.stopReason).toBe("end_turn");
-    // The completion carries real, consistent evidence (diff + runner output).
-    expect(String(result.finalText)).toMatch(/Tests\s+2 passed/);
+
+    // The produced app is REAL: execute the test suite the agent wrote with
+    // Node's own runner and assert on the runner's actual output — not on a
+    // success string the fixture itself echoed back.
+    const testRun = execFileSync(
+      process.execPath,
+      ["--test", "--test-reporter=tap", "app.test.js"],
+      { cwd: workdir, encoding: "utf8" },
+    );
+    expect(testRun).toMatch(/# pass 2\b/);
+    expect(testRun).toMatch(/# fail 0\b/);
   }, 90_000);
 });

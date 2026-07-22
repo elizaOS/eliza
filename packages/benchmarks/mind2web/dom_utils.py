@@ -23,7 +23,6 @@ from typing import Any
 
 from lxml import etree
 
-
 _SALIENT_ATTRIBUTES = {
     "alt",
     "aria_description",
@@ -180,10 +179,7 @@ def get_tree_repr(
 ) -> tuple[str, dict[str, int]]:
     if id_mapping is None:
         id_mapping = {}
-    if isinstance(tree, str):
-        tree = etree.fromstring(tree)
-    else:
-        tree = copy.deepcopy(tree)
+    tree = etree.fromstring(tree) if isinstance(tree, str) else copy.deepcopy(tree)
     for node in tree.xpath("//*"):
         if node.tag != "text":
             if "backend_node_id" in node.attrib:
@@ -250,10 +246,7 @@ def format_candidate(
     subtree_repr, _ = get_tree_repr(
         c_node, id_mapping={}, keep_html_brackets=keep_html_brackets
     )
-    if subtree_repr.strip():
-        subtree_repr = " ".join(subtree_repr.split()[:100])
-    else:
-        subtree_repr = ""
+    subtree_repr = " ".join(subtree_repr.split()[:100]) if subtree_repr.strip() else ""
     if ancestor_repr.strip():
         ancestor_repr = re.sub(r"\s*\(\s*", "/", ancestor_repr)
         ancestor_repr = re.sub(r"\s*\)\s*", "", ancestor_repr)
@@ -261,3 +254,47 @@ def format_candidate(
     else:
         ancestor_repr = ""
     return f"ancestors: {ancestor_repr}\n" + f"target: {subtree_repr}"
+
+
+def format_action_page(
+    cleaned_html: str,
+    candidate_ids: list[str],
+) -> tuple[str, list[str]]:
+    """Build the pruned page and candidate choices used by MindAct stage 2."""
+    if not cleaned_html.strip():
+        raise ValueError("Mind2Web action predictor received empty cleaned_html")
+    if not candidate_ids:
+        raise ValueError("Mind2Web action predictor received no ranked candidates")
+
+    dom_tree = etree.fromstring(cleaned_html.encode("utf-8"))
+    pruned_tree = prune_tree(dom_tree, candidate_ids)
+    tree_repr, id_mapping = get_tree_repr(
+        pruned_tree,
+        id_mapping={},
+        keep_html_brackets=True,
+    )
+    if not tree_repr.strip():
+        raise ValueError("Mind2Web action predictor produced an empty pruned DOM")
+
+    choices: list[str] = []
+    missing: list[str] = []
+    for candidate_id in candidate_ids:
+        matches = pruned_tree.xpath(
+            f'//*[@backend_node_id="{candidate_id}"]'
+        )
+        if not matches:
+            missing.append(candidate_id)
+            continue
+        choice, _ = get_tree_repr(
+            matches[0],
+            id_mapping=id_mapping,
+            keep_html_brackets=True,
+        )
+        choices.append(" ".join(choice.split()[:10]))
+
+    if missing:
+        raise ValueError(
+            "Mind2Web ranked candidates are absent from cleaned_html: "
+            + ", ".join(missing[:5])
+        )
+    return tree_repr, choices

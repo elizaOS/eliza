@@ -134,28 +134,29 @@ describe("useHyperliquidState", () => {
 		expect(result.current.status).toBeNull();
 	});
 
-	it.each([
-		404, 503,
-	])("degrades to unavailable (no raw error) when the routes %i", async (httpStatus) => {
-		hyperliquidClient.hyperliquidStatus.mockRejectedValue(
-			new ApiError({
-				kind: "http",
-				path: "/api/hyperliquid/status",
-				message: "Not found",
-				status: httpStatus,
-			}),
-		);
+	it.each([404, 503])(
+		"degrades to unavailable (no raw error) when the routes %i",
+		async (httpStatus) => {
+			hyperliquidClient.hyperliquidStatus.mockRejectedValue(
+				new ApiError({
+					kind: "http",
+					path: "/api/hyperliquid/status",
+					message: "Not found",
+					status: httpStatus,
+				}),
+			);
 
-		const { result } = renderHook(() => useHyperliquidState());
+			const { result } = renderHook(() => useHyperliquidState());
 
-		await waitFor(() => {
-			expect(result.current.loading).toBe(false);
-		});
-		expect(result.current.unavailable).toBe(true);
-		expect(result.current.error).toBeNull();
-		expect(result.current.status).toBeNull();
-		expect(result.current.markets).toBeNull();
-	});
+			await waitFor(() => {
+				expect(result.current.loading).toBe(false);
+			});
+			expect(result.current.unavailable).toBe(true);
+			expect(result.current.error).toBeNull();
+			expect(result.current.status).toBeNull();
+			expect(result.current.markets).toBeNull();
+		},
+	);
 
 	it("re-invokes the reads when refresh() is called", async () => {
 		hyperliquidClient.hyperliquidStatus.mockResolvedValue(status);

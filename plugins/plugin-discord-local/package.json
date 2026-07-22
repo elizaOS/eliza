@@ -58,15 +58,16 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.5",
     "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   },
   "scripts": {
     "dev": "bun --hot build.ts",
     "lint": "bunx @biomejs/biome check --write --config-path ./biome.json .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint:check": "bunx @biomejs/biome check --config-path ./biome.json .",
     "build": "bun run build.ts",

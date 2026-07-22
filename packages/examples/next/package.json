@@ -10,7 +10,7 @@
     "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },
@@ -20,7 +20,7 @@
     "@elizaos/plugin-sql": "workspace:*",
     "next": "^15.1.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react-dom": "19.2.7",
     "uuid": "^14.0.0",
     "zlib-sync": "^0.1.10"
   },
@@ -28,6 +28,7 @@
     "@types/node": "^25.0.3",
     "@types/react": "19.2.3",
     "@types/react-dom": "19.2.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   }
 }

@@ -124,12 +124,15 @@ describe("native /chat/completions reasoning_effort gate", () => {
     ["gpt-oss-120b", "low"],
     [DEFAULT_CEREBRAS_TEXT_MODEL, "none"],
     ["zai-glm-4.7", "none"],
-  ] as const)("maps eliza.thinking=off for %s to reasoning_effort:%s", async (modelName, expectedEffort) => {
-    const body = await captureBody(modelName, {
-      providerOptions: { eliza: { thinking: "off" } },
-    });
-    expect(body?.reasoning_effort).toBe(expectedEffort);
-  });
+  ] as const)(
+    "maps eliza.thinking=off for %s to reasoning_effort:%s",
+    async (modelName, expectedEffort) => {
+      const body = await captureBody(modelName, {
+        providerOptions: { eliza: { thinking: "off" } },
+      });
+      expect(body?.reasoning_effort).toBe(expectedEffort);
+    }
+  );
 
   it("omits reasoning_effort when thinking is not suppressed", async () => {
     const body = await captureBody(DEFAULT_CEREBRAS_TEXT_MODEL, {

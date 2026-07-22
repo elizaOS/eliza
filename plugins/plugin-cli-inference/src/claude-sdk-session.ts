@@ -12,9 +12,10 @@
  * of a Claude subscription (the monthly Agent SDK credit), so it is strictly
  * cleaner than the in-process stealth token-replay.
  *
- * TWO MODES (the SDK fixes `systemPrompt` + `mcpServers` at query() start — see
- * the live-proven research wf_3199bde6: there is NO mid-session setSystemPrompt
- * or history-reset, so a session is created per frozen system prompt):
+ * THREE MODES (the SDK fixes `systemPrompt` + `mcpServers` at query() start —
+ * see the live-proven research wf_3199bde6: there is NO mid-session
+ * setSystemPrompt or history-reset, so a session is created per frozen system
+ * prompt):
  *
  *  - TEXT mode (`generate`): pure text generation for the reply / large tiers.
  *    `allowedTools: []` strips Claude Code's own tools so the SDK is a warm
@@ -34,6 +35,15 @@
  *    for a tool-calling turn under `maxTurns: 1`); the captured decision — not
  *    the assistant text — is the result.
  *
+ *  - ENVELOPE mode (`envelope`): the Stage-1 RESPONSE_HANDLER routing envelope
+ *    via the same native-tool pattern (`handle_response`). Every other Stage-1
+ *    lane structurally forces the envelope (anthropic native tool_use, cloud
+ *    tool_choice:required, local GBNF); free text alone let the model answer
+ *    live-info asks in prose, which core's tolerance accepted as a finished
+ *    "simple reply" — no planner, no fetch. The captured envelope is returned
+ *    as a JSON string core parses identically to a native tool call;
+ *    off-contract prose falls back to TEXT-mode semantics.
+ *
  * One instance == one (model, systemPrompt, mode). Calls are SERIALIZED (one in
  * flight per warm session); spin up multiple instances for concurrency. The
  * session is RESTARTED after `restartAfterTurns` turns to bound the accumulating
@@ -49,8 +59,62 @@ import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 const DEFAULT_MODEL = "claude-opus-4-8";
 const DEFAULT_RESTART_AFTER_TURNS = 20;
 const DEFAULT_TURN_TIMEOUT_MS = 90_000;
-/** Fully-qualified name the SDK assigns our in-process MCP tool. */
+/** Teardown budget for `dispose()`'s interrupt ACK (#16553): long enough for a
+ *  healthy CLI to acknowledge, short enough that a wedged spawn cannot wedge
+ *  the turn's failure path behind it. */
+const DISPOSE_INTERRUPT_BUDGET_MS = 5_000;
+/** Fully-qualified names the SDK assigns our in-process MCP tools. */
 const ROUTE_TOOL = "mcp__eliza__route_action";
+const ENVELOPE_TOOL = "mcp__eliza__handle_response";
+
+/**
+ * Session shape. Every other Stage-1 lane structurally forces the routing
+ * envelope (anthropic native tool_use, cloud tool_choice:required, local GBNF);
+ * this free-text lane historically relied on prompt prose alone, and the model
+ * answered live-info asks in prose instead of emitting the envelope — the
+ * decline then shipped as a "simple reply" with no planner and no fetch.
+ * ENVELOPE mode closes that gap the same way ROUTE mode does for the planner:
+ * one in-process MCP tool the model must call, captured in-process.
+ *
+ *  - "text": pure completion engine (reply synthesis, large tiers, triage).
+ *  - "route": ACTION_PLANNER decision via the native `route_action` tool.
+ *  - "envelope": Stage-1 RESPONSE_HANDLER via the native `handle_response`
+ *    tool; the captured arguments are returned as a JSON string that core's
+ *    existing envelope parser consumes exactly like a native tool call.
+ */
+export type SdkSessionMode = "text" | "route" | "envelope";
+
+/**
+ * Declared JSON-schema types of the Stage-1 envelope fields for one session,
+ * derived by the caller from core's composed HANDLE_RESPONSE tool (which
+ * varies per runtime and channel: the response-handler field REGISTRY lets
+ * any plugin add fields, and direct channels omit several builtins). Owning
+ * the list here would silently drop registry-added fields on this lane —
+ * core defaults what it never receives, so the loss is invisible.
+ */
+export type EnvelopeFieldSchemas = Record<string, { type?: string }>;
+
+/**
+ * Decode an envelope field the model emitted as a JSON-encoded STRING back to
+ * its structured value. Applied ONLY to fields whose declared schema type is
+ * array/object: Claude under MCP routinely stringifies structured fields
+ * (`"contexts": "[\"web\"]"` — observed on the first live envelope turn), and
+ * core's field registry checks Array.isArray, silently defaulting the string
+ * to [] and losing the routing. String-typed fields (replyText) pass through
+ * untouched so a legitimately JSON-shaped text answer is never mangled.
+ * error-policy:J3 — a string that fails to parse is kept as-is (an explicit
+ * string value, never fabricated structure).
+ */
+function decodeEnvelopeFieldValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
 
 /**
  * When the monthly Agent SDK credit runs dry (documented caveat: the subscription
@@ -124,22 +188,18 @@ type SdkQueryFn = (options: {
   prompt: AsyncIterable<SdkUserMessage>;
   options: Record<string, unknown>;
 }) => SdkQuery;
-type SdkToolFn = (
-  name: string,
-  description: string,
-  schema: Record<string, unknown>,
-  handler: (args: {
-    action?: unknown;
-    params?: unknown;
-  }) => Promise<{ content: Array<{ type: string; text: string }> }>
-) => unknown;
-type SdkMcpServerFn = (options: { name: string; version?: string; tools: unknown[] }) => unknown;
-
 /** Minimal shape of the SDK module we load lazily. */
 export interface SdkModule {
   query: SdkQueryFn;
-  tool: SdkToolFn;
-  createSdkMcpServer: SdkMcpServerFn;
+  tool: (
+    name: string,
+    description: string,
+    schema: Record<string, unknown>,
+    handler: (
+      args: Record<string, unknown>
+    ) => Promise<{ content: Array<{ type: string; text: string }> }>
+  ) => unknown;
+  createSdkMcpServer: (options: { name: string; version?: string; tools: unknown[] }) => unknown;
 }
 interface ZodModule {
   z: {
@@ -157,17 +217,31 @@ export interface ClaudeSdkSessionConfig {
    * (one warm process per distinct system prompt).
    */
   systemPrompt?: string | null;
-  /** ROUTE mode (native `route_action` MCP tool) vs TEXT mode (plain generation). */
-  router?: boolean;
-  /** TEXT mode only: `maxTurns` for the SDK query (default 1 — one-shot answer,
-   * no agentic preamble-then-act). Ignored in ROUTE mode (always 1). */
-  textMaxTurns?: number;
+  /** Session shape — see {@link SdkSessionMode}. Default "text". */
+  mode?: SdkSessionMode;
+  /**
+   * ENVELOPE mode only (required there): declared schema types of the Stage-1
+   * fields this session captures, derived from core's composed
+   * HANDLE_RESPONSE tool for the turn that opened the session. The caller
+   * keys its session cache by this set, since the SDK freezes tool schemas at
+   * query() start.
+   */
+  envelopeFields?: EnvelopeFieldSchemas;
   /** Path to the Claude Code executable the SDK drives. */
   claudeExecutablePath?: string | null;
   /** Restart the warm session after this many turns (bounds context growth). */
   restartAfterTurns?: number;
-  /** Hard wall-clock budget for one SDK turn. Defaults below common 120s connector timeouts. */
+  /** Hard wall-clock budget for one SDK turn. Defaults below common 120s
+   *  connector timeouts. Explicit `0` opts out to unbounded (#16553) — an
+   *  operator choice, never a default. */
   turnTimeoutMs?: number;
+  /**
+   * Reasoning effort for this session's turns, forwarded to the Agent SDK's
+   * `effort` option (the same knob as `claude --effort`). One of
+   * low|medium|high|xhigh|max; omitted → the SDK's own default (high). An
+   * unsupported value on the selected model is silently downgraded by the SDK.
+   */
+  effort?: string | null;
   /**
    * Optional subprocess-only env for a pooled account. Passed to the Claude SDK
    * query options; never written to the parent process env.
@@ -222,6 +296,19 @@ async function loadZod(): Promise<ZodModule> {
   return zod;
 }
 
+/** Effort levels the Agent SDK's `effort` option accepts (== `claude --effort`). */
+const VALID_EFFORT_LEVELS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
+
+/**
+ * Validate a caller-supplied effort string. Unknown values are dropped (return
+ * null → SDK default) rather than forwarded — the SDK/CLI would reject an
+ * unrecognized level and fail the whole turn.
+ */
+export function normalizeEffort(value: string | null | undefined): string | null {
+  const v = value?.trim().toLowerCase();
+  return v && VALID_EFFORT_LEVELS.has(v) ? v : null;
+}
+
 /**
  * A single warm Agent SDK session for one (model, systemPrompt, mode). Lazily
  * starts on first call, serializes calls, and self-heals (restarts) on error or
@@ -230,11 +317,15 @@ async function loadZod(): Promise<ZodModule> {
 export class ClaudeSdkSession {
   private readonly model: string;
   private readonly systemPrompt: string | null;
-  private readonly router: boolean;
-  private readonly textMaxTurns: number;
+  private readonly mode: SdkSessionMode;
+  private readonly envelopeFields: EnvelopeFieldSchemas;
   private readonly claudeExecutablePath: string | null;
   private readonly restartAfterTurns: number;
   private readonly turnTimeoutMs: number;
+  /** Bumped by dispose(); a start() that finishes into a stale epoch tears
+   * itself down instead of resurrecting a disposed session. */
+  private epoch = 0;
+  private readonly effort: string | null;
   private readonly subprocessEnv: RotationSubprocessEnv | null;
   private readonly sdkOverride?: SdkModule;
   private readonly zodOverride?: ZodModule;
@@ -244,43 +335,56 @@ export class ClaudeSdkSession {
   private iterator: AsyncIterator<SdkMessage> | null = null;
   private turns = 0;
   private chain: Promise<unknown> = Promise.resolve();
-  // ROUTE mode: the MCP tool handler writes the current turn's decision here.
-  // Safe to share across turns because calls are serialized on `chain` and it is
-  // reset at the start of every `sendAndRead`.
+  // Tool modes: the MCP tool handler writes the current turn's capture here.
+  // Safe to share across turns because calls are serialized on `chain` and both
+  // are reset at the start of every `sendAndRead`.
   private pendingDecision: RouteDecision | null = null;
+  private pendingEnvelope: Record<string, unknown> | null = null;
 
   constructor(config: ClaudeSdkSessionConfig) {
     this.model = config.model?.trim() || DEFAULT_MODEL;
     this.systemPrompt = config.systemPrompt?.trim() || null;
-    this.router = config.router === true;
-    this.textMaxTurns = config.textMaxTurns && config.textMaxTurns > 0 ? config.textMaxTurns : 1;
+    this.mode = config.mode ?? "text";
+    if (this.mode === "envelope" && !config.envelopeFields) {
+      throw new Error(
+        "[cli-inference:sdk] envelope mode requires the composed Stage-1 field schemas"
+      );
+    }
+    this.envelopeFields = config.envelopeFields ?? {};
     this.claudeExecutablePath = config.claudeExecutablePath?.trim() || null;
     this.restartAfterTurns =
       config.restartAfterTurns && config.restartAfterTurns > 0
         ? config.restartAfterTurns
         : DEFAULT_RESTART_AFTER_TURNS;
+    // Explicit 0 = operator opt-out to unbounded (#16553); unset/invalid
+    // falls to the bounded default so a hung spawn can never wedge by default.
     this.turnTimeoutMs =
-      config.turnTimeoutMs && config.turnTimeoutMs > 0
-        ? config.turnTimeoutMs
-        : DEFAULT_TURN_TIMEOUT_MS;
+      config.turnTimeoutMs === 0
+        ? 0
+        : config.turnTimeoutMs && config.turnTimeoutMs > 0
+          ? config.turnTimeoutMs
+          : DEFAULT_TURN_TIMEOUT_MS;
+    this.effort = normalizeEffort(config.effort);
     this.subprocessEnv = config.subprocessEnv ?? null;
     this.sdkOverride = config.sdkModule;
     this.zodOverride = config.zodModule;
   }
 
-  /** TEXT mode: generate one completion's text. Serialized. */
-  generate(body: string): Promise<string> {
-    return this.enqueue(() => this.sendOnce(body, "text"));
-  }
-
   /**
-   * ROUTE mode: return `JSON.stringify({action, params})` — the action the model
-   * picked via the native `route_action` tool. The planner loop's text-mode
-   * parser (`parseJsonPlannerOutput` → `normalizeBarePlannerAction`) consumes
-   * this bare shape directly, so no core change is needed.
+   * Run one serialized turn. What comes back is fixed by the session's mode:
+   *  - "text": the completion's text.
+   *  - "route": `JSON.stringify({action, params})` from the native
+   *    `route_action` call — the planner loop's text-mode parser
+   *    (`parseJsonPlannerOutput` → `normalizeBarePlannerAction`) consumes the
+   *    bare shape directly, so no core change is needed.
+   *  - "envelope": the JSON string of the Stage-1 envelope from the native
+   *    `handle_response` call — core's envelope parser
+   *    (`extractMessageHandlerRawParsed` → `parseJsonObject`) consumes a JSON
+   *    string identically to a native tool call. Off-contract prose is
+   *    returned as-is so core's tolerant parse chain still lands the turn.
    */
-  route(body: string): Promise<string> {
-    return this.enqueue(() => this.sendOnce(body, "route"));
+  send(body: string): Promise<string> {
+    return this.enqueue(() => this.sendOnce(body));
   }
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -294,7 +398,7 @@ export class ClaudeSdkSession {
     return run;
   }
 
-  private async sendOnce(body: string, mode: "text" | "route"): Promise<string> {
+  private async sendOnce(body: string): Promise<string> {
     if (!body.trim()) {
       throw new Error("[cli-inference:sdk] empty prompt body");
     }
@@ -303,11 +407,15 @@ export class ClaudeSdkSession {
       await this.dispose();
     }
     if (!this.query) {
-      await this.start();
+      // The startup path (SDK dynamic import + subprocess spawn) is the one
+      // await the per-read turn timeout cannot see — a hang here (CLI version
+      // download, OAuth refresh at spawn) otherwise wedges the turn forever
+      // (issue #16553). Bound it with the same budget and self-heal.
+      await this.startWithTimeout();
     }
     this.turns += 1;
     try {
-      return await this.sendAndRead(body, mode);
+      return await this.sendAndRead(body);
     } catch (err) {
       // error-policy:J2 context-adding rethrow — self-heal (a dead/erroring session
       // must not poison the next turn), then rethrow so the caller sees the failure.
@@ -316,7 +424,7 @@ export class ClaudeSdkSession {
     }
   }
 
-  private async start(): Promise<void> {
+  private async start(startEpoch: number = this.epoch): Promise<void> {
     const sdk = this.sdkOverride ?? (await loadSdk());
     // A pull-based async generator the SDK drains; we push the next user message
     // into it via `this.feed`.
@@ -349,11 +457,17 @@ export class ClaudeSdkSession {
       // permission prompt; pass the explicit flag so the contract is stable
       // across SDK versions rather than relying on the mode alone.
       allowDangerouslySkipPermissions: true,
-      // ROUTE: one tool call ends the turn (subtype=error_max_turns is normal).
-      // TEXT: default 1 — a one-shot answer leaves no room for the agentic
-      // "I'll fetch it…" preamble-then-act pattern that leaks when maxTurns>1.
-      maxTurns: this.router ? 1 : this.textMaxTurns,
+      // Always one turn: in tool modes a single tool call ends the turn
+      // (subtype=error_max_turns is normal), and a one-shot TEXT answer
+      // leaves no room for the agentic "I'll fetch it…" preamble-then-act
+      // pattern that leaks when maxTurns>1.
+      maxTurns: 1,
     };
+    // Reasoning depth. Omitted → SDK default (high); an unsupported level for
+    // the selected model is silently downgraded by the SDK, not an error.
+    if (this.effort) {
+      options.effort = this.effort;
+    }
     if (this.subprocessEnv) {
       options.env = this.subprocessEnv;
     }
@@ -361,7 +475,7 @@ export class ClaudeSdkSession {
     if (this.claudeExecutablePath) {
       options.pathToClaudeCodeExecutable = this.claudeExecutablePath;
     }
-    if (this.router) {
+    if (this.mode === "route") {
       const { z } = this.zodOverride ?? (await loadZod());
       const routeTool = sdk.tool(
         "route_action",
@@ -397,6 +511,53 @@ export class ClaudeSdkSession {
       options.mcpServers = { eliza: mcp };
       options.allowedTools = [ROUTE_TOOL];
       options.tools = [ROUTE_TOOL];
+    } else if (this.mode === "envelope") {
+      const { z } = this.zodOverride ?? (await loadZod());
+      // One loose zod slot per field core composed for this turn shape. Loose
+      // (any JSON) because core's field registry defaults/coerces downstream;
+      // the structural win is that the model emits a keyed envelope at all.
+      const envelopeSchema: Record<string, unknown> = {};
+      for (const field of Object.keys(this.envelopeFields)) {
+        envelopeSchema[field] = z.any();
+      }
+      const envelopeTool = sdk.tool(
+        "handle_response",
+        "Submit the Stage-1 response envelope for this turn. Call this EXACTLY " +
+          "ONCE with every field the instructions in the user message define — " +
+          "array fields as real JSON arrays, never JSON-encoded strings — " +
+          "then stop; produce no other output.",
+        envelopeSchema,
+        async (args) => {
+          if (!this.pendingEnvelope && args && typeof args === "object") {
+            // Keep only the composed envelope keys with defined values: core's
+            // field registry defaults what is missing and would choke on
+            // stray keys the model invented. Structured fields pass through
+            // the string-decode boundary.
+            const captured: Record<string, unknown> = {};
+            for (const [field, schema] of Object.entries(this.envelopeFields)) {
+              if (args[field] === undefined) continue;
+              captured[field] =
+                schema.type === "array" || schema.type === "object"
+                  ? decodeEnvelopeFieldValue(args[field])
+                  : args[field];
+            }
+            if (Object.keys(captured).length > 0) {
+              this.pendingEnvelope = captured;
+            }
+          }
+          return {
+            content: [{ type: "text", text: "ACK. Envelope recorded. Stop now." }],
+          };
+        }
+      );
+      const mcp = sdk.createSdkMcpServer({
+        name: "eliza",
+        version: "1.0.0",
+        tools: [envelopeTool],
+      });
+      options.mcpServers = { eliza: mcp };
+      options.allowedTools = [ENVELOPE_TOOL];
+      options.tools = [ENVELOPE_TOOL];
     } else {
       // Pure text generation: NO tools at all. `tools: []` disables the SDK's
       // built-in tool set (matching ROUTE mode, which sets it to the one MCP
@@ -411,20 +572,64 @@ export class ClaudeSdkSession {
     this.query = sdk.query({ prompt: promptStream(), options });
     this.iterator = this.query[Symbol.asyncIterator]();
     this.turns = 0;
+    if (startEpoch !== this.epoch) {
+      // A timeout/dispose raced this start; tear down the late spawn instead of
+      // resurrecting a session the caller already gave up on.
+      const stale = this.query;
+      this.query = null;
+      this.iterator = null;
+      this.feed = null;
+      stale?.interrupt?.().catch(() => {});
+      throw new ProviderApiError("[cli-inference:sdk] session disposed during start", {
+        retryable: true,
+      });
+    }
     logger.debug(
       {
         src: "cli-inference:sdk",
         model: this.model,
-        mode: this.router ? "route" : "text",
+        mode: this.mode,
       },
       "warm Claude Agent SDK session started"
     );
+  }
+
+  private async startWithTimeout(): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const startEpoch = this.epoch;
+      await Promise.race([
+        this.start(startEpoch),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new ProviderApiError(
+                `[cli-inference:sdk] session start timed out after ${this.turnTimeoutMs}ms`,
+                { retryable: true }
+              )
+            );
+          }, this.turnTimeoutMs);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — dispose (bumping the epoch so
+      // a late-resolving start tears itself down), then rethrow unchanged.
+      await this.dispose();
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async nextWithTurnTimeout(): Promise<IteratorResult<SdkMessage>> {
     const iterator = this.iterator;
     if (!iterator) {
       throw new Error("[cli-inference:sdk] session not started");
+    }
+    // Explicit operator opt-out (#16553): no timer, the read is unbounded.
+    if (this.turnTimeoutMs === 0) {
+      return iterator.next();
     }
 
     let timer: NodeJS.Timeout | undefined;
@@ -456,11 +661,12 @@ export class ClaudeSdkSession {
   }
 
   /** Push one user message and read the turn's assistant text + result envelope. */
-  private async sendAndRead(body: string, mode: "text" | "route"): Promise<string> {
+  private async sendAndRead(body: string): Promise<string> {
     if (!this.feed || !this.iterator) {
       throw new Error("[cli-inference:sdk] session not started");
     }
     this.pendingDecision = null;
+    this.pendingEnvelope = null;
     this.feed({
       type: "user",
       message: { role: "user", content: body },
@@ -495,7 +701,7 @@ export class ClaudeSdkSession {
       }
     }
 
-    if (mode === "route" && this.pendingDecision) {
+    if (this.mode === "route" && this.pendingDecision) {
       // The decision is captured in the MCP handler the moment the model calls
       // route_action — that IS the success signal (the turn then ends
       // subtype=error_max_turns, which is normal). Return it regardless of how
@@ -503,6 +709,11 @@ export class ClaudeSdkSession {
       // captured decision must never be discarded because residual preamble
       // text happened to mention limits.
       return JSON.stringify(this.pendingDecision);
+    }
+    if (this.mode === "envelope" && this.pendingEnvelope) {
+      // Same contract as the route capture above: the handle_response call IS
+      // the success signal, returned before the limit/error guards.
+      return JSON.stringify(this.pendingEnvelope);
     }
 
     // A dried-up subscription credit ends the turn cleanly but surfaces the
@@ -539,7 +750,7 @@ export class ClaudeSdkSession {
       );
     }
 
-    if (mode === "route") {
+    if (this.mode === "route") {
       // No decision: the model went off-contract (it was told to call the tool
       // and "produce no plain-text answer"), so any residual text is a planning
       // preamble, not a finished reply — never surface it as a user REPLY. Only
@@ -556,13 +767,16 @@ export class ClaudeSdkSession {
       );
     }
 
-    // TEXT mode: trust the streamed assistant text only when the turn TERMINATED
-    // CLEANLY (a `result` message arrived). A generator that ended without one
-    // means the session died mid-stream, so partial text is a truncated reply —
-    // throw instead of surfacing it. The streamed text is the model's real
-    // output regardless of subtype; the `result` echo is only trustworthy on
-    // success (on error_max_turns it may be an SDK meta-string like "Reached
-    // maximum turns", not the completion).
+    // TEXT mode — and the ENVELOPE off-contract fallthrough (model answered in
+    // prose instead of calling handle_response; the prose goes back to core's
+    // tolerant parse chain, which still lands the turn): trust the streamed
+    // assistant text only when the turn TERMINATED CLEANLY (a `result` message
+    // arrived). A generator that ended without one means the session died
+    // mid-stream, so partial text is a truncated reply — throw instead of
+    // surfacing it. The streamed text is the model's real output regardless of
+    // subtype; the `result` echo is only trustworthy on success (on
+    // error_max_turns it may be an SDK meta-string like "Reached maximum
+    // turns", not the completion).
     if (sawResult && text.trim()) return text.trim();
     if (sawResult && resultSubtype === "success" && resultText?.trim()) {
       return resultText.trim();
@@ -574,20 +788,52 @@ export class ClaudeSdkSession {
     );
   }
 
-  /** Tear down the warm session (on restart, error, or dispose). */
+  /**
+   * Tear down the warm session (on restart, error, or dispose).
+   *
+   * BOUNDED (#16553): `query.interrupt()` sends a control request to the CLI
+   * process and awaits its acknowledgement — a wedged spawn (version-mismatch
+   * download, OAuth refresh hang) never ACKs, so an unbounded await here
+   * swallowed the turn-timeout rejection behind it and serialized the whole
+   * inbound pipeline until an operator restart. The teardown races a short
+   * budget; on expiry the interrupt is abandoned (the session references are
+   * already nulled, so the next turn respawns cleanly) and the wedge is
+   * logged instead of inherited.
+   */
   async dispose(): Promise<void> {
+    this.epoch += 1;
     const q = this.query;
     this.query = null;
     this.iterator = null;
     this.feed = null;
     this.turns = 0;
     this.pendingDecision = null;
+    this.pendingEnvelope = null;
     if (q?.interrupt) {
+      let timer: NodeJS.Timeout | undefined;
       try {
-        await q.interrupt();
+        await Promise.race([
+          q.interrupt(),
+          new Promise<void>((resolve) => {
+            timer = setTimeout(() => {
+              logger.warn(
+                {
+                  src: "cli-inference:sdk",
+                  model: this.model,
+                  mode: this.mode,
+                },
+                `[cli-inference:sdk] abandoning interrupt of a wedged session after ${DISPOSE_INTERRUPT_BUDGET_MS}ms`
+              );
+              resolve();
+            }, DISPOSE_INTERRUPT_BUDGET_MS);
+            timer.unref?.();
+          }),
+        ]);
       } catch {
         // error-policy:J6 best-effort teardown — interrupting an already-dead
         // query on dispose; failure here does not matter (the session is discarded).
+      } finally {
+        if (timer) clearTimeout(timer);
       }
     }
   }

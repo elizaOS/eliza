@@ -60,16 +60,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     const context = makeContext({});
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "https://example.test/apps/demo/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "https://example.test/apps/demo/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("strips the anti-respawn directive header so it never leaks to the user", async () => {
@@ -81,7 +83,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
       text: "[sub-agent: Use the webfetch tool on this exact URL: https://api.example.test/price (claude) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer, do NOT start another sub-agent for it]\n63411",
     });
 
-    const result = subAgentCompletionResponseEvaluator.evaluate(context);
+    const result = await subAgentCompletionResponseEvaluator.evaluate(context);
     expect(result?.reply).toBe("63411");
     expect(result?.reply).not.toContain("do NOT start another sub-agent");
     expect(result?.reply).not.toContain("webfetch");
@@ -101,16 +103,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "https://example.test/apps/demo/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "https://example.test/apps/demo/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("does not re-query the sub-agent when a captured-output completion already has a URL reply", async () => {
@@ -127,16 +131,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "The static app is live at https://example.test/apps/demo/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "The static app is live at https://example.test/apps/demo/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("prefers grounded completion prose over a model-invented URL reply", async () => {
@@ -153,17 +159,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "Built the random tweet generator.\nPublic URL https://example.test/apps/random-tweet/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "Built the random tweet generator.\nPublic URL https://example.test/apps/random-tweet/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("uses verified URLs instead of leaking raw tool transcripts", async () => {
@@ -184,17 +192,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "The app is live at https://example.test/apps/nebula/. Let me know if you'd like tweaks.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "The app is live at https://example.test/apps/nebula/. Let me know if you'd like tweaks.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("keeps clean completion prose after stripped tool output when it cites a verified URL", async () => {
@@ -214,17 +224,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "Built Nebula Garden with product cards and a waitlist CTA.\nLive URL: https://example.test/apps/nebula/.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "Built Nebula Garden with product cards and a waitlist CTA.\nLive URL: https://example.test/apps/nebula/.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("prefers the public verified URL when completion only contains URL aliases", async () => {
@@ -246,16 +258,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "https://example.test/apps/random-tweet/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "https://example.test/apps/random-tweet/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("keeps a clean synthesized reply when bare completion URLs are verified", async () => {
@@ -278,17 +292,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "Built Permit Garden as a fictional bureaucratic zine and sticker landing page. It has product cards, pricing, and a waitlist CTA: https://example.test/apps/permit-garden/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "Built Permit Garden as a fictional bureaucratic zine and sticker landing page. It has product cards, pricing, and a waitlist CTA: https://example.test/apps/permit-garden/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("removes loopback route aliases from verified app completion replies", async () => {
@@ -311,17 +327,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "Built Civic Vitrine.\n- Public URL: https://example.test/apps/civic-vitrine/\n- Waitlist form: local submit handler.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "Built Civic Vitrine.\n- Public URL: https://example.test/apps/civic-vitrine/\n- Waitlist form: local submit handler.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("appends the public verified URL to a clean synthesized reply that omits it", async () => {
@@ -344,17 +362,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "The Queue Cathedral site is live with product cards, prices, and a waitlist CTA.\nhttps://example.test/apps/queue-cathedral/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "The Queue Cathedral site is live with product cards, prices, and a waitlist CTA.\nhttps://example.test/apps/queue-cathedral/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("suppresses empty task_complete placeholders", async () => {
@@ -370,16 +390,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      processMessage: "IGNORE",
-      requiresTool: false,
-      clearReply: true,
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      debug: [
-        "verified sub-agent completion had no captured output; suppressing empty reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        processMessage: "IGNORE",
+        requiresTool: false,
+        clearReply: true,
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        debug: [
+          "verified sub-agent completion had no captured output; suppressing empty reply",
+        ],
+      },
+    );
   });
 
   it("uses non-URL sub-agent completion text instead of a generic model reply", async () => {
@@ -397,16 +419,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "Root / is 84% used. /home is 57% used.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "Root / is 84% used. /home is 57% used.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("routes captured tool-output-only completions back through TASKS", async () => {
@@ -423,20 +447,22 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: true,
-      // `automation` (not `general`) is the context the TASKS contextGate
-      // accepts. Routing through TASKS_SEND_TO_AGENT with the wrong
-      // context would fail `executePlannedToolCall` with "Action TASKS_*
-      // is not allowed in the current context".
-      setContexts: ["automation"],
-      clearReply: true,
-      addCandidateActions: ["TASKS_SEND_TO_AGENT"],
-      addParentActionHints: ["TASKS"],
-      debug: [
-        "verified sub-agent completion only contains captured tool output; routing back through TASKS for follow-up",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: true,
+        // `automation` (not `general`) is the context the TASKS contextGate
+        // accepts. Routing through TASKS_SEND_TO_AGENT with the wrong
+        // context would fail `executePlannedToolCall` with "Action TASKS_*
+        // is not allowed in the current context".
+        setContexts: ["automation"],
+        clearReply: true,
+        addCandidateActions: ["TASKS_SEND_TO_AGENT"],
+        addParentActionHints: ["TASKS"],
+        debug: [
+          "verified sub-agent completion only contains captured tool output; routing back through TASKS for follow-up",
+        ],
+      },
+    );
   });
 
   it("uses final prose when captured tool output is followed by a real answer", async () => {
@@ -453,16 +479,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "Root / is 84% used with 7.0G available.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "Root / is 84% used with 7.0G available.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("surfaces clean zero-result completions instead of re-querying the sub-agent", async () => {
@@ -478,16 +506,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "No files found for the requested source-file search.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "No files found for the requested source-file search.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("routes command failures back through TASKS for grounded follow-up", async () => {
@@ -503,16 +533,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: true,
-      setContexts: ["automation"],
-      clearReply: true,
-      addCandidateActions: ["TASKS_SEND_TO_AGENT"],
-      addParentActionHints: ["TASKS"],
-      debug: [
-        "sub-agent completion contains failure markers without clear positive evidence; routing back through TASKS for grounded follow-up",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: true,
+        setContexts: ["automation"],
+        clearReply: true,
+        addCandidateActions: ["TASKS_SEND_TO_AGENT"],
+        addParentActionHints: ["TASKS"],
+        debug: [
+          "sub-agent completion contains failure markers without clear positive evidence; routing back through TASKS for grounded follow-up",
+        ],
+      },
+    );
   });
 
   it("does not use fabricated quantitative replies when hidden no-result output has unrelated prose", async () => {
@@ -528,16 +560,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: true,
-      setContexts: ["automation"],
-      clearReply: true,
-      addCandidateActions: ["TASKS_SEND_TO_AGENT"],
-      addParentActionHints: ["TASKS"],
-      debug: [
-        "sub-agent completion contains failure markers without clear positive evidence; routing back through TASKS for grounded follow-up",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: true,
+        setContexts: ["automation"],
+        clearReply: true,
+        addCandidateActions: ["TASKS_SEND_TO_AGENT"],
+        addParentActionHints: ["TASKS"],
+        debug: [
+          "sub-agent completion contains failure markers without clear positive evidence; routing back through TASKS for grounded follow-up",
+        ],
+      },
+    );
   });
 
   it("allows positive quantitative completions even when phrased as a count", async () => {
@@ -553,16 +587,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "Found 3 matching source files: src/a.ts, src/b.ts, and src/c.ts.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "Found 3 matching source files: src/a.ts, src/b.ts, and src/c.ts.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("allows positive quantitative completions with larger spelled-out counts", async () => {
@@ -578,17 +615,19 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "Found thirteen matching source files; no files were missing from the requested search.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "Found thirteen matching source files; no files were missing from the requested search.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("prefers a clean final answer over a raw transcript reply with incidental URLs", async () => {
@@ -605,16 +644,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "@elizaos/core",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "@elizaos/core",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("does not run a follow-up tool when tool output is followed by a clean final answer", async () => {
@@ -631,16 +672,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "The package name is `@elizaos/core`.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "The package name is `@elizaos/core`.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("promotes ignored verified task_complete messages into direct replies", async () => {
@@ -657,18 +700,20 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      processMessage: "RESPOND",
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "Built data/apps/random-tweet/index.html.\nPublic URL https://example.test/apps/random-tweet/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        processMessage: "RESPOND",
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply:
+          "Built data/apps/random-tweet/index.html.\nPublic URL https://example.test/apps/random-tweet/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("keeps the normal action layer when Stage 1 requested a follow-up action", async () => {
@@ -707,7 +752,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    const result = subAgentCompletionResponseEvaluator.evaluate(context);
+    const result = await subAgentCompletionResponseEvaluator.evaluate(context);
     expect(result?.requiresTool).toBe(false);
     expect(result?.clearCandidateActions).toBe(true);
     expect(result?.reply).toBe("$1,708.31");
@@ -731,7 +776,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    const result = subAgentCompletionResponseEvaluator.evaluate(context);
+    const result = await subAgentCompletionResponseEvaluator.evaluate(context);
     expect(result?.requiresTool).toBe(false);
     expect(result?.clearCandidateActions).toBe(true);
     expect(result?.reply).toBe("Tokyo: 🌦️ +74°F");
@@ -751,16 +796,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "Your app is live at https://example.test/apps/demo/.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "Your app is live at https://example.test/apps/demo/.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("uses router-verified URLs when the sub-agent completion text omits them", async () => {
@@ -783,16 +830,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "https://example.test/apps/demo/",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "https://example.test/apps/demo/",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("does not respawn after a successful completion when Stage 1 inferred a stale spawn hint", async () => {
@@ -810,16 +859,18 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply: "Created the random tweet app files and verified the build.",
-      debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",
-      ],
-    });
+    expect(await subAgentCompletionResponseEvaluator.evaluate(context)).toEqual(
+      {
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: "Created the random tweet app files and verified the build.",
+        debug: [
+          "verified sub-agent completion has no concrete follow-up action; using direct reply",
+        ],
+      },
+    );
   });
 
   it("does not suppress incomplete build reports", async () => {
@@ -857,7 +908,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
       },
     });
 
-    const patch = subAgentCompletionResponseEvaluator.evaluate(context);
+    const patch = await subAgentCompletionResponseEvaluator.evaluate(context);
     expect(patch.requiresTool).toBe(false);
     // The body (which contains `/admin` and `/posts/123`) is NOT flagged as
     // raw transcript — the reply path picks up the prose+URL body.
@@ -885,7 +936,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
       },
     });
 
-    const patch = subAgentCompletionResponseEvaluator.evaluate(context);
+    const patch = await subAgentCompletionResponseEvaluator.evaluate(context);
     // Verified URL is used (the raw paths are detected and the verified URL
     // wins over the unsafe completion body).
     expect(patch.reply).toBe("https://example.test/apps/demo/");

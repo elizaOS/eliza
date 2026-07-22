@@ -32,6 +32,11 @@ import {
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
+import {
+  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import type { RuntimeOperationManager } from "../runtime/operations/index.ts";
 import {
@@ -76,11 +81,25 @@ const CODING_BACKENDS = new Set<CodingBackend>([
 ]);
 
 // Chat providers → the env-var family the corresponding model plugin reads.
-// cerebras and elizacloud both serve through the OpenAI-compatible plugin.
-const CHAT_PROVIDER_KEY_FAMILY: Record<string, "OPENAI" | "ANTHROPIC"> = {
+// cerebras serves through plugin-openai's Cerebras mode (OPENAI_*), but
+// elizacloud serves through plugin-elizacloud, which reads only the
+// ELIZAOS_CLOUD_* keys — under cloud-proxy routing the plugin-collector
+// removes plugin-openai entirely, so an OPENAI_* write for the elizacloud
+// provider would be silently inert.
+type ChatKeyFamily = "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
+const CHAT_PROVIDER_KEY_FAMILY: Record<string, ChatKeyFamily> = {
   cerebras: "OPENAI",
-  elizacloud: "OPENAI",
+  elizacloud: "ELIZAOS_CLOUD",
   "claude-chat": "ANTHROPIC",
+};
+
+// serviceRouting.llmText backend ids → the catalog chat provider that serves
+// them. "anthropic" is the provider-switch id; the catalog names that brain
+// "claude-chat".
+const LLM_BACKEND_TO_CHAT_PROVIDER: Record<string, string> = {
+  cerebras: "cerebras",
+  elizacloud: "elizacloud",
+  anthropic: "claude-chat",
 };
 
 interface CodingBackendSeam {
@@ -147,9 +166,11 @@ function findEntry(
   return catalog.providers[provider]?.find((entry) => entry.id === model);
 }
 
-// Mirrors PINNED_CODEX_ACP_EFFORTS in app-core's coding-account-bridge.ts:
-// the effort values the pinned codex-acp adapter's config parser accepts.
-const CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
+// Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app-core's
+// coding-account-bridge.ts. The model catalog may advertise newer effort
+// variants before the managed Codex ACP spawn path supports them end to end;
+// accepting one here would persist a selection the coding backend cannot honor.
+const MANAGED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
   "low",
   "medium",
   "high",
@@ -247,6 +268,7 @@ interface ResolvedWrite {
 function resolveChatWrites(
   catalog: ModelCatalog,
   body: ModelConfigWriteBody,
+  activeProvider?: string,
 ): ResolvedWrite[] {
   if (body.backend !== undefined) {
     throw invalid(
@@ -281,12 +303,20 @@ function resolveChatWrites(
       });
     }
     if (matches.length > 1) {
-      throw invalid(
-        `Model "${model}" is served by multiple providers (${matches.join(", ")}); specify provider`,
-        { model, providers: matches },
-      );
+      // The Cerebras trio is offered by both cerebras (direct) and elizacloud
+      // (proxied) — a bare `/model small gemma-4-31b` must land on whichever
+      // brain is actually serving chat, not 400 on the overlap.
+      if (activeProvider !== undefined && matches.includes(activeProvider)) {
+        provider = activeProvider;
+      } else {
+        throw invalid(
+          `Model "${model}" is served by multiple providers (${matches.join(", ")}); specify provider`,
+          { model, providers: matches },
+        );
+      }
+    } else {
+      provider = matches[0] as string;
     }
-    provider = matches[0] as string;
   }
 
   const entry = findEntry(catalog, provider, model);
@@ -303,7 +333,7 @@ function resolveChatWrites(
     );
   }
 
-  const family = CHAT_PROVIDER_KEY_FAMILY[provider] as "OPENAI" | "ANTHROPIC";
+  const family = CHAT_PROVIDER_KEY_FAMILY[provider] as ChatKeyFamily;
   const targetUpper = body.target.toUpperCase();
   const writes: ResolvedWrite[] = [
     { key: `${family}_${targetUpper}_MODEL`, value: model },
@@ -313,7 +343,9 @@ function resolveChatWrites(
     writes.push(
       family === "ANTHROPIC"
         ? { key: `ANTHROPIC_EFFORT_${targetUpper}`, value: body.effort }
-        : { key: "OPENAI_REASONING_EFFORT", value: body.effort },
+        : family === "ELIZAOS_CLOUD"
+          ? { key: "ELIZAOS_CLOUD_REASONING_EFFORT", value: body.effort }
+          : { key: "OPENAI_REASONING_EFFORT", value: body.effort },
     );
   }
   return writes;
@@ -376,21 +408,14 @@ function resolveCodingWrites(
     }
     if (body.effort !== undefined) {
       validateEffort(entry, body.effort);
-      // The catalog carries the MODEL's truth (sol/terra do support ultra),
-      // but the pinned @zed-industries/codex-acp@0.14.0 adapter cannot parse
-      // `max`/`ultra` in config.toml — the whole file would fail to parse and
-      // drop the model pin ChatGPT-account auth requires. The bridge
-      // (coding-account-bridge.ts, PINNED_CODEX_ACP_EFFORTS) would skip the
-      // write, so accepting the value here would be a silent no-op. Reject it
-      // loudly instead; widen BOTH sets together when the acp pin is bumped.
-      if (backend === "codex" && !CODEX_ACP_EFFORTS.has(body.effort)) {
+      if (backend === "codex" && !MANAGED_CODEX_ACP_EFFORTS.has(body.effort)) {
         throw invalid(
-          `Effort "${body.effort}" is valid for ${entry.id} but not parseable by the pinned codex-acp adapter (supported until the pin is bumped: ${[...CODEX_ACP_EFFORTS].join(", ")})`,
+          `Effort "${body.effort}" is valid for ${entry.id} but not supported by the managed codex-acp contract (supported: ${[...MANAGED_CODEX_ACP_EFFORTS].join(", ")})`,
           {
             model: entry.id,
             effort: body.effort,
-            supported: [...CODEX_ACP_EFFORTS],
-            reason: "codex-acp-pin",
+            supported: [...MANAGED_CODEX_ACP_EFFORTS],
+            reason: "codex-acp-contract",
           },
         );
       }
@@ -500,19 +525,95 @@ function resolveEffective(
   return null;
 }
 
+/**
+ * The chat provider actually serving inference right now, resolved from the
+ * canonical serviceRouting topology — the same signal the plugin-collector
+ * uses to decide which model plugin loads. `endpoint` is the host that
+ * answers, so operator surfaces (/model show, the settings panel) can name
+ * what ACTUALLY serves instead of guessing from OPENAI_BASE_URL, which stays
+ * pinned in the environment even when cloud-proxy routing makes it inert.
+ */
+export interface ActiveChatInfo {
+  provider: string;
+  family: ChatKeyFamily;
+  endpoint: string;
+}
+
+function hostOf(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).hostname;
+  } catch {
+    // error-policy:J3 a non-URL base value can't name a host; callers fall
+    // back to the provider's canonical endpoint.
+    return null;
+  }
+}
+
+export function resolveActiveChat(
+  config: ElizaConfig,
+  processEnv: NodeJS.ProcessEnv,
+): ActiveChatInfo | null {
+  const routing = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  );
+  const llmText = routing?.llmText;
+  const backend =
+    typeof llmText?.backend === "string" ? llmText.backend : undefined;
+  const provider =
+    llmText?.transport === "cloud-proxy" && backend === "elizacloud"
+      ? "elizacloud"
+      : llmText?.transport === "direct" && backend !== undefined
+        ? LLM_BACKEND_TO_CHAT_PROVIDER[backend]
+        : undefined;
+  const family =
+    provider !== undefined ? CHAT_PROVIDER_KEY_FAMILY[provider] : undefined;
+  if (provider === undefined || family === undefined) return null;
+  const baseFor = (key: string): string | undefined =>
+    resolveEffective(config, processEnv, key)?.value;
+  const endpoint =
+    family === "ELIZAOS_CLOUD"
+      ? (hostOf(baseFor("ELIZAOS_CLOUD_BASE_URL")) ?? "elizacloud.ai")
+      : family === "ANTHROPIC"
+        ? (hostOf(baseFor("ANTHROPIC_BASE_URL")) ?? "api.anthropic.com")
+        : (hostOf(baseFor("OPENAI_BASE_URL")) ?? "api.openai.com");
+  return { provider, family, endpoint };
+}
+
 function buildEffectiveConfig(
   config: ElizaConfig,
   processEnv: NodeJS.ProcessEnv,
+  activeChat: ActiveChatInfo | null,
 ): Record<string, Record<string, EffectiveValue>> {
   const resolve = (key: string): EffectiveValue =>
     resolveEffective(config, processEnv, key);
+  // The cloud plugin falls back to a code default when no env pin exists;
+  // report it (source "default") only while cloud is the active brain so the
+  // panel/show never claim a cloud default is in effect under direct routing.
+  const cloudModel = (target: "SMALL" | "LARGE"): EffectiveValue => {
+    const pinned = resolve(`ELIZAOS_CLOUD_${target}_MODEL`);
+    if (pinned) return pinned;
+    if (activeChat?.family === "ELIZAOS_CLOUD") {
+      return {
+        value:
+          target === "LARGE"
+            ? DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL
+            : DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+        source: "default",
+      };
+    }
+    return null;
+  };
   const chatKeys = (target: "SMALL" | "LARGE") => ({
     [`OPENAI_${target}_MODEL`]: resolve(`OPENAI_${target}_MODEL`),
     [`ANTHROPIC_${target}_MODEL`]: resolve(`ANTHROPIC_${target}_MODEL`),
+    [`ELIZAOS_CLOUD_${target}_MODEL`]: cloudModel(target),
     OPENAI_REASONING_EFFORT: resolve("OPENAI_REASONING_EFFORT"),
     [`ANTHROPIC_EFFORT_${target}`]: resolve(`ANTHROPIC_EFFORT_${target}`),
+    ELIZAOS_CLOUD_REASONING_EFFORT: resolve("ELIZAOS_CLOUD_REASONING_EFFORT"),
   });
   const codexDefault = CODING_MODEL_DEFAULTS.codex;
+  const claudeDefault = CODING_MODEL_DEFAULTS.claude;
   return {
     small: chatKeys("SMALL"),
     large: chatKeys("LARGE"),
@@ -522,7 +623,9 @@ function buildEffectiveConfig(
         resolve("ELIZA_CODEX_MODEL_POWERFUL") ??
         (codexDefault ? { value: codexDefault, source: "default" } : null),
       ELIZA_CODEX_EFFORT: resolve("ELIZA_CODEX_EFFORT"),
-      ELIZA_CLAUDE_MODEL_POWERFUL: resolve("ELIZA_CLAUDE_MODEL_POWERFUL"),
+      ELIZA_CLAUDE_MODEL_POWERFUL:
+        resolve("ELIZA_CLAUDE_MODEL_POWERFUL") ??
+        (claudeDefault ? { value: claudeDefault, source: "default" } : null),
       ELIZA_CLAUDE_EFFORT: resolve("ELIZA_CLAUDE_EFFORT"),
       ELIZA_OPENCODE_MODEL_POWERFUL: resolve("ELIZA_OPENCODE_MODEL_POWERFUL"),
       ELIZA_ELIZAOS_MODEL_POWERFUL: resolve("ELIZA_ELIZAOS_MODEL_POWERFUL"),
@@ -542,7 +645,11 @@ export async function handleModelConfigRoutes(
   const processEnv = ctx.processEnv ?? process.env;
 
   if (method === "GET") {
-    json(res, { targets: buildEffectiveConfig(state.config, processEnv) });
+    const activeChat = resolveActiveChat(state.config, processEnv);
+    json(res, {
+      targets: buildEffectiveConfig(state.config, processEnv, activeChat),
+      ...(activeChat ? { activeChat } : {}),
+    });
     return true;
   }
 
@@ -582,7 +689,11 @@ export async function handleModelConfigRoutes(
       return true;
     }
 
-    const writes = resolveChatWrites(catalog, body);
+    const writes = resolveChatWrites(
+      catalog,
+      body,
+      resolveActiveChat(state.config, processEnv)?.provider,
+    );
     const conflicts: string[] = [];
     const outcome = await ctx.runtimeOperationManager.start({
       intent: {

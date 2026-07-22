@@ -3,6 +3,12 @@ name: Mobile Build Smoke Test
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
+    inputs:
+      concurrency_scope:
+        description: "Caller-owned concurrency namespace"
+        required: false
+        type: string
+        default: standalone
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
@@ -19,8 +25,10 @@ on:
     # gates that nightly run instead of every pull request.
     - cron: "0 7 * * *"
 
+# A reusable caller's scope separates it from the standalone ref domain. PRs
+# still supersede obsolete work; scheduled and exhaustive work always completes.
 concurrency:
-  group: mobile-smoke-${{ github.ref }}
+  group: mobile-smoke-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -42,7 +50,7 @@ jobs:
       ios: ${{ steps.filter.outputs.ios }}
       android: ${{ steps.filter.outputs.android }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           submodules: false
@@ -75,7 +83,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           # This workflow validates the app-core mobile project wiring, not
           # native inference submodule health. Keep checkout source-clean and
@@ -336,7 +344,7 @@ jobs:
       IOS_FULL_BUN_SMOKE_MODEL_URL: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/e2b/text/eliza-1-e2b-32k.gguf?download=true"
       IOS_FULL_BUN_SMOKE_MODEL_FILE: "eliza-1-e2b-32k.gguf"
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -440,7 +448,7 @@ jobs:
         run: |
           node packages/app-core/scripts/verify-ondevice-artifact.mjs --platform ios
 
-      - name: Boot simulator and install the full-Bun app
+      - name: Boot simulator and configure the full-Bun runtime
         run: |
           set -euo pipefail
           # Pick an available iPhone simulator; boot it and wait for readiness.
@@ -454,43 +462,164 @@ jobs:
           echo "Booting simulator $UDID"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
-          echo "Installing $APP_PATH"
-          xcrun simctl install "$UDID" "$APP_PATH"
+          echo "IOS_FULL_BUN_SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
 
-      - name: Run iOS full-Bun local-chat simulator smoke (#13578)
-        # Gating check for the nightly lane: build the on-device full-Bun
-        # engine, stage the real GGUF, and assert the exact on-device reply
-        # (`ios smoke model works`). No `continue-on-error` — a regression in
-        # engine boot, the on-device model registry, or first-reply generation
-        # fails the scheduled run.
+          RUNTIME_ID=$(xcrun simctl list devices available -j \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);const u=process.argv[1];const r=Object.entries(j.devices).find(([,devices])=>devices.some(device=>device.udid===u))?.[0]??"";process.stdout.write(r)})' "$UDID")
+          if [ -z "$RUNTIME_ID" ]; then
+            echo "ERROR: could not resolve the simulator runtime for $UDID"
+            exit 1
+          fi
+          RUNTIME_PATH=$(xcrun simctl list runtimes -j \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);const id=process.argv[1];const r=j.runtimes.find(runtime=>runtime.identifier===id);process.stdout.write(r?.bundlePath??"")})' "$RUNTIME_ID")
+          if [ -z "$RUNTIME_PATH" ]; then
+            echo "ERROR: could not resolve the bundle path for simulator runtime $RUNTIME_ID"
+            exit 1
+          fi
+          SWIFT_FALLBACK_PATH="$RUNTIME_PATH/Contents/Resources/RuntimeRoot/System/Cryptexes/OS/usr/lib/swift"
+          if [ -f "$SWIFT_FALLBACK_PATH/libswiftWebKit.dylib" ]; then
+            # Xcode 16.4's iOS 18.5 simulator moved libswiftWebKit into the
+            # runtime cryptex without adding that directory to dyld's search
+            # path. SIMCTL_CHILD_ keeps Apple's workaround simulator-only, so
+            # the production deployment target stays unchanged.
+            echo "SIMCTL_CHILD_DYLD_FALLBACK_LIBRARY_PATH=$SWIFT_FALLBACK_PATH" >> "$GITHUB_ENV"
+            echo "Using simulator Swift cryptex fallback: $SWIFT_FALLBACK_PATH"
+          else
+            echo "Simulator runtime exposes Swift libraries through its standard dyld path."
+          fi
+
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: full-Bun App.app disappeared before the composed e2e run"
+            exit 1
+          fi
+          echo "IOS_FULL_BUN_APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "Composed e2e will install $APP_PATH"
+
+      - name: Run composed iOS auth + full-Bun simulator e2e (#13577)
+        # The canonical one-command lane explicitly installs the freshly built
+        # app, proves callback delivery + rejected/session-unchanged auth state,
+        # then stages the real GGUF and requires both on-device non-stream +
+        # stream replies to contain the confirmation phrase (`The iOS full Bun
+        # local backend is running.`) without a failure signal. No
+        # `continue-on-error` — every leg and its named JSON evidence is a hard
+        # gate.
         run: |
           set -euo pipefail
-          mkdir -p packages/app/test-results/ios-full-bun-local-chat
+          EVIDENCE_DIR="$GITHUB_WORKSPACE/packages/app/test-results/ios-auth-full-bun-e2e"
+          mkdir -p "$EVIDENCE_DIR"
           # Point the smoke at the cached GGUF via an absolute path it can stat.
           export ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH="$HOME/.cache/eliza-ios-full-bun-smoke/$IOS_FULL_BUN_SMOKE_MODEL_FILE"
           if [ ! -f "$ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH" ]; then
             echo "ERROR: staged smoke model missing at $ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH"
             exit 1
           fi
-          node packages/app/scripts/mobile-local-chat-smoke.mjs \
-            --platform ios --require-installed --ios-select-local --ios-full-bun-smoke \
-            2>&1 | tee packages/app/test-results/ios-full-bun-local-chat/smoke.log
 
-      - name: Upload iOS full-Bun local-chat evidence
+          git rev-parse HEAD > "$EVIDENCE_DIR/exact-head.txt"
+          shasum -a 256 "$ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH" > "$EVIDENCE_DIR/model.sha256"
+          VIDEO_PATH="$EVIDENCE_DIR/ios-full-bun.mp4"
+          # The first install may reboot the simulator after writing the
+          # LaunchServices scheme approval. simctl recordVideo cannot survive
+          # that shutdown, so start the walkthrough at the post-reboot auth
+          # boundary; it then covers callback delivery and both inference calls.
+          (
+            for _ in {1..2400}; do
+              if grep -Fq "[ios-e2e] auth route:" "$EVIDENCE_DIR/smoke.log" 2>/dev/null; then
+                echo "recorder-trigger=post-reboot-auth-route"
+                exec xcrun simctl io "$IOS_FULL_BUN_SIMULATOR_UDID" recordVideo \
+                  --codec h264 --force "$VIDEO_PATH"
+              fi
+              sleep 0.25
+            done
+            echo "ERROR: recorder never observed the post-reboot auth boundary"
+            exit 1
+          ) > "$EVIDENCE_DIR/video-recorder.log" 2>&1 &
+          VIDEO_PID=$!
+
+          capture_evidence() {
+            smoke_status=$?
+            evidence_status=0
+            trap - EXIT
+            set +e
+            kill -INT "$VIDEO_PID" 2>/dev/null
+            for _ in {1..20}; do
+              if ! kill -0 "$VIDEO_PID" 2>/dev/null; then
+                break
+              fi
+              sleep 0.25
+            done
+            if kill -0 "$VIDEO_PID" 2>/dev/null; then
+              kill -TERM "$VIDEO_PID" 2>/dev/null
+            fi
+            wait "$VIDEO_PID" 2>/dev/null
+            if [ ! -s "$VIDEO_PATH" ]; then
+              echo "ERROR: iOS full-Bun screen recording is missing or empty"
+              evidence_status=1
+            fi
+            if ! xcrun simctl io "$IOS_FULL_BUN_SIMULATOR_UDID" screenshot \
+              --type=png "$EVIDENCE_DIR/ios-final.png"; then
+              evidence_status=1
+            elif ! sips -s format jpeg "$EVIDENCE_DIR/ios-final.png" \
+              --out "$EVIDENCE_DIR/ios-final.jpg" >/dev/null; then
+              evidence_status=1
+            else
+              rm "$EVIDENCE_DIR/ios-final.png"
+            fi
+            if ! xcrun simctl spawn "$IOS_FULL_BUN_SIMULATOR_UDID" log show \
+              --style compact --last 15m \
+              --predicate 'process == "App" OR (process == "launchd_sim" AND eventMessage CONTAINS "ai.elizaos.app")' \
+              > "$EVIDENCE_DIR/ios-simulator.log"; then
+              evidence_status=1
+            fi
+            if [ "$smoke_status" -eq 0 ]; then
+              AUTH_RESULT="$EVIDENCE_DIR/orchestrator/test-results/auth/result.json"
+              FULL_BUN_RESULT="$EVIDENCE_DIR/orchestrator/test-results/ios-full-bun/result.json"
+              SCHEME_APPROVAL_RESULT="$EVIDENCE_DIR/orchestrator/reports/ios-scheme-approval.json"
+              ORCHESTRATOR_SUMMARY="$EVIDENCE_DIR/orchestrator/summary.json"
+              for required in "$AUTH_RESULT" "$FULL_BUN_RESULT" "$SCHEME_APPROVAL_RESULT" "$ORCHESTRATOR_SUMMARY"; do
+                if [ ! -s "$required" ]; then
+                  echo "ERROR: composed iOS e2e evidence is missing: $required"
+                  evidence_status=1
+                fi
+              done
+              if [ -s "$SCHEME_APPROVAL_RESULT" ] && ! node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.callbackDisposition!=="deliver-to-app"||r.appId!=="ai.elizaos.app"||r.urlScheme!=="elizaos"||typeof r.rebooted!=="boolean"||r.plist!=="com.apple.launchservices.schemeapproval.plist"||"plistPath" in r)process.exit(1)' "$SCHEME_APPROVAL_RESULT"; then
+                echo "ERROR: simulator custom-scheme approval receipt was invalid or exposed its host path"
+                evidence_status=1
+              fi
+              if [ -s "$ORCHESTRATOR_SUMMARY" ] && ! node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.result!=="passed")process.exit(1)' "$ORCHESTRATOR_SUMMARY"; then
+                echo "ERROR: composed iOS e2e summary did not report result=passed"
+                evidence_status=1
+              fi
+            fi
+            if [ "$smoke_status" -ne 0 ]; then
+              exit "$smoke_status"
+            fi
+            exit "$evidence_status"
+          }
+          trap capture_evidence EXIT
+
+          node packages/app/scripts/ios-e2e.mjs \
+            --skip-build \
+            --device "$IOS_FULL_BUN_SIMULATOR_UDID" \
+            --app-path "$IOS_FULL_BUN_APP_PATH" \
+            --output "$EVIDENCE_DIR/orchestrator" \
+            2>&1 | tee "$EVIDENCE_DIR/smoke.log"
+
+      - name: Upload composed iOS auth + full-Bun evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ios-full-bun-local-chat
-          path: packages/app/test-results/ios-full-bun-local-chat/**
+          name: ios-auth-full-bun-e2e
+          path: packages/app/test-results/ios-auth-full-bun-e2e/**
           if-no-files-found: warn
           retention-days: 7
 
   ios-cloud-mode:
     name: iOS Cloud Runtime-Mode Smoke
     # Nightly / on-demand only — never on the PR path. Provisioning a real Eliza
-    # Cloud agent (Hetzner-backed) is slow and costs org credit, so the cloud
-    # runtime mode gates the scheduled run alongside the full-Bun local lane.
+    # Cloud agent route smoke is kept off the PR path. The current programmatic
+    # create omits `alwaysOn`, so it covers the shared Cloud runtime and is NOT
+    # managed dedicated/Hetzner ingress evidence.
     # This closes the third row of the #13578 coverage matrix: remote mode is
     # PR-blocking and local (full-Bun) mode gates nightly, but cloud mode had no
     # unattended lane at all — the XCUITest cloud-onboarding path XCTSkips at the
@@ -515,7 +644,7 @@ jobs:
       # throwaway org; defaults to production Cloud otherwise.
       ELIZA_CLOUD_API_BASE: ${{ github.event.inputs.cloud_api_base || 'https://api.elizacloud.ai' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -526,9 +655,9 @@ jobs:
 
       - name: Run iOS cloud runtime-mode provisioning smoke (#13578)
         # Gating check for the cloud runtime mode. With the seed present this is a
-        # HARD gate (no continue-on-error): a regression in cloud agent creation,
-        # Hetzner provisioning, or the provisioned runtime never answering fails
-        # the scheduled run. cloud-provisioning-e2e.mjs provisions a real agent,
+        # HARD gate (no continue-on-error): a regression in shared Cloud agent
+        # creation or the selected runtime never answering fails the scheduled
+        # run. cloud-provisioning-e2e.mjs resolves/creates a real shared agent,
         # waits for its runtime URL, and probes /api/status|health|me — the same
         # programmatic cloud path the iOS `ios-e2e.mjs --cloud` route calls. When
         # the secret is absent (forks without secret access) the lane records an
@@ -567,7 +696,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           # Android cloud-debug smoke sets ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1
           # below, so recursive native inference submodules are not part of this

@@ -18,21 +18,20 @@ const cancelOptions = { parameters: { action: "cancel" } };
 describe("TASKS:cancel", () => {
   it("cancels a session by id", async () => {
     const svc = serviceMock();
-    expect(
-      (
-        await cancelTaskAction.handler(
-          runtimeWith(svc),
-          memory({ sessionId: "abcdef123456" }),
-          state,
-          cancelOptions,
-          callback(),
-        )
-      )?.data,
-    ).toMatchObject({
+    const result = await cancelTaskAction.handler(
+      runtimeWith(svc),
+      memory({ sessionId: "abcdef123456" }),
+      state,
+      cancelOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.data).toMatchObject({
       sessionId: "abcdef123456",
       stoppedSessions: ["abcdef123456"],
       status: "canceled",
     });
+    expect(svc.cancelSession).toHaveBeenCalledWith("abcdef123456");
   });
   it("cancels all sessions when all=true", async () => {
     const svc = serviceMock();

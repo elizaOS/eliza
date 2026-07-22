@@ -7,6 +7,7 @@
  */
 import type { AgentNotification } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../api/client-types-core";
 
 const listNotifications = vi.fn();
 const markNotificationReadApi = vi.fn();
@@ -51,6 +52,10 @@ vi.mock("./notification-banner-store", () => ({
     pushNotificationBanner(...args),
 }));
 
+import {
+  __resetAuthStatusForTests,
+  __setAuthStatusForTests,
+} from "../../hooks/useAuthStatus";
 import {
   __getStateForTests,
   __ingestEphemeralNotificationForTests,
@@ -105,7 +110,7 @@ describe("notification-store", () => {
       count: 0,
       notifications: [],
     });
-    onWsEvent.mockReset();
+    onWsEvent.mockReset().mockReturnValue(() => {});
     // Defaults model the plain web platform: no desktop bridge (null), no
     // Capacitor channel ("none"), web Notification unavailable (false).
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
@@ -121,6 +126,7 @@ describe("notification-store", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -260,10 +266,111 @@ describe("notification-store", () => {
     });
     initNotifications();
     initNotifications(); // idempotent
-    expect(onWsEvent).toHaveBeenCalledTimes(1);
+    expect(onWsEvent).toHaveBeenCalledTimes(2);
     expect(onWsEvent.mock.calls[0][0]).toBe("agent_event");
+    expect(onWsEvent.mock.calls[1][0]).toBe("ws-reconnected");
     expect(listNotifications).toHaveBeenCalledTimes(1);
     await Promise.resolve();
+  });
+
+  it("honors Retry-After, preserves live WS rows, and merges recovered history once", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const live = makeNotification({ id: "live", title: "From WS" });
+    const persisted = makeNotification({
+      id: "persisted",
+      title: "Persisted history",
+      createdAt: live.createdAt - 1,
+    });
+    listNotifications
+      .mockRejectedValueOnce(
+        new ApiError({
+          kind: "http",
+          path: "/api/notifications",
+          status: 503,
+          code: "NOTIFICATION_SERVICE_NOT_READY",
+          retryAfter: 2,
+          message: "Notification service is still starting",
+        }),
+      )
+      .mockResolvedValueOnce({
+        notifications: [live, persisted],
+        unreadCount: 2,
+        serviceStatus: "ready",
+      });
+
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      data: Record<string, unknown>,
+    ) => void;
+    handler({
+      stream: "notification",
+      payload: { notification: live, unreadCount: 1 },
+    });
+    await flushDelivery();
+
+    expect(listNotifications).toHaveBeenCalledTimes(1);
+    expect(__getStateForTests()).toMatchObject({
+      notifications: [live],
+      hydrationStatus: "retrying",
+      hydrationAttempts: 1,
+    });
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(listNotifications).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await flushDelivery();
+
+    const recovered = __getStateForTests();
+    expect(recovered.hydrationStatus).toBe("ready");
+    expect(recovered.hydrationError).toBeNull();
+    expect(
+      recovered.notifications.map((notification) => notification.id),
+    ).toEqual(["live", "persisted"]);
+    expect(recovered.unreadCount).toBe(2);
+    expect(listNotifications).toHaveBeenCalledTimes(2);
+    expect(onWsEvent).toHaveBeenCalledTimes(2);
+    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops after the bounded hydrate retry budget and exposes terminal failure", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications.mockRejectedValue(new Error("transport unavailable"));
+
+    initNotifications();
+    await flushDelivery();
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      await vi.runOnlyPendingTimersAsync();
+      await flushDelivery();
+    }
+
+    expect(listNotifications).toHaveBeenCalledTimes(5);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(onWsEvent).toHaveBeenCalledTimes(2);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: false,
+      hydrationStatus: "failed",
+      hydrationAttempts: 5,
+      hydrationError: "transport unavailable",
+    });
+
+    listNotifications.mockResolvedValueOnce({
+      notifications: [makeNotification({ id: "after-reconnect" })],
+      unreadCount: 1,
+      serviceStatus: "ready",
+    });
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+    expect(listNotifications).toHaveBeenCalledTimes(6);
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationAttempts: 1,
+      hydrationError: null,
+    });
   });
 
   it("WS handler ignores non-notification streams", async () => {
@@ -608,5 +715,77 @@ describe("notification-store", () => {
       await expect(seedDevNotificationsIfEmpty()).resolves.toBeUndefined();
       expect(__getStateForTests().notifications).toHaveLength(0);
     });
+  });
+});
+
+describe("notification-store — protected hydrate gate (#16242)", () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, "location");
+
+  function setOrigin(url: string): void {
+    const u = new URL(url);
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        href: u.href,
+        origin: u.origin,
+        protocol: u.protocol,
+        host: u.host,
+        hostname: u.hostname,
+        port: u.port,
+        pathname: u.pathname,
+        search: u.search,
+        hash: u.hash,
+        assign: () => {},
+        replace: () => {},
+        reload: () => {},
+        toString: () => u.href,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+    listNotifications
+      .mockReset()
+      .mockResolvedValue({ notifications: [], unreadCount: 0 });
+    onWsEvent.mockReset().mockReturnValue(() => {});
+    invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+    if (originalLocation) {
+      Object.defineProperty(window, "location", originalLocation);
+    }
+  });
+
+  it("holds GET /api/notifications on the unauthenticated Cloud origin, then hydrates after sign-in", async () => {
+    setOrigin("https://app.elizacloud.ai/");
+    initNotifications();
+    // WS subscriptions still wire up; only the protected hydrate is held.
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+    expect(onWsEvent).toHaveBeenCalled();
+
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+  });
+
+  it("hydrates on mount on a non-Cloud origin regardless of auth (unchanged)", async () => {
+    setOrigin("http://localhost:2138/");
+    initNotifications();
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
   });
 });

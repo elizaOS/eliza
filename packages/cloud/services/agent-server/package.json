@@ -10,7 +10,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/"
   },
@@ -26,10 +26,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.5",
     "@types/node": "^22.19.17",
     "bun-types": "^1.3.10",
     "ioredis-mock": "^8.13.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   }
 }

@@ -22,6 +22,7 @@ app.options("/", (c) => {
 
 app.get("/", async (c) => {
   const corsHeaders = getCorsHeaders(c.req.header("origin") ?? null);
+  // error-policy:J1 The HTTP boundary translates integrity and dependency failures without disclosing key material.
   try {
     const sessionId = c.req.param("session");
     if (!sessionId) {
@@ -44,8 +45,12 @@ app.get("/", async (c) => {
 
     const apiKeyData =
       await cliAuthSessionsService.getAndClearApiKey(sessionId);
-    if (!apiKeyData) {
-      return c.json({ error: "Token unavailable" }, 410, corsHeaders);
+    if (apiKeyData.status === "unavailable") {
+      return c.json(
+        { error: `Token unavailable: ${apiKeyData.reason}` },
+        apiKeyData.reason === "not-found" ? 404 : 410,
+        corsHeaders,
+      );
     }
 
     return c.json(

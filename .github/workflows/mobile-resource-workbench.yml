@@ -58,7 +58,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -96,7 +96,7 @@ jobs:
       ELIZA_WEBVIEW_DEBUG: "1"
       MOBILE_RESOURCE_TIER: ${{ github.event.inputs.tier }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: oven-sh/setup-bun@v2
@@ -133,7 +133,7 @@ jobs:
     env:
       MOBILE_RESOURCE_TIER: ${{ github.event.inputs.tier }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
       - uses: oven-sh/setup-bun@v2

@@ -71,8 +71,8 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_LARGE_MODEL") ??
-    getSetting(runtime, "LARGE_MODEL", "gemini-2.5-pro-preview-03-25") ??
-    "gemini-2.5-pro-preview-03-25"
+    getSetting(runtime, "LARGE_MODEL", "gemini-2.5-pro") ??
+    "gemini-2.5-pro"
   );
 }
 
@@ -107,15 +107,28 @@ export function getActionPlannerModel(runtime: IAgentRuntime): string {
 export function getImageModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_IMAGE_MODEL") ??
-    getSetting(runtime, "IMAGE_MODEL", "gemini-2.5-pro-preview-03-25") ??
-    "gemini-2.5-pro-preview-03-25"
+    getSetting(runtime, "IMAGE_MODEL", "gemini-2.5-pro") ??
+    "gemini-2.5-pro"
   );
 }
 
+/**
+ * Default Google embedding model. `text-embedding-004` (the historical default)
+ * 404s on the current `v1beta` `embedContent` route used by `@google/genai`
+ * — see Gate-1 evidence: bare `text-embedding-004` → 404 NOT_FOUND (v1beta),
+ * breaking every memory embedding write and bundled-document seed. Google's
+ * supported replacement on that route is `gemini-embedding-001`, so that is the
+ * default now. An explicit `GOOGLE_EMBEDDING_MODEL` override still wins.
+ */
+export const DEFAULT_GOOGLE_EMBEDDING_MODEL = "gemini-embedding-001";
+
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "GOOGLE_EMBEDDING_MODEL", "text-embedding-004") ??
-    "text-embedding-004"
+    getSetting(
+      runtime,
+      "GOOGLE_EMBEDDING_MODEL",
+      DEFAULT_GOOGLE_EMBEDDING_MODEL,
+    ) ?? DEFAULT_GOOGLE_EMBEDDING_MODEL
   );
 }
 

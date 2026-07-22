@@ -170,7 +170,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     const events: unknown[] = [];
     const p = queueProc();
     const client = new NativeAcpClient({
-      command: "npx -y @zed-industries/codex-acp@0.14.0",
+      command: "npx -y @agentclientprotocol/codex-acp@1.1.2",
       cwd: "/tmp/native-acp",
       approvalPreset: "autonomous",
       terminal: false,
@@ -181,7 +181,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     await waitForWrites(p, 1);
     expect(spawnMock).toHaveBeenCalledWith(
       "npx",
-      ["-y", "@zed-industries/codex-acp@0.14.0"],
+      ["-y", "@agentclientprotocol/codex-acp@1.1.2"],
       expect.objectContaining({ cwd: "/tmp/native-acp" }),
     );
     expect(writeAt(p, 0)).toMatchObject({

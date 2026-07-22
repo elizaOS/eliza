@@ -31,7 +31,7 @@ export ELIZA_ACP_TRANSPORT=native
 export ELIZA_ACP_DEFAULT_AGENT=elizaos
 export ELIZA_ELIZAOS_ACP_COMMAND="eliza-code-acp"
 export ELIZA_PI_AGENT_ACP_COMMAND="pi-agent"
-export ELIZA_CODEX_ACP_COMMAND="npx -y @zed-industries/codex-acp@0.14.0"
+export ELIZA_CODEX_ACP_COMMAND="npx -y @agentclientprotocol/codex-acp@1.1.2"
 export ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
 ```
 
@@ -145,10 +145,10 @@ All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native`
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. Primary choices: `elizaos`, `pi-agent`, `opencode`. |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
-| `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command. |
-| `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional Codex ACP `sandbox_mode` override: `read-only`, `workspace-write`, or `danger-full-access`. |
+| `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
+| `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional managed Codex ACP sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`. The successor receives these as `INITIAL_AGENT_MODE`; custom commands are not rewritten. |
 | `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | `danger-full-access` | Codex ACP sandbox mode used when Linux Landlock is unavailable. |
-| `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional Codex ACP `approval_policy` override. |
+| `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false`. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
@@ -205,7 +205,7 @@ These live smokes ship with the repo:
 
 ```bash
 # Native AcpService against Codex ACP. No global acpx is required; the default
-# native Codex command is `npx -y @zed-industries/codex-acp@0.14.0`.
+# native Codex command is `npx -y @agentclientprotocol/codex-acp@1.1.2`.
 # Authenticate Codex first.
 bun run build
 RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
@@ -222,7 +222,7 @@ RUN_LIVE_ACPX=1 ELIZA_ACP_TRANSPORT=cli bun run test -- __tests__/live/sub-agent
 ```
 
 `live-native-acp-smoke.mjs` exercises the default native path by spawning a
-real Codex ACP session through `npx -y @zed-industries/codex-acp@0.14.0`,
+real Codex ACP session through `npx -y @agentclientprotocol/codex-acp@1.1.2`,
 sending "what is 7 + 8?", and verifying `task_complete` fires with response
 `"15"`. The Vitest wrapper is skipped unless `RUN_LIVE_NATIVE_ACP=1` is set;
 when enabled, it requires `NATIVE ACP SMOKE PASSED`.

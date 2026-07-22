@@ -2,19 +2,15 @@
  * Tests for the CHANNEL_TOPICS provider — asserts it renders the room's topic
  * LRU most-recent-first, no-ops when the room has no topics or the service is
  * unregistered, and reflects topics hydrated from persisted room metadata after
- * a restart. Deterministic: a real ChannelTopicsService over an in-memory mock
- * runtime, no live model.
+ * a restart. Deterministic: real AgentRuntime instances use the in-memory
+ * database adapter; no model call is involved.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createCharacter } from "../../../character";
+import { InMemoryDatabaseAdapter } from "../../../database/inMemoryAdapter";
+import { AgentRuntime } from "../../../runtime";
 import { ChannelTopicsService } from "../../../services/channel-topics";
-import { createMockRuntime } from "../../../testing/mock-runtime";
-import type {
-	IAgentRuntime,
-	Memory,
-	Room,
-	State,
-	UUID,
-} from "../../../types/index";
+import type { Memory, Room, State, UUID } from "../../../types/index";
 import { channelTopicsProvider } from "./channelTopics";
 
 const ROOM = "00000000-0000-0000-0000-0000000000aa" as UUID;
@@ -23,24 +19,48 @@ function makeRoom(): Room {
 	return { id: ROOM, source: "test", type: "GROUP" as Room["type"] };
 }
 
-async function makeRuntimeWithService(): Promise<{
-	runtime: IAgentRuntime;
-	service: ChannelTopicsService;
-}> {
-	const rooms = new Map<UUID, Room>([[ROOM, makeRoom()]]);
-	const serviceRuntime = createMockRuntime({
-		getRoom: vi.fn(async (id: UUID) => rooms.get(id) ?? null),
-		updateRoom: vi.fn(async (room: Room) => {
-			rooms.set(room.id, room);
-		}),
+class FailingRoomReadAdapter extends InMemoryDatabaseAdapter {
+	failReads = false;
+
+	override async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
+		if (this.failReads) throw new Error("room read unavailable");
+		return super.getRoomsByIds(roomIds);
+	}
+}
+
+const activeRuntimes: AgentRuntime[] = [];
+
+async function makeRuntimeWithService(
+	rooms?: Room[],
+	adapter?: InMemoryDatabaseAdapter,
+): Promise<{ runtime: AgentRuntime; service: ChannelTopicsService }> {
+	const runtime = new AgentRuntime({
+		character: createCharacter({ name: "ChannelTopicsProviderAgent" }),
+		adapter: adapter ?? new InMemoryDatabaseAdapter(),
+		logLevel: "fatal",
+		enableAutonomy: false,
 	});
-	const service = await ChannelTopicsService.start(serviceRuntime);
-	const runtime = createMockRuntime({
-		getService: vi.fn((type: string) =>
-			type === ChannelTopicsService.serviceType ? service : null,
-		),
-	});
+	await runtime.initialize();
+	await runtime.createRooms(rooms ?? [makeRoom()]);
+	await runtime.registerService(ChannelTopicsService);
+	const service = runtime.getService<ChannelTopicsService>(
+		ChannelTopicsService.serviceType,
+	);
+	if (!service) throw new Error("ChannelTopicsService did not register");
+	activeRuntimes.push(runtime);
 	return { runtime, service };
+}
+
+async function makeRuntimeWithoutService(): Promise<AgentRuntime> {
+	const runtime = new AgentRuntime({
+		character: createCharacter({ name: "NoChannelTopicsProviderAgent" }),
+		adapter: new InMemoryDatabaseAdapter(),
+		logLevel: "fatal",
+		enableAutonomy: false,
+	});
+	await runtime.initialize();
+	activeRuntimes.push(runtime);
+	return runtime;
 }
 
 function makeMessage(): Memory {
@@ -55,11 +75,20 @@ function makeMessage(): Memory {
 const EMPTY_STATE = {} as State;
 
 describe("CHANNEL_TOPICS provider", () => {
-	let runtime: IAgentRuntime;
+	let runtime: AgentRuntime;
 	let service: ChannelTopicsService;
 
 	beforeEach(async () => {
 		({ runtime, service } = await makeRuntimeWithService());
+	});
+
+	afterEach(async () => {
+		await Promise.all(
+			activeRuntimes.splice(0).map(async (activeRuntime) => {
+				await activeRuntime.stop();
+				await activeRuntime.close();
+			}),
+		);
 	});
 
 	it("declares the Stage-1 routing scope", () => {
@@ -94,9 +123,7 @@ describe("CHANNEL_TOPICS provider", () => {
 	});
 
 	it("no-ops when the service is not registered", async () => {
-		const noService = createMockRuntime({
-			getService: vi.fn(() => null),
-		});
+		const noService = await makeRuntimeWithoutService();
 		const result = await channelTopicsProvider.get(
 			noService,
 			makeMessage(),
@@ -106,26 +133,14 @@ describe("CHANNEL_TOPICS provider", () => {
 	});
 
 	it("reflects persisted topics via service hydration (post-restart)", async () => {
-		// Fresh service over a runtime whose room already carries persisted topics.
-		const rooms = new Map<UUID, Room>([
-			[
-				ROOM,
-				{
-					id: ROOM,
-					source: "test",
-					type: "GROUP" as Room["type"],
-					metadata: { currentTopics: ["persisted"] },
-				},
-			],
+		const { runtime: providerRuntime } = await makeRuntimeWithService([
+			{
+				id: ROOM,
+				source: "test",
+				type: "GROUP" as Room["type"],
+				metadata: { currentTopics: ["persisted"] },
+			},
 		]);
-		const svcRuntime = createMockRuntime({
-			getRoom: vi.fn(async (id: UUID) => rooms.get(id) ?? null),
-			updateRoom: vi.fn(),
-		});
-		const freshService = await ChannelTopicsService.start(svcRuntime);
-		const providerRuntime = createMockRuntime({
-			getService: vi.fn(() => freshService),
-		});
 
 		const result = await channelTopicsProvider.get(
 			providerRuntime,
@@ -133,5 +148,28 @@ describe("CHANNEL_TOPICS provider", () => {
 			EMPTY_STATE,
 		);
 		expect(result.text).toBe("# Current topics in this channel: persisted");
+	});
+
+	it("renders unavailable when persisted topics cannot be loaded", async () => {
+		const adapter = new FailingRoomReadAdapter();
+		const { runtime: failingRuntime } = await makeRuntimeWithService(
+			[makeRoom()],
+			adapter,
+		);
+		adapter.failReads = true;
+
+		const result = await channelTopicsProvider.get(
+			failingRuntime,
+			makeMessage(),
+			EMPTY_STATE,
+		);
+		expect(result).toEqual({
+			text: "# Current topics unavailable",
+			values: { channelTopicsUnavailable: true },
+			data: { unavailable: true },
+		});
+		expect(failingRuntime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({ code: "CHANNEL_TOPICS_HYDRATE_FAILED" }),
+		);
 	});
 });

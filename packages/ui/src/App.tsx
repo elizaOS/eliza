@@ -70,12 +70,14 @@ import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
-import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { NotificationBanners } from "./components/shell/NotificationBanners";
-import { NotificationsShellBoot } from "./components/shell/notifications-boot";
+import {
+  NotificationsDataBoot,
+  NotificationsShellBoot,
+} from "./components/shell/notifications-boot";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
@@ -222,7 +224,6 @@ import {
   isCharacterSectionPath,
 } from "./components/character/CharacterSectionNav";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
-import { LauncherSurface } from "./components/pages/LauncherSurface";
 import {
   isWalletSectionPath,
   WalletSectionNav,
@@ -1306,7 +1307,7 @@ function ViewLayoutSurface({
  * of the retained Home/Launcher surface, not a chat surface.
  */
 function ViewUnavailableFallback(): ReactNode {
-  return <HomeScreenMount initialPage="launcher" />;
+  return <HomeScreenMount initialSection="apps" />;
 }
 
 function renderPhoneSurface(
@@ -1325,7 +1326,7 @@ function renderPhoneSurface(
 function renderAppsSurface(navigationPath: string): ReactNode {
   if (!APPS_ENABLED) return <ViewUnavailableFallback />;
   if (!getAppSlugFromPath(navigationPath)) {
-    return <HomeScreenMount initialPage="launcher" />;
+    return <HomeScreenMount initialSection="apps" />;
   }
   return (
     <TabContentView>
@@ -1741,7 +1742,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS_TRANSPARENT}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-        <HomeScreenMount initialPage="home" />
+        <HomeScreenMount initialSection="home" />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -1966,15 +1967,15 @@ function ContinuousChatOverlayMount(): ReactNode {
 }
 
 /**
- * The iOS-style home dashboard for the /chat route — recent activity, recent
- * messages, and a customizable widget area. Sits beside the retained
- * Launcher page behind the always-present chat overlay. Wires tile taps to the real nav:
- * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
+ * The iOS-style home dashboard for chat and launcher routes. Notifications,
+ * apps, and ranked widgets share one vertical surface behind the always-present
+ * chat overlay. Host-provided tile taps still route through the real nav:
+ * builtin tabs via setTab, plugin/remote views via the navigate-view event.
  */
 function HomeScreenMount({
-  initialPage = "home",
+  initialSection = "home",
 }: {
-  initialPage?: "home" | "launcher";
+  initialSection?: "home" | "apps";
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
   const firstRunOpen = useAppSelector((s) => s.firstRunComplete === false);
@@ -2007,9 +2008,8 @@ function HomeScreenMount({
     ),
     [Home, onOpenTile],
   );
-  const launcher = useMemo(() => <LauncherSurface />, []);
   // Keep the dashboard warm during first-run, but hide its clock, widgets, and
-  // launcher so the onboarding overlay reveals only the shared wallpaper.
+  // apps so the onboarding overlay reveals only the shared wallpaper.
   return (
     <div
       aria-hidden={firstRunOpen ? "true" : undefined}
@@ -2019,16 +2019,23 @@ function HomeScreenMount({
         firstRunOpen && "invisible",
       )}
     >
-      <HomeLauncherSurface
-        home={home}
-        launcher={launcher}
-        initialPage={initialPage}
-      />
+      <section
+        data-testid="home-launcher-surface"
+        data-page={initialSection === "apps" ? "launcher" : "home"}
+        className="absolute inset-0"
+      >
+        {/* Native harnesses read the route intent through the accessibility
+            tree; the combined visual surface has no separate horizontal page. */}
+        <span className="sr-only" data-testid="home-launcher-page-probe">
+          {`home-launcher-page:${initialSection === "apps" ? "launcher" : "home"}`}
+        </span>
+        {home}
+      </section>
     </div>
   );
 }
 
-export function App() {
+function AppContent() {
   const {
     startupError,
     startupCoordinator,
@@ -3053,5 +3060,14 @@ export function App() {
         ) : null}
       </ShellControllerProvider>
     </BugReportProvider>
+  );
+}
+
+export function App() {
+  return (
+    <>
+      <NotificationsDataBoot />
+      <AppContent />
+    </>
   );
 }

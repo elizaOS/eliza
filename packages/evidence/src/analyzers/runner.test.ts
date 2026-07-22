@@ -110,8 +110,10 @@ describe("analyzeArtifacts (runner integration)", () => {
     // Screenshot subject: cpu heuristics ran, gpu ocr.unlimited skipped-tier,
     // diff analyzers skipped for lack of a baseline resolver.
     const shotSubject = subjects.find((s) => s.artifact === shotEntry.path);
-    expect(shotSubject).toBeDefined();
-    const r = shotSubject?.document.results ?? {};
+    if (!shotSubject) {
+      throw new Error(`missing analysis subject for ${shotEntry.path}`);
+    }
+    const r = shotSubject.document.results;
     expect(r["ocr.tesseract"]).toBeDefined();
     expect(r["color.palette"].status).toBe("ran");
     expect(r["color.corners"].status).toBe("ran");
@@ -122,11 +124,12 @@ describe("analyzeArtifacts (runner integration)", () => {
     expect(r["diff.region"].status).toBe("skipped-missing-tool");
 
     // analysis.json landed beside the screenshot and is valid.
-    expect(shotSubject?.documentPath).toBe(`${shotEntry.path}.analysis.json`);
-    const docOnDisk = join(
-      bundle.dir,
-      ...(shotSubject?.documentPath as string).split("/"),
-    );
+    const documentPath = shotSubject.documentPath;
+    expect(documentPath).toBe(`${shotEntry.path}.analysis.json`);
+    if (!documentPath) {
+      throw new Error(`missing analysis document for ${shotEntry.path}`);
+    }
+    const docOnDisk = join(bundle.dir, ...documentPath.split("/"));
     expect(existsSync(docOnDisk)).toBe(true);
     const parsed = JSON.parse(readFileSync(docOnDisk, "utf8"));
     expect(parsed.schema).toBe(1);

@@ -62,6 +62,10 @@ import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
 } from "../../gestures";
+import {
+  GLASS_SHEET_BACKDROP_FILTER,
+  GLASS_SHEET_FILL,
+} from "../../glass/tokens";
 import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
@@ -85,7 +89,6 @@ import {
 } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
-import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { tryHandleTutorialText } from "../../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -3809,10 +3812,10 @@ export function ContinuousChatOverlay({
     return () => window.removeEventListener("click", onClick, true);
   }, []);
 
-  // The backdrop is visual-only while the sheet is open so launcher/home drags
-  // can hit the real HomeLauncherSurface underneath. This document-level tap
-  // detector preserves the old "tap outside to collapse" behavior without
-  // stealing horizontal swipes or vertical scroll from the background.
+  // The backdrop is visual-only while the sheet is open so gestures can still
+  // reach the active view or the inline home/app surface underneath. This
+  // document-level detector keeps outside taps able to collapse the sheet
+  // without stealing horizontal gestures or vertical scroll from the background.
   React.useEffect(() => {
     // While pinned for onboarding the chat is undismissable, so the outside-tap
     // swallower must not install: it capture-eats pointerup on everything
@@ -4364,20 +4367,18 @@ export function ContinuousChatOverlay({
     onStart: resetPullPeak,
     onDrag: onDragOffset,
     onDragReset: settleDrag,
-    // Horizontal swipe carries two meanings by sheet state: collapsed, it is
-    // the home↔launcher rail nav; with the sheet OPEN, dragging the chat
-    // sideways (either direction) DISMISSES it — collapse to the pill, the
-    // shared "put the chat away" landing.
+    // A sideways drag dismisses an open chat to the pill. The collapsed
+    // composer still classifies and consumes the track so a coalesced horizontal
+    // release cannot masquerade as a tap, but it performs no navigation now
+    // that Home and apps share one surface.
     swipeEnabled: true,
     onSwipeLeft: () => {
       settleDrag();
       if (sheetOpen) collapseToPill();
-      else goLauncher();
     },
     onSwipeRight: () => {
       settleDrag();
       if (sheetOpen) collapseToPill();
-      else goHome();
     },
     // Flicks step one detent; released drags from the collapsed input honor the
     // live height so a long pull can land full instead of snapping back to half.
@@ -5014,27 +5015,31 @@ export function ContinuousChatOverlay({
               // sheet radius squares off as it maximizes and rounds back as it
               // de-maximizes, in lockstep with the side/bottom insets.
               borderRadius: morphRadius,
-              // REAL frosted glass on the inset sheet: a mostly-translucent dark
-              // fill over a strong backdrop blur, so the live view behind reads
-              // as a soft, bright frost — not the grayish near-opaque slab a high
-              // fill produced. The heavy blur (30px) + light saturate is what
-              // keeps text readable while letting the backdrop's color and light
-              // through: nothing sharp bleeds, but the panel is unmistakably
-              // glass, not a gray card. `--card` / `--bg` are scoped by
-              // CHAT_PANEL_THEME on the fieldset, not the orange app theme behind.
-              // Full-bleed stays fully opaque (it covers the whole screen — there
-              // is nothing to see through, and the blur would be wasted battery).
+              // REAL frosted glass on the inset sheet, sourced from the glass
+              // token system (`glass/tokens.ts`) so the chat sheet is a genuine
+              // liquid-glass SYSTEM surface, not a hand-rolled recipe that drifts
+              // from the token: `GLASS_SHEET_FILL` is a mostly-translucent dark
+              // card fill so the live view behind reads as a soft, bright frost
+              // (not a gray near-opaque slab), and `GLASS_SHEET_BACKDROP_FILTER`
+              // is a heavy neutral blur with NO saturate — the blur keeps text
+              // readable while letting the backdrop's color and light through,
+              // and saturate is omitted because it muddies the warm field to
+              // brown (the whole liquid-glass system is neutral white/black
+              // only). `--card` / `--bg` are scoped by CHAT_PANEL_THEME on the
+              // fieldset, not the orange app theme behind. Full-bleed stays fully
+              // opaque (it covers the whole screen — there is nothing to see
+              // through, and the blur would be wasted battery).
               backgroundColor: firstRunOpen
                 ? "transparent"
                 : fullBleed
                   ? "var(--bg)"
-                  : "color-mix(in srgb, var(--card) 62%, transparent)",
+                  : GLASS_SHEET_FILL,
               backdropFilter: fullBleed
                 ? undefined
-                : "blur(30px) saturate(1.4)",
+                : GLASS_SHEET_BACKDROP_FILTER,
               WebkitBackdropFilter: fullBleed
                 ? undefined
-                : "blur(30px) saturate(1.4)",
+                : GLASS_SHEET_BACKDROP_FILTER,
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to

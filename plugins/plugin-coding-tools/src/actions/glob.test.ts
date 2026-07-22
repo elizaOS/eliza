@@ -8,12 +8,12 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { globHandler } from "./glob.js";
+import { globHandler, globToRegExp } from "./glob.js";
 
 let tmpRoot: string;
 let blockedPath: string;
@@ -142,5 +142,44 @@ describe("GLOB", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param");
+  });
+});
+
+describe("globToRegExp (fallback matcher)", () => {
+  it("mirrors native glob semantics per branch", () => {
+    // `**/` spans directories, including zero of them.
+    expect(globToRegExp("**/*.ts").test("a.ts")).toBe(true);
+    expect(globToRegExp("**/*.ts").test("deep/nested/a.ts")).toBe(true);
+    // bare `**` spans everything.
+    expect(globToRegExp("src/**").test("src/a/b/c.txt")).toBe(true);
+    // single `*` never crosses a slash.
+    expect(globToRegExp("*.ts").test("dir/a.ts")).toBe(false);
+    expect(globToRegExp("*.ts").test("a.ts")).toBe(true);
+    // `?` is exactly one non-slash char.
+    expect(globToRegExp("a?.ts").test("ab.ts")).toBe(true);
+    expect(globToRegExp("a?.ts").test("a/.ts")).toBe(false);
+    // dots and regex specials are literal.
+    expect(globToRegExp("a.ts").test("aXts")).toBe(false);
+    expect(globToRegExp("a+(b).ts").test("a+(b).ts")).toBe(true);
+    expect(globToRegExp("a+(b).ts").test("ab.ts")).toBe(false);
+  });
+});
+
+describe("globHandler — read-only query stays silent", () => {
+  // The contract this PR establishes: raw listings/matches reach the model via
+  // the ActionResult and the user via the planner's final message. Posting each
+  // exploratory call's dump spammed chat (#16589) — the callback must never fire.
+  it("does not invoke the visible chat callback", async () => {
+    const { runtime, message } = await buildRuntime();
+    const callback = vi.fn();
+    const result = await globHandler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { pattern: "**/*.ts" } },
+      callback,
+    );
+    expect(result.success).toBe(true);
+    expect(callback).not.toHaveBeenCalled();
   });
 });

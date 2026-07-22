@@ -5,9 +5,10 @@
 // pipeline with real processes on any platform.
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DEFAULT_TEST_TIMEOUT_MS } from "./run-bun-tests-helpers.mjs";
 
 const scriptsDir = import.meta.dir;
 const wrapperPath = path.join(scriptsDir, "run-bun-tests.mjs");
@@ -89,6 +90,9 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
     const quarantinePasses = run.invocations.filter((i) => !isMainPassInvocation(i.argv));
     expect(mainPasses).toHaveLength(1);
     expect(quarantinePasses).toHaveLength(2);
+    for (const invocation of run.invocations) {
+      expect(invocation.argv).toContain(`--timeout=${DEFAULT_TEST_TIMEOUT_MS}`);
+    }
 
     // Main pass excludes the quarantined suite: ignore-pattern flag present,
     // suite NOT passed as a positional file.
@@ -152,7 +156,7 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
     expect(quarantinePasses.length).toBeGreaterThanOrEqual(1);
   }, 60_000);
 
-  test("quarantine off (ELIZA_WIN_PGLITE_QUARANTINE=0): single legacy bun test --isolate invocation", () => {
+  test("quarantine off: single invocation uses the package timeout default", () => {
     const run = runWrapper({
       plan: ["pass"],
       env: { ELIZA_WIN_PGLITE_QUARANTINE: "0" },
@@ -162,6 +166,7 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
     const argv = run.invocations[0].argv;
     expect(argv[0]).toBe("test");
     expect(argv).toContain("--isolate");
+    expect(argv).toContain(`--timeout=${DEFAULT_TEST_TIMEOUT_MS}`);
     expect(argv.some((arg) => arg.startsWith("--path-ignore-patterns="))).toBe(false);
     expect(argv).not.toContain(QUARANTINED_SUITE);
   }, 60_000);
@@ -191,12 +196,62 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
     expect(run.merged).toContain("watchdog: child exceeded 3000ms");
   }, 60_000);
 
-  test("passthrough args reach both passes", () => {
-    const run = runWrapper({ plan: ["pass"], args: ["--timeout", "120000"] });
-    expect(run.status).toBe(0);
-    for (const invocation of run.invocations) {
-      expect(invocation.argv).toContain("--timeout");
-      expect(invocation.argv).toContain("120000");
+  test.each([
+    ["separated", ["--timeout", "120000"]],
+    ["equals", ["--timeout=120000"]],
+  ])(
+    "caller %s timeout form reaches both passes unchanged",
+    (_label, args) => {
+      const run = runWrapper({ plan: ["pass"], args });
+      expect(run.status).toBe(0);
+      for (const invocation of run.invocations) {
+        expect(invocation.argv.slice(-args.length)).toEqual(args);
+        expect(invocation.argv).not.toContain(`--timeout=${DEFAULT_TEST_TIMEOUT_MS}`);
+      }
+    },
+    60_000,
+  );
+
+  test("real Bun receives the default and both caller override forms", () => {
+    const stateDir = mkdtempSync(path.join(tmpdir(), "run-bun-tests-timeout-e2e-"));
+    const probePath = path.join(stateDir, "timeout-probe.test.ts");
+    writeFileSync(
+      probePath,
+      'import { expect, test } from "bun:test";\n' +
+        'test("timeout probe", async () => {\n' +
+        "  await Bun.sleep(5_250);\n" +
+        "  expect(true).toBe(true);\n" +
+        "});\n",
+    );
+
+    const env = { ...process.env, ELIZA_WIN_PGLITE_QUARANTINE: "0" };
+    delete env.ELIZA_BUN_TEST_BIN;
+    delete env.ELIZA_BUN_TEST_BIN_ARGS;
+
+    try {
+      const defaultRun = spawnSync("node", [wrapperPath, probePath], {
+        cwd: scriptsDir,
+        encoding: "utf8",
+        timeout: 20_000,
+        env,
+      });
+      expect(defaultRun.status).toBe(0);
+      expect(`${defaultRun.stdout ?? ""}${defaultRun.stderr ?? ""}`).toContain("1 pass");
+
+      for (const overrideArgs of [["--timeout", "50"], ["--timeout=50"]]) {
+        const overrideRun = spawnSync("node", [wrapperPath, probePath, ...overrideArgs], {
+          cwd: scriptsDir,
+          encoding: "utf8",
+          timeout: 20_000,
+          env,
+        });
+        expect(overrideRun.status).toBe(1);
+        expect(`${overrideRun.stdout ?? ""}${overrideRun.stderr ?? ""}`).toContain(
+          "timed out after 50ms",
+        );
+      }
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 30_000);
 });

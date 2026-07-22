@@ -77,7 +77,13 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "SETTINGS",
     "VIEWS",
   ],
-  "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
+  "@elizaos/plugin-coding-tools": [
+    "FILE",
+    "SHELL",
+    "WEB_FETCH",
+    "WEB_SEARCH",
+    "WORKTREE",
+  ],
   "@elizaos/plugin-commands": [
     "ACCOUNTS_COMMAND",
     "BACKEND_COMMAND",
@@ -86,7 +92,6 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "CONTEXT_COMMAND",
     "ELEVATED_COMMAND",
     "HELP_COMMAND",
-    "MODELS_COMMAND",
     "MODEL_COMMAND",
     "NEW_COMMAND",
     "QUEUE_COMMAND",
@@ -205,6 +210,10 @@ const KNOWN_UNCOVERED: readonly string[] = [
   // current runtime action surface without registering them as top-level actions.
   "CLOSE_ALL_VIEWS",
   "CLOSE_VIEW",
+  // Coding-tools web actions are unit-covered but do not yet have a strict,
+  // network-free scenario fixture. Keep them visible in the no-growth ledger.
+  "WEB_FETCH",
+  "WEB_SEARCH",
   // New speaker-diarization action; no deterministic keyless scenario yet.
   "IDENTIFY_SPEAKER",
   // New on-device transcription actions; no deterministic keyless scenario yet.
@@ -232,10 +241,9 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "SMARTGLASSES_DISPLAY_TEXT",
   "SMARTGLASSES_MICROPHONE",
   "SMARTGLASSES_STATUS",
-  // plugin-commands slash-command actions (/help, /status, /models, /reset,
-  // /compact, /think, /model, /tts, …) are dispatched through the command
-  // palette, not the keyless scenario pipeline, so they have no deterministic
-  // scenario yet.
+  // plugin-commands slash-command actions (/help, /status, /reset, /compact,
+  // /think, /model, /tts, …) are dispatched through the command palette, not
+  // the keyless scenario pipeline, so they have no deterministic scenario yet.
   "ACCOUNTS_COMMAND",
   "BACKEND_COMMAND",
   "COMMANDS_COMMAND",
@@ -243,7 +251,6 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "CONTEXT_COMMAND",
   "ELEVATED_COMMAND",
   "HELP_COMMAND",
-  "MODELS_COMMAND",
   "MODEL_COMMAND",
   "NEW_COMMAND",
   "QUEUE_COMMAND",

@@ -17,6 +17,16 @@ import {
 } from "../lifeops-bench-handler.js";
 import { LifeOpsFakeBackend } from "../lifeops-fake-backend.js";
 
+const fakeRuntimeProvenance = {
+  native_runtime_class: "@elizaos/core.AgentRuntime",
+  native_runtime_api: "useModel",
+  transport: "eliza_benchmark_http",
+  tool_bridge: "runtime_model_native_tools",
+  direct_model_bypass: false,
+  stand_in: false,
+  release_evidence: true,
+} as const;
+
 // --------------------------------------------------------------------------
 // Fixture: a minimal LifeWorld document with one calendar + one event.
 // --------------------------------------------------------------------------
@@ -709,12 +719,14 @@ describe("LifeOpsBenchHandler", () => {
               },
             ],
             usage: { promptTokens: 10, completionTokens: 4, totalTokens: 14 },
+            runtimeProvenance: fakeRuntimeProvenance,
           };
         }
         // Touch backend to confirm reference threading works.
         return {
           text: `current world hash=${backend.stateHash().slice(0, 6)}`,
           toolCalls: [],
+          runtimeProvenance: fakeRuntimeProvenance,
         };
       },
     });
@@ -815,7 +827,11 @@ describe("LifeOpsBenchHandler", () => {
 
   it("returns 404 for an unknown task_id world_state", async () => {
     const handler = new LifeOpsBenchHandler({
-      invokePlanner: async () => ({ text: "", toolCalls: [] }),
+      invokePlanner: async () => ({
+        text: "",
+        toolCalls: [],
+        runtimeProvenance: fakeRuntimeProvenance,
+      }),
     });
     const req = fakeReq("GET", null);
     const res = fakeRes();
@@ -836,6 +852,7 @@ describe("LifeOpsBenchHandler", () => {
         toolCalls: [
           { name: "exotic.method.not_implemented", arguments: { x: 1 } },
         ],
+        runtimeProvenance: fakeRuntimeProvenance,
       }),
     });
 
@@ -877,6 +894,7 @@ describe("LifeOpsBenchHandler", () => {
               arguments: { threadId: "t1" },
             },
           ],
+          runtimeProvenance: fakeRuntimeProvenance,
         };
       },
     });
@@ -1022,6 +1040,7 @@ describe("LifeOpsBenchHandler CALENDAR umbrella unwrap (P0-5)", () => {
             arguments: args.toolArguments,
           },
         ],
+        runtimeProvenance: fakeRuntimeProvenance,
       }),
     });
 
@@ -1114,6 +1133,7 @@ describe("LifeOpsBenchHandler CALENDAR umbrella unwrap (P0-5)", () => {
             arguments: { query: "meeting" },
           },
         ],
+        runtimeProvenance: fakeRuntimeProvenance,
       }),
     });
 

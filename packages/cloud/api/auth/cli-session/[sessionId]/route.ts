@@ -39,10 +39,20 @@ app.get("/", async (c) => {
     if (session.status === "authenticated") {
       const apiKeyData =
         await cliAuthSessionsService.getAndClearApiKey(sessionId);
-      if (!apiKeyData) {
+      if (apiKeyData.status === "unavailable") {
+        if (
+          apiKeyData.reason === "consumed" ||
+          apiKeyData.reason === "claim-lost"
+        ) {
+          return c.json(
+            { status: "authenticated", message: "API key already retrieved" },
+            200,
+            corsHeaders,
+          );
+        }
         return c.json(
-          { status: "authenticated", message: "API key already retrieved" },
-          200,
+          { error: `API key unavailable: ${apiKeyData.reason}` },
+          apiKeyData.reason === "not-found" ? 404 : 410,
           corsHeaders,
         );
       }

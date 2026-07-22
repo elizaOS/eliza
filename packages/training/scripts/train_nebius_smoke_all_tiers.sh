@@ -48,8 +48,9 @@
 #                                  data/final-eliza1-smoke. SMOKE-CORPUS-BUILDER
 #                                  is responsible for producing
 #                                    $SMOKE_DATA_DIR/{train,val,test}.jsonl
-#                                  (~10 records each is enough — this is a
-#                                  pipeline smoke, not a quality run).
+#                                  (the tracked fixture has 16/2/2 synthetic
+#                                  rows; this is a pipeline smoke, not a
+#                                  quality run).
 #   HUGGING_FACE_HUB_TOKEN       for gated Gemma access (forwarded to remote).
 #   ELIZA_SMOKE_RUN_TAG          stem for per-tier run names. Default
 #                                  "smoke-all-$(date +%s)". Final run name per

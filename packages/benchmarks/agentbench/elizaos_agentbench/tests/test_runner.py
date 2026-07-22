@@ -3,11 +3,13 @@ Tests for AgentBench runner.
 """
 
 import tempfile
+import json
 from pathlib import Path
 
 import pytest
 
 from elizaos_agentbench import upstream_loader
+from elizaos_agentbench.cli import create_parser, run_benchmark
 from elizaos_agentbench.runner import AgentBenchRunner, MemoryTracker, run_agentbench
 from elizaos_agentbench.types import (
     AgentBenchConfig,
@@ -161,6 +163,100 @@ class TestConvenienceFunction:
 
 
 class TestTaskLoadFailures:
+    @pytest.mark.asyncio
+    async def test_full_all_selection_refuses_partial_eight_environment_run(
+        self, tmp_path: Path
+    ) -> None:
+        args = create_parser().parse_args(
+            [
+                "run",
+                "--runtime",
+                "hermes",
+                "--data-mode",
+                "full",
+                "--split",
+                "test",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+        assert await run_benchmark(args) == 1
+        assert not (tmp_path / "agentbench-results.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_auto_all_selection_is_also_refused_before_publication(
+        self, tmp_path: Path
+    ) -> None:
+        args = create_parser().parse_args(
+            [
+                "run",
+                "--runtime",
+                "hermes",
+                "--data-mode",
+                "auto",
+                "--output",
+                str(tmp_path),
+            ]
+        )
+
+        assert await run_benchmark(args) == 1
+        assert not (tmp_path / "agentbench-results.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_full_all_count_covers_exact_official_eight_environment_corpus(
+        self,
+        capsys,
+    ) -> None:
+        args = create_parser().parse_args(
+            [
+                "run",
+                "--data-mode",
+                "full",
+                "--split",
+                "test",
+                "--count-scenarios",
+                "--expand-scenarios",
+            ]
+        )
+
+        assert await run_benchmark(args) == 0
+        counts = json.loads(capsys.readouterr().out)
+        assert len(counts) == 8
+        assert sum(item["base"] for item in counts) == 1_264
+        assert sum(item["edge"] for item in counts) == 12_640
+        assert sum(item["total"] for item in counts) == 13_904
+        assert {item["environment"] for item in counts} == {
+            env.value for env in AgentBenchEnvironment
+        }
+
+    @pytest.mark.asyncio
+    async def test_adapter_initialization_failure_is_not_silently_omitted(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        config = AgentBenchConfig(
+            output_dir=str(tmp_path),
+            enable_memory_tracking=False,
+            data_mode=AgentBenchDataMode.FIXTURE,
+        )
+        for env in AgentBenchEnvironment:
+            config.get_env_config(env).enabled = False
+        config.db_config = EnvironmentConfig(enabled=True, max_tasks=1)
+        runner = AgentBenchRunner(config=config)
+
+        async def fail_initialize() -> None:
+            raise RuntimeError("database unavailable")
+
+        adapter = runner._create_adapter(
+            AgentBenchEnvironment.DATABASE,
+            config.db_config,
+        )
+        monkeypatch.setattr(adapter, "initialize", fail_initialize)
+        monkeypatch.setattr(runner, "_create_adapter", lambda *_args: adapter)
+
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            await runner.run_benchmarks()
+
     def test_zero_loaded_tasks_fail_fast_unless_allowed(self, monkeypatch) -> None:
         config = AgentBenchConfig(
             enable_memory_tracking=False,

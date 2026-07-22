@@ -14,6 +14,23 @@ and cross-checks the result against the DOM verdict already in `report.json`.
 The OCR engine is installed by the normal workspace `bun install`; if it is
 missing or cannot initialize, the gate fails instead of skipping the check.
 
+OCR silence is not proof of blank pixels. The shared evidence primitive first
+runs whole-page OCR and retains its transcript and mean confidence. A weak pass
+(fewer than two words or below 45% confidence) gets one deterministic retry:
+the image is enlarged up to 3×/2400 px, converted to normalized grayscale,
+sharpened, thresholded at 225, and read with sparse-text segmentation. The raw
+transcript/confidence for both attempts and the selected mode are written to the
+triage report. Separately, downsampled pixel analysis proves blank frames only
+when they have no opaque samples or a single quantized color. Low-confidence OCR
+on a visually populated frame is `needs-eyeball`, never “pixels are blank.”
+
+This split is load-bearing for icon-heavy mobile launchers (#16327). On the
+390×844 reproduction, default packaged Tesseract returned only `oY)` at 40%
+confidence. The high-contrast sparse pass recovered 49 words at 72% confidence,
+including the launcher labels, while pixel analysis measured 210 color buckets
+and a 33.7% dominant-color ratio. A slug exemption would also hide a truly blank
+launcher; the evidence-driven split keeps that failure armed.
+
 ## What it produces
 
 - **Verifications** — a view whose pixels contain every label it's supposed to
@@ -29,8 +46,8 @@ missing or cannot initialize, the gate fails instead of skipping the check.
 
 | File | Role |
 |------|------|
-| `scripts/mvp-visual-verify/ocr.mjs` | Shared OCR engine resolver. Prefers packaged `tesseract.js`, with an explicit system `tesseract` fallback for debugging. |
-| `test/ui-smoke/ocr-content-rules.ts` | Pure, dependency-free verdict rules (blank / dev-string / placeholder / expectation). Unit-tested; no OCR engine, no `page`, no fs. |
+| `scripts/mvp-visual-verify/ocr.mjs` | Shared OCR engine and pixel-diagnostic exports. Prefers packaged `tesseract.js`, with an explicit system `tesseract` fallback for debugging. |
+| `test/ui-smoke/ocr-content-rules.ts` | Pure, dependency-free verdict rules (proven blank / inconclusive OCR / dev-string / placeholder / expectation). Unit-tested; no OCR engine, no `page`, no fs. |
 | `test/ui-smoke/ocr-view-expectations.ts` | Per-builtin-view expectation manifest (required/forbidden on-screen labels), seeded from the real OCR of a healthy capture. |
 | `test/ui-smoke/ocr-triage-baseline.json` | `slug::viewport` of pixel-broken renders already tracked by an issue. Ratchet posture: known debt is reported but non-gating; a NEW pixel-broken render fails the gate. |
 | `scripts/ocr-triage.ts` | CLI: OCRs a capture dir, applies the rules, cross-checks `report.json`, writes `ocr-triage.json`, exits non-zero on a new regression. |

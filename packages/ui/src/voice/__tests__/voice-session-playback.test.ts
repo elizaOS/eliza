@@ -19,6 +19,16 @@ function scriptNodeOf(ctx: FakePlaybackAudioContext) {
   return node;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   FakeVoiceAudioWorkletNode.reset();
@@ -82,6 +92,29 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     expect(ctx.closed).toBe(true);
   });
 
+  it("cancels stalled AudioWorklet setup and closes the provisional context", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const moduleLoad = deferred<void>();
+    const addModule = vi.fn(() => moduleLoad.promise);
+    const ctx = new FakePlaybackWorkletAudioContext();
+    Object.defineProperty(ctx, "audioWorklet", {
+      value: { addModule },
+    });
+    const controller = new AbortController();
+
+    const starting = createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(addModule).toHaveBeenCalledTimes(1));
+
+    controller.abort();
+    await expect(starting).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(ctx.closed).toBe(true);
+    moduleLoad.resolve();
+  });
+
   it("uses the ScriptProcessor backend when AudioWorklet is absent", async () => {
     const ctx = new FakePlaybackAudioContext();
     const pb = await createVoiceSessionPlayback({
@@ -136,6 +169,59 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     await pb.unlock();
     expect(pb.unlocked).toBe(true);
     expect(pb.needsUnlock).toBe(false);
+    const out = scriptNodeOf(ctx).render(4);
+    for (let i = 0; i < 4; i += 1) expect(out[i]).toBeCloseTo(0.5, 2);
+    await pb.stop();
+  });
+
+  it("flush clears the unlock CTA when all gesture-blocked audio is discarded", async () => {
+    const ctx = new FakePlaybackAudioContext();
+    const onUnlockChange = vi.fn();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      onUnlockChange,
+    });
+    pb.enqueue(pcmFrame(0.5, 4));
+    expect(pb.needsUnlock).toBe(true);
+
+    pb.flush();
+
+    expect(pb.needsUnlock).toBe(false);
+    expect(onUnlockChange).toHaveBeenLastCalledWith(false);
+    await pb.stop();
+  });
+
+  it("invokes unlock on creation without letting a pending autoplay promise stall setup", async () => {
+    let resolveResume: (() => void) | undefined;
+    class PendingResumeContext extends FakePlaybackAudioContext {
+      override resume(): Promise<void> {
+        return new Promise((resolve) => {
+          resolveResume = () => {
+            this.state = "running";
+            resolve();
+          };
+        });
+      }
+    }
+
+    const ctx = new PendingResumeContext();
+    const onUnlockChange = vi.fn();
+    // This resolves even though resume() is still pending: mint/connection must
+    // never wait indefinitely for a browser's next activation gesture.
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      unlockOnCreate: true,
+      onUnlockChange,
+    });
+    pb.enqueue(pcmFrame(0.5, 4));
+    expect(pb.needsUnlock).toBe(true);
+    expect(onUnlockChange).toHaveBeenLastCalledWith(true);
+
+    resolveResume?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pb.needsUnlock).toBe(false);
+    expect(onUnlockChange).toHaveBeenLastCalledWith(false);
     const out = scriptNodeOf(ctx).render(4);
     for (let i = 0; i < 4; i += 1) expect(out[i]).toBeCloseTo(0.5, 2);
     await pb.stop();

@@ -84,7 +84,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
@@ -115,7 +115,7 @@ jobs:
       # rejects 0.0.0.0/0. Set as a repo-level GH var, e.g. '["1.2.3.4/32"]'.
       TF_VAR_operator_ingress_cidrs: ${{ vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}

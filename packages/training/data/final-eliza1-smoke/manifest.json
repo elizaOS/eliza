@@ -1,158 +1,84 @@
 {
-  "schema": "eliza.eliza1_smoke_corpus_manifest.v1",
-  "purpose": "ultra-light smoke corpus to validate the e2e SFT pipeline. NOT a real fine-tune mix.",
-  "build_date": "2026-05-14T06:44:51.048622+00:00",
-  "seed": 42,
+  "generator": {
+    "path": "scripts/build_eliza1_smoke_corpus.py",
+    "revision": 3,
+    "sha256": "380f4354657ff41abf8421081876fe44fde4f447d42efe319ce6344643761485"
+  },
+  "purpose": "Tiny synthetic fixture for exercising corpus formatting and the end-to-end SFT pipeline; it is not a quality-training corpus.",
+  "schema": "eliza.eliza1_smoke_corpus_manifest.v2",
+  "serialization": {
+    "encoding": "utf-8",
+    "json": "compact with lexicographically sorted object keys",
+    "newline": "LF",
+    "record": "exact object returned by format_record",
+    "split_assignment": "explicit source envelope; source order preserved"
+  },
+  "source": {
+    "external_sources": [],
+    "kind": "synthetic",
+    "license": "MIT",
+    "path": "fixtures/eliza1-smoke-source.jsonl",
+    "rows": 20,
+    "schema": "eliza.synthetic_smoke_source.v1",
+    "sha256": "e422e35c876b6ee3e664ca3011cc2440ae7590ea95f57024787cff3fcbd5d75a",
+    "source_controlled": true
+  },
   "splits": {
+    "test": {
+      "bytes": 463,
+      "ids": [
+        "test-native-01",
+        "test-direct-01"
+      ],
+      "rows": 2,
+      "sha256": "13b384de46cf27d7112ac18f2fcf4fc37b90cb1bb7b502c7d198f73677584ea3"
+    },
     "train": {
-      "total": 314,
-      "format_record_ok": 314,
-      "format_record_failed": 0
+      "bytes": 4430,
+      "ids": [
+        "train-direct-01",
+        "train-direct-02",
+        "train-direct-03",
+        "train-direct-04",
+        "train-direct-05",
+        "train-direct-06",
+        "train-multiturn-01",
+        "train-multiturn-02",
+        "train-multiturn-03",
+        "train-multiturn-04",
+        "train-native-01",
+        "train-native-02",
+        "train-tool-01",
+        "train-tool-02",
+        "train-legacy-01",
+        "train-legacy-02"
+      ],
+      "rows": 16,
+      "sha256": "abdfcc871d354af9f46224103bd425cf16953b807fa2d3f1c1694858ee5fe930"
     },
     "val": {
-      "total": 39,
-      "format_record_ok": 39,
-      "format_record_failed": 0
-    },
-    "test": {
-      "total": 39,
-      "format_record_ok": 39,
-      "format_record_failed": 0
+      "bytes": 456,
+      "ids": [
+        "val-native-01",
+        "val-direct-01"
+      ],
+      "rows": 2,
+      "sha256": "070a377e266a1d241b0fddfdf87f2eee5b904f32ed57f4f61e56f1bffcdfcf6a"
     }
   },
   "totals": {
-    "rows": 392,
-    "format_record_ok": 392
+    "bytes": 5349,
+    "rows": 20
   },
-  "sources": {
-    "normalized": {
-      "n_per_source": 3,
-      "source_count": 92,
-      "rows": 272,
-      "by_source": {
-        "agent-conversations-retrieval": 3,
-        "agent-tool-use-dialogue-deepnlp": 3,
-        "agent-tool-use-dialogue-mgmgrand": 1,
-        "agent-trove": 3,
-        "akicou-merged-tool-use": 3,
-        "aureth-corpus-hermes": 3,
-        "bitagent-tool-calling": 3,
-        "carnice-glm5-hermes": 3,
-        "claude-distills": 3,
-        "deepfabric-github-mcp": 3,
-        "deepseek-v4-distill-8000x": 3,
-        "dolci-instruct-tool-use": 3,
-        "easyr1-pc-agent-omniparser": 3,
-        "glaive-fc-v2-reasoning": 3,
-        "glaive-fc-v2": 3,
-        "glm-47-multiturn-cot": 3,
-        "glm-51-reasoning-1m": 3,
-        "ha-mcp-dataset": 3,
-        "harmful_behaviors": 3,
-        "harmless_alpaca": 3,
-        "hermes-3": 3,
-        "hermes-agent-reasoning-traces": 3,
-        "hermes-agent-traces-filtered": 3,
-        "hermes-fc-thinking-v1": 3,
-        "hermes-fc-v1": 3,
-        "hermes-omniforge-qwen36": 3,
-        "hermes-reasoning-cursing": 3,
-        "hermes-reasoning-mlx-community": 3,
-        "hermes-reasoning-mlx-goekdeniz": 3,
-        "hermes-reasoning-tool-use": 3,
-        "kimi-k25-reasoning-1m": 3,
-        "mcp-agent-training-data": 3,
-        "mcp-flow": 3,
-        "mcp-routing-dataset": 3,
-        "mobile-actions": 3,
-        "n8n-grpo-2k-aks729": 3,
-        "n8n-grpo-4k-aks729": 3,
-        "n8n-master-corpus": 3,
-        "n8n-mega-workflows": 3,
-        "n8n-testset-ruh-ai": 3,
-        "n8n-toolkit-davidrpatton": 3,
-        "n8n-workflow-dataset-ruh-ai": 3,
-        "n8n-workflow-di12": 3,
-        "n8n-workflow-fmd053131": 3,
-        "n8n-workflow-mzw2004": 3,
-        "n8n-workflow-npv2k1": 3,
-        "n8n-workflow-ruh-ai": 3,
-        "n8n-workflow-tahakk": 3,
-        "n8n-workflow-template-rubenz": 3,
-        "n8n-workflow-yonibabi": 1,
-        "n8n-workflows-batuhanilgarr": 3,
-        "n8n-workflows-sft-eclaude": 3,
-        "n8n-workflows-templates-0xarchit": 3,
-        "n8n-workflows-thinking-stmasson": 3,
-        "n8n-workflows-v2-4k-arkelai": 3,
-        "n8n-workflows-yagnik": 3,
-        "n8nbuilder-perspicacious": 3,
-        "n8nbuilder-velixar": 3,
-        "n8nbuilder-webman": 3,
-        "nemotron-nano-hermes-traces": 3,
-        "nemotron-rl-tool-use": 3,
-        "nemotron-terminal-corpus": 3,
-        "noesis-1m-multimodel": 3,
-        "open-paws-tool-use": 3,
-        "opus-46-10kx-bas95": 3,
-        "opus-46-10kx-edawking": 3,
-        "opus-46-10kx-jeremydh": 3,
-        "opus-46-10kx-knowurknottty": 3,
-        "opus-46-10kx-skipharlow": 3,
-        "opus-46-quyanh": 3,
-        "opus-46-reasoning-12k-senaro": 3,
-        "opus-4647-reasoning-8k7": 3,
-        "opus-47-lordx64-cleaned": 3,
-        "opus-47-max-sft-labs": 3,
-        "opus-47-reasoning-cot-ansulev": 3,
-        "opus-47-thinking-25k-ansulev": 3,
-        "opus-47-thinking-25k-trilogix": 3,
-        "opus-47-thinking-25k-withinus": 3,
-        "phi3-mcp": 3,
-        "playwright-mcp-toolcalling": 3,
-        "qwen35-reasoning-700x": 3,
-        "qwen36-trajectory": 3,
-        "scambench": 3,
-        "sharegpt-tool-calls": 3,
-        "swebench-verified-opus-47": 3,
-        "talos-kimi-hermes": 3,
-        "tool-call-ack-agent": 3,
-        "tool-reasoning-coding-nemotron": 3,
-        "tool-reasoning-jupyter": 3,
-        "tool-reasoning-toucan": 3,
-        "tool-use-multiturn-thinking": 3,
-        "toolhop": 3
-      }
+  "transforms": {
+    "formatter": {
+      "path": "scripts/format_for_training.py",
+      "sha256": "03808f4c078e1e0a7335e0bf0326f0eccd0678bac04082ba047eadd798d21276"
     },
-    "eliza1_sft_0_6b": {
-      "path": "datasets/eliza1-sft-0_6b/train.jsonl",
-      "rows": 10
-    },
-    "final_mix": {
-      "path": "data/final/train.jsonl",
-      "rows": 10
-    },
-    "eliza_runtime_trajectories": {
-      "path": "/home/shaw/.eliza/trajectories",
-      "exists": true,
-      "cutoff_days": 7,
-      "cap": 100,
-      "files_scanned": 250,
-      "files_in_window": 250,
-      "rows_produced": 100,
-      "skipped_reason": null,
-      "oldest_mtime": "2026-05-09T09:05:05.466499+00:00",
-      "newest_mtime": "2026-05-12T02:52:15.332557+00:00"
+    "privacy_filter": {
+      "applied": true,
+      "path": "scripts/privacy_filter_trajectories.py",
+      "sha256": "354cf5fa4ae75a05f09e8a6a72c80f6d8e5583a2366fe28c11bd79b49a78b920"
     }
-  },
-  "privacy_filter": {
-    "applied": true,
-    "module": "scripts/format_for_training.py via scripts/privacy_filter_trajectories.py",
-    "note": "format_record() applies the canonical Python port of the app-training privacy filter to every emitted record. There is no bypass path."
-  },
-  "split_ratios": {
-    "train": 0.8,
-    "val": 0.1,
-    "test": 0.1
   }
 }

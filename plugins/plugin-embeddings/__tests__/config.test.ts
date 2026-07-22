@@ -6,6 +6,9 @@ import {
   getEmbeddingApiKey,
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
+  getEmbeddingFallbackApiKey,
+  getEmbeddingFallbackBaseURL,
+  getEmbeddingFallbackModel,
   getEmbeddingModel,
   hasEmbeddingConfig,
 } from "../src/utils/config";
@@ -48,6 +51,28 @@ describe("plugin-embeddings config", () => {
   it("defaults the model to text-embedding-3-small", () => {
     expect(getEmbeddingModel(makeRuntime())).toBe("text-embedding-3-small");
     expect(getEmbeddingModel(makeRuntime({ EMBEDDING_MODEL: "voyage-3" }))).toBe("voyage-3");
+  });
+
+  it("reads fallback endpoint settings without making them activation keys", () => {
+    const runtime = makeRuntime({
+      EMBEDDING_MODEL: "primary-model",
+      EMBEDDING_FALLBACK_BASE_URL: "  https://fallback/v1  ",
+      EMBEDDING_FALLBACK_API_KEY: "fallback-key",
+      EMBEDDING_FALLBACK_MODEL: "fallback-model",
+    });
+
+    expect(getEmbeddingFallbackBaseURL(runtime)).toBe("https://fallback/v1");
+    expect(getEmbeddingFallbackApiKey(runtime)).toBe("fallback-key");
+    expect(getEmbeddingFallbackModel(runtime)).toBe("fallback-model");
+    expect(
+      hasEmbeddingConfig(makeRuntime({ EMBEDDING_FALLBACK_BASE_URL: "https://fallback/v1" }))
+    ).toBe(false);
+  });
+
+  it("defaults the fallback model to the primary embedding model", () => {
+    expect(getEmbeddingFallbackModel(makeRuntime({ EMBEDDING_MODEL: "primary-model" }))).toBe(
+      "primary-model"
+    );
   });
 
   it("defaults dimensions to 1536", () => {

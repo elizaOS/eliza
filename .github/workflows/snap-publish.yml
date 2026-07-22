@@ -22,7 +22,7 @@ on:
       # Marked `required: false` so this reusable workflow's secret contract
       # validates even when SNAPCRAFT_STORE_CREDENTIALS is unset. GitHub
       # validates the contract before any job runs, so `required: true` on an
-      # unset secret aborts release-all.yml at startup with no logs. The body's
+      # unset secret aborts a reusable caller at startup with no logs. The body's
       # creds_check guard already skips the Store upload (build still runs) when
       # the credential is empty.
       SNAPCRAFT_STORE_CREDENTIALS:
@@ -56,7 +56,7 @@ jobs:
       SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.tag }}
           submodules: false

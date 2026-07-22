@@ -49,9 +49,10 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.5",
     "@types/bun": "^1.2.22",
     "@types/node": "^24.5.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "scripts": {
@@ -63,7 +64,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsgo --project tsconfig.json --noEmit"
+    "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "publishConfig": {
     "access": "public"

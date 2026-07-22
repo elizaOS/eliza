@@ -356,7 +356,7 @@ def test_dataset_publish_rejects_smoke_training_manifest(
     train.write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
     manifest = tmp_path / "manifest.json"
     manifest.write_text(
-        '{"schema":"eliza.eliza1_smoke_corpus_manifest.v1","purpose":"smoke only"}'
+        '{"schema":"eliza.eliza1_smoke_corpus_manifest.v2","purpose":"smoke only"}'
     )
     spec = publish_dataset.DatasetSpec(
         name="training",

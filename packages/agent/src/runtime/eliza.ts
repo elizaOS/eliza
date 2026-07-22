@@ -54,6 +54,11 @@ import {
   type ResolvedPlugin as RuntimeResolvedPlugin,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
+import {
+  applyProviderModelEnvDefaults,
+  isLikelyOpenAiTextModel,
+  setEnvIfMissing,
+} from "./provider-model-defaults.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
 import {
   buildRuntimeSettingsProjection,
@@ -127,7 +132,6 @@ import {
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
 import {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
   isElizaSettingsDebugEnabled,
@@ -983,10 +987,6 @@ export async function configureLocalEmbeddingPlugin(
     return undefined;
   })();
 
-  const setEnvIfMissing = (key: string, value: string | undefined): void => {
-    if (!value || process.env[key]) return;
-    process.env[key] = value;
-  };
   const setEnvFromConfig = (key: string, value: string | undefined): void => {
     if (!value) return;
     process.env[key] = value;
@@ -1050,56 +1050,52 @@ export async function configureLocalEmbeddingPlugin(
     process.env.EMBEDDING_PROVIDER = "local";
   }
 
-  // Normalize Google AI API key aliases — the elizaOS plugin and @google/genai
-  // SDK expect different env var names. Canonicalize to the long form that
-  // @elizaos/plugin-google-genai reads via runtime.getSetting(). Users can set
-  // any of: GEMINI_API_KEY, GOOGLE_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY.
-  setEnvIfMissing(
-    "GOOGLE_GENERATIVE_AI_API_KEY",
-    process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
-  );
-
-  // Default Google model names — the Google GenAI plugin's getSetting() returns
-  // null (not undefined) for missing keys, but the plugin checks !== undefined
-  // causing String(null) = "null" to be sent as the model name. Set sensible
-  // defaults so the plugin always has valid model names.
-  setEnvIfMissing("GOOGLE_SMALL_MODEL", "gemini-3-flash-preview");
-  setEnvIfMissing("GOOGLE_LARGE_MODEL", "gemini-3.1-pro-preview");
-
-  // Default Groq model names — plugin-groq still ships a deprecated large-model
-  // fallback. Seed runtime defaults before plugin init so direct Groq provider
-  // sessions use the approved GPT-OSS default.
-  const currentSharedSmallModel =
-    process.env.OPENAI_SMALL_MODEL ?? process.env.SMALL_MODEL;
-  const currentSharedLargeModel =
-    process.env.OPENAI_LARGE_MODEL ?? process.env.LARGE_MODEL;
-  setEnvIfMissing(
-    "GROQ_SMALL_MODEL",
-    currentSharedSmallModel && !isLikelyOpenAiTextModel(currentSharedSmallModel)
-      ? currentSharedSmallModel
-      : "openai/gpt-oss-120b",
-  );
-  setEnvIfMissing(
-    "GROQ_LARGE_MODEL",
-    currentSharedLargeModel && !isLikelyOpenAiTextModel(currentSharedLargeModel)
-      ? currentSharedLargeModel
-      : "openai/gpt-oss-120b",
-  );
-
-  // Default Cerebras model — plugin-openai's Cerebras mode otherwise falls
-  // back to OpenAI-only ids when CEREBRAS_MODEL is unset. Seed the approved
-  // Gemma default before plugin init while preserving explicit shared model
-  // overrides from OPENAI_LARGE_MODEL / LARGE_MODEL.
-  setEnvIfMissing(
-    "CEREBRAS_MODEL",
-    currentSharedLargeModel && !isLikelyOpenAiTextModel(currentSharedLargeModel)
-      ? currentSharedLargeModel
-      : DEFAULT_CEREBRAS_TEXT_MODEL,
-  );
-
   logger.info(
     `[eliza] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
   );
+}
+
+/**
+ * Populate the LOCAL_EMBEDDING_* / EMBEDDING_PROVIDER env from config +
+ * hardware preset EARLY — before the deferred-boot ensureEmbeddingDimension()
+ * probe and the bundled-document seed — but ONLY when local embeddings are the
+ * intended backend for this configuration.
+ *
+ * Root cause it addresses (#16630 follow-up): configureLocalEmbeddingPlugin()
+ * is otherwise only reached via warmEmbeddingModel(), which startEmbeddingWarmup()
+ * fires fire-and-forget AFTER the deferred embedding-dimension probe. During that
+ * window EMBEDDING_PROVIDER is unset, so a remote TEXT_EMBEDDING handler (e.g.
+ * Google text-embedding-004) wins the probe, 404s on an incompatible API
+ * version, and the runtime never fails back to the local model — breaking
+ * memory embedding writes and bundled-document seeding.
+ *
+ * Guard: shouldWarmupLocalEmbeddingModel() returns false when local embeddings
+ * are disabled or Eliza Cloud embeddings are explicitly configured, so this is a
+ * no-op in those setups and never forces local env over an intended cloud path.
+ * The underlying env writes use setEnvIfMissing (idempotent), so a later
+ * warmEmbeddingModel() call is unaffected. Best-effort: any failure is logged
+ * and swallowed so it can never block or crash the deferred boot phase.
+ *
+ * @internal Exported for regression coverage.
+ */
+export async function configureLocalEmbeddingEnvEarlyIfNeeded(
+  config?: ElizaConfig,
+): Promise<void> {
+  if (process.env.NODE_ENV === "test") return;
+  if (isMobilePlatform() || isBundledMobileRuntime()) return;
+  try {
+    const li = await getPluginLocalEmbedding();
+    if (!li) return;
+    const { shouldWarmupLocalEmbeddingModel } = await import(
+      /* @vite-ignore */ "@elizaos/plugin-local-inference/runtime"
+    );
+    if (!shouldWarmupLocalEmbeddingModel()) return;
+    await configureLocalEmbeddingPlugin({} as Plugin, config);
+  } catch (err) {
+    logger.warn(
+      `[eliza] Early local-embedding env configuration failed (deferred warmup will retry): ${formatError(err)}`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1451,12 +1447,6 @@ function detectOpenAiBaseUrlProvider(baseUrl: string): "groq" | null {
 
 function looksLikeGroqApiKey(value: string | undefined): boolean {
   return Boolean(value && /^gsk[-_]/i.test(value));
-}
-
-function isLikelyOpenAiTextModel(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized.startsWith("gpt-") || normalized.startsWith("openai/");
 }
 
 /**
@@ -3922,6 +3912,7 @@ export async function startEliza(
       `[eliza] Failed to apply local subscription credentials (agent will continue without them): ${formatError(err)}`,
     );
   }
+
   subscriptionCredentialsDeferredPromise = (async () => {
     const { applySubscriptionCredentialsDeferred } = await import(
       "@elizaos/auth"
@@ -3992,6 +3983,22 @@ export async function startEliza(
     applySandboxCharacterFromEnv(config);
     sandboxRouteAgentId = resolveSandboxRouteAgentId();
   }
+
+  // 3b. Canonical file boot (sovereign identity): when configured via
+  // ELIZA_CANONICAL_BOOT_ROOT / ELIZA_CANONICAL_BOOT_MANIFEST, read the
+  // operator's allowlisted files (SOUL.md, IDENTITY.md, AGENTS.md, USER.md,
+  // the memory system + handoff, awareness, playbook, channel guide) directly
+  // from disk, hash each file into the boot log, and compose their exact
+  // contents onto the primary agent's system prompt. This replaces a stale
+  // JSON shadow copy as the identity source of truth. Fails loudly if a file
+  // marked required is missing. Inert when the env vars are absent.
+  {
+    const { applyCanonicalFileBootToConfig } = await import(
+      "./canonical-file-boot.ts"
+    );
+    applyCanonicalFileBootToConfig(config);
+  }
+
   const character = buildCharacterFromConfig(config);
 
   // Pin the runtime agent id to the platform character_id so the gateways can
@@ -4058,6 +4065,14 @@ export async function startEliza(
       );
     }
   }
+
+  // Provider plugins snapshot model env during the blocking resolution wave.
+  // Seed set-if-missing defaults only after subscription, account-pool, and
+  // per-agent vault credentials have all been applied, but before provider
+  // enumeration or plugin resolution. This must not live in the deferred local
+  // embedding warmup: that path is skipped on mobile and can run after the
+  // text provider is already initialized.
+  applyProviderModelEnvDefaults();
 
   // 5-pre. Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot
   // critical path: it runs after the runtime is reachable (fired fire-and-forget
@@ -5272,6 +5287,19 @@ export async function startEliza(
     // ensureEmbeddingDimension() is public, idempotent, and self-guarding (it
     // no-ops when no TEXT_EMBEDDING handler is registered, e.g. cloud-proxied
     // agents), so this is safe on every boot path.
+    //
+    // BEFORE the probe, populate the LOCAL_EMBEDDING_* / EMBEDDING_PROVIDER env
+    // for local-primary configurations (#16630 follow-up). warmEmbeddingModel()
+    // — which owns configureLocalEmbeddingPlugin() today — is fired
+    // fire-and-forget by startEmbeddingWarmup() AFTER this block, so without
+    // this early call the probe (and the bundled-document seed right below it)
+    // runs while EMBEDDING_PROVIDER is unset. A remote provider (e.g. Google
+    // text-embedding-004) then wins the probe and 404s, permanently choosing
+    // the remote route and dropping local-primary. Configuring the env here is
+    // idempotent (setEnvIfMissing) and gated on shouldWarmupLocalEmbeddingModel
+    // so it never forces local env when local embeddings are disabled or Eliza
+    // Cloud embeddings are explicitly configured.
+    await configureLocalEmbeddingEnvEarlyIfNeeded(config);
     try {
       await runtime.ensureEmbeddingDimension();
     } catch (err) {

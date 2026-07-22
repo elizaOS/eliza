@@ -1189,20 +1189,23 @@ describe("corpus verification", () => {
           ],
         }),
     ],
-  ])("fails on a planted email in %s without persisting cleartext", async (_field, build) => {
-    const leaked = "owner-private@example.com";
-    const options = await fixture(build(leaked), {
-      candidate: leaked,
-      canaryPlaceholder: "[[SECRET:openai-key:0123456789ab]]",
-    });
-    const report = await verifyCorpus(options);
-    const serialized = JSON.stringify(report);
+  ])(
+    "fails on a planted email in %s without persisting cleartext",
+    async (_field, build) => {
+      const leaked = "owner-private@example.com";
+      const options = await fixture(build(leaked), {
+        candidate: leaked,
+        canaryPlaceholder: "[[SECRET:openai-key:0123456789ab]]",
+      });
+      const report = await verifyCorpus(options);
+      const serialized = JSON.stringify(report);
 
-    expect(report.status).toBe("failed");
-    expect(report.counts["structured-pii"]).toBeGreaterThan(0);
-    expect(report.counts["original-value"]).toBeGreaterThan(0);
-    expect(serialized.toLowerCase()).not.toContain(leaked);
-  });
+      expect(report.status).toBe("failed");
+      expect(report.counts["structured-pii"]).toBeGreaterThan(0);
+      expect(report.counts["original-value"]).toBeGreaterThan(0);
+      expect(serialized.toLowerCase()).not.toContain(leaked);
+    },
+  );
 
   it("fails missing canaries, malformed placeholders, and embedded bytes", async () => {
     const malformed = "[[SECRET:openai-key:ABC]]";
@@ -1251,27 +1254,30 @@ describe("corpus verification", () => {
   it.each([
     ["malformed", "***", undefined, "invalid base64 payload"],
     ["size mismatch", "c2VjcmV0", 7, "inconsistent payload bytes"],
-  ])("rejects %s embedded attachment byte evidence", async (_name, dataBase64, bytes, expectedError) => {
-    const options = await fixture(
-      baseMessage({
-        attachments: [
-          {
-            filename: "unsafe.bin",
-            mimeType: "application/octet-stream",
-            sha256: "a".repeat(64),
-            dataBase64,
-            bytes,
-          },
-        ],
-      }),
-    );
-    const rules = JSON.parse(
-      await fs.readFile(options.deletionRulesPath, "utf8"),
-    ) as Record<string, unknown>;
-    await rebindDeletionArtifacts(options, rules);
+  ])(
+    "rejects %s embedded attachment byte evidence",
+    async (_name, dataBase64, bytes, expectedError) => {
+      const options = await fixture(
+        baseMessage({
+          attachments: [
+            {
+              filename: "unsafe.bin",
+              mimeType: "application/octet-stream",
+              sha256: "a".repeat(64),
+              dataBase64,
+              bytes,
+            },
+          ],
+        }),
+      );
+      const rules = JSON.parse(
+        await fs.readFile(options.deletionRulesPath, "utf8"),
+      ) as Record<string, unknown>;
+      await rebindDeletionArtifacts(options, rules);
 
-    await expect(verifyCorpus(options)).rejects.toThrow(expectedError);
-  });
+      await expect(verifyCorpus(options)).rejects.toThrow(expectedError);
+    },
+  );
 
   it("rejects a placeholder without a matching mined candidate", async () => {
     const forgedPlaceholder = "[[SECRET:openai-key:0123456789ab]]";
@@ -1439,23 +1445,23 @@ describe("corpus verification", () => {
     ).rejects.toThrow();
   });
 
-  it.each([
-    "missing",
-    "empty",
-  ] as const)("fails closed when gitleaks exits one with a %s report", async (reportMode) => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitleaks-report-"));
-    temporaryDirectories.push(root);
-    const shardPath = path.join(root, "shard.jsonl");
-    const configPath = path.join(root, "config.toml");
-    await fs.writeFile(shardPath, '{"secret":"planted"}\n');
-    await fs.writeFile(configPath, 'title = "test"\n');
+  it.each(["missing", "empty"] as const)(
+    "fails closed when gitleaks exits one with a %s report",
+    async (reportMode) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitleaks-report-"));
+      temporaryDirectories.push(root);
+      const shardPath = path.join(root, "shard.jsonl");
+      const configPath = path.join(root, "config.toml");
+      await fs.writeFile(shardPath, '{"secret":"planted"}\n');
+      await fs.writeFile(configPath, 'title = "test"\n');
 
-    await expect(
-      scanShardsWithGitleaks([shardPath], {
-        binaryPath: await fakeGitleaks(root, reportMode),
-        configPath,
-        workDir: root,
-      }),
-    ).rejects.toThrow(/produced no report|report was empty/);
-  });
+      await expect(
+        scanShardsWithGitleaks([shardPath], {
+          binaryPath: await fakeGitleaks(root, reportMode),
+          configPath,
+          workDir: root,
+        }),
+      ).rejects.toThrow(/produced no report|report was empty/);
+    },
+  );
 });

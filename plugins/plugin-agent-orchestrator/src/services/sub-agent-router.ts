@@ -1571,6 +1571,19 @@ export class SubAgentRouter extends Service {
     }
     const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);
+    // User-facing leg of a blocked sub-agent's question: with per-task GROUP
+    // rooms on by default the task room maps to no live connector channel, so
+    // the planner-turn post above never reaches the user. Post the question
+    // directly to the origin channel (same mechanism the progress hook uses) —
+    // deliberately NOT a second handleMessage planner turn, which would
+    // double-answer the question into the same room. Skipped when the origin
+    // room IS the task room (the planner turn's post already lands there).
+    if (
+      routingKind === QUESTION_FOR_TASK_CREATOR &&
+      origin.roomId !== origin.taskRoomId
+    ) {
+      await this.postQuestionToOriginRoom(origin, sessionId, text);
+    }
     // Legacy-entity sweep, delivery leg (#15102): every room this event posts
     // to gets swept once per process — covers the task/worktree swarm rooms
     // the spawn-time probe (origin room only) doesn't reach. Memoized, so
@@ -1760,6 +1773,55 @@ export class SubAgentRouter extends Service {
     // (issue elizaOS/eliza#7967); same-session progressive task_completes are
     // unaffected because the claim is keyed by sessionId, and a verify-retry
     // handoff returns earlier (above) so an incomplete build never claims.
+  }
+
+  /**
+   * Direct origin-channel post for a QUESTION_FOR_TASK_CREATOR event. The
+   * question is shown verbatim, attributed to the sub-agent with the same
+   * `❓ [label]` marker family the progress hook uses, so the user can answer
+   * in the channel and the mid-task forward handler routes the reply back to
+   * the session. The planner-directed `[sub-agent: …]` header is stripped —
+   * it is relay guidance for the task-room turn, not user prose.
+   */
+  private async postQuestionToOriginRoom(
+    origin: OriginInfo,
+    sessionId: string,
+    text: string,
+  ): Promise<void> {
+    const sendToTarget = (
+      this.runtime as RuntimeWithSendTarget
+    ).sendMessageToTarget?.bind(this.runtime);
+    if (!sendToTarget || !origin.source) {
+      this.log(
+        "warn",
+        "cannot post sub-agent question to origin room (no connector send path)",
+        { sessionId, roomId: origin.roomId, source: origin.source },
+      );
+      return;
+    }
+    const body = stripSubAgentHeaderLine(text).trim() || text.trim();
+    const originReplyTarget =
+      origin.parentConnectorMessageId ?? origin.parentMessageId;
+    await sendToTarget(
+      { source: origin.source, roomId: origin.roomId },
+      {
+        text: `❓ [${origin.label}] ${body}`,
+        // Same source the router stamps on its posts: the mid-task forward
+        // handler skips it (echo-loop guard), so the question is never fed
+        // back into the asking session as a prompt.
+        source: ACPX_ROUTER_SOURCE,
+        ...(originReplyTarget ? { inReplyTo: originReplyTarget } : {}),
+      },
+    ).catch((err) => {
+      // error-policy:J1 question-delivery boundary; the failure is warned and
+      // the task-room planner turn remains the surviving leg.
+      this.log("warn", "sub-agent question delivery to origin room failed", {
+        sessionId,
+        source: origin.source,
+        roomId: origin.roomId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   private buildReplyCallback(
@@ -2759,6 +2821,11 @@ function swarmTargetsForRouting(
   routingKind: string,
 ): SwarmRoomTarget[] {
   if (routingKind === QUESTION_FOR_TASK_CREATOR) {
+    // ONE planner turn, in the task room only. The user-facing leg is a
+    // DIRECT origin-channel post (postQuestionToOriginRoom in handleEvent):
+    // adding the origin room here would run a second full handleMessage
+    // planner turn whose reply callback targets the same origin room —
+    // double-answering one question.
     return [targetForRoom(origin, origin.taskRoomId, "task")];
   }
   if (routingKind === AGENT_COORDINATION) {

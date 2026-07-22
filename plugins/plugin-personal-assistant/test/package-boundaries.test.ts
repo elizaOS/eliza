@@ -82,9 +82,6 @@ describe("LifeOps package boundaries", () => {
     ).toBe(false);
     expect(rendererEntrypoint).not.toContain("MobileSignalsSetupCard");
     const settingsSection = rendererEntrypoint;
-    const googleHook = readPackageFile(
-      "src/hooks/useGoogleLifeOpsConnector.ts",
-    );
     expect(settingsSection).not.toContain("useLifeOpsHealthConnectors");
     expect(
       existsSync(
@@ -139,12 +136,13 @@ describe("LifeOps package boundaries", () => {
     expect(settingsSection).not.toContain("settings-google-${side}-disconnect");
     expect(settingsSection).not.toContain("settings-google-${side}-add");
     expect(settingsSection).not.toContain("settings-google-${side}-auth");
-    expect(googleHook).not.toContain("deleteConnectorAccount");
-    expect(googleHook).not.toContain("pendingAuthUrl");
-    expect(googleHook).not.toContain("connectAdditional");
-    expect(googleHook).not.toContain("disconnectAccount");
+    expect(
+      existsSync(
+        resolve(packageRoot, "src/hooks/useGoogleLifeOpsConnector.ts"),
+      ),
+    ).toBe(false);
     expect(sleepRoutes).toContain("createHealthSleepRouteHandler");
-    expect(sleepRoutes).toContain('from "@elizaos/plugin-health"');
+    expect(sleepRoutes).toContain('from "@elizaos/plugin-health/routes/sleep"');
     expect(sleepRoutes).not.toContain("parseWindowDaysQuery");
     expect(sleepServiceMixin).toContain("createHealthSleepServiceMethods");
     expect(sleepServiceMixin).toContain('from "@elizaos/plugin-health"');
@@ -408,11 +406,6 @@ describe("LifeOps package boundaries", () => {
 
   it("keeps messaging account setup in connector plugins instead of LifeOps views", () => {
     const rendererEntrypoint = readPackageFile("src/ui.ts");
-    const discordHook = readPackageFile("src/hooks/useDiscordConnector.ts");
-    const telegramHook = readPackageFile("src/hooks/useTelegramConnector.ts");
-    const signalHook = readPackageFile("src/hooks/useSignalConnector.ts");
-    const whatsappHook = readPackageFile("src/hooks/useWhatsAppConnector.ts");
-    const xHook = readPackageFile("src/hooks/useLifeOpsXConnector.ts");
     const apiClient = readPackageFile("src/api/client-lifeops.ts");
     const routeManifest = readPackageFile("src/routes/plugin.ts");
     const routes = readPackageFile("src/routes/lifeops-routes.ts");
@@ -435,10 +428,9 @@ describe("LifeOps package boundaries", () => {
     expect(rendererEntrypoint).not.toContain("Send Telegram code");
     expect(rendererEntrypoint).not.toContain("Verify Telegram code");
     expect(rendererEntrypoint).not.toContain("Submit Telegram password");
-    expect(telegramHook).not.toContain("startTelegramAuth");
-    expect(telegramHook).not.toContain("submitTelegramAuth");
-    expect(telegramHook).not.toContain("cancelTelegramAuth");
-    expect(telegramHook).not.toContain("disconnectTelegramConnector");
+    expect(
+      existsSync(resolve(packageRoot, "src/hooks/useTelegramConnector.ts")),
+    ).toBe(false);
     expect(apiClient).not.toContain("startTelegramAuth");
     expect(apiClient).not.toContain("submitTelegramAuth");
     expect(apiClient).not.toContain("cancelTelegramAuth");
@@ -468,10 +460,9 @@ describe("LifeOps package boundaries", () => {
     expect(rendererEntrypoint).not.toContain("Generating QR code");
     expect(rendererEntrypoint).not.toContain("Link Signal");
     expect(rendererEntrypoint).not.toContain("Cancel Signal pairing");
-    expect(signalHook).not.toContain("startLifeOpsSignalPairing");
-    expect(signalHook).not.toContain("getLifeOpsSignalPairingStatus");
-    expect(signalHook).not.toContain("stopLifeOpsSignalPairing");
-    expect(signalHook).not.toContain("disconnectSignalConnector");
+    expect(
+      existsSync(resolve(packageRoot, "src/hooks/useSignalConnector.ts")),
+    ).toBe(false);
     expect(apiClient).not.toContain("startLifeOpsSignalPairing");
     expect(apiClient).not.toContain("getLifeOpsSignalPairingStatus");
     expect(apiClient).not.toContain("stopLifeOpsSignalPairing");
@@ -501,10 +492,9 @@ describe("LifeOps package boundaries", () => {
     expect(
       existsSync(resolve(packageRoot, "src/hooks/useWhatsAppPairing.ts")),
     ).toBe(false);
-    expect(whatsappHook).not.toContain("startPairing");
-    expect(whatsappHook).not.toContain("stopPairing");
-    expect(whatsappHook).not.toContain("disconnect");
-    expect(whatsappHook).not.toContain("onWsEvent");
+    expect(
+      existsSync(resolve(packageRoot, "src/hooks/useWhatsAppConnector.ts")),
+    ).toBe(false);
     expect(rendererEntrypoint).not.toContain("connector-discord-connect");
     expect(rendererEntrypoint).not.toContain("connector-discord-disconnect");
     expect(rendererEntrypoint).not.toContain("connector-discord-open-desktop");
@@ -512,8 +502,9 @@ describe("LifeOps package boundaries", () => {
     expect(rendererEntrypoint).not.toContain(
       "Open Discord in Eliza Desktop Browser",
     );
-    expect(discordHook).not.toContain("startDiscordConnector");
-    expect(discordHook).not.toContain("disconnectDiscordConnector");
+    expect(
+      existsSync(resolve(packageRoot, "src/hooks/useDiscordConnector.ts")),
+    ).toBe(false);
     expect(apiClient).not.toContain("startDiscordConnector");
     expect(apiClient).not.toContain("disconnectDiscordConnector");
     for (const source of [routeManifest, routes, apiClient]) {
@@ -528,10 +519,9 @@ describe("LifeOps package boundaries", () => {
     expect(connectorAction).not.toContain("service.authorizeDiscordConnector");
     expect(connectorAction).not.toContain("service.disconnectDiscord");
     expect(discordContribution).not.toContain("service.disconnectDiscord");
-    expect(xHook).not.toContain("startXLifeOpsConnector");
-    expect(xHook).not.toContain("disconnectXLifeOpsConnector");
-    expect(xHook).not.toContain("connect,");
-    expect(xHook).not.toContain("disconnect,");
+    expect(
+      existsSync(resolve(packageRoot, "src/hooks/useLifeOpsXConnector.ts")),
+    ).toBe(false);
     expect(apiClient).not.toContain("startXLifeOpsConnector");
     expect(apiClient).not.toContain("disconnectXLifeOpsConnector");
     expect(apiClient).not.toContain("upsertXLifeOpsConnector");

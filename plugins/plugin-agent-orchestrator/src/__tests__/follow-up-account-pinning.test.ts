@@ -160,13 +160,17 @@ describe("follow-up prompt account pinning (cli transport)", () => {
     expect(calls[1]?.exclude).toEqual(["acct-a"]);
     // Session metadata follows the credential actually injected — in memory
     // (next prompt's pin) and durably.
-    expect((session.metadata?.account as CodingAccountMeta).accountId).toBe(
-      "acct-b",
-    );
+    const sessionAccount = session.metadata?.account;
+    expect(sessionAccount).toBeDefined();
+    if (!sessionAccount) throw new Error("Expected the session account pin");
+    expect((sessionAccount as CodingAccountMeta).accountId).toBe("acct-b");
     const stored = await store.get(session.id);
-    expect((stored?.metadata?.account as CodingAccountMeta).accountId).toBe(
-      "acct-b",
-    );
+    expect(stored).toBeDefined();
+    if (!stored) throw new Error("Expected the persisted session");
+    const storedAccount = stored.metadata?.account;
+    expect(storedAccount).toBeDefined();
+    if (!storedAccount) throw new Error("Expected the persisted account pin");
+    expect((storedAccount as CodingAccountMeta).accountId).toBe("acct-b");
     // The event bridge carries the re-key to the orchestrator task store.
     const switched = events.find((e) => e.event === "account_switched");
     expect(switched?.data).toMatchObject({
@@ -202,8 +206,9 @@ describe("follow-up prompt account pinning (cli transport)", () => {
 
     expect(env).toBeUndefined();
     // No failover happened, so the session must stay keyed to A.
-    expect((session.metadata?.account as CodingAccountMeta).accountId).toBe(
-      "acct-a",
-    );
+    const sessionAccount = session.metadata?.account;
+    expect(sessionAccount).toBeDefined();
+    if (!sessionAccount) throw new Error("Expected the session account pin");
+    expect((sessionAccount as CodingAccountMeta).accountId).toBe("acct-a");
   });
 });

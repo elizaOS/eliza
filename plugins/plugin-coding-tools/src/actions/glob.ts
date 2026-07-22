@@ -49,7 +49,10 @@ function getNodeFsGlob(): NodeFsGlobModule["glob"] | undefined {
   return typeof candidate === "function" ? candidate : undefined;
 }
 
-function globToRegExp(pattern: string): RegExp {
+/** Exported for tests: the fallback matcher used when `fs.glob` is absent
+ *  (Node < 22) — its branch behavior must match the native glob it stands in
+ *  for. */
+export function globToRegExp(pattern: string): RegExp {
   let regex = "";
   let i = 0;
   while (i < pattern.length) {
@@ -146,7 +149,11 @@ export async function globHandler(
   message: Memory,
   _state: State | undefined,
   options: unknown,
-  callback?: HandlerCallback,
+  // Read-only query: deliberately no visible callback. Raw listings/matches
+  // reach the model via the ActionResult and the user via the planner's final
+  // message; posting each mid-turn dump spammed chat channels (one message per
+  // exploratory call).
+  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const conversationId =
     message.roomId !== undefined && message.roomId !== null
@@ -243,8 +250,6 @@ export async function globHandler(
   coreLogger.debug(
     `${CODING_TOOLS_LOG_PREFIX} GLOB pattern=${JSON.stringify(pattern)} root=${root} found=${limited.length} truncated=${truncated}`,
   );
-
-  if (callback) await callback({ text });
 
   return successActionResult(text, {
     files: limited,

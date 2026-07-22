@@ -41,7 +41,9 @@ import {
 import {
   OMI_OPUS_SAMPLE_RATE_HZ,
   type OmiCodecId,
+  type OmiFrameMetricsSnapshot,
   OmiFrameReassembler,
+  type OmiFrameReassemblerResult,
 } from "./omi-protocol";
 import {
   createPendantAudioDecoder,
@@ -154,6 +156,7 @@ export class PendantConnection {
   private transport: PendantTransport | null = null;
   private decoder: PendantAudioDecoder | null = null;
   private readonly reassembler = new OmiFrameReassembler();
+  private accountedDroppedPackets = 0;
 
   // Utterance accumulation.
   private utterance: Float32Array[] = [];
@@ -228,6 +231,10 @@ export class PendantConnection {
 
   getState(): PendantState {
     return this.state;
+  }
+
+  getMetricsSnapshot(): OmiFrameMetricsSnapshot {
+    return this.reassembler.getMetricsSnapshot();
   }
 
   private patch(next: Partial<PendantState>): void {
@@ -511,6 +518,7 @@ export class PendantConnection {
     });
 
     this.reassembler.reset();
+    this.accountedDroppedPackets = 0;
     this.resetDetector();
     await this.step("start-notifications", () =>
       transport.startAudio(this.onAudioPayload),
@@ -551,6 +559,7 @@ export class PendantConnection {
     this.decoder?.free();
     this.decoder = null;
     this.reassembler.reset();
+    this.accountedDroppedPackets = 0;
     this.paused = false;
     this.resetDetector();
   }
@@ -564,13 +573,13 @@ export class PendantConnection {
   private handleNotification(notification: Uint8Array): void {
     if (!this.decoder || !this.detector) return;
     if (this.paused) return;
-    const frames = this.reassembler.push(notification);
-    for (const frame of frames) {
-      if (frame.droppedBefore > 0) {
-        this.patch({
-          droppedPackets: this.state.droppedPackets + frame.droppedBefore,
-        });
-      }
+    this.consumeReassemblerResult(this.reassembler.pushDetailed(notification));
+  }
+
+  private consumeReassemblerResult(result: OmiFrameReassemblerResult): void {
+    this.updateDroppedPackets(result.metrics);
+    if (!this.decoder) return;
+    for (const frame of result.frames) {
       let pcm: Float32Array;
       try {
         pcm = this.decoder.decodeFrame(frame.data);
@@ -590,6 +599,17 @@ export class PendantConnection {
       if (pcm.length === 0) continue;
       this.feedVad(pcm);
     }
+  }
+
+  private updateDroppedPackets(metrics: OmiFrameMetricsSnapshot): void {
+    const observedDropped =
+      metrics.missingNotifications + metrics.missingChunks;
+    const delta = observedDropped - this.accountedDroppedPackets;
+    if (delta <= 0) return;
+    this.accountedDroppedPackets = observedDropped;
+    this.patch({
+      droppedPackets: this.state.droppedPackets + delta,
+    });
   }
 
   private feedVad(pcm: Float32Array): void {
@@ -708,6 +728,7 @@ export class PendantConnection {
     if (!this.transport || !this.decoder || !this.isPauseableStatus()) return;
     this.paused = true;
     this.reassembler.reset();
+    this.accountedDroppedPackets = 0;
     this.resetDetector();
     this.patch({ paused: true, status: "paused" });
   }
@@ -728,13 +749,10 @@ export class PendantConnection {
   async disconnect(): Promise<void> {
     this.intentionalDisconnect = true;
     this.clearReconnectTimer();
-    // Flush the final in-flight frame (no following packet will close it) so a
-    // trailing utterance still gets transcribed on a clean disconnect.
+    // Finalize reassembly diagnostics. The wire has no end marker, so flush
+    // conservatively drops an unconfirmed tail instead of decoding partial audio.
     if (this.decoder) {
-      for (const frame of this.reassembler.flush()) {
-        const pcm = this.decoder.decodeFrame(frame.data);
-        if (pcm.length > 0) this.feedVad(pcm);
-      }
+      this.consumeReassemblerResult(this.reassembler.flushDetailed());
     }
     try {
       await this.transport?.disconnect();

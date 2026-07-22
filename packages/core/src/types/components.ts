@@ -86,6 +86,16 @@ export interface ActionParameter {
 	 * non-umbrella actions and on the discriminator parameter itself.
 	 */
 	subactions?: readonly string[];
+	/**
+	 * Accepted arg-name synonyms for this parameter. The pre-validation
+	 * normalizer renames an incoming alias key to this param's name when the
+	 * param itself is absent from the args and exactly one declared param claims
+	 * the alias — so the planner isn't punished for saying `to`/`recipient`
+	 * instead of `target`, or `description`/`prompt` instead of `instructions`.
+	 * Metadata only: never emitted into the tool JSON schema shown to the model,
+	 * and never lets an unclaimed/unknown key through (that still rejects).
+	 */
+	aliases?: readonly string[];
 	/** JSON Schema for parameter validation */
 	schema: ActionParameterSchema;
 	/**
@@ -162,6 +172,16 @@ export interface MessageHandlerPlan {
 	 * the budget, never grow it.
 	 */
 	requiredToolMissBudget?: number;
+	/**
+	 * Set to "inferred" when the plan's candidate actions were injected by
+	 * the deterministic text heuristics and Stage 1's model emitted none of
+	 * its own; absent when the model named a tool itself. The planner loop
+	 * treats an inferred-only requirement as weaker evidence — a planner
+	 * that re-commits to the identical terminal answer on consecutive
+	 * misses is accepted early instead of burning the full required-tool
+	 * miss budget on a heuristic's guess.
+	 */
+	requiredToolEvidence?: "inferred";
 	deterministicToolCall?: MessageHandlerDeterministicToolCall;
 	[key: string]: JsonValue | MessageHandlerDeterministicToolCall | undefined;
 }

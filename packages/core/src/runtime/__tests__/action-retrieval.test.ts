@@ -142,6 +142,119 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
+	it("resolves a simile candidate hint to its catalog parent (BASH -> SHELL)", () => {
+		// The live regression this locks: Stage-1 hints candidateActions=["BASH"]
+		// (the documented canonical hint) but the parent action is named SHELL with
+		// BASH only as a simile. Without simile resolution the hint is dead and the
+		// surface cut hands the planner unrelated keyword matches instead.
+		const catalog = buildActionCatalog([
+			{
+				name: "SHELL",
+				description: "Run a shell command on the host.",
+				similes: ["BASH", "EXEC", "RUN_COMMAND"],
+				tags: ["system"],
+			},
+			...actions,
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "how much disk space is left on the server",
+			candidateActions: ["BASH"],
+		});
+		expect(response.results[0]).toMatchObject({
+			name: "SHELL",
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
+	it("drops a simile claimed by multiple parents instead of first-writer-wins (#16561)", () => {
+		// The live collision this locks: LIST_FILES was a simile on BOTH the
+		// coding-tools FILE action and the stored-media FILES action; catalog
+		// order is alphabetical, so the earlier parent silently stole the
+		// other's intent. An ambiguous simile must not route at all — the
+		// planner then falls back to keyword/BM25 scoring over both parents.
+		const catalog = buildActionCatalog([
+			{
+				name: "FILE",
+				description: "Read, write, edit, grep, glob, or list files.",
+				similes: ["LIST_FILES"],
+				tags: ["files"],
+			},
+			{
+				name: "FILES",
+				description: "List, get, or delete stored media files.",
+				similes: ["LIST_FILES", "RECENT_FILES"],
+				tags: ["media"],
+			},
+			...actions,
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "totally unrelated message",
+			candidateActions: ["LIST_FILES"],
+		});
+		// Neither parent may claim the ambiguous hint via the exact stage.
+		for (const result of response.results) {
+			if (result.name === "FILE" || result.name === "FILES") {
+				expect(result.matchedBy).not.toContain("exact");
+			}
+		}
+		// An unambiguous simile on the same parents still routes normally.
+		const unambiguous = retrieveActions({
+			catalog,
+			messageText: "totally unrelated message",
+			candidateActions: ["RECENT_FILES"],
+		});
+		expect(unambiguous.results[0]).toMatchObject({
+			name: "FILES",
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
+	it("resolves a child simile hint to the child's parent", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Manage coding agent task sessions.",
+				subActions: ["SEND_PROMPT"],
+			},
+			{
+				name: "SEND_PROMPT",
+				description: "Send a follow-up prompt to a running session.",
+				similes: ["SEND_TO_AGENT"],
+			},
+			...actions,
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "pass this along",
+			candidateActions: ["SEND_TO_AGENT"],
+		});
+		expect(response.results[0]).toMatchObject({
+			name: "TASKS",
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
+	it("does not let a simile hijack a real parent name", () => {
+		// EMAIL exists as a real parent; a MUSIC simile spelled "EMAIL" must not
+		// reroute an EMAIL candidate hint to MUSIC.
+		const catalog = buildActionCatalog([
+			{
+				name: "MUSIC2",
+				description: "Control playback.",
+				similes: ["EMAIL"],
+			},
+			...actions,
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "message my contact",
+			candidateActions: ["EMAIL"],
+		});
+		expect(response.results[0]?.name).toBe("EMAIL");
+	});
+
 	it("applies exact parent hints as a score floor", () => {
 		const catalog = buildActionCatalog(actions);
 		const response = retrieveActions({

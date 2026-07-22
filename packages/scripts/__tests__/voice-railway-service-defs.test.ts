@@ -34,21 +34,23 @@ const SERVICES = [
     // The route contract these files exist to serve; the strings must appear in
     // the README so the contract is legible without reading the route code.
     contractPath: "/api/tts",
-    deployCmd: "railway up --service kokoro-tts",
+    deployCmd: "railway up . --path-as-root --service kokoro-tts",
     urlVar: "ELIZA_VOICE_KOKORO_TTS_URL",
     // Exact `FROM` tag the Dockerfile ARG defaults to. Pinned to a manifest that
     // is verified to exist on ghcr — a bad tag (`railway up` fails at FROM) is
     // caught here instead of only at deploy. Re-verify the manifest before bumping.
     imageTag: "ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.2",
+    compatibilityModule: "eliza_kokoro_compat.py",
   },
   {
     dir: "packages/cloud/services/voice-whisper-stt",
     contractPath: "/v1/audio/transcriptions",
-    deployCmd: "railway up --service whisper-stt",
+    deployCmd: "railway up . --path-as-root --service whisper-stt",
     urlVar: "ELIZA_VOICE_WHISPER_STT_URL",
     // 0.8.2-cpu is a real ghcr manifest that still serves the transcription +
     // /health contract; the prior 0.6.5-cpu was a 404 (`railway up` died at FROM).
     imageTag: "ghcr.io/speaches-ai/speaches:0.8.2-cpu",
+    compatibilityModule: null,
   },
 ] as const;
 
@@ -90,6 +92,47 @@ describe("Railway voice service definitions (#14374)", () => {
         expect(toml.deploy?.healthcheckPath).toBe("/health");
         expect(typeof toml.deploy?.healthcheckTimeout).toBe("number");
       });
+
+      test("binds the server to Railway's runtime PORT", () => {
+        const dockerfile = read(`${svc.dir}/Dockerfile`);
+        const command = dockerfile.match(/^CMD\s+(.*)$/m)?.[1];
+
+        // Dockerfile ENV is only a local default: Railway replaces PORT for
+        // each deployment and probes that assigned value. Both upstream images
+        // otherwise bind fixed ports, which leaves the process running while
+        // every Railway health probe targets the wrong socket.
+        expect(dockerfile).toMatch(/^ENV PORT=\d+$/m);
+        expect(command).toBeDefined();
+        expect(command).toContain('"sh", "-c"');
+        expect(command).toContain('\\"$PORT\\"');
+      });
+
+      if (svc.compatibilityModule !== null) {
+        test("adapts the stable cloud route to the pinned upstream API", () => {
+          const dockerfile = read(`${svc.dir}/Dockerfile`);
+          const adapter = read(`${svc.dir}/${svc.compatibilityModule}`);
+
+          expect(dockerfile).toContain(svc.compatibilityModule);
+          expect(dockerfile).toContain("eliza_kokoro_compat:app");
+          expect(adapter).toContain('@app.post("/api/tts")');
+          expect(adapter).toContain("OpenAISpeechRequest(");
+          expect(adapter).toContain('response_format="wav"');
+          expect(adapter).toContain("stream=True");
+        });
+      }
+
+      if (svc.dir.endsWith("voice-whisper-stt")) {
+        test("installs the required multilingual model into the image", () => {
+          const dockerfile = read(`${svc.dir}/Dockerfile`);
+
+          expect(dockerfile).toContain(
+            "ARG WHISPER_MODEL=Systran/faster-whisper-small",
+          );
+          expect(dockerfile).toContain(
+            "model_registry.download_model_files_if_not_exist",
+          );
+        });
+      }
 
       test("documents the route contract and the owner deploy command", () => {
         expect(exists(`${svc.dir}/README.md`)).toBe(true);

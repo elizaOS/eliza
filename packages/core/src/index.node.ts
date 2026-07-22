@@ -13,6 +13,10 @@ export * from "./access-control/filter";
 export * from "./account-pool-bridge";
 export * from "./action-names";
 export * from "./actions";
+// The Stage-1 native-tool contract: model-provider plugins that serve
+// RESPONSE_HANDLER structurally (native tool capture) key their detection on
+// this name instead of duplicating the literal.
+export { HANDLE_RESPONSE_TOOL_NAME } from "./actions/to-tool";
 export * from "./activity-plaintext";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
@@ -63,6 +67,7 @@ export {
 export {
 	DEFAULT_CEREBRAS_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+	DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 	type DeploymentTargetConfig,
 	type LinkedAccountFlagsConfig,
@@ -350,6 +355,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export * from "./streaming-context";
 export * from "./target-sources";
 export {
 	availableProviderNames,

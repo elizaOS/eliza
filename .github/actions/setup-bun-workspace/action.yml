@@ -34,6 +34,13 @@ inputs:
     description: "Whether to run the repo postinstall step explicitly"
     required: false
     default: "true"
+  cache-bun-install:
+    description: >-
+      Whether to restore/save the global Bun install cache. Disable this for
+      cold-path jobs when a broad multi-gigabyte fallback restore costs more
+      than fetching the lockfile's actual dependency set.
+    required: false
+    default: "true"
   skip-avatar-clone:
     description: "Set SKIP_AVATAR_CLONE=1 for postinstall"
     required: false
@@ -66,7 +73,7 @@ runs:
     # on the step PATH, and the very next step (turbo-cache-github ->
     # turbo-cache-key.mjs) invokes `node` directly. Without this, jobs that
     # rely solely on this composite for their toolchain (coverage-gate,
-    # feed-env-audit, scenario-matrix, voice-workbench) fail with
+    # feed-env-audit and voice-workbench) fail with
     # "node: command not found" on runners missing a system Node. setup-node is
     # idempotent, so callers that already ran it (keyless-harness, the audits)
     # just re-select the same version. Toggle off via setup-node: "false".
@@ -77,16 +84,33 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    # Persist Turbo's local filesystem cache (.turbo) through the pinned
-    # GitHub-native shim (#12341) — the single Turbo cache regime, replacing the
-    # Vercel SaaS remote cache. The shim keys on the deterministic
-    # turbo-cache-key hash with no github.job fragment, so one entry is shared
-    # across every job instead of the ~30-way fragmentation the old per-job key
-    # caused; Turbo re-validates task hashes on restore, so a cross-job hit is
-    # always safe. This keeps the full 14-way typecheck off the runner on warm
-    # caches (cold ran it OOM/SIGTERM). No SaaS, no secrets; a miss is non-fatal.
-    - name: Restore Turbo cache (GitHub-native)
-      uses: ./.github/actions/turbo-cache-github
+    # Persist Turbo's local filesystem cache (.turbo) directly from this
+    # composite instead of nesting turbo-cache-github inside it. actions/cache's
+    # post step loses `path` through a doubly nested composite, so restores ran
+    # but every save ended with "Input required and not supplied: path" and the
+    # repository never populated a turbo-Linux-* entry. Keep the standalone
+    # shim for workflows that invoke it directly; setup-bun-workspace must
+    # inline the same pinned cache contract so its post step can save.
+    #
+    # Include github.job in the primary key because every setup consumer races
+    # to save at post-job time. Without a lane suffix, a fast non-Turbo lane
+    # such as lint wins the immutable key with an empty .turbo directory and
+    # prevents Build/Type Check from publishing their populated caches. The
+    # deterministic hash restore prefix still permits safe cross-lane warming.
+    - name: Compute deterministic Turbo cache key
+      id: turbo-key
+      shell: bash
+      run: node packages/scripts/turbo-cache-key.mjs --github-output
+
+    - name: Restore and save Turbo cache (GitHub-native)
+      id: turbo-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .turbo
+        key: turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-${{ github.job }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-
+          turbo-${{ runner.os }}-
 
     # actions/setup-python@v6 downloads a CPython build requiring the
     # x86-64-v3 CPU baseline; some [self-hosted, hetzner-robot] runners expose
@@ -278,11 +302,12 @@ runs:
         bun-version: ${{ inputs.bun-version }}
 
     - name: Cache Bun install
-      # Cache the Bun install store on every OS, Linux included (#12338). A miss
-      # just means no speedup and a cache write failure is non-fatal, so this is
-      # additive: worst case a cold Linux runner behaves exactly as before while
-      # warm runners skip re-downloading the dependency tarballs. Pinned by SHA
-      # (no floating @v5) to avoid the Bun/cache-action drift #12338 targets.
+      # Cache the Bun install store on every OS, Linux included (#12338). Long
+      # cold-path jobs can opt out: attempt 1 on #16657 missed the exact key,
+      # then spent 2m50s (Type Check) / 2m04s (Build) restoring a stale 1.6 GiB
+      # fallback before a sub-minute install. Pinned by SHA (no floating @v5)
+      # to avoid the Bun/cache-action drift #12338 targets.
+      if: ${{ inputs.cache-bun-install == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ~/.bun/install/cache

@@ -1,21 +1,12 @@
 /**
- * AutomationsFeed — focused, single-screen list of every automation
- * (workflows, prompt automations, and scheduled items) with the same row
- * format. Click a row to open the matching editor (WorkflowEditor,
- * TaskEditor for a prompt automation, or ScheduledTaskEditor).
- *
- * This component is intentionally separate from the existing
- * `AutomationsView` — that surface is the full dashboard with sidebar
- * chat, palette, node catalog, etc. This is the visual feed for users who
- * just want to see what's running.
- *
- * Backend: the list is fetched from `GET /api/automations` (served by
- * `@elizaos/plugin-workflow`), which already aggregates workbench prompt
- * automations, triggers, and workflows into one `AutomationListResponse`.
- * Editing routes through the workflow CRUD endpoints under `/api/workflow/*`.
+ * Unified feed for workflows, prompt automations, and scheduled items with
+ * direct handoff to their matching editors. It consumes the aggregate
+ * `/api/automations` surface and keeps loading, healthy-empty, unavailable,
+ * upgrade-required, and error states visually distinct.
  */
 
 import {
+  AlertTriangle,
   CalendarClock,
   CheckCircle2,
   CircleSlash,
@@ -25,6 +16,7 @@ import {
   Play,
   PlayCircle,
   Plus,
+  Rocket,
   Workflow,
 } from "lucide-react";
 import {
@@ -43,7 +35,8 @@ import type {
   AutomationListResponse,
 } from "../../api/client-types-config";
 import { isApiError } from "../../api/client-types-core";
-import { getCached, setCached } from "../../hooks/resource-cache";
+import { resolveCloudConsoleUrl } from "../../cloud/applications/lib/native-cloud-nav";
+import { getCached, invalidate, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -53,6 +46,7 @@ import {
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
 import { mergeUnifiedTasks } from "../../utils/merge-unified-tasks";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { PagePanel } from "../composites/page-panel";
 import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
@@ -109,23 +103,35 @@ const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
 };
 const NEW_AUTOMATION_LINK_ID = "__new__";
 
-// On mobile the workflow runtime (and its `GET /api/automations` route) is
-// intentionally absent — phones cannot host it — even though the Automations
-// tile is registered via plugin-task-coordinator. A 404 therefore means the
-// feature is unavailable, not an error, so we render the empty state instead
-// of a red banner.
-const EMPTY_AUTOMATIONS: AutomationListResponse = {
-  automations: [],
-  summary: {
-    total: 0,
-    coordinatorCount: 0,
-    workflowCount: 0,
-    scheduledCount: 0,
-    draftCount: 0,
-  },
-  workflowStatus: null,
-  workflowFetchError: null,
-};
+/** Namespaces cached rows by the currently selected local or Cloud agent. */
+export function automationListCacheKey(baseUrl: string): string {
+  const normalizedBase = baseUrl.trim().replace(/\/+$/, "") || "local";
+  return `automations:list:${normalizedBase}`;
+}
+
+interface WorkflowServiceIssue {
+  kind: "unavailable" | "error";
+  title: string;
+  message: string;
+  upgradeAgentId?: string;
+}
+
+type WorkflowRouteIssue =
+  | { kind: "unavailable"; message: string }
+  | { kind: "requires-dedicated"; message: string; agentId: string };
+
+function cloudAgentIdFromApiBase(baseUrl: string): string | null {
+  try {
+    const match = /^\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge)?\/?$/.exec(
+      new URL(baseUrl).pathname,
+    );
+    return match?.[1] ? decodeURIComponent(match[1]) : null;
+  } catch {
+    // error-policy:J3 a malformed or non-cloud API base is an explicit invalid
+    // signal; it must not produce a guessed agent-management destination.
+    return null;
+  }
+}
 
 interface FeedRow {
   key: string;
@@ -137,6 +143,7 @@ interface FeedRow {
   lastUpdated: string | null;
   lastRunStatus: NonNullable<AutomationItem["lastExecution"]>["status"] | null;
   lastRunError: string | null;
+  executionFetchError: string | null;
   source: AutomationItem;
 }
 
@@ -201,6 +208,7 @@ function automationToRow(
     lastUpdated: item.updatedAt,
     lastRunStatus: item.lastExecution?.status ?? null,
     lastRunError: item.lastExecution?.errorMessage ?? null,
+    executionFetchError: item.executionFetchError ?? null,
     source: item,
   };
 }
@@ -209,15 +217,32 @@ export function AutomationsFeed({
   connectedCredTypes,
 }: AutomationsFeedProps = {}) {
   const { t } = useTranslation();
+  const apiBaseUrl = client.baseUrl;
+  const cacheKey = automationListCacheKey(apiBaseUrl);
   // Seed from the shared cache so a revisit paints the last-known automations
   // instantly and revalidates silently, instead of flashing a spinner.
-  const cachedAutomations =
-    getCached<AutomationListResponse>("automations:list");
-  const [data, setData] = useState<AutomationListResponse | null>(
-    cachedAutomations?.data ?? null,
-  );
+  const cachedAutomations = getCached<AutomationListResponse>(cacheKey);
+  const [dataState, setDataState] = useState<{
+    cacheKey: string;
+    data: AutomationListResponse | null;
+  }>(() => ({ cacheKey, data: cachedAutomations?.data ?? null }));
+  const data =
+    dataState.cacheKey === cacheKey
+      ? dataState.data
+      : (cachedAutomations?.data ?? null);
   const [loading, setLoading] = useState(!cachedAutomations);
   const [error, setError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<{
+    workflowId: string;
+    message: string;
+  } | null>(null);
+  const [workflowRouteIssue, setWorkflowRouteIssue] =
+    useState<WorkflowRouteIssue | null>(null);
+  const runningWorkflowIdsRef = useRef(new Set<string>());
+  const activeCacheKeyRef = useRef(cacheKey);
+  const [runningWorkflowIds, setRunningWorkflowIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [filter, setFilter] = useState<FeedFilter>("all");
   const { link, setLink } = useAutomationDeepLink();
   // Scheduled-task rows open a LifeOps verb panel. They are not part of the
@@ -268,56 +293,205 @@ export function AutomationsFeed({
 
   const refresh = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (!options?.silent) setLoading(true);
-      setError(null);
+      const requestCacheKey = cacheKey;
+      if (activeCacheKeyRef.current === requestCacheKey) {
+        if (!options?.silent) setLoading(true);
+        setError(null);
+        setWorkflowRouteIssue(null);
+      }
       try {
         // Unified read: automations (workflows + workbench tasks + triggers)
-        // merged client-side with LifeOps scheduled tasks. The scheduled-task
-        // fetch degrades to empty where the runner isn't hosted, so a missing
-        // LifeOps surface never breaks the automations list.
+        // merged client-side with LifeOps scheduled tasks.
         const [res, scheduled] = await Promise.all([
           client.listAutomations(),
           client
             .listScheduledTasks({ ownerVisibleOnly: true })
-            .catch(() => ({ tasks: [] })),
+            .catch((scheduledError) => {
+              // error-policy:J4 some runtimes intentionally omit the LifeOps
+              // route; only that explicit unavailable response may degrade to
+              // an empty supplemental list. Operational failures must surface.
+              if (isApiError(scheduledError) && scheduledError.status === 404) {
+                return { tasks: [] };
+              }
+              throw scheduledError;
+            }),
         ]);
         const merged: AutomationListResponse = {
           ...res,
           automations: mergeUnifiedTasks(res.automations, scheduled.tasks),
         };
-        setData(merged);
-        setCached("automations:list", merged);
+        setCached(requestCacheKey, merged);
+        if (activeCacheKeyRef.current === requestCacheKey) {
+          setDataState({ cacheKey: requestCacheKey, data: merged });
+        }
       } catch (e) {
-        // A 404 means the workflow runtime isn't hosted here (e.g. mobile) —
-        // render the clean empty state, not an error banner. Any other failure
-        // is surfaced so a broken endpoint doesn't masquerade as "no automations".
+        // error-policy:J4 this view boundary converts capability and load
+        // failures into explicit unavailable, upgrade, or retryable states.
+        if (isApiError(e) && e.code === "workflow_requires_dedicated") {
+          const agentId = cloudAgentIdFromApiBase(client.baseUrl);
+          if (agentId && activeCacheKeyRef.current === requestCacheKey) {
+            setDataState({ cacheKey: requestCacheKey, data: null });
+            invalidate(requestCacheKey);
+            setWorkflowRouteIssue({
+              kind: "requires-dedicated",
+              message: e.message,
+              agentId,
+            });
+            return;
+          }
+        }
+        // A runtime without the workflow route is explicitly unavailable. It
+        // must remain distinct from a successful empty list so users know why
+        // workflows cannot be created or run here.
         if (isApiError(e) && e.status === 404) {
-          setData(EMPTY_AUTOMATIONS);
+          if (activeCacheKeyRef.current === requestCacheKey) {
+            setDataState({ cacheKey: requestCacheKey, data: null });
+            invalidate(requestCacheKey);
+            setWorkflowRouteIssue({
+              kind: "unavailable",
+              message:
+                "The workflow API is not available on this runtime. Open elizaOS on a desktop with the workflow service running to create or run workflows.",
+            });
+          }
           return;
         }
-        setError(
-          e instanceof Error
-            ? e.message
-            : t("automationsfeed.loadError", {
-                defaultValue: "Failed to load automations.",
-              }),
-        );
+        if (activeCacheKeyRef.current === requestCacheKey) {
+          setError(
+            e instanceof Error
+              ? e.message
+              : t("automationsfeed.loadError", {
+                  defaultValue: "Failed to load automations.",
+                }),
+          );
+        }
       } finally {
-        setLoading(false);
+        if (activeCacheKeyRef.current === requestCacheKey) {
+          setLoading(false);
+        }
       }
     },
-    [t],
+    [cacheKey, t],
   );
 
   useEffect(() => {
-    // Revalidate silently when cached automations are already on screen.
-    void refresh({ silent: getCached("automations:list") != null });
-  }, [refresh]);
+    const cached = getCached<AutomationListResponse>(cacheKey);
+    activeCacheKeyRef.current = cacheKey;
+    setDataState({ cacheKey, data: cached?.data ?? null });
+    setLoading(!cached);
+    setError(null);
+    setRunError(null);
+    setWorkflowRouteIssue(null);
+    // Revalidate silently when this agent's cached automations are already on
+    // screen. Agent switches never borrow another agent's last-known rows.
+    void refresh({ silent: cached != null });
+  }, [cacheKey, refresh]);
+
+  const runWorkflowNow = useCallback(
+    async (workflowId: string) => {
+      if (runningWorkflowIdsRef.current.has(workflowId)) return;
+      runningWorkflowIdsRef.current.add(workflowId);
+      setRunningWorkflowIds(new Set(runningWorkflowIdsRef.current));
+      setRunError(null);
+      try {
+        await client.runWorkflowDefinition(workflowId);
+        await refresh();
+      } catch (e) {
+        // error-policy:J4 run-now is a user interaction boundary; a failed
+        // execution remains distinct from a feed-load failure so its retry
+        // repeats the operation the user asked for.
+        setRunError({
+          workflowId,
+          message:
+            e instanceof Error
+              ? e.message
+              : t("automationsfeed.runError", {
+                  defaultValue: "Failed to run automation.",
+                }),
+        });
+      } finally {
+        runningWorkflowIdsRef.current.delete(workflowId);
+        setRunningWorkflowIds(new Set(runningWorkflowIdsRef.current));
+      }
+    },
+    [refresh, t],
+  );
 
   const automations = useMemo(
     () => (Array.isArray(data?.automations) ? data.automations : []),
     [data],
   );
+  const workflowServiceIssue = useMemo<WorkflowServiceIssue | null>(() => {
+    if (workflowRouteIssue?.kind === "requires-dedicated") {
+      return {
+        kind: "unavailable",
+        title: "Dedicated agent required",
+        message: workflowRouteIssue.message,
+        upgradeAgentId: workflowRouteIssue.agentId,
+      };
+    }
+    if (workflowRouteIssue?.kind === "unavailable") {
+      return {
+        kind: "unavailable",
+        title: "Workflow service unavailable",
+        message: workflowRouteIssue.message,
+      };
+    }
+    const status = data?.workflowStatus;
+    if (status?.mode === "disabled") {
+      return {
+        kind: "unavailable",
+        title: "Workflow service unavailable",
+        message:
+          data?.workflowFetchError ??
+          "The workflow service is not enabled on this runtime.",
+      };
+    }
+    if (data?.workflowFetchError) {
+      return {
+        kind: "error",
+        title: "Workflows couldn't be loaded",
+        message: data.workflowFetchError,
+      };
+    }
+    if (status?.status === "error") {
+      return {
+        kind: "error",
+        title: "Workflow service error",
+        message:
+          "The workflow service reported an error. Retry after checking the runtime status.",
+      };
+    }
+    return null;
+  }, [data, workflowRouteIssue]);
+  const loadErrorIssue = useMemo<WorkflowServiceIssue | null>(
+    () =>
+      error
+        ? {
+            kind: "error",
+            title: "Automations couldn't be loaded",
+            message: error,
+          }
+        : null,
+    [error],
+  );
+  const runErrorIssue = useMemo<WorkflowServiceIssue | null>(
+    () =>
+      runError
+        ? {
+            kind: "error",
+            title: "Run failed",
+            message: runError.message,
+          }
+        : null,
+    [runError],
+  );
+  const openDedicatedUpgrade = useCallback((agentId: string) => {
+    void openExternalUrl(
+      resolveCloudConsoleUrl(
+        `/dashboard/agents/${encodeURIComponent(agentId)}`,
+      ),
+    );
+  }, []);
 
   // Behavior #4: external "show only failed runs" / chip filter dispatcher.
   useEffect(() => {
@@ -470,149 +644,254 @@ export function AutomationsFeed({
 
   const feedContent = (
     <ShellViewAgentSurface viewId="automations">
-      {/* Uniform view header (#13451/#13597): bare-icon back, centered title. */}
-      <ViewHeader
-        title={t("automationsfeed.title", { defaultValue: "Automations" })}
-        right={
-          <Button
-            ref={newAutomationAction.ref}
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("automationsfeed.addAutomation", {
-              defaultValue: "Add automation",
-            })}
-            className="h-9 w-9 rounded-md text-muted-strong hover:bg-bg-hover hover:text-txt"
-            onClick={() => setEditor({ kind: "task", taskId: null })}
-            {...newAutomationAction.agentProps}
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-          </Button>
-        }
-      />
-      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
       <div
-        data-testid="automations-shell"
-        className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 pt-[var(--view-pad-top)] pb-[var(--view-pad-bottom)] lg:px-6"
+        className="flex h-full min-h-0 min-w-0 w-full flex-col"
+        data-testid="automations-layout"
       >
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {overviewStats.map((stat) => (
-            <OverviewStat
-              key={stat.key}
-              statKey={stat.key}
-              label={stat.label}
-              value={stat.value}
-            />
-          ))}
-        </div>
-
-        {/* Filter chips */}
-        <div className="flex flex-wrap gap-1.5">
-          {(Object.keys(FILTER_LABELS) as FeedFilter[]).map((key) => (
-            <FilterChipButton
-              key={key}
-              filter={key}
-              label={t(FILTER_LABELS[key].key, {
-                defaultValue: FILTER_LABELS[key].defaultLabel,
+        {/* Uniform view header (#13451/#13597): bare-icon back, centered title. */}
+        <ViewHeader
+          title={t("automationsfeed.title", { defaultValue: "Automations" })}
+          right={
+            <Button
+              ref={newAutomationAction.ref}
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("automationsfeed.addAutomation", {
+                defaultValue: "Add automation",
               })}
-              icon={FILTER_ICONS[key]}
-              count={filterCounts[key]}
-              isActive={filter === key}
-              onSelect={setFilter}
-            />
-          ))}
-        </div>
+              className="h-9 w-9 rounded-md text-muted-strong hover:bg-bg-hover hover:text-txt"
+              onClick={() => setEditor({ kind: "task", taskId: null })}
+              {...newAutomationAction.agentProps}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+            </Button>
+          }
+        />
+        {/* This direct-rendered route has no TabContentView wrapper, so it owns
+            the one scroll region that reserves the ambient chat footprint. */}
+        <div
+          data-testid="automations-scroll-region"
+          data-shell-scroll-region="true"
+          className="eliza-continuous-chat-scroll min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-[var(--eliza-continuous-chat-clearance,5.25rem)] pe-[var(--eliza-continuous-chat-side-clearance,0px)]"
+        >
+          {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
+          <div
+            data-testid="automations-shell"
+            className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 pt-[var(--view-pad-top)] pb-[var(--view-pad-bottom)] lg:px-6"
+          >
+            {data && !(workflowServiceIssue && rows.length === 0) ? (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {overviewStats.map((stat) => (
+                    <OverviewStat
+                      key={stat.key}
+                      statKey={stat.key}
+                      label={stat.label}
+                      value={stat.value}
+                    />
+                  ))}
+                </div>
 
-        {error && (
-          <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
-            {error}
-          </div>
-        )}
+                {/* Filter chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.keys(FILTER_LABELS) as FeedFilter[]).map((key) => (
+                    <FilterChipButton
+                      key={key}
+                      filter={key}
+                      label={t(FILTER_LABELS[key].key, {
+                        defaultValue: FILTER_LABELS[key].defaultLabel,
+                      })}
+                      icon={FILTER_ICONS[key]}
+                      count={filterCounts[key]}
+                      isActive={filter === key}
+                      onSelect={setFilter}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : null}
 
-        {/* Feed — flat, no card/border; rows separate by whitespace. */}
-        <PagePanel variant="inset" className="p-0">
-          {loading && !data ? (
-            <ListSkeleton rows={6} className="p-3" />
-          ) : rows.length === 0 ? (
-            // Designed-empty render only. A default workflow is seeded on first
-            // run so this state is unreachable in practice (#13597); it exists
-            // for the deleted-everything edge. NO create CTA — the agent offers
-            // to re-create a workflow from chat instead.
-            <div className="flex flex-col items-center gap-5 px-6 py-14 text-center">
-              <AutomationEmptyIllustration />
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-txt">
-                  {t("automationsfeed.emptyHeadline", {
-                    defaultValue: "Nothing scheduled yet",
-                  })}
-                </p>
-                <p className="text-xs text-muted-strong">
-                  {t("automationsfeed.emptySub", {
-                    defaultValue:
-                      "Ask in chat to set up a workflow and it will run here.",
-                  })}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <ul>
-              {rows.map((row) => (
-                <FeedRowItem
-                  key={row.key}
-                  row={row}
-                  connectedCredTypes={connectedCredTypes}
-                  registerRef={(el) => {
-                    const id = row.source.workflowId ?? row.source.id;
-                    if (el) rowRefs.current.set(id, el);
-                    else rowRefs.current.delete(id);
-                  }}
-                  onOpen={() => {
-                    if (row.source.source === "scheduled_task") {
-                      setEditor({
-                        kind: "scheduled",
-                        itemId: row.source.id,
-                      });
-                    } else if (row.kind === "task") {
-                      // A prompt-kind trigger has no backing workbench task —
-                      // key the editor by its trigger id instead.
-                      setEditor({
-                        kind: "task",
-                        taskId:
-                          row.source.task?.id ?? row.source.triggerId ?? null,
-                      });
-                    } else {
-                      setEditor({
-                        kind: "workflow",
-                        workflowId: row.source.workflowId ?? null,
-                      });
-                    }
-                  }}
-                  onRunNow={async () => {
-                    if (row.kind !== "workflow" || !row.source.workflowId)
-                      return;
-                    try {
-                      await client.runWorkflowDefinition(row.source.workflowId);
-                      await refresh();
-                    } catch (e) {
-                      setError(
-                        e instanceof Error
-                          ? e.message
-                          : t("automationsfeed.runError", {
-                              defaultValue: "Failed to run automation.",
-                            }),
-                      );
-                    }
-                  }}
+            {workflowServiceIssue && rows.length > 0 && (
+              <WorkflowServiceIssuePanel
+                issue={workflowServiceIssue}
+                onRetry={() => void refresh()}
+                onUpgrade={openDedicatedUpgrade}
+              />
+            )}
+
+            {loadErrorIssue && rows.length > 0 && (
+              <WorkflowServiceIssuePanel
+                issue={loadErrorIssue}
+                onRetry={() => void refresh()}
+                onUpgrade={openDedicatedUpgrade}
+              />
+            )}
+
+            {runErrorIssue && runError && rows.length > 0 && (
+              <WorkflowServiceIssuePanel
+                issue={runErrorIssue}
+                onRetry={() => void runWorkflowNow(runError.workflowId)}
+                onUpgrade={openDedicatedUpgrade}
+                actionLabel="Run again"
+              />
+            )}
+
+            {/* Feed — flat, no card/border; rows separate by whitespace. */}
+            <PagePanel variant="inset" className="p-0">
+              {(loading || dataState.cacheKey !== cacheKey) && !data ? (
+                <ListSkeleton rows={6} className="p-3" />
+              ) : workflowServiceIssue && rows.length === 0 ? (
+                <WorkflowServiceIssuePanel
+                  issue={workflowServiceIssue}
+                  onRetry={() => void refresh()}
+                  onUpgrade={openDedicatedUpgrade}
+                  full
                 />
-              ))}
-            </ul>
-          )}
-        </PagePanel>
+              ) : loadErrorIssue && rows.length === 0 ? (
+                <WorkflowServiceIssuePanel
+                  issue={loadErrorIssue}
+                  onRetry={() => void refresh()}
+                  onUpgrade={openDedicatedUpgrade}
+                  full
+                />
+              ) : rows.length === 0 ? (
+                // Designed-empty render only. A default workflow is seeded on first
+                // run so this state is unreachable in practice (#13597); it exists
+                // for the deleted-everything edge. NO create CTA — the agent offers
+                // to re-create a workflow from chat instead.
+                <div
+                  data-testid="automations-empty-state"
+                  className="flex flex-col items-center gap-5 px-6 py-14 text-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:px-4 [@media(orientation:landscape)_and_(max-height:520px)]:py-3"
+                >
+                  <AutomationEmptyIllustration />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-txt">
+                      {t("automationsfeed.emptyHeadline", {
+                        defaultValue: "Nothing scheduled yet",
+                      })}
+                    </p>
+                    <p className="text-xs text-muted-strong">
+                      {t("automationsfeed.emptySub", {
+                        defaultValue:
+                          "Ask in chat to set up a workflow and it will run here.",
+                      })}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <ul>
+                  {rows.map((row) => (
+                    <FeedRowItem
+                      key={row.key}
+                      row={row}
+                      connectedCredTypes={connectedCredTypes}
+                      registerRef={(el) => {
+                        const id = row.source.workflowId ?? row.source.id;
+                        if (el) rowRefs.current.set(id, el);
+                        else rowRefs.current.delete(id);
+                      }}
+                      isRunning={
+                        row.source.workflowId
+                          ? runningWorkflowIds.has(row.source.workflowId)
+                          : false
+                      }
+                      onOpen={() => {
+                        if (row.source.source === "scheduled_task") {
+                          setEditor({
+                            kind: "scheduled",
+                            itemId: row.source.id,
+                          });
+                        } else if (row.kind === "task") {
+                          // A prompt-kind trigger has no backing workbench task —
+                          // key the editor by its trigger id instead.
+                          setEditor({
+                            kind: "task",
+                            taskId:
+                              row.source.task?.id ??
+                              row.source.triggerId ??
+                              null,
+                          });
+                        } else {
+                          setEditor({
+                            kind: "workflow",
+                            workflowId: row.source.workflowId ?? null,
+                          });
+                        }
+                      }}
+                      onRunNow={async () => {
+                        if (row.kind !== "workflow" || !row.source.workflowId)
+                          return;
+                        await runWorkflowNow(row.source.workflowId);
+                      }}
+                    />
+                  ))}
+                </ul>
+              )}
+            </PagePanel>
+          </div>
+        </div>
       </div>
     </ShellViewAgentSurface>
   );
 
   return feedContent;
+}
+
+function WorkflowServiceIssuePanel({
+  issue,
+  onRetry,
+  onUpgrade,
+  actionLabel = "Retry",
+  full = false,
+}: {
+  issue: WorkflowServiceIssue;
+  onRetry: () => void;
+  onUpgrade: (agentId: string) => void;
+  actionLabel?: string;
+  full?: boolean;
+}) {
+  const tone =
+    issue.kind === "error"
+      ? "border-danger/20 bg-danger/10 text-accent-muted dark:text-danger"
+      : "border-warning/25 bg-warning/10 text-accent-muted dark:text-warning";
+  const upgradeAgentId = issue.upgradeAgentId;
+  return (
+    <div
+      role="alert"
+      data-testid="workflow-service-state"
+      className={`flex items-start gap-3 border p-3 text-sm ${tone} ${
+        full
+          ? "min-h-44 flex-col items-center justify-center text-center"
+          : "rounded-sm"
+      }`}
+    >
+      <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+      <div className={full ? "max-w-lg" : "min-w-0 flex-1"}>
+        <p className="font-medium">{issue.title}</p>
+        <p className="mt-1 text-xs opacity-90">{issue.message}</p>
+      </div>
+      {upgradeAgentId ? (
+        <Button
+          size="sm"
+          className="shrink-0"
+          onClick={() => onUpgrade(upgradeAgentId)}
+        >
+          <Rocket className="h-4 w-4" aria-hidden />
+          Upgrade to Dedicated
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={onRetry}
+        >
+          {actionLabel}
+        </Button>
+      )}
+    </div>
+  );
 }
 
 function OverviewStat({
@@ -674,7 +953,7 @@ function FilterChipButton({
       // wash; the count renders as plain text and hides at zero.
       className={`h-auto gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
         isActive
-          ? "bg-accent/10 text-accent"
+          ? "bg-accent/10 text-accent-muted dark:text-accent"
           : "text-muted-strong hover:bg-bg-accent/40"
       }`}
       {...agentProps}
@@ -694,19 +973,23 @@ function FeedRowItem({
   row,
   onOpen,
   onRunNow,
+  isRunning,
   connectedCredTypes: _connectedCredTypes,
   registerRef,
 }: {
   row: FeedRow;
   onOpen: () => void;
   onRunNow: () => void;
+  isRunning: boolean;
   connectedCredTypes?: ReadonlySet<string>;
   registerRef?: (el: HTMLLIElement | null) => void;
 }) {
   const { t } = useTranslation();
   const isWorkflow = row.kind === "workflow";
   const Icon = isWorkflow ? Workflow : CheckCircle2;
-  const iconToneClass = isWorkflow ? "text-accent" : "text-muted-strong";
+  const iconToneClass = isWorkflow
+    ? "text-accent-muted dark:text-accent"
+    : "text-muted-strong";
   const workflowId = row.source.workflowId ?? row.source.id;
   const openAction = useAgentElement<HTMLButtonElement>({
     id: `open-${row.kind}-${row.source.workflowId ?? row.source.taskId ?? row.key}`,
@@ -727,7 +1010,9 @@ function FeedRowItem({
     group: "workflow-actions",
     description: "Run this workflow once and refresh the automation dashboard",
     status:
-      row.lastRunStatus === "running" || row.lastRunStatus === "waiting"
+      isRunning ||
+      row.lastRunStatus === "running" ||
+      row.lastRunStatus === "waiting"
         ? "busy"
         : isWorkflow
           ? "active"
@@ -762,7 +1047,7 @@ function FeedRowItem({
             </span>
             <span
               className={`inline-flex items-center gap-1.5 text-xs ${
-                row.active ? "text-ok" : "text-muted-strong"
+                row.active ? "text-ok-foreground" : "text-muted-strong"
               }`}
             >
               <StatusDot tone={row.active ? "success" : "muted"} />
@@ -792,6 +1077,13 @@ function FeedRowItem({
                 }
               />
             )}
+            {row.executionFetchError && (
+              <RowChip
+                icon={<AlertTriangle className="h-3 w-3" />}
+                label={`Run history unavailable: ${row.executionFetchError}`}
+                tone="danger"
+              />
+            )}
             {!row.schedule && row.lastUpdated && (
               <RowChip
                 icon={<Clock className="h-3 w-3" />}
@@ -813,13 +1105,19 @@ function FeedRowItem({
             name: row.title,
             defaultValue: "Run {{name}} now",
           })}
+          aria-busy={isRunning}
+          disabled={isRunning}
           onClick={onRunNow}
           variant="ghost"
           size="icon-sm"
           className="h-7 w-7 rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
           {...runAction.agentProps}
         >
-          <PlayCircle className="h-3.5 w-3.5" aria-hidden />
+          {isRunning ? (
+            <Spinner size={14} aria-hidden />
+          ) : (
+            <PlayCircle className="h-3.5 w-3.5" aria-hidden />
+          )}
         </Button>
       )}
     </li>
@@ -837,9 +1135,9 @@ function RowChip({
 }) {
   const toneClasses = {
     muted: "text-muted-strong",
-    accent: "text-accent",
-    success: "text-ok",
-    danger: "text-destructive",
+    accent: "text-accent-muted dark:text-accent",
+    success: "text-ok-foreground",
+    danger: "text-accent-muted dark:text-destructive",
   }[tone];
   return (
     <span className={`inline-flex min-w-0 items-center gap-1 ${toneClasses}`}>
@@ -862,7 +1160,7 @@ function AutomationEmptyIllustration() {
       viewBox="0 0 148 120"
       fill="none"
       aria-hidden="true"
-      className="text-accent"
+      className="text-accent [@media(orientation:landscape)_and_(max-height:520px)]:hidden"
     >
       <defs>
         <linearGradient id="autoFill" x1="0" y1="0" x2="1" y2="1">

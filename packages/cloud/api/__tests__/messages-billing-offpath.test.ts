@@ -39,15 +39,19 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // stranded by the process-wide registry replacement; restore in afterAll.
 const aiActual = require("ai") as Record<string, unknown>;
 
+import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { estimateTokens } from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
+import * as contentModerationActual from "@/lib/services/content-moderation";
+import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
 
 // The REAL settler — explicitly NOT mocked. This is the component under test.
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
+const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
 
 // --- mock the AI SDK boundary we drive ---------------------------------------
 let streamTextImpl: ((config: Record<string, unknown>) => unknown) | null =
@@ -71,6 +75,47 @@ mock.module("ai", () => ({
 mock.module("@/lib/providers/language-model", () => ({
   ...languageModelActual,
   getLanguageModel: () => ({}) as never,
+}));
+
+type InferenceAuthResolution = Awaited<
+  ReturnType<typeof inferenceAuthContextActual.resolveInferenceAuthContext>
+>;
+const resolveInferenceAuthContext = mock(
+  async (): Promise<InferenceAuthResolution> => ({
+    kind: "authorized",
+    ctx: {
+      v: 1,
+      cachedAt: 0,
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+      keyHash: "messages-billing-test-key",
+    },
+    source: "cache",
+  }),
+);
+mock.module("@/lib/services/inference-auth-context", () => ({
+  ...inferenceAuthContextActual,
+  resolveInferenceAuthContext,
+}));
+
+const shouldBlockUser = mock(async () => false);
+const moderateInBackground = mock(() => undefined);
+mock.module("@/lib/services/content-moderation", () => ({
+  ...contentModerationActual,
+  contentModerationService: {
+    ...contentModerationActual.contentModerationService,
+    shouldBlockUser,
+    moderateInBackground,
+  },
+}));
+
+mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  ...rateLimitActual,
+  RateLimitPresets: { ...rateLimitActual.RateLimitPresets, RELAXED: {} },
+  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
+    await next();
+  },
 }));
 
 const INPUT_TOKEN_COST = 0.001;
@@ -113,22 +158,42 @@ const billUsage = mock(async (_context: unknown, usage: unknown) => {
   };
 });
 const recordUsageAnalytics = mock(async () => ({ id: "usage-1" }));
+let routeReservation:
+  | ReturnType<typeof makeLedgerReservation>["reservation"]
+  | null = null;
+const reserveCredits = mock(async () => {
+  if (!routeReservation) throw new Error("routeReservation not set");
+  return routeReservation;
+});
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
   recordUsageAnalytics,
+  reserveCredits,
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
-const { __messagesStreamingCreditTestHooks } = await import(
-  "../v1/messages/route"
-);
+const messagesRouteModule = await import("../v1/messages/route");
+const { __messagesStreamingCreditTestHooks } = messagesRouteModule;
+const messagesRoute = messagesRouteModule.default;
 const { handleStream, handleNonStream } = __messagesStreamingCreditTestHooks;
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
+  mock.module(
+    "@/lib/middleware/rate-limit-hono-cloudflare",
+    () => rateLimitActual,
+  );
   mock.module("@/lib/providers/language-model", () => languageModelActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module(
+    "@/lib/services/content-moderation",
+    () => contentModerationActual,
+  );
+  mock.module(
+    "@/lib/services/inference-auth-context",
+    () => inferenceAuthContextActual,
+  );
 });
 
 /**
@@ -186,6 +251,10 @@ function callStreaming(
     estimatedInputTokens?: number;
     signal?: AbortSignal;
     executionCtx?: ExecutionCtx;
+    providerDispatchTelemetry?: {
+      capture(): void;
+      emit(): void;
+    };
   } = {},
 ) {
   return handleStream(
@@ -207,13 +276,20 @@ function callStreaming(
     "gateway" as never,
     "req-test-offpath",
     options.executionCtx,
+    options.providerDispatchTelemetry,
   );
 }
 
 /** Invoke handleNonStream with the test's settler and a fixed request shape. */
 function callNonStreaming(
   settleReservation: (actualCost: number) => Promise<unknown> | unknown,
-  options: { executionCtx?: ExecutionCtx } = {},
+  options: {
+    executionCtx?: ExecutionCtx;
+    providerDispatchTelemetry?: {
+      capture(): void;
+      emit(): void;
+    };
+  } = {},
 ) {
   return handleNonStream(
     MODEL,
@@ -233,6 +309,7 @@ function callNonStreaming(
     "gateway" as never,
     "req-test-offpath",
     options.executionCtx,
+    options.providerDispatchTelemetry,
   );
 }
 
@@ -245,6 +322,24 @@ beforeEach(() => {
   generateTextImpl = null;
   billUsageGate = null;
   billUsageError = null;
+  routeReservation = null;
+  reserveCredits.mockClear();
+  resolveInferenceAuthContext.mockReset();
+  resolveInferenceAuthContext.mockResolvedValue({
+    kind: "authorized",
+    ctx: {
+      v: 1,
+      cachedAt: 0,
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+      keyHash: "messages-billing-test-key",
+    },
+    source: "cache",
+  });
+  shouldBlockUser.mockReset();
+  shouldBlockUser.mockResolvedValue(false);
+  moderateInBackground.mockClear();
 });
 
 const USAGE = { inputTokens: 2, outputTokens: 3, totalTokens: 5 };
@@ -297,7 +392,225 @@ function sdkFaithfulGeneration() {
   });
 }
 
+function postMessages(bodyOverrides: Record<string, unknown> = {}) {
+  return messagesRoute.request("/", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": "eliza_test_key",
+      "x-eliza-trace-id": "22222222-2222-4222-8222-222222222222",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 256,
+      messages: [{ role: "user", content: "hello" }],
+      ...bodyOverrides,
+    }),
+  });
+}
+
+describe("messages route preforward telemetry", () => {
+  // #16081 invariant on /v1/messages: MODEL (gpt-oss-120b) is a reasoning model,
+  // so the provider's maxOutputTokens is floored ABOVE the requested 256. The
+  // reservation must admit that same floored ceiling — reserving the raw 256
+  // would let the provider bill far more output than was reserved.
+  test("reserves the same reasoning-floored ceiling the provider is capped at", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    let capturedConfig: Record<string, unknown> | undefined;
+    generateTextImpl = (config) => {
+      capturedConfig = config;
+      return {
+        text: TEXT,
+        usage: USAGE,
+        toolCalls: [],
+        finishReason: "stop",
+        rawFinishReason: "stop",
+      };
+    };
+    reserveCredits.mockClear();
+
+    const response = await postMessages(); // gpt-oss-120b, max_tokens: 256
+    expect(response.status).toBe(200);
+
+    const providerCap = capturedConfig?.maxOutputTokens as number;
+    // Reasoning model → the provider cap is floored above the requested 256.
+    expect(providerCap).toBeGreaterThan(256);
+    // The reservation admitted that exact ceiling (3rd arg to reserveCredits),
+    // not the raw request.max_tokens.
+    const reserveArgs = reserveCredits.mock.calls[0] as unknown as
+      | [unknown, number, number]
+      | undefined;
+    expect(reserveArgs?.[2]).toBe(providerCap);
+  });
+
+  // Streaming sibling of the reservation-parity test above: the stream handler
+  // recomputes the same floored ceiling before streamText, and the reservation
+  // taken by the route (before the stream/non-stream fork) must match it.
+  test("streaming: reserves the same reasoning-floored ceiling streamText is capped at", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    let capturedConfig: Record<string, unknown> | undefined;
+    // sdkFaithfulStream doesn't expose the streamText config, so re-inline its
+    // SDK-faithful stream shape with a config capture.
+    streamTextImpl = (config) => {
+      capturedConfig = config;
+      const onFinish = config.onFinish as (event: {
+        text: string;
+        totalUsage: typeof USAGE;
+      }) => Promise<unknown>;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-start", id: "text-1" };
+          yield { type: "text-delta", id: "text-1", text: TEXT };
+          yield { type: "text-end", id: "text-1" };
+          await onFinish({ text: TEXT, totalUsage: USAGE });
+          yield { type: "finish", finishReason: "stop", totalUsage: USAGE };
+        })(),
+      };
+    };
+    reserveCredits.mockClear();
+
+    const response = await postMessages({ stream: true }); // gpt-oss-120b, max_tokens: 256
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('"type":"message_stop"');
+
+    const providerCap = capturedConfig?.maxOutputTokens as number;
+    // Reasoning model → the streamText cap is floored above the requested 256.
+    expect(providerCap).toBeGreaterThan(256);
+    const reserveArgs = reserveCredits.mock.calls[0] as unknown as
+      | [unknown, number, number]
+      | undefined;
+    expect(reserveArgs?.[2]).toBe(providerCap);
+  });
+
+  // Pass-through regression: for a NON-reasoning model the floor must not
+  // fire — the reservation admits exactly the requested max_tokens, and the
+  // provider is capped at the same value.
+  test("non-reasoning model: reservation passes request.max_tokens through unfloored", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    let capturedConfig: Record<string, unknown> | undefined;
+    generateTextImpl = (config) => {
+      capturedConfig = config;
+      return {
+        text: TEXT,
+        usage: USAGE,
+        toolCalls: [],
+        finishReason: "stop",
+        rawFinishReason: "stop",
+      };
+    };
+    reserveCredits.mockClear();
+
+    const response = await postMessages({
+      model: "openai/gpt-4o-mini",
+      max_tokens: 512,
+    });
+    expect(response.status).toBe(200);
+
+    // No floor: provider cap and reservation both equal the raw request value.
+    expect(capturedConfig?.maxOutputTokens).toBe(512);
+    const reserveArgs = reserveCredits.mock.calls[0] as unknown as
+      | [unknown, number, number]
+      | undefined;
+    expect(reserveArgs?.[2]).toBe(512);
+  });
+
+  test("non-stream success preserves trace and the frozen provider boundary", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    sdkFaithfulGeneration();
+
+    const response = await postMessages();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(response.headers.get("X-Eliza-Preforward-Ms")).toMatch(
+      /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
+  });
+
+  test("stream success preserves telemetry without delaying or re-encoding SSE", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    sdkFaithfulStream();
+
+    const response = await postMessages({ stream: true });
+    const body = await response.text();
+    expect(response.status).toBe(200);
+    expect(body).toContain(TEXT);
+    expect(body).toContain('"type":"message_stop"');
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
+    expect(ledger.reconcileCalls).toBe(1);
+  });
+
+  test("synchronous provider errors retain timing and release the reservation", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    generateTextImpl = () => {
+      throw new Error("provider setup failed");
+    };
+
+    const response = await postMessages();
+    expect(response.status).toBe(500);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(response.headers.get("X-Eliza-Preforward-Ms")).toContain("total=");
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
+    expect(ledger.actualCosts).toEqual([0]);
+  });
+
+  test("suspended and malformed requests stop before reserve/provider dispatch", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "suspended",
+      userId: USER,
+    });
+    expect((await postMessages()).status).toBe(403);
+
+    const malformed = await postMessages({ max_tokens: null });
+    expect(malformed.status).toBe(400);
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+});
+
 describe("streaming messages — billing settles OFF the response path (waitUntil parity, #15414)", () => {
+  test("captures the preforward boundary immediately around streamText", async () => {
+    const events: string[] = [];
+    sdkFaithfulStream();
+    const originalStreamText = streamTextImpl!;
+    streamTextImpl = (config) => {
+      events.push("streamText");
+      return originalStreamText(config);
+    };
+    const response = await callStreaming(async () => null, {
+      providerDispatchTelemetry: {
+        capture: () => events.push("capture"),
+        emit: () => events.push("emit"),
+      },
+    });
+
+    await response.text();
+    expect(events).toEqual(["capture", "streamText", "emit"]);
+  });
+
   test("terminal frames + message_stop flush BEFORE the billing chain completes; the chain runs via waitUntil", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);

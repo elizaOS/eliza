@@ -2,15 +2,16 @@
  * Fetches the available views from `GET /api/views` — the primary data source
  * for Launcher, returning the `ViewRegistryEntry` list.
  *
- * Polls every 30s (the endpoint is a cheap in-memory registry list). An
- * unreachable endpoint degrades to an empty list so Launcher still renders.
+ * Polls every 5s (the endpoint is a cheap in-memory registry list). A missing
+ * registry is unavailable; transport and payload failures remain visible errors.
  */
 
-import type {
-  AppShellBackgroundPolicy,
-  SurfaceManifest,
-  ViewHeaderPolicy,
-  ViewKind,
+import {
+  type AppShellBackgroundPolicy,
+  ElizaError,
+  type SurfaceManifest,
+  type ViewHeaderPolicy,
+  type ViewKind,
 } from "@elizaos/core";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { client } from "../api";
@@ -32,6 +33,8 @@ import { getFrontendPlatform } from "../platform/platform-guards";
 import { useAppSelector } from "../state/app-store";
 import type { StartupPhaseValue } from "../state/startup-coordinator";
 import { isShellPaintable } from "../state/startup-coordinator";
+import { onViewEvent } from "../views/view-event-bus";
+import { VIEW_EVENTS } from "../views/view-event-types";
 import { startPolling } from "./resource-cache";
 import { useCachedResource } from "./useCachedResource";
 
@@ -150,7 +153,113 @@ interface UseAvailableViewsOptions {
   networkEnabled?: boolean;
 }
 
-const POLL_INTERVAL_MS = 30_000;
+// WebSocket-free Cloud/mobile runtimes cannot receive plugin_reloaded. Keep a
+// short visible-tab poll so a verified create/edit becomes routable promptly on
+// those transports; resource-cache owns one timer regardless of hook mounts.
+const POLL_INTERVAL_MS = 5_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === "boolean";
+}
+
+function isSurfaceManifest(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    (value.background === undefined ||
+      value.background === "opaque" ||
+      value.background === "shared") &&
+    (value.header === undefined ||
+      value.header === "normal" ||
+      value.header === "fullscreen" ||
+      value.header === "modal" ||
+      value.header === "immersive") &&
+    (value.isolation === undefined ||
+      value.isolation === "in-process" ||
+      value.isolation === "sandboxed-iframe" ||
+      value.isolation === "native-webview" ||
+      value.isolation === "immersive") &&
+    (value.lifecycle === undefined ||
+      value.lifecycle === "ephemeral" ||
+      value.lifecycle === "retained") &&
+    (value.capabilities === undefined ||
+      (Array.isArray(value.capabilities) &&
+        value.capabilities.every(
+          (capability) =>
+            capability === "wallpaper" ||
+            capability === "background:apply" ||
+            capability === "navigate" ||
+            capability === "storage" ||
+            capability === "agent-surface",
+        )))
+  );
+}
+
+function isViewRegistryEntry(value: unknown): value is ViewRegistryEntry {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    value.id.trim().length > 0 &&
+    typeof value.label === "string" &&
+    value.label.trim().length > 0 &&
+    typeof value.available === "boolean" &&
+    typeof value.pluginName === "string" &&
+    value.pluginName.trim().length > 0 &&
+    (value.viewType === undefined ||
+      value.viewType === "gui" ||
+      value.viewType === "tui" ||
+      value.viewType === "xr") &&
+    isOptionalString(value.description) &&
+    isOptionalString(value.icon) &&
+    isOptionalString(value.path) &&
+    isOptionalString(value.bundleUrl) &&
+    isOptionalString(value.frameUrl) &&
+    isOptionalString(value.componentExport) &&
+    isOptionalString(value.heroImageUrl) &&
+    isOptionalString(value.group) &&
+    isOptionalBoolean(value.hasHeroImage) &&
+    isOptionalBoolean(value.developerOnly) &&
+    isOptionalBoolean(value.visibleInManager) &&
+    isOptionalBoolean(value.pinnable) &&
+    isOptionalBoolean(value.builtin) &&
+    isOptionalBoolean(value.desktopTabEnabled) &&
+    isOptionalBoolean(value.nativeOs) &&
+    (value.order === undefined ||
+      (typeof value.order === "number" && Number.isFinite(value.order))) &&
+    (value.tags === undefined ||
+      (Array.isArray(value.tags) &&
+        value.tags.every((tag) => typeof tag === "string"))) &&
+    (value.capabilities === undefined ||
+      (Array.isArray(value.capabilities) &&
+        value.capabilities.every(
+          (capability) =>
+            isRecord(capability) &&
+            typeof capability.id === "string" &&
+            typeof capability.description === "string",
+        ))) &&
+    (value.backgroundPolicy === undefined ||
+      value.backgroundPolicy === "opaque" ||
+      value.backgroundPolicy === "shared") &&
+    (value.headerPolicy === undefined ||
+      value.headerPolicy === "normal" ||
+      value.headerPolicy === "fullscreen" ||
+      value.headerPolicy === "modal" ||
+      value.headerPolicy === "immersive") &&
+    (value.viewKind === undefined ||
+      value.viewKind === "system" ||
+      value.viewKind === "release" ||
+      value.viewKind === "developer" ||
+      value.viewKind === "preview") &&
+    (value.surface === undefined || isSurfaceManifest(value.surface))
+  );
+}
 
 async function fetchViewList(): Promise<ViewRegistryEntry[]> {
   const platform = getFrontendPlatform();
@@ -158,29 +267,47 @@ async function fetchViewList(): Promise<ViewRegistryEntry[]> {
     headers: { "X-Eliza-Platform": platform },
   });
   if (!response.ok) {
-    throw new Error(`GET /api/views returned HTTP ${response.status}`);
+    throw new ElizaError(`GET /api/views returned HTTP ${response.status}`, {
+      code: "VIEW_REGISTRY_HTTP_FAILED",
+      context: { status: response.status },
+    });
   }
-  const data = (await response.json()) as unknown;
-  if (!data || typeof data !== "object" || !("views" in data)) {
-    return [];
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch (cause) {
+    // error-policy:J2 preserve the parser failure while identifying the registry boundary.
+    throw new ElizaError("GET /api/views returned malformed JSON", {
+      code: "VIEW_REGISTRY_RESPONSE_INVALID",
+      cause,
+      context: { status: response.status },
+    });
   }
-  const { views } = data as { views: unknown };
-  if (!Array.isArray(views)) return [];
-  return views as ViewRegistryEntry[];
+  if (!isRecord(data) || !Array.isArray(data.views)) {
+    throw new ElizaError("GET /api/views response must contain a views array", {
+      code: "VIEW_REGISTRY_RESPONSE_INVALID",
+      context: { status: response.status },
+    });
+  }
+  return data.views.map((view, index) => {
+    if (!isViewRegistryEntry(view)) {
+      throw new ElizaError(`GET /api/views entry ${index} is invalid`, {
+        code: "VIEW_REGISTRY_RESPONSE_INVALID",
+        context: { status: response.status, index },
+      });
+    }
+    return view;
+  });
 }
 
 /**
  * One-shot fetch of the `/api/views` registry for non-React consumers (the apps
  * catalog loaders) that need to overlay live plugin ViewDeclaration metadata
- * onto the internal-tool catalog. Returns an empty list if the endpoint is
- * unavailable — callers fall back to the static internal-tool declarations.
+ * onto the internal-tool catalog. Expected registry absence returns an empty
+ * list; other failures remain observable to each caller's UI boundary.
  */
 export async function fetchAvailableViews(): Promise<ViewRegistryEntry[]> {
-  try {
-    return await fetchViews();
-  } catch {
-    return [];
-  }
+  return fetchViews();
 }
 
 async function fetchViews(): Promise<ViewRegistryEntry[]> {
@@ -188,7 +315,15 @@ async function fetchViews(): Promise<ViewRegistryEntry[]> {
   try {
     guiViews = await fetchViewList();
   } catch (err) {
-    if (String(err).includes("404")) return [];
+    // error-policy:J4 a missing registry means this runtime does not expose
+    // plugin views; every other transport or payload failure reaches the UI.
+    if (
+      err instanceof ElizaError &&
+      err.code === "VIEW_REGISTRY_HTTP_FAILED" &&
+      err.context?.status === 404
+    ) {
+      return [];
+    }
     throw err;
   }
   const merged = new Map<string, ViewRegistryEntry>();
@@ -199,6 +334,52 @@ async function fetchViews(): Promise<ViewRegistryEntry[]> {
 }
 
 const VIEWS_CACHE_KEY = "views:available";
+
+// App mounts this hook in both the router and the desktop-tab catalog. A plugin
+// reload reaches both subscribers synchronously, but the registry must issue
+// one forced refresh: two forced reads can race and make the older response win
+// the user's first navigation after a create/edit operation.
+const pluginReloadRefreshers = new Set<() => Promise<void>>();
+let stopPluginReloadSubscription: (() => void) | null = null;
+let pluginReloadRefresh: Promise<void> | null = null;
+let pluginReloadRefreshQueued = false;
+
+function runPluginReloadRefresh(): void {
+  if (pluginReloadRefresh) {
+    pluginReloadRefreshQueued = true;
+    return;
+  }
+  const refresh = pluginReloadRefreshers.values().next().value;
+  if (!refresh) return;
+  pluginReloadRefreshQueued = false;
+  const pending = refresh().finally(() => {
+    if (pluginReloadRefresh !== pending) return;
+    pluginReloadRefresh = null;
+    // A second plugin can finish loading while the first registry read is in
+    // flight. Preserve one trailing read so that event cannot disappear behind
+    // the first request and leave the new view stale until the polling interval.
+    if (pluginReloadRefreshQueued) runPluginReloadRefresh();
+  });
+  pluginReloadRefresh = pending;
+}
+
+function subscribePluginReloadRefresh(
+  refresh: () => Promise<void>,
+): () => void {
+  pluginReloadRefreshers.add(refresh);
+  if (!stopPluginReloadSubscription) {
+    stopPluginReloadSubscription = onViewEvent(
+      VIEW_EVENTS.PLUGIN_RELOADED,
+      runPluginReloadRefresh,
+    );
+  }
+  return () => {
+    pluginReloadRefreshers.delete(refresh);
+    if (pluginReloadRefreshers.size > 0) return;
+    stopPluginReloadSubscription?.();
+    stopPluginReloadSubscription = null;
+  };
+}
 
 const EMPTY_VIEWS: ViewRegistryEntry[] = [];
 
@@ -415,6 +596,10 @@ export function useAvailableViews(
     if (!networkEnabled) return;
     return startPolling(VIEWS_CACHE_KEY, fetchViews, POLL_INTERVAL_MS);
   }, [networkEnabled]);
+  useEffect(() => {
+    if (!networkEnabled) return;
+    return subscribePluginReloadRefresh(refetch);
+  }, [networkEnabled, refetch]);
 
   // In-process plugin views (registered via registerAppShellPage) are merged in
   // so they appear in the manager even when the agent route filtered them out

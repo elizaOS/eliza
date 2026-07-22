@@ -147,7 +147,10 @@ export function buildHarnessSourceAliases(
             },
             {
               find: new RegExp(`^${packageName}/(.*)$`),
-              replacement: path.join(sourceDir, "$1.ts"),
+              // Keep the target extensionless so Vite can resolve either a
+              // source file (`foo.ts`) or a public directory entry
+              // (`foo/index.ts`) through the same package-subpath rule.
+              replacement: path.join(sourceDir, "$1"),
             },
           ])
       : [],
@@ -161,6 +164,10 @@ export function buildHarnessSourceAliases(
     {
       find: /^@elizaos\/core\/node$/,
       replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
+    },
+    {
+      find: /^@elizaos\/core\/roles$/,
+      replacement: path.join(repoRoot, "packages/core/src/roles.ts"),
     },
     {
       find: /^@elizaos\/plugin-sql$/,

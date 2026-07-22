@@ -49,7 +49,7 @@ jobs:
     steps:
       - name: Checkout PR head
         # actions/checkout@v4
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           # The exact head commit, not the synthetic merge ref: the
           # certification binds to a real commit sha, and the drift check
@@ -240,7 +240,7 @@ jobs:
       - name: Checkout
         if: steps.changes.outputs.relevant == 'true'
         # actions/checkout@v4
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup workspace dependencies
         if: steps.changes.outputs.relevant == 'true'

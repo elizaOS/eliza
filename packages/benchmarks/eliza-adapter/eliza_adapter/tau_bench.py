@@ -363,10 +363,7 @@ class ElizaTauAgent(BaseTauAgent):
             self.client, self._server_manager = _build_default_client()
         self._session_id = f"tau-{uuid.uuid4().hex[:12]}"
         self._reset_done = False
-        try:
-            self.client.wait_until_ready(timeout=120)
-        except Exception as exc:
-            logger.warning("[eliza-tau] wait_until_ready failed: %s", exc)
+        self.client.wait_until_ready(timeout=120)
 
     def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
         reset = env.reset(task_index=task_index)
@@ -381,10 +378,7 @@ class ElizaTauAgent(BaseTauAgent):
         # stale state across tasks (relevant for retail/airline tools that
         # mutate shared data).
         self._session_id = f"tau-{uuid.uuid4().hex[:12]}"
-        try:
-            self.client.reset(task_id=self._session_id, benchmark="tau_bench")
-        except Exception as exc:
-            logger.debug("[eliza-tau] reset failed (continuing): %s", exc)
+        self.client.reset(task_id=self._session_id, benchmark="tau_bench")
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": env.wiki},

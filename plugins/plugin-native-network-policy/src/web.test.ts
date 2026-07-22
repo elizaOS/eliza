@@ -39,18 +39,21 @@ describe("NetworkPolicyWeb fallback", () => {
     { connection: { saveData: false } },
     { connection: { saveData: "true" } },
     { connection: { saveData: 1 } },
-  ])("falls back conservatively for navigator shape %#", async (navigatorLike) => {
-    setNavigator(navigatorLike);
-    const policy = new NetworkPolicyWeb();
+  ])(
+    "falls back conservatively for navigator shape %#",
+    async (navigatorLike) => {
+      setNavigator(navigatorLike);
+      const policy = new NetworkPolicyWeb();
 
-    await expect(policy.getMeteredHint()).resolves.toEqual({
-      metered: null,
-      source: "android-os",
-    });
-    await expect(policy.getPathHints()).resolves.toEqual({
-      isExpensive: false,
-      isConstrained: false,
-      source: "nw-path-monitor",
-    });
-  });
+      await expect(policy.getMeteredHint()).resolves.toEqual({
+        metered: null,
+        source: "android-os",
+      });
+      await expect(policy.getPathHints()).resolves.toEqual({
+        isExpensive: false,
+        isConstrained: false,
+        source: "nw-path-monitor",
+      });
+    },
+  );
 });

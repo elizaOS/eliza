@@ -18,7 +18,7 @@
  * It self-contains its ACP + service the way orchestrator-watchdog-stall does,
  * so it runs in the keyless pr-deterministic lane with no model and no
  * subprocess. The full lifecycle + scratch-GC proof lives in the vitest
- * `concurrency-lifecycle-e2e.test.ts`; this scenario is the runner-visible,
+ * `concurrency-lifecycle-integration.test.ts`; this scenario is the runner-visible,
  * trajectory-correlated slice.
  */
 

@@ -38,7 +38,7 @@ const TIER_COPY: Record<
   },
   GOOD: {
     title: "Local voice runs well here.",
-    description: "Models load on demand — about half a second to respond.",
+    description: "Models load on demand and respond in about half a second.",
     tone: "ok",
     icon: BadgeCheck,
   },

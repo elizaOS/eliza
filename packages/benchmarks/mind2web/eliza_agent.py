@@ -74,14 +74,36 @@ def _format_element(
     if not candidates:
         return "No candidate elements are available for this step."
 
-    lines: list[str] = []
-    for idx, elem in enumerate(candidates[:20], start=1):
-        attrs = " ".join(f'{k}="{v}"' for k, v in list(elem.attributes.items())[:6])
-        text = f" text={elem.text_content!r}" if elem.text_content else ""
-        lines.append(
-            f"{idx}. backend_node_id={elem.backend_node_id} tag={elem.tag} {attrs}{text}".strip()
+    from benchmarks.mind2web.dom_utils import format_action_page
+
+    step = task.actions[step_index]
+    tree_repr, choices = format_action_page(
+        step.cleaned_html,
+        [candidate.backend_node_id for candidate in candidates],
+    )
+    lines = [
+        f"{index}. backend_node_id={candidate.backend_node_id!r} {choice}"
+        for index, (candidate, choice) in enumerate(
+            zip(candidates, choices, strict=True), start=1
         )
-    return "\n".join(lines)
+    ]
+    return f"Pruned HTML:\n{tree_repr}\n\nCandidate elements:\n" + "\n".join(lines)
+
+
+def _format_compatibility_candidates(step_index: int, task: Mind2WebTask) -> str:
+    """Render the lightweight context-provider view used by offline tests."""
+    if step_index >= len(task.actions):
+        return "No remaining ground-truth step is available."
+    candidates = (
+        task.actions[step_index].pos_candidates
+        + task.actions[step_index].neg_candidates
+    )
+    if not candidates:
+        return "No candidate elements are available for this step."
+    return "\n".join(
+        f"{index}. backend_node_id={candidate.backend_node_id} tag={candidate.tag}"
+        for index, candidate in enumerate(candidates, start=1)
+    )
 
 
 def select_candidates_for_step(
@@ -92,7 +114,9 @@ def select_candidates_for_step(
     previous_actions: list[str],
     top_k: int = 50,
     model_name: str | None = None,
+    revision: str | None = None,
     device: str | None = None,
+    task_id: str | None = None,
 ) -> tuple[list[Mind2WebElement], float]:
     """Pick the candidate list shown to the LLM for ``step``.
 
@@ -120,7 +144,9 @@ def select_candidates_for_step(
             previous_actions=previous_actions,
             top_k=top_k,
             model_name=model_name,
+            revision=revision,
             device=device,
+            task_id=task_id,
         )
         return elements, recall
 
@@ -147,7 +173,7 @@ async def get_mind2web_context_provider(*_: Any, **__: Any) -> Mind2WebProviderR
 
     task = ctx.task
     step_index = ctx.current_step_index
-    elements = _format_element(step_index, task)
+    elements = _format_compatibility_candidates(step_index, task)
     text = (
         f"Mind2Web Task: {task.confirmed_task}\n"
         f"Website: {task.website}\n"
@@ -191,11 +217,11 @@ class Mind2WebActionHandler:
                 values={"success": False},
             )
 
-        operation_raw = str(kwargs.get("operation", "CLICK")).upper()
+        operation_raw = str(kwargs.get("operation", "INVALID")).upper()
         try:
             operation = Mind2WebOperation(operation_raw)
         except ValueError:
-            operation = Mind2WebOperation.CLICK
+            operation = Mind2WebOperation.INVALID
 
         action = Mind2WebAction(
             operation=operation,
@@ -339,59 +365,53 @@ class OpenAICompatibleMind2WebAgent:
             previous_action_reprs = (
                 task.action_reprs[:step_index] if task.action_reprs else []
             )
-            try:
-                candidates, recall = await asyncio.to_thread(
-                    select_candidates_for_step,
-                    step,
-                    mode=self.config.ranker_mode,
-                    task_description=task.confirmed_task,
-                    previous_actions=previous_action_reprs,
-                    top_k=self.config.ranker_top_k,
-                    model_name=self.config.ranker_model,
-                    device=self.config.ranker_device,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "Mind2Web ranker failed at step %d (%s); falling back to "
-                    "the dataset's pos+neg candidate list (oracle-equivalent).",
-                    step_index,
-                    exc,
-                )
-                candidates = list(step.pos_candidates) + list(step.neg_candidates)
-                recall = float("nan")
+            candidates, recall = await asyncio.to_thread(
+                select_candidates_for_step,
+                step,
+                mode=self.config.ranker_mode,
+                task_description=task.confirmed_task,
+                previous_actions=previous_action_reprs,
+                top_k=self.config.ranker_top_k,
+                model_name=self.config.ranker_model,
+                revision=self.config.ranker_revision,
+                device=self.config.ranker_device,
+                task_id=str(task.metadata.get("edge_source_id", task.annotation_id)),
+            )
             self.ranker_recalls.append(recall)
+
+            # Upstream action evaluation assigns zero immediately when stage 1
+            # misses every positive; no model output can recover that step.
+            if self.config.ranker_mode == Mind2WebRankerMode.REAL and recall != 1.0:
+                action = Mind2WebAction(
+                    operation=Mind2WebOperation.INVALID,
+                    reasoning="No positive element survived the pinned top-K ranker.",
+                )
+                predictions.append(action)
+                _global_context.executed_actions.append(action)
+                _global_context.current_step_index += 1
+                continue
 
             action: Mind2WebAction | None = None
             if self.provider and self.model_name and self.api_key:
-                prompt = self._build_prompt(task, step_index, predictions, candidates)
-                try:
-                    response = await asyncio.to_thread(self._chat_completion, prompt)
-                    action = self._parse_provider_action(response)
-                except Exception as exc:
-                    logger.warning("Mind2Web provider call failed at step %d: %s", step_index, exc)
-                    predictions.append(
-                        Mind2WebAction(
-                            operation=Mind2WebOperation.CLICK,
-                            element_id="",
-                            value="",
-                            reasoning=f"Provider call failed: {exc}",
-                        )
-                    )
-                    break
+                prompt = self._build_prompt(
+                    task,
+                    step_index,
+                    previous_action_reprs,
+                    candidates,
+                )
+                response = await asyncio.to_thread(self._chat_completion, prompt)
+                action = self._parse_provider_action(response)
             else:
                 raise RuntimeError("Mind2Web local provider agent was not initialized")
 
             if action is None:
                 logger.warning("Mind2Web provider returned no parseable action at step %d", step_index)
-                predictions.append(
-                    Mind2WebAction(
-                        operation=Mind2WebOperation.CLICK,
-                        element_id="",
-                        value="",
-                        reasoning="Provider returned no parseable action.",
-                    )
+                action = Mind2WebAction(
+                    operation=Mind2WebOperation.INVALID,
+                    element_id="",
+                    value="",
+                    reasoning="Provider returned no parseable action.",
                 )
-                break
             else:
                 action = self._normalize_action(step, action, candidates)
 
@@ -423,22 +443,10 @@ class OpenAICompatibleMind2WebAgent:
         self,
         task: Mind2WebTask,
         step_index: int,
-        previous_actions: list[Mind2WebAction],
+        previous_actions: list[str],
         ranked_candidates: list[Mind2WebElement] | None = None,
     ) -> str:
-        previous = "\n".join(
-            f"- {action.operation.value} element_id={action.element_id} value={action.value!r}"
-            for action in previous_actions
-        )
-        # Mind2Web evaluates each step independently against the dataset's
-        # ground-truth operation, so the model needs to match step N's annotated
-        # micro-action — not skip ahead. Anchor the prompt on action_reprs[N]
-        # specifically and warn against merging steps.
-        current_repr = (
-            task.action_reprs[step_index]
-            if task.action_reprs and step_index < len(task.action_reprs)
-            else None
-        )
+        previous = "\n".join(f"- {action}" for action in previous_actions)
         sections = [
             "You are completing a Mind2Web browser task one step at a time.",
             f"Instruction: {task.confirmed_task}",
@@ -447,17 +455,6 @@ class OpenAICompatibleMind2WebAgent:
             f"Current step: {step_index + 1} of {len(task.actions)}",
             "Available elements:\n" + _format_element(step_index, task, ranked_candidates),
         ]
-        if current_repr:
-            sections.append(
-                "Target micro-action for THIS step (do not skip or merge):\n"
-                f"- {current_repr}\n\n"
-                "Pick the operation that matches the verb in the micro-action: "
-                "'Click' -> CLICK, 'Type' -> TYPE, 'Select' -> SELECT, "
-                "'Hover' -> HOVER, 'Press Enter' -> ENTER. If 'Type X' the value "
-                "MUST be the literal X. Do not type/submit until the step says so."
-            )
-        if task.action_reprs:
-            sections.append("Full plan (for context only):\n" + "\n".join(f"- {x}" for x in task.action_reprs[:8]))
         if previous:
             sections.append("Previous actions:\n" + previous)
         sections.append(
@@ -583,7 +580,9 @@ def parse_mind2web_action(text: str) -> Mind2WebAction | None:
     try:
         data = json.loads(stripped)
         if isinstance(data, dict):
-            op_raw = str(data.get("operation", "CLICK")).upper()
+            op_raw = str(data.get("operation", "")).upper().strip()
+            if not op_raw:
+                return None
             try:
                 operation = Mind2WebOperation(op_raw)
             except ValueError:

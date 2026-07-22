@@ -449,35 +449,39 @@ def _coordinate_number(value: Any, *, latitude: bool | None = None) -> float | N
 def _coordinate_pair_from_list(value: Any) -> tuple[Any, Any] | None:
     if not isinstance(value, list) or len(value) < 2:
         return None
-    if _coordinate_number(value[0], latitude=True) is None:
-        return None
-    if _coordinate_number(value[1], latitude=False) is None:
-        return None
-    return value[0], value[1]
+    latitude_longitude = (
+        _coordinate_number(value[0], latitude=True) is not None
+        and _coordinate_number(value[1], latitude=False) is not None
+    )
+    # GeoJSON specifies longitude first, while browser/device APIs commonly
+    # serialize latitude first. Known coordinate containers must accept both.
+    longitude_latitude = (
+        _coordinate_number(value[0], latitude=False) is not None
+        and _coordinate_number(value[1], latitude=True) is not None
+    )
+    return (value[0], value[1]) if latitude_longitude or longitude_latitude else None
 
 
-def _structured_coordinate_field_pairs(value: dict[str, Any]) -> list[tuple[str, str]]:
-    by_normalized_key = {
-        _normalized_structural_key(key): key
-        for key in value
-        if isinstance(key, str)
-    }
-    pairs: list[tuple[str, str]] = []
-    for lat_key_name in sorted(LATITUDE_KEYS):
-        lat_key = by_normalized_key.get(lat_key_name)
-        if lat_key is None:
-            continue
-        if _coordinate_number(value.get(lat_key), latitude=True) is None:
-            continue
-        for lon_key_name in sorted(LONGITUDE_KEYS):
-            lon_key = by_normalized_key.get(lon_key_name)
-            if lon_key is None:
-                continue
-            if _coordinate_number(value.get(lon_key), latitude=False) is None:
-                continue
-            pairs.append((lat_key, lon_key))
-            break
-    return pairs
+def _structured_coordinate_fields(
+    value: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    latitude_fields: list[str] = []
+    longitude_fields: list[str] = []
+    for key, child in value.items():
+        normalized_key = _normalized_structural_key(key)
+        if (
+            normalized_key in LATITUDE_KEYS
+            and _coordinate_number(child, latitude=True) is not None
+        ):
+            latitude_fields.append(key)
+        if (
+            normalized_key in LONGITUDE_KEYS
+            and _coordinate_number(child, latitude=False) is not None
+        ):
+            longitude_fields.append(key)
+    if not latitude_fields or not longitude_fields:
+        return [], []
+    return latitude_fields, longitude_fields
 
 
 def _write_structured_geo_redaction(
@@ -782,6 +786,7 @@ def filter_json_value(
     stats: FilterStats,
     ledger: TextIO,
     config: RuntimeConfig,
+    _coordinate_context: bool = False,
 ) -> Any:
     if isinstance(value, str):
         return filter_text(
@@ -793,6 +798,29 @@ def filter_json_value(
             config=config,
         )
     if isinstance(value, list):
+        if _coordinate_context:
+            coordinate_pair = _coordinate_pair_from_list(value)
+            if coordinate_pair is not None:
+                _write_structured_geo_redaction(
+                    match_text=f"{coordinate_pair[0]},{coordinate_pair[1]}",
+                    path=path,
+                    location=location,
+                    stats=stats,
+                    ledger=ledger,
+                )
+                return [
+                    GEO_REPLACEMENT
+                    if index < 2
+                    else filter_json_value(
+                        item,
+                        path=f"{path}[{index}]",
+                        location=location,
+                        stats=stats,
+                        ledger=ledger,
+                        config=config,
+                    )
+                    for index, item in enumerate(value)
+                ]
         return [
             filter_json_value(
                 item,
@@ -801,6 +829,7 @@ def filter_json_value(
                 stats=stats,
                 ledger=ledger,
                 config=config,
+                _coordinate_context=_coordinate_context,
             )
             for index, item in enumerate(value)
         ]
@@ -823,32 +852,6 @@ def filter_json_value(
                 key_counts[filtered_key] += 1
                 deduped_key = f"{filtered_key}__{key_counts[filtered_key]}"
             child_path = _path_for_key(path, deduped_key)
-            coordinate_pair = _coordinate_pair_from_list(raw_child)
-            if (
-                coordinate_pair is not None
-                and _normalized_structural_key(key) in COORDINATE_CONTAINER_KEYS
-            ):
-                _write_structured_geo_redaction(
-                    match_text=f"{coordinate_pair[0]},{coordinate_pair[1]}",
-                    path=child_path,
-                    location=location,
-                    stats=stats,
-                    ledger=ledger,
-                )
-                out[deduped_key] = [
-                    GEO_REPLACEMENT
-                    if index < 2
-                    else filter_json_value(
-                        item,
-                        path=f"{child_path}[{index}]",
-                        location=location,
-                        stats=stats,
-                        ledger=ledger,
-                        config=config,
-                    )
-                    for index, item in enumerate(raw_child)
-                ]
-                continue
             out[deduped_key] = filter_json_value(
                 raw_child,
                 path=child_path,
@@ -856,10 +859,17 @@ def filter_json_value(
                 stats=stats,
                 ledger=ledger,
                 config=config,
+                _coordinate_context=(
+                    _normalized_structural_key(key) in COORDINATE_CONTAINER_KEYS
+                ),
             )
-        for lat_key, lon_key in _structured_coordinate_field_pairs(out):
-            match_text = f"{out[lat_key]},{out[lon_key]}"
-            redaction_path = f"{path}<geo:{_hash_value(lat_key + '|' + lon_key)[:12]}>"
+        latitude_fields, longitude_fields = _structured_coordinate_fields(out)
+        if latitude_fields and longitude_fields:
+            coordinate_fields = latitude_fields + longitude_fields
+            match_text = ",".join(str(out[key]) for key in coordinate_fields)
+            redaction_path = (
+                f"{path}<geo:{_hash_value('|'.join(coordinate_fields))[:12]}>"
+            )
             _write_structured_geo_redaction(
                 match_text=match_text,
                 path=redaction_path,
@@ -867,8 +877,8 @@ def filter_json_value(
                 stats=stats,
                 ledger=ledger,
             )
-            out[lat_key] = GEO_REPLACEMENT
-            out[lon_key] = GEO_REPLACEMENT
+            for key in coordinate_fields:
+                out[key] = GEO_REPLACEMENT
         return out
     return value
 
@@ -911,7 +921,12 @@ def _redact_string_inline(text: str, patterns: list[PatternSpec]) -> str:
     return out
 
 
-def redact_value(value: Any, *, patterns: list[PatternSpec] | None = None) -> Any:
+def redact_value(
+    value: Any,
+    *,
+    patterns: list[PatternSpec] | None = None,
+    _coordinate_context: bool = False,
+) -> Any:
     """Recursively redact PII/secrets from a JSON-able value.
 
     Object keys are filtered the same way as values, with stable
@@ -924,7 +939,21 @@ def redact_value(value: Any, *, patterns: list[PatternSpec] | None = None) -> An
     if isinstance(value, str):
         return _redact_string_inline(value, pats)
     if isinstance(value, list):
-        return [redact_value(item, patterns=pats) for item in value]
+        if _coordinate_context:
+            coordinate_pair = _coordinate_pair_from_list(value)
+            if coordinate_pair is not None:
+                return [
+                    GEO_REPLACEMENT if index < 2 else redact_value(item, patterns=pats)
+                    for index, item in enumerate(value)
+                ]
+        return [
+            redact_value(
+                item,
+                patterns=pats,
+                _coordinate_context=_coordinate_context,
+            )
+            for item in value
+        ]
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         key_counts: Counter[str] = Counter()
@@ -935,7 +964,16 @@ def redact_value(value: Any, *, patterns: list[PatternSpec] | None = None) -> An
             if deduped_key in out:
                 key_counts[filtered_key] += 1
                 deduped_key = f"{filtered_key}__{key_counts[filtered_key]}"
-            out[deduped_key] = redact_value(raw_child, patterns=pats)
+            out[deduped_key] = redact_value(
+                raw_child,
+                patterns=pats,
+                _coordinate_context=(
+                    _normalized_structural_key(key) in COORDINATE_CONTAINER_KEYS
+                ),
+            )
+        latitude_fields, longitude_fields = _structured_coordinate_fields(out)
+        for key in latitude_fields + longitude_fields:
+            out[key] = GEO_REPLACEMENT
         return out
     return value
 
@@ -947,6 +985,7 @@ def scan_residual_high_risk(
     location: SourceLocation,
     stats: FilterStats,
     patterns: list[PatternSpec],
+    _coordinate_context: bool = False,
 ) -> None:
     high_risk_patterns = [spec for spec in patterns if spec.high_risk]
     if isinstance(value, str):
@@ -970,6 +1009,24 @@ def scan_residual_high_risk(
                 )
         return
     if isinstance(value, list):
+        if _coordinate_context:
+            coordinate_pair = _coordinate_pair_from_list(value)
+            if coordinate_pair is not None:
+                _note_structured_geo_residual(
+                    match_text=f"{coordinate_pair[0]},{coordinate_pair[1]}",
+                    path=path,
+                    location=location,
+                    stats=stats,
+                )
+                for index, item in enumerate(value[2:], start=2):
+                    scan_residual_high_risk(
+                        item,
+                        path=f"{path}[{index}]",
+                        location=location,
+                        stats=stats,
+                        patterns=patterns,
+                    )
+                return
         for index, item in enumerate(value):
             scan_residual_high_risk(
                 item,
@@ -977,29 +1034,23 @@ def scan_residual_high_risk(
                 location=location,
                 stats=stats,
                 patterns=patterns,
+                _coordinate_context=_coordinate_context,
             )
         return
     if isinstance(value, dict):
-        for lat_key, lon_key in _structured_coordinate_field_pairs(value):
-            match_text = f"{value[lat_key]},{value[lon_key]}"
+        latitude_fields, longitude_fields = _structured_coordinate_fields(value)
+        if latitude_fields and longitude_fields:
+            coordinate_fields = latitude_fields + longitude_fields
+            match_text = ",".join(str(value[key]) for key in coordinate_fields)
             _note_structured_geo_residual(
                 match_text=match_text,
-                path=f"{path}<geo:{_hash_value(lat_key + '|' + lon_key)[:12]}>",
+                path=(
+                    f"{path}<geo:{_hash_value('|'.join(coordinate_fields))[:12]}>"
+                ),
                 location=location,
                 stats=stats,
             )
         for key, child in value.items():
-            coordinate_pair = _coordinate_pair_from_list(child)
-            if (
-                coordinate_pair is not None
-                and _normalized_structural_key(key) in COORDINATE_CONTAINER_KEYS
-            ):
-                _note_structured_geo_residual(
-                    match_text=f"{coordinate_pair[0]},{coordinate_pair[1]}",
-                    path=_path_for_key(path, str(key)),
-                    location=location,
-                    stats=stats,
-                )
             scan_residual_high_risk(
                 key,
                 path=f"{path}<key:{_hash_value(str(key))[:12]}>",
@@ -1013,6 +1064,9 @@ def scan_residual_high_risk(
                 location=location,
                 stats=stats,
                 patterns=patterns,
+                _coordinate_context=(
+                    _normalized_structural_key(key) in COORDINATE_CONTAINER_KEYS
+                ),
             )
 
 

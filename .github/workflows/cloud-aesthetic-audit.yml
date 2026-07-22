@@ -47,7 +47,7 @@ jobs:
       # Keyless: the ui-smoke stub is forced when CI=true (shouldForceStubStack).
       ELIZA_UI_SMOKE_FORCE_STUB: "1"
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 

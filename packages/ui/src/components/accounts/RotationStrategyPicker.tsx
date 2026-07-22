@@ -57,6 +57,22 @@ const STRATEGY_OPTIONS: readonly StrategyOption[] = [
     descriptionKey: "accounts.strategy.quotaAware.description",
     descriptionFallback: "Skip accounts above 85% utilization.",
   },
+  {
+    id: "reset-soonest",
+    labelKey: "accounts.strategy.resetSoonest.label",
+    labelFallback: "Reset-soonest",
+    descriptionKey: "accounts.strategy.resetSoonest.description",
+    descriptionFallback:
+      "Spend the account whose weekly limit resets first; hold freshly-reset accounts in reserve.",
+  },
+  {
+    id: "drain-soonest-reset",
+    labelKey: "accounts.strategy.drainSoonestReset.label",
+    labelFallback: "Drain soonest reset",
+    descriptionKey: "accounts.strategy.drainSoonestReset.description",
+    descriptionFallback:
+      "Prefer hand-set priority, then the account whose relevant weekly limit resets soonest.",
+  },
 ];
 
 export function RotationStrategyPicker({
@@ -66,7 +82,11 @@ export function RotationStrategyPicker({
   disabled,
 }: RotationStrategyPickerProps) {
   const t = useAppSelector((s) => s.t);
-  const resolved: AccountStrategy = value ?? "priority";
+  const resolved: AccountStrategy =
+    value ??
+    (providerId === "anthropic-subscription"
+      ? "drain-soonest-reset"
+      : "priority");
 
   return (
     <div className="flex items-center gap-2">

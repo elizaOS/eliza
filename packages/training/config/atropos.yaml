@@ -45,10 +45,9 @@ env:
   # Include messages in output
   include_messages: true
 
-  # Continuous RL data source: on-disk JSONL exports from the
-  # eliza native trajectory writer. Override with $ELIZA_STATE_DIR.
-  trajectory_source: "jsonl"
-  trajectory_dir: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/trajectories"
+  # FeedEnvConfig honors LOCAL_EXPORT_DIR, then resolves the native recorder's
+  # ELIZA_TRAJECTORY_DIR/state-root contract when that override is unset.
+  trajectory_source: "local_export"
 
   # Trajectory loading settings
   lookback_hours: 72
@@ -125,6 +124,3 @@ eval_on_save: true
 # Server manager settings
 slurm: false
 testing: false
-
-# Curriculum state — written to user state dir, NOT the repo.
-curriculum_state_path: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/training/curriculum_state.json"

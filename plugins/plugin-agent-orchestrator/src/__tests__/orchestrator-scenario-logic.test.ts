@@ -10,12 +10,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildDeviceSupportScenarioEvidence } from "../../test/scenarios/_helpers/device-modality-scenario.ts";
 import {
   contentAwareVerifierModel,
+  EVIDENCE_BUNDLE_DIFF,
+  EVIDENCE_BUNDLE_TEST_STDOUT,
   runGrillingEvidenceBundleCheck,
   runGrillingHappyPathCheck,
 } from "../../test/scenarios/_helpers/grilling-scenario.ts";
 import {
+  driveReflexionRespawn,
+  REFLEXION_FAIL_SUMMARY,
+  REFLEXION_MISSING_CRITERION,
   reflexionVerifierModel,
-  runReflexionRespawnCheck,
 } from "../../test/scenarios/_helpers/reflexion-scenario.ts";
 import { runMultiTaskSupervisorCheck } from "../../test/scenarios/_helpers/supervisor-scenario.ts";
 
@@ -66,24 +70,45 @@ describe("orchestrator scenario logic (#8932)", () => {
   });
 
   it("grilling happy-path: no-evidence completion is grilled, pasted evidence is verified done", async () => {
-    expect(
-      await runGrillingHappyPathCheck(
-        makeBaseRuntime(),
-        contentAwareVerifierModel,
-      ),
-    ).toBeUndefined();
+    const result = await runGrillingHappyPathCheck(
+      makeBaseRuntime(),
+      contentAwareVerifierModel,
+    );
+    expect(result.failure).toBeUndefined();
+    // The corrective re-prompt cited the unmet acceptance criterion verbatim.
+    expect(result.grillPrompt).toMatch(/tests pass/i);
+    // The no-evidence claim never reached a terminal success state.
+    expect(result.statusAfterNoEvidence).not.toBe("done");
+    // Only the evidence-bearing re-report verified the task done.
+    expect(result.finalStatus).toBe("done");
   }, 20_000);
 
   it("grilling evidence-bundle: the git diff + test stdout reach the verifier prompt", async () => {
-    expect(
-      await runGrillingEvidenceBundleCheck(makeBaseRuntime()),
-    ).toBeUndefined();
+    const result = await runGrillingEvidenceBundleCheck(makeBaseRuntime());
+    expect(result.failure).toBeUndefined();
+    // The verifier judged the typed evidence itself, not a bare event summary.
+    expect(result.verifierPrompt).toContain(EVIDENCE_BUNDLE_DIFF);
+    expect(result.verifierPrompt).toContain(EVIDENCE_BUNDLE_TEST_STDOUT);
   });
 
   it("reflexion re-spawn: a failed attempt's reflection is injected into the retry prompt (#8899)", async () => {
-    expect(
-      await runReflexionRespawnCheck(makeBaseRuntime(), reflexionVerifierModel),
-    ).toBeUndefined();
+    const trace = await driveReflexionRespawn(
+      makeBaseRuntime(),
+      reflexionVerifierModel,
+    );
+    // The clean first spawn carries no failure history.
+    expect(trace.firstPrompt).not.toContain("Past Attempt Failures");
+    // Exactly one reflection was persisted by the failed verification.
+    expect(trace.reflectionsAfterFail).toHaveLength(1);
+    // The re-spawn prompt AND its DB-persisted goalPrompt replay attempt 1.
+    for (const prompt of [
+      trace.respawnPrompt,
+      trace.persistedRespawnGoalPrompt,
+    ]) {
+      expect(prompt).toContain("--- Past Attempt Failures ---");
+      expect(prompt).toContain(`Attempt 1: ${REFLEXION_FAIL_SUMMARY}`);
+      expect(prompt).toContain(`Missing: ${REFLEXION_MISSING_CRITERION}.`);
+    }
   }, 20_000);
 
   it("device/modality matrix: supported profiles and unsupported stubs are explicit", async () => {

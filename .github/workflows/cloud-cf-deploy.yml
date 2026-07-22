@@ -24,9 +24,12 @@ name: Cloud CF Deploy
 # Provider secrets are published when configured (the Worker calls native
 # providers directly and uses OpenRouter as the backup):
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
-#   GROQ_API_KEY, AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
+#   GROQ_API_KEY, AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY,
+#   CARTESIA_API_KEY, CARTESIA_VOICE_ID, VAST_API_KEY, VAST_BASE_URL.
 # Media/voice secrets, likewise published when configured (#13406):
 #   FAL_API_KEY (the video provider registry reads FAL_KEY ?? FAL_API_KEY),
+#   CARTESIA_API_KEY (secret) + CARTESIA_VOICE_ID (from
+#   vars.ELIZA_VOICE_CARTESIA_VOICE_ID) for first-class Cartesia cloud TTS,
 #   ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 + ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64
 #   (Ed25519 keypair for the signed voice-model catalog; the catalog route 503s
 #   while the signing key is unset).
@@ -83,9 +86,12 @@ concurrency:
   # by ref allowed a feature-branch dispatch and a develop push to interleave
   # their API, console, and app jobs against the same staging resources. PR
   # previews remain isolated per PR and cancel superseded preview runs.
-  # The v3 suffix retires the prior per-ref groups without inheriting a wedged
-  # pending run; cancel stale deploys instead of rejecting environment gates.
-  group: cloud-cf-deploy-v3-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
+  # The v4 suffix retires the wedged v3 groups: a stale 2026-05-15 queued run
+  # (25907128646) wedged v3-staging admission, so dispatched staging deploys sat
+  # pending with zero jobs while cancel and force-cancel both returned HTTP 500.
+  # Same retirement pattern as v2 -> v3; cancel stale deploys instead of
+  # rejecting environment gates.
+  group: cloud-cf-deploy-v4-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
@@ -152,15 +158,19 @@ jobs:
     runs-on: ${{ fromJSON(vars.CLOUD_CF_MIGRATE_RUNNER_JSON || '["ubuntu-latest"]') }}
     # Job-level concurrency groups are repo-wide, so this also serializes
     # against an explicitly dispatched legacy cloud-deploy-backend migration.
+    # The v2 suffix retires the un-versioned group: the same stale 2026-05-15
+    # queued run (25907128646) that wedged the workflow-level v3 group also
+    # pins cloud-db-migrate-staging, so migration jobs sat pending forever
+    # while cancel/force-cancel returned HTTP 500 (see #16705).
     concurrency:
-      group: cloud-db-migrate-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+      group: cloud-db-migrate-v2-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       cancel-in-progress: false
     environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
     timeout-minutes: 10
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -168,11 +178,10 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          # Pinned off `canary` like every other job in this workflow (#10839):
-          # the deploy-critical path does not gamble on canary regressions even
-          # on GitHub-hosted runners (the link-phase hang stranded two prod
-          # deploys this week).
-          bun-version: "latest"
+          # Pin the canonical released toolchain: floating `latest` first calls
+          # GitHub's tags API, making deploys fail before setup during an API
+          # outage, while canary has also hung in the link phase (#10839).
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         run: |
@@ -350,8 +359,9 @@ jobs:
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
           # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # bun does not exhibit the hang. See elizaOS/eliza#10839.
-          bun-version: "latest"
+          # Bun 1.3.14 does not exhibit the hang and avoids the floating-tag API
+          # lookup during setup. See elizaOS/eliza#10839.
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -478,6 +488,31 @@ jobs:
           # FAL_KEY ?? FAL_API_KEY, and prod carries it as FAL_API_KEY (#13406).
           FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          # Deepgram is used by both realtime voice and the explicitly selected
+          # prerecorded STT path. Publishing the key alone does not change the
+          # batch provider; VOICE_BATCH_STT_PROVIDER is the routing toggle.
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          # Cartesia cloud TTS default route. Both are routing toggles:
+          # CARTESIA_API_KEY presence makes default/unpinned TTS use Cartesia;
+          # CARTESIA_VOICE_ID overrides the built-in safe UUID.
+          CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+          CARTESIA_VOICE_ID: ${{ vars.ELIZA_VOICE_CARTESIA_VOICE_ID }}
+          # Self-hosted Whisper STT base URL (OpenAI-compatible
+          # /v1/audio/transcriptions). When set, /api/v1/voice/stt uses free
+          # Whisper instead of billed ElevenLabs Scribe. Sourced from the same
+          # repo VARIABLE the voice-live-e2e workflow reads, so CI and the
+          # deployed Worker always point at the same Whisper host. Without
+          # this the Worker falls through to ElevenLabs, whose free-tier quota
+          # block surfaces as a persistent 503 on STT (and 502 through the
+          # agent's /api/asr/cloud proxy). Published via publish_toggle_secret:
+          # unset DELETES the Worker secret (presence toggles the route).
+          WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
+          # Optional model pin for the hosted Whisper service (defaults to
+          # Systran/faster-whisper-small in code — #14511).
+          WHISPER_STT_MODEL: ${{ vars.ELIZA_VOICE_WHISPER_STT_MODEL }}
+          # Environment-scoped opt-in for prerecorded Deepgram STT. Production
+          # remains on its existing provider while this variable is unset.
+          VOICE_BATCH_STT_PROVIDER: ${{ vars.VOICE_BATCH_STT_PROVIDER }}
           # Ed25519 keypair for the signed voice-model catalog —
           # /v1/voice-models/catalog 503s while the signing key is unset
           # (#13406). publish_secret no-ops with a notice while these are
@@ -486,6 +521,21 @@ jobs:
           ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
+          # Keep this mirror locked to wrangler.toml's env.production value.
+          # The workflow contract test fails if they drift.
+          PRODUCTION_REALTIME_WS_ENABLED: "false"
+          # Production intentionally omits these runtime vars while realtime is
+          # off. Their mirrors are also contract-locked to wrangler.toml so a
+          # future enable cannot deploy a credential-complete but 503-only route.
+          PRODUCTION_REALTIME_CARTESIA_VOICE_ID: ""
+          PRODUCTION_REALTIME_ELIZA_ENDPOINT: ""
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
+          # Staging may use its existing Cloud key for the Worker-to-gateway
+          # voice bridge. Production MUST use the dedicated authorization and
+          # can never fall back to a repository-wide Cloud key.
+          STAGING_ELIZACLOUD_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZACLOUD_API_KEY || '' }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
           # sandbox Steward tenants provision instead of collapsing onto the
           # shared default tenant (#11461). publish_secret no-ops with a notice
@@ -495,6 +545,66 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          has_nonblank_value() {
+            local value="${1:-}"
+            [ -n "${value//[[:space:]]/}" ]
+          }
+
+          is_truthy() {
+            case "${1,,}" in
+              1|true|yes|on) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # Construct the staging fallback only when the source key is real.
+          # Never publish the invalid-but-nonempty string "Bearer ".
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
+             is_truthy "$VOICE_REALTIME_WS_ENABLED" && \
+             ! has_nonblank_value "$VOICE_REALTIME_ELIZA_AUTHORIZATION" && \
+             has_nonblank_value "$STAGING_ELIZACLOUD_API_KEY"; then
+            VOICE_REALTIME_ELIZA_AUTHORIZATION="Bearer $STAGING_ELIZACLOUD_API_KEY"
+            export VOICE_REALTIME_ELIZA_AUTHORIZATION
+          fi
+
+          # Production realtime is currently explicitly disabled. A stale
+          # Worker secret may therefore remain stored but is unreachable. If a
+          # future change enables the route, fail that deploy unless every
+          # provider and the dedicated bridge authorization is configured; the
+          # next publish then overwrites any legacy repository-key fallback.
+          # Production never constructs the staging repository-key fallback.
+          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
+             is_truthy "$PRODUCTION_REALTIME_WS_ENABLED"; then
+            missing_voice_secrets=()
+            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION PRODUCTION_REALTIME_CARTESIA_VOICE_ID PRODUCTION_REALTIME_ELIZA_ENDPOINT; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_voice_secrets+=("$name")
+              fi
+            done
+            if [ "${#missing_voice_secrets[@]}" -gt 0 ]; then
+              echo "::error::Production realtime voice is enabled but required dedicated/provider secrets are missing: ${missing_voice_secrets[*]}"
+              exit 1
+            fi
+          fi
+
+          # Staging advertises realtime only when the repository variable
+          # VOICE_REALTIME_WS_ENABLED is explicitly truthy. Refuse that opt-in
+          # unless every required provider and bridge credential is present; a
+          # green deploy with a 503-only voice route is not honest availability.
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
+             is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+            missing_voice_secrets=()
+            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_voice_secrets+=("$name")
+              fi
+            done
+            if [ "${#missing_voice_secrets[@]}" -gt 0 ]; then
+              echo "::error::Realtime voice is enabled for staging but required secrets are missing: ${missing_voice_secrets[*]}"
+              exit 1
+            fi
+          fi
+
           # The Worker is the gateway: it calls native providers directly and
           # uses OpenRouter (BYOK) as the backup. At least one provider key (the
           # OpenRouter backup, or a native key) must be configured.
@@ -506,7 +616,15 @@ jobs:
           publish_secret() {
             local name="$1"
             local value="${!name:-}"
-            if [ -z "$value" ]; then
+            case "$name" in
+              DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
+                if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+                  echo "::notice::$name is gated by VOICE_REALTIME_WS_ENABLED; skipping"
+                  return 0
+                fi
+                ;;
+            esac
+            if ! has_nonblank_value "$value"; then
               echo "::notice::$name is not configured; skipping"
               return 0
             fi
@@ -523,6 +641,42 @@ jobs:
             return 1
           }
 
+          # Like publish_secret, but for values that act as ROUTING TOGGLES
+          # (code branches on presence, e.g. `env.WHISPER_STT_URL`). An unset
+          # source must DELETE any previously published secret. A plain
+          # skip would leave a stale toggle active on the Worker forever
+          # (e.g. STT pinned to a dead Whisper host during an outage).
+          publish_toggle_secret() {
+            local name="$1"
+            local value="${!name:-}"
+            if [ -n "$value" ]; then
+              publish_secret "$name"
+              return $?
+            fi
+            # Unset: delete so the Worker falls back to its default path.
+            # Wrangler auto-confirms the prompt in non-interactive CI.
+            # "Binding not found" is success (nothing was published). Any
+            # other failure must FAIL after retries: deploying with a stale
+            # routing toggle is exactly the outage this function prevents.
+            local out
+            for attempt in 1 2 3; do
+              if out=$(bunx wrangler secret delete "$name" ${{ steps.env.outputs.wrangler_args }} 2>&1); then
+                echo "::notice::$name is not configured; deleted any previously published value"
+                return 0
+              fi
+              if printf '%s' "$out" | grep -qi "not found"; then
+                echo "::notice::$name is not configured and not present on the Worker; nothing to do"
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "::warning::wrangler secret delete $name failed on attempt $attempt; retrying in 10s"
+                sleep 10
+              fi
+            done
+            echo "::error::$name is unset but deleting the stale Worker secret failed after 3 attempts: $out"
+            return 1
+          }
+
           for name in \
             OPENROUTER_API_KEY \
             OPENAI_API_KEY \
@@ -533,13 +687,30 @@ jobs:
             FAL_KEY \
             FAL_API_KEY \
             ELEVENLABS_API_KEY \
+            DEEPGRAM_API_KEY \
             ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 \
             ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 \
             VAST_API_KEY \
             VAST_BASE_URL \
+            DEEPGRAM_API_KEY \
+            CARTESIA_API_KEY \
+            VOICE_REALTIME_ELIZA_AUTHORIZATION \
             STEWARD_PLATFORM_KEYS
           do
             publish_secret "$name"
+          done
+
+          # Routing toggles: presence changes code paths, so unset must delete.
+          # A failed put must fail the step (never deploy with a half-applied
+          # toggle), matching the publish_secret loop's set -e behavior.
+          for name in \
+            CARTESIA_API_KEY \
+            CARTESIA_VOICE_ID \
+            WHISPER_STT_URL \
+            WHISPER_STT_MODEL \
+            VOICE_BATCH_STT_PROVIDER
+          do
+            publish_toggle_secret "$name" || exit 1
           done
 
       # Freshness guard (#14083): skip a stale Worker deploy about to roll the
@@ -566,8 +737,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+          VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
         run: |
-          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA")
+          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
@@ -763,8 +935,9 @@ jobs:
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
           # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # bun does not exhibit the hang. See elizaOS/eliza#10839.
-          bun-version: "latest"
+          # Bun 1.3.14 does not exhibit the hang and avoids the floating-tag API
+          # lookup during setup. See elizaOS/eliza#10839.
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -844,6 +1017,8 @@ jobs:
           # `ENVIRONMENT` binding is invisible to the SPA — VITE_ENVIRONMENT is
           # the only thing the bundle can see at runtime.
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
@@ -1155,8 +1330,9 @@ jobs:
           # runners (bun install resolves+extracts in ~2min then stalls past the
           # 900s cap, ×3 retries), stranding prod deploys — observed on runs
           # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # bun does not exhibit the hang. See elizaOS/eliza#10839.
-          bun-version: "latest"
+          # Bun 1.3.14 does not exhibit the hang and avoids the floating-tag API
+          # lookup during setup. See elizaOS/eliza#10839.
+          bun-version: "1.3.14"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -1225,6 +1401,8 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
@@ -1378,7 +1556,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
           show-progress: false

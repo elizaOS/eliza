@@ -146,7 +146,7 @@ export interface ScheduledTaskStore {
    *
    * The store is the only place where the read-mutate-write becomes
    * atomic; the runner's previous read-then-upsert pattern was racy
-   * across parallel ticks. See `LifeOpsRepository.claimScheduledTaskForFire`.
+   * across parallel ticks.
    */
   claimForFire(args: {
     taskId: string;
@@ -1137,17 +1137,11 @@ export function createScheduledTaskRunner(
         task.state.completedAt = now().toISOString();
       }
       await persist(task);
-      await logger.log(task.taskId, outcomeToLogTransition(outcome), {
+      await logger.log(task.taskId, outcome, {
         reason: `pipeline: ${outcome}`,
       });
     }
     return settleTerminal(task, outcome);
-  }
-
-  function outcomeToLogTransition(
-    outcome: TerminalState,
-  ): "completed" | "skipped" | "expired" | "failed" | "dismissed" {
-    return outcome;
   }
 
   // -------------------------------------------------------------------------

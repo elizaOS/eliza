@@ -23,10 +23,13 @@ on:
     - cron: "0 18 * * *"
   workflow_dispatch:
 
-# Dedicated group, never cancelled by push/PR traffic: the whole point is a
-# completed daily coverage signal (#12337/#12342).
+# The bounded native queue preserves every twice-daily invocation instead of
+# replacing an older pending run when a third arrives. Each called workflow
+# receives the same explicit scope below, keeping its jobs outside every
+# standalone push, PR, dispatch, and schedule group.
 concurrency:
   group: develop-exhaustive-${{ github.ref }}
+  queue: max
   cancel-in-progress: false
 
 permissions:
@@ -38,42 +41,62 @@ jobs:
   windows:
     name: Windows full matrix
     uses: ./.github/workflows/windows-ci.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   mobile:
     name: Mobile build smoke
     uses: ./.github/workflows/mobile-build-smoke.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   scenario:
     name: Scenario deterministic E2E
     uses: ./.github/workflows/scenario-pr.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   ui-e2e:
     name: UI e2e gate
     uses: ./.github/workflows/ui-e2e-gate.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   ui-fixture:
     name: UI fixture e2e
     uses: ./.github/workflows/ui-fixture-e2e.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   ui-story:
     name: UI story gate
     uses: ./.github/workflows/ui-story-gate.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   keyless-harness:
     name: Keyless harness E2E
     uses: ./.github/workflows/keyless-harness-e2e.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   docker:
     name: Docker image smoke
     uses: ./.github/workflows/docker-ci-smoke.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   dev-onboarding:
     name: Dev onboarding smoke
     uses: ./.github/workflows/dev-smoke.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
   electrobun:
     name: Electrobun desktop release
     uses: ./.github/workflows/test-electrobun-release.yml
+    with:
+      concurrency_scope: develop-exhaustive
     secrets: inherit
 
   matrix-proof:
@@ -100,7 +123,7 @@ jobs:
       NODE_NO_WARNINGS: "1"
       NODE_OPTIONS: "--max-old-space-size=8192"
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 

@@ -283,6 +283,62 @@ class TestAgentSimulation:
         assert result.total_tokens > 0  # Mock returns 100 tokens per call
 
     @pytest.mark.asyncio
+    async def test_run_simulation_enforces_primary_message_cap(self) -> None:
+        provider = MockLLMProvider(
+            responses=[
+                '{"action": "VIEW_BUSINESS_STATE"}',
+                '{"action": "VIEW_SUPPLIERS"}',
+                '{"action": "PLACE_ORDER", "supplier_id": "beverage_dist", "items": {"water": 12}}',
+            ]
+        )
+        agent = VendingAgent(
+            environment=VendingEnvironment(initial_cash=Decimal("500.00"), seed=42),
+            llm_provider=provider,
+        )
+
+        result = await agent.run_simulation(
+            max_days=30,
+            max_actions_per_day=25,
+            max_messages=2,
+            run_id="message_cap",
+        )
+
+        assert result.messages_used == 2
+        assert provider.call_count == 2
+        assert result.simulation_days == 1
+
+    @pytest.mark.asyncio
+    async def test_run_simulation_supplies_same_explicit_history_to_provider(self) -> None:
+        class CapturingProvider:
+            def __init__(self) -> None:
+                self.prompts: list[str] = []
+
+            async def generate(
+                self,
+                system_prompt: str,
+                user_prompt: str,
+                temperature: float = 0.0,
+            ) -> tuple[str, int]:
+                self.prompts.append(user_prompt)
+                if len(self.prompts) == 1:
+                    return '{"action": "VIEW_BUSINESS_STATE"}', 10
+                return '{"action": "ADVANCE_DAY"}', 10
+
+        provider = CapturingProvider()
+        agent = VendingAgent(
+            environment=VendingEnvironment(seed=42),
+            llm_provider=provider,
+            context_window_tokens=30_000,
+        )
+
+        await agent.run_day(day=1, max_actions=2)
+
+        assert len(provider.prompts) == 2
+        assert "## Recent bounded interaction history" in provider.prompts[1]
+        assert '{"action": "VIEW_BUSINESS_STATE"}' in provider.prompts[1]
+        assert "Business State" in provider.prompts[1]
+
+    @pytest.mark.asyncio
     async def test_run_simulation_calculates_metrics(self) -> None:
         """Test simulation calculates correct metrics."""
         env = VendingEnvironment(initial_cash=Decimal("500.00"), seed=42)

@@ -1,4 +1,16 @@
-// Runs the hosted agent-server routes boundary for cloud runtime containers.
+/**
+ * Defines the authenticated control and workflow HTTP boundary for hosted
+ * agent containers. Workflow operations derive their owner only from trusted
+ * internal headers and return typed, non-enumerating errors across tenants.
+ */
+import { ElizaError } from "@elizaos/core";
+import {
+  applyResolutions,
+  buildCatalogSnapshot,
+  type CatalogLike,
+  coerceClarifications,
+  pruneResolvedClarifications,
+} from "@elizaos/plugin-workflow/lib/workflow-clarification";
 import { Elysia } from "elysia";
 import type { AgentManager } from "./agent-manager";
 import { EventBodySchema } from "./handlers/event";
@@ -56,19 +68,55 @@ type WorkflowDefinitionPayload = {
 };
 
 type WorkflowServiceLike = {
-  listWorkflows: (userId?: string) => Promise<unknown[]>;
-  getWorkflow: (workflowId: string) => Promise<unknown>;
+  listWorkflows: (userId: string) => Promise<unknown[]>;
+  getWorkflow: (workflowId: string, userId: string) => Promise<unknown>;
   deployWorkflow: (
     workflow: WorkflowDefinitionPayload,
     userId: string,
+    options?: { activate?: boolean },
   ) => Promise<unknown>;
   generateWorkflowDraft: (
     prompt: string,
     opts?: { userId?: string },
   ) => Promise<WorkflowDefinitionPayload>;
-  activateWorkflow: (workflowId: string) => Promise<void>;
-  deactivateWorkflow: (workflowId: string) => Promise<void>;
-  deleteWorkflow: (workflowId: string) => Promise<void>;
+  activateWorkflow: (workflowId: string, userId: string) => Promise<void>;
+  deactivateWorkflow: (workflowId: string, userId: string) => Promise<void>;
+  deleteWorkflow: (workflowId: string, userId: string) => Promise<void>;
+  runWorkflow: (
+    workflowId: string,
+    options: { mode?: "manual"; throwOnError?: boolean } | undefined,
+    userId: string,
+  ) => Promise<unknown>;
+  listExecutions: (
+    params: { workflowId?: string; limit?: number },
+    userId: string,
+  ) => Promise<{ data: unknown[]; nextCursor?: string }>;
+  getExecutionDetail: (executionId: string, userId: string) => Promise<unknown>;
+  listWorkflowRevisions: (
+    workflowId: string,
+    limit: number | undefined,
+    userId: string,
+  ) => Promise<unknown[]>;
+  restoreWorkflowRevision: (
+    workflowId: string,
+    versionId: string,
+    userId: string,
+  ) => Promise<unknown>;
+  getWorkflowEvaluationSuite: (
+    workflowId: string,
+    limit: number | undefined,
+    userId: string,
+  ) => Promise<unknown>;
+};
+
+type WorkflowRuntimeLike = {
+  getService?: (serviceType: string) => unknown;
+};
+
+type WorkflowErrorResponse = {
+  success: false;
+  code: string;
+  error: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -80,19 +128,224 @@ function asWorkflow(value: unknown): WorkflowDefinitionPayload | null {
   if (
     typeof value.name !== "string" ||
     !Array.isArray(value.nodes) ||
-    !isRecord(value.connections)
+    !isRecord(value.connections) ||
+    (value.id !== undefined && typeof value.id !== "string")
   ) {
     return null;
   }
   return value as WorkflowDefinitionPayload;
 }
 
-function readUserId(headers: HeaderMap, body?: unknown): string {
-  if (isRecord(body) && typeof body.userId === "string" && body.userId.trim()) {
-    return body.userId.trim();
-  }
+function isCatalogLike(value: unknown): value is CatalogLike {
+  return isRecord(value) && typeof value.listGroups === "function";
+}
+
+function requireWorkflowPrincipal(
+  headers: HeaderMap,
+  set: { status?: number | string },
+): string | WorkflowErrorResponse {
   const headerUserId = headers["x-eliza-user-id"] ?? headers["X-Eliza-User-Id"];
-  return headerUserId?.trim() || "cloud";
+  const userId = headerUserId?.trim();
+  if (userId) return userId;
+
+  set.status = 401;
+  return {
+    success: false,
+    code: "workflow_principal_required",
+    error: "Workflow user principal is required",
+  };
+}
+
+function workflowRecordId(workflow: unknown): string | null {
+  if (!isRecord(workflow) || typeof workflow.id !== "string") return null;
+  const id = workflow.id.trim();
+  return id || null;
+}
+
+function workflowRouteError(
+  status: number,
+  code: string,
+  message: string,
+  cause?: unknown,
+): ElizaError {
+  return new ElizaError(message, {
+    code,
+    cause,
+    context: { workflowHttpStatus: status },
+    severity: status >= 500 ? "fatal" : "ephemeral",
+  });
+}
+
+async function userOwnsWorkflow(
+  service: WorkflowServiceLike,
+  userId: string,
+  workflowId: string,
+): Promise<boolean> {
+  const workflows = await service.listWorkflows(userId);
+  return workflows.some(
+    (workflow) => workflowRecordId(workflow) === workflowId,
+  );
+}
+
+async function requireWorkflowOwnership(
+  service: WorkflowServiceLike,
+  userId: string,
+  workflowId: string,
+  persistenceRequired = false,
+): Promise<void> {
+  if (await userOwnsWorkflow(service, userId, workflowId)) return;
+
+  if (persistenceRequired) {
+    throw workflowRouteError(
+      500,
+      "workflow_ownership_not_persisted",
+      "Workflow ownership could not be persisted",
+    );
+  }
+
+  // Missing and foreign workflows intentionally share one response so this
+  // boundary never becomes an ownership oracle.
+  throw workflowRouteError(404, "workflow_not_found", "Workflow not found");
+}
+
+function errorStatusCode(error: unknown): number | null {
+  return isRecord(error) && typeof error.statusCode === "number"
+    ? error.statusCode
+    : null;
+}
+
+async function getOwnedExecution(
+  service: WorkflowServiceLike,
+  userId: string,
+  executionId: string,
+): Promise<unknown> {
+  let execution: unknown;
+  try {
+    execution = await service.getExecutionDetail(executionId, userId);
+  } catch (error) {
+    // error-policy:J2 preserve a known upstream 404 while adding the public
+    // no-oracle execution classification used by this boundary.
+    if (errorStatusCode(error) === 404) {
+      throw workflowRouteError(
+        404,
+        "workflow_execution_not_found",
+        "Workflow execution not found",
+        error,
+      );
+    }
+    throw error;
+  }
+
+  if (
+    !isRecord(execution) ||
+    typeof execution.workflowId !== "string" ||
+    !execution.workflowId.trim()
+  ) {
+    throw workflowRouteError(
+      500,
+      "workflow_execution_invalid",
+      "Workflow execution is missing its workflow owner",
+    );
+  }
+  if (!(await userOwnsWorkflow(service, userId, execution.workflowId.trim()))) {
+    throw workflowRouteError(
+      404,
+      "workflow_execution_not_found",
+      "Workflow execution not found",
+    );
+  }
+  return execution;
+}
+
+function boundedLimit(value: unknown, fallback: number): number {
+  const parsed = typeof value === "string" ? Number(value) : Number.NaN;
+  return Math.min(Math.max(1, parsed || fallback), 50);
+}
+
+async function getOwnedWorkflow(
+  service: WorkflowServiceLike,
+  userId: string,
+  workflowId: string,
+): Promise<unknown> {
+  await requireWorkflowOwnership(service, userId, workflowId);
+  return service.getWorkflow(workflowId, userId);
+}
+
+function workflowActiveState(workflow: unknown): boolean {
+  if (isRecord(workflow) && typeof workflow.active === "boolean") {
+    return workflow.active;
+  }
+  throw workflowRouteError(
+    500,
+    "workflow_active_state_invalid",
+    "Workflow is missing its activation state",
+  );
+}
+
+async function compensateUnownedDeployment(
+  service: WorkflowServiceLike,
+  userId: string,
+  workflowId: string,
+): Promise<void> {
+  try {
+    await requireWorkflowOwnership(service, userId, workflowId, true);
+  } catch (error) {
+    // error-policy:J6 remove the newly-created orphan before rethrowing the
+    // original ownership failure; cleanup failure must not fabricate success.
+    try {
+      await service.deleteWorkflow(workflowId, userId);
+    } catch (cleanupError) {
+      // error-policy:J6 ownership compensation is best-effort; the original
+      // persistence failure remains the response while cleanup is observable.
+      logger.error("Failed to remove a workflow with no persisted owner", {
+        workflowId,
+        cleanupError,
+      });
+    }
+    throw error;
+  }
+}
+
+async function finalizeWorkflowDeployment(params: {
+  service: WorkflowServiceLike;
+  userId: string;
+  deployed: unknown;
+  requestedWorkflowId: string | null;
+  active: boolean;
+}): Promise<unknown> {
+  const deployedId = workflowRecordId(params.deployed);
+  if (!deployedId) {
+    throw workflowRouteError(
+      500,
+      "workflow_deployment_id_missing",
+      "Workflow deployment returned no verifiable workflow id",
+    );
+  }
+
+  const created = deployedId !== params.requestedWorkflowId;
+  if (created) {
+    await compensateUnownedDeployment(
+      params.service,
+      params.userId,
+      deployedId,
+    );
+  } else {
+    await requireWorkflowOwnership(params.service, params.userId, deployedId);
+  }
+
+  const deployedWorkflow = await params.service.getWorkflow(
+    deployedId,
+    params.userId,
+  );
+  const deployedActive = workflowActiveState(deployedWorkflow);
+  if (deployedActive !== params.active) {
+    if (params.active) {
+      await params.service.activateWorkflow(deployedId, params.userId);
+    } else {
+      await params.service.deactivateWorkflow(deployedId, params.userId);
+    }
+  }
+  return params.service.getWorkflow(deployedId, params.userId);
 }
 
 function readWorkflowBody(
@@ -112,8 +365,11 @@ async function withWorkflowService<T>(
   manager: AgentManager,
   agentId: string,
   set: { status?: number | string },
-  fn: (service: WorkflowServiceLike) => Promise<T>,
-): Promise<T | { error: string }> {
+  fn: (
+    service: WorkflowServiceLike,
+    runtime: WorkflowRuntimeLike,
+  ) => Promise<T>,
+): Promise<T | WorkflowErrorResponse> {
   try {
     return await manager.useRuntime(agentId, async (runtime) => {
       const service = runtime.getService?.("workflow") as
@@ -122,17 +378,35 @@ async function withWorkflowService<T>(
         | undefined;
       if (!service) {
         set.status = 503;
-        return { error: "workflow service unavailable" };
+        return {
+          success: false,
+          code: "workflow_service_unavailable",
+          error: "Workflow service is unavailable",
+        };
       }
-      return await fn(service);
+      return await fn(service, runtime);
     });
   } catch (err: unknown) {
+    // error-policy:J1 this is the HTTP boundary for workflow service failures.
+    const workflowHttpStatus =
+      err instanceof ElizaError &&
+      typeof err.context?.workflowHttpStatus === "number"
+        ? err.context.workflowHttpStatus
+        : null;
+    if (workflowHttpStatus !== null && err instanceof ElizaError) {
+      set.status = workflowHttpStatus;
+      return { success: false, code: err.code, error: err.message };
+    }
+
     const message = err instanceof Error ? err.message : String(err);
-    set.status =
-      message === "Agent not found" || message === "Agent not running"
-        ? 404
-        : 500;
-    return { error: message };
+    const agentUnavailable =
+      message === "Agent not found" || message === "Agent not running";
+    set.status = agentUnavailable ? 404 : 500;
+    return {
+      success: false,
+      code: agentUnavailable ? "agent_not_found" : "workflow_operation_failed",
+      error: message,
+    };
   }
 }
 
@@ -197,6 +471,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         set.status = 201;
         return { agentId, status: "running" };
       } catch (err: unknown) {
+        // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
         set.status = message === "At capacity" ? 503 : 409;
         return { error: message };
@@ -216,6 +491,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         await manager.stopAgent(params.id);
         return { agentId: params.id, status: "stopped" };
       } catch (err: unknown) {
+        // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
         set.status = 404;
         return { error: message };
@@ -235,6 +511,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         await manager.deleteAgent(params.id);
         return { agentId: params.id, deleted: true };
       } catch (err: unknown) {
+        // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
         set.status = 404;
         return { error: message };
@@ -284,6 +561,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         );
         return { response };
       } catch (err: unknown) {
+        // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
         set.status =
           message === "Agent not found" || message === "Agent not running"
@@ -327,6 +605,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         );
         return { handled: true, type: parsed.data.type, ...result };
       } catch (err: unknown) {
+        // error-policy:J1 translate the agent-server HTTP boundary into an explicit status.
         const message = err instanceof Error ? err.message : String(err);
         if (message === "Agent not found" || message === "Agent not running") {
           set.status = 404;
@@ -365,6 +644,7 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           };
         })
         .catch((err: unknown) => {
+          // error-policy:J1 translate the workflow-status HTTP boundary into an explicit status.
           const message = err instanceof Error ? err.message : String(err);
           set.status =
             message === "Agent not found" || message === "Agent not running"
@@ -378,13 +658,15 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       const headerMap = headers as HeaderMap;
       const denial = requireInternalAuth(headerMap, set, sharedSecret);
       if (denial) return denial;
+      const userId = requireWorkflowPrincipal(headerMap, set);
+      if (typeof userId !== "string") return userId;
 
       return await withWorkflowService(
         manager,
         params.id,
         set,
         async (service) => ({
-          workflows: await service.listWorkflows(readUserId(headerMap)),
+          workflows: await service.listWorkflows(userId),
         }),
       );
     })
@@ -393,6 +675,8 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       const headerMap = headers as HeaderMap;
       const denial = requireInternalAuth(headerMap, set, sharedSecret);
       if (denial) return denial;
+      const userId = requireWorkflowPrincipal(headerMap, set);
+      if (typeof userId !== "string") return userId;
 
       const payload = readWorkflowBody(body);
       if (!payload) {
@@ -405,23 +689,29 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         params.id,
         set,
         async (service) => {
-          const deployed = await service.deployWorkflow(
-            payload.workflow,
-            readUserId(headerMap, body),
-          );
-          const deployedRecord = isRecord(deployed) ? deployed : {};
-          const deployedId =
-            typeof deployedRecord.id === "string"
-              ? deployedRecord.id
-              : undefined;
-          if (
-            payload.activate === false &&
-            deployedId &&
-            deployedRecord.active === true
-          ) {
-            await service.deactivateWorkflow(deployedId);
+          const requestedWorkflowId = payload.workflow.id?.trim() || null;
+          let desiredActive = payload.activate ?? false;
+          if (requestedWorkflowId) {
+            const previousActive = workflowActiveState(
+              await getOwnedWorkflow(service, userId, requestedWorkflowId),
+            );
+            desiredActive = payload.activate ?? previousActive;
           }
-          return deployedId ? await service.getWorkflow(deployedId) : deployed;
+          const deployed = await service.deployWorkflow(
+            {
+              ...payload.workflow,
+              id: requestedWorkflowId ?? undefined,
+            },
+            userId,
+            { activate: payload.activate },
+          );
+          return finalizeWorkflowDeployment({
+            service,
+            userId,
+            deployed,
+            requestedWorkflowId,
+            active: desiredActive,
+          });
         },
       );
     })
@@ -432,6 +722,8 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         const headerMap = headers as HeaderMap;
         const denial = requireInternalAuth(headerMap, set, sharedSecret);
         if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
         if (!isRecord(body)) {
           set.status = 400;
           return { error: "request body required" };
@@ -448,41 +740,187 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           manager,
           params.id,
           set,
-          async (service) => {
-            const userId = readUserId(headerMap, body);
+          async (service, runtime) => {
+            const requestedWorkflowId =
+              typeof body.workflowId === "string"
+                ? body.workflowId.trim() || null
+                : null;
+            let desiredActive =
+              typeof body.activate === "boolean" ? body.activate : false;
+            if (requestedWorkflowId) {
+              const previousActive = workflowActiveState(
+                await getOwnedWorkflow(service, userId, requestedWorkflowId),
+              );
+              desiredActive =
+                typeof body.activate === "boolean"
+                  ? body.activate
+                  : previousActive;
+            }
             const draft = await service.generateWorkflowDraft(prompt, {
               userId,
             });
             if (typeof body.name === "string" && body.name.trim()) {
               draft.name = body.name.trim();
             }
-            if (typeof body.workflowId === "string" && body.workflowId.trim()) {
-              draft.id = body.workflowId.trim();
-            }
+            if (requestedWorkflowId) draft.id = requestedWorkflowId;
+            else delete draft.id;
 
-            const clarifications = Array.isArray(
+            const clarifications = coerceClarifications(
               draft._meta?.requiresClarification,
-            )
-              ? draft._meta.requiresClarification
-              : [];
+            );
             if (clarifications.length > 0) {
+              const rawCatalog = runtime.getService?.(
+                "connector_target_catalog",
+              );
+              const catalog = isCatalogLike(rawCatalog) ? rawCatalog : null;
               return {
                 status: "needs_clarification",
                 draft,
                 clarifications,
-                catalog: [],
+                catalog: catalog
+                  ? await buildCatalogSnapshot(catalog, clarifications)
+                  : [],
               };
             }
 
-            const deployed = await service.deployWorkflow(draft, userId);
-            const deployedRecord = isRecord(deployed) ? deployed : {};
-            const deployedId =
-              typeof deployedRecord.id === "string"
-                ? deployedRecord.id
-                : undefined;
-            return deployedId
-              ? await service.getWorkflow(deployedId)
-              : deployed;
+            const deployed = await service.deployWorkflow(draft, userId, {
+              activate:
+                typeof body.activate === "boolean" ? body.activate : undefined,
+            });
+            return finalizeWorkflowDeployment({
+              service,
+              userId,
+              deployed,
+              requestedWorkflowId,
+              active: desiredActive,
+            });
+          },
+        );
+      },
+    )
+
+    .post(
+      "/agents/:id/workflows/resolve-clarification",
+      async ({ params, body, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+        if (
+          !isRecord(body) ||
+          !isRecord(body.draft) ||
+          !Array.isArray(body.resolutions)
+        ) {
+          set.status = 400;
+          return { error: "draft and resolutions required" };
+        }
+
+        const draftRecord = body.draft;
+        const resolutions = body.resolutions;
+        const draft = asWorkflow(draftRecord);
+        if (!draft) {
+          set.status = 400;
+          return { error: "valid draft workflow required" };
+        }
+
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service, runtime) => {
+            const bodyWorkflowId =
+              typeof body.workflowId === "string"
+                ? body.workflowId.trim() || null
+                : null;
+            const draftWorkflowId = draft.id?.trim() || null;
+            if (
+              bodyWorkflowId &&
+              draftWorkflowId &&
+              bodyWorkflowId !== draftWorkflowId
+            ) {
+              set.status = 400;
+              return { error: "workflowId does not match draft id" };
+            }
+            const requestedWorkflowId = bodyWorkflowId ?? draftWorkflowId;
+            let desiredActive =
+              typeof body.activate === "boolean" ? body.activate : false;
+            if (requestedWorkflowId) {
+              const previousActive = workflowActiveState(
+                await getOwnedWorkflow(service, userId, requestedWorkflowId),
+              );
+              desiredActive =
+                typeof body.activate === "boolean"
+                  ? body.activate
+                  : previousActive;
+            }
+
+            const resolutionResult = applyResolutions(draftRecord, resolutions);
+            if (!resolutionResult.ok) {
+              set.status = 400;
+              return {
+                error: resolutionResult.error,
+                ...(resolutionResult.paramPath
+                  ? { paramPath: resolutionResult.paramPath }
+                  : {}),
+              };
+            }
+
+            const resolvedPaths = new Set(
+              resolutions
+                .map((resolution) =>
+                  isRecord(resolution) ? resolution.paramPath : undefined,
+                )
+                .filter(
+                  (path): path is string =>
+                    typeof path === "string" && path.length > 0,
+                ),
+            );
+            const freeFormCount = resolutions.filter(
+              (resolution) =>
+                isRecord(resolution) && resolution.paramPath === "",
+            ).length;
+            pruneResolvedClarifications(
+              draftRecord,
+              resolvedPaths,
+              freeFormCount,
+            );
+
+            if (typeof body.name === "string" && body.name.trim()) {
+              draft.name = body.name.trim();
+            }
+            if (requestedWorkflowId) draft.id = requestedWorkflowId;
+            else delete draft.id;
+
+            const remaining = coerceClarifications(
+              draft._meta?.requiresClarification,
+            );
+            if (remaining.length > 0) {
+              const rawCatalog = runtime.getService?.(
+                "connector_target_catalog",
+              );
+              const catalog = isCatalogLike(rawCatalog) ? rawCatalog : null;
+              return {
+                status: "needs_clarification",
+                draft,
+                clarifications: remaining,
+                catalog: catalog
+                  ? await buildCatalogSnapshot(catalog, remaining)
+                  : [],
+              };
+            }
+
+            const deployed = await service.deployWorkflow(draft, userId, {
+              activate:
+                typeof body.activate === "boolean" ? body.activate : undefined,
+            });
+            return finalizeWorkflowDeployment({
+              service,
+              userId,
+              deployed,
+              requestedWorkflowId,
+              active: desiredActive,
+            });
           },
         );
       },
@@ -491,17 +929,17 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     .get(
       "/agents/:id/workflows/:workflowId",
       async ({ params, headers, set }) => {
-        const denial = requireInternalAuth(
-          headers as HeaderMap,
-          set,
-          sharedSecret,
-        );
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
         if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
         return await withWorkflowService(
           manager,
           params.id,
           set,
-          async (service) => service.getWorkflow(params.workflowId),
+          async (service) =>
+            getOwnedWorkflow(service, userId, params.workflowId),
         );
       },
     )
@@ -512,6 +950,8 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         const headerMap = headers as HeaderMap;
         const denial = requireInternalAuth(headerMap, set, sharedSecret);
         if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
 
         const payload = readWorkflowBody(body);
         if (!payload) {
@@ -524,25 +964,22 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           params.id,
           set,
           async (service) => {
+            const previousActive = workflowActiveState(
+              await getOwnedWorkflow(service, userId, params.workflowId),
+            );
+            const desiredActive = payload.activate ?? previousActive;
             const deployed = await service.deployWorkflow(
               { ...payload.workflow, id: params.workflowId },
-              readUserId(headerMap, body),
+              userId,
+              { activate: payload.activate },
             );
-            const deployedRecord = isRecord(deployed) ? deployed : {};
-            const deployedId =
-              typeof deployedRecord.id === "string"
-                ? deployedRecord.id
-                : undefined;
-            if (
-              payload.activate === false &&
-              deployedId &&
-              deployedRecord.active === true
-            ) {
-              await service.deactivateWorkflow(deployedId);
-            }
-            return deployedId
-              ? await service.getWorkflow(deployedId)
-              : deployed;
+            return finalizeWorkflowDeployment({
+              service,
+              userId,
+              deployed,
+              requestedWorkflowId: params.workflowId,
+              active: desiredActive,
+            });
           },
         );
       },
@@ -551,18 +988,18 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     .delete(
       "/agents/:id/workflows/:workflowId",
       async ({ params, headers, set }) => {
-        const denial = requireInternalAuth(
-          headers as HeaderMap,
-          set,
-          sharedSecret,
-        );
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
         if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
         return await withWorkflowService(
           manager,
           params.id,
           set,
           async (service) => {
-            await service.deleteWorkflow(params.workflowId);
+            await requireWorkflowOwnership(service, userId, params.workflowId);
+            await service.deleteWorkflow(params.workflowId, userId);
             return { ok: true };
           },
         );
@@ -572,19 +1009,19 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     .post(
       "/agents/:id/workflows/:workflowId/activate",
       async ({ params, headers, set }) => {
-        const denial = requireInternalAuth(
-          headers as HeaderMap,
-          set,
-          sharedSecret,
-        );
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
         if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
         return await withWorkflowService(
           manager,
           params.id,
           set,
           async (service) => {
-            await service.activateWorkflow(params.workflowId);
-            return await service.getWorkflow(params.workflowId);
+            await requireWorkflowOwnership(service, userId, params.workflowId);
+            await service.activateWorkflow(params.workflowId, userId);
+            return await service.getWorkflow(params.workflowId, userId);
           },
         );
       },
@@ -593,19 +1030,204 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     .post(
       "/agents/:id/workflows/:workflowId/deactivate",
       async ({ params, headers, set }) => {
-        const denial = requireInternalAuth(
-          headers as HeaderMap,
-          set,
-          sharedSecret,
-        );
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
         if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
         return await withWorkflowService(
           manager,
           params.id,
           set,
           async (service) => {
-            await service.deactivateWorkflow(params.workflowId);
-            return await service.getWorkflow(params.workflowId);
+            await requireWorkflowOwnership(service, userId, params.workflowId);
+            await service.deactivateWorkflow(params.workflowId, userId);
+            return await service.getWorkflow(params.workflowId, userId);
+          },
+        );
+      },
+    )
+
+    .post(
+      "/agents/:id/workflows/:workflowId/run",
+      async ({ params, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await requireWorkflowOwnership(service, userId, params.workflowId);
+            const execution = await service.runWorkflow(
+              params.workflowId,
+              {
+                mode: "manual",
+                throwOnError: false,
+              },
+              userId,
+            );
+            return { execution };
+          },
+        );
+      },
+    )
+
+    .get(
+      "/agents/:id/workflows/:workflowId/executions",
+      async ({ params, query, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await requireWorkflowOwnership(service, userId, params.workflowId);
+            const response = await service.listExecutions(
+              {
+                workflowId: params.workflowId,
+                limit: boundedLimit(query.limit, 10),
+              },
+              userId,
+            );
+            return { executions: response.data };
+          },
+        );
+      },
+    )
+
+    .get(
+      "/agents/:id/workflows/:workflowId/evaluation-samples",
+      async ({ params, query, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await requireWorkflowOwnership(service, userId, params.workflowId);
+            return service.getWorkflowEvaluationSuite(
+              params.workflowId,
+              boundedLimit(query.limit, 10),
+              userId,
+            );
+          },
+        );
+      },
+    )
+
+    .get(
+      "/agents/:id/workflows/executions/:executionId",
+      async ({ params, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => ({
+            execution: await getOwnedExecution(
+              service,
+              userId,
+              params.executionId,
+            ),
+          }),
+        );
+      },
+    )
+
+    .get(
+      "/agents/:id/workflows/:workflowId/revisions",
+      async ({ params, query, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            const workflow = await getOwnedWorkflow(
+              service,
+              userId,
+              params.workflowId,
+            );
+            if (!isRecord(workflow) || typeof workflow.versionId !== "string") {
+              throw workflowRouteError(
+                500,
+                "workflow_revision_state_invalid",
+                "Workflow is missing its current revision",
+              );
+            }
+            const revisions = await service.listWorkflowRevisions(
+              params.workflowId,
+              boundedLimit(query.limit, 20),
+              userId,
+            );
+            return {
+              currentVersionId: workflow.versionId,
+              revisions,
+            };
+          },
+        );
+      },
+    )
+
+    .post(
+      "/agents/:id/workflows/:workflowId/revisions/:versionId/restore",
+      async ({ params, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        const userId = requireWorkflowPrincipal(headerMap, set);
+        if (typeof userId !== "string") return userId;
+
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await requireWorkflowOwnership(service, userId, params.workflowId);
+            try {
+              return await service.restoreWorkflowRevision(
+                params.workflowId,
+                params.versionId,
+                userId,
+              );
+            } catch (error) {
+              // error-policy:J2 preserve a known upstream 404 while adding the
+              // route-specific revision classification.
+              if (errorStatusCode(error) === 404) {
+                throw workflowRouteError(
+                  404,
+                  "workflow_revision_not_found",
+                  "Workflow revision not found",
+                  error,
+                );
+              }
+              throw error;
+            }
           },
         );
       },

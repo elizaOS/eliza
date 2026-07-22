@@ -51,7 +51,7 @@ function exportsPlay(absPath: string): boolean {
 }
 
 // Floor: stories that currently export a `play`. RATCHET — only ever raise this.
-const MIN_INTERACTION_PLAYS = 14;
+const MIN_INTERACTION_PLAYS = 17;
 
 // High-traffic interactive components whose interaction test must never be
 // dropped. Paths are relative to packages/ui/src. Grow this list as components

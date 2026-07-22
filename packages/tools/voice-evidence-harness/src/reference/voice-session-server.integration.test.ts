@@ -81,6 +81,7 @@ interface TtsCallbacks {
   onCancelled?: () => void;
 }
 let lastTtsCallbacks: TtsCallbacks | null = null;
+let lastTtsStreamOptions: { maxBufferDelayMs?: number } | null = null;
 const ttsPhrases: Array<{ text: string; continueContext?: boolean }> = [];
 let ttsCancelled = false;
 let _ttsFinished = false;
@@ -88,7 +89,8 @@ let _ttsFinished = false;
 const cartesiaStub = () => ({
   ...realCartesiaSonicExports,
   CartesiaSonicTtsAdapter: class {
-    createStream(_meta: unknown, cbs: TtsCallbacks) {
+    createStream(meta: { maxBufferDelayMs?: number }, cbs: TtsCallbacks) {
+      lastTtsStreamOptions = meta;
       lastTtsCallbacks = cbs;
       return {
         opened: Promise.resolve(),
@@ -252,6 +254,7 @@ beforeEach(() => {
   fluxCreateThrows = false;
   autoConnectFlux = true;
   lastTtsCallbacks = null;
+  lastTtsStreamOptions = null;
   ttsPhrases.length = 0;
   ttsCancelled = false;
   _ttsFinished = false;
@@ -336,6 +339,12 @@ describe("startReferenceServer wire flow", () => {
     // The TTS callbacks were registered; drive first audio + a frame + complete.
     await sleep(20);
     expect(lastTtsCallbacks).not.toBeNull();
+    // The reference server must open Cartesia with the PRODUCTION aggregation
+    // cap (#16667) — evidence latency runs are meaningless if the harness
+    // re-incurs the 3000ms default window production removed.
+    expect(lastTtsStreamOptions?.maxBufferDelayMs).toBe(
+      realCartesiaSonic.VOICE_TTS_MAX_BUFFER_DELAY_MS,
+    );
     lastTtsCallbacks?.onFirstAudio?.({ elapsedMs: 5 });
     await client.waitFor("speaking_start");
     lastTtsCallbacks?.onAudioFrame?.({

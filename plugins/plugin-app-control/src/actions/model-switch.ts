@@ -190,7 +190,9 @@ export function createModelSwitchAction(
 		name: "MODEL_SWITCH",
 		contexts: ["general", "settings"],
 		contextGate: { anyOf: ["general", "settings"] },
-		roleGate: { minRole: "USER" },
+		// This mutates the global inference backend, matching the sibling
+		// AGENT_SWITCH owner boundary regardless of planner or shortcut routing.
+		roleGate: { minRole: "OWNER" },
 		similes: [
 			"SWITCH_MODEL",
 			"USE_LOCAL_MODEL",

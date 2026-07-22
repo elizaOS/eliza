@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -25,10 +26,9 @@ import yaml
 from .sandbox import SandboxExecutor, SandboxConfig
 from .scoring import score_episode, format_score_summary
 from .scenarios import (
-    SCENARIOS_DIR,
-    base_scenario_name,
     count_scenarios,
     load_scenarios,
+    scenario_provenance,
     validate_scenarios,
 )
 
@@ -118,23 +118,30 @@ class BenchmarkRunner:
         )
 
         if response.status_code != 200:
-            print(f"API error ({response.status_code}): {response.text[:200]}")
-            return ""
-
+            raise RuntimeError(
+                f"LLM API returned HTTP {response.status_code}: {response.text[:500]}"
+            )
         data = response.json()
-        if "choices" not in data or not data["choices"]:
-            return ""
-
-        return data["choices"][0]["message"]["content"] or ""
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not isinstance(choices, list) or not choices:
+            raise RuntimeError("LLM API response has no choices")
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("LLM API response has no assistant content")
+        return content
 
     def parse_tool_calls(self, text: str) -> list[dict]:
         """Extract tool calls from LLM response."""
         calls = []
         for match in re.finditer(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", text, re.DOTALL):
             try:
-                calls.append(json.loads(match.group(1)))
-            except json.JSONDecodeError:
-                pass
+                call = json.loads(match.group(1))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError("assistant emitted malformed tool-call JSON") from exc
+            if not isinstance(call, dict):
+                raise RuntimeError("assistant tool call must be a JSON object")
+            calls.append(call)
         return calls
 
     def execute_tool(self, tool_name: str, args: dict, sandbox: SandboxExecutor) -> dict:
@@ -163,6 +170,8 @@ class BenchmarkRunner:
                 sandbox.write_file(path, content)
                 result["result"] = {"success": True, "path": path}
             except Exception as e:
+                # error-policy:J1 Tool execution returns an explicit failure to
+                # the agent so it can correct the path or content on a later turn.
                 result["result"] = {"success": False, "error": str(e)}
 
         elif tool_name == "read":
@@ -214,6 +223,7 @@ class BenchmarkRunner:
         ]
 
         all_responses = []
+        finished = False
 
         owns_sandbox = sandbox is None
         sandbox_cm = SandboxExecutor(self.sandbox_config) if owns_sandbox else None
@@ -227,8 +237,9 @@ class BenchmarkRunner:
 
                 response_text = self.call_llm(messages)
                 if not response_text:
-                    print("Empty response, stopping")
-                    break
+                    raise RuntimeError(
+                        f"scenario {scenario_name} returned an empty model response"
+                    )
 
                 all_responses.append(response_text)
                 print(f"Response ({len(response_text)} chars): {response_text[:150]}...")
@@ -237,6 +248,7 @@ class BenchmarkRunner:
                 tool_calls = self.parse_tool_calls(response_text)
                 if not tool_calls:
                     print("No tool calls, agent finished")
+                    finished = True
                     break
 
                 # Execute tools
@@ -261,6 +273,12 @@ class BenchmarkRunner:
 
                 messages.append({"role": "user", "content": results_text})
 
+            if not finished:
+                raise RuntimeError(
+                    f"scenario {scenario_name} exhausted {MAX_STEPS} steps "
+                    "without a terminal answer"
+                )
+
             # Build result for scoring
             final_response = "\n\n".join(all_responses)
 
@@ -281,10 +299,12 @@ class BenchmarkRunner:
             # Score against rubric - THIS IS THE KEY DIFFERENCE
             # We pass the workspace so file checks actually validate the sandbox
             scoring_config = scenario.get("scoring")
-            if scoring_config:
-                score_result = score_episode(result, scoring_config, sandbox.get_workspace())
-            else:
-                score_result = {"score": None, "reason": "No scoring config"}
+            if not isinstance(scoring_config, dict) or not scoring_config.get("checks"):
+                raise ValueError(f"scenario {scenario_name} has no scoring checks")
+            score_result = score_episode(
+                result, scoring_config, sandbox.get_workspace()
+            )
+            _validated_score(score_result, scenario_name)
         finally:
             if owns_sandbox and sandbox_cm is not None:
                 sandbox_cm.__exit__(None, None, None)
@@ -301,7 +321,10 @@ class BenchmarkRunner:
         print(f"\n{format_score_summary(score_result)}")
 
         return {
+            "benchmark": "openclaw",
+            "complete": True,
             "scenario": scenario_name,
+            "scenario_id": scenario_name,
             "scenario_name": scenario["name"],
             "model": self.model,
             "duration_ms": duration_ms,
@@ -317,24 +340,23 @@ class BenchmarkRunner:
         """Return scenarios in topological order based on declared
         ``prerequisites`` so downstream tasks see files created by their
         prerequisites in the shared sandbox."""
-        scenarios = self.list_scenarios()
+        loaded = load_scenarios()
+        scenarios = sorted(loaded)
         deps: dict[str, list[str]] = {}
         for name in scenarios:
-            try:
-                cfg = self.load_scenario(name)
-            except Exception:
-                deps[name] = []
-                continue
+            cfg = loaded[name]
             prereqs = cfg.get("prerequisites") or []
-            deps[name] = [base_scenario_name(p) for p in prereqs if base_scenario_name(p) in scenarios]
+            deps[name] = list(prereqs)
 
         ordered: list[str] = []
         visited: set[str] = set()
         visiting: set[str] = set()
 
         def visit(name: str) -> None:
-            if name in visited or name in visiting:
+            if name in visited:
                 return
+            if name in visiting:
+                raise ValueError(f"scenario dependency cycle includes {name}")
             visiting.add(name)
             for dep in deps.get(name, []):
                 visit(dep)
@@ -346,6 +368,11 @@ class BenchmarkRunner:
             visit(name)
         return ordered
 
+    @staticmethod
+    def _scenario_cohort(name: str) -> str:
+        marker = "--edge-"
+        return name.split(marker, 1)[1] if marker in name else "authored"
+
     def run_all(self) -> dict:
         """Run all scenarios in dependency order, sharing one sandbox so
         downstream scenarios can read files left by their prerequisites."""
@@ -353,19 +380,28 @@ class BenchmarkRunner:
         total_score = 0.0
         task_count = 0
 
+        validate_scenarios()
         ordered = self._ordered_scenarios()
+        cohorts: dict[str, list[str]] = {}
+        for scenario in ordered:
+            cohorts.setdefault(self._scenario_cohort(scenario), []).append(scenario)
 
-        with SandboxExecutor(self.sandbox_config) as sandbox:
-            for scenario in ordered:
-                try:
-                    result = self.run_scenario(scenario, sandbox=sandbox)
-                    results[scenario] = result
-                    if result.get("score", {}).get("score") is not None:
-                        total_score += result["score"]["score"]
+        # Authored tasks form one dependency chain, while each edge variant is
+        # an independent chain. A fresh sandbox per cohort prevents an earlier
+        # perturbation from pre-populating files that a later one is scored on.
+        for cohort_scenarios in cohorts.values():
+            with SandboxExecutor(self.sandbox_config) as sandbox:
+                for scenario in cohort_scenarios:
+                    try:
+                        result = self.run_scenario(scenario, sandbox=sandbox)
+                        results[scenario] = result
+                        total_score += _validated_score(result.get("score"), scenario)
                         task_count += 1
-                except Exception as e:
-                    print(f"Error running {scenario}: {e}")
-                    results[scenario] = {"error": str(e)}
+                    except Exception as e:
+                        # error-policy:J1 Per-scenario failures remain visible in
+                        # the complete report; callers reject `complete=false`.
+                        print(f"Error running {scenario}: {e}")
+                        results[scenario] = {"error": str(e)}
 
         return {
             "benchmark": "openclaw",
@@ -374,6 +410,15 @@ class BenchmarkRunner:
             "tasks": results,
             "overall_score": total_score / task_count if task_count > 0 else 0,
             "tasks_completed": task_count,
+            "expected_tasks": len(ordered),
+            "failed_tasks": sum(1 for result in results.values() if "error" in result),
+            "scenario_cohorts": len(cohorts),
+            "dataset_provenance": scenario_provenance(),
+            "complete": (
+                len(results) == len(ordered)
+                and task_count == len(ordered)
+                and all("error" not in result for result in results.values())
+            ),
         }
 
     def _build_system_prompt(self) -> str:
@@ -406,6 +451,49 @@ RULES:
 """
 
 
+def _validated_score(score_result: object, scenario_name: str) -> float:
+    if not isinstance(score_result, dict):
+        raise ValueError(f"scenario {scenario_name} returned a non-object score")
+    score = score_result.get("score")
+    if (
+        not isinstance(score, (int, float))
+        or isinstance(score, bool)
+        or not math.isfinite(float(score))
+        or not 0 <= float(score) <= 1
+    ):
+        raise ValueError(
+            f"scenario {scenario_name} returned invalid score {score!r}"
+        )
+    return float(score)
+
+
+def require_complete_full_result(result: object) -> None:
+    """Reject a partial full-suite result before any publication side effect."""
+    if not isinstance(result, dict):
+        raise RuntimeError("OpenClaw full-suite result is not an object")
+    expected = result.get("expected_tasks")
+    tasks = result.get("tasks")
+    provenance = result.get("dataset_provenance")
+    if (
+        result.get("complete") is not True
+        or not isinstance(expected, int)
+        or expected <= 0
+        or result.get("tasks_completed") != expected
+        or result.get("failed_tasks") != 0
+        or not isinstance(tasks, dict)
+        or len(tasks) != expected
+        or not isinstance(provenance, dict)
+        or provenance.get("total_scenarios") != expected
+        or not isinstance(provenance.get("workload_sha256"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", provenance["workload_sha256"])
+    ):
+        raise RuntimeError(
+            "refusing to publish incomplete or unprovenanced OpenClaw full-suite "
+            f"result: completed={result.get('tasks_completed')!r}, "
+            f"expected={expected!r}, failed={result.get('failed_tasks')!r}"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run OpenClaw benchmark with actual code execution"
@@ -432,6 +520,7 @@ def main():
     args = parser.parse_args()
 
     if args.count_scenarios:
+        validate_scenarios()
         print(json.dumps(count_scenarios(), indent=2))
         return
 
@@ -447,6 +536,8 @@ def main():
             print(f"  - {scenario}")
         return
 
+    validate_scenarios()
+
     try:
         runner = BenchmarkRunner(model=args.model, use_docker=args.docker)
     except ValueError as e:
@@ -460,6 +551,9 @@ def main():
     else:
         print("Error: Specify --scenario or --all")
         sys.exit(1)
+
+    if args.all:
+        require_complete_full_result(result)
 
     # Save results
     if args.output_dir:

@@ -57,14 +57,18 @@ jobs:
     # legacy migration against the canonical migrate-db gate in
     # cloud-cf-deploy.yml (#11208).
     concurrency:
-      group: cloud-db-migrate-${{ needs.determine-env.outputs.environment }}
+      # v2 suffix matches cloud-cf-deploy.yml: the un-versioned group is pinned
+      # by a stale 2026-05-15 queued run (25907128646) that cannot be cancelled
+      # (HTTP 500). Both workflows must share the same group name so canonical
+      # and legacy migrations still serialize against each other.
+      group: cloud-db-migrate-v2-${{ needs.determine-env.outputs.environment }}
       cancel-in-progress: false
     environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 10
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -147,7 +151,7 @@ jobs:
       DEPLOY_VPS_HOST: ${{ secrets.AGENT_VPS_HOST || secrets.ELIZA_VPS_HOST }}
       DEPLOY_VPS_SSH_KEY: ${{ secrets.AGENT_VPS_SSH_KEY || secrets.ELIZA_VPS_SSH_KEY }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6

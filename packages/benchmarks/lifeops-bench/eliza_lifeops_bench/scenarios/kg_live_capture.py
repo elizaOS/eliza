@@ -30,6 +30,7 @@ KG_LIVE_CAPTURE_SCENARIOS: list[Scenario] = [
                 name="ENTITY",
                 kwargs={
                     "subaction": "create",
+                    "entityId": "person-h2-mira",
                     "name": "Mira Chen",
                     "notes": "Neighborhood organizer; prefers Signal for logistics.",
                 },

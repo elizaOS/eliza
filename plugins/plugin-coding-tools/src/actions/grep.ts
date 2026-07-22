@@ -47,7 +47,11 @@ export async function grepHandler(
   message: Memory,
   _state: State | undefined,
   options: unknown,
-  callback?: HandlerCallback,
+  // Read-only query: deliberately no visible callback. Raw listings/matches
+  // reach the model via the ActionResult and the user via the planner's final
+  // message; posting each mid-turn dump spammed chat channels (one message per
+  // exploratory call).
+  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const conversationId =
     message.roomId !== undefined && message.roomId !== null
@@ -137,7 +141,6 @@ export async function grepHandler(
       (mode === "content" || mode === "files_with_matches")
     ) {
       const text = "no matches";
-      if (callback) await callback({ text, source: "coding-tools" });
       return successActionResult(text, {
         matches_count: 0,
         mode,
@@ -178,12 +181,9 @@ export async function grepHandler(
     const truncated = headTruncated || result.truncated;
     const text =
       outputLines.length === 0 ? "no matches" : outputLines.join("\n");
-
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} GREP pattern=${JSON.stringify(pattern)} mode=${mode} matches=${outputLines.length} truncated=${truncated}`,
     );
-
-    if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {
       matches_count: outputLines.length,

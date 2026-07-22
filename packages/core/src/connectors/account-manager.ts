@@ -367,11 +367,7 @@ function nowMs(): number {
 }
 
 function randomId(prefix: string): string {
-	const random =
-		typeof globalThis.crypto.randomUUID === "function"
-			? globalThis.crypto.randomUUID()
-			: Math.random().toString(36).slice(2);
-	return `${prefix}_${random}`;
+	return `${prefix}_${globalThis.crypto.randomUUID()}`;
 }
 
 function normalizeProvider(provider: string): string {

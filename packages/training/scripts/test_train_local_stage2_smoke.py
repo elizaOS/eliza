@@ -1,9 +1,9 @@
 """Real Stage 2 forward/backward smoke for the local SFT entrypoint.
 
-The default test builds a tiny local Transformers causal LM, trains one step
-through `train_local.py` on the tracked smoke corpus, and verifies the saved
-checkpoint numerics report. The full Gemma-4 + Liger hardware run is captured
-as evidence outside this CPU-safe test lane.
+The test builds a tiny local Transformers causal LM, trains one complete epoch
+across the tracked training split through `train_local.py`, and verifies the
+saved checkpoint numerics report. This proves the Stage 2 pipeline without
+claiming the separate Gemma-4, Liger, or constrained-VRAM hardware contracts.
 """
 
 from __future__ import annotations
@@ -60,9 +60,17 @@ def _write_tiny_causal_lm(model_dir: Path) -> None:
         eos_token="[EOS]",
     )
     tokenizer.chat_template = (
+        "{% if tools %}{% for tool in tools %}"
+        "tool {{ tool['function']['name'] }} "
+        "{% endfor %}{% endif %}"
         "{% for message in messages %}"
         "{{ message['role'] }}: "
-        "{% if message['content'] is string %}{{ message['content'] }}{% endif %}\n"
+        "{% if message.get('tool_calls') %}"
+        "{% for call in message['tool_calls'] %}"
+        "tool {{ call['function']['name'] }} "
+        "{{ call['function']['arguments'] | tojson }}"
+        "{% endfor %}"
+        "{% elif message['content'] is string %}{{ message['content'] }}{% endif %}\n"
         "{% endfor %}{{ eos_token }}"
     )
     config = transformers.GPT2Config(
@@ -107,11 +115,11 @@ def test_train_local_runs_real_forward_backward_and_scans_checkpoint(
         "--run-name",
         "stage2-tiny-smoke",
         "--max-samples",
-        "1",
+        "20",
         "--epochs",
         "1",
         "--max-steps",
-        "1",
+        "16",
         "--batch-size",
         "1",
         "--grad-accum",
@@ -147,6 +155,10 @@ def test_train_local_runs_real_forward_backward_and_scans_checkpoint(
         f"stdout tail:\n{proc.stdout[-2000:]}\n"
         f"stderr tail:\n{proc.stderr[-4000:]}"
     )
+    assert "formatted train 16/16 records" in proc.stderr
+    assert "formatted validation 2/2 records" in proc.stderr
+    assert "render-time skips" not in proc.stderr
+    assert "train_runtime" in proc.stdout
 
     final_dir = out_dir / "stage2-tiny-smoke" / "final"
     report_path = final_dir / "numerics_scan.json"

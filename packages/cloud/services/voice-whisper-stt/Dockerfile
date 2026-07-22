@@ -12,8 +12,8 @@
 #   GET  /health       -> 200 (Railway healthcheck, see railway.toml)
 # The `model` id the route sends is resolveWhisperSttModel(WHISPER_STT_MODEL),
 # defaulting to the multilingual Systran/faster-whisper-small — Speaches lazily
-# downloads that CTranslate2 model on first use, so WHISPER__MODEL below warms it
-# at boot to keep the first live request from timing out.
+# downloads that CTranslate2 model only through its registry API, so the build
+# installs it before Railway can accept the service.
 #
 # Pin: Speaches publishes CPU/CUDA variants under ghcr.io/speaches-ai/speaches.
 # CPU is the Railway default (free tier has no GPU); override WHISPER_IMAGE at
@@ -26,12 +26,19 @@ ARG WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:0.8.2-cpu
 
 FROM ${WHISPER_IMAGE}
 
-# Warm the default multilingual model at boot so the first transcription does not
-# eat a cold model download. Must track DEFAULT_WHISPER_STT_MODEL in
-# packages/cloud/api/v1/voice/stt/whisper-model.ts.
-ENV WHISPER__MODEL=Systran/faster-whisper-small
+# Railway accepts the service only after the image already contains the model.
+# Speaches 0.8.2 does not preload models from an environment variable, and its
+# generic /health endpoint cannot distinguish an empty registry from a usable
+# transcription service. Keep this default aligned with
+# DEFAULT_WHISPER_STT_MODEL in packages/cloud/api/v1/voice/stt/whisper-model.ts.
+ARG WHISPER_MODEL=Systran/faster-whisper-small
+ENV WHISPER_MODEL=${WHISPER_MODEL}
+RUN python -c 'import os; from speaches.executors.whisper.utils import model_registry; model_registry.download_model_files_if_not_exist(os.environ["WHISPER_MODEL"])'
 
-# Railway injects PORT; kept explicit so the railway.toml healthcheck and EXPOSE
-# agree with the runtime bind.
+# Railway replaces this default with its deployment-specific PORT. Speaches
+# normally reads UVICORN_PORT=8000 instead, so the command below must pass PORT
+# explicitly or Railway probes a different socket and rejects the deployment.
 ENV PORT=8000
 EXPOSE 8000
+
+CMD ["sh", "-c", "exec uvicorn --factory speaches.main:create_app --host 0.0.0.0 --port \"$PORT\""]

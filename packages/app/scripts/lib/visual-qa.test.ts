@@ -1,14 +1,19 @@
-// Unit tests for the visual-QA analyzer: colour fractions, dominant palette,
-// change-metric, and the pure expectation evaluator, all on synthetic
-// sharp-generated fixtures so they run deterministically in CI without a real
-// screenshot. OCR must remain packaged: the analyzer may prefer a system
-// tesseract binary, but the repo dependency fallback is part of the contract.
-import { mkdtempSync, readFileSync } from "node:fs";
+/**
+ * Exercises the visual-QA analyzer with real Sharp pixels and packaged OCR.
+ * Deterministic generated frames cover palette, diff, and blank-proof boundaries;
+ * the installed Tesseract dependency remains part of the end-to-end contract.
+ */
+import { afterAll, describe, expect, it } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  comparePixels,
+  summarizeDiff,
+} from "@elizaos/evidence/visual-primitives";
 import sharp from "sharp";
-import { afterAll, describe, expect, it } from "vitest";
+import { analyzeImageFile } from "../mvp-visual-verify/ocr.mjs";
 import {
   analyzeScreenshot,
   changeMetric,
@@ -40,7 +45,68 @@ const solid = async (name: string, r: number, g: number, b: number) => {
 };
 
 afterAll(() => {
-  // best-effort temp cleanup; leaving fixtures on failure aids debugging
+  rmSync(dir, { recursive: true, force: true });
+});
+
+describe("pixel blank proof", () => {
+  it("distinguishes a one-color frame from visible multicolor pixels", async () => {
+    const blank = await analyzeImageFile(
+      await solid("pixel-blank.png", 208, 216, 216),
+    );
+    expect(blank.pixelBlank).toBe(true);
+    expect(blank.pixelBlankReasons).toEqual(["screenshot is one color"]);
+
+    const visiblePath = join(dir, "pixel-visible.png");
+    await sharp(Buffer.from([0, 0, 0, 255, 255, 255]), {
+      raw: { width: 2, height: 1, channels: 3 },
+    })
+      .png()
+      .toFile(visiblePath);
+    const visible = await analyzeImageFile(visiblePath);
+    expect(visible.colorBuckets).toBe(2);
+    expect(visible.pixelBlank).toBe(false);
+    expect(visible.pixelBlankReasons).toEqual([]);
+  });
+});
+
+describe("pixel comparison diagnostics", () => {
+  it("counts visible channel changes and emits an inspectable highlight", () => {
+    const baseline = Buffer.from([10, 20, 30, 255, 40, 50, 60, 255]);
+    const current = Buffer.from([10, 20, 30, 255, 250, 0, 250, 255]);
+    const comparison = comparePixels(current, baseline, 2, 1, {
+      threshold: 30,
+      buildHighlight: true,
+    });
+
+    expect(comparison.changedPixels).toBe(1);
+    expect(comparison.totalPixels).toBe(2);
+    expect(comparison.sumAbsDelta).toBe(450);
+    expect(comparison.highlight).toEqual(
+      Buffer.from([27, 27, 27, 255, 255, 0, 255, 255]),
+    );
+    expect(summarizeDiff({ ...comparison, resized: false })).toEqual({
+      changedPixels: 1,
+      totalPixels: 2,
+      changedRatio: 0.5,
+      changedPercent: 50,
+      meanAbsDelta: 75,
+      resized: false,
+    });
+  });
+
+  it("rejects dimensions and summaries that cannot represent real pixels", () => {
+    expect(() => comparePixels(Buffer.alloc(4), Buffer.alloc(4), 2, 1)).toThrow(
+      "buffers too small",
+    );
+    expect(() =>
+      summarizeDiff({
+        changedPixels: 0,
+        totalPixels: 0,
+        sumAbsDelta: 0,
+        resized: false,
+      }),
+    ).toThrow("totalPixels must be > 0");
+  });
 });
 
 describe("colorFractions", () => {

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+// Companion route-matrix coverage for App's full-shell path. The focused
+// notification ingress assertion lives in App.chat-overlay-first-run.test.tsx.
 
 /**
  * Fuzz test for the screen / background color invariant across view switching.
@@ -37,6 +39,16 @@
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubOfflineAppFetch } from "../test/offline-app-fetch";
+
+// The offline fetch stub keeps every probe permanently pending; withTimeout's
+// real timer would fire seconds later — after this file's jsdom env is torn
+// down — and reject that pending probe into a post-teardown setState that reads
+// the deleted `window`. Pass it through so the probe simply stays pending.
+vi.mock("./utils/with-timeout", () => ({
+  withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
+}));
+
 import { getShaderPreset } from "./backgrounds/shader-presets";
 import { BACKGROUND_APPLY_EVENT } from "./backgrounds/useBackgroundApplyChannel";
 import type { BuiltinTab } from "./navigation";
@@ -161,6 +173,11 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // the overlay throws mid-render and the mutation-isolation block below can't
   // settle the DOM to assert on. Authenticated => overlay stays out of the way.
   useIsAuthenticated: () => true,
+  // notification-store (#16242) reads these to gate + re-arm its boot hydration
+  // probe from the mounted App's notifications-boot effect; the mock must
+  // provide them or the probe throws mid-effect. Authenticated => probe on.
+  isAuthenticatedNow: () => true,
+  subscribeAuthStatus: () => vi.fn(),
 }));
 vi.mock("./hooks/useActivityEvents", () => ({
   useActivityEvents: () => ({ events: [], clearEvents: vi.fn() }),
@@ -320,6 +337,9 @@ vi.mock("./components/character/CharacterEditor", () => ({
 }));
 vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
+}));
+vi.mock("./widgets/WidgetHost", () => ({
+  WidgetHost: () => <div data-testid="home-widget-host" />,
 }));
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   VaultModal: () => null,
@@ -617,6 +637,7 @@ describe("App screen-background fuzz — color invariant across view switching",
     desktopTabsState.tabs = [];
     glslRuntimeState.compileOk = true;
     glslRuntimeState.rendererCount = 0;
+    stubOfflineAppFetch();
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     vi.stubGlobal(
       "requestAnimationFrame",
@@ -863,6 +884,7 @@ describe("App view-surface mutation isolation — rogue view cannot leak global 
     glslRuntimeState.compileOk = true;
     glslRuntimeState.rendererCount = 0;
     bgState.config = { mode: "shader", color: "#059669" };
+    stubOfflineAppFetch();
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     vi.stubGlobal(
       "requestAnimationFrame",

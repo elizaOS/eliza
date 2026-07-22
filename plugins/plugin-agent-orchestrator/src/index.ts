@@ -34,6 +34,25 @@ import {
 // side-effect of evaluating that module. Without this the entire
 // `/api/coding-agents/*` surface 404s on the node bundle.
 export { codingAgentRouteRegistration } from "./register-routes.js";
+export {
+  cloneLanePlan,
+  collisionProviderFromWorkspaceService,
+  createDeterministicLanePlan,
+  type ExternalCollision,
+  extractScopePaths,
+  type LaneCollision,
+  type LaneCollisionProvider,
+  type LanePlan,
+  type LanePlannerInput,
+  LanePlannerService,
+  type LaneReadiness,
+  type LaneSpec,
+  laneReadiness,
+  sanitizeLaneBranchName,
+  scopeSetsOverlap,
+  shouldUseLanePlanner,
+  validateLaneDependencyGraph,
+} from "./services/lane-planner.js";
 // Shared relay sanitizer (issue elizaOS/eliza#11578). Re-exported from the
 // package root so packages/agent's swarm-synthesis path can strip captured
 // tool-output envelopes with the SAME implementation the sub-agent router uses.
@@ -67,6 +86,7 @@ import {
   type TaskAuditPayload,
 } from "./services/audit.js";
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
+import { resolveOriginRoomId } from "./services/session-room-binding.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { SwarmCoordinatorService } from "./services/swarm-coordinator-service.js";
@@ -77,6 +97,7 @@ import {
   type AcpToolCall,
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
+import { WaveSupervisor } from "./services/wave-supervisor.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 import { codingAgentRoutePlugin } from "./setup-routes.js";
 
@@ -118,6 +139,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
         serviceClass(CodingWorkspaceService),
         serviceClass(TaskSupervisorService),
         serviceClass(TaskWatchdogService),
+        serviceClass(WaveSupervisor),
         // Discoverable SWARM_COORDINATOR adapter. server.ts's
         // wireCoordinatorBridgesWhenReady + plugin-app-control's
         // verification-room-bridge both look this up by serviceType; without
@@ -276,6 +298,30 @@ export function createAgentOrchestratorPlugin(): Plugin {
         TASK_AUDIT_EVENT,
         taskAuditHandler,
       );
+      // An inbox overflow discards a queued USER message. That must never be
+      // silent (repo error-policy: a dropped input reads as a healthy pipeline)
+      // — warn with the counts and raise through the diagnostic boundary so
+      // repeated drops reach RECENT_ERRORS / owner escalation.
+      subAgentInbox.setOverflowObserver(
+        (sessionId, droppedNow, droppedTotal) => {
+          runtime.logger?.warn?.(
+            {
+              src: "@elizaos/plugin-agent-orchestrator",
+              sessionId,
+              droppedNow,
+              droppedTotal,
+            },
+            "sub-agent inbox overflow: oldest queued user message(s) dropped",
+          );
+          runtime.reportError?.(
+            "SubAgentInbox",
+            new Error(
+              `sub-agent inbox overflow for session ${sessionId}: dropped ${droppedNow} queued message(s) (${droppedTotal} total)`,
+            ),
+            { sessionId, droppedNow, droppedTotal },
+          );
+        },
+      );
       // Forward mid-task user messages to the live sub-agent for this roomId.
       // Bind is on (source, roomId) — no Discord-thread dependency, so plain
       // SMS/WhatsApp follow-ups work too.
@@ -303,6 +349,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
         TaskSupervisorService.serviceType,
         // Eager-start the stalled-agent watchdog loop too (#8901).
         TaskWatchdogService.serviceType,
+        // Registered unconditionally but behavior-neutral unless its explicit
+        // default-OFF setting is enabled.
+        WaveSupervisor.serviceType,
         // Eager-start the coordinator adapter so it subscribes to the ACP
         // event stream at boot (rather than waiting for a getService() that
         // only the server's bridge-wiring poll issues). This makes
@@ -475,6 +524,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
       flushTimers.clear();
       flushPending.clear();
       subAgentInbox.clearAll();
+      // Detach the runtime-bound overflow observer so a late enqueue after
+      // hot-reload teardown cannot touch a torn-down runtime.
+      subAgentInbox.setOverflowObserver(undefined);
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
       const taskService = runtime.getService<OrchestratorTaskService>(
@@ -489,6 +541,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
         SwarmCoordinatorService.serviceType,
       );
       await coordinator?.stop();
+      const waveSupervisor = runtime.getService<WaveSupervisor>(
+        WaveSupervisor.serviceType,
+      );
+      await waveSupervisor?.stop();
       await CodingWorkspaceService.stopRuntime(runtime);
     },
   };
@@ -1947,10 +2003,19 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const meta = (session?.metadata ?? {}) as Record<string, unknown>;
         const source =
           typeof meta.source === "string" ? meta.source : undefined;
-        const roomId =
-          typeof meta.roomId === "string"
-            ? (meta.roomId as `${string}-${string}-${string}-${string}-${string}`)
-            : undefined;
+        // Acks/heartbeats/narration must land on the user's live connector
+        // channel. With per-task GROUP rooms on by default, the raw
+        // `meta.roomId` is the minted task-room UUID (no connector channel
+        // maps to it — every send fails and gets demoted to debug after the
+        // first warn), so resolve through the shared origin ladder. Thread
+        // routing is unaffected: `threadRoomId` binding and the per-session
+        // thread state key off this target the same way they did.
+        // Cast is runtime-checked: resolveOriginRoomId only returns strings
+        // that pass UUID validation, which always satisfy the dashed template
+        // type (core's UUID alias is plain `string`, so it cannot flow here).
+        const roomId = resolveOriginRoomId(meta) as
+          | `${string}-${string}-${string}-${string}-${string}`
+          | undefined;
         if (!source || !roomId) return;
         const label =
           typeof meta.label === "string" && meta.label.trim().length > 0
@@ -2408,6 +2473,32 @@ export type {
   SpawnOptions,
   SpawnResult,
 } from "./services/types.js";
+export {
+  type ActiveLaneScope,
+  detectWaveCollisions,
+  isSalvageEligible,
+  NoopWaveRefillPlanner,
+  type OpenPullRequestScope,
+  type OpenPullRequestSource,
+  readLaneDependencies,
+  readLaneId,
+  readWaveAttemptId,
+  readWaveId,
+  shouldRefillWave,
+  WAVE_BUDGET_BREACH_CODE,
+  WAVE_ID_METADATA_KEY,
+  WAVE_REFILL_PLANNER_SERVICE_TYPE,
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  WAVE_SUPERVISOR_SETTING,
+  WaveBudgetBreachError,
+  type WaveCollision,
+  WaveConcurrencyCapError,
+  type WaveRefillPlanner,
+  type WaveRefillRequest,
+  type WaveReplacementSpec,
+  type WaveStatus,
+  WaveSupervisor,
+} from "./services/wave-supervisor.js";
 export type {
   AuthPromptCallback,
   CodingWorkspaceConfig,

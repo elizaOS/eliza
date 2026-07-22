@@ -3,7 +3,13 @@
  * stripping, colon separators) and `parseCommand` token/argument extraction.
  */
 import { describe, expect, it } from "vitest";
-import { normalizeCommandBody, parseCommand } from "../src/parser.ts";
+import {
+	detectCommand,
+	hasCommand,
+	normalizeCommandBody,
+	parseCommand,
+	stripLeadingBotMention,
+} from "../src/parser.ts";
 import type { CommandDefinition } from "../src/types.ts";
 
 /**
@@ -35,6 +41,78 @@ describe("normalizeCommandBody", () => {
 
 	it("leaves a plain command body untouched", () => {
 		expect(normalizeCommandBody("/help me now")).toBe("/help me now");
+	});
+
+	// #16172 gap 1: a leading connector-native mention (`<@id>` / `<@!id>`) must
+	// be stripped by the id form alone, with no known display name.
+	it("strips a leading Discord raw mention (<@id>)", () => {
+		expect(normalizeCommandBody("<@123456789> /status")).toBe("/status");
+	});
+
+	it("strips the legacy nickname raw mention (<@!id>)", () => {
+		expect(normalizeCommandBody("<@!123456789> /model show")).toBe(
+			"/model show",
+		);
+	});
+});
+
+describe("stripLeadingBotMention (#16172)", () => {
+	it("strips a leading <@id> and its separating whitespace", () => {
+		expect(stripLeadingBotMention("<@123> /model show")).toBe("/model show");
+	});
+
+	it("strips a leading <@!id> nickname mention", () => {
+		expect(stripLeadingBotMention("<@!987654321> /help")).toBe("/help");
+	});
+
+	it("strips a mention followed by a newline before the command", () => {
+		expect(stripLeadingBotMention("<@123>\n/status")).toBe("/status");
+	});
+
+	it("leaves a mention that is NOT at the very start untouched", () => {
+		// a mention inside an argument must survive verbatim
+		expect(stripLeadingBotMention("/model <@123>")).toBe("/model <@123>");
+	});
+
+	it("leaves plain command text untouched", () => {
+		expect(stripLeadingBotMention("/model show")).toBe("/model show");
+	});
+});
+
+describe("hasCommand / detectCommand — mention-prefixed commands (#16172)", () => {
+	// The default registry (fallback store) is pre-seeded with the built-in
+	// commands, so `/model` / `/help` resolve without initForRuntime.
+	it("detects a bare slash command (baseline)", () => {
+		expect(hasCommand("/model show")).toBe(true);
+		expect(detectCommand("/model show").isCommand).toBe(true);
+	});
+
+	it("detects a command behind a leading <@id> mention + space", () => {
+		expect(hasCommand("<@123> /model show")).toBe(true);
+		const d = detectCommand("<@123> /model show");
+		expect(d.isCommand).toBe(true);
+		expect(d.command?.key).toBe("model");
+	});
+
+	it("detects a command behind a leading <@!id> nickname mention", () => {
+		expect(hasCommand("<@!123> /help")).toBe(true);
+		expect(detectCommand("<@!123> /help").command?.key).toBe("help");
+	});
+
+	it("detects a command when a newline separates the mention", () => {
+		expect(hasCommand("<@123>\n/model show")).toBe(true);
+		expect(detectCommand("<@123>\n/model show").command?.key).toBe("model");
+	});
+
+	it("preserves the command args after mention stripping", () => {
+		const d = detectCommand("<@123> /model cloud");
+		expect(d.command?.key).toBe("model");
+		expect(d.command?.rawArgs).toBe("cloud");
+	});
+
+	it("does not treat a mention with no command as a command", () => {
+		expect(hasCommand("<@123> hello there")).toBe(false);
+		expect(detectCommand("<@123> hello there").isCommand).toBe(false);
 	});
 });
 

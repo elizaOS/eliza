@@ -18,7 +18,134 @@ import {
   type CartesiaWebSocketFactory,
   type CartesiaWebSocketLike,
 } from "../../../../shared/src/lib/services/cartesia-sonic-tts";
-import { pcm16ToWav } from "../../../../shared/src/lib/services/pcm16-wav";
+
+const CARTESIA_BYTES_URL = "https://api.cartesia.ai/tts/bytes";
+const CARTESIA_REST_API_VERSION = "2025-04-16";
+const CARTESIA_MODEL_ID = "sonic-3.5";
+const WAV_HEADER_BYTES = 44;
+
+export type CartesiaRestErrorClassification =
+  | "rate_limit"
+  | "quota"
+  | "auth"
+  | "bad_request"
+  | "provider_unavailable";
+
+export class CartesiaRestTtsError extends Error {
+  constructor(
+    readonly status: number,
+    readonly classification: CartesiaRestErrorClassification,
+    readonly safeProviderMessage: string,
+  ) {
+    super(safeProviderMessage);
+    this.name = "CartesiaRestTtsError";
+  }
+}
+
+export interface CartesiaBytesResult {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly contentType: string;
+  readonly provider: "cartesia";
+  readonly modelId: typeof CARTESIA_MODEL_ID;
+}
+
+export async function synthesizeCartesiaBytes(args: {
+  apiKey: string;
+  voiceId: string;
+  text: string;
+  fetch?: typeof fetch;
+}): Promise<CartesiaBytesResult> {
+  const fetchImpl = args.fetch ?? fetch;
+  const response = await fetchImpl(CARTESIA_BYTES_URL, {
+    method: "POST",
+    headers: {
+      // Cartesia authenticates REST requests with X-API-Key (same header the
+      // streaming sonic adapter uses), NOT an Authorization bearer.
+      "X-API-Key": args.apiKey,
+      "Cartesia-Version": CARTESIA_REST_API_VERSION,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model_id: CARTESIA_MODEL_ID,
+      transcript: args.text,
+      voice: { mode: "id", id: args.voiceId },
+      output_format: {
+        container: "mp3",
+        sample_rate: 44_100,
+        bit_rate: 128_000,
+      },
+    }),
+  });
+
+  if (!response.ok || !response.body) {
+    throw new CartesiaRestTtsError(
+      response.status,
+      classifyCartesiaRestFailure(response.status),
+      safeCartesiaRestMessage(response.status),
+    );
+  }
+
+  return {
+    body: response.body,
+    contentType: response.headers.get("Content-Type") ?? "audio/mpeg",
+    provider: "cartesia",
+    modelId: CARTESIA_MODEL_ID,
+  };
+}
+
+function pcm16ToWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
+  if (pcm.byteLength === 0 || pcm.byteLength % 2 !== 0) {
+    throw new Error("Cartesia PCM16 response must contain complete samples");
+  }
+  const output = new Uint8Array(WAV_HEADER_BYTES + pcm.byteLength);
+  const view = new DataView(output.buffer);
+  const writeAscii = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, pcm.byteLength, true);
+  output.set(pcm, WAV_HEADER_BYTES);
+  return output;
+}
+
+function classifyCartesiaRestFailure(
+  status: number,
+): CartesiaRestErrorClassification {
+  if (status === 429) return "rate_limit";
+  if (status === 401 || status === 403) return "auth";
+  if (status === 400 || status === 404 || status === 422) return "bad_request";
+  if (status === 402) return "quota";
+  return "provider_unavailable";
+}
+
+function safeCartesiaRestMessage(status: number): string {
+  if (status === 429) {
+    return "Cartesia text-to-speech is rate limited or quota constrained. Please try again later.";
+  }
+  if (status === 401 || status === 403) {
+    return "Cartesia text-to-speech authentication failed. Check the configured API key.";
+  }
+  if (status === 402) {
+    return "Cartesia text-to-speech quota is exhausted.";
+  }
+  if (status === 400 || status === 404 || status === 422) {
+    return "Cartesia text-to-speech rejected the request.";
+  }
+  return "Cartesia text-to-speech is unavailable.";
+}
 
 /**
  * Build a {@link CartesiaWebSocketFactory} backed by the Cloudflare Workers
@@ -190,8 +317,11 @@ export async function synthesizeCartesiaWav(args: {
         pcmBytes += event.bytes.byteLength;
       },
       onProviderError: (event) => {
-        providerError = new Error(
-          `Cartesia provider error: ${event.title}: ${event.message}`,
+        const status = event.statusCode ?? 502;
+        providerError = new CartesiaRestTtsError(
+          status,
+          classifyCartesiaRestFailure(status),
+          safeCartesiaRestMessage(status),
         );
         signalProviderError?.();
       },

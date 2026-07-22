@@ -15,9 +15,10 @@
   "scripts": {
     "dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
     "build": "cd ../../../.. && node packages/app-core/scripts/desktop-build.mjs build",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
     "lint": "bunx @biomejs/biome check $(find src -type f \\( -name '*.ts' -o -name '*.tsx' \\) ! -name '*.d.ts' -print)",
+    "lint:check": "bunx @biomejs/biome check $(find src -type f \\( -name '*.ts' -o -name '*.tsx' \\) ! -name '*.d.ts' -print)",
     "voice:validate": "bun src/voice/voice-live-validation.ts",
     "voice:validate:dry": "bun src/voice/voice-live-validation.ts",
     "voice:validate:live": "bun src/voice/voice-live-validation.ts",
@@ -38,9 +39,10 @@
     "electrobun": "^1.18.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.5",
     "@types/bun": "^1.3.8",
     "rcedit": "5.0.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   },

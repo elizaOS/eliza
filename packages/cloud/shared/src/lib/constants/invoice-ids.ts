@@ -41,17 +41,3 @@ export function createCryptoInvoiceId(paymentId: string): string {
 export function createCryptoCustomerId(organizationId: string): string {
   return `${INVOICE_NAMESPACE.CRYPTO.CUSTOMER_PREFIX}_${organizationId}`;
 }
-
-/**
- * Check if an invoice ID is from a crypto payment.
- */
-export function isCryptoInvoiceId(invoiceId: string): boolean {
-  return invoiceId.startsWith(INVOICE_NAMESPACE.CRYPTO.INVOICE_PREFIX);
-}
-
-/**
- * Check if a customer ID is from a crypto payment context.
- */
-export function isCryptoCustomerId(customerId: string): boolean {
-  return customerId.startsWith(INVOICE_NAMESPACE.CRYPTO.CUSTOMER_PREFIX);
-}

@@ -16,6 +16,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { handleOrchestratorRoutes } from "../../src/api/orchestrator-routes.js";
 import type { RouteContext } from "../../src/api/route-utils.js";
+import { AcpService } from "../../src/services/acp-service.js";
 import { BUILT_APPS_CACHE_KEY } from "../../src/services/built-apps-registry.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
@@ -37,7 +38,9 @@ const acpStub = {
 function makeService(): OrchestratorTaskService {
   return new OrchestratorTaskService(
     {
-      getService: () => acpStub,
+      getService: (type: string) =>
+        type === AcpService.serviceType ? acpStub : null,
+      getSetting: () => undefined,
       logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     } as never,
     { store: new OrchestratorTaskStore({ backend: "memory" }) },
@@ -495,6 +498,44 @@ describe("orchestrator routes — lifecycle", () => {
     );
     expect(validated.json.status).toBe("done");
     expect(validated.json.summary).toBe("shipped");
+  });
+
+  it("requires explicit evidence for a humanOverride validate", async () => {
+    const service = makeService();
+    const id = await seedTask(service);
+    // No evidence → 400 at the route boundary, before the service runs.
+    const missing = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/validate`,
+      { passed: true, humanOverride: true },
+    );
+    expect(missing.status).toBe(400);
+    expect(missing.json.error).toBe(
+      "evidence (string) is required for humanOverride",
+    );
+    // With evidence the override lands from a non-`validating` state and the
+    // event carries the who/why verbatim.
+    const approved = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/validate`,
+      {
+        passed: true,
+        humanOverride: true,
+        evidence: "operator approved after manual smoke test",
+      },
+    );
+    expect(approved.status).toBe(200);
+    expect(approved.json.status).toBe("done");
+    // A second override on the now-terminal task is a 409 from the service.
+    const terminal = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/validate`,
+      { passed: false, humanOverride: true, evidence: "undo" },
+    );
+    expect(terminal.status).toBe(409);
   });
 });
 

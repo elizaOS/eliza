@@ -38,11 +38,24 @@ const CHAT_PROVIDERS: ReadonlyArray<{ id: string; label: string }> = [
   { id: "claude-chat", label: "Claude" },
 ];
 
-/** Providers persisted through the shared OPENAI_* env-key family. */
-const OPENAI_FAMILY_PROVIDERS: ReadonlySet<string> = new Set([
-  "cerebras",
-  "elizacloud",
-]);
+/**
+ * Chat provider → the env-key family its model plugin actually reads.
+ * Mirrors CHAT_PROVIDER_KEY_FAMILY in packages/agent/src/api/
+ * model-config-routes.ts: cerebras persists through OPENAI_* (plugin-openai's
+ * Cerebras mode), elizacloud through ELIZAOS_CLOUD_* (plugin-elizacloud), and
+ * claude-chat through ANTHROPIC_*.
+ */
+type ChatKeyFamily = "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
+const CHAT_PROVIDER_KEY_FAMILY: Record<string, ChatKeyFamily> = {
+  cerebras: "OPENAI",
+  elizacloud: "ELIZAOS_CLOUD",
+  "claude-chat": "ANTHROPIC",
+};
+
+/** Families whose effort key is one shared knob across small+large. */
+function hasSharedEffortKnob(provider: string): boolean {
+  return CHAT_PROVIDER_KEY_FAMILY[provider] !== "ANTHROPIC";
+}
 
 export const CODING_BACKEND_OPTIONS: ReadonlyArray<{
   value: ModelsConfigCodingBackend;
@@ -202,23 +215,24 @@ function effective(
   return config.targets[target]?.[key] ?? null;
 }
 
-function chatModelKey(target: ChatTarget, family: "OPENAI" | "ANTHROPIC") {
+function chatModelKey(target: ChatTarget, family: ChatKeyFamily) {
   return `${family}_${target.toUpperCase()}_MODEL`;
 }
 
 function chatEffortKey(target: ChatTarget, provider: string) {
-  return OPENAI_FAMILY_PROVIDERS.has(provider)
-    ? "OPENAI_REASONING_EFFORT"
-    : `ANTHROPIC_EFFORT_${target.toUpperCase()}`;
+  const family = CHAT_PROVIDER_KEY_FAMILY[provider];
+  if (family === "ELIZAOS_CLOUD") return "ELIZAOS_CLOUD_REASONING_EFFORT";
+  return family === "ANTHROPIC"
+    ? `ANTHROPIC_EFFORT_${target.toUpperCase()}`
+    : "OPENAI_REASONING_EFFORT";
 }
 
 /**
- * Resolve the chat group prefill from the effective config: match the
- * persisted model id against the catalog (OPENAI-family value against
- * cerebras then elizacloud — both persist through the same keys — then the
- * ANTHROPIC value against claude-chat). An unmatched or absent value keeps
- * the provider guess but leaves the model unselected so the UI never claims
- * a configuration the catalog cannot confirm.
+ * Resolve the chat group prefill from the effective config: match each
+ * provider's persisted model id (read from its OWN key family) against the
+ * catalog. An unmatched or absent value keeps the provider guess but leaves
+ * the model unselected so the UI never claims a configuration the catalog
+ * cannot confirm.
  */
 function resolveChatDraft(
   target: ChatTarget,
@@ -226,6 +240,11 @@ function resolveChatDraft(
   config: ModelsConfigResponse,
 ): ChatDraft {
   const openaiModel = effective(config, target, chatModelKey(target, "OPENAI"));
+  const cloudModel = effective(
+    config,
+    target,
+    chatModelKey(target, "ELIZAOS_CLOUD"),
+  );
   const anthropicModel = effective(
     config,
     target,
@@ -237,7 +256,7 @@ function resolveChatDraft(
     value: ModelsConfigEffectiveValue | null;
   }> = [
     { provider: "cerebras", value: openaiModel },
-    { provider: "elizacloud", value: openaiModel },
+    { provider: "elizacloud", value: cloudModel },
     { provider: "claude-chat", value: anthropicModel },
   ];
   for (const candidate of candidates) {
@@ -269,12 +288,14 @@ function resolveChatDraft(
     CHAT_PROVIDERS.find(
       (choice) => entriesForRole(catalog, choice.id, target).length > 0,
     )?.id ?? "";
-  const unmatched = anthropicModel ?? openaiModel;
+  const unmatched = anthropicModel ?? cloudModel ?? openaiModel;
   return {
     provider: unmatched
       ? anthropicModel
         ? "claude-chat"
-        : fallbackProvider
+        : cloudModel
+          ? "elizacloud"
+          : fallbackProvider
       : fallbackProvider,
     model: "",
     effort: "",
@@ -754,7 +775,7 @@ export function useModelConfiguration(
         effort: draft.effort,
         selectedEntry,
         configured: draft.configured,
-        sharedEffortKnob: OPENAI_FAMILY_PROVIDERS.has(effectiveProvider),
+        sharedEffortKnob: hasSharedEffortKnob(effectiveProvider),
         save,
         setProvider,
         setModel,

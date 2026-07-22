@@ -50,11 +50,17 @@ describe("static codex catalog (fallback table)", () => {
     }
   });
 
-  it("exposes the user-approved codex coding default model", () => {
-    expect(CODING_MODEL_DEFAULTS.codex).toBe("gpt-5.6-terra");
-    expect(catalog.providers.codex.some((m) => m.id === "gpt-5.6-terra")).toBe(
+  it("exposes the user-approved coding default models", () => {
+    expect(CODING_MODEL_DEFAULTS.codex).toBe("gpt-5.6-sol");
+    expect(CODING_MODEL_DEFAULTS.claude).toBe("claude-opus-4-8");
+    expect(catalog.providers.codex.some((m) => m.id === "gpt-5.6-sol")).toBe(
       true,
     );
+    expect(
+      catalog.providers["claude-coding"].some(
+        (m) => m.id === "claude-opus-4-8",
+      ),
+    ).toBe(true);
   });
 });
 

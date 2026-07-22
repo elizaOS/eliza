@@ -59,20 +59,21 @@
     "fflate": "^0.8.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.5",
     "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck",
+    "build": "tsup && tsc6 --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "dev": "tsup --watch",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "lint": "bunx @biomejs/biome check --write --unsafe --config-path ./biome.json .",
     "lint:check": "bunx @biomejs/biome lint --config-path ./biome.json . --no-errors-on-unmatched",
     "format": "bunx @biomejs/biome format --write . --no-errors-on-unmatched",
     "format:check": "bunx @biomejs/biome format . --no-errors-on-unmatched",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run --config ./vitest.config.ts"
   },
   "publishConfig": {

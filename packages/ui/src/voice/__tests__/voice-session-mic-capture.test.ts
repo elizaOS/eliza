@@ -21,6 +21,16 @@ function scriptNodeOf(ctx: FakeMicAudioContext) {
   return node;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   FakeVoiceAudioWorkletNode.reset();
@@ -115,6 +125,35 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     expect(disconnect).toHaveBeenCalledTimes(1);
     expect(stopTrack).toHaveBeenCalledTimes(1);
     expect(ctx.closed).toBe(true);
+  });
+
+  it("cancels stalled AudioWorklet setup and releases the live mic immediately", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const moduleLoad = deferred<void>();
+    const addModule = vi.fn(() => moduleLoad.promise);
+    const ctx = new FakeMicWorkletAudioContext(16_000);
+    Object.defineProperty(ctx, "audioWorklet", {
+      value: { addModule },
+    });
+    const stopTrack = vi.fn();
+    const controller = new AbortController();
+
+    const starting = startVoiceMicCapture({
+      onFrame: () => {},
+      getUserMedia: async () =>
+        ({ getTracks: () => [{ stop: stopTrack }] }) as unknown as MediaStream,
+      createAudioContext: () => ctx,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(addModule).toHaveBeenCalledTimes(1));
+
+    controller.abort();
+    await expect(starting).rejects.toMatchObject({ name: "AbortError" });
+
+    // Cleanup must not wait for the stalled browser worklet promise.
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+    expect(ctx.closed).toBe(true);
+    moduleLoad.resolve();
   });
 
   it("stops the mic track when AudioContext construction fails", async () => {

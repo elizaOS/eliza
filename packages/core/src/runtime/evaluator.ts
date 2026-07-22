@@ -139,10 +139,12 @@ export async function runEvaluator(
 		repairFinishedToolTurnWithoutUserMessage(
 			repairMissingEvaluatorMessage(
 				repairMissingEvaluatorSuccess(
-					recoverEvaluatorTextOutput(
-						parseEvaluatorOutput(raw),
-						raw,
-						params.trajectory,
+					rejectEvaluatorInvocationMessage(
+						recoverEvaluatorTextOutput(
+							parseEvaluatorOutput(raw),
+							raw,
+							params.trajectory,
+						),
 					),
 					params.trajectory,
 				),
@@ -529,7 +531,10 @@ function recoverEvaluatorTextOutput(
 	const text = rawText(raw).trim();
 	if (!text) return output;
 
-	if (containsToolAttemptObject(text)) {
+	if (
+		containsToolAttemptObject(text) ||
+		invokesTrajectoryTool(text, trajectory)
+	) {
 		return {
 			success: false,
 			decision: "CONTINUE",
@@ -551,6 +556,31 @@ function recoverEvaluatorTextOutput(
 			"Recovered user-facing evaluator prose after a successful tool result.",
 		messageToUser: userFacing,
 		raw: { recoverySource: "prose_after_successful_tool" },
+	};
+}
+
+function looksLikeLeadingInvocationDsl(text: string): boolean {
+	return /^\s*(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/i.test(
+		text,
+	);
+}
+
+function rejectEvaluatorInvocationMessage(
+	output: EvaluatorOutput,
+): EvaluatorOutput {
+	if (
+		typeof output.messageToUser !== "string" ||
+		!looksLikeLeadingInvocationDsl(output.messageToUser)
+	) {
+		return output;
+	}
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		thought:
+			"Evaluator emitted tool/action syntax instead of a user-facing answer; replanning from recorded tool results.",
+		messageToUser: undefined,
 	};
 }
 
@@ -611,6 +641,31 @@ function hasSuccessfulToolResult(trajectory: PlannerTrajectory): boolean {
 	return trajectory.steps.some((step) => step.result?.success === true);
 }
 
+/**
+ * True when the recovered text invokes a tool this trajectory actually
+ * carries — the model wanted ANOTHER tool call, not a user reply. Grounded in
+ * the turn's real tool surface (step tool names) rather than a syntax
+ * dictionary, because models drift into invocation dialects the JSON screen
+ * above cannot parse (observed live: gemma emitting
+ * `call:WEB_SEARCH{numResults:6,query:…}` with unquoted keys — JSON.parse
+ * throws, the guard passed it, and the invocation shipped to Discord as the
+ * final answer, repeatedly).
+ */
+function invokesTrajectoryTool(
+	text: string,
+	trajectory: PlannerTrajectory,
+): boolean {
+	for (const step of trajectory.steps) {
+		const name = step.toolCall?.name?.trim();
+		if (!name) continue;
+		const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		if (new RegExp(`(?:^|[^A-Za-z0-9_])${escaped}\\s*[({]`, "i").test(text)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function containsToolAttemptObject(text: string): boolean {
 	for (const objectText of extractJsonObjects(text)) {
 		try {
@@ -660,6 +715,14 @@ function looksLikeUserFacingAnswer(text: string): boolean {
 		return false;
 	}
 	if (/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text)) {
+		return false;
+	}
+	// A reply that OPENS with an invocation DSL ("call:WEB_SEARCH{…}",
+	// "call:automation:GET_WORKFLOW{…}", "invoke: shell(…)") is machine
+	// syntax regardless of dialect. Providers may namespace the action with
+	// additional colon-delimited segments, and the argument block is rarely
+	// valid JSON, so the key-based guard above cannot see it.
+	if (looksLikeLeadingInvocationDsl(text)) {
 		return false;
 	}
 	if (

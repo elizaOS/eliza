@@ -215,11 +215,6 @@ export function buildCheckinSummaryPrompt(
   return lines.join("\n");
 }
 
-/** Exposed for tests that want to reset the process-level once-log. */
-export function __resetCheckinMissingSourceLog(): void {
-  loggedMissingSources.clear();
-}
-
 function newReportId(): string {
   const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } })
     .crypto;

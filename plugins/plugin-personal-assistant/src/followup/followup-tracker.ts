@@ -299,23 +299,19 @@ export async function writeOverdueDigestMemory(
   const worldId = followupDigestWorldId(runtime.agentId);
   const roomId = followupDigestRoomId(runtime.agentId);
 
-  if (typeof runtime.ensureWorldExists === "function") {
-    await runtime.ensureWorldExists({
-      id: worldId,
-      name: "Follow-up Tracker",
-      agentId: runtime.agentId,
-    } as Parameters<typeof runtime.ensureWorldExists>[0]);
-  }
-  if (typeof runtime.ensureRoomExists === "function") {
-    await runtime.ensureRoomExists({
-      id: roomId,
-      name: "Follow-up Tracker",
-      source: "followup-tracker",
-      type: "API",
-      channelId: `followup-tracker-${runtime.agentId}`,
-      worldId,
-    } as Parameters<typeof runtime.ensureRoomExists>[0]);
-  }
+  await runtime.ensureWorldExists({
+    id: worldId,
+    name: "Follow-up Tracker",
+    agentId: runtime.agentId,
+  } as Parameters<typeof runtime.ensureWorldExists>[0]);
+  await runtime.ensureRoomExists({
+    id: roomId,
+    name: "Follow-up Tracker",
+    source: "followup-tracker",
+    type: "API",
+    channelId: `followup-tracker-${runtime.agentId}`,
+    worldId,
+  } as Parameters<typeof runtime.ensureRoomExists>[0]);
 
   const memory: Memory = {
     id: createUniqueUuid(runtime, `followup-digest-${Date.now()}`),
@@ -500,12 +496,4 @@ export function registerFollowupTrackerWorker(runtime: IAgentRuntime): void {
  */
 export function getFollowupTrackerRoomId(runtime: IAgentRuntime): UUID {
   return followupDigestRoomId(runtime.agentId);
-}
-
-/**
- * Test-only: reset the one-time degraded-mode log so unit tests can observe
- * the log path repeatedly.
- */
-export function __resetFollowupTrackerForTests(): void {
-  degradedLogged = false;
 }

@@ -6,10 +6,12 @@
 // `$OLDPWD` semantics.
 //
 // The pure helpers below (walkTests, chunkByBudget, formatBatchFiles,
-// writeSyncAll) are exported so test-cloud-run.test.mjs can exercise them
+// writeSyncAll, ensureCloudTestRuntime) are exported so
+// test-cloud-run.test.mjs and the *.self-test.mjs files can exercise them
 // directly; the batch-orchestration side effects (spawning `bun test`,
-// writing bunfig.toml) only run when this file is invoked as the entry
-// script, guarded by the `main()` call at the bottom.
+// writing bunfig.toml, building missing runtime artifacts) only run when this
+// file is invoked as the entry script, guarded by the `main()` call at the
+// bottom.
 
 import { spawnSync } from "node:child_process";
 import {
@@ -155,6 +157,142 @@ export function findMissingRoots(testRoots, existsFn) {
     .map(([name, dir]) => `${name} -> ${dir}`);
 }
 
+// --- Clean-install preflight (#16187) ---
+//
+// A frozen `bun install` with ELIZA_SKIP_ARTIFACT_SYNC=1 leaves the tree with
+// no built dist/ and no generated i18n keyword modules. The cloud suites
+// resolve `@elizaos/core` through its package.json `bun` export condition
+// (packages/core/dist/node/index.node.js) and import the gitignored keyword
+// modules from source, so without these artifacts every DB/service batch dies
+// in `Cannot find module` cascades that read like hundreds of regressions
+// instead of one missing prerequisite. The keyword modules are tracked
+// separately from the dist because turbo's `build` task caches `dist/**`
+// only: a cache hit can restore core's dist without ever running the codegen
+// that emits them (core's prebuild generates keywords only on a real build).
+//
+// Only the artifacts this lane's import graph actually resolves are listed —
+// `@elizaos/core` is the sole dist-resolved workspace package in the cloud
+// test graph (everything else resolves from source) — so a fully built tree
+// pays four existsSync calls and nothing more.
+export function computeRequiredRuntimeArtifacts(root) {
+  return {
+    keywordCodegen: [
+      path.join(
+        root,
+        "packages",
+        "shared",
+        "src",
+        "i18n",
+        "generated",
+        "validation-keyword-data.ts",
+      ),
+      path.join(
+        root,
+        "packages",
+        "shared",
+        "src",
+        "i18n",
+        "generated",
+        "validation-keyword-data.js",
+      ),
+      path.join(
+        root,
+        "packages",
+        "core",
+        "src",
+        "i18n",
+        "generated",
+        "validation-keyword-data.ts",
+      ),
+    ],
+    coreBuild: [
+      path.join(root, "packages", "core", "dist", "node", "index.node.js"),
+    ],
+  };
+}
+
+// Each step is the same standard mechanism CI already uses: the keyword
+// codegen is what packages/shared's `build:i18n` and packages/core's prebuild
+// invoke, and build-core.mjs is the root `bun run build:core` — the exact
+// prerequisite the other root test lanes (test:server/client/plugins) and the
+// cloud-tests workflow's cloud-setup-test-env action run.
+export const PREFLIGHT_STEPS = {
+  keywordCodegen: {
+    label: "i18n keyword codegen (generate-keywords.mjs)",
+    script: ["packages", "shared", "scripts", "generate-keywords.mjs"],
+  },
+  coreBuild: {
+    label: "core workspace build (build:core)",
+    script: ["packages", "scripts", "build-core.mjs"],
+  },
+};
+
+// `spawnFn` is injected so the failure contract (loud throw naming the step,
+// its exit code/signal, and how to re-run) is testable without a real build.
+export function runPreflightStep(step, { repoRoot: root, spawnFn }) {
+  const scriptPath = path.join(root, ...step.script);
+  const result = spawnFn(process.execPath, [scriptPath], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw new Error(
+      `[test:cloud] could not start ${step.label} (${scriptPath}): ${result.error.message}`,
+    );
+  }
+  if (result.status !== 0) {
+    const cause =
+      result.status === null || result.status === undefined
+        ? `signal ${result.signal}`
+        : `exit ${result.status}`;
+    throw new Error(
+      `[test:cloud] ${step.label} failed (${cause}). The cloud suites cannot ` +
+        `run without it — fix the failure above and re-run: bun run test:cloud`,
+    );
+  }
+}
+
+// For each step whose artifacts are missing, run the step, then re-check and
+// fail loudly if the step "succeeded" without producing them (e.g. a remedy
+// script whose output paths drifted from this list). Never proceeds into the
+// batches with a known-broken runtime: that is exactly the failure mode this
+// preflight exists to prevent.
+export function ensureCloudTestRuntime({
+  requiredArtifacts,
+  steps,
+  existsFn,
+  runStep,
+  log,
+}) {
+  for (const [stepName, artifacts] of Object.entries(requiredArtifacts)) {
+    const missing = artifacts.filter((file) => !existsFn(file));
+    if (missing.length === 0) continue;
+    const step = steps[stepName];
+    if (!step) {
+      throw new Error(
+        `[test:cloud] no preflight step named "${stepName}" — keep ` +
+          "computeRequiredRuntimeArtifacts and PREFLIGHT_STEPS key-aligned in " +
+          "packages/scripts/test-cloud-run.mjs.",
+      );
+    }
+    log(
+      "[test:cloud] missing runtime artifact(s) (clean install without artifact sync?):\n" +
+        `${missing.map((file) => `  - ${file}`).join("\n")}\n` +
+        `[test:cloud] running ${step.label}\n`,
+    );
+    runStep(step);
+    const stillMissing = artifacts.filter((file) => !existsFn(file));
+    if (stillMissing.length > 0) {
+      throw new Error(
+        `[test:cloud] ${step.label} completed but the required artifact(s) are still missing:\n` +
+          `${stillMissing.map((file) => `  - ${file}`).join("\n")}\n` +
+          "[test:cloud] the preflight and the build/codegen disagree about output paths — " +
+          "update computeRequiredRuntimeArtifacts in packages/scripts/test-cloud-run.mjs.",
+      );
+    }
+  }
+}
+
 // The full unit set is ~700 files. bun's `--isolate` gives each file a fresh
 // global but keeps ONE process, so JS heap plus external (pglite/WASM) memory
 // accumulates monotonically across the whole run — RSS climbs past 7 GB. On the
@@ -218,6 +356,23 @@ export function runBatches(
 }
 
 function main() {
+  try {
+    ensureCloudTestRuntime({
+      requiredArtifacts: computeRequiredRuntimeArtifacts(repoRoot),
+      steps: PREFLIGHT_STEPS,
+      existsFn: existsSync,
+      runStep: (step) =>
+        runPreflightStep(step, { repoRoot, spawnFn: spawnSync }),
+      log: (text) => writeSyncAll(1, text),
+    });
+  } catch (error) {
+    // error-policy:J1 process boundary — surface a preflight failure as one
+    // loud diagnostic + non-zero exit instead of letting the batches run into
+    // hundreds of misleading `Cannot find module` failures.
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
   mkdirSync(stagingDir, { recursive: true });
 
   writeFileSync(

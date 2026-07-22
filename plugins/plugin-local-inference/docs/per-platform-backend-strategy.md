@@ -54,8 +54,9 @@ Silicon Mac (ANE present, CoreML native) — the answer is no, on two counts:**
    200×32 ms windows, CoreML EP (ANE) vs CPU EP: **CPU 0.227 ms/window vs ANE
    0.798 ms/window — the ANE is 3.5× slower** (identical outputs). ANE dispatch
    overhead dominates a few-layer LSTM; the ANE wins on *large* fixed-graph models
-   (Kokoro), not tiny per-frame gates. Evidence:
-   `native/verify/evidence/platform/coreml-ane-vs-cpu-voice-gate-2026-06-24.md`.
+   (Kokoro), not tiny per-frame gates. Reproduce with onnxruntime 1.22 and
+   coremltools 9.0 using the 200-window method above, then attach the generated
+   benchmark report to the reviewing issue or PR.
 
 So the architecture already routes every model to its optimal backend by compute
 profile, and it's verified:
@@ -144,6 +145,6 @@ is warranted or beneficial for iOS/Mac LLM decode.
 | Item | Issue | Why gated |
 |---|---|---|
 | ~~Gemma MTP drafter GGUF conversion + on-Metal `--spec-type draft-mtp` gate~~ — **DONE 2026-06-24**: drafter converted (`drafter-2b.gguf`), validated on M-series Metal, and the fast-tier draft window fixed (`draftMax` 4→1 = **1.37–1.66× decode win** on the 2B; the prior "regression" was the mistuned window, not the head). A from-scratch H200 head is now only a possible large/slow-tier optimization, not a fast-tier unlock. | #8848 / #9172 | n/a — shipped; see `docs/gemma4-mtp-drafter-conversion.md` (2026-06-24 correction) |
-| ~~Rebuild + republish the **prebuilt Android Vulkan fused-lib** to `eliza-archive`~~ — **OBSOLETE: builds in CI, no archive.** The Android Vulkan fused `libelizainference.so` is built from source in CI by `.github/workflows/build-llama-ffi-android.yml` (`android-arm64-vulkan-fused` via `compile-libllama.mjs`, zig 0.13 pin from #9598) and consumed directly as a `workflow_call` artifact — there is **no eliza-archive prebuilt dependency and nothing to republish**. The Mali mitigation is in source; the Linux/CUDA + Mali-G715 kernel gates are verified on real hardware (#9584/#9715). | #9508 | n/a — CI-built |
+| ~~Rebuild + republish the **prebuilt Android Vulkan fused-lib** to `eliza-archive`~~ — **OBSOLETE: builds in CI, no archive.** `.github/workflows/build-llama-ffi-android.yml` is the standalone native producer and builds exactly two ABIs by default: `android-arm64-vulkan-fused` (`arm64-v8a`) and `android-x86_64-cpu-fused` (`x86_64`) through `compile-libllama.mjs` with the zig 0.13 pin from #9598. `.github/workflows/build-android.yml` is the real consumer: it queries successful producer runs through the Actions API, accepts only a run whose native producer inputs match the checkout, and downloads the named artifacts. There is **no eliza-archive prebuilt dependency and nothing to republish**. The producer fails before upload when the fused ABI or Mali mitigation marker is missing; the Linux/CUDA + Mali-G715 kernel gates are verified on real hardware (#9584/#9715). | #9508 | n/a — CI-built |
 | **Real-audio GPU CI lane** (DER/WER/echo/owner/impostor numbers) | #9454 | needs a `gpu-cuda-12.6` self-hosted runner + `ELEVENLABS_API_KEY` |
 | **PCM-level AEC3** sample-level echo cancellation (turn-level self-voice gate already shipped) | #9455 | net-new DSP feature (adaptive filter + double-talk detect + ERLE corpus) |

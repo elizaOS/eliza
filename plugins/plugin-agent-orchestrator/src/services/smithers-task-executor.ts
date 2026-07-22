@@ -5,6 +5,7 @@
  * coupling the runner to AcpService internals.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type {
   TaskApprovalResult,
   TaskProvisionResult,
@@ -35,7 +36,7 @@ export interface AcpLike {
   findResumableSessionByLabel?(
     label: string,
   ): Promise<{ sessionId: string } | null | undefined>;
-  cancelSession?(sessionId: string): Promise<void>;
+  cancelSession(sessionId: string): Promise<void>;
 }
 
 export interface SmithersTaskExecutorOptions {
@@ -65,6 +66,9 @@ export function detectTurnDone(result: {
   if (result.error) return false;
   const reason = (result.stopReason ?? "").toLowerCase();
   if (
+    reason === "error" ||
+    reason === "cancelled" ||
+    reason === "stopped" ||
     reason.includes("max") ||
     reason.includes("length") ||
     reason.includes("interrupt")
@@ -99,13 +103,47 @@ export class SmithersTaskExecutor implements TaskStepExecutor {
     this.sessionId = opts.sessionId;
   }
 
+  private abortError(sessionId: string): ElizaError {
+    return new ElizaError("ACP task prompt was aborted", {
+      code: "ACP_TASK_PROMPT_ABORTED",
+      context: { sessionId },
+      severity: "ephemeral",
+    });
+  }
+
+  private async cancelAbortedSession(sessionId: string): Promise<void> {
+    try {
+      await this.acp.cancelSession(sessionId);
+    } catch (cause) {
+      // error-policy:J2 cancellation failure needs the session boundary while
+      // retaining the ACP transport error for owner diagnostics.
+      throw new ElizaError("Failed to cancel the aborted ACP task prompt", {
+        code: "ACP_TASK_CANCEL_FAILED",
+        context: { sessionId },
+        cause,
+        severity: "ephemeral",
+      });
+    }
+  }
+
+  private async requireActiveSession(
+    sessionId: string,
+    signal: AbortSignal | undefined,
+  ): Promise<string> {
+    if (!signal?.aborted) return sessionId;
+    await this.cancelAbortedSession(sessionId);
+    throw this.abortError(sessionId);
+  }
+
   private async ensureSession(ctx: TaskStepContext): Promise<string> {
-    if (this.sessionId) return this.sessionId;
+    if (this.sessionId) {
+      return this.requireActiveSession(this.sessionId, ctx.signal);
+    }
     if (this.acp.findResumableSessionByLabel) {
       const existing = await this.acp.findResumableSessionByLabel(ctx.taskId);
       if (existing?.sessionId) {
         this.sessionId = existing.sessionId;
-        return this.sessionId;
+        return this.requireActiveSession(this.sessionId, ctx.signal);
       }
     }
     const spawned = await this.acp.spawnSession({
@@ -114,7 +152,48 @@ export class SmithersTaskExecutor implements TaskStepExecutor {
       label: ctx.taskId,
     });
     this.sessionId = spawned.sessionId;
-    return this.sessionId;
+    return this.requireActiveSession(this.sessionId, ctx.signal);
+  }
+
+  private async sendPrompt(
+    sessionId: string,
+    prompt: string,
+    signal: AbortSignal | undefined,
+  ): ReturnType<AcpLike["sendPrompt"]> {
+    if (!signal) return this.acp.sendPrompt(sessionId, prompt);
+    await this.requireActiveSession(sessionId, signal);
+    const promptResult = this.acp.sendPrompt(sessionId, prompt);
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const cleanup = (): void => signal.removeEventListener("abort", onAbort);
+      const onAbort = (): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        void this.cancelAbortedSession(sessionId).then(
+          () => reject(this.abortError(sessionId)),
+          (error: unknown) => reject(error),
+        );
+      };
+
+      signal.addEventListener("abort", onAbort, { once: true });
+      void promptResult.then(
+        (result) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(result);
+        },
+        (error: unknown) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(error);
+        },
+      );
+      if (signal.aborted) onAbort();
+    });
   }
 
   async provision(ctx: TaskStepContext): Promise<TaskProvisionResult> {
@@ -130,16 +209,38 @@ export class SmithersTaskExecutor implements TaskStepExecutor {
         ? (ctx.prompt ?? "")
         : (this.opts.continuePrompt ??
           "Continue working on the task. Reply when complete.");
-    const result = await this.acp.sendPrompt(sessionId, prompt);
-    if (result.error) {
-      this.lastError = new Error(result.error);
+    const result = await this.sendPrompt(sessionId, prompt, ctx.signal);
+    const stopReason = (result.stopReason ?? "").toLowerCase();
+    if (
+      result.error ||
+      stopReason === "error" ||
+      stopReason === "cancelled" ||
+      stopReason === "stopped"
+    ) {
+      const message =
+        result.error ??
+        (stopReason === "cancelled"
+          ? "ACP task prompt was cancelled"
+          : stopReason === "stopped"
+            ? "ACP task prompt was stopped"
+            : "ACP task prompt failed");
+      this.lastError = new ElizaError(message, {
+        code:
+          stopReason === "cancelled"
+            ? "ACP_TASK_PROMPT_CANCELLED"
+            : stopReason === "stopped"
+              ? "ACP_TASK_PROMPT_STOPPED"
+              : "ACP_TASK_PROMPT_FAILED",
+        context: { sessionId, stopReason: result.stopReason },
+        severity: "ephemeral",
+      });
       throw this.lastError;
     }
     this.lastResponse =
       result.finalText ?? result.response ?? this.lastResponse;
     return {
       done: detectTurnDone(result),
-      output: { finalText: result.finalText, stopReason: result.stopReason },
+      output: { finalText: this.lastResponse, stopReason: result.stopReason },
     };
   }
 

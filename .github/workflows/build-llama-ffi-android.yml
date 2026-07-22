@@ -1,7 +1,8 @@
 name: Build libelizainference (Android, FFI)
 
 # Builds the Android NDK shared library `libelizainference.so` for the
-# four supported ABIs and ships them as a per-ABI JNI bundle. The FFI
+# two supported ABIs and ships them as per-ABI JNI bundles. The arm64-v8a
+# artifact uses Vulkan, while the x86_64 artifact is CPU-only. The FFI
 # streaming runner (`ffi-streaming-runner.ts`) dlopens this artifact
 # from the APK's `lib/<abi>/` directory.
 #
@@ -15,8 +16,10 @@ name: Build libelizainference (Android, FFI)
 # lib is the real `libelizainference.so` produced by `compile-libllama.mjs` via
 # the zig/musl cross-compile — NOT a renamed `libllama.so`, and NOT a bionic NDK
 # build (bun's in-process FFI can only `dlopen` a musl-linked .so; see the header
-# of `compile-libllama.mjs`). `workflow_call` lets the app build invoke this and
-# consume the uploaded artifact directly instead of syncing from eliza-archive.
+# of `compile-libllama.mjs`). The reusable trigger supports orchestrators; the
+# app build in `build-android.yml` uses the Actions API to select a successful
+# producer run whose native inputs match its checkout, then downloads these
+# artifacts instead of syncing a prebuilt from eliza-archive.
 
 on:
   workflow_call:
@@ -28,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       abi_filter:
-        description: "Comma-separated subset of ABIs to build (default: all)"
+        description: "Comma-separated subset of supported ABIs: arm64-v8a,x86_64"
         required: false
         type: string
         default: "arm64-v8a,x86_64"
@@ -64,20 +67,37 @@ jobs:
     steps:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         id: set
+        # The unified inputs context covers reusable and manual runs; an env
+        # boundary keeps the caller-provided value out of generated JavaScript.
+        # Only push events lack an inputs payload. Dispatch/call defaults are
+        # applied by Actions itself, so preserving an explicit empty value lets
+        # the script reject it instead of silently widening it to both ABIs.
+        env:
+          ABI_FILTER: ${{ github.event_name == 'push' && 'arm64-v8a,x86_64' || inputs.abi_filter }}
         with:
           script: |
-            const inputs = context.payload.inputs ?? {};
-            const filterRaw = (inputs.abi_filter ?? "arm64-v8a,x86_64").trim();
-            const filter = new Set(filterRaw.split(",").map((s) => s.trim()).filter(Boolean));
-
             // compile-libllama.mjs fused targets: arm64 gets the Vulkan GPU
             // backend (the QJL/Polar/Mali-FA-mitigation kernels live here),
             // x86_64 (emulator/cuttlefish) is CPU-only. armeabi-v7a (32-bit)
-            // is unsupported by the fused build and dropped.
+            // is unsupported by the fused build and rejected before expansion.
             const all = [
               { abi: "arm64-v8a", target: "android-arm64-vulkan-fused" },
               { abi: "x86_64",    target: "android-x86_64-cpu-fused" },
             ];
+            const filterRaw = process.env.ABI_FILTER.trim();
+            const requested = filterRaw.split(",").map((s) => s.trim()).filter(Boolean);
+            const supported = new Set(all.map((entry) => entry.abi));
+            const unsupported = requested.filter((abi) => !supported.has(abi));
+            if (requested.length === 0 || unsupported.length > 0) {
+              core.setOutput("matrix", JSON.stringify({ include: [] }));
+              core.setFailed(
+                requested.length === 0
+                  ? "abi_filter must select at least one supported ABI: arm64-v8a,x86_64"
+                  : `abi_filter contains unsupported ABI(s): ${unsupported.join(", ")}. Supported: arm64-v8a,x86_64`,
+              );
+              return;
+            }
+            const filter = new Set(requested);
             const include = all.filter((m) => filter.has(m.abi));
             core.setOutput("matrix", JSON.stringify({ include }));
 
@@ -91,7 +111,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     steps:
       - name: Checkout (with the llama.cpp fork submodule — the canonical source)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           # The repo pins the fork via the submodule gitlink; build from that,
           # not compile-libllama's LLAMA_CPP_COMMIT default (which can diverge
@@ -178,21 +198,22 @@ jobs:
       - name: Verify fused artifact (FFI symbols + Mali FA mitigation on arm64)
         run: |
           set -euo pipefail
-          SO=$(find artifacts/libelizainference/${{ matrix.target }} -name "libelizainference.so" | head -1)
-          test -n "$SO" || { echo "no libelizainference.so produced"; find artifacts -name "*.so"; exit 1; }
+          mapfile -t fused_libs < <(find artifacts/libelizainference/${{ matrix.target }} -type f -name "libelizainference.so" -print)
+          if [ "${#fused_libs[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one libelizainference.so for ${{ matrix.target }}, found ${#fused_libs[@]}" >&2
+            find artifacts/libelizainference/${{ matrix.target }} -maxdepth 4 -type f -print >&2
+            exit 1
+          fi
+          SO="${fused_libs[0]}"
+          OUT_DIR=$(dirname "$SO")
           file "$SO"; ls -lh "$SO"
-          # The fused FFI must export the eliza_inference_* voice ABI.
-          if ! nm -D "$SO" 2>/dev/null | grep -q "eliza_inference_"; then
-            echo "WARNING: eliza_inference_* symbols not visible via nm (stripped?)"
-          fi
-          if [ "${{ matrix.abi }}" = "arm64-v8a" ]; then
-            VK=$(find artifacts/libelizainference/${{ matrix.target }} -name "libggml-vulkan.so*" | head -1)
-            if [ -n "$VK" ] && strings "$VK" | grep -q GGML_VK_FA_ALLOW_SUBGROUPS; then
-              echo "OK: arm64 Vulkan lib carries the Mali flash-attn mitigation (#9508)"
-            else
-              echo "WARNING: GGML_VK_FA_ALLOW_SUBGROUPS marker not found in $VK"
-            fi
-          fi
+          # Re-run the canonical post-build verifier against the staged output.
+          # It checks every required eliza_inference_* export, the llama/voice
+          # surfaces, and the Vulkan Mali marker; any missing contract exits 1.
+          node packages/app-core/scripts/build-helpers/verify-fused-symbols.mjs \
+            --out-dir "$OUT_DIR" \
+            --target "${{ matrix.target }}" \
+            --json
 
       - name: Upload libelizainference artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

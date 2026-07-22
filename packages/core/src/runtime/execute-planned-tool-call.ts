@@ -8,7 +8,11 @@
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { checkSenderRole } from "../roles";
-import { emitStreamingHook, getStreamingContext } from "../streaming-context";
+import {
+	emitStreamingHook,
+	getStreamingContext,
+	runWithSuppressedModelStream,
+} from "../streaming-context";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -114,6 +118,55 @@ function sensitiveActionResultMarker(
 	};
 }
 
+/**
+ * A result may opt out per invocation because multi-mode actions only return
+ * sensitive data for some operations. Static action metadata remains the
+ * stronger default for actions whose every result is sensitive.
+ */
+export function shouldSuppressActionResultClipboard(
+	action: Pick<Action, "suppressActionResultClipboard"> | undefined,
+	result: { data?: Readonly<Record<string, unknown>> },
+): boolean {
+	return (
+		action?.suppressActionResultClipboard === true ||
+		result.data?.suppressActionResultClipboard === true
+	);
+}
+
+/**
+ * Keep the outcome and intentional user-facing projections while removing the
+ * structured payload that must not enter planner prompts or client clipboards.
+ */
+export function projectActionResultForClipboard(
+	action: Pick<Action, "name" | "suppressActionResultClipboard"> | undefined,
+	result: ActionResult,
+	actionName = action?.name,
+): ActionResult {
+	if (!shouldSuppressActionResultClipboard(action, result)) {
+		return result;
+	}
+
+	const resultActionName =
+		typeof result.data?.actionName === "string"
+			? result.data.actionName
+			: undefined;
+	const safeActionName = actionName ?? resultActionName;
+	return {
+		success: result.success,
+		...(result.text !== undefined ? { text: result.text } : {}),
+		...(result.userFacingText !== undefined
+			? { userFacingText: result.userFacingText }
+			: {}),
+		...(result.verifiedUserFacing !== undefined
+			? { verifiedUserFacing: result.verifiedUserFacing }
+			: {}),
+		...(safeActionName ? { data: { actionName: safeActionName } } : {}),
+		...(result.continueChain !== undefined
+			? { continueChain: result.continueChain }
+			: {}),
+	};
+}
+
 function readMetadataString(message: Memory, key: string): string | undefined {
 	const metadata = isContentRecord(message.metadata) ? message.metadata : null;
 	const value = metadata?.[key];
@@ -200,13 +253,16 @@ export async function executePlannedToolCall(
 
 	const normalizedArgs = expandEnumShortForm(
 		action,
-		normalizeToolArgs(toolCall),
+		flattenUndeclaredParametersEnvelope(action, normalizeToolArgs(toolCall)),
 	);
 	const validation = validateToolArgs(
 		action,
-		dropEmptyOptionalArgs(
+		normalizeParamAliases(
 			action,
-			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
+			dropEmptyOptionalArgs(
+				action,
+				dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
+			),
 		),
 	);
 	if (!validation.valid) {
@@ -354,13 +410,15 @@ export async function executePlannedToolCall(
 					{ actionName: action.name, modelClass: action.modelClass },
 					() =>
 						withActionStep(runtime, action.name, () =>
-							action.handler(
-								runtime,
-								executorCtx.message,
-								executorCtx.state,
-								handlerOptions,
-								actionCallback,
-								executorCtx.responses,
+							runWithSuppressedModelStream(() =>
+								action.handler(
+									runtime,
+									executorCtx.message,
+									executorCtx.state,
+									handlerOptions,
+									actionCallback,
+									executorCtx.responses,
+								),
 							),
 						),
 				);
@@ -372,6 +430,10 @@ export async function executePlannedToolCall(
 			error,
 		});
 	}
+	const suppressActionResult = shouldSuppressActionResultClipboard(
+		action,
+		resultForEvent,
+	);
 
 	if (typeof runtime.emitEvent === "function") {
 		await runtime
@@ -385,7 +447,7 @@ export async function executePlannedToolCall(
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
 					actionResult: actionResultToContentRecord(resultForEvent, {
-						suppressData: action.suppressActionResultClipboard === true,
+						suppressData: suppressActionResult,
 					}),
 					source: executorCtx.message.content.source,
 					error:
@@ -408,7 +470,7 @@ export async function executePlannedToolCall(
 	}
 
 	return emitToolResult(toolCall, resultForEvent, {
-		suppressData: action.suppressActionResultClipboard === true,
+		suppressData: suppressActionResult,
 	});
 }
 
@@ -512,6 +574,52 @@ function actionResultToStreamingResult(
 }
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Recover the hybrid native-call shape weak models produce after copying the
+ * plain-JSON planner envelope into a tool's argument object. The unwrap is
+ * intentionally schema-bounded: a real `parameters` field, an unknown nested
+ * key, or a conflicting duplicate stays untouched so strict validation still
+ * surfaces the malformed call instead of guessing at intent.
+ */
+function flattenUndeclaredParametersEnvelope(
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	const declaredParameters = action.parameters ?? [];
+	if (declaredParameters.some((parameter) => parameter.name === "parameters")) {
+		return args;
+	}
+
+	const nested = args.parameters;
+	if (!isPlainRecord(nested)) return args;
+
+	const declaredNames = new Set(
+		declaredParameters.map((parameter) => parameter.name),
+	);
+	const nestedEntries = Object.entries(nested);
+	if (nestedEntries.some(([key]) => !declaredNames.has(key))) return args;
+	if (
+		nestedEntries.some(
+			([key, value]) =>
+				Object.hasOwn(args, key) && !Object.is(args[key], value),
+		)
+	) {
+		return args;
+	}
+
+	const { parameters: _parameters, ...outerArgs } = args;
+	return { ...nested, ...outerArgs };
+}
+
 /**
  * Short-form enum completion. When the action has a single closed-enum
  * parameter, accept three input shapes from the planner:
@@ -660,6 +768,48 @@ function dropUndeclaredPlannerWrapperArgs(
 	}
 
 	return filtered ?? args;
+}
+
+/**
+ * Rename an incoming arg key to the declared parameter that claims it via its
+ * `aliases` list, so the planner isn't punished for a natural name variant
+ * (`to`/`recipient` for `target`, `description`/`prompt` for `instructions`,
+ * `scheduledFor` for `scheduledAtIso`). This is the same curated,
+ * structurally-gated remap the sibling `dropUndeclaredPlannerWrapperArgs`
+ * already performs for the `subaction`→discriminator shape.
+ *
+ * SAFETY: only renames a key to a declared param that explicitly claims it, and
+ * only when (a) that param is absent from args, (b) the key is not itself a
+ * declared param, and (c) exactly one declared param claims the key. Any arg no
+ * param's `aliases` claims flows through untouched and still hits
+ * `Unexpected argument` in `validateToolArgs` — the runaway-arg bound and its
+ * tests are unaffected. Never clobbers an explicitly-provided canonical value.
+ */
+export function normalizeParamAliases(
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	const parameters = action.parameters ?? [];
+	const hasAliases = parameters.some((p) => p.aliases && p.aliases.length > 0);
+	if (!hasAliases) return args;
+
+	const declaredNames = new Set(parameters.map((p) => p.name));
+	let renamed: Record<string, unknown> | undefined;
+
+	for (const key of Object.keys(args)) {
+		if (declaredNames.has(key)) continue; // key is itself a real param
+		const claimants = parameters.filter((p) => p.aliases?.includes(key));
+		if (claimants.length !== 1) continue; // unknown, or ambiguous → let it reject
+		const target = claimants[0].name;
+		// Don't overwrite a canonical value the planner already provided.
+		const current = (renamed ?? args)[target];
+		if (current !== undefined && current !== null) continue;
+		renamed ??= { ...args };
+		renamed[target] = renamed[key];
+		delete renamed[key];
+	}
+
+	return renamed ?? args;
 }
 
 function normalizeToolArgs(

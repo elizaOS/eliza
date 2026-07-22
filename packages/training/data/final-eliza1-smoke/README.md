@@ -1,55 +1,38 @@
-# eliza-1 smoke corpus
+# Eliza-1 synthetic smoke corpus
 
-Ultra-light SFT corpus used to validate the end-to-end training pipeline
-(`scripts/format_for_training.py` → `scripts/train_local.py`). **Not** a
-real fine-tune mix — row counts are 1–2 orders of magnitude smaller than
-the broad `data/final/` and `data/final-eliza1-fullcorpus/` corpora.
+This is a tiny, deterministic fixture for exercising the corpus formatter and
+the end-to-end SFT pipeline. It is not a model-quality training or evaluation
+corpus.
 
-## Files
+The 20 hand-authored inputs live in
+[`../../fixtures/eliza1-smoke-source.jsonl`](../../fixtures/eliza1-smoke-source.jsonl).
+Every source envelope declares `synthetic: true`, carries an explicit split,
+and contains no external dataset or runtime-trajectory input. The fixture
+exercises direct messages, native request/response boundaries, native tool
+calls, and the legacy flat-record compatibility path.
 
-- `train.jsonl` / `val.jsonl` / `test.jsonl` — 80 / 10 / 10 split,
-  deterministic shuffle (seed 42).
-- `manifest.json` — full source-by-source counts, trajectory date
-  window, privacy-filter attestation, and split ratios.
+## Generated files
 
-Every row is `format_record`-valid; the builder verifies this on the
-output before exit.
+- `train.jsonl` — 16 formatted rows.
+- `val.jsonl` — 2 formatted rows.
+- `test.jsonl` — 2 formatted rows.
+- `manifest.json` — SHA-256 provenance for the source, generator, formatter,
+  privacy filter, and exact bytes of every split.
 
-## Recipe (see `scripts/build_eliza1_smoke_corpus.py` for the source of truth)
+The split files contain only the object returned by
+`scripts/format_for_training.py::format_record`. That return value has already
+passed through the canonical privacy filter; raw source envelopes are never
+serialized to the generated corpus.
 
-1. Sample 3 rows from each `data/normalized/<source>.jsonl` that has at
-   least one `format_record`-valid candidate. Sources are seeded
-   deterministically per name.
-2. Sample 10 rows from `datasets/eliza1-sft-0_6b/train.jsonl` (exercises
-   the chat-messages schema path).
-3. Sample 10 rows from `data/final/train.jsonl` (exercises the broad
-   mixed-final pipeline).
-4. Convert recent Eliza scenario trajectories from
-   `~/.eliza/trajectories/` (or `ELIZA_TRAJECTORY_DIR`) to
-   `eliza_native_v1` boundary rows via
-   `sample_native_trajectory_alignment.native_rows_from_recorded_trajectory`.
-   Window: trajectories with `mtime` in the last 7 days. Cap: 100 rows.
-5. Concatenate, shuffle, split.
+## Regenerate and verify
 
-## Privacy filter
-
-The canonical Python port of the app-training privacy filter
-(`scripts/privacy_filter_trajectories.py`) is applied to every emitted
-row through `format_record`. The filter masks OpenAI / Anthropic /
-Bearer / GitHub / AWS credentials, latitude/longitude pairs and JSON
-coords blocks, and the contact-like patterns from LifeOps lint. There
-is no bypass path — `format_record` fails closed if the filter cannot
-load.
-
-## How to regenerate
+From `packages/training`:
 
 ```bash
-cd packages/training
 python3 scripts/build_eliza1_smoke_corpus.py
+python3 scripts/build_eliza1_smoke_corpus.py --check
 ```
 
-The builder is idempotent (writes overwrite). If you want a different
-trajectory source path, set `ELIZA_TRAJECTORY_DIR=/path/to/trajectories`
-before invoking. To rebuild without trajectories (e.g. on a fresh
-machine), point `ELIZA_TRAJECTORY_DIR` at an empty directory — the
-manifest will record `skipped_reason` accordingly.
+The manifest omits timestamps and machine paths, so regeneration is
+byte-for-byte stable. `--check` exits nonzero when any tracked generated file
+is missing or stale.

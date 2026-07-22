@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import "./client-agent";
+import "./client-orchestrator-widgets";
 import { ElizaClient } from "./client-base";
 
 describe("ElizaClient.listOrchestratorTaskTimeline", () => {
@@ -45,6 +46,128 @@ describe("ElizaClient.listOrchestratorTaskTimeline", () => {
     );
     expect(page.nextCursor).toBe("20");
     expect(page.items[0]?.kind).toBe("message");
+  });
+});
+
+describe("ElizaClient.getOrchestratorWidgets", () => {
+  it("fetches the bounded widget snapshot with encoded project options", async () => {
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    const fetch = vi.fn(async () => ({
+      version: "orchestrator.widgets.v1",
+      generatedAt: "2026-07-13T00:00:00.000Z",
+      totalTaskCount: 0,
+      tasks: [],
+    }));
+    client.fetch = fetch as typeof client.fetch;
+
+    const snapshot = await client.getOrchestratorWidgets({
+      includeArchived: true,
+      projectId: "project / alpha",
+      limit: 8,
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/orchestrator/widgets?includeArchived=true&projectId=project+%2F+alpha&limit=8",
+    );
+    expect(snapshot.totalTaskCount).toBe(0);
+  });
+
+  it("delivers named SSE snapshots and closes the browser subscription", () => {
+    class FakeEventSource extends EventTarget {
+      static latest: FakeEventSource | undefined;
+      readonly url: string;
+      close = vi.fn();
+
+      constructor(url: string | URL) {
+        super();
+        this.url = String(url);
+        FakeEventSource.latest = this;
+      }
+    }
+    const previous = globalThis.EventSource;
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    try {
+      const client = new ElizaClient("http://agent.example:31337", "token");
+      const onSnapshot = vi.fn();
+      const onError = vi.fn();
+      const close = client.streamOrchestratorWidgets(
+        { limit: 8 },
+        onSnapshot,
+        onError,
+      );
+      const source = FakeEventSource.latest;
+      if (!source) throw new Error("EventSource was not opened");
+
+      const event = new Event("snapshot");
+      Object.defineProperty(event, "data", {
+        value: JSON.stringify({
+          version: "orchestrator.widgets.v1",
+          generatedAt: "2026-07-13T00:00:00.000Z",
+          totalTaskCount: 0,
+          tasks: [],
+        }),
+      });
+      source.dispatchEvent(event);
+
+      expect(source.url).toBe(
+        "http://agent.example:31337/api/orchestrator/widgets/stream?limit=8",
+      );
+      expect(onSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({ totalTaskCount: 0, tasks: [] }),
+      );
+      expect(onError).not.toHaveBeenCalled();
+
+      const malformedSnapshot = new Event("snapshot");
+      Object.defineProperty(malformedSnapshot, "data", { value: "{" });
+      source.dispatchEvent(malformedSnapshot);
+      expect(onError).toHaveBeenLastCalledWith(expect.any(SyntaxError));
+
+      const serverError = new Event("error");
+      Object.defineProperty(serverError, "data", {
+        value: JSON.stringify({ error: "task store unavailable" }),
+      });
+      source.dispatchEvent(serverError);
+      expect(onError).toHaveBeenLastCalledWith(
+        expect.objectContaining({ message: "task store unavailable" }),
+      );
+
+      const malformedError = new Event("error");
+      Object.defineProperty(malformedError, "data", { value: "{" });
+      source.dispatchEvent(malformedError);
+      expect(onError).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: "Orchestrator task stream returned invalid error data",
+        }),
+      );
+
+      source.dispatchEvent(new Event("error"));
+      expect(onError).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: "Orchestrator task stream disconnected",
+        }),
+      );
+
+      close();
+      expect(source.close).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.EventSource = previous;
+    }
+  });
+
+  it("returns a harmless closer when EventSource is unavailable", () => {
+    const previous = globalThis.EventSource;
+    Reflect.deleteProperty(globalThis, "EventSource");
+    try {
+      const client = new ElizaClient("http://agent.example:31337", "token");
+      const close = client.streamOrchestratorWidgets(
+        undefined,
+        vi.fn(),
+        vi.fn(),
+      );
+      expect(close()).toBeUndefined();
+    } finally {
+      globalThis.EventSource = previous;
+    }
   });
 });
 

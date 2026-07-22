@@ -91,11 +91,19 @@ export type CodingAccountStrategy =
 	| "priority"
 	| "round-robin"
 	| "least-used"
-	| "quota-aware";
+	| "quota-aware"
+	// Reset-timestamp-aware selection. Coordination note: the runtime
+	// consumer of this strategy in the coding bridge lives in
+	// plugin-cli-inference (#16203). The type accepts it here so the
+	// settings picker can persist it; the actual reset-soonest ordering is
+	// implemented in AccountPool.applyStrategy (app-core).
+	| "reset-soonest"
+	| "drain-soonest-reset";
 
 export interface CodingAccountUsage {
 	sessionPct?: number;
 	weeklyPct?: number;
+	weeklyModelBuckets?: Record<string, { pct: number; resetsAt?: number }>;
 	resetsAt?: number;
 	refreshedAt: number;
 }
@@ -133,6 +141,8 @@ export interface CodingAgentSelectorBridge {
 		opts?: {
 			sessionKey?: string;
 			strategy?: CodingAccountStrategy;
+			/** Requested model/display name, used to rank provider-specific weekly buckets. */
+			model?: string;
 			exclude?: string[];
 			/**
 			 * Restrict selection to these account ids. A continuing session pins
@@ -189,4 +199,62 @@ export function setCodingAgentSelectorBridge(
 	} else {
 		delete slot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL];
 	}
+}
+
+/* ---------------------- Account-pool broker snapshot --------------------- */
+
+export interface AccountPoolBrokerLastLease {
+	leaseId: string;
+	atMs: number;
+	sessionKeyHash: string;
+	model?: string;
+}
+
+export interface AccountPoolBrokerLastReportedStatus {
+	atMs: number;
+	ok: boolean;
+	category: "ok" | "auth" | "rate_limit" | "transient" | "other";
+	reason: string;
+	httpStatus?: number;
+	model?: string;
+}
+
+export interface AccountPoolBrokerAccountSnapshot {
+	activeLeaseCount: number;
+	lastLease: AccountPoolBrokerLastLease | null;
+	lastLeaseAt: number | null;
+	lastReportedStatus: AccountPoolBrokerLastReportedStatus | null;
+}
+
+export interface AccountPoolBrokerProviderLastSelection {
+	accountId: string;
+	atMs: number;
+	reason: string;
+}
+
+export interface AccountPoolBrokerFailoverSnapshot {
+	atMs: number;
+	providerId: string;
+	sessionKeyHash: string;
+	fromAccountId: string;
+	toAccountId: string;
+	cause: {
+		category: "auth" | "rate_limit" | "transient";
+		reason: string;
+	};
+	model?: string;
+}
+
+export interface AccountPoolBrokerProviderSnapshot {
+	lastSelection: AccountPoolBrokerProviderLastSelection | null;
+	recentFailovers: AccountPoolBrokerFailoverSnapshot[];
+}
+
+export interface AccountPoolBrokerSnapshot {
+	accounts: Record<string, AccountPoolBrokerAccountSnapshot>;
+	providers: Record<string, AccountPoolBrokerProviderSnapshot>;
+}
+
+export function emptyAccountPoolBrokerSnapshot(): AccountPoolBrokerSnapshot {
+	return { accounts: {}, providers: {} };
 }

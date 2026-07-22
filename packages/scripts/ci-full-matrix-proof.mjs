@@ -12,11 +12,11 @@
  *      event, which would turn a "required" lane into a permanent skip.
  *   3. `.github/workflows/develop-exhaustive.yml` — the scheduled orchestrator
  *      must still invoke every manifest `reusableWorkflows` lane via
- *      `workflow_call`, and each of those workflows must still declare a
- *      `workflow_call` trigger without unconditional concurrency cancellation.
- *      A dropped `uses:`, removed trigger, or reusable lane that can cancel a
- *      prior scheduled run silently strips platform coverage (Windows/mobile/
- *      scenario/UI/desktop) from the exhaustive matrix and fails the job.
+ *      `workflow_call`, pass its dedicated concurrency scope, and queue
+ *      consecutive exhaustive runs. Every reusable workflow must consume that
+ *      scope and keep schedule/dispatch/workflow-call events non-cancelling. A
+ *      dropped `uses:`, shared standalone group, or cancelling reusable lane
+ *      silently strips platform coverage from the exhaustive matrix and fails.
  *   4. `run-all-tests.mjs --plan=json` — the discovered task plan must clear the
  *      manifest floors (total tasks/packages, per-script-lane presence, and the
  *      set of required core packages). A pointed-at-a-nonexistent-glob lane or a
@@ -49,20 +49,25 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     planFile: null,
     manifest: resolve(here, "ci-lane-manifest.json"),
+    // GitHub injects this only for workflow steps; local proof runs omit it.
+    // biome-ignore lint/suspicious/noUndeclaredEnvVars: CI-owned output path.
     summary: process.env.GITHUB_STEP_SUMMARY || null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--plan-file") {
-      options.planFile = argv[(i += 1)];
+      i += 1;
+      options.planFile = argv[i];
     } else if (arg === "--manifest") {
-      options.manifest = argv[(i += 1)];
+      i += 1;
+      options.manifest = argv[i];
     } else if (arg === "--summary") {
-      options.summary = argv[(i += 1)];
+      i += 1;
+      options.summary = argv[i];
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
@@ -130,7 +135,7 @@ function loadPlan({ planFile }) {
 function extractJobBlock(workflowText, jobKey) {
   const lines = workflowText.split(/\r?\n/);
   const header = `  ${jobKey}:`;
-  const start = lines.findIndex((line) => line === header);
+  const start = lines.indexOf(header);
   if (start < 0) return null;
   const body = [lines[start]];
   for (let i = start + 1; i < lines.length; i += 1) {
@@ -139,6 +144,94 @@ function extractJobBlock(workflowText, jobKey) {
     body.push(line);
   }
   return body.join("\n");
+}
+
+function findJobBlockUsing(workflowText, usesRef) {
+  for (const jobKey of extractWorkflowJobKeys(workflowText)) {
+    const block = extractJobBlock(workflowText, jobKey);
+    if (block?.includes(`uses: ${usesRef}`)) return block;
+  }
+  return null;
+}
+
+function extractWorkflowCallBlock(workflowText) {
+  const lines = workflowText.split(/\r?\n/);
+  const start = lines.indexOf("  workflow_call:");
+  if (start < 0) return null;
+  const body = [lines[start]];
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^ {2}\S/.test(line)) break;
+    body.push(line);
+  }
+  return body.join("\n");
+}
+
+function extractWorkflowEventBlock(workflowText, eventName) {
+  const lines = workflowText.split(/\r?\n/);
+  const start = lines.indexOf(`  ${eventName}:`);
+  if (start < 0) return null;
+  const body = [lines[start]];
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^ {2}\S/.test(line)) break;
+    body.push(line);
+  }
+  return body.join("\n");
+}
+
+function extractConcurrencyValue(workflowText, key) {
+  const match = workflowText.match(
+    new RegExp(`^\\s{2}${key}:\\s*(.+?)\\s*$`, "m"),
+  );
+  return match?.[1]?.trim() ?? null;
+}
+
+function normalizeGitHubExpression(body) {
+  return body.replace(/\s+/g, "").replaceAll('"', "'");
+}
+
+function githubExpressionBodies(value) {
+  if (value === null) return [];
+  return [...value.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((match) =>
+    normalizeGitHubExpression(match[1]),
+  );
+}
+
+function normalizedGitHubTemplate(value) {
+  if (value === null) return null;
+  return value.replace(
+    /\$\{\{([\s\S]*?)\}\}/g,
+    (_match, body) => `\${{${normalizeGitHubExpression(body)}}}`,
+  );
+}
+
+function extractJobValue(jobBlock, key) {
+  if (jobBlock === null) return null;
+  const match = jobBlock.match(new RegExp(`^ {4}${key}:\\s*(.+?)\\s*$`, "m"));
+  return match?.[1]?.trim() ?? null;
+}
+
+function cancellationEvents(expression) {
+  if (expression === null || expression === "false") return new Set();
+  if (expression === "true") return new Set(["*"]);
+
+  const body = expression
+    .replace(/^\$\{\{\s*/, "")
+    .replace(/\s*\}\}$/, "")
+    .trim();
+  if (body.includes("!=")) return new Set(["*"]);
+
+  const events = new Set();
+  const comparison = /github\.event_name\s*==\s*['"]([^'"]+)['"]/g;
+  for (const match of body.matchAll(comparison)) events.add(match[1]);
+  const residual = body.replace(comparison, "").replace(/\|\||&&|[()\s]/g, "");
+  return residual.length === 0 && events.size > 0 ? events : new Set(["*"]);
+}
+
+function cancelsEvent(expression, eventName) {
+  const events = cancellationEvents(expression);
+  return events.has("*") || events.has(eventName);
 }
 
 function extractWorkflowJobKeys(workflowText) {
@@ -275,11 +368,11 @@ function checkWorkflowLanes(manifest, violations, laneReport) {
   }
 }
 
-// The scheduled exhaustive orchestrator (develop-exhaustive.yml) must keep
-// invoking every platform lane the manifest lists, and each of those workflows
-// must still declare a `workflow_call` trigger — otherwise the orchestrator
-// silently drops that lane's coverage. Both halves are checked statically so a
-// dropped `uses:` or a removed trigger fails without waiting for the run.
+// GitHub's default concurrency mode retains only one pending run; queue:max is
+// therefore part of the exhaustive contract, not an optimization. Reusable
+// workflows then consume an exact caller-scope expression so standalone events
+// cannot collapse into the exhaustive namespace through a truthy-expression
+// lookalike.
 function checkReusableWorkflows(manifest, violations, laneReport) {
   if (
     !manifest.exhaustiveOrchestrator ||
@@ -298,10 +391,42 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
     return;
   }
 
+  const scope = manifest.exhaustiveConcurrencyScope;
+  if (typeof scope !== "string" || scope.length === 0) {
+    violations.push(
+      "missing exhaustive concurrency scope: exhaustiveConcurrencyScope must name the reusable caller namespace",
+    );
+  }
+  const orchestratorGroup = extractConcurrencyValue(orchestratorText, "group");
+  const orchestratorCancel = extractConcurrencyValue(
+    orchestratorText,
+    "cancel-in-progress",
+  );
+  const orchestratorQueue = extractConcurrencyValue(orchestratorText, "queue");
+  const expectedOrchestratorGroup = `${scope}-\${{github.ref}}`;
+  if (
+    normalizedGitHubTemplate(orchestratorGroup) !== expectedOrchestratorGroup
+  ) {
+    violations.push(
+      `exhaustive orchestrator concurrency drift: ${manifest.exhaustiveOrchestrator} must use group ${scope}-\${{ github.ref }}`,
+    );
+  }
+  if (orchestratorQueue !== "max") {
+    violations.push(
+      `consecutive exhaustive runs can replace pending coverage: ${manifest.exhaustiveOrchestrator} must set queue: max`,
+    );
+  }
+  if (orchestratorCancel !== "false") {
+    violations.push(
+      `consecutive exhaustive runs can cancel: ${manifest.exhaustiveOrchestrator} must set cancel-in-progress: false`,
+    );
+  }
+
   for (const reusable of manifest.reusableWorkflows) {
     const basename = reusable.workflow.split("/").pop();
     const usesRef = `./.github/workflows/${basename}`;
-    if (!orchestratorText.includes(`uses: ${usesRef}`)) {
+    const callerJob = findJobBlockUsing(orchestratorText, usesRef);
+    if (callerJob === null) {
       violations.push(
         `missing reusable lane: ${manifest.exhaustiveOrchestrator} does not invoke ${usesRef} (${reusable.name})`,
       );
@@ -312,11 +437,18 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
       });
       continue;
     }
+    let unsafe = false;
+    if (!callerJob.includes(`      concurrency_scope: ${scope}`)) {
+      violations.push(
+        `reusable caller shares standalone concurrency: ${usesRef} is not passed concurrency_scope: ${scope}`,
+      );
+      unsafe = true;
+    }
     let reusableText;
-    let declaresWorkflowCall = false;
+    let workflowCallBlock;
     try {
       reusableText = readFileSync(resolve(repoRoot, reusable.workflow), "utf8");
-      declaresWorkflowCall = /^\s{2}workflow_call:/m.test(reusableText);
+      workflowCallBlock = extractWorkflowCallBlock(reusableText);
     } catch {
       violations.push(
         `missing reusable workflow: ${reusable.workflow} (${reusable.name}) not found`,
@@ -328,7 +460,7 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
       });
       continue;
     }
-    if (!declaresWorkflowCall) {
+    if (workflowCallBlock === null) {
       violations.push(
         `reusable workflow not callable: ${reusable.workflow} does not declare a workflow_call trigger, so ${manifest.exhaustiveOrchestrator} cannot invoke it`,
       );
@@ -339,19 +471,110 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
       });
       continue;
     }
-    if (/^\s{2}cancel-in-progress:\s*true\s*$/m.test(reusableText)) {
+    if (
+      !workflowCallBlock.includes("    inputs:") ||
+      !workflowCallBlock.includes("      concurrency_scope:") ||
+      !workflowCallBlock.includes("        type: string") ||
+      !workflowCallBlock.includes("        default: standalone")
+    ) {
       violations.push(
-        `reusable workflow can cancel scheduled coverage: ${reusable.workflow} has unconditional cancel-in-progress: true; gate cancellation to pull_request so ${manifest.exhaustiveOrchestrator} remains uncancellable`,
+        `reusable workflow ignores caller concurrency scope: ${reusable.workflow} must declare string workflow_call input concurrency_scope with default standalone`,
       );
-      laneReport.push({
-        lane: basename,
-        name: reusable.name,
-        status: "CANCELS",
-      });
-      continue;
+      unsafe = true;
     }
-    laneReport.push({ lane: basename, name: reusable.name, status: "OK" });
+
+    const group = extractConcurrencyValue(reusableText, "group");
+    const groupExpressions = githubExpressionBodies(group);
+    if (!groupExpressions.includes("inputs.concurrency_scope||'standalone'")) {
+      violations.push(
+        `reusable concurrency collision: ${reusable.workflow} must namespace its group with the exact inputs.concurrency_scope || 'standalone' expression`,
+      );
+      unsafe = true;
+    }
+
+    const cancelExpression = extractConcurrencyValue(
+      reusableText,
+      "cancel-in-progress",
+    );
+    const cancellingExhaustiveEvents = [
+      "schedule",
+      "workflow_dispatch",
+      "workflow_call",
+    ].filter((eventName) => cancelsEvent(cancelExpression, eventName));
+    if (cancellingExhaustiveEvents.length > 0) {
+      violations.push(
+        `reusable workflow can cancel exhaustive coverage: ${reusable.workflow} cancels ${cancellingExhaustiveEvents.join(", ")}; only obsolete standalone PR/push work may cancel`,
+      );
+      unsafe = true;
+    }
+    laneReport.push({
+      lane: basename,
+      name: reusable.name,
+      status: unsafe ? "CONCURRENCY-UNSAFE" : "OK",
+    });
   }
+}
+
+// Develop pushes intentionally supersede obsolete tips. Schedule and manual
+// runs use per-run namespaces so they cannot be victims of a later push, and a
+// quiet latest tip must retain one fail-closed aggregate result.
+function checkPostMergeSignal(manifest, violations, laneReport) {
+  const contract = manifest.postMergeSignal;
+  if (!contract) return;
+
+  const workflowText = readFileSync(
+    resolve(repoRoot, manifest.workflow),
+    "utf8",
+  );
+  const pushBlock = extractWorkflowEventBlock(workflowText, "push");
+  const group = extractConcurrencyValue(workflowText, "group");
+  const cancelExpression = extractConcurrencyValue(
+    workflowText,
+    "cancel-in-progress",
+  );
+  const aggregate = extractJobBlock(workflowText, contract.aggregateJob);
+  const aggregateIf = extractJobValue(aggregate, "if");
+  let unsafe = false;
+
+  if (!pushBlock?.includes(contract.branch)) {
+    violations.push(
+      `post-merge signal missing: ${manifest.workflow} does not run on pushes to ${contract.branch}`,
+    );
+    unsafe = true;
+  }
+  const expectedGroup = `test-\${{github.event_name=='push'&&github.ref||format('{0}-{1}',github.event_name,github.run_id)}}`;
+  if (normalizedGitHubTemplate(group) !== expectedGroup) {
+    violations.push(
+      `post-merge concurrency drift: ${manifest.workflow} must share github.ref only across pushes and isolate schedule/dispatch by run id`,
+    );
+    unsafe = true;
+  }
+  const cancelBodies = githubExpressionBodies(cancelExpression);
+  if (
+    cancelBodies.length !== 1 ||
+    cancelBodies[0] !== "github.event_name=='push'"
+  ) {
+    violations.push(
+      `post-merge cancellation drift: ${manifest.workflow} must cancel only obsolete push tips`,
+    );
+    unsafe = true;
+  }
+  const aggregateIfBodies = githubExpressionBodies(aggregateIf);
+  if (
+    aggregate === null ||
+    aggregateIfBodies.length !== 1 ||
+    aggregateIfBodies[0] !== "!cancelled()&&always()"
+  ) {
+    violations.push(
+      `canonical post-merge result missing: ${contract.aggregateJob} must run fail-closed with always() and !cancelled()`,
+    );
+    unsafe = true;
+  }
+  laneReport.push({
+    lane: `post-merge:${contract.aggregateJob}`,
+    name: "Canonical quiescent develop result",
+    status: unsafe ? "CONCURRENCY-UNSAFE" : "OK",
+  });
 }
 
 function checkPlanFloors(manifest, plan, violations, floorReport) {
@@ -432,7 +655,7 @@ function checkPlanFloors(manifest, plan, violations, floorReport) {
   }
 }
 
-function writeSummary(summaryPath, laneReport, floorReport, violations) {
+export function writeSummary(summaryPath, laneReport, floorReport, violations) {
   if (!summaryPath) return;
   const lines = [];
   lines.push("## Exhaustive lane matrix proof");
@@ -477,6 +700,7 @@ export function runProof(options) {
 
   checkWorkflowLanes(manifest, violations, laneReport);
   checkReusableWorkflows(manifest, violations, laneReport);
+  checkPostMergeSignal(manifest, violations, laneReport);
   checkPlanFloors(manifest, plan, violations, floorReport);
 
   return { manifest, plan, violations, laneReport, floorReport };

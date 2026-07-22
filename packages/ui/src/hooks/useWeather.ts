@@ -9,6 +9,7 @@ import * as React from "react";
 import { client } from "../api/client";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
+import { useProtectedAgentProbesEnabled } from "./useProtectedAgentProbesEnabled";
 
 /**
  * Current-conditions weather for the home dashboard's weather widget.
@@ -378,6 +379,11 @@ export function useWeather(): WeatherState {
     };
   }, []);
 
+  // The approximate-location leg hits the protected GET /api/location/approximate;
+  // hold it until probes are allowed so fresh Cloud onboarding fires no 401
+  // (#16242). Re-runs to load real conditions once the gate opens post-sign-in.
+  const probesEnabled = useProtectedAgentProbesEnabled();
+
   const applyUnavailable = React.useCallback(() => {
     if (!mountedRef.current) return;
     // Only fall to "unavailable" when we have nothing cached to show.
@@ -408,13 +414,15 @@ export function useWeather(): WeatherState {
   }, []);
 
   React.useEffect(() => {
+    if (!probesEnabled) return;
     void revalidate();
-  }, [revalidate]);
+  }, [revalidate, probesEnabled]);
 
   // Revalidate while the home stays open — a long-lived session no longer shows
   // a frozen temperature — but only when the document is visible (no background
   // polling) and only past the TTL (revalidate is cache-first).
   useIntervalWhenDocumentVisible(() => {
+    if (!probesEnabled) return;
     void revalidate();
   }, WEATHER_TTL_MS);
 

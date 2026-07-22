@@ -1,9 +1,10 @@
-// Exercises tests test realness audit.test automation behavior with deterministic script fixtures.
-import { afterEach, describe, expect, test } from "bun:test";
+/** Exercises test-realness policy against real temporary files and Git indexes. */
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, test } from "vitest";
 
 const audit = await import(
   new URL("../test-realness-audit.mjs", import.meta.url).href
@@ -36,6 +37,17 @@ function write(root: string, relativePath: string, content: string) {
   const filePath = path.join(root, relativePath);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content);
+}
+
+function git(root: string, ...args: string[]): string {
+  const result = spawnSync("git", ["-C", root, ...args], {
+    encoding: "utf8",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(result.stderr || `git ${args.join(" ")} failed`);
+  }
+  return result.stdout.trim();
 }
 
 describe("test-realness-audit", () => {
@@ -82,6 +94,35 @@ describe("test-realness-audit", () => {
     const failures = audit.collectFailures(result);
     expect(failures).toContain("todoTest must stay at 0, found 1");
     expect(failures).toContain("xSkippedTest must stay at 0, found 1");
+  });
+
+  test("source archives exclude only declared submodule paths", () => {
+    const root = makeRepo();
+    write(
+      root,
+      ".gitmodules",
+      [
+        '[submodule "vendor/upstream"]',
+        "  path = plugins/sample/vendor/upstream",
+        "  url = https://example.test/upstream.git",
+      ].join("\n"),
+    );
+    write(
+      root,
+      "plugins/sample/vendor/upstream/phantom.test.ts",
+      `test${todoSuffix}('upstream todo', () => {});`,
+    );
+    write(
+      root,
+      "packages/sample/src/vendor/owned.test.ts",
+      "test('owned vendor integration', () => {});",
+    );
+
+    const result = audit.scanTestRealness({ repoRoot: root });
+    expect(result.summary.byCategory.todoTest).toBe(0);
+    expect(result.files).toEqual([
+      path.join(root, "packages/sample/src/vendor/owned.test.ts"),
+    ]);
   });
 
   test("report-only categories are inventoried but never fail the gate", () => {
@@ -171,6 +212,74 @@ describe("test-realness-audit", () => {
     );
   });
 
+  test("internal runtime mocks are diff-scoped migration debt", () => {
+    const root = makeRepo();
+    const relPath = "packages/sample/runtime.test.ts";
+    const baseFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      "import { test } from 'vitest';\ntest('real runtime', () => {});\n",
+    );
+    const currentFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      [
+        "import { createMockRuntime } from '../testing/mock-runtime';",
+        "import { test } from 'vitest';",
+        "test('synthetic runtime', () => {",
+        "  const runtime = createMockRuntime();",
+        "  void runtime;",
+        "});",
+      ].join("\n"),
+    );
+
+    expect(currentFindings).toContainEqual(
+      expect.objectContaining({
+        category: "internalRuntimeMock",
+        path: relPath,
+        line: 4,
+      }),
+    );
+    const regressions = audit.collectDiffScopedRegressions({
+      currentFindings,
+      baseFindings,
+      changedFiles: [relPath],
+    });
+    expect(audit.collectDiffScopedFailures(regressions)).toContain(
+      "internalRuntimeMock increased in touched test file packages/sample/runtime.test.ts: 1 current > 0 base",
+    );
+  });
+
+  test("partial objects cast to IAgentRuntime are diff-scoped migration debt", () => {
+    const root = makeRepo();
+    const relPath = "packages/sample/cast-runtime.test.ts";
+    const currentFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      [
+        "import type { IAgentRuntime } from '@elizaos/core';",
+        "const runtime = { agentId: 'fake' } as unknown as IAgentRuntime;",
+        "void runtime;",
+      ].join("\n"),
+    );
+
+    expect(currentFindings).toContainEqual(
+      expect.objectContaining({
+        category: "internalRuntimeCast",
+        path: relPath,
+        line: 2,
+      }),
+    );
+    const regressions = audit.collectDiffScopedRegressions({
+      currentFindings,
+      baseFindings: [],
+      changedFiles: [relPath],
+    });
+    expect(audit.collectDiffScopedFailures(regressions)).toContain(
+      "internalRuntimeCast increased in touched test file packages/sample/cast-runtime.test.ts: 1 current > 0 base",
+    );
+  });
+
   test("real-outcome assertions do not trigger the diff-scoped ratchet", () => {
     const root = makeRepo();
     const relPath = "packages/sample/real.test.ts";
@@ -202,24 +311,62 @@ describe("test-realness-audit", () => {
 
   test("--check fails closed when the diff-scoped base cannot be resolved", () => {
     const root = makeRepo();
+    git(root, "init", "--quiet");
     write(
       root,
       "packages/sample/plain.test.ts",
       "import { test } from 'vitest';\ntest('plain', () => {});\n",
     );
 
-    const result = Bun.spawnSync([
+    const result = spawnSync(
       "node",
-      SCRIPT_PATH,
-      "--repo-root",
-      root,
-      "--check",
-    ]);
+      [SCRIPT_PATH, "--repo-root", root, "--check"],
+      { encoding: "utf8" },
+    );
 
-    expect(result.exitCode).toBe(1);
-    const stderr = new TextDecoder().decode(result.stderr);
-    expect(stderr).toContain("diff-scoped ratchet could not run");
-    expect(stderr).toContain("Ensure CI fetches origin/develop");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("diff-scoped ratchet could not run");
+    expect(result.stderr).toContain("Ensure CI fetches origin/develop");
+  });
+
+  test("--check rejects a source archive without a verifiable Git index", () => {
+    const root = makeRepo();
+    write(
+      root,
+      "packages/sample/plain.test.ts",
+      "import { test } from 'vitest';\ntest('plain', () => {});\n",
+    );
+
+    const result = spawnSync(
+      "node",
+      [SCRIPT_PATH, "--repo-root", root, "--check"],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Test-realness check mode requires a Git index for the audited repository root",
+    );
+  });
+
+  test("--check fails closed when submodule boundary metadata cannot be read", () => {
+    const root = makeRepo();
+    git(root, "init", "--quiet");
+    fs.mkdirSync(path.join(root, ".gitmodules"));
+    write(
+      root,
+      "packages/sample/plain.test.ts",
+      "import { test } from 'vitest';\ntest('plain', () => {});\n",
+    );
+
+    const result = spawnSync(
+      "node",
+      [SCRIPT_PATH, "--repo-root", root, "--check"],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("listSubmodules");
   });
 
   test("comments do not register as focused tests", () => {
@@ -237,6 +384,136 @@ describe("test-realness-audit", () => {
 
     const result = audit.scanTestRealness({ repoRoot: root });
     expect(result.summary.byCategory.focusedOnly).toBe(0);
+  });
+
+  test("indexed submodules stay excluded across checkout states", () => {
+    const root = makeRepo();
+    write(
+      root,
+      "packages/sample/plain.test.ts",
+      "import { test } from 'vitest';\ntest('plain', () => {});\n",
+    );
+    write(
+      root,
+      ".gitmodules",
+      [
+        '[submodule "vendor/upstream"]',
+        "  path = plugins/vendor/upstream",
+        "  url = https://example.test/upstream.git",
+      ].join("\n"),
+    );
+    write(
+      root,
+      "plugins/vendor/upstream/upstream.test.ts",
+      `import { test } from 'vitest';\ntest${todoSuffix}('upstream policy', () => {});\n`,
+    );
+
+    const upstreamRoot = path.join(root, "plugins", "vendor", "upstream");
+    git(upstreamRoot, "init", "--quiet");
+    git(upstreamRoot, "add", "upstream.test.ts");
+    git(
+      upstreamRoot,
+      "-c",
+      "user.name=Test Fixture",
+      "-c",
+      "user.email=test@example.test",
+      "commit",
+      "--quiet",
+      "-m",
+      "fixture",
+    );
+    const upstreamCommit = git(upstreamRoot, "rev-parse", "HEAD");
+
+    git(root, "init", "--quiet");
+    git(root, "add", ".gitmodules");
+    git(
+      root,
+      "update-index",
+      "--add",
+      "--cacheinfo",
+      `160000,${upstreamCommit},plugins/vendor/upstream`,
+    );
+    fs.rmSync(path.join(upstreamRoot, ".git"), {
+      recursive: true,
+      force: true,
+    });
+
+    const sourcePopulated = audit.scanTestRealness({
+      repoRoot: root,
+      requireVerifiedSubmodules: true,
+    });
+    expect(
+      sourcePopulated.files.map((file: string) => path.relative(root, file)),
+    ).toEqual([path.join("packages", "sample", "plain.test.ts")]);
+    expect(sourcePopulated.summary.byCategory.todoTest).toBe(0);
+
+    write(
+      root,
+      "plugins/vendor/upstream/.git",
+      "gitdir: ../../../../.git/modules/plugins/vendor/upstream\n",
+    );
+
+    const initialized = audit.scanTestRealness({
+      repoRoot: root,
+      requireVerifiedSubmodules: true,
+    });
+    expect(
+      initialized.files.map((file: string) => path.relative(root, file)),
+    ).toEqual([path.join("packages", "sample", "plain.test.ts")]);
+    expect(initialized.summary.byCategory.todoTest).toBe(0);
+  });
+
+  test("a declaration without an indexed gitlink cannot hide first-party tests", () => {
+    const root = makeRepo();
+    write(
+      root,
+      ".gitmodules",
+      [
+        '[submodule "vendor/upstream"]',
+        "  path = plugins/vendor/upstream",
+        "  url = https://example.test/upstream.git",
+      ].join("\n"),
+    );
+    write(
+      root,
+      "plugins/vendor/upstream/visible.test.ts",
+      `import { test } from 'vitest';\ntest${todoSuffix}('visible policy', () => {});\n`,
+    );
+    git(root, "init", "--quiet");
+    git(root, "add", ".gitmodules", "plugins/vendor/upstream/visible.test.ts");
+
+    const result = audit.scanTestRealness({
+      repoRoot: root,
+      requireVerifiedSubmodules: true,
+    });
+    expect(
+      result.files.map((file: string) => path.relative(root, file)),
+    ).toContain(path.join("plugins", "vendor", "upstream", "visible.test.ts"));
+    expect(result.summary.byCategory.todoTest).toBe(1);
+  });
+
+  test("an undeclared nested repository cannot hide first-party tests", () => {
+    const root = makeRepo();
+    write(
+      root,
+      "plugins/first-party/.git",
+      "gitdir: ../../../.git/modules/plugins/first-party\n",
+    );
+    write(
+      root,
+      "plugins/first-party/visible.test.ts",
+      `import { test } from 'vitest';\ntest${todoSuffix}('visible policy', () => {});\n`,
+    );
+    git(root, "init", "--quiet");
+
+    const result = audit.scanTestRealness({
+      repoRoot: root,
+      requireVerifiedSubmodules: true,
+    });
+    expect(
+      result.files.map((file: string) => path.relative(root, file)),
+    ).toEqual([path.join("plugins", "first-party", "visible.test.ts")]);
+    expect(result.summary.byCategory.todoTest).toBe(1);
   });
 
   test("report labels categories with their enforcement mode and deltas", () => {
@@ -280,18 +557,20 @@ describe("test-realness-audit", () => {
     const baselinePath = path.join(root, "empty-baseline.json");
     fs.writeFileSync(baselinePath, "");
 
-    const result = Bun.spawnSync([
+    const result = spawnSync(
       "node",
-      SCRIPT_PATH,
-      "--repo-root",
-      root,
-      "--baseline",
-      baselinePath,
-      "--print-baseline",
-    ]);
+      [
+        SCRIPT_PATH,
+        "--repo-root",
+        root,
+        "--baseline",
+        baselinePath,
+        "--print-baseline",
+      ],
+      { encoding: "utf8" },
+    );
 
-    expect(result.exitCode).toBe(0);
-    const stdout = new TextDecoder().decode(result.stdout);
-    expect(JSON.parse(stdout).thresholds.focusedOnly).toBe(0);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout).thresholds.focusedOnly).toBe(0);
   });
 });

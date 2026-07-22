@@ -54,18 +54,17 @@ describe("views-manager manifest", () => {
 		expect(views).toContain("list-views");
 	});
 
-	it("is the thin SpatialSurface wrapper around the single ViewManagerSpatialView", () => {
-		// The wrapper owns the live fetch and renders the one presentational
-		// spatial view inside a SpatialSurface — no hand-rolled rich-DOM chrome.
-		expect(viewSource).toContain("SpatialSurface");
+	it("keeps transport state thin and delegates rendering to ViewManagerSpatialView", () => {
+		// The shell owns SpatialSurface so plugin views share one host wrapper;
+		// this component owns only transport, navigation, and reload state.
+		expect(viewSource).not.toContain("<SpatialSurface");
 		expect(viewSource).toContain("ViewManagerSpatialView");
 		expect(viewSource).toContain("fetchViewEntries");
+		expect(viewSource).toContain("requestViewNavigation");
+		expect(viewSource).toContain("dispatchNavigateViewEvent");
 		// No hardcoded terminal-chrome colors leak back into the wrapper.
 		expect(viewSource).not.toContain("#7dd3fc");
 		expect(viewSource).not.toContain("#6c63ff");
 		expect(viewSource).not.toContain("rgba(");
 	});
 });
-/**
- * View manager manifest tests for exported view registrations and metadata.
- */

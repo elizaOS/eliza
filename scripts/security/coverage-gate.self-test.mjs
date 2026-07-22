@@ -2,12 +2,19 @@
 /** Verifies exact changed-path attribution and fail-closed missing-source handling. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const root = new URL("../..", import.meta.url).pathname;
 const awkScript = join(root, "scripts/security/coverage-gate.awk");
+const mergeScript = join(root, "packages/scripts/merge-lcov-reports.mjs");
 
 function writeLcov(dir, sourcePath, found = 2, hit = 2) {
   const file = join(dir, "lcov.info");
@@ -51,8 +58,29 @@ function writeLcovAs(dir, name, sourcePath, found, hit) {
   return file;
 }
 
-function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
+function writeLineLcovAs(dir, name, sourcePath, hitLines, found = 10) {
+  const file = join(dir, name);
+  const hitSet = new Set(hitLines);
+  const records = [`SF:${sourcePath}`];
+  for (let line = 1; line <= found; line++) {
+    records.push(`DA:${line},${hitSet.has(line) ? 1 : 0}`);
+  }
+  records.push(`LF:${found}`, `LH:${hitSet.size}`, "end_of_record", "");
+  writeFileSync(file, records.join("\n"));
+  return file;
+}
+
+function runGate({
+  changed,
+  lcov,
+  enforce = true,
+  threshold = 50,
+  excluded = "",
+}) {
   const changedArgument = changed
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", "\\n");
+  const excludedArgument = excluded
     .replaceAll("\\", "\\\\")
     .replaceAll("\n", "\\n");
   const lcovArgs = Array.isArray(lcov) ? lcov : [lcov];
@@ -63,6 +91,8 @@ function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
       `changed=${changedArgument}`,
       "-v",
       `threshold=${threshold}`,
+      "-v",
+      `excluded=${excludedArgument}`,
       "-f",
       awkScript,
       ...lcovArgs,
@@ -185,6 +215,97 @@ try {
         result.stdout,
         /BELOW: packages\/core\/src\/features\/documents\/service\.ts/,
       );
+    },
+  );
+  assertGate(
+    "union-merges complementary isolated Bun hits before comparing logical lanes",
+    () => {
+      const src = "packages/core/src/features/documents/service.ts";
+      const isolatedA = writeLineLcovAs(dir, "bun-a.lcov", src, [1, 2, 3]);
+      const isolatedB = writeLineLcovAs(dir, "bun-b.lcov", src, [4, 5, 6]);
+      const mergedBun = join(dir, "bun-merged.lcov");
+      const merge = spawnSync(
+        process.execPath,
+        [mergeScript, "--remove-inputs", mergedBun, isolatedA, isolatedB],
+        { cwd: root, encoding: "utf8" },
+      );
+
+      assert.equal(merge.status, 0, merge.stderr || merge.stdout);
+      assert.equal(existsSync(isolatedA), false);
+      assert.equal(existsSync(isolatedB), false);
+      assert.match(readFileSync(mergedBun, "utf8"), /LF:10\nLH:6\n/);
+
+      const incidentalVitest = writeLcovAs(
+        dir,
+        "vitest-incidental.lcov",
+        src,
+        10,
+        1,
+      );
+      const result = runGate({
+        changed: src,
+        lcov: [mergedBun, incidentalVitest],
+      });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.match(result.stdout, /60\.00%/);
+      assert.match(result.stdout, /coverage gate OK/);
+    },
+  );
+  assertGate(
+    "excluded changed file absent from LCOV passes with a visible EXCLUDED line (#16409)",
+    () => {
+      // eliza.ts cannot be instrumented; only foo.ts appears in LCOV.
+      const lcov = writeLcov(dir, "packages/demo/src/foo.ts");
+      const result = runGate({
+        changed:
+          "packages/demo/src/foo.ts\npackages/agent/src/runtime/eliza.ts",
+        lcov,
+        excluded: "packages/agent/src/runtime/eliza.ts",
+      });
+      assert.equal(result.status, 0, result.stdout);
+      assert.match(
+        result.stdout,
+        /EXCLUDED \(cannot appear in LCOV.*\): packages\/agent\/src\/runtime\/eliza\.ts/,
+      );
+      assert.doesNotMatch(result.stdout, /MISSING/);
+    },
+  );
+
+  assertGate(
+    "an excluded file that DOES appear in LCOV is gated normally (#16409 — the escape expires)",
+    () => {
+      // Collection got fixed: the file shows up at 25% — below the floor, so
+      // the manifest entry must NOT shield it.
+      const lcov = writeLcov(
+        dir,
+        "packages/agent/src/runtime/eliza.ts",
+        100,
+        25,
+      );
+      const result = runGate({
+        changed: "packages/agent/src/runtime/eliza.ts",
+        lcov,
+        excluded: "packages/agent/src/runtime/eliza.ts",
+      });
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(
+        result.stdout,
+        /BELOW: packages\/agent\/src\/runtime\/eliza\.ts/,
+      );
+    },
+  );
+
+  assertGate(
+    "a non-excluded absent file still hard-fails as MISSING (#16409 — no blanket fail-open)",
+    () => {
+      const lcov = writeLcov(dir, "packages/demo/src/foo.ts");
+      const result = runGate({
+        changed: "packages/demo/src/bar.ts",
+        lcov,
+        excluded: "packages/agent/src/runtime/eliza.ts",
+      });
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stdout, /MISSING: packages\/demo\/src\/bar\.ts/);
     },
   );
 } finally {

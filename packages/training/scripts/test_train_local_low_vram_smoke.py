@@ -1,17 +1,18 @@
 """CPU-only smoke tests for the `--low-vram-smoke` preset in train_local.py.
 
-The preset is a flag bundle. It must override the registry defaults to
-fit a 12 GB consumer GPU (seq_len 2048, batch 1, grad_accum 16, memory
-budget 11.5 GB, max_samples 1000, epochs 1) while still letting any
-explicit CLI flag the caller passed win.
+The preset is a flag bundle targeting a 12 GB consumer-GPU budget. It sets
+seq_len 2048, batch 1, grad_accum 16, memory budget 11.5 GB, max_samples 1000,
+and epochs 1 while still letting any explicit CLI flag win. These tests verify
+merge semantics; only a measured model run can establish hardware fit.
 
 These tests parse args via the same argparse layout as `train_local.main`
-and assert the merged values without touching torch/cuda/the data layer.
+and exercise its fail-closed corpus preflight without touching torch or CUDA.
 """
 
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -55,8 +56,7 @@ def _resolve(argv):
 
 def test_low_vram_smoke_overrides_registry_2b_defaults() -> None:
     """Registry 2B says seq_len=8192, batch=1, accum=16, budget=15.5GB. The
-    preset must tighten seq_len to 2048 and the budget to 11.5 so a 12 GB card
-    can run the path."""
+    preset must tighten seq_len to 2048 and target an 11.5 GB nominal budget."""
     args = _resolve(["--registry-key", "gemma4-e2b", "--low-vram-smoke"])
     assert args.max_seq_len == 2048
     assert args.batch_size == 1
@@ -136,6 +136,36 @@ def test_explicit_train_dtype_wins_when_supported() -> None:
 def test_unsupported_train_dtype_fails_loud() -> None:
     with pytest.raises(SystemExit, match="not implemented"):
         _resolve(["--registry-key", "gemma4-e2b", "--train-dtype", "fp16"])
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--batch-size", "0"),
+        ("--grad-accum", "0"),
+        ("--max-seq-len", "0"),
+        ("--epochs", "0"),
+        ("--lr", "0"),
+        ("--apollo-rank", "-1"),
+        ("--apollo-scale", "0"),
+        ("--apollo-update-proj-gap", "0"),
+        ("--memory-budget-gb", "0"),
+        ("--max-samples", "-1"),
+        ("--max-steps", "-1"),
+        ("--max-chars", "-1"),
+        ("--max-grad-norm", "-1"),
+        ("--lr", "nan"),
+        ("--epochs", "inf"),
+        ("--apollo-scale", "nan"),
+        ("--memory-budget-gb", "inf"),
+        ("--max-grad-norm", "nan"),
+    ],
+)
+def test_invalid_training_controls_fail_loud(flag: str, value: str) -> None:
+    args = _resolve([flag, value])
+
+    with pytest.raises(ValueError, match=flag):
+        train_local._validate_training_controls(args)
 
 
 def test_liger_arch_gate_allows_validated_gemma4() -> None:
@@ -220,6 +250,154 @@ def test_low_vram_smoke_flag_lives_on_train_local_parser() -> None:
     assert '"--low-vram-smoke"' in src
     assert "args.low_vram_smoke" in src
     assert "low-vram-smoke preset" in src
+
+
+def test_load_jsonl_rejects_malformed_rows(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text('{"messages": []}\nnot-json\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"corpus\.jsonl:2: invalid JSON"):
+        train_local.load_jsonl(corpus)
+
+
+def test_load_jsonl_rejects_non_object_rows(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text('["not", "a", "record"]\n', encoding="utf-8")
+
+    with pytest.raises(
+        ValueError, match=r"corpus\.jsonl:1: corpus row must be an object"
+    ):
+        train_local.load_jsonl(corpus)
+
+
+def test_preflight_rejects_mixed_compatible_and_incompatible_rows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    compatible = {
+        "messages": [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hello"},
+        ]
+    }
+    train_path = tmp_path / "train.jsonl"
+    val_path = tmp_path / "validation.jsonl"
+    train_path.write_text(
+        f"{json.dumps(compatible)}\n{{}}\n",
+        encoding="utf-8",
+    )
+    val_path.write_text(f"{json.dumps(compatible)}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_local.py",
+            "--train-file",
+            str(train_path),
+            "--val-file",
+            str(val_path),
+            "--preflight-only",
+        ],
+    )
+
+    assert train_local.main() == 1
+
+
+def test_preflight_rejects_invalid_apollo_rank(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    compatible = {
+        "messages": [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hello"},
+        ]
+    }
+    train_path = tmp_path / "train.jsonl"
+    val_path = tmp_path / "validation.jsonl"
+    train_path.write_text(f"{json.dumps(compatible)}\n", encoding="utf-8")
+    val_path.write_text(f"{json.dumps(compatible)}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_local.py",
+            "--train-file",
+            str(train_path),
+            "--val-file",
+            str(val_path),
+            "--apollo-rank",
+            "-1",
+            "--preflight-only",
+        ],
+    )
+
+    assert train_local.main() == 1
+
+
+def test_build_dataset_rejects_invalid_tool_arguments() -> None:
+    record = {
+        "messages": [
+            {"role": "user", "content": "Use the fictional tool."},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "not-json"},
+                    }
+                ],
+            },
+        ],
+        "tools": {
+            "lookup": {
+                "description": "Look up a fictional value.",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        },
+    }
+
+    class TemplateTokenizer:
+        def apply_chat_template(self, **kwargs):
+            return "rendered"
+
+    with pytest.raises(ValueError, match="train row 1 failed apply_chat_template"):
+        train_local.build_dataset([record], TemplateTokenizer(), split_name="train")
+
+
+def test_tool_map_is_converted_to_transformers_schema() -> None:
+    tools = {
+        "lookup_weather": {
+            "description": "Look up fictional weather.",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+            },
+        }
+    }
+
+    schemas = train_local._coerce_tools_for_template(tools)
+
+    assert schemas == [
+        {
+            "type": "function",
+            "function": {
+                "name": "lookup_weather",
+                "description": "Look up fictional weather.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"city": {"type": "string"}},
+                },
+            },
+        }
+    ]
+    json.dumps(schemas)
+
+
+def test_tool_map_rejects_incomplete_schema() -> None:
+    with pytest.raises(TypeError, match="parameters must be an object"):
+        train_local._coerce_tools_for_template(
+            {"lookup_weather": {"description": "missing parameters"}}
+        )
 
 
 @pytest.mark.parametrize(

@@ -1,16 +1,8 @@
 /**
- * @module plugin-app-control/actions/views-create
- *
- * create sub-mode of the VIEWS action.
- *
- * Multi-turn flow mirrors app-create.ts:
- *  1. First turn — search installed plugins for fuzzy matches against the
- *     user's intent. If matches exist, render a [CHOICE:...] block and
- *     persist a Task tagged "views-create-intent" keyed by roomId.
- *  2. Follow-up turn — user replies with `new` / `edit-N` / `cancel`.
- *  3. Create-new path — extract a kebab-case name, copy the min-plugin
- *     template, then dispatch a coding agent via START_CODING_TASK.
- *  4. Edit path — same dispatch, targeting the existing plugin's source dir.
+ * Implements the VIEWS action's multi-turn create and edit workflow.
+ * New GUI views start from a loadable plugin baseline; ambiguous matches are
+ * resolved in the originating room before a coding task edits, verifies,
+ * rebuilds, and reloads the selected local plugin.
  */
 
 import { promises as fs } from "node:fs";
@@ -31,7 +23,9 @@ import {
 	resolveScaffoldTemplateDir,
 	templateMissingGuidance,
 } from "./scaffold-env.js";
+import { buildVerifiedPluginTaskParameters } from "./verified-plugin-task.js";
 import type { ViewSummary } from "./views-client.js";
+import { seedGuiViewScaffold } from "./views-create-scaffold.js";
 import { writeViewHeroAsset } from "./views-hero.js";
 import { isRestrictedPlatform } from "./views-platform.js";
 import { locatePluginSourceDir } from "./views-plugin-source.js";
@@ -324,9 +318,7 @@ async function dispatchCodingAgent({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<DispatchResult> {
-	const createTaskName = findAsyncCodingDelegationActionName(
-		runtime.actions ?? [],
-	);
+	const createTaskName = findAsyncCodingDelegationActionName(runtime.actions);
 	const createTask = runtime.actions.find((a) => a.name === createTaskName);
 	if (!createTask) {
 		return {
@@ -337,37 +329,21 @@ async function dispatchCodingAgent({
 
 	const fakeMessage = {
 		entityId: runtime.agentId,
-		roomId: runtime.agentId,
+		// TASKS deliberately trusts the handler message, rather than model-writable
+		// metadata, as the authoritative chat origin for completion routing.
+		roomId: originRoomId,
 		agentId: runtime.agentId,
 		content: { text: prompt },
 	} as Memory;
 
 	const handlerOptions: HandlerOptions = {
-		parameters: {
+		parameters: buildVerifiedPluginTaskParameters({
 			task: prompt,
 			label,
-			approvalPreset: "permissive",
-			// Verify the scaffolded/edited plugin once the coding agent finishes.
-			// Without this validator the orchestrator never runs verification and
-			// VerificationRoomBridgeService (which filters on
-			// validator.service === "app-verification") never posts a verdict back
-			// to the room — the user would see "Started …" and then silence.
-			validator: {
-				service: "app-verification",
-				method: "verifyPlugin",
-				// pluginName is what VerificationRoomBridgeService reads to resolve the
-				// target name for the verdict it posts back (decodeEvent reads
-				// params.pluginName for verifyPlugin); omitting it drops the verdict.
-				params: { workdir, pluginName, profile: "full" },
-			},
-			onVerificationFail: "retry",
-			metadata: {
-				// Carried into session metadata via start-coding-task.ts so the
-				// verification-room-bridge can post the verdict back to the
-				// originating chat room.
-				originRoomId,
-			},
-		},
+			workdir,
+			pluginName,
+			originRoomId,
+		}),
 	};
 
 	const result = await spawnWithTrajectoryLink(
@@ -440,17 +416,24 @@ export function buildCreatePrompt(
 		`intent: ${intent}`,
 		`sourceDir: ${workdir}`,
 		"workspaceRule: work in sourceDir, not the task agent scratch directory",
+		"deploymentScope: local runtime plugin only; do not publish or register a Cloud app, request parent-agent Cloud commands, or wait for a CDN URL",
 		"referenceDocs: read SCAFFOLD.md for layout and conventions",
-		"viewRequirement: add a Plugin.views entry with a compiled view bundle so the view appears in the Eliza view registry",
+		"viewScaffold: sourceDir already contains a working Plugin.views declaration, React component, render test, and Vite browser-bundle build; extend that baseline instead of replacing or reinventing its contracts",
+		"viewRequirement: preserve the seeded Plugin.views entry and compiled dist/views/bundle.js output so the view appears in the Eliza view registry",
+		"proofMarker: preserve VIEW_SCAFFOLD_MARKER and keep VIEW_INTENT represented in the rendered experience so live verification can identify the created view",
 		'viewKindRule: set the views entry viewKind explicitly using the four-kind contract: "release" for a finished user-facing view (the default), "preview" for an early/experimental view, or "developer" for dev tooling such as logs, inspectors, debuggers, editors, or diagnostics; never "system" (reserved for built-ins)',
 		"iconAsset: a branded assets/hero.svg is already seeded and is served as the view hero — keep it (or replace it with a real image at assets/hero.<ext>); do not delete it",
 		"implementation: edit and add files needed for the intent",
-		"verificationCommands[3]:",
+		"setupCommand: bun install",
+		"verificationCommands[4]:",
 		"  bun run typecheck",
 		"  bun run lint",
 		"  bun run test",
+		"  bun run build",
+		"completionFiles: list every changed file as a nonempty relative path array; replace the example path with the actual paths",
+		"completionTests: replace the example passed count with the exact count printed by the test command",
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
-		`PLUGIN_CREATE_DONE {"pluginName":"${pluginName}","files":["src/index.ts"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
+		`PLUGIN_CREATE_DONE {"pluginName":"${pluginName}","files":["<changed-relative-path>"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok"}`,
 	].join("\n");
 }
 
@@ -466,14 +449,18 @@ function buildEditPrompt(
 		`viewLabel: ${view.label}`,
 		`intent: ${intent}`,
 		`sourceDir: ${workdir}`,
+		"deploymentScope: local runtime plugin only; do not publish or register a Cloud app, request parent-agent Cloud commands, or wait for a CDN URL",
 		"referenceDocs: read SCAFFOLD.md or AGENTS.md if present, otherwise README.md",
 		"implementation: minimal requested change; no unrelated refactors",
-		"verificationCommands[3]:",
+		"verificationCommands[4]:",
 		"  bun run typecheck",
 		"  bun run lint",
 		"  bun run test",
+		"  bun run build",
+		"completionFiles: list every changed file as a nonempty relative path array; replace the example path with the actual paths",
+		"completionTests: replace the example passed count with the exact count printed by the test command",
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
-		`PLUGIN_CREATE_DONE {"pluginName":"${view.pluginName}","files":[],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
+		`PLUGIN_CREATE_DONE {"pluginName":"${view.pluginName}","files":["<changed-relative-path>"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok"}`,
 	].join("\n");
 }
 
@@ -694,6 +681,12 @@ async function createNewViewPlugin({
 	await copyTemplate(templateSrc, workdir, {
 		[NAME_PLACEHOLDER]: name,
 		[DISPLAY_NAME_PLACEHOLDER]: displayName,
+	});
+	await seedGuiViewScaffold({
+		workdir,
+		viewId: name,
+		displayName,
+		intent,
 	});
 
 	// Seed a self-contained branded hero icon so the scaffolded view has an image

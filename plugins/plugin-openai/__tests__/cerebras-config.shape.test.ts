@@ -29,6 +29,8 @@ const ENV_KEYS = [
   "CEREBRAS_API_KEY",
   "CEREBRAS_BASE_URL",
   "CEREBRAS_MODEL",
+  "CEREBRAS_SMALL_MODEL",
+  "CEREBRAS_LARGE_MODEL",
   "EVOLINK_API_KEY",
   "EVOLINK_BASE_URL",
   "EVOLINK_MODEL",
@@ -152,12 +154,12 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
   });
 
-  it("uses CEREBRAS_MODEL as the OpenAI model fallback in Cerebras mode", () => {
+  it("keeps an explicit legacy CEREBRAS_MODEL authoritative across tiers", () => {
     const runtime = buildRuntime({
       ELIZA_PROVIDER: "cerebras",
       CEREBRAS_MODEL: "operator-cerebras-model",
       SMALL_MODEL: "stale-small",
-      LARGE_MODEL: "stale-large",
+      LARGE_MODEL: "shared-large",
       ACTION_PLANNER_MODEL: "stale-planner",
       RESPONSE_HANDLER_MODEL: "stale-response",
     });
@@ -165,6 +167,21 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getLargeModel(runtime)).toBe("operator-cerebras-model");
     expect(getResponseHandlerModel(runtime)).toBe("operator-cerebras-model");
     expect(getActionPlannerModel(runtime)).toBe("operator-cerebras-model");
+  });
+
+  it("supports independent Cerebras small and large model overrides", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_MODEL: "legacy-small",
+      CEREBRAS_SMALL_MODEL: "cerebras-small",
+      CEREBRAS_LARGE_MODEL: "cerebras-large",
+      SMALL_MODEL: "shared-small",
+      LARGE_MODEL: "shared-large",
+    });
+    expect(getSmallModel(runtime)).toBe("cerebras-small");
+    expect(getLargeModel(runtime)).toBe("cerebras-large");
+    expect(getResponseHandlerModel(runtime)).toBe("cerebras-small");
+    expect(getActionPlannerModel(runtime)).toBe("cerebras-small");
   });
 
   it("can route image descriptions to OpenAI while text uses Cerebras", () => {
@@ -244,7 +261,7 @@ describe("plugin-openai Cerebras config (pure)", () => {
     });
     expect(getBaseURL(runtime)).toBe("https://api.openai.com/v1");
     expect(getApiKey(runtime)).toBe("sk-openai-fake");
-    expect(getSmallModel(runtime)).toBe("gpt-5.4-mini");
+    expect(getSmallModel(runtime)).toBe("gpt-5.6-luna");
   });
 
   it("uses a deterministic local embedding fallback in Cerebras mode without an embedding endpoint", async () => {

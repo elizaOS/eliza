@@ -33,6 +33,25 @@ export const CacheKeys = {
     pattern: () => `apikey:*`,
   },
   /**
+   * Shared-runtime agent SCOPE resolution cache (COLDPATH-FIX-2026-07-21).
+   *
+   * Collapses the whole cold pre-inference gate for a shared-agent chat turn —
+   * API-key validation + user/org hydration + org-scoped agent lookup — into a
+   * SINGLE read, keyed by (16-char key-hash prefix, agentId). The individual
+   * entity caches (apiKey.validation, user.withOrg) are each warm-fast but on a
+   * FRESH browser session they are ALL cold, so the resolver pays 2 serial
+   * Hyperdrive waves (~1–4.4s measured). This entry lets the SECOND cold-session
+   * hit (or a composer-mount prewarm) skip both waves. Keyed on the same
+   * key-hash prefix the validation cache uses so a credential revoke that
+   * invalidates `apiKey.validation` reasons about the same identity; TTL is
+   * deliberately short (see CacheTTL.sharedAgentScope) so a stale membership
+   * self-heals fast, and the authoritative slow path still runs on a miss.
+   */
+  sharedAgentScope: {
+    resolve: (keyHashPrefix: string, agentId: string) =>
+      `shared-agent-scope:${keyHashPrefix}:${agentId}:v1`,
+  },
+  /**
    * Inference hot-path caches (#9899). The IAC entry collapses auth + org +
    * moderation into a single read for API-key dedicated-agent inference; the
    * org-balance entry is the Tier-2 optimistic-billing gate hint.
@@ -248,6 +267,30 @@ export const CacheTTL = {
     appMapping: 600, // 10 minutes - app-to-API-key mapping rarely changes
   },
   /**
+   * Shared-agent scope resolution (COLDPATH-FIX-2026-07-21). Short by design:
+   * this collapses an auth+org+agent membership decision, so it must react fast
+   * to a revoke/detach/agent-delete that did not issue an explicit invalidation.
+   * 30s keeps a fresh session's follow-up turns off the cold Hyperdrive path
+   * while bounding a lost-invalidation window well under the validation TTL. The
+   * authoritative slow path still runs on every miss, so this only ever REMOVES
+   * latency, never changes an authorization outcome beyond a 30s staleness edge.
+   */
+  sharedAgentScope: {
+    resolve: 30,
+    /**
+     * SLIDING-TTL CAP (COLDPATH-FIX-2026-07-22): a validated scope-cache hit
+     * refreshes the entry's TTL back to `resolve` so an ACTIVE conversation
+     * whose turns are spaced by human think-time (demo Q&A pacing routinely
+     * exceeds the 30s absolute TTL) stays warm and never re-pays the cold
+     * Hyperdrive waves. To keep the agent-row self-heal bounded (a hit only
+     * re-validates the CREDENTIAL, not the cached agent row), the sliding
+     * refresh is capped: an entry is never refreshed past `resolveMaxAgeMs`
+     * after its FIRST write, so a tier flip / row change self-heals within the
+     * cap even under a continuously active conversation.
+     */
+    resolveMaxAgeMs: 5 * 60 * 1000,
+  },
+  /**
    * Inference hot-path TTLs (#9899). The IAC entry caches a fully-authorized
    * auth+moderation decision. Its PRIMARY freshness mechanism is explicit
    * confirmed-delete invalidation on every credential mutation — revoke/update
@@ -328,7 +371,10 @@ export const CacheTTL = {
     list: 180, // 3 minutes - discovery results
   },
   models: {
-    catalog: 3600, // 1 hour - upstream model catalogs change infrequently
+    // Physical retention is deliberately much longer than freshness. A stale
+    // catalog remains usable routing evidence during a prolonged upstream
+    // outage; CacheStaleTTL still starts revalidation after 15 minutes.
+    catalog: 7 * 24 * 60 * 60,
   },
   /**
    * Code Agent cache TTLs

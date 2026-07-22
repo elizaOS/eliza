@@ -3,26 +3,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-	formatAppCandidates,
-	formatRunCandidates,
-	resolveInstalledApp,
-	resolveRunByName,
-} from "./resolve.js";
-import type { AppRunSummary, InstalledAppInfo } from "./types.js";
+import { formatAppCandidates, resolveInstalledApp } from "./resolve.js";
+import type { InstalledAppInfo } from "./types.js";
 
 const app = (over: Partial<InstalledAppInfo>): InstalledAppInfo =>
 	({ name: "", displayName: "", pluginName: "", ...over }) as InstalledAppInfo;
-
-const run = (over: Partial<AppRunSummary>): AppRunSummary =>
-	({
-		appName: "",
-		displayName: "",
-		pluginName: "",
-		runId: "",
-		status: "running",
-		...over,
-	}) as AppRunSummary;
 
 const calc = app({
 	name: "calc",
@@ -74,28 +59,9 @@ describe("resolveInstalledApp", () => {
 	});
 });
 
-describe("resolveRunByName", () => {
-	it("matches on runId as well as the name fields", () => {
-		const r1 = run({
-			appName: "calc",
-			displayName: "Calculator",
-			runId: "r-123",
-		});
-		const r2 = run({ appName: "notes", displayName: "Notes", runId: "r-456" });
-		expect(resolveRunByName("r-123", [r1, r2]).match).toBe(r1);
-		expect(resolveRunByName("notes", [r1, r2]).match).toBe(r2);
-		expect(resolveRunByName("nope", [r1, r2]).kind).toBe("none");
-	});
-});
-
 describe("candidate formatting", () => {
-	it("formats app and run candidate lists", () => {
+	it("formats the app candidate list", () => {
 		expect(formatAppCandidates([calc])).toBe("- Calculator (calc)");
-		expect(
-			formatRunCandidates([
-				run({ displayName: "Calculator", runId: "r-1", status: "running" }),
-			]),
-		).toBe("- Calculator [runId: r-1, status: running]");
 	});
 });
 /**

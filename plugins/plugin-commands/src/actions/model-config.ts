@@ -260,17 +260,184 @@ type EffectiveValue = {
 
 interface ModelConfigShowResponse {
 	targets?: Record<string, Record<string, EffectiveValue>>;
+	activeChat?: ActiveChatInfo;
 	error?: string;
 }
-
-const SHOW_TARGET_ORDER = ["small", "large", "coding"] as const;
 
 /**
  * GET the effective model config and format it as one reply: every key the
  * config route owns, with the source that won (config.env / config.env.vars /
  * process.env / default) or `unset`.
  */
-export async function runModelConfigShowViaRoute(): Promise<CommandResult> {
+/** Where a value came from, in operator words instead of seam names. */
+function sourceLabel(source: string): string {
+	if (source === "config.env" || source === "config.env.vars") {
+		return "app config";
+	}
+	if (source === "process.env") return "environment";
+	return source;
+}
+
+type ShowTargets = NonNullable<ModelConfigShowResponse["targets"]>;
+type Effective = { value: string; source: string } | null | undefined;
+
+/** Live serving endpoints, so the show names what ACTUALLY answers. */
+export interface ActiveChatEndpoints {
+	/** Host serving the OPENAI_* family (e.g. api.cerebras.ai). */
+	openai?: string;
+	/** Host serving the ANTHROPIC_* family. */
+	anthropic?: string;
+}
+
+/**
+ * The route's report of which chat provider actually serves inference —
+ * resolved server-side from the serviceRouting topology, so the show can
+ * name the true brain (e.g. elizacloud) even while OPENAI_BASE_URL stays
+ * pinned in the environment but inert under cloud-proxy routing.
+ */
+export interface ActiveChatInfo {
+	provider: string;
+	family: "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
+	endpoint: string;
+}
+
+type ChatFamily = "openai" | "anthropic" | "elizacloud";
+
+const FAMILY_ORDER: ChatFamily[] = ["openai", "anthropic", "elizacloud"];
+
+function familyOf(routeFamily: ActiveChatInfo["family"]): ChatFamily {
+	if (routeFamily === "ELIZAOS_CLOUD") return "elizacloud";
+	return routeFamily === "ANTHROPIC" ? "anthropic" : "openai";
+}
+
+function modelKeyFor(family: ChatFamily, target: "SMALL" | "LARGE"): string {
+	if (family === "elizacloud") return `ELIZAOS_CLOUD_${target}_MODEL`;
+	return family === "anthropic"
+		? `ANTHROPIC_${target}_MODEL`
+		: `OPENAI_${target}_MODEL`;
+}
+
+function effortKeyFor(family: ChatFamily, target: "SMALL" | "LARGE"): string {
+	if (family === "elizacloud") return "ELIZAOS_CLOUD_REASONING_EFFORT";
+	return family === "anthropic"
+		? `ANTHROPIC_EFFORT_${target}`
+		: "OPENAI_REASONING_EFFORT";
+}
+
+function chatLine(
+	label: string,
+	keys: Record<string, Effective> | undefined,
+	target: "SMALL" | "LARGE",
+	activeChat?: ActiveChatInfo,
+	endpoints?: ActiveChatEndpoints,
+): string | null {
+	if (!keys) return null;
+	// The active family is checked first so a stale pin from a previously
+	// active provider can never shadow what actually serves; the effort must
+	// come from the SAME family as the model it annotates.
+	const activeFamily = activeChat ? familyOf(activeChat.family) : undefined;
+	const families = activeFamily
+		? [activeFamily, ...FAMILY_ORDER.filter((f) => f !== activeFamily)]
+		: FAMILY_ORDER;
+	let model: { value: string; source: string } | undefined;
+	let family: ChatFamily | undefined;
+	for (const f of families) {
+		const v = keys[modelKeyFor(f, target)];
+		if (v) {
+			model = v;
+			family = f;
+			break;
+		}
+	}
+	if (!model || !family) return `${label}: not set`;
+	const effort = keys[effortKeyFor(family, target)];
+	const effortPart = effort ? ` — effort ${effort.value}` : "";
+	const host =
+		family === activeFamily
+			? activeChat?.endpoint
+			: family === "elizacloud"
+				? undefined
+				: endpoints?.[family];
+	const viaPart = host ? `, via ${host}` : "";
+	return `${label}: ${model.value}${effortPart} (${sourceLabel(model.source)}${viaPart})`;
+}
+
+/**
+ * Render the raw per-key config the route reports as an operator-readable
+ * summary. The env keys (ELIZA_CODEX_MODEL_POWERFUL, …) are persistence
+ * details — dumping them read as "wtf is model powerful"; the operator wants
+ * model + effort + where it came from, per slot.
+ */
+export function renderModelConfigShow(
+	targets: ShowTargets,
+	endpoints?: ActiveChatEndpoints,
+	activeChat?: ActiveChatInfo,
+): string {
+	const lines = ["Model configuration:"];
+	const small = chatLine(
+		"small",
+		targets.small,
+		"SMALL",
+		activeChat,
+		endpoints,
+	);
+	const large = chatLine(
+		"large",
+		targets.large,
+		"LARGE",
+		activeChat,
+		endpoints,
+	);
+	if (small) lines.push(small);
+	if (large) lines.push(large);
+
+	const coding = targets.coding;
+	if (coding) {
+		const def = coding.ELIZA_DEFAULT_AGENT_TYPE;
+		lines.push(
+			def
+				? `coding — default backend: ${displayCodingBackend(def.value)} (${sourceLabel(def.source)})`
+				: "coding — default backend: not set (the orchestrator picks per task)",
+		);
+		const backends: Array<{
+			label: string;
+			modelKey: string;
+			effortKey?: string;
+		}> = [
+			{
+				label: "codex",
+				modelKey: "ELIZA_CODEX_MODEL_POWERFUL",
+				effortKey: "ELIZA_CODEX_EFFORT",
+			},
+			{
+				label: "claude",
+				modelKey: "ELIZA_CLAUDE_MODEL_POWERFUL",
+				effortKey: "ELIZA_CLAUDE_EFFORT",
+			},
+			{ label: "opencode", modelKey: "ELIZA_OPENCODE_MODEL_POWERFUL" },
+			{ label: "eliza", modelKey: "ELIZA_ELIZAOS_MODEL_POWERFUL" },
+		];
+		for (const b of backends) {
+			const model = coding[b.modelKey];
+			if (!model) {
+				if (b.label === "eliza") {
+					lines.push("  eliza: uses the runtime's own chat models");
+				}
+				continue;
+			}
+			const effort = b.effortKey ? coding[b.effortKey] : undefined;
+			const effortPart = effort ? ` @ ${effort.value}` : "";
+			lines.push(
+				`  ${b.label}: ${model.value}${effortPart} (${sourceLabel(model.source)})`,
+			);
+		}
+	}
+	return lines.join("\n");
+}
+
+export async function runModelConfigShowViaRoute(
+	endpoints?: ActiveChatEndpoints,
+): Promise<CommandResult> {
 	const port = resolveServerOnlyPort(process.env);
 	let response: Response;
 	try {
@@ -297,18 +464,7 @@ export async function runModelConfigShowViaRoute(): Promise<CommandResult> {
 		);
 	}
 
-	const lines = ["Model configuration:"];
-	for (const target of SHOW_TARGET_ORDER) {
-		const keys = parsed.targets[target];
-		if (!keys) continue;
-		lines.push(`**${target}**`);
-		for (const [key, effective] of Object.entries(keys)) {
-			lines.push(
-				effective
-					? `  ${key} = ${effective.value} (${effective.source})`
-					: `  ${key} unset`,
-			);
-		}
-	}
-	return reply(lines.join("\n"));
+	return reply(
+		renderModelConfigShow(parsed.targets, endpoints, parsed.activeChat),
+	);
 }

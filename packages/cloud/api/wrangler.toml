@@ -45,6 +45,19 @@ __filename = '"/worker.js"'
 [observability]
 enabled = true
 
+# Logs and traces are configured separately. Keep logs complete for production
+# diagnostics while sampling distributed traces to bound storage volume.
+[observability.logs]
+enabled = true
+head_sampling_rate = 1.0
+
+# Automatic Workers traces capture fetch, Hyperdrive/KV/R2 binding calls, and
+# handler spans; X-Eliza-Trace-Id separately correlates caller measurements and
+# application logs.
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.05
+
 # -----------------------------------------------------------------------------
 # Cron triggers — Cloudflare requires unique schedule strings. Multiple
 # handlers per schedule are fanned out by the dispatcher in `src/lib/cron.ts`
@@ -115,6 +128,9 @@ NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+# Internal Worker-to-agent calls must target the control-plane origin directly;
+# same-zone fetches to a UUID host bypass its Worker route and hit wildcard DNS.
+AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
@@ -247,6 +263,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   ATLASCLOUD_BASE_URL                Optional AtlasCloud API base URL override
 #   BIRDEYE_API_KEY                    Birdeye defi/price proxy key
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
+#   VOICE_STT_MAX_MULTIPART_BYTES      Optional STT multipart body cap in bytes
+#                                      (default 25 MiB, invalid values fail closed)
 #   HF_TOKEN                           HuggingFace token for the /api/v1/hf-proxy/* route
 #       (gated eliza-1 bundle downloads; clients never hold an HF key)
 #   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)
@@ -418,6 +436,16 @@ INFERENCE_PASSTHROUGH_STREAMING = "true"
 # the upstream JSON untouched; usage parses from the same buffer and bills
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+
+# Realtime voice is enabled on staging (proven live E2E 2026-07-22, EOT->first-audio
+# median ~1446ms). The live staging worker already runs true; this keeps the toml in
+# sync so a redeploy from develop does not silently flip realtime OFF. Production
+# remains explicitly off (flag flip there is a separate, gated decision).
+VOICE_REALTIME_WS_ENABLED = "true"
+VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
+VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai"
+VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
+
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob-staging.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -594,6 +622,9 @@ INFERENCE_PASSTHROUGH_STREAMING = "true"
 # the upstream JSON untouched; usage parses from the same buffer and bills
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+# Realtime voice is a staging-only soak. Keep the production posture explicit
+# so a missing variable or inherited default cannot accidentally expose it.
+VOICE_REALTIME_WS_ENABLED = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -635,3 +666,5 @@ simple = { limit = 600, period = 60 }
 name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615322"
 simple = { limit = 200, period = 60 }
+
+# deploy-kick 2026-07-22T19:02Z: re-trigger push-event Cloud CF Deploy after GH queue wedge (runs 29918527708/29940486657/29946551580 all starved). [sol-orch]

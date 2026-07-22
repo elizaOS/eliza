@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=70.0"]
+requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,3 +11,7 @@ requires-python = ">=3.11"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["eliza_adapter*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["../..", "../mmau-audio", "../experience", "../webshop"]

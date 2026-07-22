@@ -45,9 +45,9 @@
     }
   },
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.json",
-    "dev": "tsc --watch",
-    "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
+    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.json",
+    "dev": "tsc6 --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
@@ -79,13 +79,14 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.5",
     "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
     "bun-types": "^1.3.8",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "publishConfig": {
@@ -100,9 +101,10 @@
   },
   "dependencies": {
     "@elizaos/shared": "workspace:*",
+    "@smithers-orchestrator/engine": "0.29.0",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.21.1",
     "quickjs-emscripten": "0.32.0",
-    "smithers-orchestrator": "0.26.1"
+    "smithers-orchestrator": "0.28.0"
   }
 }

@@ -32,6 +32,16 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
+  bindGatewayHandoffTelemetry,
+  type GatewayHandoffTelemetry,
+  type GatewayPreforwardTiming,
+  invokeAtGatewayHandoff,
+  resolveElizaTraceId,
+  snapshotGatewayPreforwardTiming,
+  withGatewayPreforwardTelemetry,
+  withInferenceAuthTelemetry,
+} from "@/lib/observability/http-telemetry";
+import {
   calculateCost,
   estimateTokens,
   getProviderFromModel,
@@ -79,7 +89,10 @@ import {
   type CreditReservation,
   creditsService,
 } from "@/lib/services/credits";
-import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
+import {
+  type InferenceAuthTelemetry,
+  resolveInferenceAuthContext,
+} from "@/lib/services/inference-auth-context";
 import {
   createDeferredAdmissionSettler,
   type DeferredAdmissionOutcome,
@@ -1144,17 +1157,15 @@ function shouldUsePooledNoopReservation(params: {
 
 interface ChatCompletionsHandlerOptions {
   skipOrgRateLimit?: boolean;
+  /** Stable application trace id supplied by the outer Worker middleware. */
+  traceId?: string;
   /**
-   * Cloudflare ExecutionContext. When present, the post-response billing /
-   * settlement chain (billUsage → settleReservation → reconcileCredits →
-   * recordUsageAnalytics → audit) is deferred via `waitUntil` so it never
-   * blocks the model response. The OpenAI response `usage` is built directly
-   * from the model's reported tokens (the same numbers billUsage derives), so
-   * the client sees identical output and billing amounts are unchanged — only
-   * the *timing* of the reconciliation writes moves off the hot path. This
-   * removes ~0.7–1.1s of serial DB writes from every model call; a dedicated
-   * agent makes ~10 calls/turn, so it is several seconds saved per turn.
-   * Falls back to inline `await` when absent (tests / non-Worker callers).
+   * Cloudflare ExecutionContext. When present, positive inference-auth cache
+   * population and the post-response billing/settlement chain are registered
+   * with `waitUntil`; neither optimization write blocks the model response.
+   * The writes still begin immediately and their promises remain observable to
+   * the Worker runtime. Callers without an execution context preserve inline
+   * awaiting, which keeps non-Worker and test behavior deterministic.
    */
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
@@ -1164,6 +1175,18 @@ export async function handleChatCompletionsPOST(
   options: ChatCompletionsHandlerOptions = {},
 ) {
   const startTime = Date.now();
+  const telemetryStartedAt = performance.now();
+  const traceId = options.traceId ?? resolveElizaTraceId(req.headers);
+  let preforwardTiming: GatewayPreforwardTiming | undefined;
+  let authTelemetry: InferenceAuthTelemetry | undefined;
+  const attachPreforwardTelemetry = (response: Response): Response => {
+    const withAuth = authTelemetry
+      ? withInferenceAuthTelemetry(response, traceId, authTelemetry)
+      : response;
+    return preforwardTiming
+      ? withGatewayPreforwardTelemetry(withAuth, traceId, preforwardTiming)
+      : withAuth;
+  };
   // #11588: the billing requestId feeds the affiliate-earnings dedupe sourceId
   // (getAffiliateEarningsSourceId → `ai_billing:<op>:<requestId>`, deduped on
   // addEarnings) while the org charge is unconditional. It MUST NOT be
@@ -1187,25 +1210,33 @@ export async function handleChatCompletionsPOST(
   try {
     // 1. Authenticate (+ moderation). #9899: API-key dedicated-agent requests
     // resolve auth + org + moderation in a SINGLE cache read when the cache is
-    // available. Non-API-key / cache-unavailable requests take the authoritative
-    // slow path verbatim.
+    // available. API-key cache failures are resolved from the database;
+    // non-API-key credentials take the general auth path.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let moderationAlreadyChecked = false;
 
-    const resolution = await resolveInferenceAuthContext(req);
+    const resolution = await resolveInferenceAuthContext(req, {
+      traceId,
+      executionCtx: options.executionCtx,
+      onTelemetry: (telemetry) => {
+        authTelemetry = telemetry;
+      },
+    });
     if (resolution.kind === "suspended") {
-      return addCorsHeaders(
-        Response.json(
-          {
-            error: {
-              message:
-                "Your account has been suspended due to policy violations.",
-              type: "account_suspended",
-              code: "moderation_violation",
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message:
+                  "Your account has been suspended due to policy violations.",
+                type: "account_suspended",
+                code: "moderation_violation",
+              },
             },
-          },
-          { status: 403 },
+            { status: 403 },
+          ),
         ),
       );
     }
@@ -1228,7 +1259,7 @@ export async function handleChatCompletionsPOST(
     // pre-forward work, not the model. These marks split it (auth vs the
     // rate-limit/app/catalog/moderation reads vs the reserve write) so the next
     // fix targets the real cross-region-Railway hotspot instead of guessing.
-    const tAuth = Date.now();
+    const tAuth = performance.now();
 
     // 1b. Per-org tier rate limit. Start it beside body parsing: rate-limit
     // still wins over malformed bodies, matching the pre-existing gate order.
@@ -1264,16 +1295,18 @@ export async function handleChatCompletionsPOST(
       !Array.isArray(request.messages) ||
       !request.messages.length
     ) {
-      return addCorsHeaders(
-        Response.json(
-          {
-            error: {
-              message: "Missing required fields: model and messages",
-              type: "invalid_request_error",
-              code: "missing_required_parameter",
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: "Missing required fields: model and messages",
+                type: "invalid_request_error",
+                code: "missing_required_parameter",
+              },
             },
-          },
-          { status: 400 },
+            { status: 400 },
+          ),
         ),
       );
     }
@@ -1477,7 +1510,7 @@ export async function handleChatCompletionsPOST(
       effectiveMaxTokens ?? request.max_tokens ?? 500;
     const affiliateCode = req.headers.get("X-Affiliate-Code");
 
-    const tBeforeReserve = Date.now();
+    const tBeforeReserve = performance.now();
     let reservation: CreditReservation | null = null;
     // #9899 Tier-2: set when the optimistic off-path billing branch is taken;
     // replaces the reservation settler with a deferred actual-cost debit.
@@ -1799,7 +1832,7 @@ export async function handleChatCompletionsPOST(
       }
       settleReservation = createCreditReservationSettler(reservation);
     }
-    const tAfterReserve = Date.now();
+    const tAfterReserve = performance.now();
 
     // 7. Convert messages for AI SDK
     const systemMessage = request.messages.find((m) => m.role === "system");
@@ -1812,6 +1845,7 @@ export async function handleChatCompletionsPOST(
     const modelMessages = convertToModelMessagesFromOpenAI(nonSystemMessages);
 
     logger.info("[Chat Completions] Request", {
+      traceId,
       model,
       messageCount: request.messages.length,
       streaming: request.stream,
@@ -1819,19 +1853,35 @@ export async function handleChatCompletionsPOST(
       webSearchEnabled: webSearchActive,
     });
 
-    // Pre-forward latency breakdown (#9899). authMs = auth+org DB lookup;
-    // midReadsMs = rate-limit + app + reasoning-catalog + moderation (these run
-    // serially and are independent → the parallelization candidate); reserveMs =
-    // the credit-reservation DB write; totalMs = everything before the model
-    // call. Compare against cerebras-direct ~0.24s to see how much of TTFT is us.
-    logger.info("[Chat Completions][preforward]", {
-      model,
-      authMs: tAuth - startTime,
-      midReadsMs: tBeforeReserve - tAuth,
-      reserveMs: tAfterReserve - tBeforeReserve,
-      totalMs: Date.now() - startTime,
-      stream: request.stream === true,
-    });
+    // The boundary is the direct upstream fetch or outer AI SDK invocation.
+    // SDK-internal prompt conversion and model dispatch happen afterward and
+    // are intentionally outside this gateway-preforward measurement.
+    let gatewayHandoffAt: number | undefined;
+    const gatewayHandoffTelemetry: GatewayHandoffTelemetry = {
+      capture: () => {
+        gatewayHandoffAt ??= performance.now();
+      },
+      emit: () => {
+        if (gatewayHandoffAt === undefined || preforwardTiming) return;
+        preforwardTiming = snapshotGatewayPreforwardTiming({
+          authMs: tAuth - telemetryStartedAt,
+          middleMs: tBeforeReserve - tAuth,
+          reserveMs: tAfterReserve - tBeforeReserve,
+          setupMs: gatewayHandoffAt - tAfterReserve,
+          totalMs: gatewayHandoffAt - telemetryStartedAt,
+        });
+        logger.info("[Chat Completions][preforward]", {
+          traceId,
+          model,
+          authMs: preforwardTiming.authMs,
+          midReadsMs: preforwardTiming.middleMs,
+          reserveMs: preforwardTiming.reserveMs,
+          setupMs: preforwardTiming.setupMs,
+          totalMs: preforwardTiming.totalMs,
+          stream: request.stream === true,
+        });
+      },
+    };
 
     // 8. Handle streaming vs non-streaming
     const preforwardResponse = request.stream
@@ -1858,6 +1908,7 @@ export async function handleChatCompletionsPOST(
           pooledCredential,
           useMonetizedAppBilling,
           options.executionCtx,
+          gatewayHandoffTelemetry,
         )
       : await handleNonStreamingRequest(
           model,
@@ -1881,21 +1932,17 @@ export async function handleChatCompletionsPOST(
           pooledCredential,
           useMonetizedAppBilling,
           options.executionCtx,
+          gatewayHandoffTelemetry,
         );
-    // Emit per-step pre-forward timing as a readable header (#9899). Debug-only
-    // numbers, no behavior change. totalMs = everything before the model
-    // forward; compare vs cerebras-direct ~0.24s to see how much of TTFT is us.
-    try {
-      preforwardResponse.headers.set(
-        "X-Eliza-Preforward-Ms",
-        `total=${Date.now() - startTime};auth=${tAuth - startTime};mid=${tBeforeReserve - tAuth};reserve=${tAfterReserve - tBeforeReserve}`,
+    if (!preforwardTiming) {
+      throw new Error(
+        "[Chat Completions] gateway handoff timing was not captured",
       );
-    } catch {
-      // error-policy:J6 debug-only header; immutable Response headers must not
-      // fail an otherwise valid provider response.
-      // Some Response shapes have immutable headers — never fail a request for a debug header.
     }
-    return preforwardResponse;
+    // Re-wrap instead of mutating a fetch Response, whose headers can be
+    // immutable. The body passes through unchanged, so streaming stays
+    // zero-buffered.
+    return attachPreforwardTelemetry(preforwardResponse);
   } catch (error) {
     await settleReservation?.(0);
     const rawMessage = redactPromptCacheKey(
@@ -1903,6 +1950,7 @@ export async function handleChatCompletionsPOST(
       promptCacheKeyForRedaction,
     );
     logger.error("[Chat Completions] Error", {
+      traceId,
       error: rawMessage,
       cause:
         error instanceof Error && error.cause
@@ -1918,16 +1966,18 @@ export async function handleChatCompletionsPOST(
     // To the caller the deterministic truth is that this deployment cannot
     // serve the requested model.
     if (isProviderConfigurationError(error)) {
-      return addCorsHeaders(
-        Response.json(
-          {
-            error: {
-              message: modelNotAvailableMessage(model),
-              type: "invalid_request_error",
-              code: "model_not_available",
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: modelNotAvailableMessage(model),
+                type: "invalid_request_error",
+                code: "model_not_available",
+              },
             },
-          },
-          { status: 400 },
+            { status: 400 },
+          ),
         ),
       );
     }
@@ -1946,15 +1996,17 @@ export async function handleChatCompletionsPOST(
       : (getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error));
     const errorType = openAiErrorTypeForStatus(status);
 
-    return addCorsHeaders(
-      Response.json(
-        {
-          error: {
-            message: errorMessage,
-            type: errorType,
+    return attachPreforwardTelemetry(
+      addCorsHeaders(
+        Response.json(
+          {
+            error: {
+              message: errorMessage,
+              type: errorType,
+            },
           },
-        },
-        { status },
+          { status },
+        ),
       ),
     );
   }
@@ -2262,6 +2314,7 @@ async function tryPassthroughStreamingRequest(params: {
   effectiveMaxTokens: number | undefined;
   billingSource: PricingBillingSource;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry;
 }): Promise<Response | null> {
   const { model, request, settleReservation } = params;
   if (!isPassthroughStreamingEnabled()) return null;
@@ -2326,16 +2379,20 @@ async function tryPassthroughStreamingRequest(params: {
   }
 
   let upstreamResponse: Response;
+  const upstreamInit: RequestInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${upstream.apiKey}`,
+    },
+    body: JSON.stringify(upstreamBody),
+    ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
+  };
   try {
-    upstreamResponse = await fetch(upstream.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${upstream.apiKey}`,
-      },
-      body: JSON.stringify(upstreamBody),
-      ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
-    });
+    upstreamResponse = await invokeAtGatewayHandoff(
+      params.gatewayHandoffTelemetry,
+      () => fetch(upstream.url, upstreamInit),
+    );
   } catch (error) {
     // Nothing was delivered — release the full hold, exactly like onError.
     await settleReservation(0);
@@ -2382,6 +2439,30 @@ async function tryPassthroughStreamingRequest(params: {
   }
 
   const [clientBranch, meterBranch] = upstreamResponse.body.tee();
+  const meterAbortController = new AbortController();
+  const clientReader = clientBranch.getReader();
+  const cancelAwareClientBranch = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await clientReader.read();
+        if (done) {
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        // error-policy:J1 translate upstream read failure to the client stream.
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      // A tee keeps the upstream alive until both branches stop. Explicitly
+      // stop the metering branch when the client disconnects so billing can
+      // settle the observed partial output inside Cloudflare's waitUntil window.
+      meterAbortController.abort(reason);
+      await clientReader.cancel(reason);
+    },
+  });
   const billingPrompt = buildChatPromptForBilling(request);
 
   // Meter + settle on the teed branch, OFF the response path when a Workers
@@ -2389,7 +2470,10 @@ async function tryPassthroughStreamingRequest(params: {
   // through); inline for tests / non-Worker callers — tee buffers the client
   // branch, so inline draining never deadlocks the response.
   await settleOffResponsePath(params.executionCtx, async () => {
-    const tail = await readPassthroughStreamTail(meterBranch);
+    const tail = await readPassthroughStreamTail(
+      meterBranch,
+      meterAbortController.signal,
+    );
     if (tail.usage) {
       // Success settle — the same chain, amounts, and record shapes as the SDK
       // path's onFinish, fed by the provider-reported usage frame.
@@ -2495,7 +2579,7 @@ async function tryPassthroughStreamingRequest(params: {
   });
 
   return addCorsHeaders(
-    new Response(clientBranch, {
+    new Response(cancelAwareClientBranch, {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream",
@@ -2538,6 +2622,7 @@ async function handleStreamingRequest(
   pooledCredential: PooledInferenceCredential | null,
   useMonetizedAppBilling: boolean,
   executionCtx?: { waitUntil(promise: Promise<unknown>): void },
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
 ) {
   // #15428 pass-through fast path: qualifying plain streamed chat against a
   // direct OpenAI-compatible upstream pipes the provider bytes straight
@@ -2569,6 +2654,7 @@ async function handleStreamingRequest(
       effectiveMaxTokens,
       billingSource,
       executionCtx,
+      gatewayHandoffTelemetry,
     });
     if (passthroughResponse) return passthroughResponse;
   }
@@ -2650,8 +2736,13 @@ async function handleStreamingRequest(
     request.reasoning_effort ?? undefined,
   );
 
-  const result = streamText({
-    model: getLanguageModel(model, pooledCredential ?? undefined),
+  const languageModel = getLanguageModel(model, pooledCredential ?? undefined);
+  const invokeStreamText = bindGatewayHandoffTelemetry(
+    gatewayHandoffTelemetry,
+    (options: Parameters<typeof streamText>[0]) => streamText(options),
+  );
+  const result = invokeStreamText({
+    model: languageModel,
     system: systemPrompt,
     messages,
     ...webSearchOptions,
@@ -3127,6 +3218,7 @@ async function handleNonStreamingRequest(
   pooledCredential: PooledInferenceCredential | null,
   useMonetizedAppBilling: boolean,
   executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
 ) {
   const provider = getProviderFromModel(model);
   const tools = convertTools(request.tools);
@@ -3161,8 +3253,16 @@ async function handleNonStreamingRequest(
   );
 
   try {
-    const result = await generateText({
-      model: getLanguageModel(model, pooledCredential ?? undefined),
+    const languageModel = getLanguageModel(
+      model,
+      pooledCredential ?? undefined,
+    );
+    const invokeGenerateText = bindGatewayHandoffTelemetry(
+      gatewayHandoffTelemetry,
+      (options: Parameters<typeof generateText>[0]) => generateText(options),
+    );
+    const result = await invokeGenerateText({
+      model: languageModel,
       system: systemPrompt,
       messages,
       ...webSearchOptions,
@@ -3365,6 +3465,7 @@ honoRouter.post(
     try {
       return await handleChatCompletionsPOST(c.req.raw, {
         executionCtx: c.executionCtx,
+        traceId: c.get("traceId"),
       });
     } catch (error) {
       // error-policy:J1 route boundary — every catch in v1/chat/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty completion). Credit reservations are released before rethrow on the streaming paths above.

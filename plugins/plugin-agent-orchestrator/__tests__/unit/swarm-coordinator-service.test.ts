@@ -19,6 +19,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../src/services/acp-service.ts";
 import {
+  extractStructuredCompletionProof,
   SWARM_COORDINATOR_SERVICE_TYPE,
   SwarmCoordinatorService,
   type SwarmEvent,
@@ -57,6 +58,7 @@ function makeAcpStub(session?: Record<string, unknown>) {
 function makeRuntime(services: Record<string, unknown>): IAgentRuntime {
   return {
     getService: vi.fn((key: string) => services[key] ?? null),
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 
@@ -285,6 +287,365 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
+  it("passes the coding agent's structured plugin proof to verification", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/plugin-view",
+      metadata: {
+        validator: {
+          service: "app-verification",
+          method: "verifyPlugin",
+          params: { pluginName: "proof-view" },
+        },
+      },
+    });
+    const verification = {
+      verifyPlugin: vi.fn(async () => ({ verdict: "pass", checks: [] })),
+    };
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({
+        [AcpService.serviceType]: acp,
+        "app-verification": verification,
+      }),
+    );
+    const response =
+      'PLUGIN_CREATE_DONE {"pluginName":"proof-view","files":["src/index.ts"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}';
+
+    acp.emit("sess-plugin-proof", "task_complete", { response });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(verification.verifyPlugin).toHaveBeenCalledWith({
+      pluginName: "proof-view",
+      workdir: "/tmp/plugin-view",
+      structuredProof: {
+        kind: "PLUGIN_CREATE_DONE",
+        pluginName: "proof-view",
+        files: ["src/index.ts"],
+        tests: { passed: 1, failed: 0 },
+        lint: "ok",
+        typecheck: "ok",
+      },
+    });
+    await coordinator.stop();
+  });
+
+  it("recovers structured proof from captured session output", async () => {
+    const response =
+      'PLUGIN_CREATE_DONE {"pluginName":"proof-view","files":["src/index.ts"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}';
+    const acp = {
+      ...makeAcpStub({
+        agentType: "codex",
+        workdir: "/tmp/plugin-view",
+        metadata: {
+          validator: {
+            service: "app-verification",
+            method: "verifyPlugin",
+            params: { pluginName: "proof-view" },
+          },
+        },
+      }),
+      getSessionOutput: vi.fn(
+        () => 'PLUGIN_CREATE_DONE {"pluginName":"stale-proof"}',
+      ),
+      getSessionTurnOutput: vi.fn(() => response),
+    };
+    const verification = {
+      verifyPlugin: vi.fn(async () => ({ verdict: "pass", checks: [] })),
+    };
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({
+        [AcpService.serviceType]: acp,
+        "app-verification": verification,
+      }),
+    );
+
+    acp.emit("sess-output-proof", "task_complete", {
+      response: "The plugin is ready.",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(acp.getSessionTurnOutput).toHaveBeenCalledWith(
+      "sess-output-proof",
+      2_000,
+    );
+    expect(acp.getSessionOutput).not.toHaveBeenCalled();
+    expect(verification.verifyPlugin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        structuredProof: expect.objectContaining({
+          kind: "PLUGIN_CREATE_DONE",
+          pluginName: "proof-view",
+        }),
+      }),
+    );
+    await coordinator.stop();
+  });
+
+  it("uses the final structured claim when a transport captures earlier echoes", () => {
+    const proof =
+      'PLUGIN_CREATE_DONE {"pluginName":"one"}\nPLUGIN_CREATE_DONE {"pluginName":"two"}';
+    expect(extractStructuredCompletionProof(proof)).toEqual({
+      kind: "PLUGIN_CREATE_DONE",
+      pluginName: "two",
+    });
+  });
+
+  it("collapses identical proof echoes from tool and final-response channels", () => {
+    const proof = 'PLUGIN_CREATE_DONE {"pluginName":"proof-view"}';
+    expect(extractStructuredCompletionProof(`${proof}\n${proof}`)).toEqual({
+      kind: "PLUGIN_CREATE_DONE",
+      pluginName: "proof-view",
+    });
+  });
+
+  it("recovers a final proof concatenated directly after a tool-output wrapper", () => {
+    const captured =
+      '[/tool output]PLUGIN_CREATE_DONE {"pluginName":"proof-view","tests":{"passed":6,"failed":0}}';
+    expect(extractStructuredCompletionProof(captured)).toEqual({
+      kind: "PLUGIN_CREATE_DONE",
+      pluginName: "proof-view",
+      tests: { passed: 6, failed: 0 },
+    });
+  });
+
+  it("ignores an escaped schema echo before a valid final proof", () => {
+    const captured = [
+      'PLUGIN_CREATE_DONE {\\"pluginName\\":\\"<package-name>\\"}',
+      '[/tool output]PLUGIN_CREATE_DONE {"pluginName":"proof-view"}',
+    ].join("\n");
+    expect(extractStructuredCompletionProof(captured)).toEqual({
+      kind: "PLUGIN_CREATE_DONE",
+      pluginName: "proof-view",
+    });
+  });
+
+  it("retries failed plugin verification with bounded structured feedback", async () => {
+    const acp = {
+      ...makeAcpStub({
+        agentType: "codex",
+        workdir: "/tmp/plugin-view",
+        metadata: {
+          initialTask: "build the plugin view",
+          onVerificationFail: "retry",
+          maxRetries: 2,
+          retryCount: 0,
+          validator: {
+            service: "app-verification",
+            method: "verifyPlugin",
+            params: { pluginName: "proof-view" },
+          },
+        },
+      }),
+      updateSessionMetadata: vi.fn(async () => {}),
+      sendPrompt: vi.fn(async () => ({ stopReason: "end_turn" })),
+    };
+    const verification = {
+      verifyPlugin: vi.fn(async () => ({
+        verdict: "fail",
+        checks: [{ kind: "test", passed: false }],
+      })),
+    };
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({
+        [AcpService.serviceType]: acp,
+        "app-verification": verification,
+      }),
+    );
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((event) => received.push(event));
+
+    acp.emit("sess-plugin-retry", "task_complete", {
+      response:
+        'PLUGIN_CREATE_DONE {"pluginName":"proof-view","files":["src/index.ts"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(acp.updateSessionMetadata).toHaveBeenCalledWith(
+      "sess-plugin-retry",
+      { retryCount: 1 },
+    );
+    expect(acp.sendPrompt).toHaveBeenCalledWith(
+      "sess-plugin-retry",
+      expect.stringContaining("Verification failed (retry 1/2)"),
+    );
+    expect(acp.sendPrompt.mock.calls[0]?.[1]).toContain('"kind": "test"');
+    expect(received).toHaveLength(0);
+    await coordinator.stop();
+  });
+
+  it.each([
+    {
+      failure: "PromptResult.error",
+      terminal: { stopReason: "end_turn", error: "retry agent crashed" },
+      reportedMessage: "retry agent crashed",
+    },
+    {
+      failure: "stopReason error",
+      terminal: { stopReason: "error" },
+      reportedMessage: "ACP verification retry ended with stopReason error",
+    },
+  ])(
+    "escalates and closes the session when a verification retry resolves with $failure",
+    async ({ terminal, reportedMessage }) => {
+      const acp = {
+        ...makeAcpStub({
+          agentType: "codex",
+          workdir: "/tmp/plugin-view",
+          metadata: {
+            onVerificationFail: "retry",
+            maxRetries: 2,
+            retryCount: 0,
+            validator: {
+              service: "app-verification",
+              method: "verifyPlugin",
+              params: { pluginName: "proof-view" },
+            },
+          },
+        }),
+        updateSessionMetadata: vi.fn(async () => {}),
+        sendPrompt: vi.fn(async () => ({
+          sessionId: "sess-plugin-retry-error",
+          response: "",
+          finalText: "",
+          durationMs: 5,
+          exitCode: 1,
+          ...terminal,
+        })),
+        stopSession: vi.fn(async () => {}),
+      };
+      const verification = {
+        verifyPlugin: vi.fn(async () => ({
+          verdict: "fail",
+          checks: [{ kind: "test", passed: false }],
+        })),
+      };
+      const runtime = makeRuntime({
+        [AcpService.serviceType]: acp,
+        "app-verification": verification,
+      });
+      const coordinator = await SwarmCoordinatorService.start(runtime);
+      const received: SwarmEvent[] = [];
+      coordinator.subscribe((event) => received.push(event));
+
+      acp.emit("sess-plugin-retry-error", "task_complete", {
+        response:
+          'PLUGIN_CREATE_DONE {"pluginName":"proof-view","files":["src/index.ts"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(acp.updateSessionMetadata).toHaveBeenCalledWith(
+        "sess-plugin-retry-error",
+        { retryCount: 1 },
+      );
+      expect(received).toHaveLength(1);
+      expect(received[0]).toMatchObject({
+        type: "escalation",
+        sessionId: "sess-plugin-retry-error",
+        data: {
+          summary: "App verification failed: test",
+          verification: { verdict: "fail" },
+        },
+      });
+      expect(runtime.reportError).toHaveBeenCalledWith(
+        "SwarmCoordinator.retryCustomValidator",
+        expect.objectContaining({
+          code: "ACP_VERIFICATION_RETRY_FAILED",
+          message: reportedMessage,
+        }),
+        {
+          sessionId: "sess-plugin-retry-error",
+          retry: 1,
+          maxRetries: 2,
+        },
+      );
+      expect(acp.stopSession).toHaveBeenCalledTimes(1);
+      expect(acp.stopSession).toHaveBeenCalledWith("sess-plugin-retry-error");
+      await coordinator.stop();
+    },
+  );
+
+  it("keeps the session alive through fail-retry-pass and stops after the final verdict", async () => {
+    const order: string[] = [];
+    const initialProof =
+      'PLUGIN_CREATE_DONE {"pluginName":"proof-view","files":["src/index.ts"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}';
+    const retriedProof =
+      'PLUGIN_CREATE_DONE {"pluginName":"proof-view","files":["src/index.ts","src/view.tsx"],"tests":{"passed":2,"failed":0},"lint":"ok","typecheck":"ok"}';
+    const session = {
+      agentType: "codex",
+      workdir: "/tmp/plugin-view",
+      metadata: {
+        onVerificationFail: "retry",
+        maxRetries: 2,
+        retryCount: 0,
+        validator: {
+          service: "app-verification",
+          method: "verifyPlugin",
+          params: { pluginName: "proof-view" },
+        },
+      },
+    };
+    const acp = {
+      ...makeAcpStub(session),
+      getSessionTurnOutput: vi.fn(async () => retriedProof),
+      updateSessionMetadata: vi.fn(async (_id: string, patch: object) => {
+        Object.assign(session.metadata, patch);
+      }),
+      sendPrompt: vi.fn(async () => {
+        order.push("retry-prompt");
+        acp.emit("sess-retry-pass", "task_complete", {
+          response: "Verification fixes are complete.",
+        });
+        return { stopReason: "end_turn" };
+      }),
+      stopSession: vi.fn(async () => {
+        order.push("stop");
+      }),
+    };
+    const verification = {
+      verifyPlugin: vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          order.push("verify-fail");
+          return {
+            verdict: "fail",
+            checks: [{ kind: "test", passed: false }],
+          };
+        })
+        .mockImplementationOnce(async () => {
+          order.push("verify-pass");
+          return { verdict: "pass", checks: [] };
+        }),
+    };
+    const coordinator = await SwarmCoordinatorService.start(
+      makeRuntime({
+        [AcpService.serviceType]: acp,
+        "app-verification": verification,
+      }),
+    );
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((event) => received.push(event));
+
+    acp.emit("sess-retry-pass", "task_complete", { response: initialProof });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(verification.verifyPlugin).toHaveBeenCalledTimes(2);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      type: "task_complete",
+      data: {
+        summary: "App verification passed.",
+        verification: { verdict: "pass" },
+      },
+    });
+    expect(order).toEqual([
+      "verify-fail",
+      "retry-prompt",
+      "verify-pass",
+      "stop",
+    ]);
+    expect(acp.stopSession).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
+  });
+
   it("fires swarm-complete synthesis after app-verification passes", async () => {
     const acp = makeAcpStub({
       agentType: "codex",
@@ -380,6 +741,71 @@ describe("SwarmCoordinatorService", () => {
     });
     await coordinator.stop();
   });
+
+  it.each([
+    { label: "missing", method: undefined, rendered: "undefined" },
+    {
+      label: "unsupported",
+      method: "destroyEverything",
+      rendered: "destroyEverything",
+    },
+  ])(
+    "terminally escalates and closes a $label validator method",
+    async ({ method, rendered }) => {
+      const acp = {
+        ...makeAcpStub({
+          agentType: "codex",
+          workdir: "/tmp/wd",
+          metadata: {
+            label: "build-site",
+            validator: {
+              service: "app-verification",
+              method,
+              params: { appName: "demo-app" },
+            },
+          },
+        }),
+        stopSession: vi.fn(async () => undefined),
+      };
+      const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+      const coordinator = await SwarmCoordinatorService.start(runtime);
+      const received: SwarmEvent[] = [];
+      coordinator.subscribe((event) => received.push(event));
+
+      acp.emit("sess-invalid-validator", "task_complete", {});
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(received).toHaveLength(1);
+      expect(received[0]).toMatchObject({
+        type: "escalation",
+        sessionId: "sess-invalid-validator",
+        data: {
+          summary: `Unsupported app-verification validator method: ${rendered}`,
+          verification: {
+            source: "custom-validator",
+            validator: {
+              service: "app-verification",
+              method: rendered,
+            },
+            verdict: "fail",
+          },
+        },
+      });
+      expect(runtime.reportError).toHaveBeenCalledWith(
+        "SwarmCoordinator.runCustomValidatorAndDispatch",
+        expect.objectContaining({
+          code: "APP_VERIFICATION_VALIDATOR_METHOD_INVALID",
+        }),
+        { sessionId: "sess-invalid-validator", suppliedMethod: rendered },
+      );
+      expect(acp.stopSession).toHaveBeenCalledOnce();
+      expect(acp.stopSession).toHaveBeenCalledWith("sess-invalid-validator");
+      expect(coordinator.tasks.get("sess-invalid-validator")).toMatchObject({
+        status: "escalation",
+      });
+      await coordinator.stop();
+    },
+  );
 
   it("invokes the agent-decision callback for blocking events", async () => {
     const acp = makeAcpStub({
@@ -1476,6 +1902,83 @@ describe("SwarmCoordinatorService", () => {
     // stopped — same tick, racing the metadata await.
     acp.emit("sess-race-router", "task_complete", { response: "deployed" });
     acp.emit("sess-race-router", "stopped", {});
+    await flushChains();
+
+    expect(fired).not.toHaveBeenCalled();
+    await coordinator.stop();
+  });
+
+  it("posts a bind-window completion exactly once even when the router binds before the cede decision runs", async () => {
+    // Race (#bind-retry window): AcpService fans events out synchronously and
+    // never replays, so a completion emitted while the router is still in its
+    // bind-retry loop is NEVER seen by the router. The cede decision runs
+    // behind metadata awaits — a live isActive() read there can observe the
+    // router binding in the interim and cede an event the router never
+    // received (zero user-facing posts). The receipt-time snapshot must keep
+    // synthesis as the poster: exactly one post.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const router = makeRouterStub(false); // still binding at emit time
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: router,
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-bind-window", "task_complete", { response: "deployed" });
+    // The router finishes binding immediately after the fan-out, before the
+    // coordinator's chained cede decision gets to run.
+    router.isActive.mockReturnValue(true);
+    await flushChains();
+
+    expect(fired).toHaveBeenCalledTimes(1);
+
+    // The one-shot runner's teardown `stopped` after the router bound must not
+    // produce a second user-facing post for the same session.
+    acp.emit("sess-bind-window", "stopped", {});
+    await flushChains();
+    expect(fired).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
+  });
+
+  it("still cedes a completion the router received even if the router reads inactive by decision time", async () => {
+    // Mirror-image race: the router WAS bound at emit (it received the event
+    // and will post). If it flips inactive during the coordinator's awaits
+    // (stop/rebind), a live read would synthesize a second copy of the same
+    // completion. The receipt-time snapshot keeps the cession.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const router = makeRouterStub(true); // bound at emit time
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: router,
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-unbind-race", "task_complete", { response: "deployed" });
+    router.isActive.mockReturnValue(false);
     await flushChains();
 
     expect(fired).not.toHaveBeenCalled();

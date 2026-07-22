@@ -176,9 +176,17 @@ describe("AppFrontendHosting (#10690)", () => {
     const publishCall = apiMock.mock.calls.find(
       ([, init]) => (init as { method?: string })?.method === "POST",
     );
-    expect(publishCall?.[0]).toBe(`/api/v1/apps/${APP_ID}/frontend`);
+    expect(publishCall).toBeDefined();
+    if (!publishCall) {
+      throw new Error("Expected the frontend publish API call");
+    }
+    expect(publishCall[0]).toBe(`/api/v1/apps/${APP_ID}/frontend`);
+    const publishInit = publishCall[1];
+    if (!publishInit) {
+      throw new Error("Expected frontend publish request options");
+    }
     const body = (
-      publishCall?.[1] as {
+      publishInit as {
         json: {
           files: Array<{ path: string; content: string; encoding: string }>;
           activate: boolean;
@@ -218,9 +226,17 @@ describe("AppFrontendHosting (#10690)", () => {
     const publishCall = apiMock.mock.calls.find(
       ([, init]) => (init as { method?: string })?.method === "POST",
     );
-    expect(
-      (publishCall?.[1] as { json: { activate: boolean } }).json.activate,
-    ).toBe(false);
+    expect(publishCall).toBeDefined();
+    if (!publishCall) {
+      throw new Error("Expected the inactive frontend publish API call");
+    }
+    const publishInit = publishCall[1];
+    if (!publishInit) {
+      throw new Error("Expected inactive frontend publish request options");
+    }
+    expect((publishInit as { json: { activate: boolean } }).json.activate).toBe(
+      false,
+    );
   });
 
   it("surfaces a server publish failure via toast and keeps the selection", async () => {

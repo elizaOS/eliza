@@ -168,7 +168,31 @@ def test_filter_paths_redacts_structured_coordinates(tmp_path: Path) -> None:
                 "trajectoryId": "traj-geo",
                 "coords": {"latitude": 37.7749, "longitude": -122.4194},
                 "location": [40.7128, -74.0060, {"label": "office"}],
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [-87.6298, 41.8781],
+                },
+                "route": {
+                    "type": "LineString",
+                    "coordinates": [[-71.0589, 42.3601], [-80.1918, 25.7617]],
+                },
+                "area": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [-79.3832, 43.6532],
+                            [-95.3698, 29.7604],
+                            [-79.3832, 43.6532],
+                        ]
+                    ],
+                },
                 "nested": {"lat": "34.0522", "lng": "-118.2437"},
+                "duplicate_aliases": {
+                    "lat": 47.6062,
+                    "LNG": -122.3321,
+                    "lng": -104.9903,
+                    "longitude": -77.0369,
+                },
             }
         )
         + "\n",
@@ -194,10 +218,55 @@ def test_filter_paths_redacts_structured_coordinates(tmp_path: Path) -> None:
     assert "-74.006" not in rendered
     assert "34.0522" not in rendered
     assert "-118.2437" not in rendered
-    assert rendered.count("[REDACTED_GEO]") >= 6
-    assert stats.redactions_by_label["structured-coordinates"] == 3
+    for coordinate in (
+        "-87.6298",
+        "41.8781",
+        "-71.0589",
+        "42.3601",
+        "-80.1918",
+        "25.7617",
+        "-79.3832",
+        "43.6532",
+        "-95.3698",
+        "29.7604",
+        "47.6062",
+        "-122.3321",
+        "-104.9903",
+        "-77.0369",
+    ):
+        assert coordinate not in rendered
+    assert rendered.count("[REDACTED_GEO]") == 22
+    assert stats.redactions_by_label["structured-coordinates"] == 10
     assert stats.residual_total == 0
     assert "37.7749" not in ledger.read_text(encoding="utf-8")
+
+
+def test_residual_scan_captures_all_coordinate_aliases() -> None:
+    value = {
+        "lat": 37.7749,
+        "LNG": -122.4194,
+        "lng": -121.8863,
+        "longitude": -118.2437,
+    }
+    stats = p.FilterStats()
+
+    p.scan_residual_high_risk(
+        value,
+        path="$",
+        location=p.SourceLocation(
+            file="alias-fixture.jsonl",
+            line=1,
+            record_index=0,
+        ),
+        stats=stats,
+        patterns=p.default_patterns(),
+    )
+
+    match_text = "37.7749,-122.4194,-121.8863,-118.2437"
+    assert stats.residual_total == 1
+    assert stats.residual_by_label["structured-coordinates"] == 1
+    assert stats.residual_samples[0]["value_sha256"] == p._hash_value(match_text)
+    assert stats.residual_samples[0]["value_length"] == len(match_text)
 
 
 def test_backend_hook_applies_span_redactions_without_dependency(tmp_path: Path) -> None:

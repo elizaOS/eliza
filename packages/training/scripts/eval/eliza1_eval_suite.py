@@ -40,6 +40,7 @@ held-out text-eval corpus).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -77,17 +78,12 @@ _LLAMA_PROCESS_RE = re.compile(
 # Source of truth: the eliza-1 training dataset's held-out test split (also
 # published as ``elizaos/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
 # extracts the assistant-turn text from each ``{"messages":[...]}`` row, and
-# uses that concatenation as the perplexity corpus.
-#
-# The previous 5-paragraph hand-typed fallback is kept ONLY as the absolute
-# last-resort when neither the local dataset checkout nor the operator's
-# ``--text-corpus`` override is available. That keeps offline unit tests
-# (which run without the dataset on disk) working without silently degrading
-# the real publish-time eval.
+# uses that concatenation as the perplexity corpus. The tracked synthetic smoke
+# split is excluded: missing held-out data records a publish-blocking not-run
+# result instead of manufacturing a score from a pipeline fixture.
 
 _DATASET_TEST_RELATIVES: tuple[Path, ...] = (
     Path("data/final/test.jsonl"),
-    Path("data/final-eliza1-smoke/test.jsonl"),
     # Keep the old 0.6B path as a canonical local fallback so older worktrees
     # do not silently degrade to the hand-written mini corpus.
     Path("datasets/eliza1-sft-0_6b/test.jsonl"),
@@ -95,23 +91,6 @@ _DATASET_TEST_RELATIVES: tuple[Path, ...] = (
 
 _TEXT_CORPUS_MIN_CHARS: int = 32
 _TEXT_CORPUS_MAX_RECORDS: int = 200
-
-_HARDCODED_TEXT_EVAL_CORPUS_FALLBACK: tuple[str, ...] = (
-    "The capital of France is Paris, a city on the Seine known for the "
-    "Louvre, the Eiffel Tower, and a long tradition of philosophy.",
-    "Speculative decoding lets a small draft model propose several tokens "
-    "that a larger target model verifies in a single forward pass, trading "
-    "extra compute for lower latency.",
-    "An on-device assistant keeps user data local: speech recognition, "
-    "language understanding, and text-to-speech all run on the phone rather "
-    "than streaming audio to a remote server.",
-    "Quantization compresses neural-network weights to fewer bits per value "
-    "so a model that needs sixteen gigabytes at full precision can fit in "
-    "four gigabytes on a laptop with only a small drop in quality.",
-    "Voice activity detection finds the boundaries of speech in an audio "
-    "stream so the recognizer can skip silence and the system can react the "
-    "moment the speaker stops talking.",
-)
 
 
 def _extract_text_from_row(row: dict[str, Any]) -> str | None:
@@ -194,22 +173,18 @@ def _dataset_test_jsonl() -> Path | None:
 def _default_text_eval_corpus() -> tuple[str, ...]:
     """Return the held-out corpus to score perplexity against.
 
-    Prefers the dataset's ``test.jsonl`` split; falls back to the hardcoded
-    5-paragraph mini-corpus only when no dataset checkout is present (so
-    standalone unit tests still work without the dataset on disk).
+    Missing or incompatible held-out data returns an empty corpus; `eval_text`
+    translates that state into a publish-blocking not-run result.
     """
     src = _dataset_test_jsonl()
     if src is None:
-        return _HARDCODED_TEXT_EVAL_CORPUS_FALLBACK
-    extracted = _load_text_corpus_from_jsonl(src)
-    if not extracted:
-        return _HARDCODED_TEXT_EVAL_CORPUS_FALLBACK
-    return extracted
+        return ()
+    return _load_text_corpus_from_jsonl(src)
 
 
 # Backwards-compat alias. Existing callers and tests import
 # ``DEFAULT_TEXT_EVAL_CORPUS`` as a module constant; keep it as a snapshot of
-# the dataset-derived corpus so behavior is identical at import time.
+# the dataset-derived corpus for callers that need the legacy module constant.
 DEFAULT_TEXT_EVAL_CORPUS: tuple[str, ...] = _default_text_eval_corpus()
 
 # Map mean per-token negative log-likelihood to a 0..1 "text quality" score:
@@ -495,6 +470,8 @@ class EvalContext:
     asr_corpus: Path | None
     threads: int
     timeout_s: int
+    text_eval_corpus_path: Path | None = None
+    text_eval_corpus_sha256: str | None = None
     peak_rss_mb: float = 0.0
     notes: list[str] = field(default_factory=list)
 
@@ -1007,7 +984,30 @@ def _e2e_summary(report: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def eval_text(ctx: EvalContext) -> dict[str, Any]:
-    base = {"schemaVersion": SCHEMA_VERSION, "metric": "text_eval", "op": ">="}
+    corpus_evidence = {
+        "corpusPath": (
+            str(ctx.text_eval_corpus_path) if ctx.text_eval_corpus_path else None
+        ),
+        "corpusSha256": ctx.text_eval_corpus_sha256,
+        "corpusRecords": len(ctx.text_eval_corpus),
+    }
+    base = {
+        "schemaVersion": SCHEMA_VERSION,
+        "metric": "text_eval",
+        "op": ">=",
+        **corpus_evidence,
+    }
+    if not ctx.text_eval_corpus:
+        return {
+            **base,
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": (
+                "no release-eligible held-out text corpus; provide --text-corpus "
+                "or ELIZA_EVAL_TEXT_CORPUS"
+            ),
+        }
     model = ctx.text_eval_model
     if not _is_real_gguf(model):
         return {
@@ -1022,7 +1022,7 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
         }
     binary_result = _eval_text_with_llama_perplexity(ctx, model)
     if binary_result is not None:
-        return binary_result
+        return {**binary_result, **corpus_evidence}
     try:
         from llama_cpp import Llama
     except ImportError:
@@ -2018,7 +2018,7 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
 
 def _default_text_corpus(path: Path | None) -> tuple[str, ...]:
     if path is None:
-        return DEFAULT_TEXT_EVAL_CORPUS
+        return _default_text_eval_corpus()
     if not path.is_file():
         raise SystemExit(f"--text-corpus not found: {path}")
     if path.suffix == ".jsonl":
@@ -2026,10 +2026,15 @@ def _default_text_corpus(path: Path | None) -> tuple[str, ...]:
         # ``messages[].role=="assistant"`` extraction, fall back to a flat
         # ``{"text": "..."}`` field for legacy corpora.
         out = list(_load_text_corpus_from_jsonl(path))
-        return tuple(out) or DEFAULT_TEXT_EVAL_CORPUS
-    return tuple(
+        if not out:
+            raise SystemExit(f"--text-corpus contains no eligible rows: {path}")
+        return tuple(out)
+    out = tuple(
         ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()
-    ) or DEFAULT_TEXT_EVAL_CORPUS
+    )
+    if not out:
+        raise SystemExit(f"--text-corpus is empty: {path}")
+    return out
 
 
 def _resolve_asr_corpus(arg: Path | None) -> Path | None:
@@ -2079,6 +2084,12 @@ def build_context(args: argparse.Namespace) -> EvalContext:
     elif _is_real_gguf(text_model):
         text_eval_model = text_model
     voice_model, voice_tokenizer = _bundle_voice(bundle_dir)
+    corpus_path = (
+        args.text_corpus.expanduser().resolve()
+        if args.text_corpus is not None
+        else _dataset_test_jsonl()
+    )
+    text_eval_corpus = _default_text_corpus(args.text_corpus)
     return EvalContext(
         bundle_dir=bundle_dir,
         tier=tier,
@@ -2090,10 +2101,16 @@ def build_context(args: argparse.Namespace) -> EvalContext:
         asr_model=_bundle_file(bundle_dir, "asr"),
         vad_model=_bundle_vad(bundle_dir),
         drafter_model=_bundle_file(bundle_dir, "mtp", ".gguf"),
-        text_eval_corpus=_default_text_corpus(args.text_corpus),
+        text_eval_corpus=text_eval_corpus,
         asr_corpus=_resolve_asr_corpus(getattr(args, "asr_corpus", None)),
         threads=args.threads,
         timeout_s=args.timeout,
+        text_eval_corpus_path=corpus_path,
+        text_eval_corpus_sha256=(
+            hashlib.sha256(corpus_path.read_bytes()).hexdigest()
+            if corpus_path is not None and corpus_path.is_file()
+            else None
+        ),
     )
 
 
@@ -2103,7 +2120,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tier", required=True, help="Tier id (2b / 4b / 9b / 27b / 27b-256k) or eliza-1-<tier>.")
     ap.add_argument("--backend", default=None, help="Prefer this engine backend dir (cpu / vulkan / ...).")
     ap.add_argument("--text-eval-model", type=Path, default=None, help="Override text GGUF used for the perplexity eval (e.g. a small reference Gemma GGUF when the bundle text artifact is a stand-in).")
-    ap.add_argument("--text-corpus", type=Path, default=None, help="Held-out text-eval corpus (.txt one-per-line or .jsonl with a 'text' field). Defaults to the bundled small set.")
+    ap.add_argument("--text-corpus", type=Path, default=None, help="Held-out text-eval corpus (.txt one-per-line or .jsonl with a 'text' field). Defaults to an auto-discovered held-out dataset; missing data is publish-blocking.")
     ap.add_argument("--asr-corpus", type=Path, default=None, help="Directory of labelled ASR test clips: <id>.wav (16 kHz mono PCM) + <id>.txt (ground-truth transcript). When set, the ASR-WER eval transcribes these real clips (a valid WER) instead of the TTS round-trip. Also picked up from ELIZA_EVAL_ASR_CORPUS.")
     ap.add_argument("--threads", type=int, default=min(os.cpu_count() or 4, 8))
     ap.add_argument("--timeout", type=int, default=int(os.environ.get("ELIZA_EVAL_TIMEOUT", "300")), help="Per-subprocess timeout in seconds.")

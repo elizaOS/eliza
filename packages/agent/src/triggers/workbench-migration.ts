@@ -26,8 +26,8 @@ import {
 import { buildTriggerConfig, buildTriggerMetadata } from "./scheduling.ts";
 import type { NormalizedTriggerDraft } from "./types.ts";
 
-export const SCHEDULE_TAG_PREFIX = "schedule:";
-export const EVENT_TAG_PREFIX = "event:";
+const SCHEDULE_TAG_PREFIX = "schedule:";
+const EVENT_TAG_PREFIX = "event:";
 
 interface DecodedScheduleTag {
   triggerType: Extract<TriggerType, "cron" | "event">;
@@ -63,7 +63,7 @@ function stripScheduleTags(tags: readonly string[] | undefined): string[] {
  * Migrate a single task in place if it carries a legacy schedule tag and is not
  * already a trigger. Returns the id it rewrote, or null if it skipped the task.
  */
-export async function migrateWorkbenchScheduleTask(
+async function migrateWorkbenchScheduleTask(
   runtime: IAgentRuntime,
   task: Task,
 ): Promise<UUID | null> {

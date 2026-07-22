@@ -1,14 +1,8 @@
 /**
- * The Settings view (`/settings`): an iOS/Android-style hub → subview
- * settings surface with ONE uniform top bar in every layout (#13590). A shared
- * `ViewHeader` (icon-only back, centered title) sits above either the hub — a
- * grouped row list (`SettingsHubList`) that IS the main screen — or the open
- * section's body as a full-width subview.
- *
- * - Hub (no section open): header title = "Settings", back → launcher; the
- *   grouped row list picks a section.
- * - Section open: header title = section label, back → hub; only the section
- *   body renders (no persistent nav chrome).
+ * The Settings view (`/settings`) adapts its information architecture to the
+ * available workspace. At 1024px and wider it renders a persistent grouped
+ * settings rail beside the active section. On narrower screens it preserves the
+ * existing iOS/Android-style hub → subview flow and shared back header.
  *
  * Section content is lazy-loaded and gated by `isViewVisible`; `initialSection`
  * deep-links a specific section. Also reusable in modal form (`inModal`).
@@ -17,11 +11,14 @@ import { isViewVisible } from "@elizaos/core";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
+import { cn } from "../../lib/utils";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
+import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
 import {
   type GroupedSettingsSections,
@@ -54,16 +51,23 @@ function readSettingsPermissionRequest(payload: unknown): PermissionId | null {
 }
 
 /**
- * Loading placeholder for a lazily-loaded section body (#11351). Deliberately
- * minimal — a single muted, `aria-busy` line so the split is visually quiet and
- * never shifts the header while the chunk resolves.
+ * Loading placeholder for a lazily-loaded section body (#11351). The skeleton
+ * mirrors the title and settings-row rhythm while the accessible status names
+ * the section being loaded.
  */
-function SettingsSectionLoading() {
+function SettingsSectionLoading({ title }: { title: string }) {
   return (
     <div
       aria-busy="true"
-      className="flex min-h-[6rem] items-center text-sm text-muted"
-    />
+      aria-label={`Loading ${title}`}
+      className="min-h-24 space-y-3 py-1"
+      role="status"
+    >
+      <span className="sr-only">Loading {title}</span>
+      <div className="h-4 w-2/5 animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+      <div className="h-11 w-full animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+      <div className="h-11 w-full animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+    </div>
   );
 }
 
@@ -76,14 +80,24 @@ function SettingsSectionLoading() {
 function SettingsSectionContent({
   section,
   t,
+  anchored = true,
 }: {
   section: SettingsSectionDef;
   t: Translate;
+  // Whether this body carries the `#<section.id>` deep-link/anchor DOM id.
+  // Desktop wraps the section title header + body in one anchored container so
+  // the section's accessible title lives inside `#<section.id>`, and passes
+  // `false` here to keep that id unique. Mobile/modal render the body alone and
+  // keep the anchor on it (default).
+  anchored?: boolean;
 }) {
   const Component = section.Component;
   const title = settingsSectionTitle(section, t);
   return (
-    <div id={section.id} className={section.bodyClassName}>
+    <div
+      id={anchored ? section.id : undefined}
+      className={section.bodyClassName}
+    >
       <ErrorBoundary
         key={section.id}
         fallback={(error, reset) => (
@@ -96,8 +110,8 @@ function SettingsSectionContent({
         )}
       >
         {/* Section bodies are `React.lazy` (#11351); the boundary keeps the
-            split transparent with a minimal, unobtrusive loading state. */}
-        <Suspense fallback={<SettingsSectionLoading />}>
+            split stable with a section-shaped, accessible loading state. */}
+        <Suspense fallback={<SettingsSectionLoading title={title} />}>
           <Component />
         </Suspense>
       </ErrorBoundary>
@@ -211,6 +225,7 @@ export function SettingsView({
     walletEnabled: s.walletEnabled,
   }));
   const enabledKinds = useEnabledViewKinds();
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
   );
@@ -294,25 +309,46 @@ export function SettingsView({
       ) ??
       null)
     : null;
+  // A desktop workspace always has useful content beside its persistent rail.
+  // This presentational default does not write a hash, so the mobile root still
+  // opens on the exact same hub when the viewport becomes narrow.
+  const desktopSectionDef = activeSectionDef ?? visibleSections[0] ?? null;
+  const displayedSectionDef = isDesktop ? desktopSectionDef : activeSectionDef;
 
-  // Uniform top bar: a hub shows "Settings" with a launcher back; an open
-  // section shows its label with a back to the hub. One header, both states.
+  // Mobile keeps the uniform top bar: the hub shows "Settings" and a section
+  // shows its title with a back action. Desktop uses an in-pane title instead.
+  const settingsTitle = t("nav.settings", { defaultValue: "Settings" });
   const headerTitle = activeSectionDef
     ? settingsSectionTitle(activeSectionDef, t)
-    : t("nav.settings", { defaultValue: "Settings" });
+    : settingsTitle;
   const onBack = activeSectionDef ? backToHub : navigateBackToLauncher;
   const backLabel = activeSectionDef ? "Back to Settings" : "Back to launcher";
+  const desktopSidebar = isDesktop ? (
+    <DesktopSettingsNavigation
+      grouped={grouped}
+      activeId={desktopSectionDef?.id ?? null}
+      onSelect={openSection}
+      onBack={navigateBackToLauncher}
+      settingsLabel={settingsTitle}
+      label={(labelKey, fallback) => t(labelKey, { defaultValue: fallback })}
+    />
+  ) : null;
 
   return (
     <ShellViewAgentSurface viewId="settings">
-      <ContentLayout inModal={inModal} contentClassName="max-sm:pt-1">
-        <div data-testid="settings-shell" className="flex w-full flex-col">
-          <ViewHeader
-            title={headerTitle}
-            onBack={onBack}
-            backLabel={backLabel}
-            className="px-0"
-          />
+      <ContentLayout
+        inModal={inModal}
+        contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
+        sidebar={desktopSidebar}
+        sidebarCollapsible={false}
+      >
+        <div
+          data-testid="settings-shell"
+          className={cn(
+            "flex min-h-full w-full",
+            isDesktop ? "flex-row" : "flex-col",
+          )}
+        >
           {/* Agent-surface anchors: the agent addresses every section by
               `section-<id>` regardless of which one is shown. */}
           <div className="hidden">
@@ -321,25 +357,63 @@ export function SettingsView({
                 key={section.id}
                 section={section}
                 label={settingsSectionLabel(section, t)}
-                active={section.id === activeSection}
+                active={section.id === displayedSectionDef?.id}
                 onSelect={openSection}
               />
             ))}
           </div>
+
           <div className="min-w-0 flex-1 pb-32">
-            {activeSectionDef ? (
-              <SettingsSectionContent section={activeSectionDef} t={t} />
+            {isDesktop ? (
+              <main
+                data-testid="desktop-settings-work-area"
+                className="mx-auto w-full max-w-[90rem] px-6 pb-10 pt-6 xl:px-8 xl:pt-8"
+              >
+                {desktopSectionDef ? (
+                  // The `#<section.id>` anchor wraps the title header + body so
+                  // the section's accessible title (the h1) lives inside the
+                  // section's deep-link anchor, not as a detached sibling above
+                  // it. Header stays outside `bodyClassName` padding, so this is
+                  // structural only — no visual change.
+                  <div id={desktopSectionDef.id}>
+                    <header className="mb-8 border-b border-border/60 pb-5">
+                      <p className="text-xs font-medium text-muted">
+                        {settingsTitle}
+                      </p>
+                      <h1 className="mt-1 text-xl font-semibold tracking-tight text-txt-strong">
+                        {settingsSectionTitle(desktopSectionDef, t)}
+                      </h1>
+                    </header>
+                    <SettingsSectionContent
+                      section={desktopSectionDef}
+                      t={t}
+                      anchored={false}
+                    />
+                  </div>
+                ) : null}
+              </main>
             ) : (
-              /* The hub IS the main screen: an iOS-style grouped row list.
-                 Tapping a row swaps in the section subview; the shared header
-                 back returns here. */
-              <SettingsHubList
-                grouped={grouped}
-                onSelect={openSection}
-                label={(labelKey, fallback) =>
-                  t(labelKey, { defaultValue: fallback })
-                }
-              />
+              <>
+                <ViewHeader
+                  title={headerTitle}
+                  onBack={onBack}
+                  backLabel={backLabel}
+                  className="px-0"
+                />
+                {activeSectionDef ? (
+                  <SettingsSectionContent section={activeSectionDef} t={t} />
+                ) : (
+                  /* The hub IS the mobile main screen. Tapping a row swaps in
+                     the section subview; the shared header returns here. */
+                  <SettingsHubList
+                    grouped={grouped}
+                    onSelect={openSection}
+                    label={(labelKey, fallback) =>
+                      t(labelKey, { defaultValue: fallback })
+                    }
+                  />
+                )}
+              </>
             )}
           </div>
           {primePermission ? (

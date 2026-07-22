@@ -767,7 +767,14 @@
         "current information",
         "search web",
         "open url",
-        "latest"
+        "latest",
+        "price",
+        "worth",
+        "how much",
+        "weather",
+        "forecast",
+        "temperature",
+        "exchange rate"
       ],
       "es": [
         "web",

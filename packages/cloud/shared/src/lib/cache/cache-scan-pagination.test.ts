@@ -70,6 +70,7 @@ describe("CacheClient SCAN over the memory backend (end-to-end cursor threading)
   test("scanByPrefix returns ALL keys across multiple pages (>100)", async () => {
     ({ CacheClient } = await import("./client"));
     const cache = new CacheClient();
+    expect(cache.getBackendKind()).toBe("memory");
     const N = 250;
     const prefix = "scan-pg-test:";
     for (let i = 0; i < N; i++) await cache.set(`${prefix}${i}`, { i }, 300);

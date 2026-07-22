@@ -51,10 +51,14 @@ function parseOutput(stdout) {
   return sections;
 }
 
-function runScript(cwd, base, head) {
+function runScript(cwd, base, head, subprocessManifest) {
   const result = spawnSync("bash", [script, base, head], {
     cwd,
     encoding: "utf8",
+    env: {
+      ...process.env,
+      COVERAGE_SUBPROCESS_SOURCE_MANIFEST: subprocessManifest,
+    },
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return parseOutput(result.stdout);
@@ -72,6 +76,7 @@ function assertCase(name, fn) {
 
 const dir = mkdtempSync(join(tmpdir(), "coverage-changed-"));
 try {
+  const subprocessManifest = join(dir, "coverage-subprocess-sources.txt");
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "test@example.com");
   git(dir, "config", "user.name", "test");
@@ -105,6 +110,11 @@ try {
     "class Example { @field value: string; }\n",
   );
   write(dir, "packages/demo/src/deleted.ts", "export const removed = 1;\n");
+  write(
+    dir,
+    "coverage-subprocess-sources.txt",
+    "packages/demo/src/process-entrypoint.mjs\n",
+  );
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "base");
   const mergeBase = git(dir, "rev-parse", "HEAD");
@@ -158,6 +168,11 @@ try {
   write(dir, "packages/demo/src/runtime.cjs", "exports.cjs = 1;\n");
   write(
     dir,
+    "packages/demo/src/process-entrypoint.mjs",
+    "process.stdout.write('process entrypoint');\n",
+  );
+  write(
+    dir,
     "packages/demo/src/_router.generated.ts",
     "export const generatedRoute = 1;\n",
   );
@@ -183,6 +198,11 @@ try {
   );
   write(
     dir,
+    "packages/app-core/scripts/playwright-ui-live-stack.ts",
+    "export async function startLiveStack() {}\n",
+  );
+  write(
+    dir,
     "scripts/security/tool.self-test.mjs",
     "throw new Error('self-test only');\n",
   );
@@ -198,6 +218,16 @@ try {
   );
   write(
     dir,
+    "plugins/plugin-demo/vite.config.views.ts",
+    "export default { build: { outDir: 'dist/views' } };\n",
+  );
+  write(
+    dir,
+    "plugins/plugin-demo/vitest.harness.config.ts",
+    "export default { test: { include: ['__tests__/**/*.harness.test.ts'] } };\n",
+  );
+  write(
+    dir,
     "packages/demo/src/feature.test.ts",
     "import { test } from 'vitest';\ntest('f', () => {});\n",
   );
@@ -210,6 +240,16 @@ try {
     dir,
     "packages/demo/test/e2e/flow.test.ts",
     "import { test } from 'bun:test';\ntest('e2e', () => {});\n",
+  );
+  write(
+    dir,
+    "packages/homepage/tests/e2e/visual.spec.ts",
+    "import { test } from 'playwright/test';\ntest('visual', () => {});\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/driver.real.test.ts",
+    "import { test } from 'vitest';\ntest('real driver', () => {});\n",
   );
   write(
     dir,
@@ -230,7 +270,7 @@ try {
   git(dir, "commit", "-q", "-m", "feature work");
   const featureTip = git(dir, "rev-parse", "HEAD"); // HEAD
 
-  const out = runScript(dir, developTip, featureTip);
+  const out = runScript(dir, developTip, featureTip, subprocessManifest);
 
   assertCase(
     "three-dot diff excludes develop-side files (issue #15845)",
@@ -271,8 +311,32 @@ try {
         !out.vitest_tests.includes("packages/demo/test/e2e/flow.test.ts"),
         `e2e-dir test leaked into vitest lane: ${out.vitest_tests.join(",")}`,
       );
+      assert.ok(
+        !out.bun_tests.includes(
+          "packages/homepage/tests/e2e/visual.spec.ts",
+        ),
+        `Playwright spec leaked into bun lane: ${out.bun_tests.join(",")}`,
+      );
+      assert.ok(
+        !out.vitest_tests.includes(
+          "packages/homepage/tests/e2e/visual.spec.ts",
+        ),
+        `Playwright spec leaked into vitest lane: ${out.vitest_tests.join(",")}`,
+      );
     },
   );
+
+  assertCase("real-driver suites stay in their dedicated lane", () => {
+    const realSuite = "packages/demo/src/driver.real.test.ts";
+    assert.ok(
+      !out.bun_tests.includes(realSuite),
+      `real suite leaked into bun lane: ${out.bun_tests.join(",")}`,
+    );
+    assert.ok(
+      !out.vitest_tests.includes(realSuite),
+      `real suite leaked into vitest lane: ${out.vitest_tests.join(",")}`,
+    );
+  });
 
   assertCase("cloud Playwright specs stay in their dedicated lane", () => {
     const liveSpec = "packages/test/cloud-e2e/tests/live-deploy.spec.ts";
@@ -294,6 +358,11 @@ try {
       assert.ok(
         !out.files.includes("packages/app/scripts/walkthrough-e2e.mjs"),
       );
+      assert.ok(
+        !out.files.includes(
+          "packages/app-core/scripts/playwright-ui-live-stack.ts",
+        ),
+      );
     },
   );
 
@@ -312,10 +381,20 @@ try {
     );
   });
 
-  assertCase("vitest config changes are not LCOV-enforced source", () => {
+  assertCase("Vite config changes are not LCOV-enforced source", () => {
     assert.ok(
       !out.files.includes("plugins/plugin-demo/vitest.config.ts"),
       `vitest config leaked into changed source: ${out.files.join(",")}`,
+    );
+    assert.ok(
+      !out.files.includes("plugins/plugin-demo/vite.config.views.ts"),
+      `Vite config leaked into changed source: ${out.files.join(",")}`,
+    );
+    // The harness-lane config convention run-changed-vitest-coverage.mjs
+    // defines (HARNESS_CONFIG_NAME) — a config file, never coverable source.
+    assert.ok(
+      !out.files.includes("plugins/plugin-demo/vitest.harness.config.ts"),
+      `vitest harness config leaked into changed source: ${out.files.join(",")}`,
     );
   });
 
@@ -334,6 +413,15 @@ try {
       assert.ok(
         out.node_tests.includes("scripts/security/coverage-gate.self-test.mjs"),
       );
+    },
+  );
+
+  assertCase(
+    "registered subprocess entrypoints require tests without parent-process LCOV",
+    () => {
+      const entrypoint = "packages/demo/src/process-entrypoint.mjs";
+      assert.ok(!out.files.includes(entrypoint));
+      assert.ok(out.subprocess_files.includes(entrypoint));
     },
   );
 

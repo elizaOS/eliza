@@ -157,7 +157,11 @@ export async function lsHandler(
   message: Memory,
   _state: State | undefined,
   options: unknown,
-  callback?: HandlerCallback,
+  // Read-only query: deliberately no visible callback. Raw listings/matches
+  // reach the model via the ActionResult and the user via the planner's final
+  // message; posting each mid-turn dump spammed chat channels (one message per
+  // exploratory call).
+  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const conversationId =
     message.roomId !== undefined && message.roomId !== null
@@ -212,8 +216,6 @@ export async function lsHandler(
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} LS dir=${routed.payload.path} count=${sorted.length} truncated=${routed.payload.truncated}`,
     );
-
-    if (callback) await callback({ text, source: "coding-tools" });
 
     return successActionResult(text, {
       entries: sorted,
@@ -288,8 +290,6 @@ export async function lsHandler(
   coreLogger.debug(
     `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated}`,
   );
-
-  if (callback) await callback({ text, source: "coding-tools" });
 
   return successActionResult(text, {
     entries: sorted,

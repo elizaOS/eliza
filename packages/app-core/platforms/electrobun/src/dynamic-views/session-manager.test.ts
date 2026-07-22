@@ -226,29 +226,28 @@ describe("DynamicViewSessionManager", () => {
       expect(canvas.windows).toHaveLength(0);
     }));
 
-  it.each([
-    "panel",
-    "chat-inline",
-    "tray",
-  ] as const)("rejects unsupported canvas placement: %s", async (placement) =>
-    withTempView(async (dir) => {
-      const registry = new DynamicViewRegistry();
-      registry.register({ ...manifest("trace.html"), placement });
-      const sessions = new DynamicViewSessionManager({
-        registry,
-        canvas: new FakeCanvas(),
-        workerStatusProvider: new FakeWorkerStatusProvider({
-          "eliza.runtime": "running",
-        }),
-        entrypointBaseDir: dir,
-      });
+  it.each(["panel", "chat-inline", "tray"] as const)(
+    "rejects unsupported canvas placement: %s",
+    async (placement) =>
+      withTempView(async (dir) => {
+        const registry = new DynamicViewRegistry();
+        registry.register({ ...manifest("trace.html"), placement });
+        const sessions = new DynamicViewSessionManager({
+          registry,
+          canvas: new FakeCanvas(),
+          workerStatusProvider: new FakeWorkerStatusProvider({
+            "eliza.runtime": "running",
+          }),
+          entrypointBaseDir: dir,
+        });
 
-      await expect(
-        sessions.open({ viewId: "agent.run.trace" }),
-      ).rejects.toMatchObject({
-        code: "DYNAMIC_VIEW_UNSUPPORTED_PLACEMENT",
-      });
-    }));
+        await expect(
+          sessions.open({ viewId: "agent.run.trace" }),
+        ).rejects.toMatchObject({
+          code: "DYNAMIC_VIEW_UNSUPPORTED_PLACEMENT",
+        });
+      }),
+  );
 
   it("is idempotent when closing an already closed session", () =>
     withTempView(async (dir) => {

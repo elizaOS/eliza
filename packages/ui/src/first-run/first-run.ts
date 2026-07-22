@@ -7,6 +7,7 @@
  */
 
 import {
+  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   getDefaultStylePreset,
 } from "@elizaos/shared";
@@ -206,8 +207,8 @@ export function buildFirstRunSubmitPlan(args: {
     firstRunNanoModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
     firstRunSmallModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
     firstRunMediumModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-    firstRunLargeModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-    firstRunMegaModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+    firstRunLargeModel: DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
+    firstRunMegaModel: DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
     firstRunFeatureCrypto: true,
     firstRunFeatureBrowser: true,
   });

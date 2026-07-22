@@ -44,7 +44,8 @@ export interface ModelCatalog {
  * keep the two in sync when the product default moves.
  */
 export const CODING_MODEL_DEFAULTS: Readonly<Record<string, string>> = {
-  codex: "gpt-5.6-terra",
+  codex: "gpt-5.6-sol",
+  claude: "claude-opus-4-8",
 };
 
 // The ultra tier trades cost and latency for maximum reasoning + delegation;

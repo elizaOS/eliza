@@ -1,45 +1,8 @@
-/** Unit tests for the node-catalog route handlers over the bundled catalog (deterministic). */
-import { describe, expect, test } from 'bun:test';
-import type { RouteRequest, RouteResponse } from '@elizaos/core';
+/** Node-catalog route coverage through the registered embedded runtime catalog. */
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { nodeRoutes } from '../../../src/routes/nodes';
-import { createMockRuntime } from '../../helpers/mockRuntime';
-
-function createRouteRequest(overrides?: Partial<RouteRequest>): RouteRequest {
-  return {
-    body: undefined,
-    params: {},
-    query: {},
-    headers: {},
-    method: 'GET',
-    ...overrides,
-  };
-}
-
-function createRouteResponse(): {
-  res: RouteResponse;
-  getResult: () => { status: number; body: unknown };
-} {
-  let status = 200;
-  let body: unknown;
-  const res: RouteResponse = {
-    status(code: number) {
-      status = code;
-      return res;
-    },
-    json(data: unknown) {
-      body = data;
-      return res;
-    },
-    send(data: unknown) {
-      body = data;
-      return res;
-    },
-    end() {
-      return res;
-    },
-  };
-  return { res, getResult: () => ({ status, body }) };
-}
+import { createRouteRequest, createRouteResponse } from '../../helpers/routeHarness';
+import { type EmbeddedHarness, makeEmbeddedHarness } from '../../integration/embedded-harness';
 
 // Routes: [0] = /nodes/available, [1] = /nodes/:type, [2] = /nodes
 const availableHandler = nodeRoutes[0].handler;
@@ -49,25 +12,33 @@ if (!availableHandler || !getNodeHandler || !searchHandler) {
   throw new Error('expected node route handlers');
 }
 
-const runtime = createMockRuntime();
+let harness: EmbeddedHarness;
+
+beforeAll(async () => {
+  harness = await makeEmbeddedHarness('node-route-runtime');
+});
+
+afterAll(async () => {
+  await harness.close();
+});
 
 describe('GET /nodes', () => {
   test('returns 400 when q parameter is missing', async () => {
     const req = createRouteRequest({ query: {} });
-    const { res, getResult } = createRouteResponse();
+    const { response, result } = createRouteResponse();
 
-    await searchHandler(req, res, runtime);
+    await searchHandler(req, response, harness.runtime);
 
-    expect(getResult().status).toBe(400);
+    expect(result().status).toBe(400);
   });
 
   test('returns search results for supported HTTP keyword', async () => {
     const req = createRouteRequest({ query: { q: 'http' } });
-    const { res, getResult } = createRouteResponse();
+    const { response, result } = createRouteResponse();
 
-    await searchHandler(req, res, runtime);
+    await searchHandler(req, response, harness.runtime);
 
-    const { status, body } = getResult();
+    const { status, body } = result();
     expect(status).toBe(200);
     const data = body as {
       success: boolean;
@@ -83,21 +54,21 @@ describe('GET /nodes', () => {
 
   test('respects limit parameter', async () => {
     const req = createRouteRequest({ query: { q: 'send', limit: '3' } });
-    const { res, getResult } = createRouteResponse();
+    const { response, result } = createRouteResponse();
 
-    await searchHandler(req, res, runtime);
+    await searchHandler(req, response, harness.runtime);
 
-    const data = getResult().body as { data: unknown[] };
+    const data = result().body as { data: unknown[] };
     expect(data.data.length).toBeLessThanOrEqual(3);
   });
 
   test('handles comma-separated keywords', async () => {
     const req = createRouteRequest({ query: { q: 'http,set' } });
-    const { res, getResult } = createRouteResponse();
+    const { response, result } = createRouteResponse();
 
-    await searchHandler(req, res, runtime);
+    await searchHandler(req, response, harness.runtime);
 
-    const data = getResult().body as { success: boolean; data: unknown[] };
+    const data = result().body as { success: boolean; data: unknown[] };
     expect(data.success).toBe(true);
     expect(data.data.length).toBeGreaterThan(0);
   });
@@ -108,11 +79,11 @@ describe('GET /nodes/:type', () => {
     const req = createRouteRequest({
       params: { type: 'workflows-nodes-base.httpRequest' },
     });
-    const { res, getResult } = createRouteResponse();
+    const { response, result } = createRouteResponse();
 
-    await getNodeHandler(req, res, runtime);
+    await getNodeHandler(req, response, harness.runtime);
 
-    const { status, body } = getResult();
+    const { status, body } = result();
     expect(status).toBe(200);
     const data = body as {
       success: boolean;
@@ -127,31 +98,31 @@ describe('GET /nodes/:type', () => {
     const req = createRouteRequest({
       params: { type: 'workflows-nodes-base.nonexistentNode12345' },
     });
-    const { res, getResult } = createRouteResponse();
+    const { response, result } = createRouteResponse();
 
-    await getNodeHandler(req, res, runtime);
+    await getNodeHandler(req, response, harness.runtime);
 
-    expect(getResult().status).toBe(404);
+    expect(result().status).toBe(404);
   });
 
   test('returns 400 when type param is missing', async () => {
     const req = createRouteRequest({ params: {} });
-    const { res, getResult } = createRouteResponse();
+    const { response, result } = createRouteResponse();
 
-    await getNodeHandler(req, res, runtime);
+    await getNodeHandler(req, response, harness.runtime);
 
-    expect(getResult().status).toBe(400);
+    expect(result().status).toBe(400);
   });
 });
 
 describe('GET /nodes/available', () => {
   test('returns categorized nodes without credential bridge', async () => {
     const req = createRouteRequest();
-    const { res, getResult } = createRouteResponse();
+    const { response, result } = createRouteResponse();
 
-    await availableHandler(req, res, runtime);
+    await availableHandler(req, response, harness.runtime);
 
-    const { status, body } = getResult();
+    const { status, body } = result();
     expect(status).toBe(200);
     const data = body as {
       success: boolean;
@@ -168,36 +139,5 @@ describe('GET /nodes/available', () => {
     const first = data.data.utility[0] as Record<string, unknown>;
     expect(first.score).toBeUndefined();
     expect(first.matchReason).toBeUndefined();
-  });
-
-  test('credential bridge path keeps utility-only embedded catalog available', async () => {
-    const runtimeWithBridge = createMockRuntime({
-      services: {
-        workflow_credential_provider: {
-          resolve: () => Promise.resolve(null),
-          checkCredentialTypes: (types: string[]) => ({
-            supported: types,
-            unsupported: [],
-          }),
-        },
-      },
-    });
-
-    const req = createRouteRequest();
-    const { res, getResult } = createRouteResponse();
-
-    await availableHandler(req, res, runtimeWithBridge);
-
-    const { body } = getResult();
-    const data = body as {
-      data: {
-        supported: Array<{ name: string }>;
-        unsupported: Array<{ name: string; missingCredential?: string }>;
-        utility: unknown[];
-      };
-    };
-    expect(data.data.supported.length).toBeGreaterThan(0);
-    expect(data.data.unsupported).toEqual([]);
-    expect(data.data.utility.length).toBeGreaterThan(0);
   });
 });

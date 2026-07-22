@@ -9,6 +9,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setCreateApp,
   unkeyedRuntime,
@@ -157,7 +158,7 @@ describe("CREATE_APP", () => {
     expect(reply.toLowerCase()).toContain("review");
     expect(reply).toContain("/api/v1/apps/:id/review");
     expect(reply.toLowerCase()).toContain("monetization");
-    expect(result?.data).toMatchObject({
+    expect(requireDefined(result, "action result").data).toMatchObject({
       monetization: false,
       reviewStatus: "draft",
     });
@@ -184,7 +185,10 @@ describe("CREATE_APP", () => {
     );
 
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("no_name");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_name");
     expect(called).toBe(false);
     expect(cb.calls[0]?.text?.toLowerCase()).toContain("what should i call");
   });
@@ -199,7 +203,10 @@ describe("CREATE_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   it("handles a Cloud API error without throwing", async () => {
@@ -213,6 +220,9 @@ describe("CREATE_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
   });
 });

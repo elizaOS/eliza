@@ -146,6 +146,30 @@ describe("parseAccountsArgs", () => {
 				key: "accounts",
 				canonical: "/accounts",
 				args: [],
+				rawArgs: "strategy claude reset-soonest",
+			}),
+		).toEqual({
+			kind: "strategy",
+			provider: "anthropic-subscription",
+			strategy: "reset-soonest",
+		});
+		expect(
+			parseAccountsArgs({
+				key: "accounts",
+				canonical: "/accounts",
+				args: [],
+				rawArgs: "strategy claude drain-soonest-reset",
+			}),
+		).toEqual({
+			kind: "strategy",
+			provider: "anthropic-subscription",
+			strategy: "drain-soonest-reset",
+		});
+		expect(
+			parseAccountsArgs({
+				key: "accounts",
+				canonical: "/accounts",
+				args: [],
 				rawArgs: "refresh cerebras",
 			}),
 		).toEqual({ kind: "refresh", provider: "cerebras-api" });
@@ -398,25 +422,28 @@ describe("/accounts writes", () => {
 		);
 	});
 
-	it("strategy PATCHes the provider strategy route with the exact body", async () => {
+	it("drain-soonest-reset PATCHes the provider strategy route with the exact body", async () => {
 		const fetchMock = vi.fn(async () =>
-			jsonResponse({ providerId: "cerebras-api", strategy: "least-used" }),
+			jsonResponse({
+				providerId: "anthropic-subscription",
+				strategy: "drain-soonest-reset",
+			}),
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		const r = await resolveCommand(
 			runtime,
-			msg("/accounts strategy cerebras least-used"),
+			msg("/accounts strategy claude drain-soonest-reset"),
 			OWNER,
 		);
 		const [call] = recordedCalls(fetchMock);
 		expect(call?.method).toBe("PATCH");
 		expect(new URL(call?.url ?? "").pathname).toBe(
-			"/api/providers/cerebras-api/strategy",
+			"/api/providers/anthropic-subscription/strategy",
 		);
-		expect(call?.body).toEqual({ strategy: "least-used" });
+		expect(call?.body).toEqual({ strategy: "drain-soonest-reset" });
 		expect(r.reply).toBe(
-			"Account strategy for cerebras-api set to least-used.",
+			"Account strategy for anthropic-subscription set to drain-soonest-reset.",
 		);
 	});
 
@@ -648,27 +675,27 @@ describe("connector read gate (requiresAuth only, not requiresElevated)", () => 
 	// via gateConnectorCommandByName BEFORE runCommand) refuse the bare read to
 	// an authorized-but-not-elevated sender. With requiresAuth only, the read
 	// passes the bridge and the write subcommands re-check isElevated in-handler.
-	it.each([
-		"accounts",
-		"backend",
-	])("lets an authorized non-elevated sender through the bridge for /%s", (name) => {
-		const decision = gateConnectorCommandByName(
-			"agent-accounts-backend",
-			name,
-			{ isAuthorized: true, isElevated: false, senderName: "t" },
-		);
-		expect(decision.allowed).toBe(true);
-	});
+	it.each(["accounts", "backend"])(
+		"lets an authorized non-elevated sender through the bridge for /%s",
+		(name) => {
+			const decision = gateConnectorCommandByName(
+				"agent-accounts-backend",
+				name,
+				{ isAuthorized: true, isElevated: false, senderName: "t" },
+			);
+			expect(decision.allowed).toBe(true);
+		},
+	);
 
-	it.each([
-		"accounts",
-		"backend",
-	])("refuses an unauthorized sender at the bridge for /%s", (name) => {
-		const decision = gateConnectorCommandByName(
-			"agent-accounts-backend",
-			name,
-			{ isAuthorized: false, isElevated: false, senderName: "t" },
-		);
-		expect(decision.allowed).toBe(false);
-	});
+	it.each(["accounts", "backend"])(
+		"refuses an unauthorized sender at the bridge for /%s",
+		(name) => {
+			const decision = gateConnectorCommandByName(
+				"agent-accounts-backend",
+				name,
+				{ isAuthorized: false, isElevated: false, senderName: "t" },
+			);
+			expect(decision.allowed).toBe(false);
+		},
+	);
 });

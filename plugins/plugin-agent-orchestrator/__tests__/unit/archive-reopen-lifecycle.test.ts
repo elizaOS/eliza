@@ -46,6 +46,10 @@ describe("TASKS archive/reopen lifecycle (#11028)", () => {
     );
     expect(svc.archiveTask).toHaveBeenCalledWith("t1");
     expect(result?.success).toBe(true);
+    expect(result?.data).toMatchObject({
+      taskId: "t1",
+      task: { task: { id: "t1", archived: true } },
+    });
   });
 
   it("reopens a task through the durable service", async () => {
@@ -59,6 +63,10 @@ describe("TASKS archive/reopen lifecycle (#11028)", () => {
     );
     expect(svc.reopenTask).toHaveBeenCalledWith("t1");
     expect(result?.success).toBe(true);
+    expect(result?.data).toMatchObject({
+      taskId: "t1",
+      task: { task: { id: "t1", archived: false } },
+    });
   });
 
   it("pauses a task via the control action (archive/reopen/pause all route to the service)", async () => {

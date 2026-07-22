@@ -36,6 +36,22 @@ In the `Bot` tab, turn on `Message Content Intent`.
    - `Use Slash Commands`
 4. Open the generated URL and add the bot to your server.
 
+## 3a. Enable User Install (for group DMs and DMs)
+
+By default the bot registers its slash commands as **user-installable**, so
+they work in group DMs and direct messages, not only inside servers. Discord
+only accepts that registration if the app is configured for it:
+
+1. In the [Developer Portal](https://discord.com/developers/applications), open
+   your app's `Installation` tab.
+2. Under `Installation Contexts`, enable `User Install` (keep `Guild Install`
+   on too).
+3. Save.
+
+If you want a server-only bot instead, skip this and set
+`DISCORD_USER_INSTALL=false` — otherwise Discord rejects the user-install
+command registration and logs an error on startup.
+
 ## 4. Connect it in Eliza
 
 1. Open the connectors section.
@@ -53,11 +69,17 @@ Mention the bot in a server channel:
 @YourBot hey, are you there?
 ```
 
-## Recommended defaults
+## Defaults
 
-- turn on `only respond to mentions` in busy servers
-- keep `ignore bot messages` on
-- start with a small channel allowlist
+Out of the box the bot is conversational: it replies in a channel without
+needing an `@mention`, answers other bots, and auto-answers messages. In a busy
+server you may want to quiet it down:
+
+- set `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS=true` so it only replies when
+  `@mentioned`
+- set `DISCORD_SHOULD_IGNORE_BOT_MESSAGES=true` to ignore other bots
+- start with a small channel allowlist (`CHANNEL_IDS`)
+- set `DISCORD_AUTO_REPLY=false` to ingest messages into memory without replying
 
 ## If it fails
 

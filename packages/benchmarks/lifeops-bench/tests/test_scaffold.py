@@ -550,6 +550,77 @@ def test_executor_accepts_message_draft_manage_and_room_aliases() -> None:
     assert sent["conversation_id"] == "lifeops-bench"
 
 
+def test_executor_accepts_message_subaction_alias() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "subaction": "read_with_contact",
+                "source": "signal",
+                "contact": "contact_00001",
+            },
+        ),
+        world,
+    )
+
+    assert result == {
+        "operation": "read_with_contact",
+        "source": "signal",
+        "ok": True,
+        "noop": True,
+    }
+
+
+def test_executor_persists_contact_priority_and_relationship_updates() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    priority = _execute_action(
+        Action(
+            name="ENTITY",
+            kwargs={
+                "subaction": "update",
+                "name": "Priya Anand",
+                "priorityFlag": "vip_breakthrough",
+                "notes": "Board member.",
+            },
+        ),
+        world,
+    )
+    priority_contact = world.contacts[priority["id"]]
+    assert priority["created"] is True
+    assert priority_contact.priority_flag == "vip_breakthrough"
+    assert priority_contact.notes == "Board member."
+
+    relationship = _execute_action(
+        Action(
+            name="ENTITY",
+            kwargs={
+                "subaction": "set_relationship",
+                "fromEntityId": "self",
+                "toEntityId": "person-h1-mia",
+                "relationshipType": "family_of",
+                "evidence": "family logistics",
+                "metadata": {"confidence": "high"},
+            },
+        ),
+        world,
+    )
+    relationship_contact = world.contacts[relationship["id"]]
+    assert relationship["created"] is True
+    assert relationship_contact.relationship == "family"
+    assert relationship_contact.relationship_type == "family_of"
+    assert relationship_contact.relationship_evidence == "family logistics"
+    assert relationship_contact.relationship_metadata == {"confidence": "high"}
+
+
 def test_message_manage_operation_inferred_from_manage_operation() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action

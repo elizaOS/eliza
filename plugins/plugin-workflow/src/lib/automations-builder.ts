@@ -13,7 +13,8 @@
  */
 
 import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
-import { stringToUuid } from '@elizaos/core';
+import { ElizaError, stringToUuid } from '@elizaos/core';
+import { getRouteOwnerEntityId } from '../routes/_helpers';
 import type { WorkflowStatusResponse } from '../routes/workflow-routes';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import type {
@@ -49,16 +50,19 @@ const SYSTEM_TASK_NAMES = new Set([
 // 30s cache for last-execution data — avoids hammering the workflow runtime on
 // every automations poll. null data = checked and found no executions yet
 // (still cached to avoid re-polling).
-const lastExecutionCache = new Map<
-  string,
-  { data: AutomationLastExecution | null; expiresAt: number }
->();
+type LastExecutionCacheEntry = {
+  data: AutomationLastExecution | null;
+  expiresAt: number;
+};
+
+let lastExecutionCache = new WeakMap<WorkflowService, Map<string, LastExecutionCacheEntry>>();
 const LAST_EXECUTION_TTL_MS = 30_000;
 
 interface AutomationRoomRecord {
   title: string;
   roomId: string;
   conversationId: string | null;
+  ownerEntityId: string;
   metadata: ConversationMetadata;
   updatedAt: string | null;
 }
@@ -99,6 +103,32 @@ function isSystemTask(task: WorkbenchTaskView): boolean {
   }
   const tags = new Set(task.tags);
   return tags.has('queue') && tags.has('repeat');
+}
+
+function readTaskOwnerEntityId(task: Task): string | null {
+  const metadata = isRecord(task.metadata) ? task.metadata : null;
+  const ownership = isRecord(metadata?.ownership) ? metadata.ownership : null;
+  return (
+    asString(ownership?.ownerId) ??
+    asString(metadata?.ownerEntityId) ??
+    asString(metadata?.createdBy) ??
+    asString(task.entityId) ??
+    null
+  );
+}
+
+function isExplicitSystemTask(task: Task, runtime: AgentRuntime): boolean {
+  const metadata = isRecord(task.metadata) ? task.metadata : null;
+  return task.entityId === runtime.agentId || metadata?.system === true;
+}
+
+function isTaskVisibleToOwner(task: Task, runtime: AgentRuntime, ownerEntityId: string): boolean {
+  return readTaskOwnerEntityId(task) === ownerEntityId || isExplicitSystemTask(task, runtime);
+}
+
+function isHeartbeatTask(task: Task): boolean {
+  const tags = new Set(task.tags ?? []);
+  return tags.has('queue') && tags.has('repeat') && tags.has('heartbeat');
 }
 
 function choosePreferredSystemTask(
@@ -207,6 +237,11 @@ function readAutomationRoomRecord(
   }
 
   const roomMetadata = isRecord(room.metadata) ? room.metadata : null;
+  const ownership = isRecord(roomMetadata?.ownership) ? roomMetadata.ownership : null;
+  const ownerEntityId = asString(ownership?.ownerId);
+  if (!ownerEntityId) {
+    return null;
+  }
   const webConversation = isRecord(roomMetadata?.webConversation)
     ? roomMetadata.webConversation
     : null;
@@ -215,6 +250,7 @@ function readAutomationRoomRecord(
     title: asString(room.name) ?? 'Automation',
     roomId,
     conversationId: asString(webConversation?.conversationId) ?? null,
+    ownerEntityId,
     metadata,
     updatedAt: normalizeDateValue(room.updatedAt),
   };
@@ -222,13 +258,16 @@ function readAutomationRoomRecord(
 
 async function listAutomationRooms(
   runtime: AgentRuntime,
-  agentName: string
+  agentName: string,
+  ownerEntityId: string
 ): Promise<AutomationRoomRecord[]> {
   const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
   const rooms = await runtime.getRooms(worldId);
   return rooms
     .map((room) => readAutomationRoomRecord(room))
-    .filter((room): room is AutomationRoomRecord => room !== null);
+    .filter(
+      (room): room is AutomationRoomRecord => room !== null && room.ownerEntityId === ownerEntityId
+    );
 }
 
 /**
@@ -383,6 +422,7 @@ function buildWorkflowItem(
     hasBackingWorkflow: Boolean(workflow),
     updatedAt:
       room?.updatedAt ??
+      normalizeDateValue(workflow?.updatedAt) ??
       normalizeDateValue(fallback.trigger?.updatedAt) ??
       normalizeDateValue(fallback.trigger?.lastRunAtIso),
     workflowId: fallback.workflowId,
@@ -453,7 +493,10 @@ function buildWorkflowStatus(service: WorkflowService | null): WorkflowStatusRes
   };
 }
 
-async function loadWorkflowList(service: WorkflowService | null): Promise<{
+async function loadWorkflowList(
+  service: WorkflowService | null,
+  ownerEntityId: string
+): Promise<{
   workflows: WorkflowDefinitionResponse[];
   workflowFetchError: string | null;
 }> {
@@ -461,9 +504,11 @@ async function loadWorkflowList(service: WorkflowService | null): Promise<{
     return { workflows: [], workflowFetchError: 'Workflow service is not registered' };
   }
   try {
-    const workflows = await service.listWorkflows();
+    const workflows = await service.listWorkflows(ownerEntityId);
     return { workflows, workflowFetchError: null };
   } catch (error) {
+    // error-policy:J4 the combined feed preserves an explicit workflow error
+    // field so unavailable data cannot render as a healthy empty workflow list.
     return {
       workflows: [],
       workflowFetchError: error instanceof Error ? error.message : 'Unable to load workflows',
@@ -473,33 +518,53 @@ async function loadWorkflowList(service: WorkflowService | null): Promise<{
 
 async function fetchLastExecution(
   service: WorkflowService,
-  workflowId: string
+  workflowId: string,
+  ownerEntityId: string
 ): Promise<AutomationLastExecution | null> {
-  const cached = lastExecutionCache.get(workflowId);
+  let serviceCache = lastExecutionCache.get(service);
+  if (!serviceCache) {
+    serviceCache = new Map<string, LastExecutionCacheEntry>();
+    lastExecutionCache.set(service, serviceCache);
+  }
+  const cacheKey = JSON.stringify([ownerEntityId, workflowId]);
+  const cached = serviceCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data;
   }
-  const response = await service.listExecutions({ workflowId, limit: 1 });
+  const response = await service.listExecutions({ workflowId, limit: 1 }, ownerEntityId);
   if (!response.data || response.data.length === 0) {
-    lastExecutionCache.set(workflowId, {
+    serviceCache.set(cacheKey, {
       data: null,
       expiresAt: Date.now() + LAST_EXECUTION_TTL_MS,
     });
     return null;
   }
   const exec = normalizeLastExecution(response.data[0]);
-  lastExecutionCache.set(workflowId, {
+  serviceCache.set(cacheKey, {
     data: exec,
     expiresAt: Date.now() + LAST_EXECUTION_TTL_MS,
   });
   return exec;
 }
 
+/**
+ * Evict the cached execution summary after a mutation that can change what the
+ * automations feed should render for one owner's workflow.
+ */
+export function invalidateAutomationExecutionCache(
+  service: WorkflowService,
+  ownerEntityId: string,
+  workflowId: string
+): void {
+  lastExecutionCache.get(service)?.delete(JSON.stringify([ownerEntityId, workflowId]));
+}
+
 export async function buildAutomationListResponse(
-  runtime: AgentRuntime
+  runtime: AgentRuntime,
+  ownerEntityId = getRouteOwnerEntityId(runtime)
 ): Promise<AutomationListResponse> {
   const agentName = resolveAgentName(runtime);
-  const rooms = await listAutomationRooms(runtime, agentName);
+  const rooms = await listAutomationRooms(runtime, agentName, ownerEntityId);
   const taskRooms = new Map(
     rooms
       .filter((room) => room.metadata.taskId)
@@ -527,12 +592,18 @@ export async function buildAutomationListResponse(
   const allTasks = await runtime.getTasks({});
   const tasks = deduplicateSystemTasks(
     allTasks
+      .filter((task) => isTaskVisibleToOwner(task, runtime, ownerEntityId))
       .map((task) => toWorkbenchTaskView(task))
       .filter((task): task is WorkbenchTaskView => task !== null)
   );
 
   const triggerTaskRecords = await listTriggerTasks(runtime);
   const triggerItems = triggerTaskRecords
+    .filter((task) => {
+      if (isHeartbeatTask(task)) return true;
+      const trigger = taskToTriggerSummary(task);
+      return trigger?.createdBy === ownerEntityId;
+    })
     .map((task) => taskToTriggerSummary(task))
     .filter((trigger): trigger is TriggerSummary => trigger !== null);
   const triggerTaskIds = new Set(triggerItems.map((trigger) => trigger.taskId));
@@ -542,7 +613,10 @@ export async function buildAutomationListResponse(
 
   const service = getWorkflowService(runtime);
   const workflowStatus = buildWorkflowStatus(service);
-  const { workflows: workflowList, workflowFetchError } = await loadWorkflowList(service);
+  const { workflows: workflowList, workflowFetchError } = await loadWorkflowList(
+    service,
+    ownerEntityId
+  );
 
   const workflowItemsById = new Map<string, AutomationItem>();
   for (const workflow of workflowList) {
@@ -558,22 +632,12 @@ export async function buildAutomationListResponse(
   for (const trigger of triggerItems) {
     if (trigger.kind === 'workflow' && trigger.workflowId) {
       const existing = workflowItemsById.get(trigger.workflowId);
-      if (existing) {
-        existing.schedules = [...existing.schedules, trigger];
-        existing.updatedAt =
-          existing.updatedAt ??
-          normalizeDateValue(trigger.updatedAt) ??
-          normalizeDateValue(trigger.lastRunAtIso);
-        continue;
-      }
-      workflowItemsById.set(
-        trigger.workflowId,
-        buildWorkflowItem(undefined, workflowRooms.get(trigger.workflowId), {
-          workflowId: trigger.workflowId,
-          workflowName: trigger.workflowName,
-          trigger,
-        })
-      );
+      if (!existing) continue;
+      existing.schedules = [...existing.schedules, trigger];
+      existing.updatedAt =
+        existing.updatedAt ??
+        normalizeDateValue(trigger.updatedAt) ??
+        normalizeDateValue(trigger.lastRunAtIso);
     }
   }
 
@@ -600,27 +664,55 @@ export async function buildAutomationListResponse(
     }
   }
 
-  // Fetch last execution for each live workflow in parallel.
-  // Promise.allSettled ensures one failure does not block the full list.
+  const executionFetchErrors: AutomationListResponse['executionFetchErrors'] = [];
+
+  // Fetch last execution for each live workflow in parallel. A workflow-level
+  // failure remains visible on its row and in the response-level error feed.
   if (!workflowOffline && service && workflowItemsById.size > 0) {
     const now = Date.now();
-    for (const [k, v] of lastExecutionCache) {
-      if (v.expiresAt < now) lastExecutionCache.delete(k);
+    const serviceCache = lastExecutionCache.get(service);
+    if (serviceCache) {
+      for (const [key, value] of serviceCache) {
+        if (value.expiresAt < now) serviceCache.delete(key);
+      }
     }
     const workflowIds = [...workflowItemsById.keys()];
-    await Promise.allSettled(
+    await Promise.all(
       workflowIds.map(async (workflowId) => {
-        const exec = await fetchLastExecution(service, workflowId);
-        if (!exec) return;
-        const item = workflowItemsById.get(workflowId);
-        if (item) item.lastExecution = exec;
+        try {
+          const exec = await fetchLastExecution(service, workflowId, ownerEntityId);
+          if (!exec) return;
+          const item = workflowItemsById.get(workflowId);
+          if (item) item.lastExecution = exec;
+        } catch (error) {
+          // error-policy:J4 the aggregate feed stays usable while clearly
+          // distinguishing an unavailable execution history from no prior run.
+          const message = error instanceof Error ? error.message : String(error);
+          const wrapped = new ElizaError('Failed to load workflow execution history', {
+            code: 'AUTOMATIONS_EXECUTION_HISTORY_LOAD_FAILED',
+            cause: error,
+            context: { ownerEntityId, workflowId },
+            severity: 'ephemeral',
+          });
+          runtime.reportError('AutomationsBuilder.lastExecution', wrapped, {
+            ownerEntityId,
+            workflowId,
+          });
+          const item = workflowItemsById.get(workflowId);
+          if (item) item.executionFetchError = message;
+          executionFetchErrors.push({ workflowId, error: message });
+        }
       })
     );
+    executionFetchErrors.sort((left, right) => left.workflowId.localeCompare(right.workflowId));
   }
 
-  const coordinatorTriggerItems = triggerItems.map((trigger) =>
-    _buildCoordinatorTriggerItem(trigger, _triggerRooms.get(trigger.id))
-  );
+  // Workflow triggers are schedule metadata for their workflow row, not a
+  // second prompt automation. Rendering them twice gives the duplicate row a
+  // prompt editor even though its trigger kind is workflow.
+  const coordinatorTriggerItems = triggerItems
+    .filter((trigger) => trigger.kind !== 'workflow')
+    .map((trigger) => _buildCoordinatorTriggerItem(trigger, _triggerRooms.get(trigger.id)));
 
   const automations = [
     ...automationDraftItems,
@@ -644,6 +736,7 @@ export async function buildAutomationListResponse(
     summary,
     workflowStatus,
     workflowFetchError,
+    executionFetchErrors,
   };
 }
 
@@ -651,5 +744,5 @@ export async function buildAutomationListResponse(
  * Test-only: clear the last-execution cache between cases.
  */
 export function __resetAutomationsCacheForTests(): void {
-  lastExecutionCache.clear();
+  lastExecutionCache = new WeakMap<WorkflowService, Map<string, LastExecutionCacheEntry>>();
 }

@@ -293,6 +293,43 @@ describe("InboxView — degraded connector", () => {
   });
 });
 
+describe("InboxView — audit settle signal (#15912)", () => {
+  it("exposes data-view-status=loading until the fetch settles, then drops it", async () => {
+    // The loading placeholder lists all 8 channels in its filter row while the
+    // settled list shows only the connected two, so the loading frame is denser.
+    // A host readiness/aesthetic-audit gate that samples before the fetch
+    // resolves must be able to tell "still loading" apart from "settled" — else
+    // it measures the denser placeholder and flips the divider-density ratchet
+    // between identical-code runs (#15912). The shared `data-view-status`
+    // settle marker is that signal.
+    let resolveFetch!: (value: ReturnType<typeof populatedInbox>) => void;
+    const gate = new Promise<ReturnType<typeof populatedInbox>>((resolve) => {
+      resolveFetch = resolve;
+    });
+    render(<InboxView fetchers={makeFetchers({ fetchInbox: () => gate })} />);
+
+    // Loading: the settle marker is present and the placeholder lists all 8
+    // channel chips (the denser frame a racing capture would otherwise measure).
+    const loadingMarker = document.querySelector(
+      '[data-view-status="loading"]',
+    );
+    expect(loadingMarker).not.toBeNull();
+    expect(
+      document.querySelectorAll('[data-agent-id^="inbox-channel-"]'),
+    ).toHaveLength(8);
+
+    resolveFetch(populatedInbox());
+    await screen.findByText("Invoice 42 overdue");
+
+    // Settled: the marker is gone (capture proceeds) and only the two connected
+    // channels remain in the filter row — the sparser, baselined frame.
+    expect(document.querySelector('[data-view-status="loading"]')).toBeNull();
+    expect(
+      document.querySelectorAll('[data-agent-id^="inbox-channel-"]'),
+    ).toHaveLength(2);
+  });
+});
+
 describe("InboxView — error path", () => {
   it("shows the error state with a Retry that refetches into the populated state", async () => {
     let attempt = 0;

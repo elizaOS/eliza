@@ -1,6 +1,7 @@
 /** Storybook stories for AddAccountDialog across its credential-entry paths, under a stub AppContext supplying `t`. */
 
 import type { Meta, StoryObj } from "@storybook/react";
+import { seedAppValue } from "../../state/app-store";
 import type { AppContextValue } from "../../state/types";
 import { AppContext } from "../../state/useApp";
 import { AddAccountDialog } from "./AddAccountDialog";
@@ -28,13 +29,16 @@ const meta = {
   component: AddAccountDialog,
   tags: ["autodocs"],
   decorators: [
-    (Story) => (
-      <AppContext.Provider value={mockAppContext}>
-        <div className="p-6">
-          <Story />
-        </div>
-      </AppContext.Provider>
-    ),
+    (Story) => {
+      seedAppValue(mockAppContext);
+      return (
+        <AppContext.Provider value={mockAppContext}>
+          <div className="p-6">
+            <Story />
+          </div>
+        </AppContext.Provider>
+      );
+    },
   ],
   argTypes: {
     open: { control: "boolean" },
@@ -68,6 +72,12 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+export const ConsolidatedProviderPicker: Story = {
+  args: {
+    providerId: undefined,
+  },
+};
 
 export const ApiKey: Story = {
   args: {

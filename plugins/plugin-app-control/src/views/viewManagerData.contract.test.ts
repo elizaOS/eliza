@@ -1,8 +1,5 @@
 /**
- * Contract tests for parsing the live GET /api/views payload shape.
- *
- * The fixture mirrors ViewRegistryEntry from packages/ui so fetchViewEntries is
- * exercised against the real DTO contract, not a trimmed stub.
+ * Exercises View Manager parsing against realistic live registry payloads and modality merges.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -103,18 +100,24 @@ describe("fetchViewEntries contract (/api/views ViewRegistryEntry shape)", () =>
 		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 
-	it("returns [] when the payload's views field is not an array", async () => {
+	it("rejects when the payload's views field is not an array", async () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => jsonResponse({ views: null })),
 		);
-		await expect(fetchViewEntries()).resolves.toEqual([]);
+		await expect(fetchViewEntries()).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "VIEW_MANAGER_LIST_RESPONSE_INVALID",
+		});
 
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => jsonResponse({})),
 		);
-		await expect(fetchViewEntries()).resolves.toEqual([]);
+		await expect(fetchViewEntries()).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "VIEW_MANAGER_LIST_RESPONSE_INVALID",
+		});
 	});
 
 	it("throws 'HTTP <status>' on a non-ok response", async () => {

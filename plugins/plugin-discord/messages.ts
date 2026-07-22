@@ -63,6 +63,15 @@ import {
 	shouldShowStatusReaction,
 } from "./status-reactions";
 import {
+	claimDiscordTurn,
+	type DiscordTurnRecord,
+	decideResume,
+	findDeliveredReply,
+	markDiscordTurnDispatched,
+	markDiscordTurnFailed,
+	markDiscordTurnReplied,
+} from "./turn-state";
+import {
 	DiscordEventTypes,
 	type DiscordSettings,
 	type IDiscordService,
@@ -563,9 +572,33 @@ export async function createDiscordMessageMemoryOnce(
 		platformMessageId?: string;
 	} = { operation: "discord-message-persist" },
 ): Promise<Memory | null> {
+	const result = await persistDiscordMessageMemoryOnce(
+		runtime,
+		memory,
+		context,
+	);
+	return result.memory;
+}
+
+interface DiscordMessageMemoryPersistenceResult {
+	memory: Memory;
+	created: boolean;
+}
+
+async function persistDiscordMessageMemoryOnce(
+	runtime: Pick<
+		IAgentRuntime,
+		"agentId" | "createMemory" | "getMemoryById" | "logger"
+	>,
+	memory: Memory,
+	context: {
+		operation: string;
+		platformMessageId?: string;
+	} = { operation: "discord-message-persist" },
+): Promise<DiscordMessageMemoryPersistenceResult> {
 	if (!memory.id) {
 		const id = await runtime.createMemory(memory, "messages");
-		return { ...memory, id };
+		return { memory: { ...memory, id }, created: true };
 	}
 
 	const existing = await runtime.getMemoryById(memory.id);
@@ -580,11 +613,11 @@ export async function createDiscordMessageMemoryOnce(
 			},
 			"Skipping duplicate Discord message memory",
 		);
-		return existing;
+		return { memory: existing, created: false };
 	}
 
 	await runtime.createMemory(memory, "messages");
-	return memory;
+	return { memory, created: true };
 }
 
 /** Options handed to `User.send` when delivering a Discord DM reply. */
@@ -669,10 +702,12 @@ export class MessageManager {
 		const reactionScopeSetting = this.runtime.getSetting(
 			"DISCORD_STATUS_REACTIONS",
 		) as string | undefined;
+		// Default: react on all handled messages. Set DISCORD_STATUS_REACTIONS to
+		// "group-mentions" or "none" to narrow the acknowledgement scope.
 		this.statusReactionScope = (
 			["all", "group-mentions", "none"].includes(reactionScopeSetting ?? "")
 				? reactionScopeSetting
-				: "group-mentions"
+				: "all"
 		) as StatusReactionScope;
 
 		const envelopeSetting = this.runtime.getSetting(
@@ -708,14 +743,73 @@ export class MessageManager {
 		);
 	}
 
-	private async persistInboundMemory(memory: Memory): Promise<void> {
+	private async persistInboundMemory(
+		memory: Memory,
+		platformMessageId?: string,
+	): Promise<"created" | "existing" | "missing-id"> {
 		if (!memory.id) {
-			return;
+			return "missing-id";
 		}
 
-		await createDiscordMessageMemoryOnce(this.runtime, memory, {
+		const result = await persistDiscordMessageMemoryOnce(this.runtime, memory, {
 			operation: "discord-inbound",
+			platformMessageId,
 		});
+		return result.created ? "created" : "existing";
+	}
+
+	private async hasPersistedInboundMemory(
+		memory: Memory,
+		platformMessageId?: string,
+	): Promise<boolean> {
+		if (!memory.id) {
+			return false;
+		}
+
+		const existing = await this.runtime.getMemoryById(memory.id);
+		if (!existing) {
+			return false;
+		}
+
+		this.runtime.logger.debug(
+			{
+				src: "plugin:discord",
+				agentId: this.runtime.agentId,
+				messageId: platformMessageId,
+				memoryId: memory.id,
+			},
+			"Skipping already persisted Discord inbound message",
+		);
+		return true;
+	}
+
+	/**
+	 * Close a durable turn as terminal REPLIED for the deliberate ingest-only
+	 * branches (auto-reply off, wrong target, strict-mode ignore, cannot-send).
+	 * These branches persist the inbound but owe no reply, so the turn is
+	 * genuinely complete; marking it terminal keeps a later redelivery a no-op
+	 * instead of resuming forever. Best-effort: failure to stamp is non-fatal.
+	 */
+	private async closeTurnAsIngestOnly(
+		turnRecord: DiscordTurnRecord | undefined,
+	): Promise<DiscordTurnRecord | undefined> {
+		if (!turnRecord || turnRecord.state === "REPLIED") {
+			return turnRecord;
+		}
+		try {
+			return await markDiscordTurnReplied(this.runtime, turnRecord);
+		} catch (error) {
+			this.runtime.logger.warn(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					messageId: turnRecord.platformMessageId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Failed to close ingest-only Discord turn record",
+			);
+			return turnRecord;
+		}
 	}
 
 	private markMessageAsProcessing(messageId: string): boolean {
@@ -732,6 +826,43 @@ export class MessageManager {
 
 		this.recentlyProcessedMessageIds.set(messageId, now);
 		return true;
+	}
+
+	private releaseMessageProcessing(messageId: string | undefined): void {
+		if (messageId) {
+			this.recentlyProcessedMessageIds.delete(messageId);
+		}
+	}
+
+	private async releaseMessageProcessingIfInboundNotPersisted(
+		messageId: string | undefined,
+		inboundMemoryId: UUID | undefined,
+	): Promise<boolean> {
+		let inboundMemoryCommitted = false;
+		if (inboundMemoryId) {
+			try {
+				inboundMemoryCommitted =
+					!!(await this.runtime.getMemoryById(inboundMemoryId));
+			} catch (persistenceCheckError) {
+				this.runtime.logger.warn(
+					{
+						src: "plugin:discord",
+						agentId: this.runtime.agentId,
+						messageId,
+						memoryId: inboundMemoryId,
+						error:
+							persistenceCheckError instanceof Error
+								? persistenceCheckError.message
+								: String(persistenceCheckError),
+					},
+					"Could not verify Discord inbound persistence after failure",
+				);
+			}
+		}
+		if (!inboundMemoryCommitted) {
+			this.releaseMessageProcessing(messageId);
+		}
+		return inboundMemoryCommitted;
 	}
 
 	/**
@@ -834,14 +965,32 @@ export class MessageManager {
 			!!message.mentions.repliedUser?.id &&
 			message.mentions.repliedUser.id !== clientUser?.id &&
 			message.mentions.repliedUser.id !== message.author.id;
+		// `isBotAddressed` marks the PRIMARY addressee (first mention / reply-to)
+		// so the bot does not butt into a message aimed at someone else. But an
+		// explicit @mention of the bot — even alongside or after other mentions
+		// (`@ruby @osiris @remilio`) — is a deliberate call to THIS bot and must
+		// get a response. Treat any explicit platform mention as directly
+		// addressed for the respond/ignore decision, while leaving
+		// `isDiscordUserAddressed`'s first-mention semantics (and its tests)
+		// untouched.
+		const isBotDirectlyAddressed = isBotAddressed || isBotPlatformMentioned;
 		const isInThread = message.channel.isThread();
 		const isDM = message.channel.type === DiscordChannelType.DM;
 		const strictModeEnabled =
 			this.discordSettings.shouldRespondOnlyToMentions === true;
 		const replyToMode = normalizeReplyToMode(this.discordSettings.replyToMode);
 		const outboundReplyToMessageId =
-			!isDM && replyToMode !== "off" && isBotAddressed ? message.id : undefined;
-		const strictModeShouldProcess = isDM || isBotAddressed;
+			!isDM && replyToMode !== "off" && isBotDirectlyAddressed
+				? message.id
+				: undefined;
+		const strictModeShouldProcess = isDM || isBotDirectlyAddressed;
+		let inboundMemoryCommitted = false;
+		let inboundMemoryId: UUID | undefined;
+		// Durable turn record for this Discord message (RECEIVED -> DISPATCHED ->
+		// REPLIED | FAILED). Populated once we have a stable platform message id and
+		// have decided to run the reply path. See turn-state.ts.
+		let turnRecord: DiscordTurnRecord | undefined;
+		let turnReplied = false;
 
 		const userName = message.author.bot
 			? `${message.author.username}#${message.author.discriminator}`
@@ -892,6 +1041,7 @@ export class MessageManager {
 			type = ChannelType.DM;
 			messageServerId = message.channel.id;
 		}
+		const worldId = createUniqueUuid(this.runtime, messageServerId ?? roomId);
 
 		try {
 			let { processedContent, attachments } =
@@ -920,7 +1070,9 @@ export class MessageManager {
 			// same message. Only short-circuit these messages when the bot is not
 			// also clearly addressed.
 			const ignoresOtherTarget =
-				!isDM && !isBotAddressed && (mentionedOtherUsers || isReplyToOtherUser);
+				!isDM &&
+				!isBotDirectlyAddressed &&
+				(mentionedOtherUsers || isReplyToOtherUser);
 
 			// Use the service's buildMemoryFromMessage method with pre-processed content
 			const newMessage = await this.discordService.buildMemoryFromMessage(
@@ -931,17 +1083,16 @@ export class MessageManager {
 					extraContent: {
 						currentMessageText,
 						mentionContext: {
-							isMention: isBotPlatformMentioned && isBotAddressed,
+							isMention: isBotPlatformMentioned,
 							isReply: isReplyToBot,
 							isThread: isInThread,
-							mentionType:
-								isBotPlatformMentioned && isBotAddressed
-									? "platform_mention"
-									: isReplyToBot
-										? "reply"
-										: isInThread
-											? "thread"
-											: "none",
+							mentionType: isBotPlatformMentioned
+								? "platform_mention"
+								: isReplyToBot
+									? "reply"
+									: isInThread
+										? "thread"
+										: "none",
 						},
 					},
 					extraMetadata: compactJsonObject(
@@ -992,6 +1143,7 @@ export class MessageManager {
 				);
 				return;
 			}
+			inboundMemoryId = newMessage.id;
 
 			await this.runtime.ensureConnection({
 				entityId: newMessage.entityId,
@@ -1006,7 +1158,7 @@ export class MessageManager {
 					? stringToUuid(messageServerId)
 					: undefined,
 				type,
-				worldId: createUniqueUuid(this.runtime, messageServerId ?? roomId),
+				worldId,
 				worldName: message.guild?.name,
 				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
 				userId: message.author.id as UUID,
@@ -1019,11 +1171,107 @@ export class MessageManager {
 				},
 			});
 
+			// Durable turn / outbox state machine (charter rows D4/D5).
+			//
+			// #16696 returned here unconditionally whenever the inbound memory was
+			// already persisted. That closed the double-dispatch window but left a
+			// crash AFTER inbound persistence and BEFORE the reply permanently
+			// suppressed: the message was ingested but no reply ever went out.
+			//
+			// Instead, consult a durable turn record keyed by the Discord message
+			// id. A pre-existing record means this is a redelivery/restart:
+			//   - terminal (REPLIED/FAILED) -> genuine no-op
+			//   - a reply memory already exists -> reconcile to REPLIED, no resend
+			//     (send-then-record safety: a crash happened in the send<->record gap)
+			//   - retry budget exhausted -> mark terminal FAILED (no silent drop)
+			//   - otherwise -> RESUME the reply path below instead of returning.
+			if (message.id) {
+				inboundMemoryCommitted = await this.hasPersistedInboundMemory(
+					newMessage,
+					message.id,
+				);
+				const claim = await claimDiscordTurn(this.runtime, message.id, {
+					entityId: newMessage.entityId,
+					roomId: newMessage.roomId,
+					worldId,
+				});
+				turnRecord = claim.record;
+				if (!claim.created) {
+					const deliveredReplyId = newMessage.id
+						? await findDeliveredReply(this.runtime, roomId, newMessage.id)
+						: null;
+					const decision = decideResume(claim.record, deliveredReplyId);
+					if (decision.action === "noop") {
+						this.runtime.logger.debug(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								messageId: message.id,
+								state: claim.record.state,
+							},
+							"Discord turn already terminal; skipping redelivery",
+						);
+						return;
+					}
+					if (decision.action === "reconciled-replied") {
+						turnRecord = await markDiscordTurnReplied(
+							this.runtime,
+							claim.record,
+							decision.replyMessageId || undefined,
+						);
+						turnReplied = true;
+						this.runtime.logger.info(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								messageId: message.id,
+								replyMessageId: decision.replyMessageId,
+							},
+							"Reconciled Discord turn to REPLIED from existing reply memory; no resend",
+						);
+						return;
+					}
+					if (decision.action === "exhausted") {
+						turnRecord = await markDiscordTurnFailed(
+							this.runtime,
+							claim.record,
+							"reply retry budget exhausted after restart/redelivery",
+						);
+						this.runtime.logger.error(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								messageId: message.id,
+								attempts: claim.record.attempts,
+							},
+							"Discord turn exhausted retries; marking terminal FAILED",
+						);
+						return;
+					}
+					this.runtime.logger.warn(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							attempts: claim.record.attempts,
+							state: claim.record.state,
+						},
+						"Resuming Discord turn with no prior reply (crash after persist before reply)",
+					);
+					// fall through: resume the reply path for this persisted turn
+				}
+			}
+
 			if (
 				!this.discordSettings.autoReply ||
 				lifeOpsPassiveConnectorsEnabled(this.runtime)
 			) {
-				await this.persistInboundMemory(newMessage);
+				const inboundPersistence = await this.persistInboundMemory(
+					newMessage,
+					message.id,
+				);
+				inboundMemoryCommitted = inboundPersistence !== "missing-id";
+				turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
 				this.runtime.logger.debug(
 					{
 						src: "plugin:discord",
@@ -1036,7 +1284,12 @@ export class MessageManager {
 			}
 
 			if (ignoresOtherTarget) {
-				await this.persistInboundMemory(newMessage);
+				const inboundPersistence = await this.persistInboundMemory(
+					newMessage,
+					message.id,
+				);
+				inboundMemoryCommitted = inboundPersistence !== "missing-id";
+				turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
 				this.runtime.logger.debug(
 					{
 						src: "plugin:discord",
@@ -1049,7 +1302,12 @@ export class MessageManager {
 			}
 
 			if (strictModeEnabled && !strictModeShouldProcess) {
-				await this.persistInboundMemory(newMessage);
+				const inboundPersistence = await this.persistInboundMemory(
+					newMessage,
+					message.id,
+				);
+				inboundMemoryCommitted = inboundPersistence !== "missing-id";
+				turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
 				this.runtime.logger.debug(
 					{
 						src: "plugin:discord",
@@ -1074,7 +1332,12 @@ export class MessageManager {
 
 			const canSendResult = canSendMessage(message.channel);
 			if (!canSendResult.canSend) {
-				await this.persistInboundMemory(newMessage);
+				const inboundPersistence = await this.persistInboundMemory(
+					newMessage,
+					message.id,
+				);
+				inboundMemoryCommitted = inboundPersistence !== "missing-id";
+				turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
 				return this.runtime.logger.warn(
 					{
 						src: "plugin:discord",
@@ -1582,6 +1845,13 @@ export class MessageManager {
 
 			const messagingAPI = getMessagingAPI(this.runtime);
 			const messageService = getMessageService(this.runtime);
+			// Advance the durable turn to DISPATCHED (increments the attempt
+			// counter) immediately before we commit to a model turn. If we crash
+			// during generation/send the record stays non-terminal so a later
+			// redelivery resumes, bounded by the attempt counter recorded here.
+			if (turnRecord) {
+				turnRecord = await markDiscordTurnDispatched(this.runtime, turnRecord);
+			}
 			// AbortController for the whole generation attempt. On timeout we fire
 			// this so the underlying model call ACTUALLY cancels instead of running
 			// on as an orphan (the root cause of the alternating timeout / instant
@@ -1737,6 +2007,13 @@ export class MessageManager {
 							: "I hit a provider issue while generating the reply. Please retry.",
 					);
 				}
+				if (!inboundMemoryCommitted) {
+					inboundMemoryCommitted =
+						await this.releaseMessageProcessingIfInboundNotPersisted(
+							message.id,
+							inboundMemoryId,
+						);
+				}
 				return;
 			} finally {
 				if (generationTimeoutHandle) {
@@ -1749,7 +2026,24 @@ export class MessageManager {
 				statusReactions?.setDone();
 				await finalizePendingDraft();
 			}
+
+			// Generation completed without throwing. Whether the agent emitted a
+			// reply or deliberately produced none (IGNORE/empty), the turn is done:
+			// mark it terminal REPLIED so a redelivery is a genuine no-op and cannot
+			// loop. A crash BEFORE reaching this line leaves the record DISPATCHED,
+			// so a later redelivery resumes (bounded by the attempt counter).
+			if (turnRecord && !turnReplied) {
+				turnRecord = await markDiscordTurnReplied(this.runtime, turnRecord);
+				turnReplied = true;
+			}
 		} catch (error) {
+			if (!inboundMemoryCommitted) {
+				inboundMemoryCommitted =
+					await this.releaseMessageProcessingIfInboundNotPersisted(
+						message.id,
+						inboundMemoryId,
+					);
+			}
 			this.runtime.logger.error(
 				{
 					src: "plugin:discord",

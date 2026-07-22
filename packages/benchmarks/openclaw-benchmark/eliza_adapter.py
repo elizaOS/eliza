@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # Try to import the new execution-based runner
 try:
-    from openclaw.runner import BenchmarkRunner
+    from openclaw.runner import BenchmarkRunner, require_complete_full_result
     from openclaw.scenarios import count_scenarios, load_scenarios, validate_scenarios
     from openclaw.scoring import format_score_summary
     EXECUTION_MODE_AVAILABLE = True
@@ -244,107 +244,90 @@ def _first_system_text(messages: list[dict]) -> str:
     return ""
 
 
-def _structured_action_system_prompt() -> str:
-    return (
-        "You are an expert software developer completing coding tasks in a sandbox. "
-        "Return exactly one JSON object and no prose. The object must have "
-        '"action":"BENCHMARK_ACTION" and a "params" object. The params object '
-        "must describe the concrete project files and shell setup operations for "
-        "the requested task. Use packageJson, tsconfigJson, gitignoreContents, "
-        "and directories fields for setup tasks. Do not answer with acknowledgements."
-    )
+_BENCHMARK_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "exec",
+            "description": "Run a shell command in the benchmark workspace.",
+            "parameters": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write",
+            "description": "Create or overwrite a UTF-8 text file in the benchmark workspace.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read",
+            "description": "Read a UTF-8 text file from the benchmark workspace.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    },
+]
 
 
-def _structured_action_text(task_text: str) -> str:
-    return (
-        f"{task_text.strip()}\n\n"
-        "Return exactly this JSON shape, filled with the concrete setup data:\n"
-        "{"
-        '"action":"BENCHMARK_ACTION",'
-        '"params":{'
-        '"packageJson":{'
-        '"name":"weather-cli",'
-        '"version":"1.0.0",'
-        '"type":"module",'
-        '"scripts":{"build":"tsc","test":"node --test"}'
-        "},"
-        '"tsconfigJson":{"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"Node","strict":true,"outDir":"dist","rootDir":"src"},"include":["src/**/*.ts"]},'
-        '"gitignoreContents":"node_modules\\ndist\\n",'
-        '"directories":{"src":"src","tests":"tests"}'
-        "}"
-        "}"
-    )
-
-
-def _load_first_json_object(text: str) -> dict | None:
-    decoder = json.JSONDecoder()
-    for index, char in enumerate(text):
-        if char != "{":
-            continue
+def _normalize_tool_call(value: object) -> dict | None:
+    """Normalize native/OpenAI action shapes into the benchmark XML schema."""
+    if not isinstance(value, dict):
+        return None
+    function = value.get("function")
+    if isinstance(function, dict):
+        name = function.get("name")
+        arguments = function.get("arguments")
+    else:
+        name = value.get("name") or value.get("tool")
+        arguments = value.get("arguments")
+        if arguments is None:
+            arguments = value.get("args")
+    if not isinstance(name, str) or name not in {"exec", "write", "read"}:
+        return None
+    if isinstance(arguments, str):
         try:
-            value, _end = decoder.raw_decode(text[index:])
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict):
-            return value
-    return None
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"invalid {name} tool arguments JSON") from exc
+    if not isinstance(arguments, dict):
+        raise RuntimeError(f"invalid {name} tool arguments: expected object")
+    return {"tool": name, "args": arguments}
 
 
-def _action_as_xml(text: str) -> str:
-    payload = _load_first_json_object(text)
-    if payload is None:
-        return ""
-    if not isinstance(payload, dict) or payload.get("action") != "BENCHMARK_ACTION":
-        return ""
-    params = payload.get("params")
+def _tool_calls_as_xml(params: object) -> str:
     if not isinstance(params, dict):
         return ""
-
-    calls: list[dict] = []
-    package_json = params.get("packageJson") or params.get("package_json")
-    if isinstance(package_json, dict):
-        calls.append(
-            {
-                "tool": "write",
-                "args": {
-                    "path": "package.json",
-                    "content": json.dumps(package_json, ensure_ascii=False, indent=2),
-                },
-            }
-        )
-    tsconfig = params.get("tsconfigJson") or params.get("tsconfig_json")
-    if isinstance(tsconfig, dict):
-        calls.append(
-            {
-                "tool": "write",
-                "args": {
-                    "path": "tsconfig.json",
-                    "content": json.dumps(tsconfig, ensure_ascii=False, indent=2),
-                },
-            }
-        )
-    gitignore = params.get("gitignoreContents") or params.get("gitignore")
-    if isinstance(gitignore, str):
-        calls.append({"tool": "write", "args": {"path": ".gitignore", "content": gitignore}})
-
-    directories = params.get("directories")
-    if isinstance(directories, dict):
-        src_dir = str(directories.get("src") or "src")
-        tests_dir = str(directories.get("tests") or "tests")
-        calls.append(
-            {
-                "tool": "exec",
-                "args": {
-                    "command": (
-                        f"mkdir -p {src_dir} {tests_dir} && "
-                        f"touch {src_dir}/index.ts {tests_dir}/.gitkeep"
-                    )
-                },
-            }
-        )
-    if any(call["args"].get("path") == "package.json" for call in calls if call["tool"] == "write"):
-        calls.append({"tool": "exec", "args": {"command": "git init"}})
-
+    raw_calls = params.get("tool_calls")
+    if raw_calls is None:
+        raw_calls = params.get("BENCHMARK_ACTIONS")
+    if raw_calls is None:
+        raw_calls = params.get("actions")
+    if isinstance(raw_calls, dict):
+        raw_calls = [raw_calls]
+    if not isinstance(raw_calls, list):
+        return ""
+    calls = [call for item in raw_calls if (call := _normalize_tool_call(item)) is not None]
     return "\n".join(
         "<tool_call>" + json.dumps(call, ensure_ascii=False) + "</tool_call>"
         for call in calls
@@ -372,7 +355,7 @@ class HarnessExecutionRunner(BenchmarkRunner):
         self.harness = harness
         self._manager = None
         self._client = self._build_client(start_server=start_server)
-        self._turn_index = 0
+        self._scenario_name = "openclaw-bench"
 
     def close(self) -> None:
         if self._manager is not None:
@@ -393,7 +376,6 @@ class HarnessExecutionRunner(BenchmarkRunner):
                 provider=provider,
                 model=self.model,
                 timeout_s=timeout_s,
-                direct_openai_compatible=True,
                 reasoning_effort=os.environ.get("OPENCLAW_BENCH_THINKING", "low"),
             )
         if self.harness == "eliza":
@@ -409,37 +391,31 @@ class HarnessExecutionRunner(BenchmarkRunner):
             return ElizaClient(ELIZA_URL, token=os.environ.get("ELIZA_BENCH_TOKEN"))
         raise RuntimeError(f"unsupported OpenClaw benchmark harness: {self.harness}")
 
+    def run_scenario(self, scenario_name: str, sandbox=None) -> dict:
+        self._scenario_name = scenario_name
+        if hasattr(self._client, "reset"):
+            self._client.reset(scenario_name, "openclaw_bench")
+        return super().run_scenario(scenario_name, sandbox=sandbox)
+
     def call_llm(self, messages: list) -> str:
-        self._turn_index += 1
-        if hasattr(self._client, "reset") and self._turn_index == 1:
-            self._client.reset("openclaw-bench", "openclaw_bench")
-        if self._turn_index > 1:
-            return "Done."
         user_text = _last_user_text(messages)
-        harness_messages = [
-            {"role": "system", "content": _structured_action_system_prompt()},
-            {"role": "user", "content": _structured_action_text(user_text)},
-        ]
         context = {
             "benchmark": "openclaw_bench",
-            "task_id": "openclaw-bench",
-            "messages": harness_messages,
-            "system_prompt": _first_system_text(harness_messages),
+            "task_id": self._scenario_name,
+            "messages": messages,
+            "system_prompt": _first_system_text(messages),
+            "tools": _BENCHMARK_TOOLS,
+            "tool_choice": "auto",
             "temperature": 0.1,
             "max_tokens": 4000,
         }
-        response = self._client.send_message(_last_user_text(harness_messages), context=context)
+        response = self._client.send_message(user_text, context=context)
         response_text = str(response.text or "")
-        action_xml = _action_as_xml(response_text)
+        action_xml = _tool_calls_as_xml(response.params)
+        if action_xml and response_text:
+            return f"{response_text}\n{action_xml}"
         if action_xml:
             return action_xml
-        raw_action = response.params.get("BENCHMARK_ACTION") if isinstance(response.params, dict) else None
-        if isinstance(raw_action, dict):
-            action_xml = _action_as_xml(
-                json.dumps({"action": "BENCHMARK_ACTION", "params": raw_action})
-            )
-            if action_xml:
-                return action_xml
         return response_text
 
 
@@ -523,12 +499,13 @@ Scoring modes:
         # Use the new execution-based runner. Accepts any OpenAI-compatible
         # provider via OPENAI_API_KEY + OPENAI_BASE_URL (cerebras, openrouter,
         # vllm, openai) and falls back to legacy GROQ_API_KEY.
+        selected_harness = _selected_harness_name(args.harness)
         api_key = (
             os.environ.get("OPENAI_API_KEY")
             or os.environ.get("CEREBRAS_API_KEY")
             or os.environ.get("GROQ_API_KEY")
         )
-        if not api_key:
+        if not api_key and selected_harness not in {"eliza", "hermes", "openclaw"}:
             print(
                 "Error: OPENAI_API_KEY (or CEREBRAS_API_KEY / GROQ_API_KEY) "
                 "is required for execution mode",
@@ -543,7 +520,7 @@ Scoring modes:
         )
 
         try:
-            harness = _selected_harness_name(args.harness)
+            harness = selected_harness
             if harness in {"eliza", "hermes", "openclaw"}:
                 runner = HarnessExecutionRunner(
                     harness=harness,
@@ -570,7 +547,6 @@ Scoring modes:
             if callable(close):
                 close()
 
-        selected_harness = _selected_harness_name(args.harness)
         if selected_harness in {"eliza", "hermes", "openclaw"}:
             result["harness"] = selected_harness
             result["agent_type"] = f"{selected_harness}-benchmark-bridge"
@@ -583,6 +559,9 @@ Scoring modes:
                 "scoring": "file_command_and_test_execution",
                 "conceptual_scoring": False,
             }
+
+        if args.all:
+            require_complete_full_result(result)
 
     else:
         # Legacy conceptual mode
@@ -676,7 +655,6 @@ Scoring modes:
                 for check in score.get("checks", []):
                     status = "+" if check["found"] else "-"
                     print(f"  {status} {check['concept']}")
-
 
 if __name__ == "__main__":
     main()

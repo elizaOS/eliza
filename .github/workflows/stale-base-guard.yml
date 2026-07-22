@@ -51,7 +51,7 @@ jobs:
     steps:
       - name: Checkout target branch (guard logic comes from the base, not the PR)
         # actions/checkout@v4
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           # The guard disables lazy promisor fetches while it runs. Fetch the

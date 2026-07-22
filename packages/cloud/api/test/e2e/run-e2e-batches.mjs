@@ -72,6 +72,19 @@ const e2eEnv = {
   NODE_ENV: process.env.NODE_ENV || "test",
   CLOUD_E2E: process.env.CLOUD_E2E || "1",
   ELIZA_KMS_BACKEND: process.env.ELIZA_KMS_BACKEND || "memory",
+  // Keep the real voice upgrade route reachable in the pinned-Workerd lane.
+  // Binary-first coverage closes before token verification, so these inert
+  // values never open an outbound provider connection.
+  VOICE_REALTIME_WS_ENABLED: process.env.VOICE_REALTIME_WS_ENABLED || "true",
+  DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || "e2e-inert-deepgram",
+  CARTESIA_API_KEY: process.env.CARTESIA_API_KEY || "e2e-inert-cartesia",
+  VOICE_REALTIME_CARTESIA_VOICE_ID:
+    process.env.VOICE_REALTIME_CARTESIA_VOICE_ID || "e2e-inert-voice",
+  VOICE_REALTIME_ELIZA_ENDPOINT:
+    process.env.VOICE_REALTIME_ELIZA_ENDPOINT ||
+    "https://voice-e2e.invalid/sse",
+  VOICE_REALTIME_ELIZA_AUTHORIZATION:
+    process.env.VOICE_REALTIME_ELIZA_AUTHORIZATION || "Bearer e2e-inert",
 };
 
 async function isHealthy() {

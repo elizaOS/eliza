@@ -57,8 +57,10 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
 		...coreMock,
+		ElizaError: actual.ElizaError,
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
 		getUserMessageText: actual.getUserMessageText,
+		resolveStateDir: actual.resolveStateDir,
 	};
 });
 
@@ -195,11 +197,26 @@ function createRepoFixture() {
 		JSON.stringify({
 			name: "@local/plugin-__PLUGIN_NAME__",
 			displayName: "__PLUGIN_DISPLAY_NAME__",
+			// seedGuiViewScaffold validates a semver-pinned biome devDep on the
+			// scaffolded template (matches the repo-canonical pin in root
+			// package.json). scripts/dependencies are auto-created by objectField.
+			devDependencies: { "@biomejs/biome": "2.5.4" },
 		}),
 	);
 	writeFileSync(
 		path.join(templateDir, "src/index.ts"),
 		"export const name = '__PLUGIN_NAME__';\nexport const displayName = '__PLUGIN_DISPLAY_NAME__';\n",
+	);
+	writeFileSync(
+		path.join(templateDir, "tsconfig.json"),
+		JSON.stringify({
+			compilerOptions: {
+				strict: true,
+				module: "ESNext",
+				moduleResolution: "bundler",
+			},
+			include: ["src/**/*.ts", "tests/**/*.ts"],
+		}),
 	);
 	return {
 		repoRoot,
@@ -342,7 +359,16 @@ describe("view management actions", () => {
 			expect(
 				readFileSync(path.join(workdir, "src/index.ts"), "utf8"),
 			).toContain("Remote Ledger");
+			expect(
+				readFileSync(path.join(workdir, "src/index.ts"), "utf8"),
+			).toContain('bundlePath: "dist/views/bundle.js"');
+			expect(
+				readFileSync(path.join(workdir, "src/views/PluginView.tsx"), "utf8"),
+			).toContain("create a remote ledger dashboard view");
 			expect(codingHandler).toHaveBeenCalledTimes(1);
+			expect(codingHandler.mock.calls[0][1]).toMatchObject({
+				roomId: "room-1",
+			});
 			const handlerOptions = codingHandler.mock.calls[0][3] as {
 				parameters: Record<string, unknown>;
 			};
@@ -351,7 +377,17 @@ describe("view management actions", () => {
 				"task: build_eliza_plugin_with_view",
 			);
 			expect(handlerOptions.parameters.task).toContain(
+				"sourceDir already contains a working Plugin.views declaration",
+			);
+			expect(handlerOptions.parameters.task).toContain(
 				"completionRule: after all commands pass",
+			);
+			expect(handlerOptions.parameters.task).toContain("bun run build");
+			expect(handlerOptions.parameters.task).toContain(
+				'"files":["<changed-relative-path>"]',
+			);
+			expect(handlerOptions.parameters.task).toContain(
+				'"passed":<exact passed count>',
 			);
 			expect(handlerOptions.parameters.metadata).toMatchObject({
 				originRoomId: "room-1",
@@ -395,6 +431,9 @@ describe("view management actions", () => {
 				taskSessionId: "task-session-1",
 			});
 			expect(codingHandler).toHaveBeenCalledTimes(1);
+			expect(codingHandler.mock.calls[0][1]).toMatchObject({
+				roomId: "room-1",
+			});
 			const handlerOptions = codingHandler.mock.calls[0][3] as {
 				parameters: Record<string, unknown>;
 			};
@@ -405,6 +444,23 @@ describe("view management actions", () => {
 			expect(handlerOptions.parameters.task).toContain(
 				"rename the title to Remote Ledger Updated",
 			);
+			expect(handlerOptions.parameters.task).toContain("bun run build");
+			expect(handlerOptions.parameters.task).toContain(
+				'"files":["<changed-relative-path>"]',
+			);
+			expect(handlerOptions.parameters.task).toContain(
+				'"passed":<exact passed count>',
+			);
+			expect(handlerOptions.parameters.validator).toEqual({
+				service: "app-verification",
+				method: "verifyPlugin",
+				params: {
+					workdir: pluginDir,
+					pluginName: "@local/plugin-ledger",
+					profile: "full",
+				},
+			});
+			expect(handlerOptions.parameters.onVerificationFail).toBe("retry");
 			expect(handlerOptions.parameters.metadata).toMatchObject({
 				originRoomId: "room-1",
 				parentTrajectoryStepId: "parent-step-1",
@@ -1750,6 +1806,77 @@ describe("view management actions", () => {
 		}
 	});
 
+	it("keeps an explicit edit target isolated from current-view capabilities", async () => {
+		const repo = createRepoFixture();
+		try {
+			const pluginDir = path.join(repo.pluginsDir, "plugin-proof-surface");
+			mkdirSync(pluginDir, { recursive: true });
+			const { runtime, codingHandler } = createRuntime();
+			const client = {
+				listViews: vi.fn(async () => [
+					view({
+						id: "cockpit",
+						label: "Cockpit",
+						pluginName: "@elizaos/plugin-task-coordinator",
+						path: "/cockpit",
+						capabilities: [
+							{
+								id: "orchestrator-add-agent",
+								description: "Add an agent to the coding swarm.",
+							},
+						],
+					}),
+					view({
+						id: "proof-surface",
+						label: "Proof Surface",
+						pluginName: "@local/plugin-proof-surface",
+						path: "/proof-surface",
+						capabilities: [],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "cockpit",
+					viewLabel: "Cockpit",
+					viewType: "gui" as const,
+					viewPath: "/cockpit",
+				})),
+			};
+			const action = createViewsAction({
+				client,
+				hasOwnerAccess: vi.fn(async () => true),
+				repoRoot: repo.repoRoot,
+			});
+
+			const result = await action.handler(
+				runtime as never,
+				message("add an agent") as never,
+				undefined,
+				{
+					parameters: {
+						action: "edit",
+						view: "proof-surface",
+						intent: "Replace marker VIEW_CREATED with VIEW_EDITED and rebuild.",
+					},
+				},
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "edit",
+				viewId: "proof-surface",
+				workdir: pluginDir,
+			});
+			expect(codingHandler).toHaveBeenCalledTimes(1);
+			expect(globalThis.fetch).not.toHaveBeenCalledWith(
+				"http://127.0.0.1:3456/api/views/cockpit/interact",
+				expect.anything(),
+			);
+		} finally {
+			repo.cleanup();
+		}
+	});
+
 	it("routes explicit CLOSE_VIEW alias calls through non-destructive view close", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
@@ -3014,6 +3141,137 @@ describe("view management actions", () => {
 			subMode: "cancel",
 		});
 		expect(runtime.createTask).not.toHaveBeenCalled();
+	});
+
+	it("surfaces invalid APP create continuations without fabricating a dispatch", async () => {
+		const callback = vi.fn();
+		const appClient = { listInstalledApps: vi.fn(async () => []) };
+		const emptyRuntime = createRuntime().runtime;
+
+		const empty = await runCreate({
+			runtime: emptyRuntime as never,
+			client: appClient as never,
+			message: message("") as never,
+			callback,
+			repoRoot: "/tmp/no-app-create",
+		});
+		expect(empty).toMatchObject({
+			success: false,
+			text: "Tell me what app you want to build.",
+		});
+		expect(appClient.listInstalledApps).not.toHaveBeenCalled();
+
+		const missingTarget = await runCreate({
+			runtime: emptyRuntime as never,
+			client: appClient as never,
+			message: message("Update the missing app") as never,
+			options: { action: "create", editTarget: "missing" },
+			callback,
+			repoRoot: "/tmp/no-app-create",
+		});
+		expect(missingTarget).toMatchObject({
+			success: false,
+			text: 'Cannot find an installed app named "missing".',
+		});
+
+		const pendingTasks: RuntimeTask[] = [
+			{
+				id: "pending-app-create",
+				metadata: {
+					roomId: "room-1",
+					intent: "Update proof app",
+					intentCreatedAt: "2026-07-13T00:00:00.000Z",
+					choices: [{ key: "edit-1", label: "Edit proof app" }],
+				},
+			},
+		];
+		const pendingRuntime = createRuntime({ tasks: pendingTasks }).runtime;
+		const lostTarget = await runCreate({
+			runtime: pendingRuntime as never,
+			client: appClient as never,
+			message: message("edit-1") as never,
+			callback,
+			repoRoot: "/tmp/no-app-create",
+		});
+		expect(lostTarget).toMatchObject({
+			success: false,
+			text: 'I lost track of the edit target "edit-1". Please re-state your request.',
+		});
+		expect(pendingRuntime.deleteTask).toHaveBeenCalledWith(
+			"pending-app-create",
+		);
+		expect(emptyRuntime.actions[0]?.handler).not.toHaveBeenCalled();
+	});
+
+	it("keeps an APP edit task in its chat room with bounded verification retries", async () => {
+		const repo = createRepoFixture();
+		try {
+			const pluginDir = path.join(repo.pluginsDir, "plugin-proof-app");
+			mkdirSync(pluginDir, { recursive: true });
+			const { runtime, codingHandler } = createRuntime();
+			const appClient = {
+				listInstalledApps: vi.fn(async () => [
+					{
+						name: "proof-app",
+						displayName: "Proof App",
+						pluginName: "@local/plugin-proof-app",
+						version: "1.0.0",
+						installedAt: "2026-07-13T00:00:00.000Z",
+					},
+				]),
+			};
+
+			const result = await runCreate({
+				runtime: runtime as never,
+				client: appClient as never,
+				message: message("Update the proof app", "origin-app-room") as never,
+				options: {
+					action: "create",
+					editTarget: "proof-app",
+					intent: "Replace the proof marker and rebuild.",
+				},
+				callback: vi.fn(),
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(result.success).toBe(true);
+			expect(result.values).toMatchObject({
+				mode: "create",
+				subMode: "edit",
+				name: "proof-app",
+				workdir: pluginDir,
+			});
+			expect(codingHandler).toHaveBeenCalledTimes(1);
+			expect(codingHandler.mock.calls[0][1]).toMatchObject({
+				roomId: "origin-app-room",
+			});
+			const handlerOptions = codingHandler.mock.calls[0][3] as {
+				parameters: Record<string, unknown>;
+			};
+			expect(handlerOptions.parameters.metadata).toMatchObject({
+				originRoomId: "origin-app-room",
+				parentTrajectoryStepId: "parent-step-1",
+				trajectoryLinkSource: "plugin-app-control:app-create",
+			});
+			expect(handlerOptions.parameters).toMatchObject({
+				workdir: pluginDir,
+				lockWorkdir: true,
+				keepAliveAfterComplete: true,
+				maxRetries: 2,
+				onVerificationFail: "retry",
+				validator: {
+					service: "app-verification",
+					method: "verifyApp",
+					params: {
+						workdir: pluginDir,
+						appName: "proof-app",
+						profile: "full",
+					},
+				},
+			});
+		} finally {
+			repo.cleanup();
+		}
 	});
 
 	it("returns create choice blocks as verified user-facing payloads", async () => {

@@ -46,9 +46,30 @@ export const CORS_ALLOW_HEADER_NAMES = [
   "X-Eliza-Client-Id",
   "X-ElizaOS-UI-Language",
   "X-Eliza-UI-Language",
+  // Caller-to-gateway chat correlation. Accept W3C context when present;
+  // X-Eliza-Trace-Id covers clients that cannot share Cloudflare's native id.
+  "Traceparent",
+  "Tracestate",
+  "X-Eliza-Trace-Id",
+  "X-Eliza-Telemetry",
 ] as const;
 
 export const CORS_ALLOW_HEADERS = CORS_ALLOW_HEADER_NAMES.join(", ");
+
+/** Browser-visible response headers used by the latency harness and app. */
+export const CORS_EXPOSE_HEADER_NAMES = [
+  "Server-Timing",
+  "X-Request-ID",
+  "X-Eliza-Trace-Id",
+  "X-Eliza-Preforward-Ms",
+  "X-Eliza-Auth-Trace",
+  "X-Eliza-Inference-Path",
+  "X-Eliza-Stream-Scope-Ms",
+  "X-Eliza-Stream-Body-Ms",
+  "X-Eliza-Stream-Parse-Ms",
+  "X-Eliza-Stream-Bridge-Ms",
+  "X-Eliza-TTS-Provider",
+] as const;
 
 export const CORS_ALLOW_METHOD_NAMES = [
   "GET",

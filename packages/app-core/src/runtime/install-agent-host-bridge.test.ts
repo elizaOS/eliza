@@ -29,9 +29,11 @@ describe("installAgentHostBridge", () => {
     expect(bridge).not.toBe(defaultAgentHostBridge);
     expect(typeof bridge.runVaultBootstrap).toBe("function");
     expect(typeof bridge.getDefaultAccountPool).toBe("function");
+    expect(typeof bridge.getAccountPoolBrokerSnapshot).toBe("function");
     expect(typeof bridge.sharedVault).toBe("function");
     expect(typeof bridge.getBuildVariant).toBe("function");
     expect(typeof bridge.handleCloudPairRoute).toBe("function");
+    expect(typeof bridge.resolveHttpRequestAuthorization).toBe("function");
 
     _resetAgentHostBridge();
   });

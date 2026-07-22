@@ -41,7 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -49,7 +49,7 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "lifeops:gepa-seed": "bun --conditions=eliza-source scripts/lifeops-gepa-seed.ts",
     "trajectories:review": "bun --conditions=eliza-source scripts/trajectory-quality-review.ts"
   },
@@ -115,8 +115,9 @@
     "dotenv": "^17.2.3",
     "jsdom": "^29.0.0",
     "react": "19.2.5",
-    "react-dom": "19.2.5",
+    "react-dom": "19.2.7",
     "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17",
     "vite": "^8.0.0"

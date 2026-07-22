@@ -8,7 +8,7 @@
  * dialog for delete.
  */
 
-import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, KeyRound, Trash2 } from "lucide-react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
 import { cn } from "../../lib/utils";
@@ -41,6 +41,8 @@ export interface AccountCardProps {
   onTest: () => Promise<void>;
   onRefreshUsage: () => Promise<void>;
   onDelete: () => Promise<void>;
+  /** Opens the provider credential flow for this unhealthy account. */
+  onReauthenticate?: () => void;
   testBusy?: boolean;
   refreshBusy?: boolean;
 }
@@ -158,6 +160,13 @@ function deriveHealthLabel(
         }),
         tone: "danger",
       };
+    case "expired":
+      return {
+        label: t("accounts.health.expired", {
+          defaultValue: "Expired",
+        }),
+        tone: "warning",
+      };
     default:
       return {
         label: t("accounts.health.unknown", { defaultValue: "Unknown" }),
@@ -177,6 +186,7 @@ export function AccountCard({
   onTest,
   onRefreshUsage,
   onDelete,
+  onReauthenticate,
   testBusy = false,
   refreshBusy = false,
 }: AccountCardProps) {
@@ -196,6 +206,9 @@ export function AccountCard({
     account.providerId === "zai-coding" || account.providerId === "kimi-coding";
   const usage = account.usage;
   const lastUsed = formatRelativeTime(account.lastUsedAt);
+  const requiresCredentialRepair =
+    account.health === "needs-reauth" || account.health === "invalid";
+  const healthReason = account.healthDetail?.lastError?.trim();
 
   return (
     <div
@@ -293,6 +306,25 @@ export function AccountCard({
             />
             {t("accounts.enabled", { defaultValue: "Enabled" })}
           </div>
+          {requiresCredentialRepair && onReauthenticate ? (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={saving}
+              onClick={onReauthenticate}
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              <KeyRound className="h-3.5 w-3.5" aria-hidden />
+              {account.source === "oauth"
+                ? t("accounts.reauthenticate", {
+                    defaultValue: "Reauthenticate",
+                  })
+                : t("accounts.replaceCredential", {
+                    defaultValue: "Replace credential",
+                  })}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -347,12 +379,15 @@ export function AccountCard({
             <UsageBar
               label={t("accounts.usage.session5h", { defaultValue: "5h" })}
               pct={usage?.sessionPct}
-              resetsAt={usage?.resetsAt}
+              // Anthropic persists the seven-day reset. Codex currently
+              // persists its primary five-hour reset. Never label one clock
+              // as the other in the UI.
+              resetsAt={isCodex ? usage?.resetsAt : undefined}
             />
             <UsageBar
               label={t("accounts.usage.weekly", { defaultValue: "7d" })}
               pct={usage?.weeklyPct}
-              resetsAt={usage?.resetsAt}
+              resetsAt={isAnthropic ? usage?.resetsAt : undefined}
             />
           </>
         ) : usage ? (
@@ -368,6 +403,14 @@ export function AccountCard({
             })}
           </span>
         )}
+        {requiresCredentialRepair && healthReason ? (
+          <span
+            className="min-w-0 truncate text-[10px] text-destructive"
+            title={healthReason}
+          >
+            {healthReason}
+          </span>
+        ) : null}
         {!account.hasCredential ? (
           <span
             className="text-[10px] text-warn"

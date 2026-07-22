@@ -180,38 +180,45 @@ describeIf(MATRIX_ENABLED)(
     describe("state: AGENT authenticated but not owner-authorized — planned tool path", () => {
       it.each(
         OWNER_GATED_ACTIONS.map((action) => [action.name, action] as const),
-      )("%s planned-tool gate denies a non-owner sender", async (_name, action) => {
-        const userRoles = await resolveUserRoles(
-          nonOwnerMessage("try an owner operation"),
-        );
-        expect(userRoles).not.toContain("OWNER");
-        // Mirrors `getGateFailure` in execute-planned-tool-call.ts.
-        expect(satisfiesRoleGate(userRoles, action.roleGate)).toBe(false);
-      });
+      )(
+        "%s planned-tool gate denies a non-owner sender",
+        async (_name, action) => {
+          const userRoles = await resolveUserRoles(
+            nonOwnerMessage("try an owner operation"),
+          );
+          expect(userRoles).not.toContain("OWNER");
+          // Mirrors `getGateFailure` in execute-planned-tool-call.ts.
+          expect(satisfiesRoleGate(userRoles, action.roleGate)).toBe(false);
+        },
+      );
     });
 
     describe("state: AGENT authenticated but not owner-authorized — direct handler path", () => {
-      it.each(
-        OWNER_GATED_ACTIONS.map((action) => [action.name] as const),
-      )("%s handler-level owner guard denies a non-owner sender", async () => {
-        const message = nonOwnerMessage("try an owner operation");
-        // The handler guard chain: hasLifeOpsAccess → hasOwnerAccess →
-        // hasRoleAccess(..., "OWNER"). Asserting the terminal predicate
-        // proves the same denial the handler returns PERMISSION_DENIED for.
-        expect(await hasRoleAccess(runtime, message, "OWNER")).toBe(false);
-      });
+      it.each(OWNER_GATED_ACTIONS.map((action) => [action.name] as const))(
+        "%s handler-level owner guard denies a non-owner sender",
+        async () => {
+          const message = nonOwnerMessage("try an owner operation");
+          // The handler guard chain: hasLifeOpsAccess → hasOwnerAccess →
+          // hasRoleAccess(..., "OWNER"). Asserting the terminal predicate
+          // proves the same denial the handler returns PERMISSION_DENIED for.
+          expect(await hasRoleAccess(runtime, message, "OWNER")).toBe(false);
+        },
+      );
     });
 
     describe("state: OWNER authenticated and authorized — both paths allow", () => {
       it.each(
         OWNER_GATED_ACTIONS.map((action) => [action.name, action] as const),
-      )("%s allows the owner through planned-tool and handler paths", async (_name, action) => {
-        const message = ownerMessage("perform an owner operation");
-        const userRoles = await resolveUserRoles(message);
-        expect(userRoles).toContain("OWNER");
-        expect(satisfiesRoleGate(userRoles, action.roleGate)).toBe(true);
-        expect(await hasRoleAccess(runtime, message, "OWNER")).toBe(true);
-      });
+      )(
+        "%s allows the owner through planned-tool and handler paths",
+        async (_name, action) => {
+          const message = ownerMessage("perform an owner operation");
+          const userRoles = await resolveUserRoles(message);
+          expect(userRoles).toContain("OWNER");
+          expect(satisfiesRoleGate(userRoles, action.roleGate)).toBe(true);
+          expect(await hasRoleAccess(runtime, message, "OWNER")).toBe(true);
+        },
+      );
     });
 
     describe("state: unauthenticated connector — missing world context", () => {

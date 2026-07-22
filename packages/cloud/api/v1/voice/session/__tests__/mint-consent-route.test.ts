@@ -31,6 +31,28 @@ mock.module("@/db/repositories/characters", () => ({
         : undefined,
   },
 }));
+mock.module("@/db/repositories/agent-sandboxes", () => ({
+  agentSandboxesRepository: {
+    findById: async (id: string) =>
+      id === "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        ? {
+            id,
+            character_id: "11111111-1111-4111-8111-111111111111",
+            organization_id: "org-1",
+            user_id: "user-1",
+          }
+        : undefined,
+    findLatestByCharacterId: async (characterId: string) =>
+      characterId === "11111111-1111-4111-8111-111111111111"
+        ? {
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            character_id: characterId,
+            organization_id: "org-1",
+            user_id: "user-1",
+          }
+        : undefined,
+  },
+}));
 mock.module("@/db/repositories/conversations", () => ({
   conversationsRepository: {
     findById: async () => undefined,
@@ -54,6 +76,7 @@ mock.module("@/lib/voice-session/consent-nonce", () => ({
   },
 }));
 
+import { verifyVoiceSessionToken } from "../../../../../shared/src/lib/voice-session/jwt";
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 
 const { default: mintRoute } = await import("../route");
@@ -154,6 +177,13 @@ describe("voice-session mint route", () => {
       downlink: { codecs: string[] };
     };
     expect(body.token.split(".").length).toBe(3);
+    const verified = await verifyVoiceSessionToken(body.token);
+    expect(verified.claims.agentId).toBe(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
+    expect(verified.claims.conversationId).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
     expect(body.wsUrl).toContain("/api/v1/voice/session/ws");
     // Phase 1: pcm16 ONLY, opus must NOT be advertised.
     expect(body.uplink.codecs).toEqual(["pcm16"]);
@@ -170,6 +200,31 @@ describe("voice-session mint route", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(replay.status).toBe(403);
+  });
+
+  test("accepts the sandbox UUID persisted by the managed-cloud UI", async () => {
+    const app = appWithFlag("true");
+    const consentRes = await app.request("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
+    const { consentNonce } = (await consentRes.json()) as {
+      consentNonce: string;
+    };
+    const res = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        consentNonce,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string };
+    const verified = await verifyVoiceSessionToken(body.token);
+    expect(verified.claims.agentId).toBe(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
   });
 
   test("mint response never contains a provider key", async () => {

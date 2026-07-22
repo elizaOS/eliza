@@ -1517,8 +1517,13 @@ function summarizeActionResultForClient(
 function summarizeRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
+  turnActionResults?: unknown[],
 ): ChatActionResultSummary[] {
-  return readRuntimeActionResults(runtime, messageId)
+  const actionResults =
+    turnActionResults && turnActionResults.length > 0
+      ? turnActionResults
+      : readRuntimeActionResults(runtime, messageId);
+  return actionResults
     .map(summarizeActionResultForClient)
     .filter((entry): entry is ChatActionResultSummary => Boolean(entry))
     .slice(-8);
@@ -3182,6 +3187,7 @@ export async function generateChatResponse(
     const actionResultSummaries = summarizeRuntimeActionResults(
       runtime,
       typeof message.id === "string" ? message.id : undefined,
+      result?.actionResults,
     );
 
     return {

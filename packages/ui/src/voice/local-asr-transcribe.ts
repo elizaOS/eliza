@@ -12,10 +12,12 @@
  * hook swallows + cleans up state) stays at the call-site.
  */
 
-import { fetchWithCsrf } from "../api/csrf-client";
+import { getCloudAuthToken } from "../api/client-cloud";
+import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";
 import {
   buildSharedRuntimeSttBody,
+  configuredCloudVoiceOrigin,
   currentSharedRuntimeVoiceOrigin,
   parseSharedRuntimeSttResponse,
   sharedRuntimeSttUrl,
@@ -30,6 +32,10 @@ export interface TranscribeWavOptions {
 export const DEFAULT_CLOUD_STT_TIMEOUT_MS = 15_000;
 
 export interface TranscribeCloudWavOptions extends TranscribeWavOptions {
+  /** Cloud Worker origin used to bypass a dedicated container proxy. */
+  configuredCloudOrigin?: string | null;
+  /** Cloud session bearer for the direct Worker request. */
+  cloudSessionToken?: string | null;
   /**
    * Per-attempt client-side timeout (#voice-V4). A flaky-cellular POST that
    * never resolves would otherwise hang the turn in "processing" forever
@@ -193,29 +199,72 @@ export async function transcribeCloudWav(
       // Shared-tier fallback (#15395): a shared-runtime agent has no
       // `/api/asr/cloud` container route (404s), so target the cloud API
       // worker's provider-agnostic v1 STT route instead — multipart `audio`
-      // File in, `{ transcript }` out. Dedicated-tier agents keep the raw-WAV
-      // `/api/asr/cloud` proxy path unchanged (sharedOrigin is null for them).
+      // File in, `{ transcript }` out. A cloud-authenticated dedicated session
+      // also bypasses the container proxy and calls that Worker route directly;
+      // local/remote dedicated agents without cloud auth keep the raw-WAV proxy.
       const sharedOrigin = currentSharedRuntimeVoiceOrigin();
-      const res = sharedOrigin
-        ? await fetchWithCsrf(sharedRuntimeSttUrl(sharedOrigin), {
-            method: "POST",
-            // No explicit Content-Type: the browser sets the multipart boundary.
-            headers: { Accept: "application/json" },
-            body: buildSharedRuntimeSttBody(audio),
-            signal: timeoutController.signal,
-          })
-        : await fetchWithCsrf(resolveApiUrl("/api/asr/cloud"), {
-            method: "POST",
-            headers: {
-              "Content-Type": "audio/wav",
-              Accept: "application/json",
-            },
-            // A Uint8Array is a valid BufferSource body; the cast bridges the
-            // DOM lib's stricter `ArrayBuffer` generic on BodyInit (runtime
-            // accepts it).
-            body: audio as BodyInit,
-            signal: timeoutController.signal,
-          });
+      const directOrigin = (
+        options?.configuredCloudOrigin ?? configuredCloudVoiceOrigin()
+      )?.replace(/\/+$/, "");
+      const cloudToken = (
+        options?.cloudSessionToken ?? getCloudAuthToken()
+      )?.trim();
+      const directRoute =
+        !sharedOrigin && directOrigin && cloudToken
+          ? { origin: directOrigin, token: cloudToken }
+          : null;
+      const workerOrigin = sharedOrigin ?? directRoute?.origin ?? null;
+      const workerRequest: RequestInit = {
+        method: "POST",
+        // No explicit Content-Type: the browser sets the multipart boundary.
+        headers: {
+          Accept: "application/json",
+          ...(directRoute
+            ? { Authorization: `Bearer ${directRoute.token}` }
+            : {}),
+        },
+        body: buildSharedRuntimeSttBody(audio),
+        signal: timeoutController.signal,
+      };
+      const fetchDedicatedProxy = () =>
+        fetchWithCsrf(resolveApiUrl("/api/asr/cloud"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "audio/wav",
+            Accept: "application/json",
+          },
+          // A Uint8Array is a valid BufferSource body; the cast bridges the
+          // DOM lib's stricter `ArrayBuffer` generic on BodyInit (runtime
+          // accepts it).
+          body: audio as BodyInit,
+          signal: timeoutController.signal,
+        });
+
+      let usedWorkerRoute = Boolean(workerOrigin);
+      let res: Response;
+      if (directRoute) {
+        try {
+          res = await requestViaAgentTransport(
+            sharedRuntimeSttUrl(directRoute.origin),
+            workerRequest,
+          );
+          if (res.status === 401 || res.status === 403) {
+            res = await fetchDedicatedProxy();
+            usedWorkerRoute = false;
+          }
+        } catch (error) {
+          if (timeoutController.signal.aborted) throw error;
+          res = await fetchDedicatedProxy();
+          usedWorkerRoute = false;
+        }
+      } else if (workerOrigin) {
+        res = await fetchWithCsrf(
+          sharedRuntimeSttUrl(workerOrigin),
+          workerRequest,
+        );
+      } else {
+        res = await fetchDedicatedProxy();
+      }
       if (!res.ok) {
         // error-policy:J6 the error body is diagnostic-only; a failed read must
         // not mask the HTTP status the error below already carries.
@@ -234,7 +283,7 @@ export async function transcribeCloudWav(
         text?: unknown;
         transcript?: unknown;
       } | null;
-      const text = sharedOrigin
+      const text = usedWorkerRoute
         ? parseSharedRuntimeSttResponse(parsed)
         : typeof parsed?.text === "string"
           ? parsed.text.trim()

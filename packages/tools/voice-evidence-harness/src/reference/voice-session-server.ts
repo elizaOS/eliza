@@ -23,6 +23,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import {
   CartesiaSonicTtsAdapter,
   type CartesiaSonicTtsStream,
+  VOICE_TTS_MAX_BUFFER_DELAY_MS,
 } from "@harness-adapters/cartesia-sonic-tts.ts";
 
 import {
@@ -433,7 +434,13 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
       sampleRate: 16000,
       encoding: "pcm_s16le",
     }).createStream(
-      { traceId: state.traceId },
+      // Same server-side aggregation cap as production (#16667): evidence runs
+      // that stream sentence-by-sentence with open contexts would otherwise
+      // re-incur Cartesia's 3000ms default window the cap exists to remove.
+      {
+        traceId: state.traceId,
+        maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS,
+      },
       {
         onFirstAudio: (e) => {
           state.speaking = true;

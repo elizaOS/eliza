@@ -37,6 +37,229 @@ const DEVELOP_PR_WORKFLOW = "develop-pr.yml";
 const FLEET_FALLBACK_VAR = "HETZNER_FLEET_ONLINE";
 const BARE_SELF_HOSTED = /runs-on:\s*\[\s*self-hosted\s*,\s*hetzner-robot\s*\]/;
 
+function indentation(line) {
+  return line.match(/^[ \t]*/)?.[0].replaceAll("\t", "  ").length ?? 0;
+}
+
+function isCommentOnlyLine(line) {
+  return line.trimStart().startsWith("#");
+}
+
+function yamlMappingKeyPattern(key) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `${escapedKey}[ \\t]*:`;
+}
+
+function usesOrdinaryMappingKeySyntax(line) {
+  return /^[A-Za-z][A-Za-z0-9_-]*[ \t]*:/.test(line.trimStart());
+}
+
+/** Direct step blocks under a job's `steps:` sequence. */
+function workflowStepBlocks(jobText) {
+  const lines = jobText.split(/\r?\n/);
+  const blocks = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^[ \t]*steps:[ \t]*(?:#.*)?$/.test(lines[i])) continue;
+    const stepsIndent = indentation(lines[i]);
+    let end = i + 1;
+    while (end < lines.length) {
+      const line = lines[end];
+      if (
+        line.trim() &&
+        !isCommentOnlyLine(line) &&
+        indentation(line) <= stepsIndent
+      ) {
+        break;
+      }
+      end += 1;
+    }
+
+    let itemIndent = null;
+    const starts = [];
+    for (let j = i + 1; j < end; j += 1) {
+      const item = lines[j].match(/^([ \t]*)-[ \t]+/);
+      if (!item) continue;
+      const indent = indentation(lines[j]);
+      if (itemIndent === null) itemIndent = indent;
+      if (indent === itemIndent) starts.push(j);
+    }
+    for (let j = 0; j < starts.length; j += 1) {
+      blocks.push({
+        itemIndent,
+        lines: lines.slice(starts[j], starts[j + 1] ?? end),
+      });
+    }
+    i = end - 1;
+  }
+  return blocks;
+}
+
+function topLevelStepKey(block, key) {
+  if (block.itemIndent === null) return null;
+  const keyPattern = yamlMappingKeyPattern(key);
+  const inline = block.lines[0]?.match(
+    new RegExp(`^[ \\t]*-[ \\t]+${keyPattern}[ \\t]*(.*)$`),
+  );
+  if (inline) {
+    return { index: 0, keyIndent: block.itemIndent + 2, value: inline[1] };
+  }
+  for (let i = 1; i < block.lines.length; i += 1) {
+    if (indentation(block.lines[i]) !== block.itemIndent + 2) continue;
+    const nested = block.lines[i].match(
+      new RegExp(`^[ \\t]*${keyPattern}[ \\t]*(.*)$`),
+    );
+    if (nested) {
+      return {
+        index: i,
+        keyIndent: block.itemIndent + 2,
+        value: nested[1],
+      };
+    }
+  }
+  return null;
+}
+
+function stepUsesNonstandardMappingKeys(block) {
+  if (block.itemIndent === null) return true;
+  const inline = block.lines[0]?.replace(/^[ \t]*-[ \t]+/, "") ?? "";
+  if (!usesOrdinaryMappingKeySyntax(inline)) return true;
+  return block.lines
+    .slice(1)
+    .some(
+      (line) =>
+        line.trim() &&
+        !isCommentOnlyLine(line) &&
+        indentation(line) === block.itemIndent + 2 &&
+        !usesOrdinaryMappingKeySyntax(line),
+    );
+}
+
+function stepRunCommand(block) {
+  const run = topLevelStepKey(block, "run");
+  if (!run) return null;
+  if (!/^[|>][+-]?[0-9]?$/.test(run.value.trim())) {
+    return run.value.trim();
+  }
+  const commandLines = [];
+  for (let i = run.index + 1; i < block.lines.length; i += 1) {
+    const line = block.lines[i];
+    if (
+      line.trim() &&
+      !isCommentOnlyLine(line) &&
+      indentation(line) <= run.keyIndent
+    ) {
+      break;
+    }
+    commandLines.push(line.trim());
+  }
+  return commandLines.join("\n");
+}
+
+function stepMasksFailure(block) {
+  const continueOnError = topLevelStepKey(block, "continue-on-error");
+  return (
+    continueOnError !== null &&
+    !/^(?:false|['"]false['"])(?:\s+#.*)?$/.test(continueOnError.value.trim())
+  );
+}
+
+function stepCanBypassRootGate(block) {
+  return ["if", "shell", "working-directory"].some(
+    (key) => topLevelStepKey(block, key) !== null,
+  );
+}
+
+function commandRunsScriptWithoutMasking(command, scriptName) {
+  const expected = `bun run ${scriptName}`;
+  const commands = command
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+#.*$/, "").trim())
+    .filter((line) => line && !line.startsWith("#"));
+  return commands.length === 1 && commands[0] === expected;
+}
+
+/** Match an actual, failure-propagating workflow step for one exact root script. */
+function hasBunRunStep(jobText, scriptName) {
+  return workflowStepBlocks(jobText).some((block) => {
+    const command = stepRunCommand(block);
+    return (
+      command !== null &&
+      !stepMasksFailure(block) &&
+      !stepCanBypassRootGate(block) &&
+      !stepUsesNonstandardMappingKeys(block) &&
+      commandRunsScriptWithoutMasking(command, scriptName)
+    );
+  });
+}
+
+function mappingHasTopLevelKey(text, key, mappingIndent) {
+  const keyPattern = yamlMappingKeyPattern(key);
+  return text
+    .split(/\r?\n/)
+    .some(
+      (line) =>
+        line.trim() &&
+        !isCommentOnlyLine(line) &&
+        indentation(line) === mappingIndent &&
+        new RegExp(`^[ \\t]*${keyPattern}`).test(line),
+    );
+}
+
+function mappingUsesNonstandardKeys(text, mappingIndent) {
+  return text
+    .split(/\r?\n/)
+    .some(
+      (line) =>
+        line.trim() &&
+        !isCommentOnlyLine(line) &&
+        indentation(line) === mappingIndent &&
+        !usesOrdinaryMappingKeySyntax(line),
+    );
+}
+
+function jobHasTopLevelKey(jobText, key) {
+  const lines = jobText
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !isCommentOnlyLine(line));
+  if (lines.length === 0) return false;
+  const jobIndent = Math.min(...lines.map(indentation));
+  const keyPattern = yamlMappingKeyPattern(key);
+  return lines.some(
+    (line) =>
+      indentation(line) === jobIndent &&
+      new RegExp(`^[ \\t]*${keyPattern}`).test(line),
+  );
+}
+
+function jobUsesNonstandardMappingKeys(jobText) {
+  const lines = jobText
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !isCommentOnlyLine(line));
+  if (lines.length === 0) return true;
+  const jobIndent = Math.min(...lines.map(indentation));
+  return mappingUsesNonstandardKeys(jobText, jobIndent);
+}
+
+function workflowHasTopLevelKey(text, key) {
+  return mappingHasTopLevelKey(text, key, 0);
+}
+
+function workflowUsesNonstandardMappingKeys(text) {
+  return mappingUsesNonstandardKeys(text, 0);
+}
+
+function jobCanBypassRequiredGate(jobText) {
+  return ["if", "continue-on-error", "defaults", "needs", "strategy"].some(
+    (key) => jobHasTopLevelKey(jobText, key),
+  );
+}
+
+function jobMasksFailureOrOverridesRunDefaults(jobText) {
+  return ["continue-on-error", "defaults"].some((key) =>
+    jobHasTopLevelKey(jobText, key),
+  );
+}
+
 /**
  * The `Classify changed paths` job's `runs-on:` value, read from the two lines
  * that follow its `name:`. Returns null when the job is absent.
@@ -73,7 +296,7 @@ function jobNeeds(text, jobId) {
   let inNeeds = false;
   for (let i = header + 1; i < lines.length; i += 1) {
     const line = lines[i];
-    if (/^ {2}\S/.test(line)) break; // next top-level job
+    if (!isCommentOnlyLine(line) && /^ {2}\S/.test(line)) break; // next top-level job
     const inlineNeeds = line.match(/^ {4}needs:\s*(\S+)\s*$/);
     if (inlineNeeds) {
       needs.add(inlineNeeds[1]);
@@ -117,13 +340,24 @@ function jobBody(text, jobId) {
   if (header < 0) return null;
   const body = [];
   for (let i = header + 1; i < lines.length; i += 1) {
-    if (/^ {2}\S/.test(lines[i])) break;
+    if (!isCommentOnlyLine(lines[i]) && /^ {2}\S/.test(lines[i])) break;
     body.push(lines[i]);
   }
   return body.join("\n");
 }
 
 function checkWorkflowText(fileName, text, problems) {
+  if (
+    (fileName === "test.yml" || fileName === DEVELOP_PR_WORKFLOW) &&
+    (workflowHasTopLevelKey(text, "defaults") ||
+      workflowUsesNonstandardMappingKeys(text))
+  ) {
+    problems.push(
+      fileName +
+        ": protected workflow must use ordinary root mapping keys and cannot set workflow-level run defaults",
+    );
+  }
+
   const runsOn = classifierRunsOn(text);
   if (fileName === "test.yml" && runsOn === null) {
     // test.yml must own the classifier; other files might legitimately drop it.
@@ -234,6 +468,14 @@ function checkWorkflowText(fileName, text, problems) {
     if (gate === null) {
       problems.push("test.yml: no 'merge-quality-gate' job found");
     } else {
+      if (
+        jobMasksFailureOrOverridesRunDefaults(gate) ||
+        jobUsesNonstandardMappingKeys(gate)
+      ) {
+        problems.push(
+          "test.yml: 'merge-quality-gate' must use ordinary mapping keys, retain its intended event gate, propagate failures, and keep root/default-shell run settings",
+        );
+      }
       const gateRunsOn = gate.match(/^\s+runs-on:\s*(.+?)\s*$/m)?.[1] ?? "";
       if (!hasHostedRunnerOrFleetFallback(gateRunsOn)) {
         problems.push(
@@ -241,21 +483,33 @@ function checkWorkflowText(fileName, text, problems) {
         );
       }
       const required = [
-        { label: "lint", pattern: /bun run lint\b/ },
-        { label: "format:check", pattern: /bun run format:check\b/ },
-        { label: "typecheck", pattern: /bun run typecheck\b/ },
+        {
+          label: "read-only lint",
+          present: hasBunRunStep(gate, "lint:check"),
+        },
+        {
+          label: "format:check",
+          present: hasBunRunStep(gate, "format:check"),
+        },
+        {
+          label: "typecheck",
+          present: hasBunRunStep(gate, "typecheck"),
+        },
         {
           label: "stale-base guard",
-          pattern: /stale-base-guard\.mjs[\s\S]*--merge-base/,
+          present: /stale-base-guard\.mjs[\s\S]*--merge-base/.test(gate),
         },
-        { label: "gitleaks secret scan", pattern: /gitleaks detect\b/ },
+        {
+          label: "gitleaks secret scan",
+          present: /gitleaks detect\b/.test(gate),
+        },
         {
           label: "merge-commit gitleaks patch scan",
-          pattern: /--log-opts "-m -p -1 \$\{CURRENT_SHA\}"/,
+          present: /--log-opts "-m -p -1 \$\{CURRENT_SHA\}"/.test(gate),
         },
       ];
-      for (const { label, pattern } of required) {
-        if (!pattern.test(gate)) {
+      for (const { label, present } of required) {
+        if (!present) {
           problems.push(
             `test.yml: 'merge-quality-gate' is missing the ${label} step`,
           );
@@ -269,10 +523,18 @@ function checkWorkflowText(fileName, text, problems) {
     if (lintJob === null) {
       problems.push(`${fileName}: no 'lint' job found`);
     } else {
-      if (!/bun run lint\b/.test(lintJob)) {
-        problems.push(`${fileName}: 'lint' job is missing bun run lint`);
+      if (
+        jobCanBypassRequiredGate(lintJob) ||
+        jobUsesNonstandardMappingKeys(lintJob)
+      ) {
+        problems.push(
+          `${fileName}: 'lint' job must use ordinary mapping keys, run unconditionally, propagate failures, and keep root/default-shell run settings`,
+        );
       }
-      if (!/bun run format:check\b/.test(lintJob)) {
+      if (!hasBunRunStep(lintJob, "lint:check")) {
+        problems.push(`${fileName}: 'lint' job is missing bun run lint:check`);
+      }
+      if (!hasBunRunStep(lintJob, "format:check")) {
         problems.push(
           `${fileName}: 'lint' job is missing bun run format:check — formatting regressions would first surface after merge`,
         );
@@ -327,9 +589,12 @@ function selfTest() {
     needs: changes
     runs-on: \${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
-      - run: bun run lint
-      - run: bun run format:check
-      - run: bun run typecheck
+      - name: Read-only lint
+        run: bun run lint:check
+      - name: Format check
+        run: bun run format:check
+      - name: Typecheck
+        run: bun run typecheck
       - run: node packages/scripts/stale-base-guard.mjs --base "$BASE_SHA" --head "$CURRENT_SHA" --merge-base "$BASE_SHA"
       - run: gitleaks detect --source . --log-opts "-m -p -1 \${CURRENT_SHA}"
   ci-ok:
@@ -420,8 +685,144 @@ function selfTest() {
       text: good.replace("github.event_name != 'pull_request' || ", ""),
     },
     {
+      name: "gate missing read-only lint",
+      text: good.replace("        run: bun run lint:check\n", ""),
+    },
+    {
+      name: "gate lint near-miss script",
+      text: good.replace("bun run lint:check", "bun run lint:check-fake"),
+    },
+    {
+      name: "gate lint failure masked with or-true",
+      text: good.replace("bun run lint:check", "bun run lint:check || true"),
+    },
+    {
+      name: "gate lint failure masked after a successful chain member",
+      text: good.replace(
+        "bun run lint:check",
+        "bun run lint:check && echo done || true",
+      ),
+    },
+    {
+      name: "gate lint failure masked after semicolon",
+      text: good.replace("bun run lint:check", "bun run lint:check; true"),
+    },
+    {
+      name: "gate lint script with a glued comment suffix",
+      text: good.replace("bun run lint:check", "bun run lint:check#fake"),
+    },
+    {
+      name: "gate lint command hidden in step env",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        env:\n          run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate lint step allows failure",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        continue-on-error: true\n        run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate lint step is conditional",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        if: false\n        run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate lint condition follows a low-indented comment",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        run: bun run lint:check\n# comment outside the step mapping\n        if: false",
+      ),
+    },
+    {
+      name: "gate lint condition uses whitespace before the colon",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        if : false\n        run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate lint condition uses a quoted YAML key",
+      text: good.replace(
+        "        run: bun run lint:check",
+        '        "if" : false\n        run: bun run lint:check',
+      ),
+    },
+    {
+      name: "gate lint condition uses explicit YAML key syntax",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        ? if\n        : false\n        run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate lint condition uses a tagged YAML key",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        !!str if: false\n        run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate lint condition uses an anchored YAML key",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        &condition if: false\n        run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate lint step changes working directory",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        working-directory: packages/core\n        run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate lint step overrides the shell",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        shell: bash -c '{0}; true'\n        run: bun run lint:check",
+      ),
+    },
+    {
+      name: "gate folded lint command masks failure",
+      text: good.replace(
+        "        run: bun run lint:check",
+        "        run: >\n          bun run lint:check\n          || true",
+      ),
+    },
+    {
+      name: "gate job allows failure",
+      text: good.replace(
+        "  merge-quality-gate:\n",
+        "  merge-quality-gate:\n    continue-on-error: true\n",
+      ),
+    },
+    {
+      name: "gate job changes run defaults",
+      text: good.replace(
+        "  merge-quality-gate:\n",
+        "  merge-quality-gate:\n    defaults:\n      run:\n        working-directory: packages/core\n",
+      ),
+    },
+    {
+      name: "gate workflow changes run defaults",
+      text: good.replace(
+        "jobs:\n",
+        "defaults:\n  run:\n    working-directory: packages/core\njobs:\n",
+      ),
+    },
+    {
+      name: "gate missing format check",
+      text: good.replace("        run: bun run format:check\n", ""),
+    },
+    {
       name: "gate missing typecheck",
-      text: good.replace("      - run: bun run typecheck\n", ""),
+      text: good.replace("        run: bun run typecheck\n", ""),
     },
     {
       name: "gate missing secret scan",
@@ -450,8 +851,10 @@ function selfTest() {
   lint:
     runs-on: ubuntu-latest
     steps:
-      - run: bun run lint
-      - run: bun run format:check
+      - name: Read-only lint
+        run: bun run lint:check
+      - name: Format check
+        run: bun run format:check
 `;
   const developProblems = [];
   checkWorkflowText(DEVELOP_PR_WORKFLOW, goodDevelopPr, developProblems);
@@ -460,11 +863,11 @@ function selfTest() {
       `self-test: valid develop PR fixture reported problems:\n  ${developProblems.join("\n  ")}`,
     );
   }
-  for (const command of ["bun run lint", "bun run format:check"]) {
+  for (const command of ["bun run lint:check", "bun run format:check"]) {
     const problems = [];
     checkWorkflowText(
       DEVELOP_PR_WORKFLOW,
-      goodDevelopPr.replace(`      - run: ${command}\n`, ""),
+      goodDevelopPr.replace(`        run: ${command}\n`, ""),
       problems,
     );
     if (problems.length === 0) {
@@ -473,8 +876,124 @@ function selfTest() {
       );
     }
   }
+  const conditionalDevelopProblems = [];
+  checkWorkflowText(
+    DEVELOP_PR_WORKFLOW,
+    goodDevelopPr.replace(
+      "    runs-on: ubuntu-latest",
+      "    if: false\n    runs-on: ubuntu-latest",
+    ),
+    conditionalDevelopProblems,
+  );
+  if (conditionalDevelopProblems.length === 0) {
+    throw new Error(
+      "self-test: conditional develop PR lint job was not caught",
+    );
+  }
+  const commentedConditionalDevelopProblems = [];
+  checkWorkflowText(
+    DEVELOP_PR_WORKFLOW,
+    goodDevelopPr.replace(
+      "        run: bun run format:check",
+      "        run: bun run format:check\n  # comment outside the job mapping\n    if: false",
+    ),
+    commentedConditionalDevelopProblems,
+  );
+  if (commentedConditionalDevelopProblems.length === 0) {
+    throw new Error(
+      "self-test: develop PR lint condition after a low-indented comment was not caught",
+    );
+  }
+  const spacedConditionalDevelopProblems = [];
+  checkWorkflowText(
+    DEVELOP_PR_WORKFLOW,
+    goodDevelopPr.replace(
+      "    runs-on: ubuntu-latest",
+      "    if : false\n    runs-on: ubuntu-latest",
+    ),
+    spacedConditionalDevelopProblems,
+  );
+  if (spacedConditionalDevelopProblems.length === 0) {
+    throw new Error(
+      "self-test: develop PR lint condition with whitespace before its colon was not caught",
+    );
+  }
+  const quotedConditionalDevelopProblems = [];
+  checkWorkflowText(
+    DEVELOP_PR_WORKFLOW,
+    goodDevelopPr.replace(
+      "    runs-on: ubuntu-latest",
+      "    'if' : false\n    runs-on: ubuntu-latest",
+    ),
+    quotedConditionalDevelopProblems,
+  );
+  if (quotedConditionalDevelopProblems.length === 0) {
+    throw new Error(
+      "self-test: develop PR lint condition with a quoted YAML key was not caught",
+    );
+  }
+  const explicitConditionalDevelopProblems = [];
+  checkWorkflowText(
+    DEVELOP_PR_WORKFLOW,
+    goodDevelopPr.replace(
+      "    runs-on: ubuntu-latest",
+      "    ? if\n    : false\n    runs-on: ubuntu-latest",
+    ),
+    explicitConditionalDevelopProblems,
+  );
+  if (explicitConditionalDevelopProblems.length === 0) {
+    throw new Error(
+      "self-test: develop PR lint condition with explicit YAML key syntax was not caught",
+    );
+  }
+  const bypassingDevelopFixtures = [
+    {
+      name: "job-level dependency",
+      text: goodDevelopPr.replace(
+        "    runs-on: ubuntu-latest",
+        "    needs: never-runs\n    runs-on: ubuntu-latest",
+      ),
+    },
+    {
+      name: "job-level matrix strategy",
+      text: goodDevelopPr.replace(
+        "    runs-on: ubuntu-latest",
+        "    strategy:\n      matrix:\n        shard: []\n    runs-on: ubuntu-latest",
+      ),
+    },
+    {
+      name: "job-level continue-on-error",
+      text: goodDevelopPr.replace(
+        "    runs-on: ubuntu-latest",
+        "    continue-on-error: true\n    runs-on: ubuntu-latest",
+      ),
+    },
+    {
+      name: "job-level run defaults",
+      text: goodDevelopPr.replace(
+        "    runs-on: ubuntu-latest",
+        "    defaults:\n      run:\n        working-directory: packages/core\n    runs-on: ubuntu-latest",
+      ),
+    },
+    {
+      name: "workflow-level run defaults",
+      text: goodDevelopPr.replace(
+        "jobs:\n",
+        "defaults:\n  run:\n    shell: bash -c '{0}; true'\njobs:\n",
+      ),
+    },
+  ];
+  for (const { name, text } of bypassingDevelopFixtures) {
+    const problems = [];
+    checkWorkflowText(DEVELOP_PR_WORKFLOW, text, problems);
+    if (problems.length === 0) {
+      throw new Error(
+        `self-test: develop PR fixture with ${name} was not caught`,
+      );
+    }
+  }
   console.log(
-    `ci-merge-gate-contract self-test: ${badCases.length + 4} cases passed`,
+    `ci-merge-gate-contract self-test: ${badCases.length + 14} cases passed`,
   );
 }
 

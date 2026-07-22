@@ -1,22 +1,30 @@
 /**
  * Unit and opportunistic real-binary tests for the CLI inference route: the
  * `ELIZA_CHAT_VIA_CLI` auto-enable gate, backend resolution, the large-tier
- * model map, and the claude/codex spawn plus JSONL-parse and prompt-flatten
- * paths. The child-process spawn seam is mocked so no real model runs; the few
- * real-binary cases are skipped unless `claude`/`codex` resolve through the SOC2
- * allowlist on this box.
+ * model map and registration metadata, and the claude/codex spawn plus
+ * JSONL-parse and prompt-flatten paths. The child-process spawn seam is mocked
+ * so no real model runs; the few real-binary cases are skipped unless
+ * `claude`/`codex` resolve through the SOC2 allowlist on this box.
  */
-import type { ChatMessage, PluginAutoEnableContext } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ChatMessage, IAgentRuntime, PluginAutoEnableContext } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
 import {
+  buildCleanRoutingParams,
+  buildCleanRoutingSystemPrompt,
+  buildEnvelopeBody,
+  buildModelMetadata,
   buildModels,
+  buildRouterBody,
   ClaudeCli,
   ClaudeSdkSession,
   CodexSdkSession,
   cliInferencePlugin,
+  findHandleResponseTool,
   LARGE_TIER_MODEL_TYPES,
+  parseTurnTimeout,
   resolveCliBackend,
+  resolveSdkEffort,
 } from "../index";
 import {
   __setSpawnForTests as __setClaudeSpawn,
@@ -24,6 +32,7 @@ import {
   type SpawnOptions,
   type SpawnResult,
 } from "../src/claude-cli";
+import { normalizeEffort } from "../src/claude-sdk-session";
 import {
   __setSpawnForTests as __setCodexSpawn,
   CodexCli,
@@ -466,7 +475,7 @@ describe("models map gating (large-tier only)", () => {
 
   it("routes warm Claude SDK handlers through the current default Opus model", async () => {
     let captured: { model?: string; body?: string } = {};
-    vi.spyOn(ClaudeSdkSession.prototype, "generate").mockImplementation(function (
+    vi.spyOn(ClaudeSdkSession.prototype, "send").mockImplementation(function (
       this: ClaudeSdkSession,
       body: string
     ) {
@@ -610,5 +619,597 @@ describe("models map gating (large-tier only)", () => {
   it("auto-enables for claude-sdk with the same trim/case normalization", () => {
     expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "  Claude-SDK " }))).toBe(true);
     expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "gemini" }))).toBe(false);
+  });
+});
+
+describe("reasoning effort (SDK effort option)", () => {
+  it("normalizeEffort accepts the SDK's levels and drops everything else", () => {
+    for (const lvl of ["low", "medium", "high", "xhigh", "max"]) {
+      expect(normalizeEffort(lvl)).toBe(lvl);
+      expect(normalizeEffort(`  ${lvl.toUpperCase()} `)).toBe(lvl);
+    }
+    for (const junk of ["ultra", "insane", "", "  ", undefined, null, "9"]) {
+      expect(normalizeEffort(junk as string)).toBeNull();
+    }
+  });
+
+  it("forwards a valid effort into the SDK query options", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: "assistant",
+              message: { content: [{ type: "text", text: "ok" }] },
+            };
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      effort: "xhigh",
+      sdkModule: fakeSdk as never,
+    });
+    await session.send("hi");
+    expect(captured?.effort).toBe("xhigh");
+    await session.dispose();
+  });
+
+  it("omits effort entirely when unset (SDK keeps its default)", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      sdkModule: fakeSdk as never,
+    });
+    await session.send("hi");
+    expect(captured && "effort" in captured).toBe(false);
+    await session.dispose();
+  });
+
+  it("drops a bogus effort rather than forwarding it (would fail the turn)", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      effort: "ultra",
+      sdkModule: fakeSdk as never,
+    });
+    await session.send("hi");
+    expect(captured && "effort" in captured).toBe(false);
+    await session.dispose();
+  });
+});
+
+describe("resolveSdkEffort (per-tier effort env precedence)", () => {
+  // getSetting() falls back to process.env when the runtime returns undefined,
+  // so a stray ambient value would defeat the "unset" cases. Clear both keys and
+  // drive resolution purely off the fake runtime's settings map.
+  const prev = {
+    effort: process.env.ELIZA_CLI_CLAUDE_EFFORT,
+    planner: process.env.ELIZA_CLI_CLAUDE_PLANNER_EFFORT,
+  };
+  beforeEach(() => {
+    delete process.env.ELIZA_CLI_CLAUDE_EFFORT;
+    delete process.env.ELIZA_CLI_CLAUDE_PLANNER_EFFORT;
+  });
+  afterEach(() => {
+    if (prev.effort === undefined) delete process.env.ELIZA_CLI_CLAUDE_EFFORT;
+    else process.env.ELIZA_CLI_CLAUDE_EFFORT = prev.effort;
+    if (prev.planner === undefined) delete process.env.ELIZA_CLI_CLAUDE_PLANNER_EFFORT;
+    else process.env.ELIZA_CLI_CLAUDE_PLANNER_EFFORT = prev.planner;
+  });
+
+  const runtimeWith = (settings: Record<string, string>): IAgentRuntime =>
+    ({ getSetting: (key: string) => settings[key] }) as unknown as IAgentRuntime;
+
+  it("reply tier (router=false) reads ELIZA_CLI_CLAUDE_EFFORT", () => {
+    const runtime = runtimeWith({ ELIZA_CLI_CLAUDE_EFFORT: "high" });
+    expect(resolveSdkEffort(runtime, "text")).toBe("high");
+  });
+
+  it("reply tier ignores the planner override even when it is set", () => {
+    const runtime = runtimeWith({
+      ELIZA_CLI_CLAUDE_EFFORT: "medium",
+      ELIZA_CLI_CLAUDE_PLANNER_EFFORT: "max",
+    });
+    expect(resolveSdkEffort(runtime, "text")).toBe("medium");
+  });
+
+  it("planner tier (router=true) prefers ELIZA_CLI_CLAUDE_PLANNER_EFFORT", () => {
+    const runtime = runtimeWith({
+      ELIZA_CLI_CLAUDE_EFFORT: "low",
+      ELIZA_CLI_CLAUDE_PLANNER_EFFORT: "max",
+    });
+    expect(resolveSdkEffort(runtime, "route")).toBe("max");
+  });
+
+  it("planner tier falls back to the shared ELIZA_CLI_CLAUDE_EFFORT when its own key is unset", () => {
+    const runtime = runtimeWith({ ELIZA_CLI_CLAUDE_EFFORT: "high" });
+    expect(resolveSdkEffort(runtime, "route")).toBe("high");
+  });
+
+  it("returns undefined for both tiers when no effort is configured (SDK keeps its default)", () => {
+    const runtime = runtimeWith({});
+    expect(resolveSdkEffort(runtime, "text")).toBeUndefined();
+    expect(resolveSdkEffort(runtime, "route")).toBeUndefined();
+  });
+
+  it("passes an unrecognized level through unvalidated — validation is normalizeEffort's job at the session", () => {
+    // resolveSdkEffort only resolves precedence; the session's normalizeEffort
+    // (tested above) drops unknown levels. Keeping the two concerns split means a
+    // bad env never silently downgrades a valid per-tier override.
+    const runtime = runtimeWith({ ELIZA_CLI_CLAUDE_EFFORT: "ultra" });
+    expect(resolveSdkEffort(runtime, "text")).toBe("ultra");
+    expect(normalizeEffort(resolveSdkEffort(runtime, "text"))).toBeNull();
+  });
+});
+
+describe("buildModelMetadata (RUNTIME_MODEL_CONTEXT self-report)", () => {
+  const prev = {
+    planner: process.env.ELIZA_PLANNER_NATIVE_TOOLS,
+    claudeLarge: process.env.ELIZA_CLI_CLAUDE_MODEL,
+    claudePlanner: process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL,
+    codexLarge: process.env.ELIZA_CLI_CODEX_MODEL,
+  };
+  afterEach(() => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = prev.planner ?? "";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = prev.claudeLarge ?? "";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = prev.claudePlanner ?? "";
+    process.env.ELIZA_CLI_CODEX_MODEL = prev.codexLarge ?? "";
+  });
+
+  it("is undefined when the plugin is inert", () => {
+    expect(buildModelMetadata({ ELIZA_CHAT_VIA_CLI: undefined })).toBeUndefined();
+    expect(buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "gemini" })).toBeUndefined();
+  });
+
+  it("declares runtime-resolved Claude settings instead of snapshotting host env", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "host-large";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "host-planner";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    for (const t of LARGE_TIER_MODEL_TYPES) {
+      expect(md?.[t]).toEqual({
+        displayModelSettings: ["ELIZA_CLI_CLAUDE_MODEL"],
+        displayModelDefault: "claude-opus-4-8",
+      });
+    }
+    expect(md?.ACTION_PLANNER).toEqual({
+      displayModelSettings: ["ELIZA_CLI_CLAUDE_PLANNER_MODEL", "ELIZA_CLI_CLAUDE_MODEL"],
+      displayModelDefault: "claude-opus-4-8",
+    });
+  });
+
+  it("cold planners declare only the large-model chain they actually invoke", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    const claude = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude" });
+    const codex = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "codex" });
+    expect(claude?.ACTION_PLANNER?.displayModelSettings).toEqual(["ELIZA_CLI_CLAUDE_MODEL"]);
+    expect(codex?.ACTION_PLANNER?.displayModelSettings).toEqual(["ELIZA_CLI_CODEX_MODEL"]);
+  });
+
+  it("omits ACTION_PLANNER when native-tools planner mode is on (not served here)", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "1";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    expect(md?.ACTION_PLANNER).toBeUndefined();
+    expect(md?.RESPONSE_HANDLER).toEqual({
+      displayModelSettings: ["ELIZA_CLI_CLAUDE_MODEL"],
+      displayModelDefault: "claude-opus-4-8",
+    });
+  });
+
+  it("declares the Codex runtime key and provider default", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "codex-sdk" });
+    expect(md?.RESPONSE_HANDLER).toEqual({
+      displayModelSettings: ["ELIZA_CLI_CODEX_MODEL"],
+      displayModelDefault: "gpt-5.5",
+    });
+  });
+});
+
+describe("ALL-TIERS mode (ELIZA_CLI_CLAUDE_ALL_TIERS)", () => {
+  const prev = {
+    all: process.env.ELIZA_CLI_CLAUDE_ALL_TIERS,
+    large: process.env.ELIZA_CLI_CLAUDE_MODEL,
+    small: process.env.ELIZA_CLI_CLAUDE_SMALL_MODEL,
+    chat: process.env.ELIZA_CHAT_VIA_CLI,
+    planner: process.env.ELIZA_PLANNER_NATIVE_TOOLS,
+  };
+  afterEach(() => {
+    for (const [k, v] of Object.entries({
+      ELIZA_CLI_CLAUDE_ALL_TIERS: prev.all,
+      ELIZA_CLI_CLAUDE_MODEL: prev.large,
+      ELIZA_CLI_CLAUDE_SMALL_MODEL: prev.small,
+      ELIZA_CHAT_VIA_CLI: prev.chat,
+      ELIZA_PLANNER_NATIVE_TOOLS: prev.planner,
+    })) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it("does NOT register triage tiers by default (they fall through to the cheap provider)", () => {
+    process.env.ELIZA_CHAT_VIA_CLI = "claude-sdk";
+    delete process.env.ELIZA_CLI_CLAUDE_ALL_TIERS;
+    const models = buildModels({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    expect(models?.TEXT_LARGE).toBeTypeOf("function");
+    expect(models?.TEXT_SMALL).toBeUndefined();
+    expect(models?.TEXT_NANO).toBeUndefined();
+    expect(models?.TEXT_MEDIUM).toBeUndefined();
+  });
+
+  it("registers ALL text tiers when ELIZA_CLI_CLAUDE_ALL_TIERS=1 (single-brain, no fallthrough)", () => {
+    process.env.ELIZA_CHAT_VIA_CLI = "claude-sdk";
+    process.env.ELIZA_CLI_CLAUDE_ALL_TIERS = "1";
+    const models = buildModels({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    for (const t of [
+      "TEXT_LARGE",
+      "TEXT_MEGA",
+      "RESPONSE_HANDLER",
+      "TEXT_SMALL",
+      "TEXT_NANO",
+      "TEXT_MEDIUM",
+    ]) {
+      expect(models?.[t], t).toBeTypeOf("function");
+    }
+  });
+
+  it("triage metadata reports the cheap small model, not the planner tier", () => {
+    process.env.ELIZA_CHAT_VIA_CLI = "claude-sdk";
+    process.env.ELIZA_CLI_CLAUDE_ALL_TIERS = "1";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-sonnet-5";
+    delete process.env.ELIZA_CLI_CLAUDE_SMALL_MODEL;
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    // Runtime resolution checks the cheap small setting, then the large setting,
+    // and never consults the planner tier.
+    expect(md?.TEXT_SMALL).toEqual({
+      displayModelSettings: ["ELIZA_CLI_CLAUDE_SMALL_MODEL", "ELIZA_CLI_CLAUDE_MODEL"],
+      displayModelDefault: "claude-opus-4-8",
+    });
+  });
+});
+
+// ENVELOPE mode: the Stage-1 RESPONSE_HANDLER served via the native
+// handle_response MCP tool, so the routing envelope is structurally captured
+// instead of prompt-begged from free text (the free-text lane's prose declines
+// shipped as finished "simple replies" — no planner, no fetch).
+describe("Stage-1 ENVELOPE mode (claude-sdk handle_response tool)", () => {
+  type ToolHandler = (
+    args: Record<string, unknown>
+  ) => Promise<{ content: Array<{ type: string; text: string }> }>;
+
+  /**
+   * Fake SDK whose query stream simulates the model calling the captured tool
+   * handler with `toolArgs` (when provided) before the turn ends — the same
+   * order the real SDK delivers (handler fires in-process mid-turn).
+   */
+  function makeFakeSdk(opts: {
+    toolArgs?: Record<string, unknown>;
+    assistantText?: string;
+    resultSubtype?: string;
+  }) {
+    const captured: {
+      toolName?: string;
+      schema?: Record<string, unknown>;
+      options?: Record<string, unknown>;
+      handler?: ToolHandler;
+    } = {};
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured.options = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            if (opts.toolArgs && captured.handler) {
+              await captured.handler(opts.toolArgs);
+            }
+            if (opts.assistantText) {
+              yield {
+                type: "assistant",
+                message: { content: [{ type: "text", text: opts.assistantText }] },
+              };
+            }
+            yield { type: "result", subtype: opts.resultSubtype ?? "error_max_turns" };
+          },
+        };
+      },
+      tool: (
+        name: string,
+        _desc: string,
+        schema: Record<string, unknown>,
+        handler: ToolHandler
+      ) => {
+        captured.toolName = name;
+        captured.schema = schema;
+        captured.handler = handler;
+        return {};
+      },
+      createSdkMcpServer: () => ({}),
+    };
+    const fakeZod = {
+      z: {
+        string: () => "z.string",
+        any: () => "z.any",
+        record: () => "z.record",
+      },
+    };
+    return { fakeSdk, fakeZod, captured };
+  }
+
+  // The composed field set core's HANDLE_RESPONSE tool carries for a group
+  // channel — the session derives its zod schema and capture filter from it.
+  const STAGE1_FIELDS = {
+    shouldRespond: { type: "string" },
+    contexts: { type: "array" },
+    intents: { type: "array" },
+    replyText: { type: "string" },
+    candidateActionNames: { type: "array" },
+    facts: { type: "array" },
+    relationships: { type: "array" },
+    topics: { type: "array" },
+    addressedTo: { type: "array" },
+    emotion: { type: "string" },
+  };
+
+  it("returns the captured envelope as a JSON string core parses like a native tool call", async () => {
+    const envelope = {
+      shouldRespond: "RESPOND",
+      contexts: ["web"],
+      replyText: "Checking the current BTC price now.",
+      candidateActionNames: ["WEB_FETCH"],
+    };
+    const { fakeSdk, fakeZod, captured } = makeFakeSdk({ toolArgs: envelope });
+    const session = new ClaudeSdkSession({
+      mode: "envelope",
+      envelopeFields: STAGE1_FIELDS,
+      sdkModule: fakeSdk as never,
+      zodModule: fakeZod as never,
+    });
+    const out = await session.send("stage-1 instructions + conversation");
+    expect(JSON.parse(out)).toEqual(envelope);
+    // The session registered the handle_response tool and pinned the tool
+    // surface to it (mirrors ROUTE mode's single-tool contract).
+    expect(captured.toolName).toBe("handle_response");
+    expect(captured.options?.allowedTools).toEqual(["mcp__eliza__handle_response"]);
+    expect(captured.options?.tools).toEqual(["mcp__eliza__handle_response"]);
+    expect(captured.options?.maxTurns).toBe(1);
+    await session.dispose();
+  });
+
+  it("decodes array fields the model emitted as JSON-encoded strings", async () => {
+    // Observed on the first live envelope turn: Claude under MCP stringified
+    // every array field, core's Array.isArray checks defaulted them to [] and
+    // the turn shipped as a bare ack with no planner.
+    const { fakeSdk, fakeZod } = makeFakeSdk({
+      toolArgs: {
+        shouldRespond: "RESPOND",
+        contexts: '["web"]',
+        replyText: "Checking the live XRP price now.",
+        candidateActionNames: '["WEB_SEARCH", "WEB_FETCH"]',
+        facts: "[]",
+      },
+    });
+    const session = new ClaudeSdkSession({
+      mode: "envelope",
+      envelopeFields: STAGE1_FIELDS,
+      sdkModule: fakeSdk as never,
+      zodModule: fakeZod as never,
+    });
+    const out = JSON.parse(await session.send("body"));
+    expect(out.contexts).toEqual(["web"]);
+    expect(out.candidateActionNames).toEqual(["WEB_SEARCH", "WEB_FETCH"]);
+    expect(out.facts).toEqual([]);
+    // Plain strings stay strings — only bracket/brace-shaped ones decode.
+    expect(out.shouldRespond).toBe("RESPOND");
+    expect(out.replyText).toBe("Checking the live XRP price now.");
+    await session.dispose();
+  });
+
+  it("never decodes string-typed fields, even when their value is JSON-shaped", async () => {
+    // A legitimate answer like 'reply with a JSON array of colors' puts
+    // bracket-shaped TEXT in replyText; decoding it would hand core a non-
+    // string and the reply evaluator would empty the turn.
+    const { fakeSdk, fakeZod } = makeFakeSdk({
+      toolArgs: {
+        shouldRespond: "RESPOND",
+        replyText: '["red","green","blue"]',
+      },
+    });
+    const session = new ClaudeSdkSession({
+      mode: "envelope",
+      envelopeFields: STAGE1_FIELDS,
+      sdkModule: fakeSdk as never,
+      zodModule: fakeZod as never,
+    });
+    const out = JSON.parse(await session.send("body"));
+    expect(out.replyText).toBe('["red","green","blue"]');
+    await session.dispose();
+  });
+
+  it("drops stray keys the model invented but keeps every known envelope field", async () => {
+    const { fakeSdk, fakeZod } = makeFakeSdk({
+      toolArgs: {
+        shouldRespond: "RESPOND",
+        replyText: "hi",
+        madeUpField: "junk",
+      },
+    });
+    const session = new ClaudeSdkSession({
+      mode: "envelope",
+      envelopeFields: STAGE1_FIELDS,
+      sdkModule: fakeSdk as never,
+      zodModule: fakeZod as never,
+    });
+    const out = JSON.parse(await session.send("body"));
+    expect(out).toEqual({ shouldRespond: "RESPOND", replyText: "hi" });
+    await session.dispose();
+  });
+
+  it("falls back to the prose text when the model goes off-contract (no tool call)", async () => {
+    const { fakeSdk, fakeZod } = makeFakeSdk({
+      assistantText: "Just a plain chat answer.",
+      resultSubtype: "success",
+    });
+    const session = new ClaudeSdkSession({
+      mode: "envelope",
+      envelopeFields: STAGE1_FIELDS,
+      sdkModule: fakeSdk as never,
+      zodModule: fakeZod as never,
+    });
+    // Core's tolerant parse chain consumes the prose (plain text → simple
+    // reply), so the off-contract turn still lands instead of throwing.
+    expect(await session.send("body")).toBe("Just a plain chat answer.");
+    await session.dispose();
+  });
+
+  it("a captured envelope wins over residual text that smells like a limit message", async () => {
+    const { fakeSdk, fakeZod } = makeFakeSdk({
+      toolArgs: { shouldRespond: "RESPOND", replyText: "ok" },
+      assistantText: "You've hit your session limit · resets 9:30pm (UTC)",
+    });
+    const session = new ClaudeSdkSession({
+      mode: "envelope",
+      envelopeFields: STAGE1_FIELDS,
+      sdkModule: fakeSdk as never,
+      zodModule: fakeZod as never,
+    });
+    const out = JSON.parse(await session.send("body"));
+    expect(out.replyText).toBe("ok");
+    await session.dispose();
+  });
+
+  it("locates core's HANDLE_RESPONSE tool on exactly the Stage-1 call", () => {
+    // Core attaches the HANDLE_RESPONSE native tool to exactly the Stage-1
+    // routing call; the post-tool evaluator reuses RESPONSE_HANDLER with a
+    // responseSchema and NO tools and must stay on the text session (its turn
+    // through envelope mode posted raw envelope JSON to the channel).
+    const stage1Tool = {
+      name: "HANDLE_RESPONSE",
+      description: "Stage 1",
+      parameters: { type: "object", properties: { replyText: { type: "string" } } },
+    };
+    expect(findHandleResponseTool([stage1Tool] as never)).toBe(stage1Tool);
+    expect(findHandleResponseTool(undefined)).toBeUndefined();
+    expect(
+      findHandleResponseTool([
+        { name: "SOME_OTHER_TOOL", description: "", parameters: {} },
+      ] as never)
+    ).toBeUndefined();
+  });
+
+  it("buildRouterBody renders the action menu, param hints, and transcript", () => {
+    const body = buildRouterBody({
+      system: "You are the agent.",
+      messages: [
+        { role: "system", content: "steering (dropped)" },
+        { role: "user", content: "whats btc at" },
+        { role: "assistant", content: "Checking now." },
+      ],
+      tools: [
+        {
+          name: "WEB_FETCH",
+          description: "Fetch one URL.",
+          parameters: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              extract: { type: "string" },
+              mode: { type: "string", enum: ["fast", "full"] },
+            },
+            required: ["url"],
+          },
+        },
+        { name: "VIEWS", description: "Open a view.", parameters: {} },
+      ],
+    } as never);
+    expect(body).toContain("WEB_FETCH — Fetch one URL.");
+    expect(body).toContain("url: string");
+    expect(body).toContain("extract?: string");
+    expect(body).toContain('one of ["fast", "full"]');
+    expect(body).toContain("VIEWS — Open a view. [params: (no params)]");
+    expect(body).toContain("User: whats btc at");
+    expect(body).toContain("Assistant: Checking now.");
+    expect(body).not.toContain("steering (dropped)");
+    expect(body).toContain("Agent persona / voice");
+  });
+
+  it("buildCleanRoutingParams rewrites a grammar-heavy planner call into the clean routing form", () => {
+    const clean = buildCleanRoutingParams({
+      system: "persona here",
+      messages: [
+        { role: "user", content: "whats eth at" },
+        { role: "user", content: "planner_stage: <grammar blob that must be stripped>" },
+      ],
+      tools: [{ name: "WEB_FETCH", description: "Fetch.", parameters: {} }],
+    } as never);
+    expect(clean.system).toContain("action router");
+    expect(clean.system).toContain("WEB_FETCH");
+    expect(clean.prompt).toContain("whats eth at");
+    expect(clean.prompt).not.toContain("grammar blob");
+    // only system+prompt survive so flattenPrompt forwards exactly the clean form
+    expect(clean.messages).toBeUndefined();
+    expect(clean.tools).toBeUndefined();
+  });
+
+  it("buildCleanRoutingSystemPrompt states the tool requirement only on flagged turns", () => {
+    const menu = "- WEB_FETCH — Fetch. [params: url: string]";
+    const forced = buildCleanRoutingSystemPrompt(menu, "persona", true);
+    expect(forced).toContain("flagged as needing a tool");
+    expect(forced).toContain("Do NOT answer such requests from memory");
+    const free = buildCleanRoutingSystemPrompt(menu, undefined, false);
+    expect(free).toContain("choose REPLY and put the COMPLETE answer");
+    expect(free).not.toContain("flagged as needing a tool");
+    expect(free).not.toContain("persona");
+  });
+
+  it("buildEnvelopeBody folds the per-turn system into the body and closes with the tool directive", () => {
+    const body = buildEnvelopeBody("# identity\nYou are X.", "conversation here");
+    expect(body).toContain("# identity");
+    expect(body).toContain("conversation here");
+    expect(body.trimEnd().endsWith("with the completed envelope fields.")).toBe(true);
+    // System-less calls still produce a well-formed body.
+    expect(buildEnvelopeBody(undefined, "just body")).toContain("just body");
+  });
+});
+
+describe("parseTurnTimeout (#16553)", () => {
+  it('passes an explicit "0" through as the unbounded opt-out', () => {
+    expect(parseTurnTimeout("0")).toBe(0);
+  });
+
+  it("parses a positive budget and rejects junk/negatives to undefined (bounded default applies)", () => {
+    expect(parseTurnTimeout("120000")).toBe(120_000);
+    expect(parseTurnTimeout(undefined)).toBeUndefined();
+    expect(parseTurnTimeout("abc")).toBeUndefined();
+    expect(parseTurnTimeout("-5")).toBeUndefined();
   });
 });

@@ -1,11 +1,13 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations conversationid messages stream route traffic with route-local auth expectations.
 import { Hono } from "hono";
-import { InsufficientCreditsError } from "@/lib/api/errors";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import {
+  type CanonicalScopedStreamRequest,
+  handleCanonicalScopedAgentStream,
+} from "@/lib/services/shared-runtime/canonical-scoped-stream";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -35,15 +37,64 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Shared-tier + org-scoped (resolveSharedAgent gates auth, org-scope, tier).
  */
 const CORS_METHODS = "POST, OPTIONS";
-const STREAM_HEADERS = {
-  "Content-Type": "text/event-stream; charset=utf-8",
-  "Cache-Control": "no-cache, no-transform",
-  Connection: "keep-alive",
-  // Defeat any intermediary buffering so SSE frames flush incrementally.
-  "X-Accel-Buffering": "no",
-} as const;
+const VOICE_AGENT_HEADER = "X-Eliza-Agent-Id";
+const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
+const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
+const VOICE_USER_HEADER = "X-Eliza-User-Id";
 
 const app = new Hono<AppEnv>();
+
+function nowMs(): number {
+  return performance.now();
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.round((nowMs() - startedAt) * 10) / 10;
+}
+
+async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
+  const configured = c.env?.VOICE_REALTIME_ELIZA_AUTHORIZATION;
+  const presented = c.req.header("authorization");
+  if (configured && presented && timingSafeEqualSecret(presented, configured)) {
+    const agentId = c.req.param("agentId") ?? "";
+    const conversationId = c.req.param("conversationId") ?? "";
+    const scopedAgentId = c.req.header(VOICE_AGENT_HEADER) ?? "";
+    const scopedConversationId = c.req.header(VOICE_CONVERSATION_HEADER) ?? "";
+    const orgId = c.req.header(VOICE_ORGANIZATION_HEADER) ?? "";
+    const userId = c.req.header(VOICE_USER_HEADER) ?? "";
+    if (
+      !agentId ||
+      !conversationId ||
+      scopedAgentId !== agentId ||
+      scopedConversationId !== conversationId ||
+      !orgId ||
+      !userId
+    ) {
+      return {
+        error: "Agent not found",
+        code: "agent_not_found",
+        status: 404 as const,
+      };
+    }
+    const agent = orgId
+      ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId)
+      : undefined;
+    if (!agent || !userId || agent.user_id !== userId) {
+      return {
+        error: "Agent not found",
+        code: "agent_not_found",
+        status: 404 as const,
+      };
+    }
+    return {
+      agentId: agent.id,
+      orgId,
+      userId,
+      agentName: agent.agent_name ?? "Agent",
+    };
+  }
+  return resolveSharedAgent(c);
+}
 
 app.options("/", (c) =>
   handleCorsOptions(CORS_METHODS, c.req.header("origin")),
@@ -51,93 +102,57 @@ app.options("/", (c) =>
 
 app.post("/", async (c) => {
   const origin = c.req.header("origin");
-  const r = await resolveSharedAgent(c);
+  const scopeStartedAt = nowMs();
+  const scopePromise = resolveAgentScope(c).then((result) => ({
+    result,
+    durationMs: elapsedMs(scopeStartedAt),
+  }));
+  const bodyStartedAt = nowMs();
+  const bodyPromise = c.req
+    .json()
+    .catch(() => {
+      // error-policy:J3 untrusted-input sanitizing. Match the canonical stream
+      // contract: malformed JSON is an invalid request body, not a fabricated
+      // successful turn.
+      return {};
+    })
+    .then((body: unknown) => ({
+      body,
+      durationMs: elapsedMs(bodyStartedAt),
+    }));
+
+  const [
+    { result: r, durationMs: scopeMs },
+    { body: raw, durationMs: bodyMs },
+  ] = await Promise.all([scopePromise, bodyPromise]);
   if ("error" in r) {
     return applyCorsHeaders(
-      Response.json({ success: false, error: r.error }, { status: r.status }),
-      CORS_METHODS,
-      origin,
-    );
-  }
-
-  const conversationId = c.req.param("conversationId") ?? r.agentId;
-  const raw: unknown = await c.req.json().catch(() => ({}));
-  const text =
-    raw &&
-    typeof raw === "object" &&
-    typeof (raw as { text?: unknown }).text === "string"
-      ? (raw as { text: string }).text
-      : "";
-  if (!text.trim()) {
-    return applyCorsHeaders(
       Response.json(
-        { success: false, error: "text is required" },
-        { status: 400 },
+        {
+          success: false,
+          error: r.error,
+          ...("code" in r ? { code: r.code } : {}),
+        },
+        { status: r.status },
       ),
       CORS_METHODS,
       origin,
     );
   }
 
-  const rpc: BridgeRequest = {
-    jsonrpc: "2.0",
-    id: crypto.randomUUID(),
-    method: "message.send",
-    params: { text, roomId: conversationId },
-  };
-
-  let upstream: Response | null;
-  try {
-    upstream = await elizaSandboxService.bridgeStream(r.agentId, r.orgId, rpc);
-  } catch (error) {
-    // error-policy:J1 route boundary translates pre-stream bridge failures to HTTP responses.
-    // Insufficient credits is rejected before any SSE bytes exist, so answer
-    // with the same canonical 402 as the non-stream send — not an SSE error
-    // frame inside a 200 stream, which the app cannot distinguish from a
-    // transient turn failure. Permanent until the org adds credits.
-    if (error instanceof InsufficientCreditsError) {
-      logger.warn(
-        "[shared-runtime REST] stream send rejected: insufficient credits",
-        { agentId: r.agentId },
-      );
-      return applyCorsHeaders(
-        Response.json(
-          {
-            success: false,
-            error: error.message,
-            code: "insufficient_credits",
-            retryable: false,
-          },
-          { status: 402 },
-        ),
-        CORS_METHODS,
-        origin,
-      );
-    }
-    throw error;
-  }
-  if (!upstream?.body) {
-    // No reply produced (or the turn errored without an SSE body): emit an SSE
-    // error frame the client's stream reader understands, instead of a 404 that
-    // would make the client treat the whole stream endpoint as missing.
-    const body = `event: error\ndata: ${JSON.stringify({
-      message: "Agent produced no streamed response",
-    })}\n\n`;
-    return applyCorsHeaders(
-      new Response(body, { headers: STREAM_HEADERS }),
-      CORS_METHODS,
-      origin,
-    );
-  }
-
-  // Return the bridge SSE body as-is — do NOT await/read it here. A shared-tier
-  // body is a single pre-built frame; a dedicated agent's is a live token stream.
-  // Either way the route forwards it untouched and the edge flushes incrementally.
-  return applyCorsHeaders(
-    new Response(upstream.body, { headers: STREAM_HEADERS }),
-    CORS_METHODS,
+  const conversationId = c.req.param("conversationId") ?? r.agentId;
+  return handleCanonicalScopedAgentStream({
+    agentId: r.agentId,
+    orgId: r.orgId,
+    conversationId,
+    ...("userId" in r ? { userId: r.userId } : {}),
+    body: raw,
     origin,
-  );
+    timings: {
+      scope: scopeMs,
+      body: bodyMs,
+    },
+  } satisfies CanonicalScopedStreamRequest);
 });
 
 export default app;

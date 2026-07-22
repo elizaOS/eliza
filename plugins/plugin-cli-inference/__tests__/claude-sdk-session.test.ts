@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ClaudeSdkSession, type SdkModule } from "../src/claude-sdk-session";
 import { ProviderApiError } from "../src/provider-errors";
 
@@ -13,6 +13,8 @@ import { ProviderApiError } from "../src/provider-errors";
 interface TurnScript {
   /** Never yield a message, used to test the per-turn timeout budget. */
   hang?: boolean;
+  /** Sleep this long before proceeding (slow-but-healthy turn shape). */
+  delayMs?: number;
   /** ROUTE mode: invoke the captured tool handler with this decision. */
   toolCall?: { action: unknown; params?: unknown };
   /** Stream this as assistant text before the result. */
@@ -31,7 +33,10 @@ type ToolHandler = (args: {
 }) => Promise<{ content: Array<{ type: string; text: string }> }>;
 
 /** Build a fake SdkModule that replays `scripts` turn-by-turn over one warm query. */
-function makeFakeSdk(scripts: TurnScript[]): {
+function makeFakeSdk(
+  scripts: TurnScript[],
+  fakeOpts: { interrupt?: () => Promise<void> } = {}
+): {
   sdk: SdkModule;
   starts: () => number;
   queryOptions: () => Array<Record<string, unknown>>;
@@ -59,6 +64,9 @@ function makeFakeSdk(scripts: TurnScript[]): {
           if (s.hang) {
             await new Promise(() => undefined);
           }
+          if (s.delayMs) {
+            await new Promise((res) => setTimeout(res, s.delayMs));
+          }
           if (s.toolCall && handler) {
             await handler({ action: s.toolCall.action, params: s.toolCall.params });
           }
@@ -81,7 +89,7 @@ function makeFakeSdk(scripts: TurnScript[]): {
       const iter = gen();
       return {
         [Symbol.asyncIterator]: () => iter,
-        interrupt: async () => {},
+        interrupt: fakeOpts.interrupt ?? (async () => {}),
       } as unknown as ReturnType<SdkModule["query"]>;
     },
   };
@@ -95,17 +103,20 @@ const fakeZod = {
 function makeSession(
   scripts: TurnScript[],
   opts: {
-    router?: boolean;
+    mode?: "text" | "route" | "envelope";
     restartAfterTurns?: number;
     turnTimeoutMs?: number;
     subprocessEnv?: Record<string, string | undefined>;
+    interrupt?: () => Promise<void>;
   } = {}
 ) {
-  const { sdk, starts, queryOptions } = makeFakeSdk(scripts);
+  const { sdk, starts, queryOptions } = makeFakeSdk(scripts, {
+    interrupt: opts.interrupt,
+  });
   const session = new ClaudeSdkSession({
     model: "test-model",
     systemPrompt: "test system",
-    router: opts.router ?? false,
+    mode: opts.mode ?? "text",
     restartAfterTurns: opts.restartAfterTurns,
     turnTimeoutMs: opts.turnTimeoutMs,
     subprocessEnv: opts.subprocessEnv,
@@ -124,14 +135,14 @@ describe("ClaudeSdkSession — TEXT mode", () => {
       zodModule: fakeZod,
     });
 
-    expect(await session.generate("hi")).toBe("hello world");
+    expect(await session.send("hi")).toBe("hello world");
     expect(queryOptions()[0].model).toBe("claude-opus-4-8");
     await session.dispose();
   });
 
   it("returns streamed assistant text", async () => {
     const { session } = makeSession([{ text: "hello world", subtype: "success" }]);
-    expect(await session.generate("hi")).toBe("hello world");
+    expect(await session.send("hi")).toBe("hello world");
     await session.dispose();
   });
 
@@ -140,14 +151,14 @@ describe("ClaudeSdkSession — TEXT mode", () => {
     const { session, queryOptions } = makeSession([{ text: "hello world", subtype: "success" }], {
       subprocessEnv,
     });
-    expect(await session.generate("hi")).toBe("hello world");
+    expect(await session.send("hi")).toBe("hello world");
     expect(queryOptions()[0].env).toBe(subprocessEnv);
     await session.dispose();
   });
 
   it("falls back to result.result only on a clean success turn", async () => {
     const { session } = makeSession([{ text: "", subtype: "success", resultText: "the answer" }]);
-    expect(await session.generate("hi")).toBe("the answer");
+    expect(await session.send("hi")).toBe("the answer");
     await session.dispose();
   });
 
@@ -155,13 +166,13 @@ describe("ClaudeSdkSession — TEXT mode", () => {
     const { session } = makeSession([
       { text: "", subtype: "error_max_turns", resultText: "Reached maximum turns" },
     ]);
-    await expect(session.generate("hi")).rejects.toThrow(/empty completion/);
+    await expect(session.send("hi")).rejects.toThrow(/empty completion/);
     await session.dispose();
   });
 
   it("THROWS when the generator ends before a result (session died mid-turn)", async () => {
     const { session } = makeSession([{ text: "partial", noResult: true }]);
-    await expect(session.generate("hi")).rejects.toThrow(/session-ended|empty completion/);
+    await expect(session.send("hi")).rejects.toThrow(/session-ended|empty completion/);
     await session.dispose();
   });
 
@@ -173,7 +184,7 @@ describe("ClaudeSdkSession — TEXT mode", () => {
         resultText: "You've hit your session limit · resets 9:30pm (UTC)",
       },
     ]);
-    await expect(session.generate("hi")).rejects.toThrow(/subscription rate limit reached/);
+    await expect(session.send("hi")).rejects.toThrow(/subscription rate limit reached/);
     await session.dispose();
   });
 
@@ -184,7 +195,7 @@ describe("ClaudeSdkSession — TEXT mode", () => {
         subtype: "success",
       },
     ]);
-    await expect(session.generate("hi")).rejects.toMatchObject({
+    await expect(session.send("hi")).rejects.toMatchObject({
       name: "ProviderApiError",
       statusCode: 529,
       retryable: true,
@@ -195,9 +206,55 @@ describe("ClaudeSdkSession — TEXT mode", () => {
   it("bounds a hung SDK turn below connector timeouts", async () => {
     const { session } = makeSession([{ hang: true }], { turnTimeoutMs: 5 });
     const started = Date.now();
-    await expect(session.generate("hi")).rejects.toBeInstanceOf(ProviderApiError);
+    await expect(session.send("hi")).rejects.toBeInstanceOf(ProviderApiError);
     expect(Date.now() - started).toBeLessThan(1_000);
     await session.dispose();
+  });
+
+  it("a wedged interrupt cannot swallow the turn-timeout rejection (#16553)", async () => {
+    // The production incident shape: the turn hangs AND the CLI process never
+    // ACKs the interrupt. The 90s timer used to fire into a catch that awaited
+    // dispose() → interrupt() unboundedly, so the turn never rejected and the
+    // whole inbound pipeline serialized behind it. The bounded teardown must
+    // abandon the wedged interrupt and let the timeout surface.
+    vi.useFakeTimers();
+    try {
+      const { session } = makeSession([{ hang: true }], {
+        turnTimeoutMs: 5_000,
+        interrupt: () => new Promise<void>(() => undefined), // never ACKs
+      });
+      const outcome = session.send("hi");
+      const settled = expect(outcome).rejects.toBeInstanceOf(ProviderApiError);
+      await vi.advanceTimersByTimeAsync(5_000); // turn timeout fires
+      await vi.advanceTimersByTimeAsync(5_000); // dispose teardown budget expires
+      await settled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("explicit turnTimeoutMs 0 opts out to an unbounded turn (#16553)", async () => {
+    vi.useFakeTimers();
+    try {
+      // With a bounded budget this slow turn rejects…
+      const bounded = makeSession([{ delayMs: 200, text: "late", subtype: "success" }], {
+        turnTimeoutMs: 100,
+      });
+      const boundedOutcome = bounded.session.send("hi");
+      const boundedSettled = expect(boundedOutcome).rejects.toBeInstanceOf(ProviderApiError);
+      await vi.advanceTimersByTimeAsync(200);
+      await boundedSettled;
+      // …while the explicit 0 opt-out lets it finish.
+      const unbounded = makeSession([{ delayMs: 200, text: "late", subtype: "success" }], {
+        turnTimeoutMs: 0,
+      });
+      const unboundedOutcome = unbounded.session.send("hi");
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await unboundedOutcome).toBe("late");
+      await unbounded.session.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("self-heals: a throwing turn disposes, the next call re-starts the session", async () => {
@@ -205,8 +262,8 @@ describe("ClaudeSdkSession — TEXT mode", () => {
       { text: "", subtype: "error_max_turns" }, // turn 1 throws
       { text: "recovered", subtype: "success" }, // turn 2 ok (fresh start)
     ]);
-    await expect(session.generate("a")).rejects.toThrow();
-    expect(await session.generate("b")).toBe("recovered");
+    await expect(session.send("a")).rejects.toThrow();
+    expect(await session.send("b")).toBe("recovered");
     expect(starts()).toBe(2); // re-started after the failure
     await session.dispose();
   });
@@ -220,15 +277,15 @@ describe("ClaudeSdkSession — TEXT mode", () => {
       ],
       { restartAfterTurns: 1 }
     );
-    expect(await session.generate("1")).toBe("one");
-    expect(await session.generate("2")).toBe("two");
+    expect(await session.send("1")).toBe("one");
+    expect(await session.send("2")).toBe("two");
     expect(starts()).toBeGreaterThanOrEqual(2); // restarted between turns
     await session.dispose();
   });
 
   it("rejects an empty prompt body", async () => {
     const { session } = makeSession([{ text: "x", subtype: "success" }]);
-    await expect(session.generate("   ")).rejects.toThrow(/empty prompt body/);
+    await expect(session.send("   ")).rejects.toThrow(/empty prompt body/);
     await session.dispose();
   });
 });
@@ -237,9 +294,9 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
   it("captures the tool decision and returns it as bare {action,params} JSON", async () => {
     const { session } = makeSession(
       [{ toolCall: { action: "WEB_FETCH", params: { url: "u" } }, subtype: "error_max_turns" }],
-      { router: true }
+      { mode: "route" }
     );
-    const out = JSON.parse(await session.route("price?"));
+    const out = JSON.parse(await session.send("price?"));
     expect(out).toEqual({ action: "WEB_FETCH", params: { url: "u" } });
     await session.dispose();
   });
@@ -253,9 +310,9 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
           subtype: "error_max_turns",
         },
       ],
-      { router: true }
+      { mode: "route" }
     );
-    const out = JSON.parse(await session.route("hi"));
+    const out = JSON.parse(await session.send("hi"));
     expect(out.action).toBe("REPLY");
     expect(out.params.text).toBe("real");
     await session.dispose();
@@ -270,9 +327,9 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
           subtype: "error_max_turns",
         },
       ],
-      { router: true }
+      { mode: "route" }
     );
-    const out = JSON.parse(await session.route("price?"));
+    const out = JSON.parse(await session.send("price?"));
     expect(out).toEqual({
       action: "WEB_FETCH",
       params: { url: "https://example.test" },
@@ -283,18 +340,18 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
   it("does NOT surface an agentic preamble as a REPLY when the model skips the tool (error_max_turns)", async () => {
     const { session } = makeSession(
       [{ text: "I'll route this to WEB_FETCH...", subtype: "error_max_turns" }],
-      { router: true }
+      { mode: "route" }
     );
     // No decision + non-success subtype => throw, never leak the thought.
-    await expect(session.route("hi")).rejects.toThrow(/no decision/);
+    await expect(session.send("hi")).rejects.toThrow(/no decision/);
     await session.dispose();
   });
 
   it("accepts a genuine terminal answer (clean success, no tool) as a REPLY", async () => {
     const { session } = makeSession([{ text: "2 + 2 is 4.", subtype: "success" }], {
-      router: true,
+      mode: "route",
     });
-    const out = JSON.parse(await session.route("2+2?"));
+    const out = JSON.parse(await session.send("2+2?"));
     expect(out).toEqual({ action: "REPLY", params: { text: "2 + 2 is 4." } });
     await session.dispose();
   });
@@ -302,9 +359,9 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
   it("coerces malformed params to {} but keeps the action", async () => {
     const { session } = makeSession(
       [{ toolCall: { action: "IGNORE", params: "not-an-object" }, subtype: "error_max_turns" }],
-      { router: true }
+      { mode: "route" }
     );
-    const out = JSON.parse(await session.route("hi"));
+    const out = JSON.parse(await session.send("hi"));
     expect(out).toEqual({ action: "IGNORE", params: {} });
     await session.dispose();
   });
@@ -318,11 +375,53 @@ describe("ClaudeSdkSession — serialization", () => {
         { toolCall: { action: "A", params: {} }, subtype: "error_max_turns" },
         { toolCall: { action: "B", params: {} }, subtype: "error_max_turns" },
       ],
-      { router: true }
+      { mode: "route" }
     );
-    const [r1, r2] = await Promise.all([session.route("one"), session.route("two")]);
+    const [r1, r2] = await Promise.all([session.send("one"), session.send("two")]);
     const actions = [JSON.parse(r1).action, JSON.parse(r2).action].sort();
     expect(actions).toEqual(["A", "B"]); // both distinct, no cross-contamination
     await session.dispose();
+  });
+});
+
+describe("start-path timeout (#16553)", () => {
+  it("bounds a hung session start with the turn budget and fails retryable", async () => {
+    const { session } = makeSession([{ text: "unused", subtype: "success" }], {
+      turnTimeoutMs: 40,
+    });
+    // Simulate the unbounded startup await (SDK dynamic import / spawn
+    // handshake hanging on a CLI version download): start never resolves.
+    (session as unknown as { start: () => Promise<void> }).start = () =>
+      new Promise<void>(() => {});
+    const started = Date.now();
+    await expect(session.send("hi")).rejects.toThrow(/session start timed out/);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    // Self-healed: a follow-up dispose is safe and the session holds no query.
+    await session.dispose();
+  });
+
+  it("tears down a start that resolves after dispose instead of resurrecting", async () => {
+    const { session } = makeSession([{ text: "late", subtype: "success" }], {
+      turnTimeoutMs: 30,
+    });
+    const inner = session as unknown as {
+      start: (...args: unknown[]) => Promise<void>;
+      query: unknown;
+    };
+    const realStart = inner.start.bind(session);
+    let releaseStart: (() => void) | undefined;
+    inner.start = async (...args: unknown[]) => {
+      await new Promise<void>((res) => {
+        releaseStart = res;
+      });
+      await realStart(...args);
+    };
+    const turn = session.send("hi");
+    // The bounded start times out (30ms) and disposes, bumping the epoch.
+    await expect(turn).rejects.toThrow(/session start timed out/);
+    // Now let the stale start finish — it must tear itself down, not attach.
+    releaseStart?.();
+    await new Promise((res) => setTimeout(res, 20));
+    expect(inner.query).toBeNull();
   });
 });

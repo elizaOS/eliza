@@ -41,10 +41,6 @@ export type RealTargetHandle = RunningRealServer;
 // claims and the WS handler verifies the token against them; the ownership/auth
 // checks are a PLATFORM seam (see harness-real-server.ts SHIM 5), bypassed here
 // by driving the real consent+jwt mint chain directly.
-const ORG_ID = "00000000-0000-4000-8000-0000000000a1";
-const USER_ID = "00000000-0000-4000-8000-0000000000b2";
-const AGENT_ID = "00000000-0000-4000-8000-0000000000c3";
-const CONVERSATION_ID = "00000000-0000-4000-8000-0000000000d4";
 
 
 export async function startRealTarget(
@@ -64,17 +60,26 @@ export async function startRealTarget(
   process.env.VOICE_REALTIME_WS_ENABLED = "true";
   process.env.VOICE_REALTIME_CARTESIA_VOICE_ID = providers.cartesiaVoiceId;
 
-  // LLM leg: point the REAL eliza-sse-bridge at an OpenAI-compatible streaming
-  // chat/completions endpoint. We use OpenRouter (real network, real token SSE,
-  // real AbortSignal cancellation) standing in for the funded Cerebras/Eliza
-  // SSE (decision §12). The bridge's extra agentId/conversationId body fields
-  // are ignored by OpenRouter; the streaming-delta + abort contract is real.
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
-  if (!openrouterKey) throw new Error("OPENROUTER_API_KEY not set (real LLM leg)");
-  process.env.VOICE_REALTIME_ELIZA_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
-  process.env.VOICE_REALTIME_ELIZA_AUTHORIZATION = `Bearer ${openrouterKey}`;
-  process.env.VOICE_REALTIME_ELIZA_MODEL =
-    process.env.HARNESS_LLM_MODEL ?? "meta-llama/llama-3.1-8b-instruct";
+  // Agent leg: evidence must exercise the same canonical persisted conversation
+  // route as staging. A raw model gateway can produce audio while silently
+  // bypassing the selected agent and conversation, so it is not a valid target.
+  const elizaApiOrigin = process.env.VOICE_REALTIME_ELIZA_ENDPOINT;
+  const elizaAuthorization = process.env.VOICE_REALTIME_ELIZA_AUTHORIZATION;
+  if (!elizaApiOrigin) {
+    throw new Error("VOICE_REALTIME_ELIZA_ENDPOINT API origin not set (real agent leg)");
+  }
+  if (!elizaAuthorization) {
+    throw new Error("VOICE_REALTIME_ELIZA_AUTHORIZATION not set (real agent leg)");
+  }
+  const agentId = process.env.HARNESS_AGENT_ID;
+  const conversationId = process.env.HARNESS_CONVERSATION_ID;
+  const organizationId = process.env.HARNESS_ORGANIZATION_ID;
+  const userId = process.env.HARNESS_USER_ID;
+  if (!agentId || !conversationId || !organizationId || !userId) {
+    throw new Error(
+      "HARNESS_AGENT_ID, HARNESS_CONVERSATION_ID, HARNESS_ORGANIZATION_ID, and HARNESS_USER_ID must match an existing authorized conversation",
+    );
+  }
 
   // Provider keys on the env too (harness-real-server passes them explicitly to
   // the session, but the config resolvers also read them off env for parity).
@@ -85,12 +90,12 @@ export async function startRealTarget(
     deepgramApiKey: providers.deepgramApiKey,
     cartesiaApiKey: providers.cartesiaApiKey,
     cartesiaVoiceId: providers.cartesiaVoiceId,
-    elizaEndpoint: process.env.VOICE_REALTIME_ELIZA_ENDPOINT,
-    elizaAuthorization: process.env.VOICE_REALTIME_ELIZA_AUTHORIZATION,
-    organizationId: ORG_ID,
-    userId: USER_ID,
-    agentId: AGENT_ID,
-    conversationId: CONVERSATION_ID,
+    elizaEndpoint: elizaApiOrigin,
+    elizaAuthorization,
+    organizationId,
+    userId,
+    agentId,
+    conversationId,
     hooks,
     faultInjection: opts.faultInjection,
   });

@@ -9,7 +9,6 @@
  * the full text before responding rather than streaming back.
  */
 
-import { gateway } from "@ai-sdk/gateway";
 import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -33,6 +32,7 @@ import {
   parseThinkingBudgetFromCharacterSettings,
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
+import { getLanguageModel } from "@/lib/providers/language-model";
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { CreditReservation } from "@/lib/services/credits";
@@ -43,11 +43,31 @@ import {
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
+const A2A_TEXT_OUTPUT_TOKENS = 500;
+
 const JsonRpcRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   method: z.string(),
   params: z.record(z.string(), z.unknown()).optional(),
   id: z.union([z.string(), z.number()]),
+});
+
+const ProviderUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+});
+
+const A2AChatParamsSchema = z.object({
+  model: z.string().trim().min(1).default("gpt-5-mini"),
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string().min(1),
+      }),
+    )
+    .min(1),
 });
 
 export function generateAgentCard(character: UserCharacter, baseUrl: string) {
@@ -191,6 +211,8 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     user = await requireUserOrApiKeyWithOrg(c);
   } catch {
+    // error-policy:J1 the public JSON-RPC boundary translates authentication
+    // failures without exposing session or API-key internals.
     return c.json(
       {
         jsonrpc: "2.0",
@@ -247,18 +269,18 @@ async function handleChat(
   rpcId: string | number,
   authUser: { id: string; organization_id: string },
 ): Promise<Response> {
-  const { model = "gpt-5-mini", messages } = params as {
-    model?: string;
-    messages: Array<{ role: string; content: string }>;
-  };
-
-  if (!messages?.length) {
-    return c.json({
-      jsonrpc: "2.0",
-      error: { code: -32602, message: "messages required" },
-      id: rpcId,
-    });
+  const parsedParams = A2AChatParamsSchema.safeParse(params);
+  if (!parsedParams.success) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32602, message: "valid messages are required" },
+        id: rpcId,
+      },
+      400,
+    );
   }
+  const { model, messages } = parsedParams.data;
 
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
@@ -268,10 +290,7 @@ async function handleChat(
 
   const fullMessages = [
     { role: "system" as const, content: systemPrompt },
-    ...messages.map((m) => ({
-      role: m.role as "user" | "assistant" | "system",
-      content: m.content,
-    })),
+    ...messages,
   ];
 
   const provider = getProviderFromModel(model);
@@ -285,7 +304,7 @@ async function handleChat(
     agentThinkingBudget,
   );
   const maxOutputTokens =
-    effectiveThinkingBudget != null ? 500 + effectiveThinkingBudget : undefined;
+    A2A_TEXT_OUTPUT_TOKENS + (effectiveThinkingBudget ?? 0);
   const baseCost = await estimateRequestCost(
     model,
     fullMessages,
@@ -307,6 +326,8 @@ async function handleChat(
       description: `Agent: ${character.name} (${model})`,
     });
   } catch (error) {
+    // error-policy:J1 the route boundary translates the expected credit
+    // refusal and lets unexpected reservation failures reach the owner path.
     if (error instanceof InsufficientCreditsError) {
       return c.json({
         jsonrpc: "2.0",
@@ -322,8 +343,12 @@ async function handleChat(
 
   try {
     const result = await streamText({
-      model: gateway.languageModel(model),
+      model: getLanguageModel(model),
       messages: fullMessages,
+      // Cap the provider at the exact ceiling billing reserved above, so final
+      // usage cannot outrun the admitted reservation (#16147). Omitting it let
+      // the provider bill more output than was priced upfront.
+      maxOutputTokens,
       ...mergeAnthropicCotProviderOptions(
         model,
         envForThinking,
@@ -336,12 +361,12 @@ async function handleChat(
       fullText += delta;
     }
 
-    const usage = await result.usage;
+    const usage = ProviderUsageSchema.parse(await result.usage);
     const { totalCost: actualBaseCost } = await calculateCost(
       model,
       provider,
-      usage?.inputTokens || 0,
-      usage?.outputTokens || 0,
+      usage.inputTokens,
+      usage.outputTokens,
     );
     const { markupCredits: actualCreatorMarkup, totalCredits: actualTotal } =
       calculateCreditMarkup({
@@ -368,6 +393,9 @@ async function handleChat(
       });
     }
 
+    let creatorEarningsWarning:
+      | { code: "CREATOR_EARNINGS_UNAVAILABLE"; message: string }
+      | undefined;
     if (character.monetization_enabled && actualCreatorMarkup > 0) {
       // Earnings recording is a NON-CRITICAL post-settlement step. The consumer
       // was already settled above (reconcile(actualTotal)); if this throws it
@@ -382,7 +410,7 @@ async function handleChat(
           earnings: actualCreatorMarkup,
           consumerOrgId: authUser.organization_id,
           model,
-          tokens: usage?.totalTokens,
+          tokens: usage.totalTokens,
           protocol: "a2a",
         });
         logger.info(
@@ -394,6 +422,9 @@ async function handleChat(
           },
         );
       } catch (earningsError) {
+        // error-policy:J4 inference is already purchased and settled, so the
+        // response degrades explicitly with a machine-readable warning while
+        // the structured error log raises the accounting failure to operators.
         logger.error(
           "[Agent A2A] Failed to record creator earnings (settlement already applied — not rolling back)",
           {
@@ -405,6 +436,10 @@ async function handleChat(
                 : String(earningsError),
           },
         );
+        creatorEarningsWarning = {
+          code: "CREATOR_EARNINGS_UNAVAILABLE",
+          message: "Creator earnings could not be recorded",
+        };
       }
     }
 
@@ -414,19 +449,24 @@ async function handleChat(
         content: fullText,
         model,
         usage: {
-          prompt_tokens: usage?.inputTokens || 0,
-          completion_tokens: usage?.outputTokens || 0,
-          total_tokens: usage?.totalTokens || 0,
+          prompt_tokens: usage.inputTokens,
+          completion_tokens: usage.outputTokens,
+          total_tokens: usage.totalTokens,
         },
         cost: {
           base: actualBaseCost,
           markup: actualCreatorMarkup,
           total: actualTotal,
         },
+        ...(creatorEarningsWarning
+          ? { warnings: [creatorEarningsWarning] }
+          : {}),
       },
       id: rpcId,
     });
   } catch (error) {
+    // error-policy:J1 the JSON-RPC boundary refunds a failed generation and
+    // returns a redacted structured failure instead of partial model output.
     await reservation.reconcile(0);
     logger.error("[Agent A2A] Error generating response", {
       error: error instanceof Error ? error.message : "Unknown error",

@@ -74,7 +74,7 @@ jobs:
       ELIZA_ANDROID_BACKEND: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.backend || 'host' }}
       ELIZA_CLOUD_AUTH_TOKEN: ${{ secrets.ELIZA_CLOUD_AUTH_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
 
@@ -280,7 +280,7 @@ jobs:
       ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
       ELIZA_ANDROID_BACKEND: "host"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
 
@@ -407,7 +407,7 @@ jobs:
       ELIZA_BUN_RISCV64_OPTIONAL: "1"
       ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
 

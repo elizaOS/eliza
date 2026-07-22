@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 
 // Renders the real SettingsView against mocked state + stub sections to cover
-// the uniform layout: ONE shared ViewHeader + the iOS-style grouped hub list
-// (no desktop `w-60` rail, no horizontal tab strip, no responsive branch),
-// hub → subview navigation (hub row → section body → back to hub), the
-// initialSection prop, and per-section error boundaries (isolate a throwing
-// section, recover on retry). jsdom; sections and state barrel are stubbed.
+// the mobile hub → subview flow, the persistent desktop workspace, breakpoint
+// switching, initialSection, and per-section error boundaries. jsdom; sections
+// and state barrel are stubbed.
 
 import {
   cleanup,
@@ -13,6 +11,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { Settings } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -217,12 +216,10 @@ describe("SettingsView", () => {
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
   });
 
-  it("renders exactly ONE header and NO desktop w-60 rail", () => {
-    const { container } = render(<SettingsView />);
-    // Uniform top bar: a single shared header, never two stacked.
+  it("renders exactly one header in the mobile hub", () => {
+    render(<SettingsView />);
     expect(screen.getAllByTestId("view-header")).toHaveLength(1);
-    // The old persistent desktop rail (`nav.w-60`) is gone in every layout.
-    expect(container.querySelector("nav.w-60")).toBeNull();
+    expect(screen.queryByTestId("desktop-settings-navigation")).toBeNull();
   });
 
   it("groups the hub rows by Agent / System under the header", () => {
@@ -341,11 +338,7 @@ describe("SettingsView", () => {
     }
   });
 
-  // ── #13590: form-factor independence ──────────────────────────────────────
-  //
-  // The uniform layout has NO responsive branch (the desktop rail + mobile-hub
-  // split is gone). The same header + folded nav render regardless of viewport,
-  // so a mocked matchMedia must NOT change what is shown.
+  // ── Responsive settings workspace ─────────────────────────────────────────
 
   /** Mock matchMedia so each query resolves by the supplied predicate. */
   function mockMatchMedia(matches: (query: string) => boolean) {
@@ -365,27 +358,87 @@ describe("SettingsView", () => {
     };
   }
 
-  it("renders the same hub list on a wide (desktop) viewport", () => {
-    const restore = mockMatchMedia(() => true);
+  it("renders a persistent rail and default work area on a desktop viewport", () => {
+    const restore = mockMatchMedia((query) => query.includes("min-width:"));
     try {
       render(<SettingsView />);
-      // No auto-selected pane, no rail — the same grouped hub as on mobile.
-      expect(hubRow("identity")).toBeTruthy();
-      expect(hubRow("runtime")).toBeTruthy();
-      expect(screen.queryByTestId("stub-identity")).toBeNull();
-      expect(screen.getAllByTestId("view-header")).toHaveLength(1);
+      const navigation = screen.getByTestId("desktop-settings-navigation");
+      expect(navigation).toBeTruthy();
+      expect(screen.getByTestId("desktop-settings-fixed-pane")).toBeTruthy();
+      // The fixed pane is a sibling of WorkspaceLayout's scrolling <main>, not
+      // a sticky child that disappears as the section content scrolls.
+      expect(navigation.closest("main")).toBeNull();
+      expect(screen.getByTestId("desktop-settings-work-area")).toBeTruthy();
+      expect(screen.getByTestId("stub-identity")).toBeTruthy();
+      expect(
+        screen
+          .getByTestId("desktop-settings-item-identity")
+          .getAttribute("aria-current"),
+      ).toBe("page");
+      expect(screen.queryByTestId("settings-hub-list")).toBeNull();
+      expect(screen.queryByTestId("view-header")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Back to launcher" }),
+      ).toBeTruthy();
     } finally {
       restore();
     }
   });
 
-  it("renders the same hub list on a narrow (mobile) viewport", () => {
+  it("nests the section title h1 inside the #<section.id> deep-link anchor on desktop", () => {
+    // Regression guard (#16354): the persistent desktop rail moved the section
+    // title into a header sibling ABOVE the section body, dropping it out of the
+    // `#<section.id>` deep-link anchor. The title h1 + the body must share one
+    // anchored container so a deep-link/screen-reader landing on the section
+    // reaches its own title.
+    const restore = mockMatchMedia((query) => query.includes("min-width:"));
+    try {
+      const { container } = render(<SettingsView initialSection="runtime" />);
+      const anchor = container.querySelector<HTMLElement>("#runtime");
+      expect(anchor).not.toBeNull();
+      const scoped = within(anchor as HTMLElement);
+      expect(scoped.getByRole("heading", { level: 1 }).textContent).toBe(
+        "Runtime",
+      );
+      expect(scoped.getByTestId("stub-runtime")).toBeTruthy();
+      // Exactly one element carries the anchor id (the wrapper), never a
+      // duplicate on the inner body.
+      expect(container.querySelectorAll("#runtime")).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the section body as the deep-link anchor in the mobile subview", () => {
+    const restore = mockMatchMedia(() => false);
+    try {
+      const { container } = render(<SettingsView initialSection="runtime" />);
+      // Mobile keeps the shared ViewHeader title and anchors `#<id>` on the
+      // section body (the default) — the body still contains the section's
+      // rendered content.
+      const anchor = container.querySelector<HTMLElement>("#runtime");
+      expect(anchor).not.toBeNull();
+      expect(
+        within(anchor as HTMLElement).getByTestId("stub-runtime"),
+      ).toBeTruthy();
+      expect(screen.getByTestId("view-header").textContent).toContain(
+        "Runtime",
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the current hub list on a narrow mobile viewport", () => {
     const restore = mockMatchMedia(() => false);
     try {
       render(<SettingsView />);
       expect(hubRow("identity")).toBeTruthy();
       expect(screen.queryByTestId("stub-identity")).toBeNull();
       expect(screen.getAllByTestId("view-header")).toHaveLength(1);
+      expect(
+        screen.queryByTestId("page-layout-mobile-sidebar-trigger"),
+      ).toBeNull();
     } finally {
       restore();
     }

@@ -14,6 +14,7 @@ import {
   type CartesiaWebSocketFactory,
   type CartesiaWebSocketFactoryOptions,
   type CartesiaWebSocketLike,
+  VOICE_TTS_MAX_BUFFER_DELAY_MS,
 } from "../cartesia-sonic-tts";
 
 const VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
@@ -261,6 +262,32 @@ describe("CartesiaSonicTtsAdapter", () => {
       max_buffer_delay_ms: 80,
       flush: true,
     });
+  });
+
+  test("the exported production cap rides on EVERY generation request of a stream", () => {
+    const { adapter, socket } = makeHarness();
+    const stream = adapter.createStream(
+      { contextId: "ctx-cap", maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
+      {},
+    );
+    socket().emitOpen();
+    stream.sendPhrase({ text: "First clause, ", continueContext: true });
+    stream.sendPhrase({ text: "middle clause, ", continueContext: true });
+    stream.sendPhrase({ text: "last clause.", continueContext: false });
+
+    // Positively select generation requests (anything framing a transcript);
+    // continuation and terminal requests must carry the cap too — dropping it
+    // there silently restores Cartesia's 3000ms window for streamed clauses
+    // (#16667).
+    const requests = socket()
+      .sent.map(
+        (entry) => JSON.parse(entry) as { transcript?: string; max_buffer_delay_ms?: number },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
+    expect(requests.length).toBe(3);
+    for (const request of requests) {
+      expect(request.max_buffer_delay_ms).toBe(VOICE_TTS_MAX_BUFFER_DELAY_MS);
+    }
   });
 
   test("emits first-audio once and ordered continuous PCM frames", () => {

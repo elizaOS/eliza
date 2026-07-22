@@ -4,7 +4,14 @@
  * The route's real HTTP behavior is covered in packages/agent.
  */
 
-import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import type {
+	HandlerCallback,
+	IAgentRuntime,
+	Memory,
+	RoleGate,
+	RoleGateRole,
+} from "@elizaos/core";
+import { satisfiesRoleGate } from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -122,9 +129,13 @@ describe("MODEL_SWITCH handler", () => {
 		expect(await a.validate(runtime, message("hi"))).toBe(false);
 	});
 
-	it("declares USER role gate and required target param", () => {
+	it("declares an OWNER role gate and required target param", () => {
+		// #16172 gap 3: MODEL_SWITCH flips the GLOBAL inference backend, so it must
+		// be OWNER-gated (matching the owner-only `/model local|cloud` slash write
+		// and the sibling AGENT_SWITCH action). A planner-routed guest message must
+		// not reach this action ungated.
 		const { action: a } = action({ ok: true });
-		expect(a.roleGate).toEqual({ minRole: "USER" });
+		expect(a.roleGate).toEqual({ minRole: "OWNER" });
 		const target = a.parameters?.find((p) => p.name === "target");
 		expect(target?.required).toBe(true);
 		expect(target?.schema).toMatchObject({ enum: ["local", "cloud"] });
@@ -212,5 +223,39 @@ describe("MODEL_SWITCH handler", () => {
 		);
 		expect(result?.success).toBe(false);
 		expect(texts[0]).toMatch(/ECONNREFUSED/);
+	});
+});
+
+/**
+ * #16172 gap 3 regression: MODEL_SWITCH performs a GLOBAL runtime inference
+ * switch, so the planner-routed action-invocation path must be OWNER-gated.
+ * Before the fix the action declared `roleGate: { minRole: "USER" }`, so a
+ * guest whose (possibly mention-prefixed) message slipped past the
+ * deterministic command layer and reached the planner could invoke a global
+ * backend switch. The runtime enforces the DECLARED gate through the shared
+ * `satisfiesRoleGate` chokepoint (used by both the shortcut gate and the
+ * planned-tool-call executor), so proving the declared gate rejects non-owner
+ * roles proves the ungated planner path is closed.
+ */
+describe("MODEL_SWITCH role gate (planner path) — #16172 gap 3", () => {
+	const gate = createModelSwitchAction().roleGate as RoleGate | undefined;
+
+	const passes = (role: RoleGateRole) => satisfiesRoleGate([role], gate);
+
+	it("declares an OWNER floor", () => {
+		expect(gate).toEqual({ minRole: "OWNER" });
+	});
+
+	it("rejects a guest/user reaching the action via the planner", () => {
+		expect(passes("USER" as RoleGateRole)).toBe(false);
+		expect(passes("MEMBER" as RoleGateRole)).toBe(false);
+	});
+
+	it("rejects an ADMIN (a global inference switch is owner-only)", () => {
+		expect(passes("ADMIN" as RoleGateRole)).toBe(false);
+	});
+
+	it("allows an OWNER", () => {
+		expect(passes("OWNER" as RoleGateRole)).toBe(true);
 	});
 });

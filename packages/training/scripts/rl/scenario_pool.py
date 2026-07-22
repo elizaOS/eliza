@@ -27,7 +27,15 @@ from uuid import uuid4
 import numpy as np
 from pydantic import BaseModel, Field
 
+from .state_paths import default_curriculum_checkpoint_path
+
 logger = logging.getLogger(__name__)
+
+
+def _default_curriculum_checkpoint_path() -> str:
+    """Resolve mutable curriculum state through the runtime state contract."""
+
+    return default_curriculum_checkpoint_path()
 
 
 # =============================================================================
@@ -359,32 +367,26 @@ class CurriculumManager:
         if not self.checkpoint_path or not self.checkpoint_path.exists():
             return
 
-        try:
-            with open(self.checkpoint_path) as f:
-                state = CurriculumState.model_validate_json(f.read())
-                self.attempts = state.attempts
-                self.scores = state.scores
-                self.solved = set(state.solved)
-                logger.info(f"Loaded curriculum state: {len(self.solved)} solved scenarios")
-        except Exception as e:
-            logger.warning(f"Failed to load curriculum checkpoint: {e}")
+        with open(self.checkpoint_path) as f:
+            state = CurriculumState.model_validate_json(f.read())
+            self.attempts = state.attempts
+            self.scores = state.scores
+            self.solved = set(state.solved)
+            logger.info(f"Loaded curriculum state: {len(self.solved)} solved scenarios")
 
     def _save_checkpoint(self) -> None:
         """Save curriculum state to checkpoint"""
         if not self.checkpoint_path:
             return
 
-        try:
-            self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-            state = CurriculumState(
-                attempts=self.attempts,
-                scores=self.scores,
-                solved=list(self.solved),
-            )
-            with open(self.checkpoint_path, "w") as f:
-                f.write(state.model_dump_json(indent=2))
-        except Exception as e:
-            logger.warning(f"Failed to save curriculum checkpoint: {e}")
+        self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        state = CurriculumState(
+            attempts=self.attempts,
+            scores=self.scores,
+            solved=list(self.solved),
+        )
+        with open(self.checkpoint_path, "w") as f:
+            f.write(state.model_dump_json(indent=2))
 
     def record_attempt(self, scenario_id: str, score: float) -> None:
         """Record an attempt on a scenario"""
@@ -490,7 +492,7 @@ class ScenarioPoolConfig(BaseModel):
     # Curriculum settings
     use_curriculum: bool = Field(default=True, description="Enable curriculum learning")
     curriculum_checkpoint_path: str = Field(
-        default="./curriculum_state.json",
+        default_factory=_default_curriculum_checkpoint_path,
         description="Path to curriculum state checkpoint",
     )
 

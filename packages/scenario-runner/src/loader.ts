@@ -122,11 +122,6 @@ export const SCENARIO_EDGE_VARIANTS = [
   },
 ] as const;
 
-export function baseScenarioId(id: string): string {
-  const marker = "--edge-";
-  return id.includes(marker) ? id.split(marker, 1)[0] : id;
-}
-
 export function shouldExpandScenarioEdges(): boolean {
   return process.env.SCENARIO_EXPAND_EDGE_CASES === "1";
 }

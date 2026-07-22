@@ -3,8 +3,9 @@
  * and its auth-failure triage (isAuthFailure): least-used vs priority vs config-
  * vs env-driven selection, per-agent env patches (CLAUDE_CODE_OAUTH_TOKEN, a
  * materialized CODEX_HOME/auth.json + config.toml with a TOML-injection guard,
- * CEREBRAS_API_KEY), usage attribution, and rate-limit skipping. Runs against a
- * real temp ELIZA_HOME / ELIZA_STATE_DIR and real account storage — no mocked pool.
+ * active-generation discovery, CEREBRAS_API_KEY), usage attribution, and rate-
+ * limit skipping. Runs against a real temp ELIZA_HOME / ELIZA_STATE_DIR and real
+ * account storage — no mocked pool.
  */
 import {
   mkdirSync,
@@ -15,7 +16,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -187,9 +188,10 @@ describe("coding-account-bridge", () => {
     await setUsage("anthropic-subscription", "spare", 5);
     const bridge = getCodingAgentSelectorBridge();
 
-    // Unconfigured: least-used default.
+    // Unconfigured Anthropic subscriptions drain the weekly window that resets
+    // soonest. With no reset metadata, the lower-usage account is selected.
     const unconfigured = await bridge?.select("claude");
-    expect(unconfigured?.strategy).toBe("least-used");
+    expect(unconfigured?.strategy).toBe("drain-soonest-reset");
     expect(unconfigured?.accountId).toBe("spare");
 
     // The picker writes config.accountStrategies — selection must follow it.
@@ -207,7 +209,8 @@ describe("coding-account-bridge", () => {
     expect(explicit?.strategy).toBe("least-used");
     expect(explicit?.accountId).toBe("spare");
 
-    // The env var stays a fallback: used when no config, beaten by config.
+    // The coding-only env override beats the provider default, while an app
+    // configuration remains authoritative over the process-wide override.
     configureDefaultAccountPoolSelection();
     process.env.ELIZA_CODING_ACCOUNT_STRATEGY = "priority";
     const envFallback = await bridge?.select("claude");
@@ -219,6 +222,17 @@ describe("coding-account-bridge", () => {
     const configOverEnv = await bridge?.select("claude");
     expect(configOverEnv?.strategy).toBe("least-used");
     expect(configOverEnv?.accountId).toBe("spare");
+
+    // The active llmText route remains the highest-precedence app config.
+    configureDefaultAccountPoolSelection({
+      accountStrategies: { "anthropic-subscription": "least-used" },
+      serviceRouting: {
+        llmText: { backend: "anthropic", strategy: "priority" },
+      },
+    });
+    const routeOverAccountStrategy = await bridge?.select("claude");
+    expect(routeOverAccountStrategy?.strategy).toBe("priority");
+    expect(routeOverAccountStrategy?.accountId).toBe("primary");
   });
 
   it("materializes a per-account CODEX_HOME/auth.json for Codex (incl. id_token)", async () => {
@@ -226,17 +240,35 @@ describe("coding-account-bridge", () => {
       organizationId: "acct_123",
       idToken: "codex-id-token-1",
     });
+    const canonical = loadAccount("openai-codex", "codex-1");
+    if (!canonical) throw new Error("expected canonical Codex account");
     const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();
     const sel = await bridge?.select("codex");
     expect(sel?.providerId).toBe("openai-codex");
     const codexHome = sel?.envPatch.CODEX_HOME;
     expect(codexHome).toBeTruthy();
+    const accountHome = path.join(home, "auth", "_codex-home", "codex-1");
+    const activeHome = readFileSync(
+      path.join(accountHome, "active-home"),
+      "utf-8",
+    ).trim();
+    expect(path.resolve(accountHome, activeHome)).toBe(
+      path.resolve(codexHome as string),
+    );
+    const [generationDir, generationName] = activeHome.split(path.sep);
+    expect(generationDir).toBe("generations");
+    expect(generationName).toMatch(/^[a-f0-9]{24}$/);
     const authJson = JSON.parse(
       readFileSync(path.join(codexHome as string, "auth.json"), "utf-8"),
     );
     expect(authJson.tokens.access_token).toBe("codex-access-1");
     expect(authJson.tokens.account_id).toBe("acct_123");
     expect(authJson.auth_mode).toBe("chatgpt");
+    // The timestamp identifies the source credential generation. Selection
+    // must not stamp "now" and make a stale materialization look newer.
+    expect(authJson.last_refresh).toBe(
+      new Date(canonical.updatedAt).toISOString(),
+    );
     // id_token must be present or codex-acp fails "Authentication required".
     expect(authJson.tokens.id_token).toBe("codex-id-token-1");
     // A minimal config.toml with a model — without it codex-acp falls back to a
@@ -273,8 +305,10 @@ describe("coding-account-bridge", () => {
       path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
       "utf-8",
     );
-    // Clean single model line, no injected table/keys.
-    expect(cfg).toMatch(/^model = "[\w.:/-]+"\n$/);
+    // Clean model line + the fixed store pin, no injected table/keys.
+    expect(cfg).toMatch(
+      /^model = "[\w.:/-]+"\ncli_auth_credentials_store = "file"\n$/,
+    );
     expect(cfg).not.toContain("[evil]");
   });
 
@@ -339,7 +373,7 @@ describe("coding-account-bridge", () => {
     }
   });
 
-  it("falls back to gpt-5.6-terra when no model is configured anywhere", async () => {
+  it("falls back to gpt-5.6-sol when no model is configured anywhere", async () => {
     writeAccount("openai-codex", "cx-fb", "cx-fb-access", {
       organizationId: "a",
     });
@@ -355,7 +389,9 @@ describe("coding-account-bridge", () => {
         path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
         "utf-8",
       );
-      expect(cfg).toBe('model = "gpt-5.6-terra"\n');
+      expect(cfg).toBe(
+        'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
+      );
     } finally {
       if (prevOsHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevOsHome;
@@ -392,15 +428,14 @@ describe("coding-account-bridge", () => {
       path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
       "utf-8",
     );
-    expect(cfg).toBe('model = "gpt-5.6-terra"\n');
+    expect(cfg).toBe(
+      'model = "gpt-5.6-terra"\ncli_auth_credentials_store = "file"\n',
+    );
     expect(cfg).not.toContain("model_reasoning_effort");
     expect(cfg).not.toContain("[evil]");
   });
 
-  it("skips ultra/max: valid catalog values the pinned codex-acp cannot parse", async () => {
-    // Writing an effort variant the pinned adapter's serde enum lacks would
-    // fail the WHOLE config.toml parse and drop the model pin ChatGPT-account
-    // auth requires — so these are withheld, not written.
+  it("omits max and ultra outside the managed codex-acp effort contract", async () => {
     writeAccount("openai-codex", "cx-ultra", "cx-ultra-access", {
       organizationId: "a",
     });
@@ -415,8 +450,74 @@ describe("coding-account-bridge", () => {
         path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
         "utf-8",
       );
-      expect(cfg).toBe('model = "gpt-5.6-sol"\n');
+      expect(cfg).toBe(
+        'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
+      );
     }
+  });
+
+  it("adopts a CLI-rotated refresh token at materialize time instead of clobbering it", async () => {
+    // The session file is the only surviving copy after a one-time refresh
+    // token rotates, so materialization must adopt it before writing.
+    writeAccount("openai-codex", "cx-rot", "cx-rot-access", {
+      organizationId: "a",
+    });
+    const codexHome = path.join(home, "auth", "_codex-home", "cx-rot");
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(
+      path.join(codexHome, "auth.json"),
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        OPENAI_API_KEY: null,
+        tokens: {
+          access_token: `e30.${Buffer.from(
+            JSON.stringify({
+              exp: Math.floor((Date.now() + 86_400_000) / 1000),
+            }),
+          ).toString("base64url")}.sig`,
+          refresh_token: "cx-rot-access-refresh-ROTATED",
+          account_id: "a",
+        },
+        // Adoption is newer-only so re-linking an account cannot be undone by
+        // a stale session file.
+        last_refresh: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    expect(sel?.accountId).toBe("cx-rot");
+
+    const pool = getDefaultAccountPool();
+    const adopted = pool.list("openai-codex").find((a) => a.id === "cx-rot");
+    expect(adopted).toBeTruthy();
+    const authOnDisk = JSON.parse(
+      readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "auth.json"),
+        "utf-8",
+      ),
+    ) as { tokens?: { refresh_token?: string } };
+    expect(authOnDisk.tokens?.refresh_token).toBe(
+      "cx-rot-access-refresh-ROTATED",
+    );
+    expect(readFileSync(path.join(codexHome, "active-home"), "utf-8")).toBe(
+      ".\n",
+    );
+  });
+
+  it("pins cli_auth_credentials_store=file so rotated tokens land in auth.json", async () => {
+    writeAccount("openai-codex", "cx-store", "cx-store-access", {
+      organizationId: "a",
+    });
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    const cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    expect(cfg).toContain('cli_auth_credentials_store = "file"');
   });
 
   it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {
@@ -506,24 +607,28 @@ describe("coding-account-bridge", () => {
   });
 
   // Follow-up pinning: session affinity alone expires after 3 selects, after
-  // which least-used actively prefers the SIBLING (the affine account carries
-  // the freshest selection stamp). The first test documents that real-pool
-  // failure mode; the pin tests prove `accountIds` is what keeps a continuing
-  // session's token resolves on its spawn-time account.
+  // which the configured strategy may choose another account. Force least-used
+  // here to exercise that drift independently of the Anthropic weekly-window
+  // drain default. The pin tests prove `accountIds` keeps a continuing session
+  // on its spawn-time account.
   it("drifts to the sibling once session affinity expires when NOT pinned", async () => {
     writeAccount("anthropic-subscription", "pin-a", "sk-ant-oat-PIN-A");
     writeAccount("anthropic-subscription", "pin-b", "sk-ant-oat-PIN-B");
     getDefaultAccountPool();
     const bridge = getCodingAgentSelectorBridge();
     const sessionKey = "sess-drift";
-    const spawn = await bridge?.select("claude", { sessionKey });
+    const spawn = await bridge?.select("claude", {
+      sessionKey,
+      strategy: "least-used",
+    });
     const spawnId = spawn?.accountId;
     expect(spawnId).toBeTruthy();
     // Affinity holds the next two selects (attempts 2 and 3 of 3)…
     const followUps: Array<string | undefined> = [];
     for (let i = 0; i < 3; i += 1) {
       followUps.push(
-        (await bridge?.select("claude", { sessionKey }))?.accountId,
+        (await bridge?.select("claude", { sessionKey, strategy: "least-used" }))
+          ?.accountId,
       );
     }
     expect(followUps[0]).toBe(spawnId);

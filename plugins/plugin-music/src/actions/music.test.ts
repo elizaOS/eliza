@@ -275,27 +275,30 @@ describe("MUSIC umbrella action dispatch", () => {
     ["It could be `pause` or `skip`.", "backtick-wrapped first enum"],
     ["- pause\n- skip", "bullet list of enums"],
     ["action: pause; alternatively skip", "action: candidate then alternative"],
-  ])("refuses ambiguous prose that references multiple enums (%s)", async (modelOutput) => {
-    const handler = vi.spyOn(playbackOp, "handler");
-    const useModel = vi.fn().mockResolvedValue(modelOutput);
-    const callback = vi.fn();
+  ])(
+    "refuses ambiguous prose that references multiple enums (%s)",
+    async (modelOutput) => {
+      const handler = vi.spyOn(playbackOp, "handler");
+      const useModel = vi.fn().mockResolvedValue(modelOutput);
+      const callback = vi.fn();
 
-    const result = await musicAction.handler?.(
-      runtime({ useModel } as unknown as Partial<IAgentRuntime>),
-      message("pausa la música"),
-      { values: { selectedContexts: ["media"] } } as never,
-      undefined,
-      callback,
-    );
+      const result = await musicAction.handler?.(
+        runtime({ useModel } as unknown as Partial<IAgentRuntime>),
+        message("pausa la música"),
+        { values: { selectedContexts: ["media"] } } as never,
+        undefined,
+        callback,
+      );
 
-    expect(result).toMatchObject({
-      success: false,
-      text: expect.stringContaining("Could not classify a music subaction"),
-    });
-    expect(handler).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        success: false,
+        text: expect.stringContaining("Could not classify a music subaction"),
+      });
+      expect(handler).not.toHaveBeenCalled();
 
-    handler.mockRestore();
-  });
+      handler.mockRestore();
+    },
+  );
 
   it("recovers a single bulleted enum from real model output (- pause)", async () => {
     const handler = vi

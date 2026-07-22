@@ -64,6 +64,10 @@ describe("TASKS:control structural action", () => {
     );
 
     expect(result?.success).toBe(true);
+    expect(result?.data).toMatchObject({
+      action: "stop",
+      sessionId: "abcdef123456",
+    });
     expect(svc.stopSession).toHaveBeenCalledWith("abcdef123456");
   });
 });

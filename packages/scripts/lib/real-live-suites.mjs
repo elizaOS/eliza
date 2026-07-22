@@ -41,7 +41,7 @@ import path from "node:path";
 
 /** Same content pattern that defines the guarded set in issue #9310. */
 export const GUARD_CONTENT_PATTERN =
-  /describe\.skip|requireLiveProvider|ELIZA_LIVE_TEST/;
+  /describe\.skip|requireLiveProvider|ELIZA_LIVE_TEST|COMPUTER_USE_REAL_DESKTOP_TESTS/;
 
 export const REAL_LIVE_FILE_PATTERN = /\.(?:real|live)\.test\.tsx?$/;
 
@@ -58,6 +58,13 @@ const DISCOVERY_SKIP_DIRS = new Set([
 ]);
 
 export const GUARDED_REAL_LIVE_SUITES = [
+  {
+    file: "packages/cloud/shared/src/lib/providers/anthropic-thinking.live.test.ts",
+    requires: ["ANTHROPIC_API_KEY"],
+    optIn: "ELIZA_LIVE_TEST",
+    notes:
+      "exact cloud resolver request/response trajectory proving Opus 4.7 adaptive thinking reaches Anthropic without budget_tokens",
+  },
   {
     file: "packages/agent/src/services/push/push-delivery.real.test.ts",
     anyOf: [["ELIZA_APNS_KEY_ID"], ["ELIZA_FCM_SERVICE_ACCOUNT"]],
@@ -86,6 +93,13 @@ export const GUARDED_REAL_LIVE_SUITES = [
     file: "packages/core/src/__tests__/should-respond.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     probe: "local Ollama at OLLAMA_API_ENDPOINT",
+  },
+  {
+    file: "packages/core/src/features/basic-capabilities/providers/channelTopics.live.test.ts",
+    optIn: "ELIZA_LIVE_TEST",
+    anyOf: [["OPENAI_API_KEY"], ["CEREBRAS_API_KEY"]],
+    notes:
+      "real AgentRuntime provider context sent through the configured live text model",
   },
   {
     file: "packages/evidence/src/vision-qa/vision-qa.live.test.ts",
@@ -158,8 +172,9 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
     blocked:
-      "plugin-computeruse vitest.config.ts excludes *.real.test.ts in every lane (desktop-control host required)",
-    probe: "real desktop control (mouse/keyboard/screen)",
+      "plugin-computeruse excludes real desktop actuation from every workspace sweep; run this exact file through packages/test/vitest/real.config.ts on an isolated interactive desktop",
+    notes:
+      "the file itself requires COMPUTER_USE_REAL_DESKTOP_TESTS=1 as a per-command acknowledgment",
   },
   {
     file: "plugins/plugin-computeruse/src/__tests__/windows-list.real.test.ts",
@@ -225,6 +240,12 @@ export const GUARDED_REAL_LIVE_SUITES = [
     file: "plugins/plugin-openai/__tests__/cerebras-spawn-subagent-refusal.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     requires: ["CEREBRAS_API_KEY"],
+  },
+  {
+    file: "plugins/plugin-openai/__tests__/cerebras-evidence.live.test.ts",
+    requires: ["CEREBRAS_API_KEY"],
+    notes:
+      "credential-redacted raw request/response/SSE, trajectory, tool, structured-output, and provider/transport error evidence",
   },
   {
     file: "plugins/plugin-openai/__tests__/openai-drift.real.test.ts",

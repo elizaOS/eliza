@@ -112,11 +112,60 @@ type WorkletCapablePlaybackContext = PlaybackAudioContextLike & {
 
 export interface VoiceSessionPlaybackOptions {
   createAudioContext?: () => PlaybackAudioContextLike;
+  /** Cancels provisional setup and closes any live playback graph. */
+  signal?: AbortSignal;
+  /**
+   * Attempt `AudioContext.resume()` immediately after constructing the context.
+   * The resume call itself therefore runs before this async factory yields,
+   * preserving the browser user activation held by the caller of `start()`.
+   */
+  unlockOnCreate?: boolean;
+  /** Notified when queued audio starts/stops waiting for an unlock gesture. */
+  onUnlockChange?: (needsUnlock: boolean) => void;
   /** Notified when the queue drains to empty (utterance finished playing). */
   onDrained?: () => void;
 }
 
 const PLAYBACK_WORKLET_NAME = "eliza-voice-session-downlink";
+
+class VoicePlaybackSetupCancelledError extends Error {
+  constructor(cause?: unknown) {
+    super("voice playback setup cancelled", { cause });
+    this.name = "AbortError";
+  }
+}
+
+function throwIfPlaybackCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new VoicePlaybackSetupCancelledError(signal.reason);
+  }
+}
+
+function awaitPlaybackSetup<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(new VoicePlaybackSetupCancelledError(signal.reason));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(new VoicePlaybackSetupCancelledError(signal.reason));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
 
 export function hasPlaybackWorkletSupport(
   ctx: PlaybackAudioContextLike,
@@ -146,6 +195,8 @@ export interface VoiceSessionPlayback {
 export async function createVoiceSessionPlayback(
   options: VoiceSessionPlaybackOptions = {},
 ): Promise<VoiceSessionPlayback> {
+  const signal = options.signal;
+  throwIfPlaybackCancelled(signal);
   const createAudioContext =
     options.createAudioContext ??
     (() => {
@@ -162,9 +213,32 @@ export async function createVoiceSessionPlayback(
     });
 
   const ctx = createAudioContext();
+  if (signal?.aborted) {
+    await ctx.close().catch(() => {});
+    throw new VoicePlaybackSetupCancelledError(signal.reason);
+  }
+  // `resume()` must be INVOKED while the start gesture is still active. Do not
+  // move this below the AudioWorklet module await: by then Safari/iOS may have
+  // consumed the transient user activation. A rejected autoplay attempt is
+  // expected for non-gesture starts and is surfaced later via `needsUnlock`.
+  const initialUnlock =
+    options.unlockOnCreate &&
+    (ctx.state === "suspended" || ctx.state === "interrupted")
+      ? ctx.resume().catch(() => {})
+      : null;
 
   let stopped = false;
   let needsUnlock = false;
+  const setNeedsUnlock = (next: boolean): void => {
+    if (needsUnlock === next) return;
+    needsUnlock = next;
+    try {
+      options.onUnlockChange?.(next);
+    } catch (ignoredError) {
+      // UI notification is best-effort; playback must remain independent.
+      void ignoredError;
+    }
+  };
   // Pre-unlock queue (frames enqueued while suspended); flushed into the sink
   // once running so no audio is dropped, only deferred.
   const preUnlockQueue: Float32Array[] = [];
@@ -181,9 +255,11 @@ export async function createVoiceSessionPlayback(
   try {
     if (hasPlaybackWorkletSupport(ctx)) {
       backend = "audioworklet";
-      await ctx.audioWorklet.addModule(
-        resolveAudioWorkletModuleUrl("downlink"),
+      await awaitPlaybackSetup(
+        ctx.audioWorklet.addModule(resolveAudioWorkletModuleUrl("downlink")),
+        signal,
       );
+      throwIfPlaybackCancelled(signal);
       const node = constructBrowserAudioWorkletNode(
         ctx,
         PLAYBACK_WORKLET_NAME,
@@ -193,6 +269,7 @@ export async function createVoiceSessionPlayback(
         throw new Error("AudioWorkletNode unavailable for playback");
       }
       workletNode = node;
+      throwIfPlaybackCancelled(signal);
       node.port.onmessage = (event) => {
         const d = event.data as { type?: string } | undefined;
         if (d?.type === "drained") options.onDrained?.();
@@ -200,6 +277,7 @@ export async function createVoiceSessionPlayback(
       node.connect(ctx.destination);
     } else if (typeof ctx.createScriptProcessor === "function") {
       backend = "scriptprocessor";
+      throwIfPlaybackCancelled(signal);
       scriptNode = ctx.createScriptProcessor(4096, 1, 1);
       scriptNode.onaudioprocess = (event) => {
         const outBuf = event.outputBuffer;
@@ -229,6 +307,7 @@ export async function createVoiceSessionPlayback(
       throw new Error("no AudioWorklet or ScriptProcessor for playback");
     }
   } catch (error) {
+    stopped = true;
     if (workletNode) {
       workletNode.port.onmessage = null;
       workletNode.disconnect();
@@ -240,6 +319,37 @@ export async function createVoiceSessionPlayback(
     await ctx.close().catch(() => {});
     throw error;
   }
+
+  let onAbort: (() => void) | null = null;
+  let stopPromise: Promise<void> | null = null;
+
+  const stop = async (): Promise<void> => {
+    if (stopPromise) return stopPromise;
+    stopped = true;
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    if (workletNode) {
+      workletNode.port.onmessage = null;
+      workletNode.disconnect();
+    }
+    if (scriptNode) {
+      scriptNode.onaudioprocess = null;
+      scriptNode.disconnect();
+    }
+    preUnlockQueue.length = 0;
+    jsQueue.length = 0;
+    setNeedsUnlock(false);
+    stopPromise = ctx.close().catch(() => {});
+    return stopPromise;
+  };
+
+  onAbort = () => {
+    void stop();
+  };
+  if (signal?.aborted) {
+    await stop();
+    throw new VoicePlaybackSetupCancelledError(signal.reason);
+  }
+  signal?.addEventListener("abort", onAbort, { once: true });
 
   const pushSamples = (samples: Float32Array): void => {
     if (backend === "audioworklet" && workletNode) {
@@ -261,6 +371,17 @@ export async function createVoiceSessionPlayback(
 
   const isRunning = (): boolean => ctx.state === "running";
 
+  // Do not await a browser-blocked resume promise: some engines keep it pending
+  // until a later gesture, which must not stall mint/connection. If it resolves
+  // after audio was queued, drain that queue and clear the CTA state.
+  if (initialUnlock) {
+    void initialUnlock.then(() => {
+      if (stopped || !isRunning()) return;
+      setNeedsUnlock(false);
+      drainPreUnlock();
+    });
+  }
+
   return {
     get unlocked() {
       return isRunning();
@@ -277,7 +398,7 @@ export async function createVoiceSessionPlayback(
       if (samples.length === 0) return;
       if (!isRunning()) {
         // Buffer until unlocked; do not drop.
-        needsUnlock = true;
+        setNeedsUnlock(true);
         preUnlockQueue.push(samples);
         return;
       }
@@ -286,6 +407,9 @@ export async function createVoiceSessionPlayback(
     flush() {
       // Immediate silence for barge-in — clear BOTH the deferred and live queues.
       preUnlockQueue.length = 0;
+      // A flush discards every frame that was waiting for a gesture, so the UI
+      // must not keep advertising an unlock for audio that no longer exists.
+      setNeedsUnlock(false);
       if (backend === "audioworklet" && workletNode) {
         workletNode.port.postMessage({ type: "flush" });
       } else {
@@ -300,24 +424,10 @@ export async function createVoiceSessionPlayback(
         await ctx.resume().catch(() => {});
       }
       if (isRunning()) {
-        needsUnlock = false;
+        setNeedsUnlock(false);
         drainPreUnlock();
       }
     },
-    async stop() {
-      if (stopped) return;
-      stopped = true;
-      if (workletNode) {
-        workletNode.port.onmessage = null;
-        workletNode.disconnect();
-      }
-      if (scriptNode) {
-        scriptNode.onaudioprocess = null;
-        scriptNode.disconnect();
-      }
-      preUnlockQueue.length = 0;
-      jsQueue.length = 0;
-      await ctx.close().catch(() => {});
-    },
+    stop,
   };
 }

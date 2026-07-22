@@ -18,7 +18,7 @@ import {
   modifyWorkflow,
 } from '../../src/utils/generation';
 import type { UnknownParamDetection } from '../../src/utils/workflow';
-import { createMockRuntime } from '../helpers/mockRuntime';
+import { createModelRuntime } from '../helpers/modelRuntime';
 
 const CEREBRAS_WORKFLOW_SETTINGS = {
   ELIZA_PROVIDER: 'cerebras',
@@ -57,7 +57,7 @@ function assertCerebrasWorkflowCall(call: unknown[] | undefined, callSite: strin
 
 describe('extractKeywords', () => {
   test('returns keywords from valid LLM response', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve({ keywords: ['gmail', 'stripe', 'send'] })),
     });
 
@@ -65,8 +65,22 @@ describe('extractKeywords', () => {
     expect(result).toEqual(['gmail', 'stripe', 'send']);
   });
 
+  test('parses JSON-string structured output from subscription-backed providers', async () => {
+    const runtime = createModelRuntime({
+      useModel: mock(() =>
+        Promise.resolve(
+          JSON.stringify({ keywords: ['manual trigger', 'set node', 'json'] }, null, 2)
+        )
+      ),
+    });
+
+    const result = await extractKeywords(runtime, 'Create a manual workflow with a Set node');
+
+    expect(result).toEqual(['manual trigger', 'set node', 'json']);
+  });
+
   test('trims and filters empty keywords', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve({ keywords: [' gmail ', '', '  slack  ', ' '] })),
     });
 
@@ -75,7 +89,7 @@ describe('extractKeywords', () => {
   });
 
   test('limits to 5 keywords', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() =>
         Promise.resolve({
           keywords: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
@@ -88,7 +102,7 @@ describe('extractKeywords', () => {
   });
 
   test('throws when LLM returns null', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve(null)),
     });
 
@@ -96,7 +110,7 @@ describe('extractKeywords', () => {
   });
 
   test('throws when LLM returns object without keywords', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve({ result: 'no keywords field' })),
     });
 
@@ -104,7 +118,7 @@ describe('extractKeywords', () => {
   });
 
   test('throws when keywords contains non-strings', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve({ keywords: ['valid', 42, null] })),
     });
 
@@ -113,7 +127,7 @@ describe('extractKeywords', () => {
 
   test('omits the bias directive when preferredProviders is undefined', async () => {
     const useModel = mock(() => Promise.resolve({ keywords: ['email'] }));
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     await extractKeywords(runtime, 'Send my emails');
 
@@ -123,7 +137,7 @@ describe('extractKeywords', () => {
 
   test('appends the bias directive when preferredProviders is non-empty', async () => {
     const useModel = mock(() => Promise.resolve({ keywords: ['gmail', 'discord'] }));
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     await extractKeywords(runtime, 'Summarize my emails to my chat', ['gmail', 'discord']);
 
@@ -134,7 +148,7 @@ describe('extractKeywords', () => {
 
   test('omits the bias directive when preferredProviders is empty array', async () => {
     const useModel = mock(() => Promise.resolve({ keywords: ['email'] }));
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     await extractKeywords(runtime, 'Send my emails', []);
 
@@ -144,7 +158,7 @@ describe('extractKeywords', () => {
 
   test('routes structured workflow calls through Cerebras gpt-oss-120b when configured', async () => {
     const useModel = mock(() => Promise.resolve({ keywords: ['gmail'] }));
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       settings: CEREBRAS_WORKFLOW_SETTINGS,
       useModel,
     });
@@ -156,7 +170,7 @@ describe('extractKeywords', () => {
 
   test('infers Cerebras workflow routing from a root OpenAI-compatible base URL', async () => {
     const useModel = mock(() => Promise.resolve({ keywords: ['gmail'] }));
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       settings: {
         OPENAI_BASE_URL: 'https://cerebras.ai/v1',
         CEREBRAS_MODEL: 'gpt-oss-120b',
@@ -176,7 +190,7 @@ describe('extractKeywords', () => {
 
 describe('matchWorkflow', () => {
   test('returns no-match for empty workflow list', async () => {
-    const runtime = createMockRuntime();
+    const runtime = createModelRuntime();
     const result = await matchWorkflow(runtime, 'Activate Stripe', []);
 
     expect(result.matchedWorkflowId).toBeNull();
@@ -194,7 +208,7 @@ describe('matchWorkflow', () => {
         reason: 'matched',
       })
     );
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     const workflows: WorkflowDefinition[] = [
       {
@@ -226,7 +240,7 @@ describe('matchWorkflow', () => {
   });
 
   test('returns graceful failure when LLM throws', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.reject(new Error('LLM timeout'))),
     });
 
@@ -254,7 +268,7 @@ describe('matchWorkflow', () => {
       matches: [{ id: 'wf-002', name: 'Gmail', score: 0.7 }],
       reason: 'Partial match by name',
     };
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve(matchResult)),
     });
 
@@ -287,7 +301,7 @@ describe('generateWorkflow', () => {
       connections: {},
     });
 
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve(workflowJson)),
     });
 
@@ -305,7 +319,7 @@ describe('generateWorkflow', () => {
 }
 \`\`\``;
 
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve(workflowJson)),
     });
 
@@ -314,7 +328,7 @@ describe('generateWorkflow', () => {
   });
 
   test('throws when response is not valid JSON', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve('not json at all')),
     });
 
@@ -322,7 +336,7 @@ describe('generateWorkflow', () => {
   });
 
   test('throws when workflow has no nodes array', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve(JSON.stringify({ name: 'Bad', connections: {} }))),
     });
 
@@ -330,7 +344,7 @@ describe('generateWorkflow', () => {
   });
 
   test('throws when workflow has no connections object', async () => {
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       useModel: mock(() =>
         Promise.resolve(JSON.stringify({ name: 'Bad', nodes: [{ name: 'A' }] }))
       ),
@@ -351,7 +365,7 @@ describe('generateWorkflow', () => {
         })
       )
     );
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     const nodes = [
       {
@@ -380,7 +394,7 @@ describe('generateWorkflow', () => {
         })
       )
     );
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     // Unknown node with no schema
     const nodes = [
@@ -414,7 +428,7 @@ describe('generateWorkflow', () => {
         })
       );
     });
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     const result = await generateWorkflow(runtime, 'test', []);
     expect(result.name).toBe('Good');
@@ -436,7 +450,7 @@ describe('generateWorkflow', () => {
         })
       );
     });
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     await generateWorkflow(runtime, 'test', []);
 
@@ -460,7 +474,7 @@ describe('generateWorkflow', () => {
         })
       )
     );
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       settings: CEREBRAS_WORKFLOW_SETTINGS,
       useModel,
     });
@@ -497,7 +511,7 @@ describe('workflow generation model routing', () => {
       }
       return Promise.resolve(JSON.stringify(workflow));
     });
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       settings: CEREBRAS_WORKFLOW_SETTINGS,
       useModel,
     });
@@ -522,6 +536,32 @@ describe('workflow generation model routing', () => {
     assertCerebrasWorkflowCall(useModel.mock.calls[1], 'formatActionResponse');
   });
 
+  test('keeps the original requested literal in the deterministic repair prompt', async () => {
+    const useModel = mock(() => Promise.resolve(JSON.stringify(workflow)));
+    const runtime = createModelRuntime({ useModel });
+    const instruction =
+      "Create a manual workflow that sets field message to 'smithers-final-20260717'.";
+
+    await fixWorkflowErrors(
+      runtime,
+      workflow,
+      [
+        {
+          kind: 'assignmentValueMissing',
+          node: 'Set',
+          detail: 'assignment for field "message" must include an explicit value',
+        },
+      ],
+      [],
+      instruction
+    );
+
+    const modelParams = useModel.mock.calls[0]?.[1] as { prompt?: string } | undefined;
+    expect(modelParams?.prompt).toContain('## Original user instruction');
+    expect(modelParams?.prompt).toContain('smithers-final-20260717');
+    expect(modelParams?.prompt).toContain('assignmentValueMissing');
+  });
+
   test('routes correction fallbacks through Cerebras gpt-oss-120b', async () => {
     const useModel = mock((_modelType, params: { prompt?: string }) => {
       if (params.prompt?.includes('Fix the workflows field reference')) {
@@ -531,7 +571,7 @@ describe('workflow generation model routing', () => {
         JSON.stringify({ responses: { values: [{ content: 'gpt-oss-120b' }] } })
       );
     });
-    const runtime = createMockRuntime({
+    const runtime = createModelRuntime({
       settings: CEREBRAS_WORKFLOW_SETTINGS,
       useModel,
     });
@@ -600,7 +640,7 @@ describe('modifyWorkflow', () => {
         })
       );
     });
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     const result = await modifyWorkflow(runtime, baseWorkflow, 'tweak', []);
     expect(result.name).toBe('Modified');
@@ -651,7 +691,7 @@ describe('classifyDraftIntent', () => {
         reason: 'User said yes',
       })
     );
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     const result = await classifyDraftIntent(runtime, 'Yes, deploy it', sampleDraft);
 
@@ -667,7 +707,7 @@ describe('classifyDraftIntent', () => {
         reason: 'User wants different email',
       })
     );
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     const result = await classifyDraftIntent(runtime, 'Use Outlook instead', sampleDraft);
 
@@ -682,7 +722,7 @@ describe('classifyDraftIntent', () => {
         reason: 'test',
       })
     );
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     await classifyDraftIntent(runtime, 'yes', sampleDraft);
 
@@ -699,7 +739,7 @@ describe('classifyDraftIntent', () => {
         reason: 'User rejected',
       })
     );
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     const result = await classifyDraftIntent(runtime, 'No, forget it', sampleDraft);
 
@@ -713,7 +753,7 @@ describe('classifyDraftIntent', () => {
         reason: 'Completely different request',
       })
     );
-    const runtime = createMockRuntime({ useModel });
+    const runtime = createModelRuntime({ useModel });
 
     const result = await classifyDraftIntent(
       runtime,

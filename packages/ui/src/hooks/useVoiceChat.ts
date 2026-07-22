@@ -13,6 +13,7 @@
 
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
+import { logger } from "@elizaos/logger";
 import {
   useCallback,
   useEffect,
@@ -22,7 +23,8 @@ import {
   useState,
 } from "react";
 import type { VoiceConfig } from "../api/client";
-import { fetchWithCsrf } from "../api/csrf-client";
+import { getCloudAuthToken } from "../api/client-cloud";
+import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -64,8 +66,9 @@ import {
   warmPlaybackWorklet,
 } from "../voice/playback-frame-pump";
 import {
+  configuredCloudVoiceOrigin,
   currentSharedRuntimeVoiceOrigin,
-  sharedRuntimeTtsUrl,
+  resolveForcedCloudTtsRoute,
 } from "../voice/shared-runtime-voice";
 import {
   collapseWhitespace,
@@ -88,6 +91,7 @@ import {
   DEFAULT_ELEVEN_MODEL,
   DEFAULT_ELEVEN_VOICE,
   describeTtsCloudFetchTargetForDebug,
+  describeTtsFetchTargetForDebug,
   getSpeechRecognitionCtor,
   globalAudioCache,
   isAbortError,
@@ -116,6 +120,7 @@ import {
   type VoiceTurn,
   webSpeechVoiceDebugFields,
 } from "../voice/voice-chat-types";
+import { resolveWavAsrRoute } from "../voice/voice-provider-defaults";
 
 // ── Re-exports (public API) ──────────────────────────────────────────
 
@@ -166,6 +171,32 @@ const MIC_RECONNECT_PULSE_MS = 1500;
 const CAPTURE_PAUSE_GRACE_MS = 1500;
 
 // ── Internal helpers ─────────────────────────────────────────────────
+
+/**
+ * Direct-cloud targets whose failure has already been logged at warn. Streamed
+ * replies fire one TTS request per clip segment, so an unreachable worker
+ * would otherwise warn once per sentence; the first failure per target warns,
+ * the rest trace through ELIZA_TTS_DEBUG only.
+ */
+const warnedDirectCloudTtsTargets = new Set<string>();
+
+/** Test hook: reset the warn-once dedupe between cases. */
+export function __resetDirectCloudTtsFallbackWarnings(): void {
+  warnedDirectCloudTtsTargets.clear();
+}
+
+function warnDirectCloudTtsFallback(target: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  ttsDebug("useVoiceChat:eliza-cloud-direct-fallback", {
+    ttsTarget: target,
+    message,
+  });
+  if (warnedDirectCloudTtsTargets.has(target)) return;
+  warnedDirectCloudTtsTargets.add(target);
+  logger.warn(
+    `[useVoiceChat] Direct cloud TTS to ${target} failed (${message}); falling back to the on-device /api/tts/cloud proxy`,
+  );
+}
 
 function shouldPreferNativeTalkMode(): boolean {
   if (typeof window === "undefined") return false;
@@ -405,6 +436,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // Voice config ref (latest value always available to callbacks)
   const voiceConfigRef = useRef<VoiceConfig | null>(effectiveVoiceConfig);
   voiceConfigRef.current = effectiveVoiceConfig;
+  // Cloud-session ref for capture-time route resolution (#16524): whether the
+  // cloud STT proxy is a viable fallback when local-inference is unready.
+  const cloudConnectedRef = useRef(options.cloudConnected === true);
+  cloudConnectedRef.current = options.cloudConnected === true;
   const interruptOnSpeechRef = useRef(options.interruptOnSpeech ?? true);
   interruptOnSpeechRef.current = options.interruptOnSpeech ?? true;
   const onUserSpeechInterruptRef = useRef(options.onUserSpeechInterrupt);
@@ -975,26 +1010,20 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const transcribeCloudAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
-      return transcribeCloudWav(audio, { signal });
+      return transcribeCloudWav(audio, {
+        signal,
+        configuredCloudOrigin: configuredCloudVoiceOrigin(),
+        cloudSessionToken: getCloudAuthToken(),
+      });
     },
     [],
   );
 
+  // Arms the local-inference WAV recorder. Route eligibility (provider choice,
+  // capture support, server readiness) is resolved ONCE by `startListening`
+  // via the shared `resolveWavAsrRoute` rule — this only owns the recorder.
   const startLocalInferenceRecognition = useCallback(
     async (mode: Exclude<VoiceCaptureMode, "idle">) => {
-      if (!shouldUseLocalInferenceAsr(voiceConfigRef.current)) {
-        return false;
-      }
-      if (!isLocalAsrCaptureSupported()) {
-        return false;
-      }
-      // Defer to the next backend (talk-mode / browser) when the server can't
-      // transcribe right now — capturing here would only 502 at stop() with no
-      // recoverable fallback (no local ASR assets / native adapter installed).
-      if (!(await isLocalInferenceAsrReady())) {
-        return false;
-      }
-
       try {
         const recorder = await startLocalAsrRecorder();
         localAsrRecorderRef.current = recorder;
@@ -1032,16 +1061,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // recognizer is engine-dependent (and unreliable/absent on iOS PWA), so a
   // cloud config must not fall through to it. Reuses `localAsrRecorderRef` for
   // the mic recorder; `sttBackendRef` = "cloud" routes the stop-time transcribe.
+  // Route eligibility lives in `startListening`'s `resolveWavAsrRoute` call.
   const startCloudRecognition = useCallback(
     async (mode: Exclude<VoiceCaptureMode, "idle">) => {
-      if (!shouldUseCloudAsr(voiceConfigRef.current)) {
-        return false;
-      }
-      // No WAV capture primitives (no getUserMedia / AudioContext) → there is no
-      // WAV to POST; defer to the browser recognizer as the sole client option.
-      if (!isLocalAsrCaptureSupported()) {
-        return false;
-      }
       try {
         const recorder = await startLocalAsrRecorder();
         localAsrRecorderRef.current = recorder;
@@ -1263,27 +1285,56 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       // first fork the on-screen HUD needs: a cloud-STT config that silently
       // fell through to the browser recognizer (absent on iOS PWA) is a classic
       // crickets cause. `asrProvider` is the resolved value that decides it.
+      const asrProvider = voiceConfigRef.current?.asr?.provider;
+      const captureSupported = isLocalAsrCaptureSupported();
       voiceCaptureDebug("start:enter", {
         mode,
-        asrProvider: voiceConfigRef.current?.asr?.provider ?? null,
-        captureSupported: isLocalAsrCaptureSupported(),
+        asrProvider: asrProvider ?? null,
+        captureSupported,
         preferNative: shouldPreferNativeTalkMode(),
       });
 
-      const localStarted = await startLocalInferenceRecognition(mode);
-      if (localStarted) {
-        voiceCaptureDebug("provider:local-inference", { mode });
-        return;
-      }
+      // Resolve the WAV route ONCE via the rule shared with the hook-free
+      // capture factory (#16524): explicit local-inference stays local while
+      // the server reports ready; selected-but-unready degrades to the cloud
+      // WAV route when a cloud session exists, instead of stranding capture on
+      // browser SpeechRecognition (absent on Safari/iOS PWA). The readiness
+      // probe (GET /api/asr/local-inference/status) only fires when the config
+      // actually selects local-inference.
+      const localInferenceReady =
+        shouldUseLocalInferenceAsr(voiceConfigRef.current) && captureSupported
+          ? await isLocalInferenceAsrReady()
+          : false;
+      const wavRoute = resolveWavAsrRoute({
+        provider: asrProvider,
+        cloudConnected: cloudConnectedRef.current,
+        captureSupported,
+        localInferenceReady,
+      });
 
-      // Cloud STT (`eliza-cloud` / `openai`): the deterministic transcriber for
-      // that config default. Selected ahead of talk-mode/browser so a cloud
-      // config on the PWA records a WAV for `/api/asr/cloud` instead of falling
-      // through to the engine-dependent browser recognizer.
-      const cloudStarted = await startCloudRecognition(mode);
-      if (cloudStarted) {
-        voiceCaptureDebug("provider:cloud", { mode });
-        return;
+      if (wavRoute === "local-inference") {
+        const localStarted = await startLocalInferenceRecognition(mode);
+        if (localStarted) {
+          voiceCaptureDebug("provider:local-inference", { mode });
+          return;
+        }
+      } else if (wavRoute === "cloud") {
+        // Cloud STT: the deterministic transcriber for the `eliza-cloud` /
+        // `openai` config default AND the forced fallback for an unready
+        // explicit local-inference choice. Selected ahead of talk-mode/browser
+        // so the capture records a WAV for `/api/asr/cloud` instead of falling
+        // through to the engine-dependent browser recognizer.
+        const cloudStarted = await startCloudRecognition(mode);
+        if (cloudStarted) {
+          voiceCaptureDebug("provider:cloud", {
+            mode,
+            note:
+              asrProvider === "local-inference"
+                ? "local-inference unready — cloud WAV fallback"
+                : undefined,
+          });
+          return;
+        }
       }
 
       if (shouldPreferNativeTalkMode()) {
@@ -1574,6 +1625,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
          * path, so chat fell back to browser (Edge) TTS. If cloud rejects
          * (no key), fall back to the upstream ElevenLabs proxy.
          */
+        // #16425: ONE key per logical utterance across BOTH proxy legs (the
+        // cloud proxy and its direct-ElevenLabs-proxy retry below re-POST the
+        // same utterance), so upstream billing can replay the committed
+        // reservation instead of charging the retry as a new operation.
+        const proxyUtteranceKey = crypto.randomUUID();
         const makeProxyRequestInit = (): RequestInit => {
           const dbg = task.debugUtteranceContext;
           return {
@@ -1581,6 +1637,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             headers: {
               "Content-Type": "application/json",
               Accept: "audio/mpeg",
+              "Idempotency-Key": proxyUtteranceKey,
               ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
               ...(isTtsDebugEnabled() && dbg
                 ? {
@@ -1615,6 +1672,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             const cloudRes = await fetchWithCsrf(
               cloudTarget,
               makeProxyRequestInit(),
+              { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
             );
             if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status)) {
               return cloudRes;
@@ -1646,6 +1704,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           return fetchWithCsrf(
             resolveApiUrl("/api/tts/elevenlabs"),
             makeProxyRequestInit(),
+            { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
           );
         };
 
@@ -1859,42 +1918,139 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           );
         }, CLOUD_TTS_TIMEOUT_MS);
         let res: Response;
+        // The URL the final `res` actually came from — the http-error debug log
+        // below must name the real target (direct worker vs proxy), not assume
+        // the proxy.
+        let fetchedTtsUrl: string;
         try {
           const apiToken = getElizaApiToken()?.trim() ?? "";
           const dbg = task.debugUtteranceContext;
-          // Shared-tier fallback (#15395): a shared-runtime agent has no
-          // `/api/tts/cloud` container route (404s), so target the cloud API
-          // worker's provider-agnostic v1 TTS route instead. Same `{ text }`
-          // JSON body, same audio-bytes response — no adaptation needed beyond
-          // the URL. Dedicated-tier agents keep `/api/tts/cloud` unchanged
-          // (sharedTtsOrigin is null for them).
-          const sharedTtsOrigin = currentSharedRuntimeVoiceOrigin();
-          const ttsTarget = sharedTtsOrigin
-            ? sharedRuntimeTtsUrl(sharedTtsOrigin)
-            : resolveApiUrl("/api/tts/cloud");
-          res = await fetchWithCsrf(ttsTarget, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
-              ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
-              ...(isTtsDebugEnabled() && dbg
-                ? {
-                    "x-elizaos-tts-message-id": encodeURIComponent(
-                      dbg.messageId,
-                    ),
-                    "x-elizaos-tts-clip-segment": encodeURIComponent(
-                      task.segment,
-                    ),
-                    "x-elizaos-tts-full-preview": encodeURIComponent(
-                      dbg.fullAssistTextPreview,
-                    ),
-                  }
-                : {}),
-            },
-            body: JSON.stringify({ text }),
-            signal: controller.signal,
+          const proxyUrl = resolveApiUrl("/api/tts/cloud");
+          // Forced-cloud TTS routing (#15395 shared-tier + #16116 direct-cloud).
+          // `speakElizaCloud` only runs when the configured provider is
+          // `eliza-cloud`, so this IS the forced-cloud path:
+          //  - shared-runtime agents (no container) target the worker's
+          //    provider-agnostic v1 voice route off their active base;
+          //  - a dedicated/on-device agent with a cloud session bearer +
+          //    configured cloud origin POSTs straight to that same v1 route,
+          //    skipping its own `/api/tts/cloud` proxy (the extra phone-side
+          //    download + base64 IPC re-marshal, #16116);
+          //  - otherwise the on-device `/api/tts/cloud` proxy is preserved.
+          // Same `{ text }` body, same audio-bytes response — only the URL and
+          // bearer change.
+          const route = resolveForcedCloudTtsRoute({
+            proxyUrl,
+            proxyBearer: apiToken || null,
+            sharedRuntimeOrigin: currentSharedRuntimeVoiceOrigin(),
+            configuredCloudOrigin: configuredCloudVoiceOrigin(),
+            cloudSessionToken: getCloudAuthToken(),
           });
+          // Debug-only correlation headers. Proxy/shared paths only: they are
+          // not in the cloud worker's CORS allow-list, so sending them on the
+          // direct cross-origin POST would fail the browser preflight.
+          const debugHeaders: Record<string, string> =
+            isTtsDebugEnabled() && dbg
+              ? {
+                  "x-elizaos-tts-message-id": encodeURIComponent(dbg.messageId),
+                  "x-elizaos-tts-clip-segment": encodeURIComponent(
+                    task.segment,
+                  ),
+                  "x-elizaos-tts-full-preview": encodeURIComponent(
+                    dbg.fullAssistTextPreview,
+                  ),
+                }
+              : {};
+          // #16425: ONE key per logical utterance, sent on BOTH the direct
+          // request and the proxy fallback. The cloud route keys its credit
+          // reservation on it, so a fallback retry after an ambiguous network
+          // outcome replays the committed reservation instead of billing the
+          // same utterance twice. (Header is in CORS_ALLOW_HEADER_NAMES.)
+          const ttsUtteranceKey = crypto.randomUUID();
+          const fetchViaProxy = (url: string, bearer: string | null) =>
+            fetchWithCsrf(
+              url,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
+                  "Idempotency-Key": ttsUtteranceKey,
+                  ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+                  ...debugHeaders,
+                },
+                body: JSON.stringify({ text }),
+                signal: controller.signal,
+              },
+              { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
+            );
+          if (route.via === "direct-cloud") {
+            ttsDebug("useVoiceChat:eliza-cloud-direct-worker", {
+              ttsTarget: route.url,
+              hadBearer: Boolean(route.bearer),
+            });
+            fetchedTtsUrl = route.url;
+            try {
+              // Caller-authenticated request through the canonical transport selector:
+              // Bearer auth needs no cookies, so no `credentials: "include"`
+              // (the worker answers `Access-Control-Allow-Origin: *`, which a
+              // browser rejects when combined with credentials), and no
+              // `fetchWithCsrf` (it mirrors the csrf cookie into
+              // `x-eliza-csrf`, which is not in the worker's allow-list and
+              // would fail the preflight). Authorization + Content-Type are
+              // both in `CORS_ALLOW_HEADER_NAMES`
+              // (packages/cloud/shared/src/lib/cors-constants.ts), so the
+              // preflight passes.
+              const directRes = await requestViaAgentTransport(
+                route.url,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": ttsUtteranceKey,
+                    ...(route.bearer
+                      ? { Authorization: `Bearer ${route.bearer}` }
+                      : {}),
+                  },
+                  body: JSON.stringify({
+                    text,
+                    ...(route.voiceId ? { voiceId: route.voiceId } : {}),
+                    ...(route.modelId ? { modelId: route.modelId } : {}),
+                  }),
+                  signal: controller.signal,
+                },
+                {
+                  responseType: "arraybuffer",
+                  timeoutMs: CLOUD_TTS_TIMEOUT_MS,
+                },
+              );
+              if (!directRes.ok) {
+                const preview = await directRes.text().catch(() => "");
+                throw new Error(
+                  `direct cloud TTS ${directRes.status}: ${preview.slice(0, 120)}`,
+                );
+              }
+              res = directRes;
+            } catch (error) {
+              // A caller abort (barge-in / stop / the shared timeout) is not a
+              // direct-target failure — surfacing it keeps cancel semantics;
+              // retrying via the proxy would speak a cancelled clip.
+              if (controller.signal.aborted) {
+                throw error;
+              }
+              // error-policy:J4 designed degrade — the direct cloud worker
+              // failed (expired renderer bearer → 401, CORS preflight, network);
+              // the on-device proxy authenticates server-side with the agent's
+              // cloud API key, so TTS keeps working exactly as before #16116.
+              // The fallback targets `proxyUrl` directly and can never re-enter
+              // this direct branch.
+              warnDirectCloudTtsFallback(route.url, error);
+              fetchedTtsUrl = proxyUrl;
+              res = await fetchViaProxy(proxyUrl, apiToken || null);
+            }
+          } else {
+            fetchedTtsUrl = route.url;
+            res = await fetchViaProxy(route.url, route.bearer);
+          }
         } finally {
           clearTimeout(timeoutId);
           if (activeFetchAbortRef.current === controller) {
@@ -1906,7 +2062,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           const body = await res.text().catch(() => "");
           ttsDebug("useVoiceChat:eliza-cloud-http-error", {
             status: res.status,
-            ttsTarget: describeTtsCloudFetchTargetForDebug(),
+            ttsTarget: describeTtsFetchTargetForDebug(fetchedTtsUrl),
             hadBearer: Boolean(getElizaApiToken()?.trim()),
             bodyPreview: body.slice(0, 120),
           });

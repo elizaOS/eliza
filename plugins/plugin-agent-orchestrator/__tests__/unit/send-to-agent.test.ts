@@ -17,17 +17,19 @@ import {
 describe("TASKS:send", () => {
   it("sends input via action=send", async () => {
     const svc = serviceMock();
-    expect(
-      (
-        await sendToAgentAction.handler(
-          runtimeWith(svc),
-          memory({ sessionId: "abcdef123456", input: "continue" }),
-          state,
-          { parameters: { action: "send" } },
-          callback(),
-        )
-      )?.data,
-    ).toMatchObject({ sessionId: "abcdef123456", input: "continue" });
+    const result = await sendToAgentAction.handler(
+      runtimeWith(svc),
+      memory({ sessionId: "abcdef123456", input: "continue" }),
+      state,
+      { parameters: { action: "send" } },
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.data).toMatchObject({
+      sessionId: "abcdef123456",
+      input: "continue",
+    });
+    expect(svc.sendToSession).toHaveBeenCalledWith("abcdef123456", "continue");
   });
 
   it("continues the originating sub-agent for routed task_complete follow-ups", async () => {

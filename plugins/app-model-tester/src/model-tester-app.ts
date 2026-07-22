@@ -5,6 +5,7 @@
  * this module for its side effects is intentional; do not tree-shake it.
  */
 
+import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
 import { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
@@ -28,9 +29,12 @@ export const modelTesterApp: OverlayApp = {
 registerOverlayApp(modelTesterApp);
 
 function exitToApps(): void {
-  if (typeof window === "undefined") return;
-  window.history.pushState({}, "", "/apps");
-  window.dispatchEvent(new PopStateEvent("popstate"));
+  // Return to the apps launcher through the shell's navigate-view event. A view
+  // mounted under a surface-realm scope may not drive raw history.pushState —
+  // the navigation guard (#15247) denies it without the `navigate` grant — so
+  // it asks the shell, which listens for this event and owns the privileged
+  // route change.
+  dispatchNavigateViewEvent({ viewPath: "/apps" });
 }
 
 function translate(key: string, opts?: Record<string, unknown>): string {

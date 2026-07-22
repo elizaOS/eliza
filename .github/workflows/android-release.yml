@@ -15,7 +15,7 @@ on:
     secrets:
       # ANDROID_KEYSTORE_* are downgraded to `required: false` so the
       # reusable-workflow secret contract does not block startup when
-      # called from release-all.yml / release-orchestrator.yml with
+      # called from release-orchestrator.yml with
       # `secrets: inherit`. The job body's signing step (gated on
       # ANDROID_KEYSTORE_BASE64 being non-empty) skips with a clear
       # warning when the secrets are absent, instead of aborting the
@@ -67,7 +67,7 @@ jobs:
       play_store_ready: ${{ steps.play_store_credentials.outputs.ready }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Java
         uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
@@ -318,7 +318,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Download AAB
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -327,7 +327,7 @@ jobs:
           path: aab/
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9
+        uses: ruby/setup-ruby@a30dfa457ad68707b8b910ac3a244714b61c0626
         with:
           ruby-version: "4.0.3"
           bundler-cache: true

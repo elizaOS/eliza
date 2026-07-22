@@ -99,29 +99,25 @@ describe('plugin-tunnel start action', () => {
     expect(activeService.startTunnel).not.toHaveBeenCalled();
   });
 
-  it.each([
-    0,
-    65_536,
-    1.5,
-    Number.NaN,
-    'abc',
-    '../../3000',
-  ])('rejects explicit hostile port %s before model fallback or service start', async (port) => {
-    const service = tunnelService();
-    const rt = runtime(service);
-    const callback = mock(async () => {}) as HandlerCallback;
+  it.each([0, 65_536, 1.5, Number.NaN, 'abc', '../../3000'])(
+    'rejects explicit hostile port %s before model fallback or service start',
+    async (port) => {
+      const service = tunnelService();
+      const rt = runtime(service);
+      const callback = mock(async () => {}) as HandlerCallback;
 
-    await expect(handleStartTunnel(rt, message, undefined, { port }, callback)).resolves.toEqual({
-      success: false,
-      error: 'invalid tunnel port',
-    });
+      await expect(handleStartTunnel(rt, message, undefined, { port }, callback)).resolves.toEqual({
+        success: false,
+        error: 'invalid tunnel port',
+      });
 
-    expect(rt.useModel).not.toHaveBeenCalled();
-    expect(service.startTunnel).not.toHaveBeenCalled();
-    expect(callback).toHaveBeenCalledWith({
-      text: 'Invalid tunnel port. Port must be an integer between 1 and 65535.',
-    });
-  });
+      expect(rt.useModel).not.toHaveBeenCalled();
+      expect(service.startTunnel).not.toHaveBeenCalled();
+      expect(callback).toHaveBeenCalledWith({
+        text: 'Invalid tunnel port. Port must be an integer between 1 and 65535.',
+      });
+    }
+  );
 
   it('dispatches nested TUNNEL action parameters to start without leaking action into sub-options', async () => {
     const service = tunnelService();
@@ -284,16 +280,14 @@ describe('plugin-tunnel stop/status/provider/config behavior', () => {
     );
   });
 
-  it.each([
-    0,
-    65_536,
-    1.5,
-    Number.NaN,
-  ])('LocalTunnelService rejects hostile runtime port %s before config or CLI calls', async (port) => {
-    const service = new LocalTunnelService({
-      getSetting: mock(() => null),
-    } as unknown as IAgentRuntime);
+  it.each([0, 65_536, 1.5, Number.NaN])(
+    'LocalTunnelService rejects hostile runtime port %s before config or CLI calls',
+    async (port) => {
+      const service = new LocalTunnelService({
+        getSetting: mock(() => null),
+      } as unknown as IAgentRuntime);
 
-    await expect(service.startTunnel(port as number)).rejects.toThrow('Invalid port number');
-  });
+      await expect(service.startTunnel(port as number)).rejects.toThrow('Invalid port number');
+    }
+  );
 });

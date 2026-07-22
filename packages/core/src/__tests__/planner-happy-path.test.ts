@@ -200,6 +200,7 @@ function makeMockAction(opts: {
 		required?: boolean;
 		schema: { type: "string" | "number" | "boolean" | "object" | "array" };
 	}>;
+	suppressActionResultClipboard?: boolean;
 }): Action {
 	return {
 		name: opts.name,
@@ -211,6 +212,9 @@ function makeMockAction(opts: {
 		handler: opts.handler,
 		...(opts.subActions ? { subActions: opts.subActions } : {}),
 		...(opts.contexts ? { contexts: opts.contexts } : {}),
+		...(opts.suppressActionResultClipboard
+			? { suppressActionResultClipboard: true }
+			: {}),
 	} as Action;
 }
 
@@ -267,6 +271,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				return {
 					success: true,
 					text: "found 3 results for 'eliza'",
+					values: { mode: "show", viewId: "inbox" },
 					data: {
 						actionName: "WEB_SEARCH",
 						results: [
@@ -337,6 +342,14 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toContain("eliza");
+			expect(result.result.actionResults).toMatchObject([
+				{
+					success: true,
+					text: "found 3 results for 'eliza'",
+					data: { actionName: "WEB_SEARCH" },
+					values: { mode: "show", viewId: "inbox" },
+				},
+			]);
 		}
 
 		// Three model calls fired: messageHandler + planner + evaluator
@@ -478,6 +491,163 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const evalStage = trajectory.stages.find((s) => s.kind === "evaluation");
 		expect(evalStage?.evaluation?.success).toBe(true);
 		expect(evalStage?.evaluation?.decision).toBe("FINISH");
+	});
+
+	it("keeps statically suppressed results out of planner, tool, and client surfaces", async () => {
+		const tunnelCredential = makeMockAction({
+			name: "TUNNEL_CREDENTIAL",
+			parameters: [],
+			suppressActionResultClipboard: true,
+			handler: async () => ({
+				success: true,
+				text: "Credential tunnel completed.",
+				values: { secret: "must-not-leak" },
+				data: {
+					credential: "must-not-leak",
+					values: { nestedSecret: "must-not-leak" },
+				},
+			}),
+		});
+		const runtime = makeRuntime({
+			actions: [tunnelCredential],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["TUNNEL_CREDENTIAL"],
+						thought: "Credential delivery requires the protected action.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Delivering the credential.",
+						toolCalls: [{ id: "call-1", name: "TUNNEL_CREDENTIAL", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Credential delivery succeeded.",
+						messageToUser: "Credential tunnel completed.",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("send the credential"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.actionResults).toEqual([
+				{
+					success: true,
+					text: "Credential tunnel completed.",
+					data: { actionName: "TUNNEL_CREDENTIAL" },
+				},
+			]);
+			expect(result.result.state.data.actionResults).toEqual(
+				result.result.actionResults,
+			);
+			expect(JSON.stringify(result.result.actionResults)).not.toContain(
+				"must-not-leak",
+			);
+		}
+		expect(JSON.stringify(getCalls(runtime))).not.toContain("must-not-leak");
+		expect(
+			JSON.stringify(readRecordedTrajectories(String(AGENT_ID))),
+		).not.toContain("must-not-leak");
+	});
+
+	it("honors per-result suppression without changing safe outcome text", async () => {
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [],
+			handler: async () => ({
+				success: true,
+				text: "Started view edit task.",
+				userFacingText: "Started view edit task.",
+				verifiedUserFacing: true,
+				values: {
+					workdir: "/private/worktree/must-not-leak",
+					taskSessionId: "session-must-not-leak",
+				},
+				data: {
+					workdir: "/private/worktree/must-not-leak",
+					task: { sessionId: "session-must-not-leak" },
+					agents: [{ sessionId: "session-must-not-leak" }],
+					suppressActionResultClipboard: true,
+				},
+			}),
+		});
+		const runtime = makeRuntime({
+			actions: [views],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						thought: "The user asked to edit a view.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Starting the view edit.",
+						toolCalls: [{ id: "call-1", name: "VIEWS", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The edit task started.",
+						messageToUser: "Started view edit task.",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("edit my view"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.actionResults).toEqual([
+				{
+					success: true,
+					text: "Started view edit task.",
+					userFacingText: "Started view edit task.",
+					verifiedUserFacing: true,
+					data: { actionName: "VIEWS" },
+				},
+			]);
+			expect(result.result.state.data.actionResults).toEqual(
+				result.result.actionResults,
+			);
+		}
+
+		const observableSurfaces = JSON.stringify({
+			modelCalls: getCalls(runtime),
+			trajectories: readRecordedTrajectories(String(AGENT_ID)),
+			result,
+		});
+		expect(observableSurfaces).not.toContain("must-not-leak");
+		expect(observableSurfaces).not.toContain("suppressActionResultClipboard");
 	});
 
 	it("blocks high-risk USER input before planner tools execute", async () => {
