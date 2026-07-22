@@ -1,0 +1,55 @@
+{
+  "dataset": "THUDM/AgentBench",
+  "source": "https://github.com/THUDM/AgentBench.git",
+  "revision": "d1e4a10db08c87075c78972e48ecc182be03e2d5",
+  "expected_counts": {
+    "dev": {
+      "operating_system": 26,
+      "database": 60,
+      "knowledge_graph": 20,
+      "card_game": 3,
+      "lateral_thinking": 20,
+      "householding": 20,
+      "web_shopping": 20,
+      "web_browsing": 6
+    },
+    "test": {
+      "operating_system": 144,
+      "database": 300,
+      "knowledge_graph": 150,
+      "card_game": 5,
+      "lateral_thinking": 50,
+      "householding": 109,
+      "web_shopping": 500,
+      "web_browsing": 6
+    }
+  },
+  "required_files": {
+    "dbbench/dev.jsonl": "eb941c58a7a5651357b19e46aa05070f6cd5a7d83ce70cefd24aa3581e1e1130",
+    "dbbench/standard.jsonl": "cf8dec6fb8051f46e6171136824aaa8b8707c3affbb3185c0bad2b39bc6b71e2",
+    "knowledgegraph/dev.json": "5e28f8504ef98c513fa90090fc9543dbad54990723cc28854e2ba3ce1536d994",
+    "knowledgegraph/std.json": "1265d4e35602b126d2bd947fcb1c17722e08ff5076c5282508e3530ede18109c",
+    "lateralthinkingpuzzle/dev.xlsx": "6cc6fdb088680ea4f2a5d667cf498497e01a4498f0ae40fedd724d839c74d0cd",
+    "lateralthinkingpuzzle/standard.xlsx": "592abbe55828bca4ead1be860cfc27e0b5a9e4c38ea20f4df27d3d20fb7e5994",
+    "os_interaction/data/dev.json": "c5554248e6c1cb606e27d2f81025b751a490c9a5ccd37aabf4c86879a52e9274",
+    "os_interaction/data/1/stock.json": "e52d47b06201d9cad170f446429cc384541a5344fbed1cf478d99cd357508040",
+    "os_interaction/data/2/environment.json": "4aea8438c25429144b856acb2159aab16d773519f29890dab156f04f38fdf2d5",
+    "os_interaction/data/3/ac.json": "bc80aa92e75142b18b8c8158a2e059a45f158b303bea7249eaec1d0325e81b81",
+    "os_interaction/data/4/N11.json": "fd288d038814c5ded8943763f96e001a3e36d5d3c7e7cca52dcd64ffe7f7241a",
+    "os_interaction/data/4/N225.json": "36e92aeb36140d2c751558d7a63fc8e6275574e213789465fabbcffad64e94a2",
+    "os_interaction/data/4/N37.json": "7372923d614b249e560311c1e61b1ab12afa1d5cbd955e77465d6abd74e9ddaf",
+    "os_interaction/data/4/N4.json": "9a81d1f035de9de4a1495abcc85f7cede6f2c53783162f280ea98c76869f4393",
+    "os_interaction/data/4/N41.json": "eb179d6da5e905031a2fe3f2709ee5c3673f8066f484ba4d8e69952891ab165e",
+    "os_interaction/data/4/Q09.json": "757d5be008acc9eaedb664b053f324ab7d80da985453f3cf9921b18c61c7da94",
+    "os_interaction/data/4/Q19.json": "c80d9180a794f7c574cce319b23b335329e03caa553b51449cbda832589a932b",
+    "os_interaction/data/4/Q30.json": "d63aae719a83d31b7d632848930ab8b8cba3cd0582b579cfdb7f0b579958bb0e",
+    "os_interaction/data/4/Q47.json": "b79657df4e238eaa0c6d26f27649deef70207123291a5206edf3f0b98eb7856c",
+    "os_interaction/data/4/Q49.json": "a5c32d5e0da858077913d7e5006f2d32ad1ea1aa69cc5b9f21ad1d74082e5114",
+    "os_interaction/data/5/new.json": "735d0c0b3aa8fd1bef0d969470a2ac44c0af92542365c05c5f89ce3ddb47801e",
+    "os_interaction/data/6/new.json": "0c3234d860953ece19bf07e1f89c1d18048b1c7095f419c6d1eeaec64f7bf433",
+    "os_interaction/data/7/bootstrap.json": "574627bffe5b01c8aaccbde631618b3c8b8fb1e4ec6de06a102e7ee2dec9b7db",
+    "alfworld/dev.json": "20b8f28be96aa2c011edd5a43653c5ee8089d51442e42cc8f361ce9866cc6ce0",
+    "alfworld/new_std.json": "679592b9e5c2ff26ebfe5b7556ef1b6c0ba60d1f0b172c7420b11c86d83b9bbf",
+    "mind2web/prompt/llm_prompt.json": "02ee02bfe391776aee93696e1067c881d21c78a63c1e3b3de76db9ecab1292ef"
+  }
+}

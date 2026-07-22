@@ -35,6 +35,26 @@ const MAX_QUARANTINE_ATTEMPTS_CEILING = 5;
 export const DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
+ * Per-test timeout used by the package wrapper. Bun does not discover the
+ * repository bunfig when the child process runs from this package directory,
+ * so the repository's intended default must cross the process boundary.
+ */
+export const DEFAULT_TEST_TIMEOUT_MS = 60_000;
+
+/** Preserve either supported Bun timeout form; otherwise add the package default. */
+export function withDefaultTestTimeout(passthroughArgs) {
+  const optionBoundary = passthroughArgs.indexOf("--");
+  const runnerArgs =
+    optionBoundary === -1 ? passthroughArgs : passthroughArgs.slice(0, optionBoundary);
+  const hasExplicitTimeout = runnerArgs.some(
+    (arg) => arg === "--timeout" || arg.startsWith("--timeout="),
+  );
+  return hasExplicitTimeout
+    ? [...passthroughArgs]
+    : [`--timeout=${DEFAULT_TEST_TIMEOUT_MS}`, ...passthroughArgs];
+}
+
+/**
  * Output markers that identify a NATIVE crash of the bun process (as opposed
  * to a reported test failure). Sourced from the real #15785 crash output and
  * Bun's panic/crash-handler formats.

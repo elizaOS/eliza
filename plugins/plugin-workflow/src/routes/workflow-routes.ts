@@ -11,6 +11,7 @@
  */
 import type http from 'node:http';
 import type { AgentRuntime } from '@elizaos/core';
+import { invalidateAutomationExecutionCache } from '../lib/automations-builder';
 import {
   applyResolutions,
   buildCatalogSnapshot,
@@ -26,6 +27,8 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionResponse,
 } from '../types/index';
+import { WorkflowApiError } from '../types/index';
+import { getRouteOwnerEntityId } from './_helpers';
 
 export type WorkflowMode = 'local' | 'disabled';
 export type WorkflowRuntimeStatus = 'ready' | 'error';
@@ -49,7 +52,8 @@ export interface WorkflowRouteContext {
   method: string;
   pathname: string;
   runtime: AgentRuntime | null;
-  agentId?: string;
+  /** Authenticated entity principal supplied by a non-HTTP dispatcher. */
+  principalId?: string;
   json: WorkflowJsonResponder;
 }
 
@@ -71,13 +75,14 @@ function readId(path: string): string | null {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
-function resolveAgentId(ctx: WorkflowRouteContext): string {
-  if (ctx.agentId?.trim()) {
-    return ctx.agentId.trim();
+function resolveOwnerEntityId(ctx: WorkflowRouteContext): string {
+  if (ctx.principalId?.trim()) {
+    return ctx.principalId.trim();
   }
-  return (
-    ctx.runtime?.agentId ?? ctx.runtime?.character?.id ?? '00000000-0000-0000-0000-000000000000'
-  );
+  if (!ctx.runtime) {
+    throw new WorkflowApiError('Workflow route principal is unavailable', 503);
+  }
+  return getRouteOwnerEntityId(ctx.runtime);
 }
 
 function getWorkflowService(ctx: WorkflowRouteContext): WorkflowService | null {
@@ -119,6 +124,17 @@ async function readJsonBody(
   res: http.ServerResponse,
   maxBytes = 1_048_576
 ): Promise<Record<string, unknown> | null> {
+  const attachedBody = (req as http.IncomingMessage & { body?: unknown }).body;
+  if (attachedBody !== undefined) {
+    if (isRecord(attachedBody)) {
+      return attachedBody;
+    }
+    res.statusCode = 400;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ error: 'JSON body must be an object' }));
+    return null;
+  }
+
   const chunks: Buffer[] = [];
   let totalBytes = 0;
   for await (const chunk of req) {
@@ -134,13 +150,21 @@ async function readJsonBody(
   }
 
   if (chunks.length === 0) {
+    res.statusCode = 400;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ error: 'JSON body is required' }));
     return null;
   }
 
   try {
     const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
-    return isRecord(parsed) ? parsed : null;
+    if (isRecord(parsed)) return parsed;
+    res.statusCode = 400;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ error: 'JSON body must be an object' }));
+    return null;
   } catch {
+    // error-policy:J3 malformed transport input is returned as an explicit invalid request.
     res.statusCode = 400;
     res.setHeader('content-type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({ error: 'invalid JSON body' }));
@@ -194,7 +218,11 @@ async function deployWorkflow(
   workflow: WorkflowDefinition,
   activate?: boolean
 ): Promise<void> {
-  const deployed = await service.deployWorkflow(workflow, resolveAgentId(ctx));
+  const ownerEntityId = resolveOwnerEntityId(ctx);
+  const deployed = await service.deployWorkflow(workflow, ownerEntityId, { activate });
+  if (deployed.id) {
+    invalidateAutomationExecutionCache(service, ownerEntityId, deployed.id);
+  }
   if (deployed.missingCredentials.length > 0 && !deployed.id) {
     sendJson(ctx, 200, {
       ...toWorkflowResponse(deployed),
@@ -203,12 +231,9 @@ async function deployWorkflow(
     return;
   }
 
-  if (activate === false && deployed.id && deployed.active) {
-    await service.deactivateWorkflow(deployed.id);
-    deployed.active = false;
-  }
-
-  const full = deployed.id ? await service.getWorkflow(deployed.id) : toWorkflowResponse(deployed);
+  const full = deployed.id
+    ? await service.getWorkflow(deployed.id, ownerEntityId)
+    : toWorkflowResponse(deployed);
   sendJson(ctx, 200, full);
 }
 
@@ -249,7 +274,7 @@ async function handleStatus(ctx: WorkflowRouteContext): Promise<void> {
 }
 
 async function handleList(ctx: WorkflowRouteContext, service: WorkflowService): Promise<void> {
-  const workflows = await service.listWorkflows(resolveAgentId(ctx));
+  const workflows = await service.listWorkflows(resolveOwnerEntityId(ctx));
   sendJson(ctx, 200, { workflows });
 }
 
@@ -258,7 +283,7 @@ async function handleGet(
   service: WorkflowService,
   id: string
 ): Promise<void> {
-  sendJson(ctx, 200, await service.getWorkflow(id));
+  sendJson(ctx, 200, await service.getWorkflow(id, resolveOwnerEntityId(ctx)));
 }
 
 async function handleListRevisions(
@@ -269,9 +294,10 @@ async function handleListRevisions(
   const url = new URL(`http://x${ctx.req.url ?? ''}`);
   const rawLimit = url.searchParams.get('limit');
   const limit = Math.min(Math.max(1, Number(rawLimit) || 20), 50);
+  const ownerEntityId = resolveOwnerEntityId(ctx);
   const [workflow, revisions] = await Promise.all([
-    service.getWorkflow(id),
-    service.listWorkflowRevisions(id, limit),
+    service.getWorkflow(id, ownerEntityId),
+    service.listWorkflowRevisions(id, limit, ownerEntityId),
   ]);
   sendJson(ctx, 200, {
     currentVersionId: workflow.versionId,
@@ -285,7 +311,11 @@ async function handleRestoreRevision(
   id: string,
   versionId: string
 ): Promise<void> {
-  sendJson(ctx, 200, await service.restoreWorkflowRevision(id, versionId));
+  sendJson(
+    ctx,
+    200,
+    await service.restoreWorkflowRevision(id, versionId, resolveOwnerEntityId(ctx))
+  );
 }
 
 async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowService): Promise<void> {
@@ -306,10 +336,10 @@ async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowServic
       ? await buildTriggerContextFromConversation(ctx.runtime, body.bridgeConversationId)
       : undefined;
 
-  const draft = await service.generateWorkflowDraft(
-    prompt,
-    triggerContext ? { triggerContext } : undefined
-  );
+  const draft = await service.generateWorkflowDraft(prompt, {
+    userId: resolveOwnerEntityId(ctx),
+    ...(triggerContext ? { triggerContext } : {}),
+  });
   if (typeof body.name === 'string' && body.name.trim()) {
     draft.name = body.name.trim();
   }
@@ -329,7 +359,12 @@ async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowServic
     return;
   }
 
-  await deployWorkflow(ctx, service, draft);
+  await deployWorkflow(
+    ctx,
+    service,
+    draft,
+    typeof body.activate === 'boolean' ? body.activate : undefined
+  );
 }
 
 async function handleResolveClarification(
@@ -391,7 +426,12 @@ async function handleResolveClarification(
     return;
   }
 
-  await deployWorkflow(ctx, service, draft);
+  await deployWorkflow(
+    ctx,
+    service,
+    draft,
+    typeof body.activate === 'boolean' ? body.activate : undefined
+  );
 }
 
 async function handleWrite(
@@ -413,12 +453,13 @@ async function handleToggle(
   id: string,
   active: boolean
 ): Promise<void> {
+  const ownerEntityId = resolveOwnerEntityId(ctx);
   if (active) {
-    await service.activateWorkflow(id);
+    await service.activateWorkflow(id, ownerEntityId);
   } else {
-    await service.deactivateWorkflow(id);
+    await service.deactivateWorkflow(id, ownerEntityId);
   }
-  sendJson(ctx, 200, await service.getWorkflow(id));
+  sendJson(ctx, 200, await service.getWorkflow(id, ownerEntityId));
 }
 
 async function handleListExecutions(
@@ -429,7 +470,10 @@ async function handleListExecutions(
   const url = new URL(`http://x${ctx.req.url ?? ''}`);
   const rawLimit = url.searchParams.get('limit');
   const limit = Math.min(Math.max(1, Number(rawLimit) || 10), 50);
-  const response = await service.listExecutions({ workflowId: id, limit });
+  const response = await service.listExecutions(
+    { workflowId: id, limit },
+    resolveOwnerEntityId(ctx)
+  );
   sendJson(ctx, 200, { executions: response.data });
 }
 
@@ -441,7 +485,11 @@ async function handleEvaluationSamples(
   const url = new URL(`http://x${ctx.req.url ?? ''}`);
   const rawLimit = url.searchParams.get('limit');
   const limit = Math.min(Math.max(1, Number(rawLimit) || 10), 50);
-  sendJson(ctx, 200, await service.getWorkflowEvaluationSuite(id, limit));
+  sendJson(
+    ctx,
+    200,
+    await service.getWorkflowEvaluationSuite(id, limit, resolveOwnerEntityId(ctx))
+  );
 }
 
 async function handleRunWorkflow(
@@ -449,10 +497,16 @@ async function handleRunWorkflow(
   service: WorkflowService,
   id: string
 ): Promise<void> {
-  const execution = await service.runWorkflow(id, {
-    mode: 'manual',
-    throwOnError: false,
-  });
+  const ownerEntityId = resolveOwnerEntityId(ctx);
+  const execution = await service.runWorkflow(
+    id,
+    {
+      mode: 'manual',
+      throwOnError: false,
+    },
+    ownerEntityId
+  );
+  invalidateAutomationExecutionCache(service, ownerEntityId, id);
   sendJson(ctx, 200, { execution });
 }
 
@@ -461,7 +515,9 @@ async function handleGetExecution(
   service: WorkflowService,
   id: string
 ): Promise<void> {
-  sendJson(ctx, 200, { execution: await service.getExecutionDetail(id) });
+  sendJson(ctx, 200, {
+    execution: await service.getExecutionDetail(id, resolveOwnerEntityId(ctx)),
+  });
 }
 
 export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<void> {
@@ -540,7 +596,9 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       return;
     }
     if (id && method === 'DELETE' && path === `/workflows/${encodeURIComponent(id)}`) {
-      await service.deleteWorkflow(id);
+      const ownerEntityId = resolveOwnerEntityId(ctx);
+      await service.deleteWorkflow(id, ownerEntityId);
+      invalidateAutomationExecutionCache(service, ownerEntityId, id);
       sendJson(ctx, 200, { ok: true });
       return;
     }
@@ -571,8 +629,16 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
 
     sendJson(ctx, 404, { error: 'workflow route not found' });
   } catch (error) {
-    sendJson(ctx, 500, {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    // error-policy:J1 the raw HTTP boundary translates typed service failures.
+    // All not-found results share one body so workflow, execution, and revision
+    // identifiers cannot be used as a cross-owner existence oracle.
+    const status = error instanceof WorkflowApiError ? (error.statusCode ?? 500) : 500;
+    sendJson(
+      ctx,
+      status,
+      status === 404
+        ? { error: 'Workflow resource not found', code: 'workflow_resource_not_found' }
+        : { error: error instanceof Error ? error.message : String(error) }
+    );
   }
 }

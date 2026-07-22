@@ -17,6 +17,7 @@ import {
 
 import {
   failureToActionResult,
+  fencePreformatted,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
@@ -49,7 +50,10 @@ function getNodeFsGlob(): NodeFsGlobModule["glob"] | undefined {
   return typeof candidate === "function" ? candidate : undefined;
 }
 
-function globToRegExp(pattern: string): RegExp {
+/** Exported for tests: the fallback matcher used when `fs.glob` is absent
+ *  (Node < 22) — its branch behavior must match the native glob it stands in
+ *  for. */
+export function globToRegExp(pattern: string): RegExp {
   let regex = "";
   let i = 0;
   while (i < pattern.length) {
@@ -244,7 +248,11 @@ export async function globHandler(
     `${CODING_TOOLS_LOG_PREFIX} GLOB pattern=${JSON.stringify(pattern)} root=${root} found=${limited.length} truncated=${truncated}`,
   );
 
-  if (callback) await callback({ text });
+  // Fenced + source-tagged (#16563): the path listing is the structural twin
+  // of the fenced ls output, and paths like __tests__/ or *.md get
+  // bold/italic-consumed unfenced; the source tag matches every sibling relay.
+  if (callback)
+    await callback({ text: fencePreformatted(text), source: "coding-tools" });
 
   return successActionResult(text, {
     files: limited,

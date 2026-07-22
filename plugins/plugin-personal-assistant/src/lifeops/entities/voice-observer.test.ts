@@ -215,15 +215,14 @@ describe("extractSelfNameClaim", () => {
     expect(extractSelfNameClaim(input)).toBe(expected);
   });
 
-  it.each([
-    "hello",
-    "what time is it",
-    "",
-    null,
-    undefined,
-  ])("returns null for non-claim %s", (input) => {
-    expect(extractSelfNameClaim(input as string | null | undefined)).toBeNull();
-  });
+  it.each(["hello", "what time is it", "", null, undefined])(
+    "returns null for non-claim %s",
+    (input) => {
+      expect(
+        extractSelfNameClaim(input as string | null | undefined),
+      ).toBeNull();
+    },
+  );
 
   it("rejects lowercase names (heuristic anchor)", () => {
     expect(extractSelfNameClaim("i am jill")).toBeNull();

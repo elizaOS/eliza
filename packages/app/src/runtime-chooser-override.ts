@@ -8,6 +8,7 @@ import { shellLocalStorage } from "@elizaos/ui/bridge";
 
 const RUNTIME_CHOOSER_OVERRIDE_PARAM = "enableRuntimeChooser";
 const RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY = "eliza:enable-runtime-chooser";
+const FIRST_RUN_COMPLETE_STORAGE_KEY = "eliza:first-run-complete";
 const DESKTOP_RUNTIME_CHOOSER_TEST_GLOBAL =
   "__ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER__";
 
@@ -38,6 +39,12 @@ export function applyRuntimeChooserOverrideFromUrl(win = window): boolean {
   }
 
   try {
+    // The packaged test seam must enter a genuinely fresh first-run. Native
+    // persistence can rehydrate this reserved completion key even when the
+    // WebView partition itself is new, which otherwise skips the conductor and
+    // leaves the runtime-choice selector absent. Route both writes through the
+    // privileged shell channel so the reserved-key guard remains intact.
+    shellLocalStorage.removeItem(FIRST_RUN_COMPLETE_STORAGE_KEY);
     shellLocalStorage.setItem(RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY, "1");
     win.history.replaceState(
       win.history.state,

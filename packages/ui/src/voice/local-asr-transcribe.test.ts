@@ -75,13 +75,17 @@ describe("transcribeCloudWav", () => {
     expect(resolveApiUrlMock).toHaveBeenCalledWith("/api/asr/cloud");
     const [url, init] = fetchWithCsrfMock.mock.calls[0] ?? [];
     expect(url).toBe("http://agent.local/api/asr/cloud");
-    expect(init?.method).toBe("POST");
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected dedicated ASR request options");
+    }
+    expect(init.method).toBe("POST");
     // The WAV is sent as raw audio bytes (Content-Type audio/wav), NOT base64
     // JSON — the proxy reads the raw body and re-wraps it as multipart.
-    expect((init?.headers as Record<string, string>)["Content-Type"]).toBe(
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
       "audio/wav",
     );
-    expect(init?.body).toBe(wav);
+    expect(init.body).toBe(wav);
     // Transcript is trimmed.
     expect(text).toBe("hello world");
   });
@@ -121,12 +125,16 @@ describe("transcribeCloudWav", () => {
     expect(url).toBe("https://staging.elizacloud.ai/api/v1/voice/stt");
     expect(fetchWithCsrfMock).not.toHaveBeenCalled();
     expect(resolveApiUrlMock).not.toHaveBeenCalledWith("/api/asr/cloud");
-    expect(init?.headers).toMatchObject({
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected direct cloud ASR request options");
+    }
+    expect(init.headers).toMatchObject({
       Accept: "application/json",
       Authorization: "Bearer staging-session-token",
     });
-    expect(init?.body).toBeInstanceOf(FormData);
-    expect((init?.body as FormData).get("audio")).toBeInstanceOf(File);
+    expect(init.body).toBeInstanceOf(FormData);
+    expect((init.body as FormData).get("audio")).toBeInstanceOf(File);
     expect(text).toBe("direct cloud hello");
   });
 
@@ -316,10 +324,14 @@ describe("transcribeCloudWav", () => {
 
     const [url, init] = fetchWithCsrfMock.mock.calls[0] ?? [];
     expect(url).toBe("http://agent.local/api/asr/cloud");
-    expect((init?.headers as Record<string, string>)["Content-Type"]).toBe(
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected dedicated ASR fallback request options");
+    }
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe(
       "audio/wav",
     );
-    expect(init?.body).toBe(wav);
+    expect(init.body).toBe(wav);
     expect(text).toBe("dedicated");
   });
 });
@@ -347,17 +359,21 @@ describe("transcribeCloudWav (shared-tier fallback, #15395)", () => {
     const [url, init] = fetchWithCsrfMock.mock.calls[0] ?? [];
     // Cloud-worker v1 origin derived from the shared-agent base.
     expect(url).toBe("https://api.elizacloud.ai/api/v1/voice/stt");
-    expect(init?.method).toBe("POST");
+    expect(init).toBeDefined();
+    if (!init) {
+      throw new Error("Expected shared-tier ASR request options");
+    }
+    expect(init.method).toBe("POST");
     // The dedicated raw-WAV path is NOT used — no resolveApiUrl(/api/asr/cloud).
     expect(resolveApiUrlMock).not.toHaveBeenCalledWith("/api/asr/cloud");
     // Multipart body with the WAV as the `audio` File the v1 route reads.
-    expect(init?.body).toBeInstanceOf(FormData);
-    const file = (init?.body as FormData).get("audio");
+    expect(init.body).toBeInstanceOf(FormData);
+    const file = (init.body as FormData).get("audio");
     expect(file).toBeInstanceOf(File);
     expect((file as File).type).toBe("audio/wav");
     // Content-Type is left unset so the browser writes the multipart boundary.
     expect(
-      (init?.headers as Record<string, string>)["Content-Type"],
+      (init.headers as Record<string, string>)["Content-Type"],
     ).toBeUndefined();
     // v1 `{ transcript }` shape is parsed + trimmed.
     expect(text).toBe("shared hello");

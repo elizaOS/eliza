@@ -51,7 +51,6 @@ export * from "./providers/index.js";
 export * from "./routes/index.js";
 export * from "./screen-time/index.js";
 export * from "./sleep/index.js";
-export * from "./ui/index.js";
 export * from "./util/index.js";
 
 export const HEALTH_PLUGIN_NAME = "plugin-health";
@@ -124,16 +123,6 @@ export const healthPlugin: Plugin = {
 };
 
 export default healthPlugin;
-
-export {
-  EMPTY_HEALTH_SNAPSHOT,
-  type HealthSnapshot,
-  HealthSpatialView,
-  type HealthViewState,
-  type StatRow as HealthStatRow,
-  type WindowDays as HealthWindowDays,
-} from "./components/health/HealthSpatialView.js";
-export { HealthView } from "./components/health/HealthView.js";
 
 // `./<name>.js` (without /index) is a TypeScript-only directory-shorthand
 // that Bun's runtime ESM resolver does not honor. The `./sleep`,

@@ -342,6 +342,8 @@ export const NotificationRow = memo(function NotificationRow({
         <button
           type="button"
           data-testid="notification-row"
+          data-notification-stack-key={stackKey}
+          data-notification-stack-opener={stackKey ? "" : undefined}
           aria-label={`${notification.title}${
             stackKey && stackCount
               ? `. Show all ${stackCount} ${getChatSourceMeta(notification.source).label} notifications`

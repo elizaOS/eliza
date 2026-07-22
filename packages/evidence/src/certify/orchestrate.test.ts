@@ -419,10 +419,20 @@ describe("orchestrateCertify — gpu queue wiring (#14543 acceptance)", () => {
       // The gpu analyzer's result reached analysis.json via the queue worker —
       // a real OCR transcript, not an inline run and not a fabrication.
       const record = findAnalysisRecord(result.bundleDir, "ocr.unlimited");
-      expect(record?.status).toBe("ran");
-      expect((record?.data as { text: string }).text).toContain(
-        "Sign in to Eliza",
-      );
+      if (!record) {
+        throw new Error("missing ocr.unlimited analysis record");
+      }
+      expect(record.status).toBe("ran");
+      const data = record.data;
+      if (
+        typeof data !== "object" ||
+        data === null ||
+        !("text" in data) ||
+        typeof data.text !== "string"
+      ) {
+        throw new Error("ocr.unlimited analysis record has no text output");
+      }
+      expect(data.text).toContain("Sign in to Eliza");
       // The run advertises the queue path in its analyze step.
       const analyzeStep = result.steps.find((s) => s.step === "analyze");
       expect(analyzeStep?.detail).toMatch(/via queue worker/);

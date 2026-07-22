@@ -20,6 +20,12 @@ export default defineConfig({
       "**/node_modules/**",
       "**/dist/**",
       "**/.git/**",
+      // Tool worktrees are root containers; same-named nested paths remain tests.
+      ".worktrees/**",
+      ".audit-worktrees/**",
+      ".codex-worktrees/**",
+      ".codex-pr-worktrees/**",
+      ".codex-agent-worktrees/**",
       "**/.claude/**",
       "**/.eliza/**",
       "**/.tmp/**",

@@ -16,14 +16,24 @@ import {
   seedDevNotificationsIfEmpty,
 } from "../../state/notifications/notification-store";
 import { initPushRegistration } from "../../state/notifications/push-registration";
-import { goHome } from "../../state/shell-surface-store";
+
+/**
+ * Boots data ingress independently of the paintable app shell. Startup, auth,
+ * and first-run gates can keep AppContent on a full-screen surface while the
+ * packaged desktop is already backgrounded; native notifications must not lose
+ * their WebSocket subscription during that interval.
+ */
+export function NotificationsDataBoot(): null {
+  useEffect(() => {
+    initNotifications();
+  }, []);
+  return null;
+}
 
 export function NotificationsShellBoot(): null {
   const setTab = useAppSelector((s) => s.setTab);
 
-  // Idempotent store boot — the store guards against re-init.
   useEffect(() => {
-    initNotifications();
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
     void initPushRegistration();
@@ -37,12 +47,11 @@ export function NotificationsShellBoot(): null {
     }
   }, []);
 
-  // Route every "open notifications" entry point to the dashboard: the combined
-  // Home/Launcher route on its Home half, where the notification widget lives.
+  // Route every "open notifications" entry point to the combined home/apps
+  // dashboard, where the notification widget is always inline.
   useEffect(() => {
     const onOpen = () => {
       setTab("chat");
-      goHome();
     };
     window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
     return () =>

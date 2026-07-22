@@ -2,18 +2,20 @@
  * Adapter that runs a workflow's node graph through the Smithers orchestrator.
  * Translates the plugin's WorkflowDefinition into the Smithers execution plan,
  * spawns a Bun worker (Smithers needs `bun:sqlite`) to run it, and maps the
- * result back to a WorkflowExecution with engine metrics.
+ * result back to a WorkflowExecution with engine metrics. Definitions and
+ * trigger data cross a dedicated pipe so provider secrets and run payloads do
+ * not enter the worker environment; each run has a wall-clock deadline.
  *
  * Consumed by EmbeddedWorkflowService as the node-execution backend. Reads
- * optional `SMITHERS_DB_*`, `ELIZA_SMITHERS_RUN_PAYLOAD`, and `BUN_BIN` env
- * vars. Failed delegated nodes are echoed before Smithers' wrapper error so
- * execution diagnostics retain the original node error.
+ * optional `SMITHERS_DB_*`, `ELIZA_SMITHERS_TIMEOUT_MS`, and `BUN_BIN` env vars.
+ * Failed delegated nodes are echoed before Smithers' wrapper error so execution
+ * diagnostics retain the original node error.
  */
 import { spawn } from 'node:child_process';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { logger } from '@elizaos/core';
+import { ElizaError, logger } from '@elizaos/core';
 import type {
   WorkflowDefinition,
   WorkflowExecution,
@@ -40,17 +42,39 @@ export interface SmithersExecutionPlan {
 }
 
 export interface SmithersWorkflowRunOptions {
+  tenantId: string;
   workflow: WorkflowDefinition;
   executionId: string;
   pending: WorkflowExecution;
   mode: WorkflowExecution['mode'];
   triggerData?: Record<string, unknown>;
   plan: SmithersExecutionPlan;
+  timeoutMs?: number;
+  signal?: AbortSignal;
   runNode: (
     node: WorkflowNode,
-    inputData: SmithersNodeExecutionData[][]
+    inputData: SmithersNodeExecutionData[][],
+    signal: AbortSignal
   ) => Promise<SmithersNodeExecutionData[][]>;
 }
+
+const DEFAULT_SMITHERS_TIMEOUT_MS = 300_000;
+const SMITHERS_WORKER_ENV_KEYS = [
+  'PATH',
+  'HOME',
+  'USER',
+  'SHELL',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'LANG',
+  'LC_ALL',
+  'TZ',
+  'SYSTEMROOT',
+  'WINDIR',
+  'PATHEXT',
+  'COMSPEC',
+] as const;
 
 type SmithersRunMetrics = Omit<WorkflowExecutionEngineMetrics, 'provider'>;
 
@@ -78,9 +102,16 @@ function sanitizeWorkflowName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_.:-]+/g, '-').replace(/^-+|-+$/g, '') || 'workflow';
 }
 
-function resolveSmithersDbPath(workflowId: string): string {
+export function resolveSmithersDbPath(tenantId: string, workflowId: string): string {
+  if (!tenantId.trim()) {
+    throw new ElizaError('Smithers database paths require an agent tenant id', {
+      code: 'SMITHERS_TENANT_REQUIRED',
+      context: { workflowId },
+    });
+  }
+  const safeTenantId = sanitizeWorkflowName(tenantId);
   const safeId = sanitizeWorkflowName(workflowId || 'anonymous');
-  return join(process.cwd(), '.eliza', 'smithers', `${safeId}.sqlite`);
+  return join(process.cwd(), '.eliza', 'smithers', safeTenantId, `${safeId}.sqlite`);
 }
 
 function resolveBunBinary(): string {
@@ -103,13 +134,49 @@ export function resolveSmithersDbConfig(): {
   connectionString?: string;
   dataDir?: string;
 } {
-  const raw = process.env.SMITHERS_DB_PROVIDER ?? 'sqlite';
-  const provider = raw === 'postgres' || raw === 'pglite' ? raw : 'sqlite';
-  return {
-    provider,
-    connectionString: process.env.SMITHERS_DB_URL,
-    dataDir: process.env.SMITHERS_DB_DATA_DIR,
-  };
+  const provider = (process.env.SMITHERS_DB_PROVIDER ?? 'sqlite').trim().toLowerCase();
+  if (provider !== 'sqlite' && provider !== 'postgres' && provider !== 'pglite') {
+    throw new ElizaError(`Unsupported Smithers database provider: ${provider}`, {
+      code: 'SMITHERS_DB_PROVIDER_INVALID',
+      context: { provider },
+    });
+  }
+  if (provider === 'postgres') {
+    const connectionString = process.env.SMITHERS_DB_URL?.trim();
+    if (!connectionString) {
+      throw new ElizaError('SMITHERS_DB_URL is required for the postgres backend', {
+        code: 'SMITHERS_DB_URL_REQUIRED',
+        context: { provider },
+      });
+    }
+    return { provider, connectionString };
+  }
+  if (provider === 'pglite') {
+    const dataDir = process.env.SMITHERS_DB_DATA_DIR?.trim();
+    if (!dataDir) {
+      throw new ElizaError('SMITHERS_DB_DATA_DIR is required for the pglite backend', {
+        code: 'SMITHERS_DB_DATA_DIR_REQUIRED',
+        context: { provider },
+      });
+    }
+    return { provider, dataDir };
+  }
+  return { provider };
+}
+
+export function resolveSmithersTimeoutMs(explicitTimeoutMs?: number): number {
+  const configured =
+    explicitTimeoutMs ??
+    (process.env.ELIZA_SMITHERS_TIMEOUT_MS
+      ? Number(process.env.ELIZA_SMITHERS_TIMEOUT_MS)
+      : DEFAULT_SMITHERS_TIMEOUT_MS);
+  if (!Number.isFinite(configured) || configured <= 0) {
+    throw new ElizaError('Smithers timeout must be a positive number of milliseconds', {
+      code: 'SMITHERS_TIMEOUT_INVALID',
+      context: { configured },
+    });
+  }
+  return configured;
 }
 
 async function resolvePluginRoot(): Promise<string> {
@@ -120,7 +187,8 @@ async function resolvePluginRoot(): Promise<string> {
       const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { name?: string };
       if (manifest.name === '@elizaos/plugin-workflow') return dir;
     } catch {
-      // Continue walking upward until the plugin package root is found.
+      // error-policy:J3 each missing or unreadable manifest is the explicit
+      // "not the package root" probe result, so continue walking upward.
     }
     const parent = dirname(dir);
     if (parent === dir) break;
@@ -134,20 +202,11 @@ function toErrorPayload(error: unknown): { message: string; stack?: string } {
   return { message: String(error) };
 }
 
-function buildSmithersWorkerEnv(payload: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, ELIZA_SMITHERS_RUN_PAYLOAD: payload };
-  for (const key of Object.keys(env)) {
-    const normalized = key.toUpperCase();
-    if (
-      normalized === 'NODE_V8_COVERAGE' ||
-      normalized === 'BUN_TEST' ||
-      normalized.startsWith('BUN_TEST_') ||
-      normalized.startsWith('VITEST') ||
-      normalized.startsWith('NYC_') ||
-      normalized.includes('COVERAGE')
-    ) {
-      delete env[key];
-    }
+export function buildSmithersWorkerEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of SMITHERS_WORKER_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
   }
   return env;
 }
@@ -168,11 +227,12 @@ function buildSmithersWorkerEnv(payload: string): NodeJS.ProcessEnv {
  */
 function createSmithersScript(): string {
   return String.raw`
-    import { Smithers } from 'smithers-orchestrator';
+    import { Smithers } from '@smithers-orchestrator/engine';
     import { Effect, Schema } from 'effect';
+    import { readFileSync } from 'node:fs';
     import { createInterface } from 'node:readline/promises';
 
-    const payload = JSON.parse(process.env.ELIZA_SMITHERS_RUN_PAYLOAD ?? '{}');
+    const payload = JSON.parse(readFileSync(3, 'utf8'));
     const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
     const pending = new Map();
     let requestSeq = 0;
@@ -180,7 +240,12 @@ function createSmithersScript(): string {
     let lastNodeError = null;
 
     function emit(message) {
-      process.stdout.write(JSON.stringify(message) + '\n');
+      return new Promise((resolve, reject) => {
+        process.stdout.write(JSON.stringify(message) + '\n', (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
     }
 
     (async () => {
@@ -205,17 +270,22 @@ function createSmithersScript(): string {
       const requestId = String(++requestSeq);
       return new Promise((resolve, reject) => {
         pending.set(requestId, { resolve, reject });
-        emit({ type: 'executeNode', requestId, nodeName, inputData });
+        emit({ type: 'executeNode', requestId, nodeName, inputData }).catch((error) => {
+          // error-policy:J1 translate a failed worker-protocol write into the
+          // pending node promise observed by the workflow execution boundary.
+          pending.delete(requestId);
+          reject(error);
+        });
       });
     }
 
     function cloneJson(value) { return JSON.parse(JSON.stringify(value)); }
     function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
-    function collectInputData(nodeName, incoming, nodeOutputs) {
+    function collectInputData(nodeName, incoming, dependencyResults) {
       const inputData = [];
       for (const connection of incoming[nodeName] ?? []) {
-        const sourceOutputs = nodeOutputs[connection.source] ?? [];
+        const sourceOutputs = dependencyResults[connection.source]?.outputData ?? [];
         const sourceItems = sourceOutputs[connection.sourceOutputIndex] ?? [];
         inputData[connection.destinationInputIndex] = [
           ...(inputData[connection.destinationInputIndex] ?? []),
@@ -256,15 +326,25 @@ function createSmithersScript(): string {
     async function runNodeWithPolicy(node, inputData) {
       const maxAttempts = node.retryOnFail ? Math.max(1, node.maxTries ?? 3) : 1;
       let lastError;
+      let retries = 0;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        try { return await sendNodeRequest(node.name, inputData); }
+        try { return { outputData: await sendNodeRequest(node.name, inputData), retries }; }
         catch (error) {
           lastError = error;
           lastNodeError = { nodeName: node.name, message: error?.message ?? String(error) };
-          if (attempt < maxAttempts) { metrics.retries += 1; await delay(node.waitBetweenTries ?? 1000); }
+          if (attempt < maxAttempts) {
+            retries += 1;
+            metrics.retries += 1;
+            await delay(node.waitBetweenTries ?? 1000);
+          }
         }
       }
-      if (node.continueOnFail) return [[{ json: { error: lastError?.message ?? String(lastError) } }]];
+      if (node.continueOnFail) {
+        return {
+          outputData: [[{ json: { error: lastError?.message ?? String(lastError) } }]],
+          retries,
+        };
+      }
       throw lastError;
     }
 
@@ -279,33 +359,52 @@ function createSmithersScript(): string {
       metrics.levels = levels.length;
       metrics.maxConcurrency = levels.reduce((max, level) => Math.max(max, level.length), 0);
 
-      const nodeOutputs = {};
-      const runData = {};
       const workflow = Smithers.workflow({ name: payload.workflowName, input: Schema.Unknown });
 
-      const buildStep = (node, index) =>
-        workflow.step(makeStepId(index, node), {
+      const handlesByNode = new Map();
+      const buildStep = (node, index) => {
+        const incomingConnections = incoming[node.name] ?? [];
+        const dependencyKeys = new Map();
+        const needs = {};
+        for (const connection of incomingConnections) {
+          if (!nodeByName.has(connection.source)) continue;
+          if (dependencyKeys.has(connection.source)) continue;
+          const sourceHandle = handlesByNode.get(connection.source);
+          if (!sourceHandle) {
+            throw new Error('Workflow dependency was not built before node: ' + connection.source + ' -> ' + node.name);
+          }
+          const key = 'dependency' + dependencyKeys.size;
+          dependencyKeys.set(connection.source, key);
+          needs[key] = sourceHandle;
+        }
+        const handle = workflow.step(makeStepId(index, node), {
           output: Schema.Unknown,
-          run: async () => {
+          ...(Object.keys(needs).length > 0 ? { needs } : {}),
+          run: async (ctx) => {
             metrics.started += 1;
-            const incomingConnections = incoming[node.name] ?? [];
+            const dependencyResults = {};
+            for (const [source, key] of dependencyKeys) dependencyResults[source] = ctx[key];
             const isStartNode = startNodes.has(node.name);
             const inputData =
               isStartNode && incomingConnections.length === 0
                 ? Object.keys(payload.triggerData ?? {}).length > 0
                   ? [[{ json: payload.triggerData }]]
                   : [[]]
-                : collectInputData(node.name, incoming, nodeOutputs);
+                : collectInputData(node.name, incoming, dependencyResults);
             const started = Date.now();
             const shouldSkip = !isStartNode && incomingConnections.length > 0 && !hasInputItems(inputData);
             let outputData;
+            let retries = 0;
             if (shouldSkip) { outputData = [[]]; metrics.skipped += 1; }
             else {
-              try { outputData = await runNodeWithPolicy(node, inputData); }
+              try {
+                const result = await runNodeWithPolicy(node, inputData);
+                outputData = result.outputData;
+                retries = result.retries;
+              }
               catch (error) { metrics.failed += 1; throw error; }
             }
-            nodeOutputs[node.name] = outputData;
-            runData[node.name] = [{
+            const runEntry = {
               startTime: started,
               executionTime: Date.now() - started,
               data: { main: cloneJson(outputData) },
@@ -314,11 +413,20 @@ function createSmithersScript(): string {
                 previousNodeOutput: connection.sourceOutputIndex,
                 previousNodeRun: 0,
               })),
-            }];
+            };
             metrics.finished += 1;
-            return { nodeName: node.name, outputData };
+            return {
+              nodeName: node.name,
+              outputData,
+              runEntry,
+              skipped: shouldSkip,
+              retries,
+            };
           },
         });
+        handlesByNode.set(node.name, handle);
+        return handle;
+      };
 
       let stepIndex = 0;
       const levelGraphs = levels.map((level) => {
@@ -326,51 +434,85 @@ function createSmithersScript(): string {
         return handles.length === 1 ? handles[0] : workflow.parallel(...handles);
       });
 
+      const resultNeeds = {};
+      enabledNodes.forEach((node, index) => {
+        resultNeeds['node' + index] = handlesByNode.get(node.name);
+      });
       const resultStep = workflow.step('eliza-workflow-result', {
         output: Schema.Unknown,
-        run: async () => {
+        needs: resultNeeds,
+        run: async (ctx) => {
+          const runData = {};
+          let durableSkipped = 0;
+          let durableRetries = 0;
+          let durableFinished = 0;
+          enabledNodes.forEach((node, index) => {
+            const result = ctx['node' + index];
+            if (!result || result.nodeName !== node.name || !result.runEntry) {
+              throw new Error('Missing durable output for workflow node: ' + node.name);
+            }
+            runData[node.name] = [result.runEntry];
+            durableFinished += 1;
+            if (result.skipped === true) durableSkipped += 1;
+            if (Number.isInteger(result.retries) && result.retries > 0) durableRetries += result.retries;
+          });
           const stoppedAt = new Date().toISOString();
           return {
             ...payload.pending,
             finished: true,
             status: 'success',
             stoppedAt,
-            data: { resultData: { runData, lastNodeExecuted: terminalNodeName } },
+            data: {
+              resultData: {
+                runData,
+                lastNodeExecuted: terminalNodeName,
+                engine: {
+                  provider: 'smithers',
+                  nodes: enabledNodes.length,
+                  levels: levels.length,
+                  maxConcurrency: levels.reduce((max, level) => Math.max(max, level.length), 0),
+                  started: durableFinished,
+                  finished: durableFinished,
+                  failed: 0,
+                  skipped: durableSkipped,
+                  retries: durableRetries,
+                },
+              },
+            },
           };
         },
       });
 
       const graph = workflow.sequence(...levelGraphs, resultStep);
       const built = workflow.from(graph);
-      // Select the storage backend based on the provider field threaded through
-      // the payload. Feature-detect non-sqlite APIs: smithers-orchestrator@0.22.0
-      // does not yet expose Smithers.postgres / Smithers.pglite; if the method is
-      // absent we degrade to sqlite so old and new builds both work correctly.
+      // The configured backend is an operational contract. Falling back to a
+      // local database would make a shared deployment look healthy while losing
+      // durability and cross-instance visibility.
       const dbConfig = payload.dbConfig ?? {};
       const provider = dbConfig.provider ?? 'sqlite';
       let smithersLayer;
-      if (provider !== 'sqlite' && typeof Smithers[provider] === 'function') {
-        if (provider === 'postgres') {
-          smithersLayer = Smithers.postgres({ connectionString: dbConfig.connectionString });
-        } else if (provider === 'pglite') {
-          smithersLayer = Smithers.pglite({ dataDir: dbConfig.dataDir });
-        } else {
-          smithersLayer = Smithers.sqlite({ filename: payload.dbPath });
-        }
-      } else {
+      if (provider === 'sqlite') {
         smithersLayer = Smithers.sqlite({ filename: payload.dbPath });
+      } else if (provider === 'postgres' && typeof Smithers.postgres === 'function') {
+        smithersLayer = Smithers.postgres({ connectionString: dbConfig.connectionString });
+      } else if (provider === 'pglite' && typeof Smithers.pglite === 'function') {
+        smithersLayer = Smithers.pglite({ dataDir: dbConfig.dataDir });
+      } else {
+        throw new Error('Configured Smithers backend is unavailable: ' + provider);
       }
       const execution = await Effect.runPromise(
         built
           .execute(payload.input, {
             runId: payload.executionId,
-            force: true,
+            force: false,
             rootDir: payload.rootDir ?? process.cwd(),
             allowNetwork: true,
           })
           .pipe(Effect.provide(smithersLayer))
       );
-      emit({ type: 'workflowResult', execution, metrics });
+      // process.exit() does not drain stdout. Await the write callback so a
+      // result larger than the pipe's kernel buffer reaches the parent intact.
+      await emit({ type: 'workflowResult', execution, metrics });
       process.exit(0);
     } catch (error) {
       if (lastNodeError) {
@@ -383,15 +525,18 @@ function createSmithersScript(): string {
 }
 
 export async function runWorkflowWithSmithers({
+  tenantId,
   workflow,
   executionId,
   pending,
   mode,
   triggerData,
   plan,
+  timeoutMs: explicitTimeoutMs,
+  signal: externalSignal,
   runNode,
 }: SmithersWorkflowRunOptions): Promise<WorkflowExecution> {
-  const dbPath = resolveSmithersDbPath(workflow.id ?? workflow.name);
+  const dbPath = resolveSmithersDbPath(tenantId, workflow.id ?? workflow.name);
   await mkdir(dirname(dbPath), { recursive: true });
   const dbConfig = resolveSmithersDbConfig();
 
@@ -407,15 +552,47 @@ export async function runWorkflowWithSmithers({
     rootDir: process.cwd(),
   });
   const pluginRoot = await resolvePluginRoot();
+  const timeoutMs = resolveSmithersTimeoutMs(explicitTimeoutMs);
   const proc = spawn(resolveBunBinary(), ['-e', createSmithersScript()], {
     cwd: pluginRoot,
-    env: buildSmithersWorkerEnv(payload),
-    stdio: ['pipe', 'pipe', 'pipe'],
+    env: buildSmithersWorkerEnv(),
+    stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
   });
+  const payloadInput = proc.stdio[3];
+  if (!payloadInput || typeof (payloadInput as { end?: unknown }).end !== 'function') {
+    proc.kill('SIGKILL');
+    throw new ElizaError('Smithers worker payload pipe was not created', {
+      code: 'SMITHERS_PAYLOAD_PIPE_MISSING',
+      context: { workflowId: workflow.id ?? '', executionId },
+    });
+  }
+  (payloadInput as NodeJS.WritableStream).end(payload);
   const byName = new Map(plan.enabledNodes.map((node) => [node.name, node]));
   let executionResult: WorkflowExecution | null = null;
   let runMetrics: SmithersRunMetrics | null = null;
+  let protocolError: ElizaError | null = null;
   let stdinEnded = false;
+  let externallyAborted = externalSignal?.aborted === true;
+  const executionAbort = new AbortController();
+
+  const killWorker = (reason: unknown): void => {
+    if (!executionAbort.signal.aborted) executionAbort.abort(reason);
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // error-policy:J6 best-effort worker teardown; close/error remains the
+      // authoritative observation for the subprocess lifecycle.
+    }
+  };
+
+  const onExternalAbort = (): void => {
+    externallyAborted = true;
+    killWorker(externalSignal?.reason);
+  };
+  if (externalSignal) {
+    if (externalSignal.aborted) onExternalAbort();
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
 
   const endStdin = (): void => {
     if (stdinEnded) return;
@@ -442,12 +619,32 @@ export async function runWorkflowWithSmithers({
       return;
     }
     if (message.type === 'workflowResult') {
+      if (!message.execution || typeof message.execution !== 'object') {
+        protocolError = new ElizaError('Smithers returned an invalid workflow result', {
+          code: 'SMITHERS_PROTOCOL_INVALID',
+          context: { workflowId: workflow.id ?? '', executionId },
+        });
+        killWorker(protocolError);
+        return;
+      }
       executionResult = message.execution;
       runMetrics = message.metrics ?? null;
       endStdin();
       return;
     }
     if (message.type !== 'executeNode') return;
+    if (
+      typeof message.requestId !== 'string' ||
+      typeof message.nodeName !== 'string' ||
+      !Array.isArray(message.inputData)
+    ) {
+      protocolError = new ElizaError('Smithers returned an invalid node execution request', {
+        code: 'SMITHERS_PROTOCOL_INVALID',
+        context: { workflowId: workflow.id ?? '', executionId },
+      });
+      killWorker(protocolError);
+      return;
+    }
     const node = byName.get(message.nodeName);
     if (!node) {
       writeResponse({
@@ -460,7 +657,7 @@ export async function runWorkflowWithSmithers({
     inflight.push(
       (async () => {
         try {
-          const outputData = await runNode(node, message.inputData);
+          const outputData = await runNode(node, message.inputData, executionAbort.signal);
           writeResponse({ requestId: message.requestId, ok: true, outputData });
         } catch (error) {
           writeResponse({ requestId: message.requestId, ok: false, error: toErrorPayload(error) });
@@ -483,45 +680,101 @@ export async function runWorkflowWithSmithers({
     stderr += chunk;
   });
 
+  let timedOut = false;
   const exitCode = await new Promise<number>((resolve, reject) => {
-    proc.on('error', reject);
-    proc.on('close', (code) => resolve(code ?? 1));
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      killWorker(new Error(`Smithers workflow deadline exceeded after ${timeoutMs}ms`));
+    }, timeoutMs);
+    proc.once('error', (error) => {
+      clearTimeout(timeout);
+      if (!executionAbort.signal.aborted) executionAbort.abort(error);
+      reject(error);
+    });
+    proc.once('close', (code) => {
+      clearTimeout(timeout);
+      resolve(code ?? 1);
+    });
   });
+  externalSignal?.removeEventListener('abort', onExternalAbort);
   if (stdoutBuffer.trim()) handleLine(stdoutBuffer);
-  if (exitCode === 0) await Promise.all(inflight);
+  if (exitCode === 0) {
+    await Promise.all(inflight);
+  } else {
+    if (!executionAbort.signal.aborted) {
+      executionAbort.abort(new Error(`Smithers workflow worker exited with code ${exitCode}`));
+    }
+    // Cooperative node work should settle promptly after cancellation, while a
+    // third-party node that ignores AbortSignal must not hold the API forever.
+    await Promise.race([
+      Promise.allSettled(inflight),
+      new Promise<void>((resolve) => setTimeout(resolve, 1_000)),
+    ]);
+  }
 
   endStdin();
 
+  if (protocolError) throw protocolError;
+  if (externallyAborted) {
+    throw new ElizaError('Smithers workflow execution was aborted', {
+      code: 'SMITHERS_WORKFLOW_ABORTED',
+      context: { workflowId: workflow.id ?? '', executionId },
+      severity: 'ephemeral',
+    });
+  }
+  if (timedOut) {
+    throw new ElizaError(`Smithers workflow execution timed out after ${timeoutMs}ms`, {
+      code: 'SMITHERS_WORKFLOW_TIMEOUT',
+      context: { workflowId: workflow.id ?? '', executionId, timeoutMs },
+      severity: 'ephemeral',
+    });
+  }
+
   if (exitCode !== 0) {
-    throw new Error(`Smithers workflow execution failed: ${stderr.trim() || `exit ${exitCode}`}`);
+    throw new ElizaError(
+      `Smithers workflow execution failed: ${stderr.trim() || `exit ${exitCode}`}`,
+      {
+        code: 'SMITHERS_WORKFLOW_FAILED',
+        context: { workflowId: workflow.id ?? '', executionId, exitCode },
+        severity: 'ephemeral',
+      }
+    );
   }
   if (!executionResult) {
-    throw new Error('Smithers workflow execution completed without returning a workflow result');
+    throw new ElizaError(
+      'Smithers workflow execution completed without returning a workflow result',
+      {
+        code: 'SMITHERS_WORKFLOW_RESULT_MISSING',
+        context: { workflowId: workflow.id ?? '', executionId },
+      }
+    );
   }
   const completedExecution = executionResult as WorkflowExecution;
   const completedMetrics = runMetrics as SmithersRunMetrics | null;
-  const executionWithMetrics: WorkflowExecution = completedMetrics
-    ? {
-        ...completedExecution,
-        data: {
-          ...completedExecution.data,
-          resultData: {
-            ...completedExecution.data?.resultData,
-            engine: {
-              provider: 'smithers',
-              nodes: completedMetrics.nodes,
-              levels: completedMetrics.levels,
-              maxConcurrency: completedMetrics.maxConcurrency,
-              started: completedMetrics.started,
-              finished: completedMetrics.finished,
-              failed: completedMetrics.failed,
-              skipped: completedMetrics.skipped,
-              retries: completedMetrics.retries,
+  const executionWithMetrics: WorkflowExecution = completedExecution.data?.resultData?.engine
+    ? completedExecution
+    : completedMetrics
+      ? {
+          ...completedExecution,
+          data: {
+            ...completedExecution.data,
+            resultData: {
+              ...completedExecution.data?.resultData,
+              engine: {
+                provider: 'smithers',
+                nodes: completedMetrics.nodes,
+                levels: completedMetrics.levels,
+                maxConcurrency: completedMetrics.maxConcurrency,
+                started: completedMetrics.started,
+                finished: completedMetrics.finished,
+                failed: completedMetrics.failed,
+                skipped: completedMetrics.skipped,
+                retries: completedMetrics.retries,
+              },
             },
           },
-        },
-      }
-    : completedExecution;
+        }
+      : completedExecution;
 
   logger.info(
     {

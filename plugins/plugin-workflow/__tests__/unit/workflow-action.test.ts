@@ -2,28 +2,63 @@
 import { describe, expect, mock, test } from 'bun:test';
 import type { HandlerCallback, HandlerOptions, IAgentRuntime, Memory } from '@elizaos/core';
 import { workflowAction } from '../../src/actions/workflow';
+import { clearPendingWorkflowDraft } from '../../src/lib/pending-workflow-draft';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../../src/services/workflow-service';
+import { createValidWorkflow, createWorkflowResponse } from '../fixtures/workflows';
 
-function makeRuntime(service: Partial<WorkflowService>): IAgentRuntime {
+function makeRuntime(
+  service: Partial<WorkflowService>,
+  canonicalOwnerId = 'user-test',
+  cache = new Map<string, unknown>(),
+  cacheBoundary: {
+    deleteCache?: IAgentRuntime['deleteCache'];
+    reportError?: IAgentRuntime['reportError'];
+  } = {}
+): IAgentRuntime {
   return {
     agentId: 'agent-test',
+    character: { name: 'Workflow Test Agent', settings: {} },
+    getSetting: (key: string) => (key === 'ELIZA_ADMIN_ENTITY_ID' ? canonicalOwnerId : undefined),
     getService: (type: string) => (type === WORKFLOW_SERVICE_TYPE ? service : null),
+    getCache: <T>(key: string) => Promise.resolve(cache.get(key) as T | undefined),
+    setCache: <T>(key: string, value: T) => {
+      cache.set(key, value);
+      return Promise.resolve(true);
+    },
+    deleteCache: cacheBoundary.deleteCache ?? ((key: string) => Promise.resolve(cache.delete(key))),
+    reportError: cacheBoundary.reportError ?? (() => {}),
   } as IAgentRuntime;
 }
 
 const message = {
+  id: 'message-test',
   entityId: 'user-test',
+  roomId: 'room-test',
+  content: { text: 'Manage my workflows.' },
 } as Memory;
 
 async function runAction(
   service: Partial<WorkflowService>,
   parameters: Record<string, unknown>,
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
+  identity: {
+    canonicalOwnerId?: string;
+    messageEntityId?: string;
+    cache?: Map<string, unknown>;
+    deleteCache?: IAgentRuntime['deleteCache'];
+    reportError?: IAgentRuntime['reportError'];
+  } = {}
 ) {
   if (!workflowAction.handler) throw new Error('workflow action missing handler');
   return workflowAction.handler(
-    makeRuntime(service),
-    message,
+    makeRuntime(service, identity.canonicalOwnerId, identity.cache, {
+      deleteCache: identity.deleteCache,
+      reportError: identity.reportError,
+    }),
+    {
+      ...message,
+      entityId: identity.messageEntityId ?? message.entityId,
+    } as Memory,
     undefined,
     { parameters } as HandlerOptions,
     callback
@@ -31,6 +66,418 @@ async function runAction(
 }
 
 describe('workflowAction chat operations', () => {
+  test('treats an already-absent pending draft delete as idempotent', async () => {
+    const deleteCache = mock(() => Promise.resolve(false));
+
+    await expect(
+      clearPendingWorkflowDraft({ deleteCache } as IAgentRuntime, {
+        ownerEntityId: 'user-test',
+        roomId: 'room-test',
+        cacheKey: 'workflow_draft:v2:user-test:room:room-test',
+      })
+    ).resolves.toBeUndefined();
+    expect(deleteCache).toHaveBeenCalledTimes(1);
+  });
+
+  test('creates and lists a workflow under the same chat owner', async () => {
+    const storedByOwner = new Map<string, ReturnType<typeof createWorkflowResponse>[]>();
+    const draft = createValidWorkflow();
+    const stored = createWorkflowResponse({ id: 'wf-created', name: draft.name });
+    const generateWorkflowDraft = mock((_seedPrompt: string, _options: { userId: string }) =>
+      Promise.resolve(draft)
+    );
+    const deployWorkflow = mock(
+      (
+        workflow: ReturnType<typeof createValidWorkflow>,
+        ownerId: string,
+        _options?: { activate?: boolean }
+      ) => {
+        storedByOwner.set(ownerId, [stored]);
+        return Promise.resolve({
+          id: stored.id,
+          name: workflow.name,
+          active: Boolean(stored.active),
+          nodeCount: workflow.nodes.length,
+          missingCredentials: [],
+        });
+      }
+    );
+    const listWorkflows = mock((ownerId: string) =>
+      Promise.resolve(storedByOwner.get(ownerId) ?? [])
+    );
+    const service = {
+      generateWorkflowDraft,
+      deployWorkflow,
+      listWorkflows,
+    } as Partial<WorkflowService>;
+
+    const created = await runAction(service, {
+      action: 'create',
+      seedPrompt: 'Send me a daily summary.',
+    });
+    const listed = await runAction(service, { action: 'list' });
+
+    expect(generateWorkflowDraft).toHaveBeenCalledWith('Send me a daily summary.', {
+      userId: 'user-test',
+    });
+    expect(deployWorkflow).toHaveBeenCalledWith(draft, 'user-test', {
+      activate: undefined,
+    });
+    expect(listWorkflows).toHaveBeenCalledWith('user-test');
+    expect(created.success).toBe(true);
+    expect(created.values).toMatchObject({ active: false });
+    expect(listed.success).toBe(true);
+    expect(listed.data).toEqual({
+      workflows: [{ id: 'wf-created', name: 'Test Workflow', active: false, nodeCount: 2 }],
+      total: 1,
+    });
+  });
+
+  test('stores a linked connector owner workflow under the canonical app identity', async () => {
+    const storedByOwner = new Map<string, ReturnType<typeof createWorkflowResponse>[]>();
+    const draft = createValidWorkflow();
+    const stored = createWorkflowResponse({ id: 'wf-linked-owner', name: draft.name });
+    const generateWorkflowDraft = mock((_prompt: string, _options: { userId: string }) =>
+      Promise.resolve(draft)
+    );
+    const deployWorkflow = mock(
+      (
+        definition: ReturnType<typeof createValidWorkflow>,
+        ownerId: string,
+        _options?: { activate?: boolean }
+      ) => {
+        storedByOwner.set(ownerId, [stored]);
+        return Promise.resolve({
+          id: stored.id,
+          name: definition.name,
+          active: false,
+          nodeCount: definition.nodes.length,
+          missingCredentials: [],
+        });
+      }
+    );
+    const listWorkflows = mock((ownerId: string) =>
+      Promise.resolve(storedByOwner.get(ownerId) ?? [])
+    );
+    const getWorkflow = mock((workflowId: string, ownerId: string) => {
+      const owned = storedByOwner.get(ownerId)?.find((item) => item.id === workflowId);
+      if (!owned) return Promise.reject(new Error(`Workflow not found: ${workflowId}`));
+      return Promise.resolve(owned);
+    });
+    const service = {
+      generateWorkflowDraft,
+      deployWorkflow,
+      listWorkflows,
+      getWorkflow,
+    } as Partial<WorkflowService>;
+    const identity = {
+      canonicalOwnerId: 'canonical-app-owner',
+      messageEntityId: 'linked-slack-owner',
+    };
+
+    const created = await runAction(
+      service,
+      { action: 'create', seedPrompt: 'Post a recap to Slack.' },
+      undefined,
+      identity
+    );
+    const listed = await runAction(service, { action: 'list' }, undefined, {
+      ...identity,
+      messageEntityId: 'canonical-app-owner',
+    });
+    const opened = await runAction(
+      service,
+      { action: 'get', workflowId: 'wf-linked-owner' },
+      undefined,
+      { ...identity, messageEntityId: 'canonical-app-owner' }
+    );
+
+    expect(generateWorkflowDraft).toHaveBeenCalledWith('Post a recap to Slack.', {
+      userId: 'canonical-app-owner',
+    });
+    expect(deployWorkflow).toHaveBeenCalledWith(draft, 'canonical-app-owner', {
+      activate: undefined,
+    });
+    expect(listWorkflows).toHaveBeenCalledWith('canonical-app-owner');
+    expect(getWorkflow).toHaveBeenCalledWith('wf-linked-owner', 'canonical-app-owner');
+    expect(created.success).toBe(true);
+    expect(listed.success).toBe(true);
+    expect(opened.success).toBe(true);
+  });
+
+  test('returns unresolved creation questions without deploying or activating the draft', async () => {
+    const draft = createValidWorkflow({
+      _meta: {
+        requiresClarification: [
+          {
+            kind: 'recipient',
+            platform: 'gmail',
+            question: 'Who should receive the summary?',
+            paramPath: 'nodes["Gmail"].parameters.sendTo',
+          },
+        ],
+      },
+    });
+    const generateWorkflowDraft = mock(() => Promise.resolve(draft));
+    const deployWorkflow = mock(() =>
+      Promise.resolve({
+        id: 'must-not-exist',
+        name: draft.name,
+        active: true,
+        nodeCount: draft.nodes.length,
+        missingCredentials: [],
+      })
+    );
+    const callback = mock(() => Promise.resolve());
+
+    const result = await runAction(
+      { generateWorkflowDraft, deployWorkflow } as Partial<WorkflowService>,
+      {
+        action: 'create',
+        seedPrompt: 'Email a summary every day.',
+        active: true,
+      },
+      callback as HandlerCallback
+    );
+
+    expect(deployWorkflow).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.values).toEqual({ status: 'needs_clarification', clarificationCount: 1 });
+    expect(result.data).toEqual({
+      status: 'needs_clarification',
+      draft,
+      clarifications: [
+        expect.objectContaining({
+          question: 'Who should receive the summary?',
+          paramPath: 'nodes["Gmail"].parameters.sendTo',
+        }),
+      ],
+    });
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          status: 'needs_clarification',
+          clarificationCount: 1,
+        }),
+      })
+    );
+  });
+
+  test('resolves a pending chat draft and exposes the deployed workflow in the canonical feed', async () => {
+    const ownerId = 'canonical-app-owner';
+    const draft = createValidWorkflow({
+      _meta: {
+        requiresClarification: [
+          {
+            kind: 'recipient',
+            platform: 'gmail',
+            question: 'Who should receive the summary?',
+            paramPath: 'nodes["Gmail"].parameters.sendTo',
+          },
+        ],
+      },
+    });
+    const storedByOwner = new Map<string, ReturnType<typeof createWorkflowResponse>[]>();
+    const deployWorkflow = mock(
+      (resolved: ReturnType<typeof createValidWorkflow>, canonicalOwnerId: string) => {
+        const recipient = resolved.nodes.find((node) => node.name === 'Gmail')?.parameters.sendTo;
+        expect(recipient).toBe('owner@example.com');
+        expect(resolved._meta?.requiresClarification).toBeUndefined();
+        const stored = createWorkflowResponse({ id: 'wf-resolved', name: resolved.name });
+        storedByOwner.set(canonicalOwnerId, [stored]);
+        return Promise.resolve({
+          id: stored.id,
+          name: stored.name,
+          active: false,
+          nodeCount: stored.nodes.length,
+          missingCredentials: [],
+        });
+      }
+    );
+    const listWorkflows = mock((canonicalOwnerId: string) =>
+      Promise.resolve(storedByOwner.get(canonicalOwnerId) ?? [])
+    );
+    const service = { deployWorkflow, listWorkflows } as Partial<WorkflowService>;
+    const identity = { canonicalOwnerId: ownerId, messageEntityId: 'linked-slack-owner' };
+
+    const resolved = await runAction(
+      service,
+      {
+        action: 'create',
+        draft,
+        resolutions: [
+          { paramPath: 'nodes["Gmail"].parameters.sendTo', value: 'owner@example.com' },
+        ],
+      },
+      undefined,
+      identity
+    );
+    const listed = await runAction(service, { action: 'list' }, undefined, {
+      canonicalOwnerId: ownerId,
+      messageEntityId: ownerId,
+    });
+
+    expect(deployWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({ name: draft.name }),
+      ownerId,
+      { activate: undefined }
+    );
+    expect(draft._meta?.requiresClarification).toHaveLength(1);
+    expect(listWorkflows).toHaveBeenCalledWith(ownerId);
+    expect(resolved.success).toBe(true);
+    expect(listed.data).toEqual({
+      workflows: [{ id: 'wf-resolved', name: 'Test Workflow', active: false, nodeCount: 2 }],
+      total: 1,
+    });
+  });
+
+  test('retains a resolved pending draft until deployment returns a verified id', async () => {
+    const cache = new Map<string, unknown>();
+    const draft = createValidWorkflow({
+      _meta: {
+        requiresClarification: [
+          {
+            kind: 'recipient',
+            question: 'Who should receive the summary?',
+            paramPath: 'nodes["Gmail"].parameters.sendTo',
+          },
+        ],
+      },
+    });
+    let deployAttempts = 0;
+    const deployWorkflow = mock(
+      async (resolved: ReturnType<typeof createValidWorkflow>, _ownerId: string) => {
+        expect(resolved.nodes.find((node) => node.name === 'Gmail')?.parameters.sendTo).toBe(
+          'owner@example.com'
+        );
+        deployAttempts += 1;
+        if (deployAttempts === 1) {
+          return {
+            id: '',
+            name: resolved.name,
+            active: false,
+            nodeCount: resolved.nodes.length,
+            missingCredentials: [],
+          };
+        }
+        if (deployAttempts === 2) {
+          throw new Error('temporary deployment failure');
+        }
+        return {
+          id: 'wf-retried',
+          name: resolved.name,
+          active: false,
+          nodeCount: resolved.nodes.length,
+          missingCredentials: [],
+        };
+      }
+    );
+    const service = {
+      generateWorkflowDraft: mock(() => Promise.resolve(draft)),
+      deployWorkflow,
+    } as Partial<WorkflowService>;
+    const identity = { cache };
+
+    const pending = await runAction(
+      service,
+      { action: 'create', seedPrompt: 'Email a summary every day.' },
+      undefined,
+      identity
+    );
+    expect(pending.values).toMatchObject({ status: 'needs_clarification' });
+    expect(cache.size).toBe(1);
+
+    const resolution = {
+      action: 'create',
+      resolutions: [{ paramPath: 'nodes["Gmail"].parameters.sendTo', value: 'owner@example.com' }],
+    };
+    const missingId = await runAction(service, resolution, undefined, identity);
+    expect(missingId).toMatchObject({ success: false });
+    expect(missingId.text).toContain('no deployable result');
+    expect(cache.size).toBe(1);
+
+    const transientFailure = await runAction(service, resolution, undefined, identity);
+    expect(transientFailure).toMatchObject({ success: false });
+    expect(transientFailure.text).toContain('temporary deployment failure');
+    expect(cache.size).toBe(1);
+
+    const retried = await runAction(service, resolution, undefined, identity);
+    expect(retried).toMatchObject({ success: true, values: { workflowId: 'wf-retried' } });
+    expect(deployWorkflow).toHaveBeenCalledTimes(3);
+    expect(cache.size).toBe(0);
+  });
+
+  test('reports post-deploy cache failure without misreporting a committed workflow', async () => {
+    const cache = new Map<string, unknown>();
+    const draft = createValidWorkflow({
+      _meta: {
+        requiresClarification: [
+          {
+            kind: 'recipient',
+            question: 'Who should receive the summary?',
+            paramPath: 'nodes["Gmail"].parameters.sendTo',
+          },
+        ],
+      },
+    });
+    const cacheFailure = new Error('cache backend unavailable');
+    const reportError = mock(() => {});
+    const service = {
+      generateWorkflowDraft: mock(() => Promise.resolve(draft)),
+      deployWorkflow: mock(() =>
+        Promise.resolve({
+          id: 'wf-committed',
+          name: draft.name,
+          active: false,
+          nodeCount: draft.nodes.length,
+          missingCredentials: [],
+        })
+      ),
+    } as Partial<WorkflowService>;
+    const identity = {
+      cache,
+      deleteCache: mock(() => Promise.reject(cacheFailure)),
+      reportError,
+    };
+
+    await runAction(
+      service,
+      { action: 'create', seedPrompt: 'Email a summary every day.' },
+      undefined,
+      identity
+    );
+    const result = await runAction(
+      service,
+      {
+        action: 'create',
+        resolutions: [
+          { paramPath: 'nodes["Gmail"].parameters.sendTo', value: 'owner@example.com' },
+        ],
+      },
+      undefined,
+      identity
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      values: { workflowId: 'wf-committed', warning: true },
+      data: {
+        warning: {
+          code: 'WORKFLOW_PENDING_DRAFT_CLEAR_FAILED',
+          message: expect.stringContaining('Do not retry creation'),
+        },
+      },
+    });
+    expect(result.text).toContain('Created draft workflow');
+    expect(result.text).toContain('Do not retry creation');
+    expect(cache.size).toBe(1);
+    expect(reportError).toHaveBeenCalledWith(
+      'WorkflowAction.pendingDraftClearAfterDeploy',
+      cacheFailure,
+      expect.objectContaining({ workflowId: 'wf-committed', ownerEntityId: 'user-test' })
+    );
+  });
+
   test('lists workflows for chat review and selection', async () => {
     const listWorkflows = mock(() =>
       Promise.resolve([
@@ -83,7 +530,7 @@ describe('workflowAction chat operations', () => {
       workflowId: 'wf-1',
     });
 
-    expect(getWorkflow).toHaveBeenCalledWith('wf-1');
+    expect(getWorkflow).toHaveBeenCalledWith('wf-1', 'user-test');
     expect(result.success).toBe(true);
     expect(result.values).toEqual({
       workflowId: 'wf-1',
@@ -116,7 +563,7 @@ describe('workflowAction chat operations', () => {
       callback as HandlerCallback
     );
 
-    expect(runWorkflow).toHaveBeenCalledWith('wf-1', { throwOnError: false });
+    expect(runWorkflow).toHaveBeenCalledWith('wf-1', { throwOnError: false }, 'user-test');
     expect(result.success).toBe(true);
     expect(result.values).toEqual({
       workflowId: 'wf-1',
@@ -154,7 +601,7 @@ describe('workflowAction chat operations', () => {
       limit: 5,
     });
 
-    expect(listWorkflowRevisions).toHaveBeenCalledWith('wf-1', 5);
+    expect(listWorkflowRevisions).toHaveBeenCalledWith('wf-1', 5, 'user-test');
     expect(result.success).toBe(true);
     expect(result.values).toEqual({ workflowId: 'wf-1', count: 1 });
     expect(result.data).toEqual({
@@ -182,7 +629,7 @@ describe('workflowAction chat operations', () => {
       versionId: 'v-old',
     });
 
-    expect(restoreWorkflowRevision).toHaveBeenCalledWith('wf-1', 'v-old');
+    expect(restoreWorkflowRevision).toHaveBeenCalledWith('wf-1', 'v-old', 'user-test');
     expect(result.success).toBe(true);
     expect(result.values).toEqual({
       workflowId: 'wf-1',
@@ -249,7 +696,7 @@ describe('workflowAction chat operations', () => {
       callback as HandlerCallback
     );
 
-    expect(listExecutions).toHaveBeenCalledWith({ workflowId: 'wf-1', limit: 10 });
+    expect(listExecutions).toHaveBeenCalledWith({ workflowId: 'wf-1', limit: 10 }, 'user-test');
     expect(result.success).toBe(true);
     expect(result.values).toEqual({
       workflowId: 'wf-1',
@@ -296,7 +743,7 @@ describe('workflowAction chat operations', () => {
       executionId: 'exec-1',
     });
 
-    expect(getExecutionDetail).toHaveBeenCalledWith('exec-1');
+    expect(getExecutionDetail).toHaveBeenCalledWith('exec-1', 'user-test');
     expect(result.success).toBe(true);
     expect(result.values).toEqual({
       workflowId: 'wf-1',
@@ -357,7 +804,7 @@ describe('workflowAction chat operations', () => {
       limit: 5,
     });
 
-    expect(getWorkflowEvaluationSuite).toHaveBeenCalledWith('wf-1', 5);
+    expect(getWorkflowEvaluationSuite).toHaveBeenCalledWith('wf-1', 5, 'user-test');
     expect(result.success).toBe(true);
     expect(result.values).toEqual({
       workflowId: 'wf-1',
@@ -374,5 +821,36 @@ describe('workflowAction chat operations', () => {
         jsonl: '{"id":"wf-1:exec-1"}',
       }),
     });
+  });
+});
+
+describe('automation vocabulary (#16570)', () => {
+  test('carries the automation simile family a live agent actually guessed', () => {
+    const similes = new Set(workflowAction.similes ?? []);
+    // The two exact names from the production repro must resolve, plus the
+    // core family the "automations" UI vocabulary produces.
+    for (const guessed of [
+      'AUTOMATION_DELETE',
+      'AUTOMATION_CANCEL',
+      'DELETE_AUTOMATION',
+      'CANCEL_AUTOMATION',
+      'LIST_AUTOMATIONS',
+      'CREATE_AUTOMATION',
+      'DISABLE_AUTOMATION',
+    ]) {
+      expect(similes.has(guessed)).toBe(true);
+    }
+  });
+
+  test('describes itself with the automation vocabulary so keyword retrieval matches', () => {
+    expect(workflowAction.description.toLowerCase()).toContain('automation');
+    expect(workflowAction.descriptionCompressed?.toLowerCase()).toContain('automation');
+  });
+
+  test('the delete op the vocabulary routes to actually exists', () => {
+    const opParam = (workflowAction.parameters ?? []).find((p) => p.name === 'action');
+    const allowed = (opParam?.schema as { enum?: string[] } | undefined)?.enum ?? [];
+    expect(allowed).toContain('delete');
+    expect(allowed).toContain('deactivate');
   });
 });

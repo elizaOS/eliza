@@ -15,15 +15,26 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { mergeLcovReports } from "../merge-lcov-reports.mjs";
 import {
   findNearestPackageDir,
   findNearestVitestConfig,
   groupChangedVitestTests,
-  mergeLcovReports,
   normalizeLcovReport,
 } from "../run-changed-vitest-coverage.mjs";
+import {
+  composeChangedCoverageConfig,
+  loadChangedCoverageConfig,
+} from "../vitest.changed-coverage.config";
 
 const roots: string[] = [];
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+);
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true });
@@ -106,6 +117,44 @@ describe("changed Vitest coverage grouping", () => {
     ]);
   });
 
+  test("prefers vitest.electrobun.config.ts for platforms/electrobun tests", () => {
+    // The owning app-core config deliberately excludes platforms/electrobun/**
+    // (its suites need the electrobun/bun stub alias), so grouping one there
+    // exits "no test files found". Preferring the platform's own config is what
+    // keeps the changed-coverage lane green for desktop shell tests. Mirrors
+    // packages/app-core/platforms/electrobun/vitest.electrobun.config.ts.
+    const root = fixture();
+    const packageDir = path.join(root, "packages", "feature");
+    const electrobunDir = path.join(packageDir, "platforms", "electrobun");
+    const electrobunSrc = path.join(electrobunDir, "src", "lifecycle");
+    mkdirSync(electrobunSrc, { recursive: true });
+    writeFileSync(path.join(electrobunDir, "package.json"), "{}");
+    writeFileSync(
+      path.join(electrobunDir, "vitest.electrobun.config.ts"),
+      "export default {};",
+    );
+    writeFileSync(path.join(electrobunSrc, "api-base-owner.test.ts"), "");
+
+    const config = findNearestVitestConfig(
+      root,
+      "packages/feature/platforms/electrobun/src/lifecycle/api-base-owner.test.ts",
+    );
+    expect(config).toBe(
+      path.join(electrobunDir, "vitest.electrobun.config.ts"),
+    );
+
+    const groups = groupChangedVitestTests(root, [
+      "packages/feature/platforms/electrobun/src/lifecycle/api-base-owner.test.ts",
+    ]);
+    expect(groups).toHaveLength(1);
+    // The platform is its own package: tests run from the electrobun dir so the
+    // config's relative `include` patterns resolve.
+    expect(groups[0].packageDir).toBe(electrobunDir);
+    expect(path.relative(root, groups[0].reportDir)).toBe(
+      "coverage/vitest/packages-feature-platforms-electrobun-vitest.electrobun.config",
+    );
+  });
+
   test("runs a nested config from the owning package directory", () => {
     // Mirrors packages/test/harness/vitest.config.ts: the config sits below
     // the package root and its include patterns resolve against the package
@@ -140,6 +189,62 @@ describe("changed Vitest coverage grouping", () => {
     expect(() => findNearestVitestConfig(root, "../outside.test.ts")).toThrow(
       "escapes the repository",
     );
+  });
+
+  test("preserves package aliases before comprehensive workspace source aliases", () => {
+    const packageAlias = {
+      find: /^@elizaos\/shared$/,
+      replacement: "/test/shared-stub.ts",
+    };
+    const config = composeChangedCoverageConfig(
+      {
+        resolve: {
+          alias: [packageAlias],
+          conditions: ["browser"],
+        },
+      },
+      repoRoot,
+    );
+    const aliases = config.resolve?.alias;
+    expect(Array.isArray(aliases)).toBe(true);
+    if (!Array.isArray(aliases)) {
+      throw new Error("Expected changed coverage aliases to use array order");
+    }
+
+    expect(aliases[0]).toEqual(packageAlias);
+    const sharedSourceAlias = aliases.find(
+      (entry, index) =>
+        index > 0 &&
+        typeof entry === "object" &&
+        entry !== null &&
+        "find" in entry &&
+        entry.find instanceof RegExp &&
+        entry.find.test("@elizaos/shared"),
+    );
+    expect(sharedSourceAlias).toBeDefined();
+    expect(sharedSourceAlias).toMatchObject({
+      replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
+    });
+    expect(config.resolve?.conditions).toEqual(["browser", "eliza-source"]);
+  });
+
+  test("loads extensionless TypeScript config dependencies through Vite", async () => {
+    // packages/agent imports `packages/test/vitest/default.config` without a
+    // file extension. This is valid in a Vite config graph but fails when the
+    // package config is loaded through native Node ESM.
+    const config = await loadChangedCoverageConfig(
+      { command: "serve", mode: "test" },
+      {
+        ELIZA_CHANGED_VITEST_CONFIG: path.join(
+          repoRoot,
+          "packages/agent/vitest.config.ts",
+        ),
+        ELIZA_CHANGED_VITEST_REPO_ROOT: repoRoot,
+      },
+    );
+
+    expect(config.root).toBe(path.join(repoRoot, "packages/agent"));
+    expect(config.test?.environment).toBe("node");
   });
 
   test("union-merges per-group LCOV reports so any-group coverage counts once per file", () => {

@@ -214,13 +214,17 @@ describe("startTriggerEventBridge", () => {
 
     expect(dispatch).toHaveBeenCalledTimes(1);
     const dispatchArgs = dispatch.mock.calls[0];
-    expect(dispatchArgs?.[2]).toMatchObject({
+    expect(dispatchArgs).toBeDefined();
+    if (!dispatchArgs) {
+      throw new Error("Expected the trigger dispatch arguments to be captured");
+    }
+    expect(dispatchArgs[2]).toMatchObject({
       source: "event",
       event: { kind: EventType.MESSAGE_RECEIVED },
     });
     // The runtime/source fields are stripped from the forwarded payload.
-    const forwarded = (dispatchArgs?.[2] as { event: { payload: unknown } })
-      .event.payload as Record<string, unknown>;
+    const forwarded = (dispatchArgs[2] as { event: { payload: unknown } }).event
+      .payload as Record<string, unknown>;
     expect(forwarded).toMatchObject({ text: "hello" });
     expect(forwarded).not.toHaveProperty("runtime");
     expect(forwarded).not.toHaveProperty("source");

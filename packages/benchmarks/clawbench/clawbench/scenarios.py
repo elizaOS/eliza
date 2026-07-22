@@ -12,6 +12,15 @@ import yaml
 CLAWBENCH_DIR = Path(__file__).resolve().parent.parent
 SCENARIOS_DIR = CLAWBENCH_DIR / "scenarios"
 EXPANSION_MULTIPLIER = 10
+EXPECTED_BASE_SCENARIO_IDS = frozenset(
+    {
+        "client_escalation",
+        "inbox_to_action",
+        "inbox_triage",
+        "morning_brief",
+        "team_standup",
+    }
+)
 
 ScenarioDict = dict[str, Any]
 Variant = tuple[str, str, str]
@@ -54,6 +63,19 @@ def load_base_scenarios() -> list[ScenarioDict]:
     return [_load_yaml(path) for path in sorted(SCENARIOS_DIR.glob("*.y*ml"))]
 
 
+def _base_identity_issues(
+    base_scenarios: list[ScenarioDict],
+) -> tuple[list[str], list[str], list[str]]:
+    ids = [str(scenario.get("name", "")) for scenario in base_scenarios]
+    duplicates = sorted({scenario_id for scenario_id in ids if ids.count(scenario_id) > 1})
+    actual = set(ids)
+    return (
+        duplicates,
+        sorted(EXPECTED_BASE_SCENARIO_IDS - actual),
+        sorted(actual - EXPECTED_BASE_SCENARIO_IDS),
+    )
+
+
 def _apply_variant(scenario: ScenarioDict, variant: Variant) -> ScenarioDict:
     variant_id, description, template = variant
     out = copy.deepcopy(scenario)
@@ -83,6 +105,12 @@ def expand_scenarios(base_scenarios: list[ScenarioDict]) -> list[ScenarioDict]:
 
 def load_scenarios() -> list[ScenarioDict]:
     base = load_base_scenarios()
+    duplicates, missing, unexpected = _base_identity_issues(base)
+    if duplicates or missing or unexpected:
+        raise ValueError(
+            "ClawBench base scenario corpus drifted: "
+            f"duplicates={duplicates}, missing={missing}, unexpected={unexpected}"
+        )
     return [*base, *expand_scenarios(base)]
 
 
@@ -100,6 +128,13 @@ def load_scenario(name_or_path: str) -> ScenarioDict:
 
 
 def count_scenarios() -> dict[str, int | str | float]:
+    validation = validate_scenarios()
+    if not validation["valid"]:
+        raise ValueError(
+            "cannot count an invalid ClawBench corpus: "
+            f"missing={validation['missingBaseIds']}, "
+            f"unexpected={validation['unexpectedBaseIds']}"
+        )
     base = load_base_scenarios()
     expanded = expand_scenarios(base)
     return {
@@ -113,6 +148,9 @@ def count_scenarios() -> dict[str, int | str | float]:
 
 def validate_scenarios() -> dict[str, object]:
     base = load_base_scenarios()
+    duplicate_base_ids, missing_base_ids, unexpected_base_ids = (
+        _base_identity_issues(base)
+    )
     expanded = expand_scenarios(base)
     all_scenarios = [*base, *expanded]
     ids: set[str] = set()
@@ -136,12 +174,20 @@ def validate_scenarios() -> dict[str, object]:
     expansion_matches = len(expanded) == len(base) * EXPANSION_MULTIPLIER
     return {
         "valid": not duplicate_ids
+        and not duplicate_base_ids
+        and not missing_base_ids
+        and not unexpected_base_ids
         and not missing_prompt
         and not missing_scoring
         and not missing_tools
         and expansion_matches,
         "total": len(all_scenarios),
         "uniqueIds": len(ids),
+        "expectedBaseIds": sorted(EXPECTED_BASE_SCENARIO_IDS),
+        "actualBaseIds": sorted(str(scenario.get("name", "")) for scenario in base),
+        "duplicateBaseIds": duplicate_base_ids,
+        "missingBaseIds": missing_base_ids,
+        "unexpectedBaseIds": unexpected_base_ids,
         "duplicateIds": sorted(duplicate_ids),
         "missingPrompt": missing_prompt,
         "missingScoring": missing_scoring,

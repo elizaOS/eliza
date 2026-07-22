@@ -136,7 +136,11 @@ describe("subPlannerResultToPlannerToolResult", () => {
 			"provision_workspace",
 			"spawn_agent",
 		]);
-		expect(Array.isArray(result.data?.subSteps)).toBe(true);
-		expect((result.data?.subSteps as unknown[]).length).toBe(3);
+		const subSteps = result.data?.subSteps;
+		expect(Array.isArray(subSteps)).toBe(true);
+		if (!Array.isArray(subSteps)) {
+			throw new Error("Expected structured sub-step diagnostics");
+		}
+		expect(subSteps.length).toBe(3);
 	});
 });

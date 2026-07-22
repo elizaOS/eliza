@@ -38,7 +38,14 @@ describe("createLiveRuntimeChildEnv", () => {
     ["whitespace-only", " \t\n"],
   ])("does not preserve a %s Cloud key in Cloud-live mode", (_, cloudKey) => {
     vi.stubEnv("ELIZA_UI_SMOKE_CLOUD_LIVE", "1");
-    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", cloudKey);
+    if (cloudKey === undefined) {
+      // Record the ambient value for `vi.unstubAllEnvs()`, then remove it.
+      // `vi.stubEnv(key, undefined)` leaves an existing CI secret untouched.
+      vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "");
+      delete process.env.ELIZAOS_CLOUD_API_KEY;
+    } else {
+      vi.stubEnv("ELIZAOS_CLOUD_API_KEY", cloudKey);
+    }
 
     const childEnv = createLiveRuntimeChildEnv({
       OPENAI_API_KEY: "selected-provider-key",

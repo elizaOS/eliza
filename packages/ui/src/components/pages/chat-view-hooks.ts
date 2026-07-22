@@ -866,11 +866,26 @@ export function useChatVoiceController(options: {
     setManualRealtimeRequested(requested);
   }, []);
 
+  // Latched when a toggle-driven auto-start resolved `fallback-to-batch`
+  // (#16661): a feature-disabled mint 404 sets no error and keeps `available`
+  // true, so without this latch `realtimeWanted` would stay true forever —
+  // batch capture disabled, start-pending ref stuck, hands-free dead. The
+  // latch clears on the next mode toggle (the same retry-on-next-interaction
+  // contract the tap path's tests lock in).
+  const [realtimeFellBack, setRealtimeFellBack] = useState(false);
+  useEffect(() => {
+    // The mode value itself is the reset trigger — reading it here keeps the
+    // dependency real for the linter.
+    void continuousMode;
+    setRealtimeFellBack(false);
+  }, [continuousMode]);
+
   const realtimeWanted =
     (continuousMode !== "off" || manualRealtimeRequested) &&
     !isComposerLocked &&
     realtime.available &&
-    !realtime.error;
+    !realtime.error &&
+    !realtimeFellBack;
 
   // The batch continuous-chat engine. While the realtime WS session is the
   // active mic, the batch passive capture must NOT also run (double mic / double
@@ -918,7 +933,15 @@ export function useChatVoiceController(options: {
       !realtimeStartPendingRef.current
     ) {
       realtimeStartPendingRef.current = true;
-      void realtimeStartRef.current();
+      // Mirror of the tap path's outcome contract (#16661): a
+      // fallback-to-batch outcome releases the realtime want so the batch
+      // continuous engine re-enables itself (its bring-up keys off
+      // `disabled`), instead of stranding hands-free behind a latched want.
+      void realtimeStartRef.current().then((outcome) => {
+        if (outcome.kind !== "fallback-to-batch") return;
+        realtimeStartPendingRef.current = false;
+        setRealtimeFellBack(true);
+      });
     } else if (
       !realtimeWanted &&
       // A no-longer-wanted session must also be cancelled while it is still
@@ -953,16 +976,10 @@ export function useChatVoiceController(options: {
   const beginVoiceCapture = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
       if (isComposerLocked) return;
-      // Realtime owns the tap while available and not in a NON-actionable error
-      // state. An actionable error (permission re-granted, transport drop,
-      // connect timeout) advertises "tap the mic to try again" — so that tap
-      // must re-enter the realtime branch (start() clears the error); only
-      // non-actionable failures (consent/mint, which also latch eligibility
-      // off) hand the tap to the batch path as their copy promises.
-      if (
-        voiceSession.realtimeEligible &&
-        (!voiceSession.realtimeError || voiceSession.realtimeError.actionable)
-      ) {
+      // A fallback applies to the failed interaction, not every later mic tap.
+      // Consent, mint, and transport failures keep realtime eligible so the
+      // next explicit gesture probes it again; start() clears the prior error.
+      if (voiceSession.realtimeEligible) {
         setManualRealtimeIntent(true);
         realtimeStartPendingRef.current = true;
         const latestAssistant =
@@ -980,13 +997,21 @@ export function useChatVoiceController(options: {
         });
         return;
       }
+      if (
+        isRealtimeVoiceFlagEnabled() &&
+        (!realtimeAgentId || !activeConversationId)
+      ) {
+        voiceSession.reportRealtimeFallback("missing-identity");
+      }
       beginBatchVoiceCapture(mode);
     },
     [
+      activeConversationId,
       beginBatchVoiceCapture,
       chatInput,
       conversationMessages,
       isComposerLocked,
+      realtimeAgentId,
       stopSpeaking,
       setManualRealtimeIntent,
       voiceSession,
@@ -1022,11 +1047,17 @@ export function useChatVoiceController(options: {
   // existing start handler's barge-in branch instead of the stop branch.
   const realtimeOwnsComposer =
     manualRealtimeRequested || voiceSession.realtimeActive;
+  const realtimeIsCapturingSpeech =
+    voiceSession.status === "listening" ||
+    voiceSession.status === "transcribing";
+  const realtimeStartAwaitingActivation =
+    manualRealtimeRequested && !voiceSession.realtimeActive;
   const composerVoice = useMemo(
     () => ({
       isListening:
         voice.isListening ||
-        (realtimeOwnsComposer && !voiceSession.agentSpeaking),
+        realtimeStartAwaitingActivation ||
+        (voiceSession.realtimeActive && realtimeIsCapturingSpeech),
       captureMode: realtimeOwnsComposer
         ? ("compose" as const)
         : voice.captureMode,
@@ -1039,7 +1070,8 @@ export function useChatVoiceController(options: {
       voice.interimTranscript,
       voice.isListening,
       realtimeOwnsComposer,
-      voiceSession.agentSpeaking,
+      realtimeIsCapturingSpeech,
+      realtimeStartAwaitingActivation,
       voiceSession.interimTranscript,
       voiceSession.realtimeActive,
     ],
@@ -1089,7 +1121,10 @@ export function useGameModalMessages(options: {
   const previousCompanionCutoffTsRef = useRef(companionMessageCutoffTs);
   const previousGameModalVisibleMsgsRef = useRef<ConversationMessage[]>([]);
   const previousActiveConversationIdRef = useRef(activeConversationId);
-  const [companionNowMs, setCompanionNowMs] = useState(() => Date.now());
+  // Initialized to 0 (not Date.now()) to keep the render pass deterministic; the
+  // companion tick effect below seeds the real clock via setCompanionNowMs(Date.now())
+  // the moment a carryover exists, before companionNowMs is ever compared.
+  const [companionNowMs, setCompanionNowMs] = useState(0);
   const [companionCarryover, setCompanionCarryover] =
     useState<CompanionCarryoverState | null>(null);
   const docVisible = useDocumentVisibility();

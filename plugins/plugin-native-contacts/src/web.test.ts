@@ -7,19 +7,16 @@ import { describe, expect, it } from "vitest";
 import { ContactsWeb } from "./web";
 
 describe("ContactsWeb fallback", () => {
-  it.each([
-    0,
-    -1,
-    501,
-    Number.POSITIVE_INFINITY,
-    Number.NaN,
-  ])("rejects malformed listContacts limit %s", async (limit) => {
-    const contacts = new ContactsWeb();
+  it.each([0, -1, 501, Number.POSITIVE_INFINITY, Number.NaN])(
+    "rejects malformed listContacts limit %s",
+    async (limit) => {
+      const contacts = new ContactsWeb();
 
-    await expect(contacts.listContacts({ limit })).rejects.toThrow(
-      "limit must be between 1 and 500",
-    );
-  });
+      await expect(contacts.listContacts({ limit })).rejects.toThrow(
+        "limit must be between 1 and 500",
+      );
+    },
+  );
 
   it("returns an empty contact list for valid web fallback queries", async () => {
     const contacts = new ContactsWeb();

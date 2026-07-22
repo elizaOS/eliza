@@ -91,8 +91,9 @@ describe("plugins CLI helpers", () => {
     vi.stubEnv("HOME", home);
     vi.stubEnv("USERPROFILE", home);
 
-    expect(() => validatePluginPath(cwdPluginDir)).not.toThrow();
-    expect(() => validatePluginPath(homePluginDir)).not.toThrow();
+    const boundaries = { cwd, home };
+    expect(() => validatePluginPath(cwdPluginDir, boundaries)).not.toThrow();
+    expect(() => validatePluginPath(homePluginDir, boundaries)).not.toThrow();
   });
 
   it("rejects paths outside cwd and home after resolving dot segments", () => {
@@ -108,7 +109,10 @@ describe("plugins CLI helpers", () => {
     vi.stubEnv("USERPROFILE", home);
 
     expect(() =>
-      validatePluginPath(path.join(cwd, "plugins", "..", "..", "outside")),
+      validatePluginPath(path.join(cwd, "plugins", "..", "..", "outside"), {
+        cwd,
+        home,
+      }),
     ).toThrow("outside allowed boundaries");
   });
 
@@ -126,7 +130,7 @@ describe("plugins CLI helpers", () => {
     vi.stubEnv("HOME", home);
     vi.stubEnv("USERPROFILE", home);
 
-    expect(() => validatePluginPath(symlink)).toThrow(
+    expect(() => validatePluginPath(symlink, { cwd, home })).toThrow(
       "outside allowed boundaries",
     );
   });

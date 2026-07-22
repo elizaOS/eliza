@@ -117,6 +117,7 @@ describe("corsMiddleware — first-party origins (credentialed)", () => {
     const exposed = (res.headers.get("access-control-expose-headers") || "").toLowerCase();
     expect(exposed).toContain("server-timing");
     expect(exposed).toContain("x-eliza-trace-id");
+    expect(exposed).toContain("x-eliza-tts-provider");
     expect(exposed).toContain("x-eliza-preforward-ms");
     expect(exposed).toContain("x-eliza-auth-trace");
   });

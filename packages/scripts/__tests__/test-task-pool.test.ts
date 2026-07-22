@@ -323,10 +323,10 @@ describe("CI plugin sharding contract", () => {
       /develop-static-gate:[\s\S]*?Prompt secret scan[\s\S]*?check:secrets[\s\S]*?UI determinism self-test[\s\S]*?audit:ui-determinism:self-test[\s\S]*?UI determinism gate[\s\S]*?audit:ui-determinism/,
     );
     expect(qualityWorkflow).toMatch(
-      /develop-lint-gate:[\s\S]*?install-command: bun install[\s\S]*?Run lint[\s\S]*?bun run lint/,
+      /develop-lint-gate:[\s\S]*?install-command: bun install[\s\S]*?Run lint[\s\S]*?bun run lint:check/,
     );
     expect(qualityWorkflow).not.toMatch(
-      /develop-static-gate:[\s\S]*?Run lint[\s\S]*?bun run lint[\s\S]*?develop-lint-gate:/,
+      /develop-static-gate:[\s\S]*?Run lint[\s\S]*?bun run lint:check[\s\S]*?develop-lint-gate:/,
     );
   });
 });

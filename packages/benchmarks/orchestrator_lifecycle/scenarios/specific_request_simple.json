@@ -6,8 +6,8 @@
   "turns": [
     {
       "actor": "user",
-      "message": "Implement the login timeout fix and keep me updated.",
-      "expected_behaviors": ["spawn_subagent", "report_active_subagent_status"]
+      "message": "In the current workspace, fix login sessions that remain active past the configured timeout. Preserve valid sessions, add or update regression tests for expiry, run the relevant test suite, and keep me updated.",
+      "expected_behaviors": ["spawn_subagent"]
     }
   ]
 }

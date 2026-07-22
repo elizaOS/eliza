@@ -217,17 +217,20 @@ describe("ScreenCaptureWeb", () => {
     { quality: Number.POSITIVE_INFINITY },
     { scale: 0 },
     { scale: Number.NaN },
-  ])("rejects malformed screenshot options %# before requesting capture", async (options) => {
-    const getDisplayMedia = vi.fn();
-    setNavigator({
-      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
-    });
+  ])(
+    "rejects malformed screenshot options %# before requesting capture",
+    async (options) => {
+      const getDisplayMedia = vi.fn();
+      setNavigator({
+        mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+      });
 
-    await expect(
-      new ScreenCaptureWeb().captureScreenshot(options),
-    ).rejects.toThrow(/quality|scale/);
-    expect(getDisplayMedia).not.toHaveBeenCalled();
-  });
+      await expect(
+        new ScreenCaptureWeb().captureScreenshot(options),
+      ).rejects.toThrow(/quality|scale/);
+      expect(getDisplayMedia).not.toHaveBeenCalled();
+    },
+  );
 
   it("stops acquired display tracks when screenshot frame capture fails", async () => {
     const track = new FakeTrack("video", { width: 320, height: 200 });
@@ -282,18 +285,21 @@ describe("ScreenCaptureWeb", () => {
     { bitrate: -1 },
     { maxDuration: Number.POSITIVE_INFINITY },
     { maxFileSize: 0 },
-  ])("rejects malformed recording options %# before requesting capture", async (options) => {
-    const getDisplayMedia = vi.fn();
-    setNavigator({
-      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
-    });
-    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+  ])(
+    "rejects malformed recording options %# before requesting capture",
+    async (options) => {
+      const getDisplayMedia = vi.fn();
+      setNavigator({
+        mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+      });
+      vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
 
-    await expect(
-      new ScreenCaptureWeb().startRecording(options),
-    ).rejects.toThrow(/fps|bitrate|maxDuration|maxFileSize/);
-    expect(getDisplayMedia).not.toHaveBeenCalled();
-  });
+      await expect(
+        new ScreenCaptureWeb().startRecording(options),
+      ).rejects.toThrow(/fps|bitrate|maxDuration|maxFileSize/);
+      expect(getDisplayMedia).not.toHaveBeenCalled();
+    },
+  );
 
   it("runs recording pause, resume, stop, and listener removal without leaking tracks", async () => {
     vi.useFakeTimers();

@@ -5,6 +5,7 @@
  * fusion into a tier-sized candidate set.
  */
 import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
+import { logger } from "../logger";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
 
@@ -994,6 +995,10 @@ function hasOnlyOperationTokens(tokens: Set<string>): boolean {
 	return true;
 }
 
+/** Once-per-process dedupe for the ambiguous-simile warn — the resolver runs
+ *  on every retrieval and the catalog is stable within a process. */
+const warnedAmbiguousSimiles = new Set<string>();
+
 function resolveSimileParentHints(
 	parents: readonly ActionCatalogParent[],
 	candidateActions: readonly string[],
@@ -1003,20 +1008,45 @@ function resolveSimileParentHints(
 	}
 	const parentNames = new Set(parents.map((parent) => parent.normalizedName));
 	const parentBySimile = new Map<string, string>();
+	// A simile claimed by MORE than one parent is ambiguous and must not route
+	// at all (#16561): first-writer-wins silently steals the intent from the
+	// other parent (catalog order is alphabetical, not semantic — e.g. a
+	// LIST_FILES simile on both a file-ops action and a stored-media action).
+	// The warn dedupes per process: this resolver runs on every retrieval.
+	const ambiguousSimiles = new Set<string>();
 	for (const parent of parents) {
-		for (const simile of [
-			...parent.similes,
-			...parent.children.flatMap((child) => child.similes),
-		]) {
-			const normalized = normalizeActionName(simile);
-			// A simile that collides with a real parent name must not hijack it.
-			if (!normalized || parentNames.has(normalized)) {
+		const ownSimiles = new Set(
+			[
+				...parent.similes,
+				...parent.children.flatMap((child) => child.similes),
+			].flatMap((simile) => {
+				const normalized = normalizeActionName(simile);
+				// A simile that collides with a real parent name must not hijack it.
+				return !normalized || parentNames.has(normalized) ? [] : [normalized];
+			}),
+		);
+		for (const normalized of ownSimiles) {
+			const claimedBy = parentBySimile.get(normalized);
+			if (claimedBy !== undefined && claimedBy !== parent.normalizedName) {
+				if (!warnedAmbiguousSimiles.has(normalized)) {
+					warnedAmbiguousSimiles.add(normalized);
+					logger.warn(
+						{
+							src: "action-retrieval",
+							simile: normalized,
+							parents: [claimedBy, parent.normalizedName],
+						},
+						"simile claimed by multiple parents — dropped from routing as ambiguous",
+					);
+				}
+				ambiguousSimiles.add(normalized);
 				continue;
 			}
-			if (!parentBySimile.has(normalized)) {
-				parentBySimile.set(normalized, parent.normalizedName);
-			}
+			parentBySimile.set(normalized, parent.normalizedName);
 		}
+	}
+	for (const normalized of ambiguousSimiles) {
+		parentBySimile.delete(normalized);
 	}
 	return candidateActions.flatMap((actionName) => {
 		if (parentNames.has(actionName)) {

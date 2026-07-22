@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from benchmarks.orchestrator_lifecycle.dataset import LifecycleDataset
+from benchmarks.orchestrator_lifecycle.dataset import (
+    LifecycleDataset,
+    scenario_corpus_sha256,
+)
 
 
 def test_dataset_loads_seed_scenarios() -> None:
@@ -31,3 +34,42 @@ def test_dataset_expands_seed_scenarios_by_exactly_10x() -> None:
         "emptyTurns": [],
         "expansionMatches": True,
     }
+
+
+def test_expanded_messages_do_not_disclose_benchmark_identity() -> None:
+    scenarios = LifecycleDataset("benchmarks/orchestrator_lifecycle/scenarios").load()
+    model_visible_text = "\n".join(
+        turn.message
+        for scenario in scenarios
+        for turn in scenario.turns
+        if turn.actor in {"user", "assistant"}
+    ).lower()
+
+    assert "orchestrator lifecycle benchmark" not in model_visible_text
+    assert "expected_behaviors" not in model_visible_text
+    assert "forbidden_behaviors" not in model_visible_text
+
+
+def test_corpus_digest_is_order_independent_and_content_sensitive() -> None:
+    scenarios = LifecycleDataset("benchmarks/orchestrator_lifecycle/scenarios").load()
+    expected = scenario_corpus_sha256(scenarios)
+
+    assert scenario_corpus_sha256(list(reversed(scenarios))) == expected
+    scenarios[0].turns[0].message += " changed"
+    assert scenario_corpus_sha256(scenarios) != expected
+
+
+def test_intake_scenarios_do_not_require_status_for_unexecuted_spawns() -> None:
+    by_id = {
+        scenario.scenario_id: scenario
+        for scenario in LifecycleDataset(
+            "benchmarks/orchestrator_lifecycle/scenarios"
+        ).load_base()
+    }
+
+    for scenario_id in (
+        "specific_request_simple",
+        "code_request_requires_shell",
+        "research_request_requires_web",
+    ):
+        assert by_id[scenario_id].turns[0].expected_behaviors == ["spawn_subagent"]

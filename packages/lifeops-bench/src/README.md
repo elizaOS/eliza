@@ -10,7 +10,8 @@ Python Benchmark Runner
 eliza-adapter (Python client)
     |  (HTTP requests)
 server.ts (this directory)
-    |  (canonical message pipeline)
+    |  (messageService.handleMessage for conversation;
+    |   AgentRuntime.useModel for benchmark-native model/tool calls)
 elizaOS AgentRuntime
 ```
 
@@ -73,7 +74,15 @@ configuration, pass@1, recovery categories, and manually reviewed outputs.
 Returns readiness + runtime metadata.
 
 ```json
-{ "status": "ready", "agent_name": "Kira", "plugins": 3 }
+{
+  "status": "ready",
+  "agent_name": "Kira",
+  "plugins": 3,
+  "native_runtime_class": "@elizaos/core.AgentRuntime",
+  "native_runtime_api": "messageService.handleMessage",
+  "native_model_api": "useModel",
+  "transport": "eliza_benchmark_http"
+}
 ```
 
 ### `POST /api/benchmark/reset`

@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import hermes_adapter.env_runner as env_runner
 
 from hermes_adapter.env_runner import (
     ENV_MODULES,
@@ -28,7 +29,7 @@ from hermes_adapter.env_runner import (
 
 
 @pytest.fixture
-def fake_repo(tmp_path: Path) -> Path:
+def fake_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = tmp_path / "hermes-agent-src"
     repo.mkdir()
     venv_python = repo / ".venv" / "bin" / "python"
@@ -40,6 +41,26 @@ def fake_repo(tmp_path: Path) -> Path:
         target = repo / module_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("# fake")
+    monkeypatch.setattr(
+        env_runner,
+        "_verify_source_checkout",
+        lambda repo, env_id, venv_python: env_runner.PINNED_HERMES_ENV_REVISION,
+    )
+    monkeypatch.setattr(
+        env_runner,
+        "_verify_pinned_dataset",
+        lambda source, venv_python: {
+            "name": source.dataset,
+            "revision": source.revision,
+            "actual_count": source.expected_count,
+        },
+    )
+    monkeypatch.setattr(
+        env_runner,
+        "_git_revision",
+        lambda repo: env_runner.PINNED_YC_BENCH_REVISION,
+    )
+    monkeypatch.setattr(env_runner, "_verify_yc_presets", lambda yc_path: None)
     return repo
 
 
@@ -140,29 +161,28 @@ def test_env_runner_parses_summary_top_level_metrics(tmp_path: Path) -> None:
     assert result.metrics["n"] == 50
 
 
-def test_env_runner_parses_summary_falls_back_to_zero(tmp_path: Path) -> None:
-    """If no recognised score key is present, score=0.0 (still higher-is-better)."""
+def test_env_runner_rejects_summary_without_a_score(tmp_path: Path) -> None:
     evals_root = tmp_path / "evals" / "yc_bench"
     evals_root.mkdir(parents=True)
     (evals_root / "eval-summary.json").write_text(json.dumps({"metrics": {"weird_key": 1}}))
     (evals_root / "samples.jsonl").write_text("")
-    result = parse_hermes_env_result(env_id="yc_bench", evals_root=evals_root, duration_s=0.1)
-    assert result.score == 0.0
-    assert result.higher_is_better is True
+    with pytest.raises(RuntimeError, match="no recognized score"):
+        parse_hermes_env_result(
+            env_id="yc_bench", evals_root=evals_root, duration_s=0.1
+        )
 
 
-def test_env_runner_does_not_score_placeholder_metric(tmp_path: Path) -> None:
+def test_env_runner_rejects_placeholder_metric(tmp_path: Path) -> None:
     evals_root = tmp_path / "evals" / "hermes_swe_env"
     evals_root.mkdir(parents=True)
     (evals_root / "metrics.json").write_text(json.dumps({"placeholder": 0.0}))
     (evals_root / "samples.jsonl").write_text("")
-    result = parse_hermes_env_result(
-        env_id="hermes_swe_env",
-        evals_root=evals_root,
-        duration_s=0.1,
-    )
-    assert result.score == 0.0
-    assert "placeholder" in result.metrics
+    with pytest.raises(RuntimeError, match="no recognized score"):
+        parse_hermes_env_result(
+            env_id="hermes_swe_env",
+            evals_root=evals_root,
+            duration_s=0.1,
+        )
 
 
 def test_env_runner_counts_incomplete_rollouts(tmp_path: Path) -> None:
@@ -210,8 +230,59 @@ def test_env_runner_raises_when_artifacts_missing(tmp_path: Path) -> None:
         parse_hermes_env_result(env_id="tblite", evals_root=evals_root, duration_s=1.0)
 
 
+def test_env_runner_raises_when_summary_has_no_samples(tmp_path: Path) -> None:
+    evals_root = tmp_path / "evals" / "tblite"
+    evals_root.mkdir(parents=True)
+    (evals_root / "eval-summary.json").write_text(
+        json.dumps({"metrics": {"accuracy": 0.5}})
+    )
+    with pytest.raises(FileNotFoundError, match="no samples.jsonl"):
+        parse_hermes_env_result(env_id="tblite", evals_root=evals_root, duration_s=1.0)
+
+
+def test_env_runner_rejects_incomplete_sample_count(tmp_path: Path) -> None:
+    evals_root = tmp_path / "evals" / "tblite"
+    evals_root.mkdir(parents=True)
+    (evals_root / "eval-summary.json").write_text(
+        json.dumps({"metrics": {"accuracy": 0.5}})
+    )
+    (evals_root / "samples.jsonl").write_text("{}\n")
+    with pytest.raises(RuntimeError, match="produced 1 samples; expected 100"):
+        parse_hermes_env_result(
+            env_id="tblite",
+            evals_root=evals_root,
+            duration_s=1.0,
+            expected_samples=100,
+        )
+
+
 def test_env_modules_table_has_all_four_envs() -> None:
     assert set(ENV_MODULES) == {"tblite", "terminalbench_2", "yc_bench", "hermes_swe_env"}
+
+
+def test_pinned_dataset_preflight_rejects_fingerprint_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = env_runner.ENV_SOURCES["tblite"]
+
+    def fake_run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        check_env = kwargs.get("env")
+        assert isinstance(check_env, dict)
+        assert check_env["HF_HUB_OFFLINE"] == "1"
+        assert check_env["HF_DATASETS_OFFLINE"] == "1"
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps({"count": source.expected_count, "fingerprint": "drifted"})
+            + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(env_runner, "_subprocess_run", fake_run)
+
+    with pytest.raises(RuntimeError, match="fingerprint"):
+        env_runner._verify_pinned_dataset(source, venv_python=tmp_path / "python")
 
 
 def test_env_runner_max_tasks_uses_supported_smoke_filter(fake_repo: Path, tmp_path: Path) -> None:
@@ -232,7 +303,7 @@ def test_env_runner_max_tasks_uses_supported_smoke_filter(fake_repo: Path, tmp_p
             "tblite",
             output_dir=tmp_path / "out",
             repo_path=fake_repo,
-            max_tasks=3,
+            max_tasks=1,
             model="m",
             api_key="key",
             base_url="https://x",
@@ -250,7 +321,7 @@ def test_env_runner_task_filter_flag_present_when_set(fake_repo: Path, tmp_path:
         save_dir = tmp_path / "out" / "evals" / "tblite"
         save_dir.mkdir(parents=True)
         (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.5}}))
-        (save_dir / "samples.jsonl").write_text("{}\n")
+        (save_dir / "samples.jsonl").write_text("{}\n{}\n")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
     with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
@@ -289,6 +360,7 @@ def test_env_runner_sets_terminal_env_docker_when_available(fake_repo: Path, tmp
             model="m",
             api_key="key",
             base_url="https://b",
+            max_tasks=1,
         )
     assert captured_env.get("TERMINAL_ENV") == "docker"
     assert captured_env.get("OPENAI_API_KEY") == "key"
@@ -300,7 +372,11 @@ def test_env_runner_sets_terminal_env_docker_when_available(fake_repo: Path, tmp
 def test_env_runner_writes_terminal_prompt_and_temperature(
     fake_repo: Path, tmp_path: Path
 ) -> None:
+    captured_config = {"text": ""}
+
     def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        config_index = cmd.index("--config") + 1
+        captured_config["text"] = Path(cmd[config_index]).read_text(encoding="utf-8")
         save_dir = tmp_path / "out" / "evals" / "tblite"
         save_dir.mkdir(parents=True)
         (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.1}}))
@@ -315,18 +391,19 @@ def test_env_runner_writes_terminal_prompt_and_temperature(
             output_dir=tmp_path / "out",
             repo_path=fake_repo,
             model="m",
+            max_tasks=1,
         )
 
-    config_text = (tmp_path / "out" / "hermes_env_config.yaml").read_text()
+    config_text = captured_config["text"]
     assert "agent_temperature: 0.0" in config_text
     assert "system_prompt:" in config_text
     assert "Use the available terminal and file tools" in config_text
 
 
-def test_env_runner_falls_back_to_local_even_when_parent_overrides(
+def test_env_runner_refuses_local_fallback_when_docker_is_unavailable(
     fake_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Without Docker, a parent shell with TERMINAL_ENV=modal is overridden to local."""
+    """A missing Docker daemon is incompatibility, not permission to run on host."""
     monkeypatch.setenv("TERMINAL_ENV", "modal")
     captured_env: dict[str, str] = {}
 
@@ -338,13 +415,16 @@ def test_env_runner_falls_back_to_local_even_when_parent_overrides(
         (save_dir / "samples.jsonl").write_text("{}\n")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-    with patch("hermes_adapter.env_runner._docker_daemon_available", return_value=False), patch(
-        "hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run
-    ):
-        run_hermes_env(
-            "tblite", output_dir=tmp_path / "out", repo_path=fake_repo, model="m"
-        )
-    assert captured_env.get("TERMINAL_ENV") == "local"
+    with patch("hermes_adapter.env_runner._docker_daemon_available", return_value=False):
+        with pytest.raises(RuntimeError, match="requires Docker"):
+            run_hermes_env(
+                "tblite",
+                output_dir=tmp_path / "out",
+                repo_path=fake_repo,
+                model="m",
+                max_tasks=1,
+            )
+    assert not captured_env
 
 
 def test_env_runner_invokes_correct_env_script_for_each_env(
@@ -353,6 +433,15 @@ def test_env_runner_invokes_correct_env_script_for_each_env(
     """Smoke: for each of the 4 supported env_ids, the spawned argv references the
     canonical env script path."""
     for env_id, expected_module in ENV_MODULES.items():
+        if env_id == "hermes_swe_env":
+            with pytest.raises(RuntimeError, match="placeholder"):
+                run_hermes_env(
+                    env_id,
+                    output_dir=tmp_path / env_id,
+                    repo_path=fake_repo,
+                    model="m",
+                )
+            continue
         captured: list[str] = []
         out = tmp_path / env_id
         save_dir = out / "evals" / env_id
@@ -365,14 +454,21 @@ def test_env_runner_invokes_correct_env_script_for_each_env(
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
         with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
-            run_hermes_env(env_id, output_dir=out, repo_path=fake_repo, model="m", force=True)
+            run_hermes_env(
+                env_id,
+                output_dir=out,
+                repo_path=fake_repo,
+                model="m",
+                max_tasks=1,
+                force=True,
+            )
         assert str(fake_repo / expected_module) in captured, env_id
         assert "evaluate" in captured, env_id
 
 
-def test_env_runner_idempotent_when_summary_exists(fake_repo: Path, tmp_path: Path) -> None:
-    """If output_dir already has eval-summary.json + samples.jsonl, run_hermes_env
-    must skip the subprocess and return the cached result."""
+def test_env_runner_rejects_unprovenanced_cached_result(
+    fake_repo: Path, tmp_path: Path
+) -> None:
     out = tmp_path / "out"
     save_dir = out / "evals" / "tblite"
     save_dir.mkdir(parents=True)
@@ -383,13 +479,14 @@ def test_env_runner_idempotent_when_summary_exists(fake_repo: Path, tmp_path: Pa
         "hermes_adapter.env_runner.subprocess.run",
         side_effect=AssertionError("must not spawn subprocess"),
     ):
-        result = run_hermes_env(
-            "tblite",
-            output_dir=out,
-            repo_path=fake_repo,
-            model="m",
-        )
-    assert result.score == pytest.approx(0.71)
+        with pytest.raises(RuntimeError, match="no run provenance"):
+            run_hermes_env(
+                "tblite",
+                output_dir=out,
+                repo_path=fake_repo,
+                model="m",
+                max_tasks=1,
+            )
 
 
 def test_env_runner_force_reruns_even_when_cached(fake_repo: Path, tmp_path: Path) -> None:
@@ -409,7 +506,12 @@ def test_env_runner_force_reruns_even_when_cached(fake_repo: Path, tmp_path: Pat
 
     with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
         result = run_hermes_env(
-            "tblite", output_dir=out, repo_path=fake_repo, model="m", force=True
+            "tblite",
+            output_dir=out,
+            repo_path=fake_repo,
+            model="m",
+            max_tasks=1,
+            force=True,
         )
     assert spawn_count["n"] == 1
     assert result.score == pytest.approx(0.99)

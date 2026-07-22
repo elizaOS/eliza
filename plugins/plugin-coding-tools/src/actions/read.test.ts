@@ -41,6 +41,34 @@ describe("READ", () => {
     expect(data?.lines).toBe(3);
   });
 
+  it("fences the user-facing callback while the planner-facing text stays raw (#16563)", async () => {
+    const file = path.join(env.tmpDir, "markdown.md");
+    await fs.writeFile(file, "**bold** and `code` and *.md globs", "utf8");
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = await readFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      { parameters: { file_path: file } },
+      async (content) => {
+        posts.push(content as { text: string; source?: string });
+        return [];
+      },
+    );
+
+    expect(result.success).toBe(true);
+    // Planner-facing ActionResult text stays raw.
+    expect(result.text?.startsWith("```")).toBe(false);
+    // The user-facing relay is fenced and source-tagged so chat connectors
+    // render the file content verbatim instead of eating `*`/`_` pairs.
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain("**bold**");
+  });
+
   it("right-pads line numbers to 6 chars and uses tab separator", async () => {
     const file = path.join(env.tmpDir, "lines.txt");
     await fs.writeFile(file, "alpha\nbeta", "utf8");
@@ -200,13 +228,20 @@ describe("READ", () => {
     expect(meta).toBeDefined();
   });
 
-  it("rejects relative paths", async () => {
-    const result = await readFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: "relative/path.txt" },
+  it("resolves relative paths against the session cwd", async () => {
+    const cwdRuntime = {
+      ...env.runtime,
+      getService: <T>(serviceType: string): T | null =>
+        serviceType === "CODING_TOOLS_SESSION_CWD"
+          ? ({ getCwd: () => env.tmpDir } as T)
+          : env.runtime.getService<T>(serviceType),
+    } as typeof env.runtime;
+    await fs.writeFile(path.join(env.tmpDir, "rel-note.md"), "hello cwd");
+    const result = await readFileHandler(cwdRuntime, env.message, undefined, {
+      parameters: { file_path: "rel-note.md" },
     });
-
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("invalid_param");
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("hello cwd");
   });
 
   it("rejects paths under the blocklist", async () => {

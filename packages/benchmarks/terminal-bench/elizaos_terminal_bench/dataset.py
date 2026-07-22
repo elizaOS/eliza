@@ -21,6 +21,7 @@ back to sample data. Sample data is only used when
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from dataclasses import replace
@@ -56,6 +57,7 @@ EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
 
 # Path to the vendored upstream corpus (relative to repo root).
 _DEFAULT_TASKS_DIR = Path(__file__).resolve().parent.parent / "tasks"
+_CORPUS_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "corpus-manifest.json"
 
 
 class TerminalBenchDatasetMissingError(RuntimeError):
@@ -70,6 +72,98 @@ class TerminalBenchDatasetMissingError(RuntimeError):
 
     Pass ``--use-sample-tasks`` for smoke/CI runs without the real corpus.
     """
+
+
+class TerminalBenchDatasetIntegrityError(RuntimeError):
+    """Raised when the pinned vendored corpus is incomplete or corrupted."""
+
+
+def _load_corpus_manifest() -> dict[str, object]:
+    raw = json.loads(_CORPUS_MANIFEST_PATH.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise TerminalBenchDatasetIntegrityError(
+            f"Terminal-Bench corpus manifest is not an object: {_CORPUS_MANIFEST_PATH}"
+        )
+    return raw
+
+
+def _verify_pinned_corpus(tasks_dir: Path) -> dict[str, object]:
+    """Verify the complete pinned snapshot plus assets Git may ignore."""
+    manifest = _load_corpus_manifest()
+    expected_count = manifest.get("expected_task_count")
+    if not isinstance(expected_count, int) or expected_count <= 0:
+        raise TerminalBenchDatasetIntegrityError(
+            "Terminal-Bench manifest has no positive expected_task_count"
+        )
+    task_count = sum(
+        1
+        for child in tasks_dir.iterdir()
+        if child.is_dir() and (child / "task.yaml").is_file()
+    )
+    if task_count != expected_count:
+        raise TerminalBenchDatasetIntegrityError(
+            f"Terminal-Bench corpus has {task_count} tasks; pinned manifest requires "
+            f"{expected_count}"
+        )
+
+    expected_file_count = manifest.get("corpus_file_count")
+    expected_digest = manifest.get("corpus_snapshot_sha256")
+    if not isinstance(expected_file_count, int) or expected_file_count <= 0:
+        raise TerminalBenchDatasetIntegrityError(
+            "Terminal-Bench manifest has no positive corpus_file_count"
+        )
+    if not isinstance(expected_digest, str) or len(expected_digest) != 64:
+        raise TerminalBenchDatasetIntegrityError(
+            "Terminal-Bench manifest has no valid corpus_snapshot_sha256"
+        )
+    corpus_files = sorted(
+        (path for path in tasks_dir.rglob("*") if path.is_file()),
+        key=lambda path: path.relative_to(tasks_dir).as_posix(),
+    )
+    if len(corpus_files) != expected_file_count:
+        raise TerminalBenchDatasetIntegrityError(
+            f"Terminal-Bench corpus has {len(corpus_files)} files; pinned manifest "
+            f"requires {expected_file_count}"
+        )
+    corpus_hash = hashlib.sha256()
+    for path in corpus_files:
+        relative_path = path.relative_to(tasks_dir).as_posix()
+        corpus_hash.update(relative_path.encode("utf-8"))
+        corpus_hash.update(b"\0")
+        corpus_hash.update(hashlib.sha256(path.read_bytes()).digest())
+        corpus_hash.update(b"\0")
+    actual_digest = corpus_hash.hexdigest()
+    if actual_digest != expected_digest:
+        raise TerminalBenchDatasetIntegrityError(
+            "Terminal-Bench corpus snapshot hash mismatch "
+            f"(expected {expected_digest}, got {actual_digest})"
+        )
+
+    assets = manifest.get("required_assets")
+    if not isinstance(assets, dict) or not assets:
+        raise TerminalBenchDatasetIntegrityError(
+            "Terminal-Bench manifest has no required_assets map"
+        )
+    failures: list[str] = []
+    for relative_path, expected_hash in sorted(assets.items()):
+        if not isinstance(relative_path, str) or not isinstance(expected_hash, str):
+            raise TerminalBenchDatasetIntegrityError(
+                "Terminal-Bench required_assets entries must map paths to SHA-256 strings"
+            )
+        asset_path = tasks_dir / relative_path
+        if not asset_path.is_file():
+            failures.append(f"missing {relative_path}")
+            continue
+        actual_hash = hashlib.sha256(asset_path.read_bytes()).hexdigest()
+        if actual_hash != expected_hash:
+            failures.append(
+                f"hash mismatch {relative_path} (expected {expected_hash}, got {actual_hash})"
+            )
+    if failures:
+        raise TerminalBenchDatasetIntegrityError(
+            "Terminal-Bench pinned corpus verification failed: " + "; ".join(failures)
+        )
+    return manifest
 
 
 def _coerce_category(raw: object) -> TaskCategory:
@@ -104,10 +198,9 @@ def _coerce_difficulty(raw: object) -> TaskDifficulty:
 
 
 def _read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
+    if not path.exists():
         return ""
+    return path.read_text(encoding="utf-8")
 
 
 def _coerce_bool(raw: object, *, default: bool = False) -> bool:
@@ -128,10 +221,11 @@ def _coerce_bool(raw: object, *, default: bool = False) -> bool:
 def _compose_service_names(compose_path: Path) -> list[str]:
     if not compose_path.exists():
         return []
-    try:
-        data = yaml.safe_load(compose_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return []
+    data = yaml.safe_load(compose_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise TerminalBenchDatasetIntegrityError(
+            f"Docker Compose document must be an object: {compose_path}"
+        )
     services = data.get("services") if isinstance(data, dict) else None
     if not isinstance(services, dict):
         return []
@@ -165,6 +259,7 @@ class TerminalBenchDataset:
         self.use_sample_tasks = use_sample_tasks
         self.loaded_sample_tasks = False
         self.tasks: list[TerminalTask] = []
+        self.provenance: dict[str, object] = {}
         self._loaded = False
 
     async def load(self) -> None:
@@ -200,6 +295,10 @@ class TerminalBenchDataset:
                 "(original-tasks/) or pass --use-sample-tasks for smoke runs."
             )
 
+        is_pinned_corpus = tasks_dir.resolve() == _DEFAULT_TASKS_DIR.resolve()
+        if is_pinned_corpus:
+            self.provenance = _verify_pinned_corpus(tasks_dir)
+
         await self._load_from_directory(tasks_dir)
 
         if not self.tasks:
@@ -207,6 +306,13 @@ class TerminalBenchDataset:
                 f"No tasks discovered under {tasks_dir}. The directory exists "
                 "but contains no valid task subdirectories with task.yaml."
             )
+        if is_pinned_corpus:
+            expected_count = self.provenance["expected_task_count"]
+            if len(self.tasks) != expected_count:
+                raise TerminalBenchDatasetIntegrityError(
+                    f"Terminal-Bench parsed {len(self.tasks)} tasks; pinned manifest requires "
+                    f"{expected_count}"
+                )
 
         self._loaded = True
         logger.info(
@@ -255,10 +361,9 @@ class TerminalBenchDataset:
                 logger.debug("Skipping %s — no task.yaml", entry.name)
                 continue
             task = await self._load_upstream_task(entry)
-            if task is not None:
-                self.tasks.append(task)
+            self.tasks.append(task)
 
-    async def _load_upstream_task(self, task_dir: Path) -> Optional[TerminalTask]:
+    async def _load_upstream_task(self, task_dir: Path) -> TerminalTask:
         """Parse a single upstream-format task directory."""
         task_yaml = task_dir / "task.yaml"
         try:
@@ -266,13 +371,15 @@ class TerminalBenchDataset:
                 raw = await f.read()
             data = yaml.safe_load(raw) or {}
         except Exception as exc:
-            logger.warning("Failed to parse %s: %s", task_yaml, exc)
-            return None
+            raise TerminalBenchDatasetIntegrityError(
+                f"Failed to parse Terminal-Bench task manifest {task_yaml}: {exc}"
+            ) from exc
 
         instruction = str(data.get("instruction") or "").strip()
         if not instruction:
-            logger.debug("Task %s has empty instruction — skipping", task_dir.name)
-            return None
+            raise TerminalBenchDatasetIntegrityError(
+                f"Terminal-Bench task {task_dir.name} has an empty instruction"
+            )
 
         max_agent = float(data.get("max_agent_timeout_sec") or 900.0)
         max_test = float(data.get("max_test_timeout_sec") or 180.0)

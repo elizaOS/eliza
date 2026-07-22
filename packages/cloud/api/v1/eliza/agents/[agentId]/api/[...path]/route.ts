@@ -1,4 +1,15 @@
-// Handles v1 cloud API v1 eliza agents agentid api ...path route traffic with route-local auth expectations.
+/**
+ * Shared-runtime REST compatibility adapter for hosted app shell probes and
+ * workflow capability gates.
+ *
+ * Tier-0 agents have no full agent server, so this route synthesizes the
+ * already-provisioned startup responses needed to reach chat. It also
+ * translates the app's `/api/automations` and `/api/workflow/*` requests into
+ * the canonical typed dedicated-runtime response. Generated routing mounts
+ * the specific conversation, health, identity, and wallet siblings first;
+ * unknown catch-all paths remain 404. Dedicated agents use their own subdomain
+ * and never enter this adapter.
+ */
 import { type Context, Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
@@ -13,33 +24,9 @@ import {
   sharedRestViews,
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
 
-/**
- * Catch-all shell-endpoint adapter for a SHARED-runtime agent's REST surface.
- *
- * `/api/v1/eliza/agents/[agentId]/api/[...path]`
- *
- * A Tier-0 shared agent runs in-Worker with NO agent server, so it serves none
- * of the shell endpoints the mobile/web startup-coordinator probes after
- * conversations/messages already 200: GET /api/first-run/status, GET
- * /api/first-run, GET /api/views, GET /api/config. Without them every probe
- * 404s and the app never boots into chat (see app-side #8529). This leaf
- * synthesizes the "already-provisioned, no setup needed" defaults so the app
- * boots straight into chat regardless of which shell endpoint it probes next.
- *
- * CODEGEN PRECEDENCE: this file maps to the splat path
- * `/api/v1/eliza/agents/:agentId/api/:*{.+}` (segmentRank 2), which the router
- * codegen (_generate-router.mjs `compareMountPaths`) sorts AFTER every static
- * sibling leaf (conversations, conversations/:id/messages, health, identity*,
- * wallet/:*). Hono is mount-order-sensitive for overlapping splat-vs-specific
- * sub-apps, so those specific leaves win and this catch-all only handles the
- * shell paths they don't serve. It is intentionally SCOPED to the known shell
- * paths and 404s anything else, so it never masks a genuinely-missing route.
- *
- * Scoped to shared-tier agents owned by the caller's org; dedicated agents use
- * their own subdomain REST surface, not this adapter.
- */
-const CORS_METHODS = "GET, POST, OPTIONS";
+const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 
 const app = new Hono<AppEnv>();
 
@@ -51,13 +38,28 @@ function json(c: Context<AppEnv>, data: unknown, status?: number): Response {
   );
 }
 
-/** Normalize the splat into a clean "/"-joined shell path (no query/trailing). */
 function shellPath(c: Context<AppEnv>): string {
   const raw = c.req.param("*") ?? "";
   return raw
     .split("/")
     .filter((s) => s.length > 0)
     .join("/");
+}
+
+function isWorkflowApiPath(path: string): boolean {
+  return path === "workflow" || path.startsWith("workflow/");
+}
+
+function workflowUnavailable(
+  c: Context<AppEnv>,
+  agentId: string,
+  executionTier: Parameters<typeof workflowRuntimeUnavailableResponse>[1],
+): Response {
+  return applyCorsHeaders(
+    workflowRuntimeUnavailableResponse(agentId, executionTier),
+    CORS_METHODS,
+    c.req.header("origin"),
+  );
 }
 
 app.options("/", (c) =>
@@ -69,7 +71,14 @@ app.get("/", async (c) => {
   if ("error" in r) {
     return json(c, { success: false, error: r.error }, r.status);
   }
-  switch (shellPath(c)) {
+  const path = shellPath(c);
+  // The app's workflow clients use the full-runtime compatibility paths. A
+  // shared agent cannot serve them, so surface the same typed capability gate
+  // as the canonical `/workflows` proxy instead of an unrelated shell 404.
+  if (path === "automations" || isWorkflowApiPath(path)) {
+    return workflowUnavailable(c, r.agentId, r.agent.execution_tier);
+  }
+  switch (path) {
     case "status":
       // The startup-coordinator's first gate — must answer before first-run.
       return json(c, sharedRestStatus(r.agentName));
@@ -108,9 +117,13 @@ app.post("/", async (c) => {
   if ("error" in r) {
     return json(c, { success: false, error: r.error }, r.status);
   }
+  const path = shellPath(c);
+  if (isWorkflowApiPath(path)) {
+    return workflowUnavailable(c, r.agentId, r.agent.execution_tier);
+  }
   // Onboarding "submit" — a shared agent has no config to persist, so accept it
   // as a harmless no-op instead of 404'ing onboarding.
-  if (shellPath(c) === "first-run") {
+  if (path === "first-run") {
     return json(c, sharedRestFirstRunSubmit());
   }
   return json(
@@ -119,5 +132,23 @@ app.post("/", async (c) => {
     404,
   );
 });
+
+async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
+  const r = await resolveSharedAgent(c);
+  if ("error" in r) {
+    return json(c, { success: false, error: r.error }, r.status);
+  }
+  if (isWorkflowApiPath(shellPath(c))) {
+    return workflowUnavailable(c, r.agentId, r.agent.execution_tier);
+  }
+  return json(
+    c,
+    { success: false, error: "Not found", code: "resource_not_found" },
+    404,
+  );
+}
+
+app.put("/", handleWorkflowMutation);
+app.delete("/", handleWorkflowMutation);
 
 export default app;

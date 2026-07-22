@@ -126,6 +126,18 @@ Examples:
         help="Maximum agent actions per simulated day (default: 10)",
     )
     run_parser.add_argument(
+        "--max-messages-per-run",
+        type=int,
+        default=2000,
+        help="Maximum primary-agent model messages per run (default: 2000)",
+    )
+    run_parser.add_argument(
+        "--context-window-tokens",
+        type=int,
+        default=30000,
+        help="Bounded transcript budget supplied to every harness (default: 30000)",
+    )
+    run_parser.add_argument(
         "--model",
         type=str,
         default="gemma-4-31b",
@@ -186,6 +198,12 @@ Examples:
         help="Validate selected base and edge scenarios before running",
     )
     run_parser.add_argument(
+        "--expected-scenarios",
+        type=int,
+        default=None,
+        help="Fail unless scenario expansion produces exactly this many runs",
+    )
+    run_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -229,8 +247,9 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         or "eliza"
     ).strip().lower()
     if args.provider == "eliza" and harness == "eliza" and not __import__("os").environ.get("ELIZA_BENCH_URL"):
-        from eliza_adapter.server_manager import ElizaServerManager
         import os as _os
+
+        from eliza_adapter.server_manager import ElizaServerManager
 
         server_mgr = ElizaServerManager()
         server_mgr.start()
@@ -248,6 +267,8 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         starter_inventory=bool(args.starter_inventory),
         include_edge_scenarios=bool(args.expand_scenarios),
         max_actions_per_day=max(1, int(args.max_actions_per_day)),
+        max_messages_per_run=max(1, int(args.max_messages_per_run)),
+        context_window_tokens=max(1, int(args.context_window_tokens)),
         model_name=args.model,
         temperature=args.temperature,
         output_dir=args.output_dir,
@@ -255,10 +276,15 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         compare_leaderboard=not args.no_leaderboard,
     )
 
-    if args.validate_scenarios:
-        validate_scenarios(config)
+    validate_scenarios(config)
+    scenario_counts = count_scenarios(config)
+    if args.expected_scenarios is not None and scenario_counts["total"] != args.expected_scenarios:
+        raise RuntimeError(
+            "Vending-Bench scenario count mismatch: "
+            f"expected {args.expected_scenarios}, got {scenario_counts['total']}"
+        )
     if args.count_scenarios:
-        print(json.dumps(count_scenarios(config), sort_keys=True))
+        print(json.dumps(scenario_counts, sort_keys=True))
         return 0
 
     # Setup LLM provider if specified

@@ -80,3 +80,21 @@ describe("sensitive config handling", () => {
     ).toBeUndefined();
   });
 });
+
+describe("PAT credential names (#16564)", () => {
+  it("classifies GH_PAT and dotted pat paths as sensitive", () => {
+    expect(isSensitiveConfigKey("GH_PAT")).toBe(true);
+    expect(isSensitiveConfigKey("github.gh_pat")).toBe(true);
+  });
+
+  it("never classifies PATH/FORMAT/PATTERN names", () => {
+    for (const key of [
+      "PATH",
+      "XDG_DATA_PATH",
+      "output.format",
+      "TEMPLATE_PATTERN",
+    ]) {
+      expect(isSensitiveConfigKey(key)).toBe(false);
+    }
+  });
+});

@@ -19,10 +19,16 @@ from .anthropic import AnthropicClient
 from .base import BaseClient
 from .cerebras import CerebrasClient
 from .hermes import HermesClient
+from .subscription import ClaudeSubscriptionClient
 
-Provider = Literal["cerebras", "anthropic", "hermes"]
+Provider = Literal["cerebras", "anthropic", "hermes", "claude-subscription"]
 
-_SUPPORTED_PROVIDERS: Final[tuple[str, ...]] = ("cerebras", "anthropic", "hermes")
+_SUPPORTED_PROVIDERS: Final[tuple[str, ...]] = (
+    "cerebras",
+    "anthropic",
+    "hermes",
+    "claude-subscription",
+)
 
 
 def _find_repo_root() -> Path | None:
@@ -57,6 +63,8 @@ def make_client(provider: str, model: str | None = None) -> BaseClient:
         return AnthropicClient(model=model)
     if provider == "hermes":
         return HermesClient(model=model)
+    if provider == "claude-subscription":
+        return ClaudeSubscriptionClient(model=model)
     raise ValueError(
         f"Unknown provider {provider!r}; supported: {', '.join(_SUPPORTED_PROVIDERS)}"
     )

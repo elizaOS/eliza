@@ -28,6 +28,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
+import { readSmithersDurableRunLink } from "../../src/services/smithers-task-integration.js";
 
 // Suppress default-acceptance-criteria auto-fill so `task_complete` events in
 // these tests don't fire the auto-verifier (matches the pattern used in
@@ -127,6 +128,52 @@ describe("OrchestratorTaskService.attachSession", () => {
     expect(attached?.label).toBe("planner");
     expect(attached?.model).toBe("gpt-5.5");
     expect(attached?.originalTask).toBe("wire attach");
+  });
+
+  it("persists the stable Smithers run link on the task-session row", async () => {
+    const { service, taskId } = await makeService();
+    await service.attachSession(taskId, {
+      sessionId: "chat-smithers-durable",
+      agentType: "codex",
+      workdir: "/tmp/workdir",
+      status: "ready",
+      metadata: {
+        label: "subscription-backed",
+        account: {
+          providerId: "openai-codex-subscription",
+          accountId: "acct-1",
+          label: "Work subscription",
+        },
+      },
+      durableRun: {
+        version: 1,
+        orchestratorTaskId: taskId,
+        taskId: `${taskId}:part:0`,
+        runId: "stable-run",
+        tenantId: "agent-tenant",
+        initialPrompt: "perform exactly once",
+        state: "pending",
+        approvalPreset: "readonly",
+        keepAliveAfterComplete: false,
+      },
+    });
+
+    const detail = await service.getTask(taskId);
+    const link = readSmithersDurableRunLink(
+      detail?.sessions[0]?.metadata as Record<string, unknown> | undefined,
+    );
+    expect(link).toMatchObject({
+      orchestratorTaskId: taskId,
+      runId: "stable-run",
+      state: "pending",
+      approvalPreset: "readonly",
+    });
+    expect(detail?.sessions[0]?.metadata.account).toEqual({
+      providerId: "openai-codex-subscription",
+      accountId: "acct-1",
+      label: "Work subscription",
+    });
+    expect(detail?.sessions[0]?.accountId).toBe("acct-1");
   });
 
   it("indexes a terminal-on-arrival session without falsely advancing status", async () => {

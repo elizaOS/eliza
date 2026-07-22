@@ -344,38 +344,38 @@ describe("iOS local agent transport bridge", () => {
     expect(getStatus).not.toHaveBeenCalled();
   });
 
-  it.each([
-    "cloud-hybrid",
-    "tunnel-to-mobile",
-  ])("honors native watchdog restart requests in %s runtime mode", async (mode) => {
-    capacitorState.pluginAvailable = true;
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) =>
-        key === "eliza:mobile-runtime-mode" ? mode : null,
-    });
-    const eventTarget = new EventTarget();
-    vi.stubGlobal("window", {
-      location: { href: "capacitor://localhost/" },
-      navigator: { userAgent: "vitest" },
-      addEventListener: eventTarget.addEventListener.bind(eventTarget),
-      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
-    });
-    const start = vi.fn(async () => ({ ok: true }));
-    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
-    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
-      ElizaBunRuntime: { start, getStatus, call: vi.fn() },
-    }));
+  it.each(["cloud-hybrid", "tunnel-to-mobile"])(
+    "honors native watchdog restart requests in %s runtime mode",
+    async (mode) => {
+      capacitorState.pluginAvailable = true;
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) =>
+          key === "eliza:mobile-runtime-mode" ? mode : null,
+      });
+      const eventTarget = new EventTarget();
+      vi.stubGlobal("window", {
+        location: { href: "capacitor://localhost/" },
+        navigator: { userAgent: "vitest" },
+        addEventListener: eventTarget.addEventListener.bind(eventTarget),
+        dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
+      });
+      const start = vi.fn(async () => ({ ok: true }));
+      const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+      vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+        ElizaBunRuntime: { start, getStatus, call: vi.fn() },
+      }));
 
-    const { installIosLocalAgentNativeRequestBridge } = await import(
-      "./ios-local-agent-transport"
-    );
-    installIosLocalAgentNativeRequestBridge();
+      const { installIosLocalAgentNativeRequestBridge } = await import(
+        "./ios-local-agent-transport"
+      );
+      installIosLocalAgentNativeRequestBridge();
 
-    window.dispatchEvent(new Event("eliza:local-agent-restart-requested"));
+      window.dispatchEvent(new Event("eliza:local-agent-restart-requested"));
 
-    await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
-    expect(getStatus).toHaveBeenCalled();
-  });
+      await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+      expect(getStatus).toHaveBeenCalled();
+    },
+  );
 
   it("does not install a duplicate watchdog restart listener when another bundle already registered one", async () => {
     capacitorState.pluginAvailable = true;

@@ -1050,8 +1050,12 @@ const rawPersonalAssistantPlugin: Plugin = {
     const lifeOpsSchedulerDisabled = isDisabledByEnv(
       "ELIZA_DISABLE_LIFEOPS_SCHEDULER",
     );
+    // Register the identity even when execution is disabled. Owner-profile
+    // updates persist on the LIFEOPS_SCHEDULER row and can create it lazily;
+    // the disabled worker keeps that row valid while shouldRun=false preserves
+    // the process-level kill switch.
+    registerLifeOpsTaskWorker(runtime, { disabled: lifeOpsSchedulerDisabled });
     if (!lifeOpsSchedulerDisabled) {
-      registerLifeOpsTaskWorker(runtime);
       scheduleTaskEnsureAfterRuntimeInit({
         runtime,
         prefix: "[lifeops]",

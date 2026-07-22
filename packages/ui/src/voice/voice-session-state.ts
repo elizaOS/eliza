@@ -106,10 +106,9 @@ export function applyClientAction(
  *   ready            → ready (client then starts capture → listening)
  *   stt_partial      → transcribing (+ interim text)
  *   stt_eager_eot    → transcribing (no phase change; speculative)
- *   stt_final        → transcribing→thinking is deferred to llm_first_text; we
- *                      commit the final text + set traceId, phase stays
- *                      transcribing until the LLM leg starts (thinking)
- *   llm_first_text   → thinking
+ *   stt_final        → thinking (the authoritative EOT committed the user turn
+ *                      and the server dispatches the LLM request immediately)
+ *   llm_first_text   → thinking (first response text, phase already truthful)
  *   speaking_start   → speaking
  *   speaking_end     → complete → (caller loops to listening)
  *   interrupted      → interrupted → (caller loops to listening)
@@ -143,7 +142,11 @@ export function applyServerEvent(
     case "stt_final":
       return {
         ...state,
-        phase: "transcribing",
+        // `stt_final` is the server's commit/request-dispatch edge. Keeping the
+        // UI in "Transcribing" until the first LLM token makes a completed EOT
+        // look late by the entire model TTFT and leaves the mic surface claiming
+        // it is still listening while the request is already in flight.
+        phase: "thinking",
         traceId: event.traceId,
         finalTranscript: event.text,
         interimTranscript: "",

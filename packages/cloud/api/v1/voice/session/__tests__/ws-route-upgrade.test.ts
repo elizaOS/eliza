@@ -33,7 +33,6 @@ const realWsHandlerExports = { ...realWsHandler };
 
 const attachCalls: Array<Record<string, unknown>> = [];
 let registrySize = 0;
-let evalCapableRedis = true;
 let durableStoreValue: unknown = { kind: "durable" };
 let binaryTypeWritable = true;
 
@@ -99,14 +98,29 @@ const usageMeterStub = () => ({
 mock.module("@/lib/services/voice-usage-meter", usageMeterStub);
 mock.module(`${sharedRoot}/lib/services/voice-usage-meter.ts`, usageMeterStub);
 
-mock.module("@/lib/cache/redis-factory", () => ({
+// Each built client gets a sequence id and `get` records which INSTANCE served
+// the read (always answering "1" = revoked). This mock is process-wide, so
+// jwt.ts's module-level fallback client comes from the same factory — only the
+// instance id distinguishes the route's request-scoped client (built during
+// the upgrade request) from any earlier/lazier fallback, which is exactly the
+// #16663 forwarding contract.
+let redisClientSeq = 0;
+const redisGetCalls: Array<{ client: number; key: string }> = [];
+const redisFactoryStub = () => ({
   ...realRedisFactoryExports,
-  buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
-}));
-mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, () => ({
-  ...realRedisFactoryExports,
-  buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
-}));
+  buildRedisClient: () => {
+    const id = ++redisClientSeq;
+    return {
+      eval: () => undefined,
+      get: async (key: string) => {
+        redisGetCalls.push({ client: id, key });
+        return "1";
+      },
+    };
+  },
+});
+mock.module("@/lib/cache/redis-factory", redisFactoryStub);
+mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, redisFactoryStub);
 
 // NOTE: we do NOT mock `../lib/session`. Mocking VoiceSession would clobber it
 // for ws-lifecycle.test.ts (which constructs the REAL VoiceSession and runs
@@ -119,7 +133,7 @@ const baseEnv = {
   VOICE_REALTIME_WS_ENABLED: "true",
   DEEPGRAM_API_KEY: "dg",
   CARTESIA_API_KEY: "cartesia",
-  VOICE_REALTIME_CARTESIA_VOICE_ID: "voice",
+  VOICE_REALTIME_CARTESIA_VOICE_ID: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
   VOICE_REALTIME_ELIZA_ENDPOINT: "https://eliza.test/sse",
   VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer service",
 };
@@ -141,8 +155,8 @@ const originalWebSocketPair = (globalThis as { WebSocketPair?: unknown })
 
 beforeEach(() => {
   attachCalls.length = 0;
+  redisGetCalls.length = 0;
   registrySize = 0;
-  evalCapableRedis = true;
   durableStoreValue = { kind: "durable" };
   binaryTypeWritable = true;
   (globalThis as { WebSocketPair?: unknown }).WebSocketPair = class {
@@ -209,6 +223,28 @@ function upgrade(env: Record<string, string> = {}) {
   );
 }
 
+function buildCapturedSession(): { config: Record<string, unknown> } {
+  const deps = attachCalls[0].deps as {
+    buildSession: (args: Record<string, unknown>) => unknown;
+  };
+  return deps.buildSession({
+    claims: {
+      sessionId: "sess-upgrade-wire",
+      organizationId: "org-1",
+      userId: "user-1",
+      agentId: "agent-1",
+      conversationId: "conv-1",
+    },
+    jti: "jti-upgrade-wire",
+    tokenExpSeconds: Math.floor(Date.now() / 1000) + 60,
+    downlink: {
+      sendControl: () => undefined,
+      sendAudio: () => undefined,
+      close: () => undefined,
+    },
+  }) as { config: Record<string, unknown> };
+}
+
 describe("voice-session ws upgrade (happy path)", () => {
   test("mints the socket pair, accepts the server, and returns a 101 with the client socket", async () => {
     const res = await upgrade();
@@ -219,27 +255,18 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(server.binaryType).toBe("arraybuffer");
   });
 
-  test("prefers the durable usage store when Redis is eval-capable", async () => {
-    evalCapableRedis = true;
+  test("prefers the durable usage store when the factory provides one", async () => {
     durableStoreValue = { kind: "durable" };
     const res = await upgrade();
     expect(res.status).toBe(101);
-    // The buildSession closure ran (invoked by the ws-handler stub) without throwing.
-    expect(attachCalls.length).toBe(1);
-  });
-
-  test("falls back to the in-memory store when Redis has no eval (Railway TCP)", async () => {
-    evalCapableRedis = false;
-    const res = await upgrade();
-    expect(res.status).toBe(101);
-    expect(attachCalls.length).toBe(1);
+    expect(buildCapturedSession().config.usageStore).toBe(durableStoreValue);
   });
 
   test("falls back to the in-memory store when no durable store is available", async () => {
     durableStoreValue = null;
     const res = await upgrade();
     expect(res.status).toBe(101);
-    expect(attachCalls.length).toBe(1);
+    expect(buildCapturedSession().config.usageStore).not.toBeNull();
   });
 
   test("still upgrades when the live registry is under the ceiling; admitSession reflects it", async () => {
@@ -247,6 +274,64 @@ describe("voice-session ws upgrade (happy path)", () => {
     const res = await upgrade();
     expect(res.status).toBe(101);
     expect(attachCalls.length).toBe(1);
+  });
+
+  test("the revocation poll consults the route's request-scoped Redis client (#16663)", async () => {
+    const beforeUpgrade = redisClientSeq;
+    const res = await upgrade();
+    const afterUpgrade = redisClientSeq;
+    expect(res.status).toBe(101);
+    expect(afterUpgrade).toBeGreaterThan(beforeUpgrade);
+    const deps = attachCalls[0].deps as unknown as {
+      buildSession: (args: {
+        claims: Record<string, string>;
+        jti: string;
+        tokenExpSeconds: number;
+        downlink: Record<string, unknown>;
+      }) => { config: { isRevoked?: (jti: string) => Promise<boolean> } };
+    };
+    const session = deps.buildSession({
+      claims: {
+        sessionId: "sess-revocation-wire",
+        organizationId: "org-1",
+        userId: "user-1",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+      },
+      jti: "jti-16663-forwarding",
+      tokenExpSeconds: Math.floor(Date.now() / 1000) + 60,
+      downlink: {
+        sendControl: () => undefined,
+        sendAudio: () => undefined,
+        close: () => undefined,
+      },
+    });
+    await expect(
+      session.config.isRevoked?.("jti-16663-forwarding"),
+    ).resolves.toBe(true);
+    // The read must land on the client built DURING the upgrade request (the
+    // route's request-scoped one). An unforwarded check would fall back to
+    // jwt.ts's module client — an instance cached earlier or built lazily
+    // inside the isRevoked call, in either case outside the upgrade window.
+    const read = redisGetCalls.find((r) =>
+      r.key.includes("jti-16663-forwarding"),
+    );
+    expect(read).toBeDefined();
+    expect(read?.client).toBeGreaterThan(beforeUpgrade);
+    expect(read?.client).toBeLessThanOrEqual(afterUpgrade);
+  });
+
+  test("buildSession wires a prewarm-capable scoped Eliza fetch", async () => {
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    // Construct a REAL VoiceSession through the route's closure. No providers
+    // are dialed at construction time (start() is never called here).
+    const session = buildCapturedSession();
+    expect(typeof session.config.fetchImpl).toBe("function");
+    expect(typeof session.config.prewarmElizaContext).toBe("function");
+    expect(session.config.prewarmElizaContext).toBe(
+      (session.config.fetchImpl as { prewarm?: unknown }).prewarm,
+    );
   });
 
   test("returns 503 transport-unavailable when WebSocketPair is absent", async () => {

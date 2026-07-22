@@ -1,27 +1,13 @@
-"""Typed lifecycle-event extraction for the orchestrator lifecycle benchmark.
+"""Normalizes planner action evidence into lifecycle events for structural scoring.
 
-The bench server returns, per turn, the action names the agent's planner
-actually selected (``MessageResponse.actions``) plus the planner-supplied
-parameters (``MessageResponse.params``). This module normalizes both into a
-small set of typed lifecycle events the evaluator asserts on:
-
-    spawn         a subagent / task-agent was created
-    send          input or updated instructions were forwarded to a task agent
-    pause         the task was paused
-    resume        the task was resumed / continued / reopened
-    cancel        the task or agent was cancelled / stopped
-    status_query  the live task/agent registry was consulted
-    share         a task artifact / result was surfaced
-
-The name table is derived from the runtime's real orchestrator action surface
-(`plugins/plugin-agent-orchestrator/src/actions/tasks.ts` — the Pattern C
-``TASKS`` parent action and its legacy leaf-action similes). The op table maps
-the ``TASKS`` sub-operation values (``action`` / ``op`` / ``subaction`` /
-``operation`` params) to the same events.
+The evaluator consumes both the runtime's ``TASKS`` parent operation and its
+compatible leaf-action aliases. Response-plumbing fields are excluded because
+they can contain actions captured on prior turns.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 
 LIFECYCLE_EVENTS: tuple[str, ...] = (
@@ -34,9 +20,7 @@ LIFECYCLE_EVENTS: tuple[str, ...] = (
     "share",
 )
 
-# Action name (planner-selected, incl. legacy leaf similes) -> event.
 ACTION_NAME_EVENTS: dict[str, str] = {
-    # spawn
     "CREATE_AGENT_TASK": "spawn",
     "CREATE_TASK": "spawn",
     "START_CODING_TASK": "spawn",
@@ -56,7 +40,6 @@ ACTION_NAME_EVENTS: dict[str, str] = {
     "SPAWN_SUB_AGENT": "spawn",
     "START_TASK_AGENT": "spawn",
     "CREATE_AGENT": "spawn",
-    # send
     "SEND_TO_AGENT": "send",
     "SEND_TO_CODING_AGENT": "send",
     "MESSAGE_CODING_AGENT": "send",
@@ -65,7 +48,6 @@ ACTION_NAME_EVENTS: dict[str, str] = {
     "TELL_CODING_AGENT": "send",
     "MESSAGE_AGENT": "send",
     "TELL_TASK_AGENT": "send",
-    # cancel / stop
     "CANCEL_TASK": "cancel",
     "STOP_TASK": "cancel",
     "ABORT_TASK": "cancel",
@@ -79,7 +61,6 @@ ACTION_NAME_EVENTS: dict[str, str] = {
     "CANCEL_AGENT": "cancel",
     "CANCEL_TASK_AGENT": "cancel",
     "STOP_SUB_AGENT": "cancel",
-    # pause / resume
     "PAUSE_TASK": "pause",
     "RESUME_TASK": "resume",
     "CONTINUE_TASK": "resume",
@@ -87,7 +68,6 @@ ACTION_NAME_EVENTS: dict[str, str] = {
     "RESUME_CODING_TASK": "resume",
     "REOPEN_CODING_TASK": "resume",
     "UNARCHIVE_CODING_TASK": "resume",
-    # status queries
     "LIST_AGENTS": "status_query",
     "LIST_CODING_AGENTS": "status_query",
     "SHOW_CODING_AGENTS": "status_query",
@@ -103,14 +83,12 @@ ACTION_NAME_EVENTS: dict[str, str] = {
     "SHOW_TASKS": "status_query",
     "COUNT_TASKS": "status_query",
     "TASK_STATUS_HISTORY": "status_query",
-    # share / surface results
     "TASK_SHARE": "share",
     "SHARE_TASK_RESULT": "share",
     "SHOW_TASK_ARTIFACT": "share",
     "VIEW_TASK_OUTPUT": "share",
 }
 
-# TASKS sub-operation value (from action/op/subaction/operation params) -> event.
 OPERATION_EVENTS: dict[str, str] = {
     "create": "spawn",
     "spawn_agent": "spawn",
@@ -132,9 +110,7 @@ OPERATION_EVENTS: dict[str, str] = {
 # Param keys whose values identify a TASKS sub-operation. `controlAction`
 # is the real runtime param for TASKS control ops (action=control,
 # controlAction=pause|resume|stop|continue|reopen — see core action docs).
-_OPERATION_KEYS = frozenset(
-    {"action", "op", "subaction", "operation", "controlaction"}
-)
+_OPERATION_KEYS = frozenset({"action", "op", "subaction", "operation", "controlaction"})
 
 # Bridge params that carry response plumbing, not planner-selected operations.
 # The trajectory snapshot in particular contains full prior steps and would
@@ -157,6 +133,12 @@ def _collect_operation_values(value: object, found: list[str]) -> None:
                 continue
             if key_str.lower() in _OPERATION_KEYS and isinstance(child, str):
                 found.append(child.strip().lower())
+            if key_str.lower() == "arguments" and isinstance(child, str):
+                decoded = json.loads(child)
+                if isinstance(decoded, (Mapping, Sequence)) and not isinstance(
+                    decoded, (str, bytes, bytearray)
+                ):
+                    _collect_operation_values(decoded, found)
             _collect_operation_values(child, found)
         return
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):

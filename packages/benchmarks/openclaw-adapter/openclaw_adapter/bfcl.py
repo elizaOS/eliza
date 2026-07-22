@@ -193,7 +193,6 @@ class OpenClawBFCLAgent:
         self._client = client or OpenClawClient(
             provider=provider or _default_underlying_provider(),
             model=self._model_name,
-            direct_openai_compatible=True,
         )
         self._initialized = False
 
@@ -202,8 +201,7 @@ class OpenClawBFCLAgent:
         return self._model_name
 
     async def initialize(self) -> None:
-        # Direct OpenAI-compatible mode does not require the OpenClaw CLI binary
-        # to be installed or probed.
+        self._client.wait_until_ready(timeout=120)
         self._initialized = True
 
     async def setup_test_case(self, test_case: "BFCLTestCase") -> None:
@@ -287,7 +285,7 @@ def build_bfcl_agent_fn(
             "thought": <reasoning or None>,
         }
     """
-    bridge = client or OpenClawClient(direct_openai_compatible=True)
+    bridge = client or OpenClawClient()
 
     async def _agent_fn(
         prompt: str,

@@ -168,8 +168,8 @@ describe("REMOTE_DESKTOP action (local mode, real session service)", () => {
       [],
     );
     expect(
-      (pending?.values as { requiresConfirmation?: boolean })
-        .requiresConfirmation,
+      (pending?.values as { requiresConfirmation?: boolean } | undefined)
+        ?.requiresConfirmation,
     ).toBe(true);
     // Second turn: the user replies "yes". In local mode without a data plane,
     // ingressUrl is null and the action surfaces DATA_PLANE_NOT_CONFIGURED —
@@ -244,8 +244,10 @@ describe("REMOTE_DESKTOP action (local mode, real session service)", () => {
       [],
     );
     const sessions = (
-      after?.data as { sessions?: Array<{ id: string; status: string }> }
-    ).sessions;
+      after?.data as
+        | { sessions?: Array<{ id: string; status: string }> }
+        | undefined
+    )?.sessions;
     expect(sessions?.find((s) => s.id === seeded.sessionId)).toBeUndefined();
   });
 
@@ -260,7 +262,7 @@ describe("REMOTE_DESKTOP action (local mode, real session service)", () => {
       [],
     );
     expect(result?.success).toBe(false);
-    expect((result?.values as { error?: string }).error).toBe(
+    expect((result?.values as { error?: string } | undefined)?.error).toBe(
       "SESSION_NOT_FOUND",
     );
   });

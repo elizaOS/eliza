@@ -23,6 +23,21 @@ from .env_runner import HermesEnvResult
 
 
 _CODE_BLOCK_RE = re.compile(r"```(?:python|py)?\s*(?P<body>.*?)```", re.DOTALL | re.IGNORECASE)
+_DATASET_NAME = "bigcode/humanevalpack"
+_DATASET_REVISION = "9a41762f73a8cb23bb5811b73d5aab164efcf378"
+_DATASET_CONFIG = "python"
+_DATASET_SPLIT = "test"
+_DATASET_COUNT = 164
+_DATASET_FINGERPRINT = "4af2168c2e5536b9"
+_EVALUATOR_IMAGE = (
+    "python@sha256:4c2cf9917bd1cbacc5e9b07320025bdb7cdf2df7b0ceaccb55e9dd7e30987419"
+)
+_HF_CACHE = (
+    Path(__file__).resolve().parents[3]
+    / "benchmark-data"
+    / "huggingface"
+    / "datasets"
+)
 
 
 def run_humanevalpack_swe_smoke(
@@ -45,8 +60,27 @@ def run_humanevalpack_swe_smoke(
     samples_path = evals_root / "samples.jsonl"
     summary_path = evals_root / "eval-summary.json"
 
-    limit = max_tasks if isinstance(max_tasks, int) and max_tasks > 0 else 1
-    dataset = load_dataset("bigcode/humanevalpack", "python", split="test")
+    if max_tasks is not None and not 1 <= max_tasks <= _DATASET_COUNT:
+        raise ValueError(f"max_tasks must be between 1 and {_DATASET_COUNT}")
+    limit = max_tasks if max_tasks is not None else _DATASET_COUNT
+    dataset = load_dataset(
+        _DATASET_NAME,
+        _DATASET_CONFIG,
+        split=_DATASET_SPLIT,
+        revision=_DATASET_REVISION,
+        cache_dir=str(_HF_CACHE),
+    )
+    if len(dataset) != _DATASET_COUNT:
+        raise RuntimeError(
+            f"Pinned HumanEvalPack returned {len(dataset)} tasks; expected {_DATASET_COUNT}"
+        )
+    actual_fingerprint = str(getattr(dataset, "_fingerprint", ""))
+    if actual_fingerprint != _DATASET_FINGERPRINT:
+        raise RuntimeError(
+            f"Pinned HumanEvalPack fingerprint is {actual_fingerprint!r}; "
+            f"expected {_DATASET_FINGERPRINT!r}"
+        )
+    _verify_docker_evaluator()
     client, server_handle = _build_client(harness=harness, provider=provider, model=model)
 
     rows: list[dict[str, Any]] = []
@@ -55,12 +89,9 @@ def run_humanevalpack_swe_smoke(
         for index, item in enumerate(dataset.select(range(min(limit, len(dataset))))):
             task_id = str(item.get("task_id") or f"humanevalpack-python-{index}")
             prompt = _build_prompt(item)
-            try:
-                reset = getattr(client, "reset", None)
-                if callable(reset):
-                    reset(task_id=task_id, benchmark="hermes_swe_env")
-            except Exception:
-                pass
+            reset = getattr(client, "reset", None)
+            if callable(reset):
+                reset(task_id=task_id, benchmark="hermes_swe_env")
             response = client.send_message(
                 prompt,
                 context={
@@ -118,7 +149,19 @@ def run_humanevalpack_swe_smoke(
         "total_tasks": total,
         "sample_rows": total,
         "incomplete_rollouts": 0,
-        "dataset": "bigcode/humanevalpack/python/test",
+        "dataset": f"{_DATASET_NAME}/{_DATASET_CONFIG}/{_DATASET_SPLIT}",
+        "dataset_revision": _DATASET_REVISION,
+        "dataset_expected_count": _DATASET_COUNT,
+        "dataset_actual_count": len(dataset),
+        "dataset_expected_fingerprint": _DATASET_FINGERPRINT,
+        "dataset_actual_fingerprint": actual_fingerprint,
+        "evaluator_image": _EVALUATOR_IMAGE,
+        "canonical_upstream_hermes_env": False,
+        "benchmark_identity": "HumanEvalPack Python pass@1",
+        "upstream_env_reason": (
+            "Pinned HermesSweEnv evaluate() emits only eval/placeholder; this "
+            "replacement runs the complete official HumanEvalPack Python tests."
+        ),
         "harness": harness,
     }
     summary_path.write_text(
@@ -157,18 +200,18 @@ def _build_client(*, harness: str, provider: str, model: str) -> tuple[Any, Any 
     if harness == "hermes":
         from hermes_adapter.client import HermesClient  # noqa: WPS433
 
-        return HermesClient(provider=provider or "cerebras", model=model, mode="in_process"), None
+        client = HermesClient(provider=provider or "cerebras", model=model)
+        client.wait_until_ready(timeout=60)
+        return client, None
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
-        return (
-            OpenClawClient(
-                provider=provider or "cerebras",
-                model=model,
-                direct_openai_compatible=True,
-            ),
-            None,
+        client = OpenClawClient(
+            provider=provider or "cerebras",
+            model=model,
         )
+        client.wait_until_ready(timeout=60)
+        return client, None
     raise ValueError(f"unsupported hermes_swe_env harness: {harness!r}")
 
 
@@ -228,8 +271,31 @@ def _execute_candidate(
         target = Path(tmp) / "candidate.py"
         target.write_text(program, encoding="utf-8")
         proc = subprocess.run(
-            ["python3", str(target)],
-            cwd=tmp,
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--read-only",
+                "--memory",
+                "512m",
+                "--cpus",
+                "1",
+                "--pids-limit",
+                "128",
+                "--tmpfs",
+                "/tmp:rw,nosuid,size=64m",
+                "-e",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "-v",
+                f"{tmp}:/workspace:ro",
+                "-w",
+                "/workspace",
+                _EVALUATOR_IMAGE,
+                "python",
+                target.name,
+            ],
             capture_output=True,
             text=True,
             timeout=timeout_s,
@@ -239,3 +305,38 @@ def _execute_candidate(
         return True, None
     detail = (proc.stderr or proc.stdout or f"exit code {proc.returncode}").strip()
     return False, detail[-2000:] if detail else f"exit code {proc.returncode}"
+
+
+def _verify_docker_evaluator() -> None:
+    info = subprocess.run(
+        ["docker", "info"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    if info.returncode != 0:
+        raise RuntimeError(
+            "hermes_swe_env requires Docker for untrusted candidate execution: "
+            f"{(info.stderr or info.stdout)[-1000:]}"
+        )
+    inspect = subprocess.run(
+        ["docker", "image", "inspect", _EVALUATOR_IMAGE],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if inspect.returncode != 0:
+        pull = subprocess.run(
+            ["docker", "pull", _EVALUATOR_IMAGE],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        if pull.returncode != 0:
+            raise RuntimeError(
+                f"Failed to pull pinned HumanEvalPack evaluator image {_EVALUATOR_IMAGE}: "
+                f"{(pull.stderr or pull.stdout)[-2000:]}"
+            )

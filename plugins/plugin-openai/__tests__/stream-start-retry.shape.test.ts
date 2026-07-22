@@ -38,6 +38,30 @@ function createRuntime() {
   } as never;
 }
 
+function plannerResponseSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      thought: { type: "string" },
+      toolCalls: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            args: { type: "object" },
+          },
+          required: ["name"],
+        },
+      },
+    },
+    required: ["thought", "toolCalls"],
+  };
+}
+
 const TRANSIENT = {
   message: "Encountered a server error, please try again",
   type: "server_error",
@@ -282,6 +306,53 @@ describe("live-stream start retry", () => {
     } finally {
       delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
     }
+  }, 20_000);
+
+  it("buffered transformed planner stream replays only restored final text without the env gate", async () => {
+    delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+    const wireText = JSON.stringify({
+      thought: "Need a tool.",
+      toolCalls: [
+        {
+          id: "call-1",
+          name: "CALENDAR",
+          args: {
+            __eliza_planner_arg_entries: [
+              { key: "action", valueJson: JSON.stringify("create") },
+              { key: "durationMinutes", valueJson: JSON.stringify(30) },
+            ],
+          },
+        },
+      ],
+    });
+    const rawChunks = [wireText.slice(0, 24), wireText.slice(24)];
+    aiMocks.streamText.mockImplementation(() => successResult(rawChunks));
+
+    const onStreamChunk = vi.fn();
+    const { handleActionPlanner } = await import("../models/text");
+    const stream = (await handleActionPlanner(createRuntime(), {
+      messages: [{ role: "user", content: "Plan" }],
+      responseSchema: plannerResponseSchema(),
+      stream: true,
+      onStreamChunk,
+    } as never)) as { textStream: AsyncIterable<string>; text: Promise<string> };
+
+    const restoredText = JSON.stringify({
+      thought: "Need a tool.",
+      toolCalls: [
+        {
+          id: "call-1",
+          name: "CALENDAR",
+          args: { action: "create", durationMinutes: 30 },
+        },
+      ],
+    });
+    await expect(collect(stream)).resolves.toEqual([restoredText]);
+    await expect(stream.text).resolves.toBe(restoredText);
+    expect(onStreamChunk).toHaveBeenCalledTimes(1);
+    expect(onStreamChunk).toHaveBeenCalledWith(restoredText);
+    expect(onStreamChunk).not.toHaveBeenCalledWith(rawChunks[0]);
+    expect(onStreamChunk).not.toHaveBeenCalledWith(rawChunks[1]);
   }, 20_000);
 
   it("non-streaming with native tools (the coding-build path): transient failure retries and tool calls survive", async () => {

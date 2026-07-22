@@ -22,9 +22,10 @@ The reviewed production document is
 public tree. It uses the Xcode App target's Release Team ID and bundle ID
 (`25877RY2EH.ai.elizaos.app`), preserves the normalized legacy routes, and adds
 `/auth/callback` for the mobile Authorization Code + PKCE return path. The
-paired App target carries only the required `applinks:eliza.app` entitlement;
-password AutoFill is not part of this release, so `webcredentials` is not
-claimed by either side.
+paired App target carries both `applinks:eliza.app` and
+`webcredentials:eliza.app`: Apple requires the latter association for
+`ASWebAuthenticationSession.Callback.https`, independently of password
+AutoFill. Both AASA services bind only the reviewed release application ID.
 
 GitHub Pages does not control response headers, so
 `.github/workflows/deploy-aasa.yml` publishes an exact-path Cloudflare Worker.

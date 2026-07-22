@@ -16,6 +16,7 @@ from typing import Literal
 class Mind2WebOperation(str, Enum):
     """Operation types in Mind2Web."""
 
+    INVALID = "INVALID"
     CLICK = "CLICK"
     TYPE = "TYPE"
     SELECT = "SELECT"
@@ -192,6 +193,8 @@ class Mind2WebConfig:
     num_trials: int = 1
     max_steps_per_task: int = 20
     include_edge_scenarios: bool = False
+    expected_tasks: int | None = None
+    expected_scenarios: int | None = None
 
     # Timing
     timeout_ms: int = 120000
@@ -215,6 +218,7 @@ class Mind2WebConfig:
     ranker_mode: Mind2WebRankerMode = Mind2WebRankerMode.REAL
     ranker_top_k: int = 50
     ranker_model: str | None = None  # None -> DEFAULT_RANKER_MODEL in ranker.py
+    ranker_revision: str | None = None  # None -> pinned DEFAULT_RANKER_REVISION
     ranker_device: str | None = None  # None -> auto (cuda if available, else cpu)
 
     # Trajectory logging

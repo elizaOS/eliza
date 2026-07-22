@@ -365,34 +365,37 @@ describe("useRealtimeVoiceSession", () => {
     });
   });
 
-  it("fallback: a mint 404 flips `available` false with NO error surface (caller uses batch)", async () => {
+  it("fallback: a mint 404 stays retryable and records the indicator reason", async () => {
     const { options } = makeOptions({ mintStatus: 404 });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     expect(result.current.available).toBe(true);
-    let startOutcome: Awaited<ReturnType<typeof result.current.start>>;
+    let startOutcome:
+      | Awaited<ReturnType<typeof result.current.start>>
+      | undefined;
     await act(async () => {
       startOutcome = await result.current.start();
       await flushAsync();
     });
 
-    // 404 = feature disabled server-side. The hook latches it: available flips
-    // false, active stays false, and NO error is surfaced (batch fallback is a
-    // normal path, not an error).
-    await waitFor(() => expect(result.current.available).toBe(false));
+    // The current interaction falls back, but the next tap probes realtime again.
+    await waitFor(() => expect(result.current.available).toBe(true));
     expect(result.current.active).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(startOutcome!).toEqual({
+    expect(startOutcome).toEqual({
       kind: "fallback-to-batch",
       reason: "mint",
     });
+    expect(result.current.fallbackReason).toBe("mint");
   });
 
   it("fallback: a pre-ready mint failure resolves to same-gesture batch fallback", async () => {
     const { options } = makeOptions({ mintStatus: 503 });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
-    let startOutcome: Awaited<ReturnType<typeof result.current.start>>;
+    let startOutcome:
+      | Awaited<ReturnType<typeof result.current.start>>
+      | undefined;
     await act(async () => {
       startOutcome = await result.current.start();
       await flushAsync();
@@ -400,7 +403,7 @@ describe("useRealtimeVoiceSession", () => {
 
     expect(result.current.error?.kind).toBe("mint");
     expect(result.current.active).toBe(false);
-    expect(startOutcome!).toEqual({
+    expect(startOutcome).toEqual({
       kind: "fallback-to-batch",
       reason: "mint",
     });
@@ -452,7 +455,7 @@ describe("useRealtimeVoiceSession", () => {
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     expect(result.current.available).toBe(false);
-    let outcome: Awaited<ReturnType<typeof result.current.start>>;
+    let outcome: Awaited<ReturnType<typeof result.current.start>> | undefined;
     await act(async () => {
       outcome = await result.current.start();
       await flushAsync();
@@ -460,7 +463,7 @@ describe("useRealtimeVoiceSession", () => {
     // Never minted, never fetched consent, never active.
     expect(getConsentNonce).not.toHaveBeenCalled();
     expect(result.current.active).toBe(false);
-    expect(outcome!).toEqual({ kind: "unavailable" });
+    expect(outcome).toEqual({ kind: "unavailable" });
   });
 
   it("cancels an in-flight consent start when the realtime flag flips off", async () => {
@@ -526,7 +529,9 @@ describe("useRealtimeVoiceSession", () => {
     const { options, mint } = makeOptions({ consentNonce: null });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
-    let startOutcome: Awaited<ReturnType<typeof result.current.start>>;
+    let startOutcome:
+      | Awaited<ReturnType<typeof result.current.start>>
+      | undefined;
     await act(async () => {
       startOutcome = await result.current.start();
       await flushAsync();
@@ -535,12 +540,11 @@ describe("useRealtimeVoiceSession", () => {
     // No mint request was made — consent is a hard precondition client-side too.
     expect(mint.calls.length).toBe(0);
     expect(result.current.active).toBe(false);
-    // The copy promises the batch path, so realtime must actually disarm: the
-    // next mic tap sees available=false and runs standard voice.
-    expect(result.current.available).toBe(false);
+    // This interaction falls back, while the next user tap may retry realtime.
+    expect(result.current.available).toBe(true);
     expect(result.current.error?.actionable).toBe(false);
     expect(result.current.error?.message).toMatch(/standard voice/i);
-    expect(startOutcome!).toEqual({
+    expect(startOutcome).toEqual({
       kind: "fallback-to-batch",
       reason: "consent",
     });
@@ -557,7 +561,7 @@ describe("useRealtimeVoiceSession", () => {
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
     const startPromise = beginStart(result);
     await flushAsync();
-    const sock = await driveReady(ws, "s", "T1");
+    await driveReady(ws, "s", "T1");
     await waitFor(() => expect(result.current.active).toBe(true));
     await expect(startPromise).resolves.toEqual({ kind: "live" });
     expect(result.current.paused).toBe(false);

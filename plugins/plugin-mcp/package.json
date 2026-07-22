@@ -50,7 +50,7 @@
     "dev": "bun --hot build.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -64,9 +64,10 @@
     "json5": "^2.2.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

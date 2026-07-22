@@ -21,9 +21,14 @@ export interface InternalElizaConversationFetchClaims {
   userId: string;
 }
 
+export type InternalElizaConversationFetch = typeof fetch & {
+  /** Warm and cache the immutable voice-token tenancy lookup before first turn. */
+  prewarm: () => Promise<void>;
+};
+
 export type InternalElizaConversationFetchFactory = (
   claims: InternalElizaConversationFetchClaims,
-) => typeof fetch;
+) => InternalElizaConversationFetch;
 
 /**
  * Capture durable Worker bindings while the upgrade request is live. Each late
@@ -39,12 +44,42 @@ export function createInternalElizaConversationFetchFactory(
     dbCacheContext: hasDbCacheContext(),
   });
 
-  return (claims) =>
-    (async (input: RequestInfo | URL, init?: RequestInit) => {
+  return (claims) => {
+    let scopePreverified = false;
+    let prewarmPromise: Promise<void> | null = null;
+
+    const prewarm = (): Promise<void> => {
+      if (scopePreverified) return Promise.resolve();
+      if (prewarmPromise) return prewarmPromise;
+      prewarmPromise = runWithCloudBindingsAsync(
+        env as unknown as Record<string, unknown>,
+        () =>
+          runWithDbCacheAsync(async () => {
+            const agent = await agentSandboxesRepository.findByIdAndOrg(
+              claims.agentId,
+              claims.organizationId,
+            );
+            scopePreverified = Boolean(
+              agent && agent.user_id === claims.userId,
+            );
+          }),
+      ).finally(() => {
+        prewarmPromise = null;
+      });
+      return prewarmPromise;
+    };
+
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       logger.info("[voice-sse-context] adapter entry", {
         cloudBindingsContext: hasCloudBindingsContext(),
         dbCacheContext: hasDbCacheContext(),
       });
+
+      // If session-start warming is still in flight, reuse its result rather
+      // than issuing the same tenancy query concurrently on the first turn.
+      // Warmup is best-effort: a transient failure must fall through to the
+      // normal per-turn validation, never fail the user's turn by itself.
+      if (prewarmPromise) await prewarmPromise.catch(() => undefined);
 
       return runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
@@ -56,6 +91,7 @@ export function createInternalElizaConversationFetchFactory(
                 claims,
                 input,
                 init,
+                scopePreverified,
               );
               logger.info("[voice-sse-context] before response", {
                 cloudBindingsContext: hasCloudBindingsContext(),
@@ -79,7 +115,10 @@ export function createInternalElizaConversationFetchFactory(
             }
           }),
       );
-    }) as typeof fetch;
+    }) as InternalElizaConversationFetch;
+    fetchImpl.prewarm = prewarm;
+    return fetchImpl;
+  };
 }
 
 /** Compatibility helper for direct/test callers. */
@@ -95,6 +134,7 @@ async function dispatchInternalElizaConversationFetch(
   claims: InternalElizaConversationFetchClaims,
   input: RequestInfo | URL,
   init?: RequestInit,
+  scopePreverified = false,
 ): Promise<Response> {
   const request = new Request(input, init);
   const url = new URL(request.url);
@@ -119,6 +159,8 @@ async function dispatchInternalElizaConversationFetch(
     );
   }
   if (
+    headers.get("X-Eliza-Agent-Id") !== claims.agentId ||
+    headers.get("X-Eliza-Conversation-Id") !== claims.conversationId ||
     headers.get("X-Eliza-Organization-Id") !== claims.organizationId ||
     headers.get("X-Eliza-User-Id") !== claims.userId
   ) {
@@ -128,15 +170,17 @@ async function dispatchInternalElizaConversationFetch(
     );
   }
 
-  const agent = await agentSandboxesRepository.findByIdAndOrg(
-    claims.agentId,
-    claims.organizationId,
-  );
-  if (!agent || agent.user_id !== claims.userId) {
-    return Response.json(
-      { success: false, error: "Agent not found", code: "agent_not_found" },
-      { status: 404 },
+  if (!scopePreverified) {
+    const agent = await agentSandboxesRepository.findByIdAndOrg(
+      claims.agentId,
+      claims.organizationId,
     );
+    if (!agent || agent.user_id !== claims.userId) {
+      return Response.json(
+        { success: false, error: "Agent not found", code: "agent_not_found" },
+        { status: 404 },
+      );
+    }
   }
 
   const rawText = await request.text();
@@ -152,6 +196,7 @@ async function dispatchInternalElizaConversationFetch(
     agentId: claims.agentId,
     orgId: claims.organizationId,
     conversationId: claims.conversationId,
+    userId: claims.userId,
     body,
     origin: headers.get("origin"),
   });
