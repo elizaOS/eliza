@@ -69,6 +69,44 @@ describe("READ", () => {
     expect(posts[0].text).toContain("**bold**");
   });
 
+  it("caps only the visible callback for long reads", async () => {
+    const file = path.join(env.tmpDir, "long-visible-read.txt");
+    const lines = Array.from(
+      { length: 300 },
+      (_, index) =>
+        `line-${index.toString().padStart(3, "0")}-xxxxxxxxxxxxxxxxxxxx`,
+    );
+    await fs.writeFile(file, lines.join("\n"), "utf8");
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = await readFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      { parameters: { file_path: file } },
+      async (content) => {
+        posts.push(content as { text: string; source?: string });
+        return [];
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(lines[0]);
+    expect(result.text).toContain(lines[150]);
+    expect(result.text).toContain(lines[299]);
+    expect(result.text).not.toContain("lines omitted — ask to see more");
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain(lines[0]);
+    expect(posts[0].text).not.toContain(lines[150]);
+    expect(posts[0].text).toContain(lines[299]);
+    expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+    expect(posts[0].text.length).toBeLessThan(1700);
+  });
+
   it("right-pads line numbers to 6 chars and uses tab separator", async () => {
     const file = path.join(env.tmpDir, "lines.txt");
     await fs.writeFile(file, "alpha\nbeta", "utf8");

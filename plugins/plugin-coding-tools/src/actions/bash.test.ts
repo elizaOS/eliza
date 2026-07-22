@@ -460,6 +460,50 @@ describeIfPosix("shellAction", () => {
     expect(data?.command).toBe("echo hello");
   });
 
+  it("caps only the visible callback for long foreground output", async () => {
+    const lines = Array.from(
+      { length: 300 },
+      (_, index) =>
+        `foreground-${index.toString().padStart(3, "0")}-xxxxxxxxxxxxxxxxxxxx`,
+    );
+    const router = makeShellRouter(async () => ({
+      output: lines.join("\n"),
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "printf long-output" },
+        async (content) => {
+          posts.push(content as { text: string; source?: string });
+          return [];
+        },
+      ),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(lines[0]);
+    expect(result.text).toContain(lines[150]);
+    expect(result.text).toContain(lines[299]);
+    expect(result.text).not.toContain("lines omitted — ask to see more");
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain(lines[0]);
+    expect(posts[0].text).not.toContain(lines[150]);
+    expect(posts[0].text).toContain(lines[299]);
+    expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+    expect(posts[0].text.length).toBeLessThan(1700);
+  });
+
   it("marks empty stdout and stderr explicitly for successful commands", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
@@ -623,6 +667,55 @@ describeIfPosix("shellAction", () => {
       handle,
       (data) => data.status === "exited",
     );
+  });
+
+  it("caps only the visible callback for long background polls", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command:
+          'i=0; while [ "$i" -lt 300 ]; do printf \'background-%03d-xxxxxxxxxxxxxxxxxxxx\\n\' "$i"; i=$((i + 1)); done',
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    await pollUntil(
+      runtime,
+      message,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        message,
+        undefined,
+        { action: "poll_background", handle },
+        async (content) => {
+          posts.push(content as { text: string; source?: string });
+          return [];
+        },
+      ),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("background-000-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).toContain("background-150-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).toContain("background-299-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).not.toContain("lines omitted — ask to see more");
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain("background-000-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).not.toContain("background-150-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).toContain("background-299-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+    expect(posts[0].text.length).toBeLessThan(1700);
   });
 
   it("reports buffer truncation when background output exceeds the cap", async () => {
