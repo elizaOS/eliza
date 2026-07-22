@@ -22,22 +22,14 @@ import {
 } from "../direct-wallet-payer-proof";
 
 // This integration test relies on Vitest-only module-mock plumbing
-// (`vi.mock(id, async () => ({ ...await vi.importActual<T>(id), ...overrides }))`)
-// which bun-test's `vi` shim does NOT implement (`vi.importActual` is
-// undefined under bun). The repo currently invokes `bun test` for the
-// cloud unit suite, so when this file is picked up the top-level
-// `vi.mock` factories throw at module-load time and crash the whole
-// unit job.
-//
-// Skip the suite cleanly when running under bun-test. Vitest (run on a
-// developer's box with `vitest run`) still exercises the full integration
-// path. The on-chain verify layer is the only thing that the mocks gate,
-// so skipping under bun-test does not reduce coverage in CI — the same
-// state-machine paths are exercised by other integration suites that use
-// real test fixtures rather than vi.mock.
+// (`vi.doMock(id, async () => ({ ...await vi.importActual<T>(id), ...overrides }))`)
+// which bun-test's `vi` shim does not implement (`vi.importActual` is
+// undefined under bun). Register non-hoisted mocks only under Vitest, before
+// the service's dynamic import in `beforeAll`; bun-test selects a skipped
+// suite without invoking unsupported mock plumbing. The dedicated Vitest lane
+// runs all 40 state-machine cases in CI against real in-process PGlite.
 const SUPPORTS_VITEST_MOCK_API =
-  typeof (vi as unknown as { importActual?: unknown }).importActual === "function";
-const d = SUPPORTS_VITEST_MOCK_API ? describe : describe.skip;
+  typeof vi.importActual === "function" && typeof vi.doMock === "function";
 
 // --- Required env BEFORE any imports of cloud/shared/db ---------------------
 // PGlite in-process; receive addresses for all three networks so config is
@@ -85,7 +77,7 @@ interface FakeTx {
 const chainTxs = new Map<string, FakeTx>();
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("viem", async () => {
+  vi.doMock("viem", async () => {
     const actual = (await vi.importActual("viem")) as typeof import("viem");
     return {
       ...actual,
@@ -175,7 +167,7 @@ if (SUPPORTS_VITEST_MOCK_API) {
 
 // BNB price oracle — fixed quote so the math is predictable.
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("../bnb-price-oracle", async () => {
+  vi.doMock("../bnb-price-oracle", async () => {
     const Decimal = (await import("decimal.js")).default;
     return {
       getBnbUsdQuote: vi.fn(async () => ({
@@ -194,21 +186,15 @@ interface SolanaTestState {
   parsedTxOverride: unknown;
 }
 
-// Shared via globalThis instead of vi.hoisted: vitest's mock-hoisting
-// transform mis-emits a `vi.hoisted(...)` call that sits in expression
-// position (missing statement terminator → parse failure), which used to
-// make this whole file unparseable under vitest. The mock factories only
-// touch this state lazily (inside stub method bodies), so plain module
-// state reached through globalThis is safe under hoisting.
-const solanaStateHost = globalThis as { __dwpSolanaTestState?: SolanaTestState };
-solanaStateHost.__dwpSolanaTestState ??= {
+// `doMock` is deliberately non-hoisted, so its factories can close over the
+// mutable state that each Solana verification case controls.
+const solanaTestState: SolanaTestState = {
   ataOwnerOverride: null,
   parsedTxOverride: null,
 };
-const solanaTestState = solanaStateHost.__dwpSolanaTestState;
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("@solana/spl-token", async () => {
+  vi.doMock("@solana/spl-token", async () => {
     const actual = (await vi.importActual(
       "@solana/spl-token",
     )) as typeof import("@solana/spl-token");
@@ -231,7 +217,7 @@ if (SUPPORTS_VITEST_MOCK_API) {
 }
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("@solana/web3.js", async () => {
+  vi.doMock("@solana/web3.js", async () => {
     const actual = (await vi.importActual("@solana/web3.js")) as typeof import("@solana/web3.js");
     return {
       ...actual,
@@ -256,7 +242,7 @@ const creditsLedger: Array<{
 }> = [];
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("../credits", () => ({
+  vi.doMock("../credits", () => ({
     creditsService: {
       async addCredits(params: {
         organizationId: string;
@@ -285,7 +271,7 @@ if (SUPPORTS_VITEST_MOCK_API) {
 }
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("../invoices", () => ({
+  vi.doMock("../invoices", () => ({
     invoicesService: {
       async getByStripeInvoiceId() {
         return undefined;
@@ -314,49 +300,42 @@ const ATTACKER_KEY = "0x8b3a350cf5c34c9194ca3a9d8b542a7d542a20a6039b332cf98b472c
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let service: typeof import("../direct-wallet-payments").directWalletPaymentsService;
 let closeDb: () => Promise<void>;
-let pgliteAvailable = true;
 
 const env = process.env as Record<string, string>;
 
 beforeAll(async () => {
-  try {
-    const dbClient = await import("../../../db/client");
-    const schemas = await import("../../../db/schemas/crypto-payments");
-    const svc = await import("../direct-wallet-payments");
-    dbWrite = dbClient.dbWrite;
-    closeDb = dbClient.closeDatabaseConnectionsForTests;
-    void schemas.cryptoPayments;
-    service = svc.directWalletPaymentsService;
+  const dbClient = await import("../../../db/client");
+  const schemas = await import("../../../db/schemas/crypto-payments");
+  const svc = await import("../direct-wallet-payments");
+  dbWrite = dbClient.dbWrite;
+  closeDb = dbClient.closeDatabaseConnectionsForTests;
+  void schemas.cryptoPayments;
+  service = svc.directWalletPaymentsService;
 
-    // Create only the table we need. uuid_generate_v4 isn't available in PGlite
-    // without an extension; gen_random_uuid is built-in.
-    await dbWrite.execute(`
-      CREATE TABLE IF NOT EXISTS crypto_payments (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        organization_id uuid NOT NULL,
-        user_id uuid,
-        payment_address text NOT NULL,
-        token_address text,
-        token text NOT NULL,
-        network text NOT NULL,
-        expected_amount text NOT NULL,
-        received_amount text,
-        credits_to_add text NOT NULL,
-        transaction_hash text,
-        block_number text,
-        status text NOT NULL,
-        created_at timestamp NOT NULL DEFAULT now(),
-        updated_at timestamp NOT NULL DEFAULT now(),
-        confirmed_at timestamp,
-        expires_at timestamp NOT NULL,
-        metadata jsonb DEFAULT '{}'::jsonb
-      )
-    `);
-  } catch (error) {
-    pgliteAvailable = false;
-    // eslint-disable-next-line no-console
-    console.warn("[direct-wallet-payments test] PGlite unavailable, skipping:", error);
-  }
+  // Create only the table we need. uuid_generate_v4 isn't available in PGlite
+  // without an extension; gen_random_uuid is built-in.
+  await dbWrite.execute(`
+    CREATE TABLE IF NOT EXISTS crypto_payments (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      user_id uuid,
+      payment_address text NOT NULL,
+      token_address text,
+      token text NOT NULL,
+      network text NOT NULL,
+      expected_amount text NOT NULL,
+      received_amount text,
+      credits_to_add text NOT NULL,
+      transaction_hash text,
+      block_number text,
+      status text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now(),
+      confirmed_at timestamp,
+      expires_at timestamp NOT NULL,
+      metadata jsonb DEFAULT '{}'::jsonb
+    )
+  `);
 }, 240_000);
 
 afterAll(async () => {
@@ -395,7 +374,7 @@ async function trustPayerProof(payment: { id: string; metadata: unknown }) {
 // Tests
 // ---------------------------------------------------------------------------
 
-d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
+describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
   "DirectWalletPaymentsService (PGlite integration)",
   () => {
     test("createPayment for BSC native BNB locks price quote and computes wei", async () => {
@@ -791,8 +770,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       // No entry in chainTxs => transient "not found". One pass bumps verify_attempts.
       await service.processBroadcastBatch(env);
       const row1 = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row1?.status).toBe("broadcast");
-      const attempts1 = Number((row1?.metadata as Record<string, unknown>).verify_attempts ?? 0);
+      expect(row1).toBeDefined();
+      if (!row1) {
+        throw new Error("Expected the broadcast payment row after verification retry");
+      }
+      expect(row1.status).toBe("broadcast");
+      const attempts1 = Number((row1.metadata as Record<string, unknown>).verify_attempts ?? 0);
       expect(attempts1).toBeGreaterThanOrEqual(1);
 
       // Jump straight to MAX-1 to keep the test fast, then one more pass should
@@ -839,11 +822,15 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
 
       expect(stats.failed).toBe(1);
       const row = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row?.status).toBe("failed_chain");
-      expect((row?.metadata as Record<string, unknown>).failure_reason).toMatch(
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error("Expected the failed native-payment row");
+      }
+      expect(row.status).toBe("failed_chain");
+      expect((row.metadata as Record<string, unknown>).failure_reason).toMatch(
         /below the expected floor/,
       );
-      expect(Number((row?.metadata as Record<string, unknown>).verify_attempts ?? 0)).toBe(0);
+      expect(Number((row.metadata as Record<string, unknown>).verify_attempts ?? 0)).toBe(0);
     });
 
     test("Solana confirmPayment rejects when receiving ATA owner mismatches treasury", async () => {
@@ -959,8 +946,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const stats = await service.processBroadcastBatch(env);
       expect(stats.failed).toBe(1);
       const row = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row?.status).toBe("failed_chain");
-      expect((row?.metadata as Record<string, unknown>).failure_reason).toMatch(/failed/i);
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error("Expected the reverted payment row");
+      }
+      expect(row.status).toBe("failed_chain");
+      expect((row.metadata as Record<string, unknown>).failure_reason).toMatch(/failed/i);
     });
 
     test("processBroadcastBatch leaves payment in broadcast on transient (not-found) failure", async () => {
@@ -1093,8 +1084,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       expect(stats.failed).toBe(0);
       expect(stats.stillPending).toBe(1);
       const row = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row?.status).toBe("broadcast");
-      expect(Number((row?.metadata as Record<string, unknown>).verify_attempts)).toBe(61);
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error("Expected the pending payment row after an RPC failure");
+      }
+      expect(row.status).toBe("broadcast");
+      expect(Number((row.metadata as Record<string, unknown>).verify_attempts)).toBe(61);
     });
 
     test("processBroadcastBatch marks failed_chain immediately on sender-mismatch (terminal)", async () => {
@@ -1131,8 +1126,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const stats = await service.processBroadcastBatch(env);
       expect(stats.failed).toBe(1);
       const row = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row?.status).toBe("failed_chain");
-      expect(String((row?.metadata as Record<string, unknown>).failure_reason)).toMatch(
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error("Expected the sender-mismatch payment row");
+      }
+      expect(row.status).toBe("failed_chain");
+      expect(String((row.metadata as Record<string, unknown>).failure_reason)).toMatch(
         /sender does not match the proven payer/i,
       );
       expect(creditsLedger).toHaveLength(0);
@@ -1173,8 +1172,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
         const stats = await service.processBroadcastBatch(env);
         expect(stats.failed).toBe(1);
         const row = await dbWrite.query.cryptoPayments.findFirst();
-        expect(row?.status).toBe("failed_chain");
-        expect(String((row?.metadata as Record<string, unknown>).failure_reason)).toMatch(
+        expect(row).toBeDefined();
+        if (!row) {
+          throw new Error("Expected the failed Solana payment row");
+        }
+        expect(row.status).toBe("failed_chain");
+        expect(String((row.metadata as Record<string, unknown>).failure_reason)).toMatch(
           /was not confirmed successfully/i,
         );
         expect(creditsLedger).toHaveLength(0);

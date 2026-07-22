@@ -133,11 +133,17 @@ describe("#14527 button-tap replay renders link-out blocks natively", () => {
 		const built = follows[0]?.components;
 		expect(built).toBeDefined();
 		expect(built).toHaveLength(1);
-		const row = built?.[0].toJSON();
-		expect(row?.type).toBe(1);
+		if (!built) throw new Error("Expected rendered interaction components");
+		const firstRow = built[0];
+		expect(firstRow).toBeDefined();
+		if (!firstRow) throw new Error("Expected a rendered action row");
+		const row = firstRow.toJSON();
+		expect(row.type).toBe(1);
 		const button = (
-			row?.components as Array<{ style: number; url?: string }>
+			row.components as Array<{ style: number; url?: string }>
 		)[0];
+		expect(button).toBeDefined();
+		if (!button) throw new Error("Expected a rendered link button");
 		// Style 5 = Link; the URL is the resolved orchestrator task view.
 		expect(button.style).toBe(5);
 		expect(button.url).toBe(`https://app.test/orchestrator?taskId=${TASK_ID}`);

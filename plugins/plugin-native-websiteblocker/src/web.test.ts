@@ -71,25 +71,22 @@ describe("WebsiteBlockerWeb fallback", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    0,
-    -1,
-    Number.POSITIVE_INFINITY,
-    Number.NaN,
-    "nope",
-  ])("rejects malformed duration %s before fetch", async (durationMinutes) => {
-    setWindow();
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+  it.each([0, -1, Number.POSITIVE_INFINITY, Number.NaN, "nope"])(
+    "rejects malformed duration %s before fetch",
+    async (durationMinutes) => {
+      setWindow();
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      new WebsiteBlockerWeb().startBlock({
-        websites: ["example.com"],
-        durationMinutes,
-      }),
-    ).rejects.toThrow("durationMinutes must be a positive finite number");
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      await expect(
+        new WebsiteBlockerWeb().startBlock({
+          websites: ["example.com"],
+          durationMinutes,
+        }),
+      ).rejects.toThrow("durationMinutes must be a positive finite number");
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns an unavailable open-settings result when the runtime API is unreachable", async () => {
     Object.defineProperty(globalThis, "window", {

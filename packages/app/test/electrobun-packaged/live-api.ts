@@ -170,7 +170,10 @@ export async function startLiveApiServer(
 
     const requests: string[] = [];
     let configPatch: Record<string, unknown> = {};
-    let resetApplied = false;
+    // Fresh runtimes now report their persisted/default first-run state from
+    // the real API. Make the fixture's explicit false option authoritative from
+    // the first probe, just as a completed fixture is seeded above.
+    let resetApplied = options.firstRunComplete === false;
     proxy = http.createServer(async (req, res) => {
       try {
         const method = (req.method ?? "GET").toUpperCase();

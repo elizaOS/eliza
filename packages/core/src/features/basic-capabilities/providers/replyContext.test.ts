@@ -148,9 +148,12 @@ describe("replyContextProvider", () => {
 		expect(result.text).toContain("turn 4");
 		// Window: the target (t=500) plus RADIUS turns on each side — turns 1..7
 		// (createdAt 200..800), none of which are in the recent tail (t>=900).
-		const windowIds = (result.data?.replyContextMessages as Memory[]).map(
-			(m) => m.id,
-		);
+		const replyContextMessages = result.data?.replyContextMessages;
+		expect(replyContextMessages).toBeDefined();
+		if (!replyContextMessages) {
+			throw new Error("Expected reply-context messages to be returned");
+		}
+		const windowIds = (replyContextMessages as Memory[]).map((m) => m.id);
 		expect(windowIds).toContain(thread[1].id); // RADIUS older
 		expect(windowIds).toContain(thread[4].id); // the target itself
 		expect(windowIds).toContain(thread[7].id); // RADIUS newer
@@ -159,7 +162,7 @@ describe("replyContextProvider", () => {
 		expect(windowIds).not.toContain(thread[8].id); // t=900, in the recent tail
 		// Both half-windows are [target, ±RADIUS]; merged unique that is
 		// 2*RADIUS+1 turns (the shared target counted once).
-		expect(result.data?.replyContextMessages).toHaveLength(
+		expect(replyContextMessages).toHaveLength(
 			2 * REPLY_CONTEXT_WINDOW_RADIUS + 1,
 		);
 	});

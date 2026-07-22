@@ -12,7 +12,7 @@
  */
 
 import type { ErrorReportedPayload, IAgentRuntime } from "@elizaos/core";
-import { EventType, logger } from "@elizaos/core";
+import { EventType, logger, QUIET_ERROR_CODES } from "@elizaos/core";
 import { EscalationService } from "../services/escalation.ts";
 
 const DEFAULT_THRESHOLD = 3;
@@ -79,6 +79,12 @@ export function createErrorReportedEscalationHandler(
   windowMinutes: number,
 ): (payload: ErrorReportedPayload) => Promise<void> {
   return async (payload: ErrorReportedPayload): Promise<void> => {
+    // Internal scheduler/plumbing codes are self-healing or operator-facing and
+    // must never be escalated into the owner's chat (#SHADOW-ACCOUNT-DEBUG). The
+    // orphaned-task loop tripped this threshold repeatedly, narrating the same
+    // TASK_WORKER_MISSING failure into Shadow's chat. Still counted? No: skip
+    // before record() so a quiet-code storm can't even accumulate toward a trip.
+    if (QUIET_ERROR_CODES.has(payload.code)) return;
     const { count, shouldEscalate } = tracker.record(payload.code, Date.now());
     if (!shouldEscalate) return;
 

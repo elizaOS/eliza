@@ -150,19 +150,22 @@ describe("documentAction.handler structured routing", () => {
 	it.each([
 		["search", "searchDocuments"],
 		["list", "listDocuments"],
-	] as const)("routes the %s subaction to the matching service call", async (action, method) => {
-		const service = makeService();
-		const { runtime } = makeRuntime(service);
-		await documentAction.handler?.(
-			runtime,
-			makeMessage("placeholder text"),
-			undefined,
-			options(
-				action === "search" ? { action, query: "launch notes" } : { action },
-			),
-		);
-		expect(service[method]).toHaveBeenCalledTimes(1);
-	});
+	] as const)(
+		"routes the %s subaction to the matching service call",
+		async (action, method) => {
+			const service = makeService();
+			const { runtime } = makeRuntime(service);
+			await documentAction.handler?.(
+				runtime,
+				makeMessage("placeholder text"),
+				undefined,
+				options(
+					action === "search" ? { action, query: "launch notes" } : { action },
+				),
+			);
+			expect(service[method]).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	it("extracts a missing search query instead of stripping English prose in the handler", async () => {
 		const service = makeService();

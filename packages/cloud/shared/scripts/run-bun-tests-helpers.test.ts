@@ -1,5 +1,7 @@
-// Unit coverage for the #15785 native-crash classifier and retry-bound policy
-// behind scripts/run-bun-tests.mjs. Pure logic — runs on every platform.
+/**
+ * Pure policy coverage for the package test wrapper: crash classification,
+ * bounded quarantine retries, and timeout argument forwarding on every platform.
+ */
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -10,6 +12,7 @@ import {
   DEFAULT_MAX_QUARANTINE_ATTEMPTS,
   DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS,
   DEFAULT_QUARANTINED_SUITES,
+  DEFAULT_TEST_TIMEOUT_MS,
   extractCrashExcerpt,
   findCrashMarkers,
   getBunFailCounts,
@@ -18,6 +21,7 @@ import {
   resolveMaxAttempts,
   resolveQuarantineMode,
   shouldRetryQuarantinedSuites,
+  withDefaultTestTimeout,
 } from "./run-bun-tests-helpers.mjs";
 
 // The real #15785 tail (windows-ci run 29041377960): hook-timeout (fail) line,
@@ -129,12 +133,13 @@ describe("classifyBunTestExit (#15785 crash-signature classifier)", () => {
     expect(result.kind).toBe("test-failure");
   });
 
-  test.each([
-    132, 134, 139, 3221225477, 3221225501, 3221226505,
-  ])("native-crash exit code %i without reported failures is a native crash", (status) => {
-    const result = classifyBunTestExit({ status, signal: null, output: "" });
-    expect(result.kind).toBe("native-crash");
-  });
+  test.each([132, 134, 139, 3221225477, 3221225501, 3221226505])(
+    "native-crash exit code %i without reported failures is a native crash",
+    (status) => {
+      const result = classifyBunTestExit({ status, signal: null, output: "" });
+      expect(result.kind).toBe("native-crash");
+    },
+  );
 
   test("an unrecognized non-zero exit code without markers is a test-failure", () => {
     const result = classifyBunTestExit({ status: 7, signal: null, output: "" });
@@ -240,6 +245,34 @@ describe("attempt/timeout bounds", () => {
       DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS,
     );
     expect(resolveAttemptTimeoutMs({ ELIZA_PGLITE_QUARANTINE_TIMEOUT_MS: "2000" })).toBe(2000);
+  });
+});
+
+describe("package-level test timeout arguments", () => {
+  test("defaults to 60s and preserves both caller forms", () => {
+    const separated = ["--timeout", "120000", "src/example.test.ts"];
+    const equals = ["--timeout=120000", "src/example.test.ts"];
+
+    expect(withDefaultTestTimeout([])).toEqual([`--timeout=${DEFAULT_TEST_TIMEOUT_MS}`]);
+    expect(withDefaultTestTimeout(["src/example.test.ts"])).toEqual([
+      `--timeout=${DEFAULT_TEST_TIMEOUT_MS}`,
+      "src/example.test.ts",
+    ]);
+    expect(withDefaultTestTimeout(separated)).toEqual(separated);
+    expect(withDefaultTestTimeout(equals)).toEqual(equals);
+  });
+
+  test("detection is fail-closed at Bun's option boundary", () => {
+    expect(withDefaultTestTimeout(["--timeout"])).toEqual(["--timeout"]);
+    expect(withDefaultTestTimeout(["--", "--timeout=120000"])).toEqual([
+      `--timeout=${DEFAULT_TEST_TIMEOUT_MS}`,
+      "--",
+      "--timeout=120000",
+    ]);
+    expect(withDefaultTestTimeout(["--timeout-report=120000"])).toEqual([
+      `--timeout=${DEFAULT_TEST_TIMEOUT_MS}`,
+      "--timeout-report=120000",
+    ]);
   });
 });
 
