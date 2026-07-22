@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdir,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -3704,8 +3711,31 @@ describe("staging release gate contract", () => {
     );
     const body = JSON.parse(result.stdout.slice(result.stdout.indexOf("{")));
     assert.equal(body.dryRun, true);
-    assert.equal(body.backupRoot, backupRoot);
+    assert.equal(body.backupRoot, path.join(await realpath(dir), "backups"));
     await assert.rejects(access(backupRoot));
+
+    const binDir = path.join(dir, "bin");
+    await mkdir(binDir, { recursive: true });
+    await writeExecutable(
+      path.join(binDir, "flock"),
+      "#!/usr/bin/env bash\nexit 1\n",
+    );
+    await assert.rejects(
+      execFileAsync("bash", [SCHEDULED_BACKUP_PATH.pathname, "--apply"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH}`,
+          ENV_FILE: envFile,
+        },
+      }),
+      (error) => {
+        assert.match(
+          error.stderr,
+          /another scheduled backup is already running/,
+        );
+        return true;
+      },
+    );
 
     const script = await readFile(SCHEDULED_BACKUP_PATH, "utf8");
     const service = await readFile(BACKUP_SYSTEMD_SERVICE_PATH, "utf8");
@@ -3714,7 +3744,11 @@ describe("staging release gate contract", () => {
       script,
       /BACKUP_SCHEDULE_DRY_RUN="\$\{BACKUP_SCHEDULE_DRY_RUN:-true\}"/,
     );
-    assert.match(script, /flock -n 9/);
+    assert.match(
+      script,
+      /if is_true "\$BACKUP_SCHEDULE_DRY_RUN"; then[\s\S]*return 0[\s\S]*require_command flock[\s\S]*flock -n 9/,
+    );
+    assert.doesNotMatch(script, /\$\(\s*realpath\s+-m\b/);
     assert.match(
       script,
       /backup-offsite\.sh" --backup-dir "\$backup_dir" --apply/,

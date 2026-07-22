@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { promisify } from "node:util";
@@ -17,6 +17,37 @@ const EXAMPLE_ENV_PATH = new URL(
 );
 
 describe("staging env validator", () => {
+  it("remains compatible with the Bash 3 runtime bundled with macOS", async () => {
+    const source = await readFile(VALIDATOR_PATH, "utf8");
+    assert.doesNotMatch(source, /\b(?:declare|typeset)\s+-A\b/);
+
+    const envFile = await writeTempEnv(hardenedEnv());
+    const result = await runValidator(envFile, {
+      VALIDATE_STEWARD: "true",
+      VALIDATE_RUNNER: "true",
+      VALIDATE_RUNNER_REGISTRATION: "true",
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /env validation passed/);
+  });
+
+  it("uses the final assignment when an env key appears more than once", async () => {
+    const envFile = await writeTempEnv(
+      {
+        ...hardenedEnv(),
+        FORGEJO_DOMAIN: "stale.staging.eliza.internal",
+      },
+      ["FORGEJO_DOMAIN=git.staging.eliza.internal"],
+    );
+
+    const result = await runValidator(envFile, {
+      VALIDATE_STEWARD: "true",
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+  });
+
   it("accepts a hardened full staging env", async () => {
     const envFile = await writeTempEnv(hardenedEnv());
 
@@ -396,14 +427,15 @@ async function runValidator(envFile, extraEnv = {}) {
   }
 }
 
-async function writeTempEnv(values) {
+async function writeTempEnv(values, additionalLines = []) {
   const dir = await mkdtempInTestRoot("eliza-hub-env-");
   const envFile = path.join(dir, ".env");
   await writeFile(
     envFile,
-    Object.entries(values)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n"),
+    [
+      ...Object.entries(values).map(([key, value]) => `${key}=${value}`),
+      ...additionalLines,
+    ].join("\n"),
     "utf8",
   );
   return envFile;

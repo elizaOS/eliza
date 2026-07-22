@@ -26,6 +26,7 @@ DEPLOY_MIGRATE_LOG="${DEPLOY_MIGRATE_LOG:-$(eliza_artifact_path merge-steward-mi
 DEPLOY_POST_DEPLOY_EVIDENCE_OUTPUT="${DEPLOY_POST_DEPLOY_EVIDENCE_OUTPUT:-$(eliza_artifact_path eliza-hub-post-deploy-evidence.json)}"
 DEPLOY_STEP_LOG="${DEPLOY_STEP_LOG:-$(eliza_tmp_path eliza-hub-deploy-steps.tsv)}"
 DEPLOY_STARTED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+COMPOSE_CMD=()
 
 log() {
   printf '[deploy] %s\n' "$*"
@@ -170,57 +171,46 @@ run_step() {
 }
 
 base_compose_cmd() {
-  # shellcheck disable=SC2178
-  local -n output=$1
-  shift
-
-  output=(docker compose)
+  COMPOSE_CMD=(docker compose)
   if [[ -f "$ENV_FILE" ]]; then
-    output+=(--env-file "$ENV_FILE")
+    COMPOSE_CMD+=(--env-file "$ENV_FILE")
   fi
-  output+=(-f "$COMPOSE_FILE" --profile steward "$@")
+  COMPOSE_CMD+=(-f "$COMPOSE_FILE" --profile steward "$@")
 }
 
 runner_compose_cmd() {
-  # shellcheck disable=SC2178
-  local -n output=$1
-  shift
-
-  output=(docker compose)
+  COMPOSE_CMD=(docker compose)
   if [[ -f "$ENV_FILE" ]]; then
-    output+=(--env-file "$ENV_FILE")
+    COMPOSE_CMD+=(--env-file "$ENV_FILE")
   fi
-  output+=(-f "$COMPOSE_FILE" -f "$RUNNER_COMPOSE_FILE" --profile steward --profile actions-runner "$@")
+  COMPOSE_CMD+=(-f "$COMPOSE_FILE" -f "$RUNNER_COMPOSE_FILE" --profile steward --profile actions-runner "$@")
 }
 
 run_base_compose() {
   local phase="$1"
   local name="$2"
   shift 2
-  local cmd
 
-  base_compose_cmd cmd "$@"
-  run_step "$phase" "$name" "${cmd[@]}"
+  base_compose_cmd "$@"
+  run_step "$phase" "$name" "${COMPOSE_CMD[@]}"
 }
 
 run_runner_compose() {
   local phase="$1"
   local name="$2"
   shift 2
-  local cmd
 
-  runner_compose_cmd cmd "$@"
-  run_step "$phase" "$name" "${cmd[@]}"
+  runner_compose_cmd "$@"
+  run_step "$phase" "$name" "${COMPOSE_CMD[@]}"
 }
 
 run_migration() {
   local phase="$1"
   shift
-  local cmd
   local command_text
 
-  base_compose_cmd cmd "$@"
-  command_text="$(shell_join "${cmd[@]}") > $(shell_join "$DEPLOY_MIGRATE_LOG") 2>&1"
+  base_compose_cmd "$@"
+  command_text="$(shell_join "${COMPOSE_CMD[@]}") > $(shell_join "$DEPLOY_MIGRATE_LOG") 2>&1"
   record_shell_step "$phase" "run merge steward migrations" "$command_text"
 
   if is_true "$DEPLOY_DRY_RUN"; then
@@ -229,7 +219,7 @@ run_migration() {
   fi
 
   mkdir -p "$(dirname "$DEPLOY_MIGRATE_LOG")"
-  "${cmd[@]}" >"$DEPLOY_MIGRATE_LOG" 2>&1
+  "${COMPOSE_CMD[@]}" >"$DEPLOY_MIGRATE_LOG" 2>&1
 }
 
 validate_mode() {

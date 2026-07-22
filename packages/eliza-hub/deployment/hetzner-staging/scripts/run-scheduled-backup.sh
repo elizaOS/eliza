@@ -71,6 +71,30 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
 
+canonicalize_path() {
+  # Resolving the longest existing prefix preserves symlink-aware containment
+  # checks without requiring the GNU-only `realpath -m` option.
+  node - "$1" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+let candidate = path.resolve(process.argv[2]);
+const missingSegments = [];
+while (!fs.existsSync(candidate)) {
+  const parent = path.dirname(candidate);
+  if (parent === candidate) {
+    throw new Error(`no existing ancestor for ${process.argv[2]}`);
+  }
+  missingSegments.unshift(path.basename(candidate));
+  candidate = parent;
+}
+
+process.stdout.write(
+  path.join(fs.realpathSync(candidate), ...missingSegments),
+);
+NODE
+}
+
 load_private_config() {
   safe_load_env_file "$ENV_FILE" "${ALLOW_ENV_ONLY:-false}" "scheduled-backup"
 
@@ -88,7 +112,7 @@ validate_config() {
   if [[ "$BACKUP_ROOT" != /* ]]; then
     BACKUP_ROOT="$DEPLOY_DIR/$BACKUP_ROOT"
   fi
-  BACKUP_ROOT="$(realpath -m "$BACKUP_ROOT")"
+  BACKUP_ROOT="$(canonicalize_path "$BACKUP_ROOT")"
   [[ "$BACKUP_ROOT" != "/" ]] || fail "BACKUP_ROOT must not be the filesystem root"
 
   [[ -n "$BACKUP_OFFSITE_REMOTE" ]] || fail "BACKUP_OFFSITE_REMOTE is required"
@@ -99,7 +123,7 @@ validate_config() {
   [[ -n "$BACKUP_AGE_RECIPIENTS_FILE" ]] || fail "BACKUP_AGE_RECIPIENTS_FILE is required"
   [[ -f "$BACKUP_AGE_RECIPIENTS_FILE" ]] || fail "age recipients file not found: $BACKUP_AGE_RECIPIENTS_FILE"
 
-  BACKUP_SCHEDULE_LOCK_FILE="$(realpath -m "${BACKUP_SCHEDULE_LOCK_FILE:-$BACKUP_ROOT/.scheduled-backup.lock}")"
+  BACKUP_SCHEDULE_LOCK_FILE="$(canonicalize_path "${BACKUP_SCHEDULE_LOCK_FILE:-$BACKUP_ROOT/.scheduled-backup.lock}")"
   [[ "$BACKUP_SCHEDULE_LOCK_FILE" == "$BACKUP_ROOT/"* ]] || fail "BACKUP_SCHEDULE_LOCK_FILE must stay under BACKUP_ROOT"
 }
 
@@ -121,10 +145,8 @@ main() {
   parse_args "$@"
   load_private_config
 
-  require_command flock
   require_command jq
-  require_command realpath
-  require_command sha256sum
+  require_command node
   validate_config
 
   if is_true "$BACKUP_SCHEDULE_DRY_RUN"; then
@@ -133,6 +155,8 @@ main() {
     return 0
   fi
 
+  require_command flock
+  require_command sha256sum
   mkdir -p "$BACKUP_ROOT"
   exec 9>"$BACKUP_SCHEDULE_LOCK_FILE"
   flock -n 9 || fail "another scheduled backup is already running"

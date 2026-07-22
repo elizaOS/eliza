@@ -27,6 +27,12 @@ const RELEASE_CHECKLIST_PATH = new URL(
 );
 
 describe("staging deploy script contract", () => {
+  it("avoids namerefs unsupported by the Bash 3 runtime bundled with macOS", async () => {
+    const script = await readFile(DEPLOY_SCRIPT_PATH, "utf8");
+
+    assert.doesNotMatch(script, /\b(?:declare|local|typeset)\s+-n\b/);
+  });
+
   it("plans the first-boot deploy path without mutating services by default", async () => {
     const result = await runDeploySmoke({ args: ["--mode", "first-boot"] });
 
