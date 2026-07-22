@@ -13,17 +13,17 @@ import {
   seedHomeWidgetNotifications,
 } from "../../widgets/__fixtures__/home-widget-mock-data";
 import { Launcher } from "../pages/Launcher";
+import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { HomeScreen } from "./HomeScreen";
 
-// The consolidated /chat home (#9143): the REAL HomeScreen mounting the REAL
-// unified home-slot WidgetHost, pinned NotificationsHomeCenter, and inline app
-// grid. The per-plugin
+// The /chat home (#9143): the REAL HomeScreen mounting the REAL unified
+// home-slot WidgetHost and pinned NotificationsHomeCenter beside the Launcher
+// on the production two-page rail. The per-plugin
 // home widgets (calendar / goals / finances / health / relationships / inbox)
 // are the genuine widget components and the notification center reads the
-// seeded notification store — no stubbing of WidgetHost or the widgets
-// themselves. The app region renders the presentational <Launcher> with a
-// representative tile set (its data-fetching <LauncherSurface> wrapper needs a
-// live /api/views layer the catalog doesn't have).
+// seeded notification store — no stubbing of WidgetHost or the widgets. The
+// launcher half uses representative entries because its data-fetching wrapper
+// needs a live /api/views layer the story catalog does not provide.
 
 function viewEntry(id: string, label: string, icon: string): ViewEntry {
   return {
@@ -94,11 +94,9 @@ function HomeDashboard({ seed = true }: { seed?: boolean }) {
       <HomeWidgetData seed={seed}>
         <div className="absolute inset-0 overflow-hidden bg-[#0a0d16]">
           <ShaderBackground />
-          <HomeScreen
-            onOpenTile={() => {}}
-            apps={
-              <Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} embedded />
-            }
+          <HomeLauncherSurface
+            home={<HomeScreen onOpenTile={() => {}} />}
+            launcher={<Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />}
           />
         </div>
       </HomeWidgetData>

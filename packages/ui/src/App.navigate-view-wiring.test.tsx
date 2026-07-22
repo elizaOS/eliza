@@ -526,6 +526,23 @@ describe("App navigate-view event wiring", () => {
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
   });
 
+  it("mounts Home and Launcher as separate accessible pages on the chat route", async () => {
+    window.history.replaceState(null, "", "/chat");
+    const { getByTestId } = render(<App />);
+
+    await waitFor(() => {
+      expect(getByTestId("home-launcher-surface").dataset.page).toBe("home");
+    });
+    const homePage = getByTestId("home-launcher-home-page");
+    const launcherPage = getByTestId("home-launcher-launcher-page");
+    expect(homePage.contains(getByTestId("home-screen"))).toBe(true);
+    expect(launcherPage.contains(getByTestId("launcher-surface"))).toBe(true);
+    expect(homePage.getAttribute("aria-hidden")).toBe("false");
+    expect(homePage.hasAttribute("inert")).toBe(false);
+    expect(launcherPage.getAttribute("aria-hidden")).toBe("true");
+    expect(launcherPage.hasAttribute("inert")).toBe(true);
+  });
+
   it("routes view-manager events through the mounted App listener", async () => {
     render(<App />);
 
@@ -854,6 +871,19 @@ describe("App navigate-view event wiring", () => {
     });
     expect(queryByTestId("dynamic-view-loader")).toBeNull();
     expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
+    expect(getByTestId("home-launcher-surface").dataset.page).toBe("launcher");
+    expect(
+      getByTestId("home-launcher-home-page").getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(getByTestId("home-launcher-home-page").hasAttribute("inert")).toBe(
+      true,
+    );
+    expect(
+      getByTestId("home-launcher-launcher-page").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(
+      getByTestId("home-launcher-launcher-page").hasAttribute("inert"),
+    ).toBe(false);
     expect(getByTestId("app-background-shader")).toBeTruthy();
     expect(queryByTestId("app-opaque-background")).toBeNull();
   });
