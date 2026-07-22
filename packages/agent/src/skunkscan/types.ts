@@ -1086,6 +1086,41 @@ export type WalletStrategySummary = {
   investorInsights?: InvestorEvidenceCollection;
 };
 
+export type WalletConvictionSummary = {
+  convictionLevel:
+    | "very_low"
+    | "low"
+    | "medium"
+    | "high"
+    | "very_high";
+
+  convictionScore: number;
+
+  displayScore: string;
+
+  confidence: "low" | "medium" | "high";
+
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  investorHeadline: string;
+
+  investorSummary: string;
+
+  investorTakeaway: string;
+
+  supportingSignals: string[];
+
+  conflictingSignals: string[];
+
+  limitations: string[];
+
+  investorExplanation?: InvestorExplanation;
+
+  investorInsights?: InvestorEvidenceCollection;
+};
+
 export type WalletInvestigationReport = {
   generatedAt: string;
 
