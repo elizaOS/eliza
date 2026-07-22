@@ -90,4 +90,41 @@ describe("LifeOps screen context", () => {
     expect(summary.width).toBe(2);
     expect(summary.height).toBe(3);
   });
+
+  it("analyzes images through sharp's callable default export", async () => {
+    vi.resetModules();
+    const pixels = Buffer.from([64, 192]);
+    const pipeline = {
+      rotate: vi.fn(() => pipeline),
+      greyscale: vi.fn(() => pipeline),
+      resize: vi.fn(() => pipeline),
+      raw: vi.fn(() => pipeline),
+      toBuffer: vi.fn(async () => ({
+        data: pixels,
+        info: { width: 2, height: 1 },
+      })),
+    };
+    const sharpFactory = vi.fn(() => pipeline);
+    vi.doMock("sharp", () => ({ default: sharpFactory }));
+    const { analyzeLifeOpsScreenBuffer } = await import(
+      "../src/lifeops/screen-context.js"
+    );
+    const frameBytes = Buffer.from("image bytes");
+
+    const summary = await analyzeLifeOpsScreenBuffer({
+      framePath: "/tmp/frame.png",
+      frameBytes,
+      ocrText: null,
+      capturedAtMs: 1,
+      sampledAtMs: 2,
+      stale: false,
+    });
+
+    expect(sharpFactory).toHaveBeenCalledWith(frameBytes);
+    expect(pipeline.rotate).toHaveBeenCalledOnce();
+    expect(pipeline.greyscale).toHaveBeenCalledOnce();
+    expect(summary.available).toBe(true);
+    expect(summary.width).toBe(2);
+    expect(summary.height).toBe(1);
+  });
 });
