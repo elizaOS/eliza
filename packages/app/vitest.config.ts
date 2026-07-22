@@ -122,6 +122,7 @@ export default defineConfig({
         "src/**/*.tsx",
         "vite/renderer-build-manifest-plugin.ts",
         "scripts/ios-cloud-onboarding-smoke.mjs",
+        "scripts/lib/ios-simulator-capture.mjs",
         "scripts/ios-store-engine-gate.mjs",
         "scripts/mobile-release-preflight.mjs",
       ],
