@@ -15,7 +15,8 @@ const installerCopy = [
   "ElizaOS Android beta image bundle",
   "x86_64",
   "arm64",
-  "SHA256",
+  "Downloads are temporarily unavailable.",
+  "Unavailable",
 ];
 
 const hardwareCopy = [
@@ -54,7 +55,9 @@ test("lander renders elizaOS hero and primary copy", async ({ page }) => {
   }
 });
 
-test("download section exposes release artifact links", async ({ page }) => {
+test("download section distinguishes unavailable release artifacts", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.waitForSelector("h1", { timeout: 15000 });
 
@@ -62,11 +65,14 @@ test("download section exposes release artifact links", async ({ page }) => {
   await expect(downloads).toBeVisible();
 
   await expect(
-    downloads.getByRole("link", { name: "Download" }).first(),
-  ).toHaveAttribute("href", /eliza-canary-linux-x64\.tar\.zst$/);
-  await expect(
-    downloads.getByRole("link", { name: "SHA256" }).first(),
-  ).toHaveAttribute("href", /SHA256SUMS\.txt$/);
+    downloads.getByText("Downloads are temporarily unavailable."),
+  ).toBeVisible();
+  await expect(downloads.getByRole("link", { name: "Download" })).toHaveCount(
+    0,
+  );
+  await expect(downloads.getByText("Unavailable", { exact: true })).toHaveCount(
+    4,
+  );
 });
 
 test("anchor sections #download and #hardware exist and are reachable", async ({
