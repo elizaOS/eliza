@@ -36,6 +36,8 @@ async def test_vendored_corpus_loads() -> None:
     """The vendored upstream corpus loads and contains the expected tasks."""
     dataset = TerminalBenchDataset()
     await dataset.load()
+    assert len(dataset.tasks) == 241
+    assert dataset.provenance["expected_task_count"] == 241
     ids = {t.task_id for t in dataset.tasks}
     # Spot-check a handful of well-known upstream task IDs.
     for expected in ("hello-world", "simple-web-scraper", "flood-monitoring-basic"):

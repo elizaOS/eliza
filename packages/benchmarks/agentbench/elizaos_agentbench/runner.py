@@ -152,10 +152,9 @@ class AgentBenchRunner:
     ) -> EnvironmentAdapter:
         """Create adapter for a specific environment.
 
-        All 8 AgentBench environments are wired. Some (Card Game,
-        ALFWorld, full WebShop) require external binaries / corpora; in
-        those cases the adapter returns a "skipped" result with a clear
-        reason rather than fabricating data.
+        All 8 AgentBench environments have adapter classes. Environment
+        prerequisites must be satisfied before a publishable run; an enabled
+        environment is never silently omitted from the report.
         """
         adapter_map: dict[AgentBenchEnvironment, type[EnvironmentAdapter]] = {
             AgentBenchEnvironment.OS: OSEnvironmentAdapter,
@@ -189,15 +188,10 @@ class AgentBenchRunner:
             # Initialize adapters
             for env in enabled_envs:
                 env_config = self.config.get_env_config(env)
-                try:
-                    adapter = self._create_adapter(env, env_config)
-                    await adapter.initialize()
-                    self._adapters[env] = adapter
-                    logger.info(f"[AgentBenchRunner] Initialized {env.value} adapter")
-                except NotImplementedError as e:
-                    logger.warning(f"[AgentBenchRunner] {e}")
-                except Exception as e:
-                    logger.error(f"[AgentBenchRunner] Failed to initialize {env.value}: {e}")
+                adapter = self._create_adapter(env, env_config)
+                await adapter.initialize()
+                self._adapters[env] = adapter
+                logger.info(f"[AgentBenchRunner] Initialized {env.value} adapter")
 
             # Run benchmarks for each environment
             for env, adapter in self._adapters.items():
@@ -263,8 +257,7 @@ class AgentBenchRunner:
         except upstream_loader.UpstreamDataMissingError as e:
             raise RuntimeError(f"{env.value}: upstream data missing ({e})") from e
         except NotImplementedError as e:
-            logger.warning(f"[AgentBenchRunner] {env.value}: {e}")
-            tasks = []
+            raise RuntimeError(f"{env.value}: task loader is not implemented ({e})") from e
         except Exception as e:
             raise RuntimeError(f"{env.value}: failed to load tasks: {e}") from e
 
@@ -474,6 +467,12 @@ class AgentBenchRunner:
 
             # Convert report to dict
             report_dict = {
+                "dataset_provenance": upstream_loader.dataset_provenance(),
+                "dataset_selection": {
+                    "split": self.config.split.value,
+                    "data_mode": self.config.data_mode.value,
+                    "expanded_scenarios": self.config.include_edge_scenarios,
+                },
                 "total_tasks": report.total_tasks,
                 "passed_tasks": report.passed_tasks,
                 "failed_tasks": report.failed_tasks,

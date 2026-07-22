@@ -690,6 +690,28 @@ export class AccountPool {
     });
   }
 
+  async markRateLimitedUnknown(
+    accountId: string,
+    detail?: string,
+    opts?: { providerId?: PoolProviderId },
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
+    if (!account) return;
+    const healthDetail: LinkedAccountHealthDetail = {
+      lastChecked: Date.now(),
+      ...(detail ? { lastError: detail } : {}),
+    };
+    await this.deps.writeAccount({
+      ...account,
+      health: "rate-limited",
+      healthDetail,
+    });
+  }
+
   async markNeedsReauth(
     accountId: string,
     detail?: string,

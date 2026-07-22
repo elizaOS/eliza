@@ -3,8 +3,16 @@
  * model-usage events, and trajectory recording — against a mocked `ai` SDK
  * (`generateText`/`streamText`), no network.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { EventType, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import type { Character, IAgentRuntime } from "@elizaos/core";
+import {
+  AgentRuntime,
+  EventType,
+  InMemoryDatabaseAdapter,
+  ModelType,
+  runWithLlmInputSubstringAttestation,
+  runWithStreamingContext,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -413,6 +421,187 @@ describe("OpenAI native text plumbing", () => {
       preserved: true,
     });
   }, 180_000);
+  it("attests the final generateText system/messages payload before provider invocation", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "ok",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+    const { handleResponseHandler } = await import("../models/text");
+    const hint = "exact lifecycle system instruction";
+    const messages = [{ role: "user", content: "delegate the work" }];
+
+    const scoped = await runWithLlmInputSubstringAttestation(hint, () =>
+      handleResponseHandler(createRuntime(), {
+        system: hint,
+        messages,
+        // This compatibility alias is not a second wire surface when native
+        // messages are present in the final generateText parameters.
+        prompt: hint,
+      } as never)
+    );
+
+    expect(scoped.attestation).toMatchObject({
+      modelCallCount: 1,
+      matchingCallCount: 1,
+      totalOccurrences: 1,
+      exactOncePerModelCall: true,
+      modelTypeCallCounts: { RESPONSE_HANDLER: 1 },
+    });
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.system).toBe(hint);
+    expect(call.messages).toEqual(messages);
+    expect(call).not.toHaveProperty("prompt");
+
+    aiMocks.generateText.mockClear();
+    await expect(
+      runWithLlmInputSubstringAttestation(hint, () =>
+        handleResponseHandler(createRuntime(), {
+          system: "different system instruction",
+          messages,
+        } as never)
+      )
+    ).rejects.toMatchObject({
+      code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISMATCH",
+    });
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("attests the live stream selected by AgentRuntime streaming context", async () => {
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "ok";
+      })(),
+      text: Promise.resolve("ok"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+    });
+    const { handleResponseHandler } = await import("../models/text");
+    const runtime = new AgentRuntime({
+      character: {
+        name: "Ada",
+        bio: "test runtime",
+        settings: {},
+      } as Character,
+      adapter: new InMemoryDatabaseAdapter(),
+      logLevel: "fatal",
+    });
+    runtime.registerModel(ModelType.RESPONSE_HANDLER, handleResponseHandler, "openai");
+    const hint = "streaming lifecycle system instruction";
+
+    const scoped = await runWithLlmInputSubstringAttestation(hint, () =>
+      runWithStreamingContext(
+        {
+          messageId: "attested-stream-turn",
+          onStreamChunk: vi.fn(),
+        },
+        () =>
+          runtime.useModel(ModelType.RESPONSE_HANDLER, {
+            system: hint,
+            messages: [{ role: "user", content: "delegate the work" }],
+          } as never)
+      )
+    );
+
+    expect(scoped.result).toBe("ok");
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+    expect(aiMocks.streamText.mock.calls[0][0]).toMatchObject({
+      system: hint,
+      messages: [{ role: "user", content: "delegate the work" }],
+    });
+    expect(scoped.attestation).toMatchObject({
+      modelCallCount: 1,
+      matchingCallCount: 1,
+      totalOccurrences: 1,
+      exactOncePerModelCall: true,
+      modelTypeCallCounts: { RESPONSE_HANDLER: 1 },
+    });
+  });
+
+  it("rechecks live-stream retries without inflating logical model-call totals", async () => {
+    vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "0");
+    const transientError = Object.assign(new Error("temporary provider failure"), {
+      statusCode: 500,
+    });
+    aiMocks.streamText
+      .mockImplementationOnce((options: { onError?: (event: { error: unknown }) => void }) => ({
+        textStream: (async function* textStream() {
+          options.onError?.({ error: transientError });
+          yield* [];
+        })(),
+        text: Promise.resolve(""),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("error"),
+        usage: Promise.resolve(undefined),
+      }))
+      .mockResolvedValueOnce({
+        textStream: (async function* textStream() {
+          yield "ok";
+        })(),
+        text: Promise.resolve("ok"),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("stop"),
+        usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+      });
+    const { handleTextSmall } = await import("../models/text");
+    const hint = "retry lifecycle instruction";
+
+    const scoped = await runWithLlmInputSubstringAttestation(hint, async () => {
+      const stream = (await handleTextSmall(createRuntime(), {
+        system: "system without the instruction",
+        messages: [{ role: "user", content: hint }],
+        stream: true,
+      } as never)) as { textStream: AsyncIterable<string> };
+      for await (const _chunk of stream.textStream) {
+        // Full consumption settles the successful retry and its usage telemetry.
+      }
+    });
+
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(2);
+    expect(scoped.attestation).toMatchObject({
+      modelCallCount: 1,
+      matchingCallCount: 1,
+      totalOccurrences: 1,
+      exactOncePerModelCall: true,
+      modelTypeCallCounts: { TEXT_SMALL: 1 },
+    });
+
+    aiMocks.streamText.mockReset();
+    aiMocks.streamText.mockImplementationOnce(
+      (options: {
+        messages?: Array<{ content?: unknown }>;
+        onError?: (event: { error: unknown }) => void;
+      }) => ({
+        textStream: (async function* textStream() {
+          if (options.messages?.[0]) {
+            options.messages[0].content = "instruction removed before retry";
+          }
+          options.onError?.({ error: transientError });
+          yield* [];
+        })(),
+        text: Promise.resolve(""),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("error"),
+        usage: Promise.resolve(undefined),
+      })
+    );
+
+    await expect(
+      runWithLlmInputSubstringAttestation(hint, async () => {
+        await handleTextSmall(createRuntime(), {
+          system: "system without the instruction",
+          messages: [{ role: "user", content: hint }],
+          stream: true,
+        } as never);
+      })
+    ).rejects.toMatchObject({
+      code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISMATCH",
+      context: { retryAttempt: true },
+    });
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+  });
 
   it("passes messages, tools, toolChoice, schema, and provider options through", async () => {
     aiMocks.generateText.mockResolvedValue({

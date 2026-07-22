@@ -72,7 +72,9 @@ def _build_agent_with_transport(
 # ---------------------------------------------------------------------------
 
 
-def test_build_hermes_agent_returns_open_ai_compat_agent() -> None:
+def test_build_hermes_agent_returns_open_ai_compat_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """``build_hermes_agent`` returns a callable agent_fn from hermes_adapter.lifeops_bench.
 
     The factory now delegates to ``hermes_adapter.lifeops_bench.build_lifeops_bench_agent_fn``
@@ -80,6 +82,16 @@ def test_build_hermes_agent_returns_open_ai_compat_agent() -> None:
     only depends on the call signature ``(history, tools) -> MessageTurn``, so
     we just assert the factory returns a callable with the expected shape.
     """
+    from eliza_lifeops_bench.agents.adapter_paths import ensure_benchmark_adapter_importable
+
+    ensure_benchmark_adapter_importable("hermes")
+    from hermes_adapter.client import HermesClient as BridgeHermesClient
+
+    monkeypatch.setattr(
+        BridgeHermesClient,
+        "wait_until_ready",
+        lambda self, timeout=60: None,
+    )
     saved = os.environ.get("HERMES_BASE_URL")
     os.environ["HERMES_BASE_URL"] = "https://hermes.example.com/v1"
     try:
@@ -112,7 +124,6 @@ def test_build_hermes_agent_threads_harness_generation_options(monkeypatch: pyte
         captured.update(kwargs)
         self.model = kwargs.get("model") or "gpt-oss-120b"
 
-    monkeypatch.setenv("HERMES_ADAPTER_MODE", "in_process")
     monkeypatch.setattr(BridgeHermesClient, "__init__", _fake_init)
     monkeypatch.setattr(BridgeHermesClient, "wait_until_ready", lambda self, timeout=60: None)
 
@@ -127,7 +138,6 @@ def test_build_hermes_agent_threads_harness_generation_options(monkeypatch: pyte
 
     assert callable(agent)
     assert captured == {
-        "mode": "in_process",
         "temperature": 0.2,
         "reasoning_effort": "medium",
         "max_tokens": 1234,
@@ -137,11 +147,10 @@ def test_build_hermes_agent_threads_harness_generation_options(monkeypatch: pyte
     }
 
 
-def test_build_hermes_agent_uses_subprocess_when_parent_openai_missing(
+def test_build_hermes_agent_delegates_mode_resolution_to_shared_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Lean benchmark Python envs may not have openai installed."""
-    from eliza_lifeops_bench.agents import hermes as hermes_agent
+    """Factories must not bypass the shared native-mode campaign contract."""
     from eliza_lifeops_bench.agents.adapter_paths import ensure_benchmark_adapter_importable
 
     ensure_benchmark_adapter_importable("hermes")
@@ -154,14 +163,14 @@ def test_build_hermes_agent_uses_subprocess_when_parent_openai_missing(
         self.model = kwargs.get("model") or "gpt-oss-120b"
 
     monkeypatch.delenv("HERMES_ADAPTER_MODE", raising=False)
-    monkeypatch.setattr(hermes_agent.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.delenv("HERMES_MODE", raising=False)
     monkeypatch.setattr(BridgeHermesClient, "__init__", _fake_init)
     monkeypatch.setattr(BridgeHermesClient, "wait_until_ready", lambda self, timeout=60: None)
 
     agent = build_hermes_agent()
 
     assert callable(agent)
-    assert captured["mode"] == "subprocess"
+    assert "mode" not in captured
 
 
 # ---------------------------------------------------------------------------

@@ -1,21 +1,74 @@
-import { stringToUuid } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import {
+  runWithLlmInputSubstringAttestation,
+  stringToUuid,
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { coerceParams } from "./params";
 import {
   clearCapturedAction,
   createBenchmarkPlugin,
+  getBenchmarkContext,
   getCapturedActions,
+  runWithBenchmarkContext,
   setBenchmarkContext,
 } from "./plugin";
 import {
+  benchmarkRuntimeActionNames,
   benchmarkTurnMetadata,
   capturedActionsToToolCalls,
   composeBenchmarkPrompt,
+  configureBenchmarkToolCallPolicy,
+  hasLifecycleTaskAction,
   normalizeBenchmarkModelUsage,
   summarizeBenchmarkTurnUsage,
 } from "./server-utils";
 
 const uuid = (value: string) => stringToUuid(value);
+
+afterEach(() => {
+  setBenchmarkContext(null);
+  vi.unstubAllEnvs();
+});
+
+describe("request-scoped benchmark context", () => {
+  it("does not install context when hint attestation rejects before dispatch", async () => {
+    const nativeTurn = vi.fn(() =>
+      runWithBenchmarkContext(
+        { benchmark: "orchestrator_lifecycle", taskId: "invalid-hint" },
+        async () => "unreachable",
+      ),
+    );
+
+    await expect(
+      runWithLlmInputSubstringAttestation("", nativeTurn),
+    ).rejects.toMatchObject({
+      code: "LLM_INPUT_SUBSTRING_ATTESTATION_INVALID",
+    });
+    expect(nativeTurn).not.toHaveBeenCalled();
+    expect(getBenchmarkContext()).toBeNull();
+  });
+
+  it("clears rejected turn context before the next request runs", async () => {
+    const rejectedContext = {
+      benchmark: "orchestrator_lifecycle",
+      taskId: "rejected-turn",
+    };
+
+    await expect(
+      runWithBenchmarkContext(rejectedContext, async () => {
+        expect(getBenchmarkContext()).toBe(rejectedContext);
+        throw new Error("model-boundary attestation rejected the turn");
+      }),
+    ).rejects.toThrow("model-boundary attestation rejected the turn");
+    expect(getBenchmarkContext()).toBeNull();
+
+    const nextContext = { benchmark: "standard", taskId: "next-turn" };
+    await runWithBenchmarkContext(nextContext, async () => {
+      expect(getBenchmarkContext()).toBe(nextContext);
+    });
+    expect(getBenchmarkContext()).toBeNull();
+  });
+});
 
 describe("coerceParams", () => {
   it("returns object params as-is", () => {
@@ -69,6 +122,12 @@ describe("benchmark function-call metadata", () => {
   });
 
   it("builds Eliza-only trajectory metadata with tool schema counts", () => {
+    vi.stubEnv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "");
+    vi.stubEnv("ELIZA_BENCH_SKIP_EMBEDDING", "");
+    vi.stubEnv("ELIZA_BENCH_MOCK", "");
+    vi.stubEnv("ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY", "");
+    vi.stubEnv("ELIZA_BENCH_COMPACTION_THRESHOLD_TOKENS", "");
+    vi.stubEnv("CONTEXT_COMPACTION_THRESHOLD_TOKENS", "");
     const metadata = benchmarkTurnMetadata({
       session: {
         benchmark: "loca_bench",
@@ -79,6 +138,8 @@ describe("benchmark function-call metadata", () => {
       },
       step: 2,
       nativeTrajectoryStepId: "native-step-2",
+      nativeRuntimeApi: "useModel",
+      toolBridge: "runtime_model_native_tools",
       context: {
         tools: [
           {
@@ -90,11 +151,92 @@ describe("benchmark function-call metadata", () => {
     });
 
     expect(metadata.agent_label).toBe("eliza");
+    expect(metadata.native_runtime_class).toBe("@elizaos/core.AgentRuntime");
+    expect(metadata.native_runtime_api).toBe("useModel");
+    expect(metadata.transport).toBe("eliza_benchmark_http");
+    expect(metadata.tool_bridge).toBe("runtime_model_native_tools");
+    expect(metadata.direct_model_bypass).toBe(false);
+    expect(metadata.stand_in).toBe(false);
+    expect(metadata.release_evidence).toBe(true);
+    expect(metadata.embedding_mode).toBe("runtime-provider");
+    expect(metadata.semantic_memory_enabled).toBe(true);
+    expect(metadata.compaction_threshold_tokens).toBeNull();
     expect(metadata.trajectory_step).toBe(2);
     expect(metadata.native_trajectory_step_id).toBe("native-step-2");
     expect(metadata.tool_schema_count).toBe(1);
     expect(metadata.tool_names).toEqual(["calendar.search"]);
+    expect(metadata.lifecycle_task_action_registered).toBe(false);
+    expect(metadata.lifecycle_system_hint_attestation).toBeNull();
     expect(metadata.trajectory_endpoint).toContain("loca_bench");
+  });
+
+  it("proves the native TASKS action inventory for lifecycle metadata", () => {
+    const runtime = {
+      actions: [
+        { name: "REPLY" },
+        { name: "TASKS" },
+        { name: "TASKS_LIST_AGENTS" },
+      ],
+    };
+
+    expect(benchmarkRuntimeActionNames(runtime)).toEqual([
+      "REPLY",
+      "TASKS",
+      "TASKS_LIST_AGENTS",
+    ]);
+    expect(hasLifecycleTaskAction(runtime)).toBe(true);
+    expect(hasLifecycleTaskAction({ actions: [{ name: "REPLY" }] })).toBe(
+      false,
+    );
+  });
+
+  it("records subscription text-only memory without marking a stand-in", () => {
+    vi.stubEnv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "0");
+    vi.stubEnv("ELIZA_BENCH_SKIP_EMBEDDING", "0");
+    vi.stubEnv("ELIZA_BENCH_MOCK", "");
+    vi.stubEnv("ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY", "1");
+
+    const metadata = benchmarkTurnMetadata({
+      session: {
+        benchmark: "orchestrator_lifecycle",
+        taskId: "lifecycle-a",
+        roomId: uuid("00000000-0000-0000-0000-000000000001"),
+        relayRoomId: uuid("00000000-0000-0000-0000-000000000002"),
+        userEntityId: uuid("00000000-0000-0000-0000-000000000003"),
+      },
+      step: 2,
+      nativeRuntimeApi: "messageService.handleMessage",
+      toolBridge: "native_action_capture",
+      lifecycleSystemHintAttestation: {
+        schemaVersion: 1,
+        expectedSha256: "a".repeat(64),
+        modelCallCount: 3,
+        matchingCallCount: 3,
+        totalOccurrences: 3,
+        exactOncePerModelCall: true,
+        modelTypeCallCounts: {
+          ACTION_PLANNER: 1,
+          RESPONSE_HANDLER: 2,
+        },
+      },
+    });
+
+    expect(metadata.stand_in).toBe(false);
+    expect(metadata.release_evidence).toBe(true);
+    expect(metadata.embedding_mode).toBe("disabled-text-only");
+    expect(metadata.semantic_memory_enabled).toBe(false);
+    expect(metadata.lifecycle_system_hint_attestation).toEqual({
+      schema_version: 1,
+      system_hint_sha256: "a".repeat(64),
+      model_boundary_call_count: 3,
+      model_boundary_attested_call_count: 3,
+      model_boundary_hint_occurrence_count: 3,
+      exact_once_per_model_call: true,
+      model_type_call_counts: {
+        ACTION_PLANNER: 1,
+        RESPONSE_HANDLER: 2,
+      },
+    });
   });
 });
 
@@ -246,20 +388,35 @@ describe("composeBenchmarkPrompt", () => {
     expect(prompt).not.toContain('"messages"');
   });
 
-  it("adds lifecycle-specific guidance for orchestrator lifecycle prompts", () => {
+  it("keeps lifecycle user text clean and delegates the shared hint to its provider", () => {
+    const hint =
+      "Manage delegated work with the available task action and report its result truthfully.";
     const prompt = composeBenchmarkPrompt({
       text: "The current approach failed. Replan and continue.",
       context: {
         benchmark: "orchestrator_lifecycle",
         task_id: "lifecycle-a",
+        model_name: "claude-sonnet-4-6",
+        system_hint: hint,
       },
     });
 
-    expect(prompt).toContain("orchestrator lifecycle benchmark");
-    expect(prompt).toContain("normal task-management and orchestrator actions");
-    expect(prompt).toContain("prose-only lifecycle claims do not satisfy");
-    expect(prompt).toContain("query the active task or subagent registry");
-    expect(prompt).not.toContain("Use REPLY text for the next lifecycle message");
+    expect(prompt).toBe("The current approach failed. Replan and continue.");
+    expect(prompt).not.toContain(hint);
+    expect(prompt).not.toContain("orchestrator_lifecycle");
+    expect(prompt).not.toContain("lifecycle-a");
+    expect(prompt).not.toContain("claude-sonnet-4-6");
+  });
+
+  it("disables forced tools for lifecycle while preserving other benchmark defaults", () => {
+    vi.stubEnv("ELIZA_BENCH_FORCE_TOOL_CALL", "1");
+    configureBenchmarkToolCallPolicy(true);
+    expect(process.env.ELIZA_BENCH_FORCE_TOOL_CALL).toBe("0");
+
+    vi.stubEnv("ELIZA_BENCH_FORCE_TOOL_CALL", "");
+    delete process.env.ELIZA_BENCH_FORCE_TOOL_CALL;
+    configureBenchmarkToolCallPolicy(false);
+    expect(process.env.ELIZA_BENCH_FORCE_TOOL_CALL).toBe("1");
   });
 });
 
@@ -385,10 +542,15 @@ describe("benchmark plugin LifeOps tool capture", () => {
     setBenchmarkContext(null);
   });
 
-  it("renders orchestrator lifecycle-specific reply instructions", async () => {
+  it("renders only neutral shared orchestrator lifecycle guidance", async () => {
+    const systemHint =
+      "Manage delegated work with the available task action and report its result truthfully.";
     setBenchmarkContext({
       benchmark: "orchestrator_lifecycle",
       taskId: "lifecycle-a",
+      model_name: "claude-sonnet-sensitive",
+      scenario_id: "scenario-sensitive",
+      system_hint: systemHint,
       expected_behaviors: ["ack_scope_change", "apply_scope_change_to_task"],
     });
 
@@ -402,17 +564,15 @@ describe("benchmark plugin LifeOps tool capture", () => {
       {} as never,
     );
 
-    expect(rendered?.text).toContain(
-      "This is an orchestrator lifecycle benchmark",
+    expect(rendered?.text).toBe(systemHint);
+    expect(rendered?.text).not.toContain("orchestrator_lifecycle");
+    expect(rendered?.text).not.toContain("lifecycle-a");
+    expect(rendered?.text).not.toContain("expected_behaviors");
+    expect(rendered?.values).toEqual({});
+    expect(rendered?.data).toEqual({});
+    expect(JSON.stringify(rendered)).not.toMatch(
+      /orchestrator_lifecycle|lifecycle-a|claude-sonnet|scenario-|expected_behaviors|ack_scope_change|apply_scope_change_to_task/,
     );
-    expect(rendered?.text).toContain(
-      "normal task-management and orchestrator actions",
-    );
-    expect(rendered?.text).toContain(
-      "query the active task or subagent registry",
-    );
-    expect(rendered?.text).toContain("prose-only status claims do not satisfy");
-    expect(rendered?.text).not.toContain("Respond with actions: REPLY");
 
     setBenchmarkContext(null);
   });

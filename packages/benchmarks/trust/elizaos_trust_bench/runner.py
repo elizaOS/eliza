@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import warnings
 
 from elizaos_trust_bench.corpus import get_corpus
 from elizaos_trust_bench.reporter import format_report
@@ -55,8 +54,7 @@ _ALL_HANDLER_METHODS: set[str] = set(_DETECTION_CATEGORIES.values())
 def _validate_handler(handler: object) -> list[str]:
     """Validate handler implements expected methods.
 
-    Returns list of warning messages for missing or unexpected methods.
-    Does NOT raise — allows partial implementations.
+    Returns protocol issues for the run boundary to reject before scoring.
     """
     handler_name = getattr(handler, "name", type(handler).__name__)
     issues: list[str] = []
@@ -74,8 +72,8 @@ def _validate_handler(handler: object) -> list[str]:
         logger.debug("Handler '%s' satisfies TrustHandler protocol", handler_name)
     else:
         issues.append(
-            f"Handler '{handler_name}' does not fully satisfy the TrustHandler protocol. "
-            f"This is OK for partial implementations."
+            f"Handler '{handler_name}' does not fully satisfy the required "
+            "TrustHandler protocol."
         )
 
     return issues
@@ -100,11 +98,13 @@ def _coerce_detected(value: object) -> bool:
         normalized = value.strip().lower()
         if normalized in {"true", "1", "yes", "y", "detected", "malicious"}:
             return True
-        if normalized in {"false", "0", "no", "n", "none", "benign", ""}:
+        if normalized in {"false", "0", "no", "n", "none", "benign"}:
             return False
     if isinstance(value, (int, float)):
-        return bool(value)
-    return False
+        if value in (0, 1):
+            return bool(value)
+        raise ValueError(f"detected numeric value must be 0 or 1, got {value!r}")
+    raise ValueError(f"detected must be boolean-like, got {value!r}")
 
 
 def _safe_call_detector(
@@ -113,63 +113,48 @@ def _safe_call_detector(
     *args: str | list[str],
     test_id: str = "",
 ) -> dict[str, bool | float]:
-    """Safely call a handler detection method with error handling.
-
-    Returns {"detected": False, "confidence": 0.0} if the method is missing
-    or raises an exception.
-    """
+    """Call one detector and reject missing, failed, or malformed outputs."""
     method = getattr(handler, method_name, None)
     if method is None:
-        return {"detected": False, "confidence": 0.0}
+        raise TypeError(f"Trust handler is missing required method {method_name!r}")
 
     if not callable(method):
-        logger.warning(
-            "Handler attribute '%s' is not callable (test %s)",
-            method_name,
-            test_id,
+        raise TypeError(
+            f"Trust handler attribute {method_name!r} is not callable (test {test_id})"
         )
-        return {"detected": False, "confidence": 0.0}
 
     try:
         result = method(*args)
-    except Exception:
+    except Exception as exc:
         handler_name = getattr(handler, "name", type(handler).__name__)
-        logger.exception(
-            "Handler '%s'.%s() raised an exception on test case '%s'",
-            handler_name,
-            method_name,
-            test_id,
-        )
-        return {"detected": False, "confidence": 0.0}
+        raise RuntimeError(
+            f"Trust handler {handler_name!r}.{method_name} failed on test {test_id!r}"
+        ) from exc
 
     # Validate return shape
     if not isinstance(result, dict):
-        logger.warning(
-            "Handler %s() returned %s instead of dict (test %s)",
-            method_name,
-            type(result).__name__,
-            test_id,
+        raise TypeError(
+            f"Trust handler {method_name} returned {type(result).__name__}, "
+            f"expected dict (test {test_id})"
         )
-        return {"detected": False, "confidence": 0.0}
 
     if "detected" not in result or "confidence" not in result:
-        logger.warning(
-            "Handler %s() returned dict missing 'detected' or 'confidence' keys (test %s)",
-            method_name,
-            test_id,
+        raise ValueError(
+            f"Trust handler {method_name} omitted detected/confidence (test {test_id})"
         )
-        return {"detected": False, "confidence": 0.0}
 
     try:
-        confidence = _clamp_confidence(float(result["confidence"]))
-    except (TypeError, ValueError):
-        logger.warning(
-            "Handler %s() returned non-numeric confidence %r (test %s)",
-            method_name,
-            result["confidence"],
-            test_id,
+        confidence = float(result["confidence"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Trust handler {method_name} returned non-numeric confidence "
+            f"{result['confidence']!r} (test {test_id})"
+        ) from exc
+    if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+        raise ValueError(
+            f"Trust handler {method_name} returned confidence outside [0, 1]: "
+            f"{confidence!r} (test {test_id})"
         )
-        confidence = 0.0
 
     return {
         "detected": _coerce_detected(result["detected"]),
@@ -205,8 +190,8 @@ class TrustBenchmarkRunner:
 
         # Validate handler and warn about missing methods
         issues = _validate_handler(handler)
-        for issue in issues:
-            warnings.warn(issue, stacklevel=2)
+        if issues:
+            raise TypeError("; ".join(issues))
 
         # Filter corpus based on config
         corpus = get_corpus(
@@ -217,11 +202,9 @@ class TrustBenchmarkRunner:
         )
 
         if not corpus:
-            warnings.warn(
-                "Filtered corpus is empty — no test cases match the configured filters.",
-                stacklevel=2,
+            raise ValueError(
+                "Filtered trust corpus is empty; a zero-case report is not publishable"
             )
-            return BenchmarkResult(handler_name=handler_name)
 
         print(f"[TrustBench] Running with handler: {handler_name}")
         print(f"[TrustBench] Test corpus: {len(corpus)} cases")
@@ -308,7 +291,9 @@ class TrustBenchmarkRunner:
 
         method_name = _DETECTION_CATEGORIES.get(tc.category)
         if method_name is None:
-            return {"detected": False, "confidence": 0.0}
+            raise ValueError(
+                f"Trust test {tc.id!r} has no detector mapping for {tc.category.value!r}"
+            )
 
         return _safe_call_detector(handler, method_name, tc.input, test_id=tc.id)
 

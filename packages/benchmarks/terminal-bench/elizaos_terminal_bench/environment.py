@@ -68,7 +68,7 @@ def _docker_install_hint() -> str:
 
 def check_docker():
     """Return a Docker client after verifying the package and daemon."""
-    if docker is None:
+    if not DOCKER_AVAILABLE or docker is None:
         raise TerminalBenchDockerUnavailableError(
             "Docker Python package is unavailable. Install with `pip install docker`. "
             f"{_docker_install_hint()}"

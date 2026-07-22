@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import sys
 import asyncio
+import sys
 from types import ModuleType
 from typing import Any
 
@@ -14,8 +14,11 @@ from elizaos_experience_bench.types import BenchmarkConfig
 
 
 class _FakeElizaExperienceConfig:
+    last_kwargs: dict[str, Any] = {}
+
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
+        type(self).last_kwargs = kwargs
 
 
 class _FakeElizaServerManager:
@@ -62,6 +65,7 @@ class _FakeElizaBridgeExperienceRunner:
 def test_run_eliza_agent_maps_bridge_metrics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The compatibility runner preserves counts and maps bridge metrics."""
     root = ModuleType("eliza_adapter")
     experience = ModuleType("eliza_adapter.experience")
     server_manager = ModuleType("eliza_adapter.server_manager")
@@ -75,7 +79,12 @@ def test_run_eliza_agent_maps_bridge_metrics(
     monkeypatch.setitem(sys.modules, "eliza_adapter.server_manager", server_manager)
 
     runner = ExperienceBenchmarkRunner(
-        BenchmarkConfig(num_experiences=20, num_learning_cycles=3, top_k_values=[1])
+        BenchmarkConfig(
+            num_experiences=20,
+            num_retrieval_queries=7,
+            num_learning_cycles=3,
+            top_k_values=[1],
+        )
     )
     result = asyncio.run(runner.run_eliza_agent())
 
@@ -86,3 +95,5 @@ def test_run_eliza_agent_maps_bridge_metrics(
     assert result.retrieval is not None
     assert result.retrieval.mean_reciprocal_rank == 0.8
     assert result.retrieval.precision_at_k == {1: 1.0}
+    assert _FakeElizaExperienceConfig.last_kwargs["num_background_experiences"] == 20
+    assert _FakeElizaExperienceConfig.last_kwargs["num_retrieval_queries"] == 7

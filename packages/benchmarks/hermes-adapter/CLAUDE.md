@@ -6,6 +6,34 @@ TerminalBench 2 (89 terminal tasks), YC-Bench (long-horizon strategic tasks), an
 tasks) — behind a subprocess CLI so the orchestrator can run them without importing hermes-agent's heavy Python
 dependencies. Registered as `hermes_tblite`, `hermes_terminalbench_2`, `hermes_yc_bench`, `hermes_swe_env`.
 
+## Publishable Hermes client path
+
+Publishable adapter turns always run in a fresh subprocess using the pinned
+Hermes venv. `native_runtime.py` sets an isolated `HERMES_HOME` before importing
+the pinned checkout's `run_agent.py`, instantiates `run_agent.AIAgent` with
+`api_mode="chat_completions"`, points it at the suite's loopback subscription
+gateway, calls `run_conversation`, and closes the agent.
+
+The pinned checkout is only an import source. Native subprocess cwd and
+`TERMINAL_CWD` both point at the benchmark workspace so Hermes's model-facing
+working-directory prompt and any generated task instructions target the code
+under evaluation, not `~/.eliza/agents/hermes-agent-src`.
+
+For tool benchmarks, the parent generates the `eliza-benchmark-tools` user
+plugin under that isolated home. It registers only the benchmark schemas via
+upstream `ctx.register_tool`, captures executed calls, enables only the
+`eliza_benchmark_scoped` toolset, and disables Tool Search. Both health and turn
+results fail closed unless the imported source belongs to the pinned checkout,
+AIAgent instantiated successfully, the loaded tool names exactly match the
+generated plugin, and native provenance reports `publishable_native=true`.
+
+`mode="in_process"`, remote/non-loopback base URLs, raw OpenAI SDK calls, direct
+provider proxies, and results without verified native provenance are
+nonpublishable diagnostic paths. Do not use them for scores, canaries, or
+evidence. Tests use fake upstream modules and must not spend subscription
+credits; live evidence is a separate gateway-backed run whose telemetry is
+reviewed manually.
+
 ## Run
 
 ```bash
@@ -40,7 +68,8 @@ Key flags for `run_env_cli.py`:
 
 ```bash
 pip install -e .[dev]
-pytest tests/ -v
+python -m pytest -q
+ruff check hermes_adapter tests
 ```
 
 ## Layout
@@ -50,6 +79,7 @@ pytest tests/ -v
 | `run_env_cli.py` | CLI entrypoint — subprocess shim used by the orchestrator |
 | `hermes_adapter/env_runner.py` | Core `run_hermes_env()` — invokes hermes-agent's `evaluate` flow |
 | `hermes_adapter/client.py` | `HermesClient` — drop-in equivalent of `ElizaClient` |
+| `hermes_adapter/native_runtime.py` | Pinned AIAgent runner + generated scoped-tool plugin bridge |
 | `hermes_adapter/server_manager.py` | `HermesAgentManager` — lifecycle owner for the subprocess server |
 | `hermes_adapter/harness_openai_proxy.py` | OpenAI-compatible proxy routing between harnesses |
 | `hermes_adapter/swe_env_smoke.py` | SWE-env smoke runner (`run_humanevalpack_swe_smoke`) |
@@ -59,8 +89,9 @@ pytest tests/ -v
 
 ## Notes
 
-- Requires `CEREBRAS_API_KEY` (or the provider's equivalent key) for live runs.
+- Publishable client runs require a loopback OpenAI-compatible subscription gateway (`CLAUDE_SUBSCRIPTION_GATEWAY_URL` / `OPENAI_BASE_URL`) and its token (`CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN` / `OPENAI_API_KEY`).
 - hermes-agent must be checked out at `~/.eliza/agents/hermes-agent-src/` (default); override with `--repo-path`.
+- Publication gates consume `agent_runtime`, `native_runtime_class`, `native_runtime_api`, `tool_bridge_plugin`, `tool_bridge_api`, `transport`, and `publishable_native` from health/turn telemetry.
 - Results write to `<output_dir>/hermes_<env>_<timestamp>.json`.
 - Scored by `_score_from_hermes_env_json` in `registry/scores.py` (line 1504).
 - Full background: [README.md](README.md).

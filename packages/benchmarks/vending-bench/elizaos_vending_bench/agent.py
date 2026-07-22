@@ -1,8 +1,8 @@
-"""
-Vending-Bench Agent
+"""Runs the model-facing control loop for the vending simulation.
 
-ElizaOS agent integration for the Vending-Bench benchmark.
-Provides the interface between the LLM and the vending environment.
+The loop supplies every runtime with the same bounded transcript and external
+memory tools so native harness behavior, rather than implicit chat state,
+determines long-horizon coherence.
 """
 
 import json
@@ -46,6 +46,7 @@ class VendingAgent:
         environment: VendingEnvironment,
         llm_provider: LLMProvider | None = None,
         temperature: float = 0.0,
+        context_window_tokens: int = 30_000,
     ) -> None:
         """
         Initialize the vending agent.
@@ -58,8 +59,11 @@ class VendingAgent:
         self.env = environment
         self.llm = llm_provider
         self.temperature = temperature
+        self.context_window_tokens = context_window_tokens
         self.actions_log: list[AgentAction] = []
         self.total_tokens = 0
+        self.messages_used = 0
+        self._conversation_history: list[str] = []
         # Sub-agents share the main environment but get their own LLM context.
         self.email_sub_agent = EmailSubAgent(env=environment, llm=llm_provider)
         self.research_sub_agent = ResearchSubAgent(env=environment, llm=llm_provider)
@@ -178,6 +182,27 @@ Always respond with valid JSON containing your action. You may include a "reason
         prompt += "What would you like to do? Respond with JSON."
 
         return prompt
+
+    def _prompt_with_bounded_history(self, system_prompt: str, current_prompt: str) -> str:
+        if not self._conversation_history:
+            return current_prompt
+        # A shared character budget avoids harness-specific tokenizers changing
+        # which history one native runtime receives. Four characters per token
+        # is conservative for the benchmark's English/JSON transcript.
+        budget_chars = max(
+            0,
+            self.context_window_tokens * 4 - len(system_prompt) - len(current_prompt) - 128,
+        )
+        if budget_chars == 0:
+            return current_prompt
+        history = "\n\n".join(self._conversation_history)
+        bounded = history[-budget_chars:]
+        return f"## Recent bounded interaction history\n{bounded}\n\n## Current turn\n{current_prompt}"
+
+    def _record_interaction(self, prompt: str, response: str, result: str) -> None:
+        self._conversation_history.append(
+            f"USER\n{prompt}\n\nASSISTANT\n{response}\n\nTOOL RESULT\n{result}"
+        )
 
     def _parse_action(self, response: str) -> tuple[ActionType | None, ActionParameters]:
         """Parse the LLM response into an action."""
@@ -428,6 +453,7 @@ Always respond with valid JSON containing your action. You may include a "reason
         self,
         day: int,
         max_actions: int = 10,
+        max_messages: int | None = None,
     ) -> list[AgentAction]:
         """
         Run a single day's worth of agent interactions.
@@ -456,6 +482,8 @@ Always respond with valid JSON containing your action. You may include a "reason
         system_prompt = self._build_system_prompt()
 
         for _action_num in range(max_actions):
+            if max_messages is not None and self.messages_used >= max_messages:
+                break
             # Build a small rolling context so the LLM can "remember" earlier results
             context_parts: list[str] = []
             context_parts.append(
@@ -474,12 +502,14 @@ Always respond with valid JSON containing your action. You may include a "reason
                 context_parts.append(f"[LAST_RESULT]\n{previous_result}")
 
             context = "\n\n".join(context_parts).strip()
-            user_prompt = self._build_daily_prompt(day, context)
+            current_prompt = self._build_daily_prompt(day, context)
+            user_prompt = self._prompt_with_bounded_history(system_prompt, current_prompt)
 
             start_time = time.time()
             tokens_used = 0
 
             if self.llm:
+                self.messages_used += 1
                 response, tokens_used = await self.llm.generate(
                     system_prompt,
                     user_prompt,
@@ -510,6 +540,7 @@ Always respond with valid JSON containing your action. You may include a "reason
                 actions_taken.append(action)
                 previous_result = "Invalid action format. Please respond with valid JSON."
                 previous_action_type = None
+                self._record_interaction(current_prompt, response, previous_result)
                 continue
 
             # Execute the action. Sub-agent delegation needs the async LLM path
@@ -544,6 +575,7 @@ Always respond with valid JSON containing your action. You may include a "reason
                 raw_response=response,
             )
             actions_taken.append(action)
+            self._record_interaction(current_prompt, response, result)
             previous_action_type = action_type
             if success and action_type == ActionType.PLACE_ORDER:
                 placed_order_today = True
@@ -731,6 +763,7 @@ Always respond with valid JSON containing your action. You may include a "reason
         self,
         max_days: int = 30,
         max_actions_per_day: int = 10,
+        max_messages: int | None = None,
         run_id: str = "run_001",
     ) -> VendingBenchResult:
         """
@@ -749,7 +782,11 @@ Always respond with valid JSON containing your action. You may include a "reason
 
         for day in range(1, max_days + 1):
             # Run the day
-            day_actions = await self.run_day(day, max_actions_per_day)
+            day_actions = await self.run_day(
+                day,
+                max_actions_per_day,
+                max_messages=max_messages,
+            )
             all_actions.extend(day_actions)
 
             # Update daily summary with actions
@@ -762,6 +799,8 @@ Always respond with valid JSON containing your action. You may include a "reason
             net_worth = self.env.get_net_worth()
             if net_worth < Decimal("0"):
                 break  # Bankrupt
+            if max_messages is not None and self.messages_used >= max_messages:
+                break
 
         # Calculate final metrics
         state = self.env.state
@@ -798,6 +837,7 @@ Always respond with valid JSON containing your action. You may include a "reason
             daily_summaries=state.daily_history,
             actions=all_actions,
             total_tokens=self.total_tokens,
+            messages_used=self.messages_used,
             total_latency_ms=total_latency,
             emails_sent=self._emails_sent,
             emails_received=sum(1 for m in state.inbox if m.direction == "in"),

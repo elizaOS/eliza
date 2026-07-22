@@ -34,7 +34,11 @@ load_dotenv()
 
 from benchmarks.bfcl.runner import BFCLRunner  # noqa: E402
 from benchmarks.bfcl.dataset import BFCLDataset, expand_test_cases, validate_test_cases  # noqa: E402
-from benchmarks.bfcl.types import BFCLCategory, BFCLConfig  # noqa: E402
+from benchmarks.bfcl.types import (  # noqa: E402
+    BFCLCategory,
+    BFCLConfig,
+    BFCL_V3_SCORING_CATEGORIES,
+)
 from benchmarks.bfcl.reporting import print_results  # noqa: E402
 
 
@@ -245,6 +249,13 @@ def parse_categories(categories_str: str) -> list[BFCLCategory]:
 
 async def run_benchmark(args: argparse.Namespace) -> int:
     """Run the BFCL benchmark."""
+    if args.full and (args.sample or args.categories or args.max_per_category):
+        print(
+            "Error: --full cannot be combined with --sample, --categories, "
+            "or --max-per-category"
+        )
+        return 2
+
     # Build configuration
     config = BFCLConfig(
         output_dir=args.output,
@@ -254,7 +265,11 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         enable_network=getattr(args, "enable_network", False),
         sample_seed=getattr(args, "seed", 0),
         include_edge_scenarios=getattr(args, "expand_scenarios", False),
+        require_complete_dataset=bool(args.full),
     )
+
+    if args.full:
+        config.categories = list(BFCL_V3_SCORING_CATEGORIES)
 
     # Set categories if specified
     if args.categories:
@@ -363,6 +378,18 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         # Completed benchmark runs should exit cleanly even when the model
         # score is low. The orchestrator records score/status separately and
         # reserves nonzero process exits for execution failures.
+        infrastructure_errors = [result for result in results.results if result.error]
+        if infrastructure_errors:
+            examples = ", ".join(
+                f"{result.test_case_id}: {result.error}"
+                for result in infrastructure_errors[:3]
+            )
+            print(
+                "\n❌ BFCL infrastructure failed for "
+                f"{len(infrastructure_errors)}/{len(results.results)} cases; "
+                f"examples: {examples}"
+            )
+            return 1
         return 0
 
     except KeyboardInterrupt:

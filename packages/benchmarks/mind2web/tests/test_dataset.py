@@ -49,18 +49,75 @@ def test_default_cache_dir_respects_override(tmp_path, monkeypatch) -> None:
     assert _default_cache_dir() == tmp_path / "custom"
 
 
-def test_autofetch_opt_out_blocks_network(tmp_path, monkeypatch) -> None:
-    """Setting MIND2WEB_NO_AUTOFETCH=1 must skip network access entirely."""
+async def test_edge_expansion_shares_read_only_trace_payload() -> None:
+    from benchmarks.mind2web.dataset import Mind2WebDataset, expand_tasks
+
+    dataset = Mind2WebDataset()
+    await dataset.load(use_huggingface=False, use_sample=True)
+    base = dataset.get_tasks(limit=1)[0]
+
+    expanded = expand_tasks([base])
+
+    assert len(expanded) == 11
+    assert all(variant.actions is base.actions for variant in expanded[1:])
+    assert all(variant.action_reprs is base.action_reprs for variant in expanded[1:])
+    assert len({variant.annotation_id for variant in expanded}) == 11
+
+
+def test_disabled_download_fails_closed_when_archive_is_absent(tmp_path, monkeypatch) -> None:
+    """Campaign mode must never replace a missing pinned archive."""
     from benchmarks.mind2web.dataset import ensure_test_splits_available
 
-    monkeypatch.setenv("MIND2WEB_NO_AUTOFETCH", "1")
+    monkeypatch.setenv("MIND2WEB_DISABLE_DATA_DOWNLOAD", "1")
     monkeypatch.setenv("MIND2WEB_CACHE_DIR", str(tmp_path))
-    # If the function tried to hit the network it would either succeed (slow)
-    # or raise. With the opt-out it must return None synchronously.
-    assert ensure_test_splits_available() is None
-    # And no zip or extraction artifacts should appear.
+    with pytest.raises(FileNotFoundError, match="Pinned Mind2Web archive is missing"):
+        ensure_test_splits_available()
     assert not (tmp_path / "test.zip").exists()
     assert not (tmp_path / "extracted").exists()
+
+
+def test_disabled_download_requires_pinned_ranker_scores(tmp_path, monkeypatch) -> None:
+    from benchmarks.mind2web.dataset import ensure_ranker_scores_available
+
+    monkeypatch.setenv("MIND2WEB_DISABLE_DATA_DOWNLOAD", "1")
+    monkeypatch.setenv("MIND2WEB_CACHE_DIR", str(tmp_path))
+    with pytest.raises(FileNotFoundError, match="ranker scores are missing"):
+        ensure_ranker_scores_available()
+
+
+def test_ranker_score_checksum_mismatch_fails_closed(tmp_path, monkeypatch) -> None:
+    from benchmarks.mind2web.dataset import ensure_ranker_scores_available
+
+    (tmp_path / "scores_all_data.pkl").write_bytes(b"not the pinned artifact")
+    monkeypatch.setenv("MIND2WEB_CACHE_DIR", str(tmp_path))
+    with pytest.raises(RuntimeError, match="ranker-score checksum mismatch"):
+        ensure_ranker_scores_available()
+
+
+def test_ranker_score_checksum_is_cached_until_file_changes(
+    tmp_path, monkeypatch
+) -> None:
+    from benchmarks.mind2web import dataset
+
+    scores_path = tmp_path / "scores_all_data.pkl"
+    scores_path.write_bytes(b"first")
+    monkeypatch.setenv("MIND2WEB_CACHE_DIR", str(tmp_path))
+    calls = 0
+
+    def matching_hash(_path: Path) -> str:
+        nonlocal calls
+        calls += 1
+        return dataset.MIND2WEB_RANKER_SCORES_SHA256
+
+    monkeypatch.setattr(dataset, "_sha256", matching_hash)
+
+    assert dataset.ensure_ranker_scores_available() == scores_path
+    assert dataset.ensure_ranker_scores_available() == scores_path
+    assert calls == 1
+
+    scores_path.write_bytes(b"second-and-different-size")
+    assert dataset.ensure_ranker_scores_available() == scores_path
+    assert calls == 2
 
 
 # ---------------------------------------------------------------------------

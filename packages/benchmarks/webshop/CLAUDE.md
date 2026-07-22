@@ -18,8 +18,10 @@ python -m benchmarks.orchestrator run --benchmarks webshop --provider <p> --mode
 Fetch the upstream data first if not already present:
 
 ```bash
-python scripts/fetch_data.py --profile small   # ~9 MB, 1k products
-python scripts/fetch_data.py --profile full    # ~2 GB, 1.18M products
+python scripts/fetch_data.py --profile small   # ~9.8 MB, 1k products
+python scripts/fetch_data.py --profile full    # ~5.7 GB, 1.18M products
+pip install -e ".[full]"                       # pinned full-run dependencies
+python scripts/build_search_index.py           # ~1.5 GB Lucene index + manifest
 ```
 
 ## Smoke test (no API keys, no downloads)
@@ -48,10 +50,10 @@ absent, so `pytest` still passes cleanly in a fresh checkout.
 | --- | --- |
 | `elizaos_webshop/cli.py` | CLI entrypoint (`--mock`, `--bridge`, `--profile`, `--use-sample-tasks`) |
 | `elizaos_webshop/runner.py` | Orchestration loop across tasks |
-| `elizaos_webshop/environment.py` | Adapter over upstream `WebAgentTextEnv`; BM25 fallback |
+| `elizaos_webshop/environment.py` | Adapter over upstream `WebAgentTextEnv`; pinned Lucene full-run path |
 | `elizaos_webshop/evaluator.py` | Reports Score + SR following the paper |
 | `elizaos_webshop/eliza_agent.py` | Mock agent driving the upstream env |
-| `elizaos_webshop/dataset.py` | Loads upstream JSONs, resolves train/test split |
+| `elizaos_webshop/dataset.py` | Streams upstream JSONs and reproduces the official shuffled splits |
 | `elizaos_webshop/types.py` | Typed observation / step / report shapes |
 | `upstream/web_agent_site/` | Vendored Princeton-NLP Flask sim + Gym env (unmodified) |
 | `scripts/fetch_data.py` | Downloads catalog and instruction files |
@@ -67,6 +69,9 @@ absent, so `pytest` still passes cleanly in a fresh checkout.
   to the published paper.
 - spaCy `en_core_web_sm` is required at runtime; install once with
   `python -m spacy download en_core_web_sm`.
+- Full runs fail closed unless the checksum-bound Lucene index and pinned
+  Pyserini 2.1.0 / Anserini 2.1.1 / Java 21 / spaCy 3.8.7 runtime validate.
+  BM25 is reserved for nonpublishable small/sample diagnostics.
 - Full background: [README.md](README.md).
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

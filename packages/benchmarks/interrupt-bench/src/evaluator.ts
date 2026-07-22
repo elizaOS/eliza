@@ -27,13 +27,17 @@ import {
 } from "./llm-scripted.ts";
 import { renderConversation } from "./prompt.ts";
 import { buildBenchRegistry } from "./registry.ts";
-import { getBaseScenarioId } from "./scenarios.ts";
 import { scoreScenario } from "./scorer.ts";
 import { SimulatorState } from "./state.ts";
 import { Trace } from "./trace.ts";
 import type { Scenario, ScenarioResult, ScenarioScriptStep } from "./types.ts";
 
 type BenchThreadOp = Record<string, unknown>;
+
+// One second is long enough to join rapid chat fragments while leaving normal
+// follow-up messages as independent turns. The rule is deliberately structural
+// so renamed or newly authored scenarios receive the same treatment.
+export const BURST_DEBOUNCE_MS = 1000;
 
 export type EvaluatorMode = "scripted" | "cerebras" | "harness";
 
@@ -187,15 +191,18 @@ function shouldDeferUntilBurstEnd(
   scenario: Scenario,
   step: ScenarioScriptStep,
 ): boolean {
-  const scenarioId = getBaseScenarioId(scenario.id);
+  const index = scenario.script.indexOf(step);
+  const next = index >= 0 ? scenario.script[index + 1] : undefined;
   if (
-    scenarioId !== "A1-fragmented-email-draft" &&
-    scenarioId !== "A4-stream-with-retraction" &&
-    scenarioId !== "K1-recipe-assembly"
+    !next ||
+    next.channel !== step.channel ||
+    next.sender !== step.sender
   ) {
     return false;
   }
-  return step !== scenario.script[scenario.script.length - 1];
+
+  const gapMs = next.t - step.t;
+  return gapMs >= 0 && gapMs <= BURST_DEBOUNCE_MS;
 }
 
 // ---------------------------------------------------------------------------

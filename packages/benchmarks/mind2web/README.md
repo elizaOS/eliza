@@ -1,13 +1,13 @@
-# Mind2Web Benchmark for ElizaOS
+# Mind2Web benchmark for elizaOS
 
 Web agent benchmark based on [OSU-NLP-Group/Mind2Web](https://github.com/OSU-NLP-Group/Mind2Web).
 
-Evaluates ElizaOS agents on real-world web navigation and interaction tasks.
+Evaluates Eliza agents on real-world web navigation and interaction tasks.
 
 ## Features
 
-- **Canonical ElizaOS Integration**: Uses the TypeScript benchmark bridge for the full agent loop
-- **Multiple Model Providers**: Groq, OpenAI, OpenRouter, Cerebras through OpenAI-compatible local calls, or the Eliza bridge
+- **Native harness comparison**: the Eliza, Hermes, and OpenClaw paths keep their production agent loops while sharing one model gateway and benchmark prompt
+- **Pinned held-out data**: verifies the official encrypted archive, revision, checksum, and exact split counts before any model call
 - **Faithful MindAct two-stage pipeline**: DeBERTa-v3 candidate ranker (stage 1) feeds top-K elements to the LLM action predictor (stage 2)
 - **Comprehensive Metrics**: Task success, step accuracy, element/operation accuracy, plus stage-1 Recall@K
 - **Multiple Splits**: Cross-Task, Cross-Website, Cross-Domain evaluation
@@ -17,14 +17,16 @@ Evaluates ElizaOS agents on real-world web navigation and interaction tasks.
 This harness reproduces the two-stage architecture from Deng et al. 2023
 ([arXiv:2306.06070](https://arxiv.org/abs/2306.06070)):
 
-1. **Candidate ranker** (`ranker.py`): a DeBERTa-v3 cross-encoder scores every
-   DOM candidate against the task description + last 3 actions, and forwards
-   the top-K (default 50) to the LLM. The pretrained checkpoint
+1. **Candidate ranker** (`ranker.py`): full runs consume OSU's released,
+   checksum-pinned `scores_all_data.pkl` output from the official DeBERTa-v3
+   cross-encoder and forward the top-K (default 50). The code can also load the
+   commit-pinned checkpoint
    [`osunlp/MindAct_CandidateGeneration_deberta-v3-base`](https://huggingface.co/osunlp/MindAct_CandidateGeneration_deberta-v3-base)
-   is downloaded lazily on first use (~750MB). On CPU the first call takes
-   ~10-20s to load weights; subsequent calls reuse the in-process singleton.
-2. **Action predictor**: the configured LLM picks one element from the top-K
-   and emits `(operation, value)`.
+   to reproduce and audit those scores without charging each harness for the
+   same deterministic stage.
+2. **Action predictor**: every native harness receives the same pruned DOM,
+   ranked candidate mapping, previous actions, and required action schema. It
+   receives neither the annotated current action nor future action plan.
 
 Stage-1 Recall@K is reported alongside the standard step/task metrics
 (upstream reports ~88-92% Recall@50 on `test_task` with the released
@@ -41,9 +43,14 @@ checkpoint).
 
 | Mode | Behavior | Comparability |
 |------|----------|---------------|
-| `real` (default) | DeBERTa-v3 cross-encoder ranks all DOM candidates and the top-K go to the LLM. | Leaderboard-comparable. |
+| `real` (default) | Pinned DeBERTa-v3 cross-encoder ranks all DOM candidates and the top-K go to the LLM. | Required for publishable cohort results. |
 | `oracle` | Annotated `pos_candidates` are passed straight through to the LLM. | **Upper bound only — not leaderboard-comparable** (leaks the answer). |
 | `none` | All `pos + neg` candidates passed without filtering. | Diagnostic only. |
+
+The official corpus/ranker and macro metrics match Mind2Web, but Claude tool
+calling and the optional derived edge variants are an adapted comparative
+protocol; these results are not represented as published MindAct leaderboard
+entries.
 
 The `--mock` flag selects the `OracleMind2WebAgent` (formerly
 `MockMind2WebAgent`), which replays the dataset's annotated answer and
@@ -65,25 +72,25 @@ PYTHONPATH=packages python -m benchmarks.mind2web --sample --mock
 # Set your Groq API key
 export GROQ_API_KEY=your_key_here
 
-# Run benchmark
-PYTHONPATH=packages python -m benchmarks.mind2web --sample --real-llm --provider groq --model openai/gpt-oss-120b
+# Run one explicit non-publishable transport canary on official data
+PYTHONPATH=packages python -m benchmarks.mind2web --hf --max-tasks 1 \
+  --provider groq --model openai/gpt-oss-120b
 ```
 
 ### Run with OpenAI
 
 ```bash
 export OPENAI_API_KEY=your_key_here
-PYTHONPATH=packages python -m benchmarks.mind2web --sample --provider openai --model openai/gpt-oss-120b
+PYTHONPATH=packages python -m benchmarks.mind2web --hf --max-tasks 1 \
+  --provider openai --model openai/gpt-oss-120b
 ```
 
-### Run Full Benchmark from HuggingFace
+### Validate the official held-out archive
 
 ```bash
-# Install datasets package
-pip install datasets
-
-# Run with HuggingFace data
-PYTHONPATH=packages python -m benchmarks.mind2web --hf --real-llm --max-tasks 50
+MIND2WEB_DISABLE_DATA_DOWNLOAD=1 PYTHONPATH=packages \
+  python -m benchmarks.mind2web --hf --split test_task --count-scenarios \
+  --expected-tasks 252
 ```
 
 ## CLI Options
@@ -92,14 +99,17 @@ PYTHONPATH=packages python -m benchmarks.mind2web --hf --real-llm --max-tasks 50
 Usage: python -m benchmarks.mind2web [OPTIONS]
 
 Data Source:
-  --sample              Use built-in sample tasks (default)
-  --hf                  Load from HuggingFace (requires datasets package)
+  --sample              Use built-in non-publishable sample tasks
+  --hf                  Load the pinned official encrypted test archive
   --split SPLIT         Dataset split: train, test_task, test_website, test_domain
 
 Task Selection:
   --max-tasks N         Maximum tasks to run
   --trials N            Trials per task (default: 1)
   --max-steps N         Maximum steps per task (default: 20)
+  --expand-scenarios    Add ten prompt-preserving stress variants per task
+  --expected-tasks N    Require an exact base task count
+  --expected-scenarios N Require an exact expanded task count
 
 Model Configuration:
   --mock                Use deterministic ground-truth replay for offline smoke tests
@@ -107,6 +117,9 @@ Model Configuration:
   --provider PROVIDER   groq, openai, openrouter, cerebras, eliza, or auto (default)
   --model MODEL         Model name for OpenAI-compatible providers
   --temperature T       LLM temperature (default: 0.0)
+  --ranker {real,oracle,none}
+  --ranker-top-k N      Candidate cutoff (default: 50)
+  --ranker-revision REV Pinned model revision override
 
 Output:
   --output DIR          Output directory for results
@@ -119,24 +132,33 @@ Output:
 | Metric | Description |
 |--------|-------------|
 | **Task Success Rate** | Percentage of tasks where ALL steps are correct |
-| **Step Accuracy** | Percentage of individual steps that are fully correct |
-| **Element Accuracy** | Percentage of steps with correct target element |
+| **Step Accuracy** | Macro-average task step accuracy; requires exact positive backend ID and upstream action-token match |
+| **Element Accuracy** | Percentage of steps with an exact positive backend-node ID |
 | **Operation Accuracy** | Percentage of steps with correct operation (CLICK/TYPE/SELECT) |
 
 ## Dataset Splits
 
-| Split | Description |
-|-------|-------------|
-| `test_task` | Cross-Task: Same websites, new task types |
-| `test_website` | Cross-Website: New websites within same domains |
-| `test_domain` | Cross-Domain: Entirely new domains |
+| Split | Description | Tasks |
+|-------|-------------|------:|
+| `test_task` | Cross-Task: same websites, new tasks | 252 |
+| `test_website` | Cross-Website: unseen websites | 177 |
+| `test_domain` | Cross-Domain: unseen domains | 912 |
+
+The loader pins Hugging Face dataset revision
+`17ece8eb89862368edc0cc806acee6fca5163474` and archive SHA-256
+`8f5fbe72afab942fe97cdf7fb397e179885d89b5c16862288e9a14bc6d41ca89`.
+The released candidate-score artifact is independently pinned at SHA-256
+`884c97cd9ae0544485d21ea39e0d46422aee0291969a7324e56df3a84466dbd7`.
+Extraction uses the password published by OSU and completes atomically. Missing,
+partial, malformed, or count-mismatched data fails before model execution; it
+never falls back to train data or the three-task fixture.
 
 ## Architecture
 
 ```
 Mind2Web Benchmark
-├── eliza_agent.py     # ElizaOS agent with MIND2WEB_ACTION action
-├── dataset.py         # Mind2Web dataset loader (HF + local + samples)
+├── eliza_agent.py     # Shared action surface and direct-provider agent
+├── dataset.py         # Pinned official archive + explicit local/sample loaders
 ├── evaluator.py       # Step and task evaluation
 ├── runner.py          # Benchmark orchestration
 ├── cli.py             # Command-line interface

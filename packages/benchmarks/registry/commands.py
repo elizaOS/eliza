@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Mapping, cast
 
 try:
+    from benchmarks.campaign_profile import is_full_campaign_profile
     from benchmarks.bench_cli_types import (
         BenchmarkDefinition,
         BenchmarkRequirements,
@@ -22,7 +23,6 @@ try:
         _score_from_clawbench_json,
         _score_from_configbench_json,
         _score_from_contextbench_json,
-        _score_from_eliza_format_json,
         _score_from_gauntlet_json,
         _score_from_gsm8k_json,
         _score_from_hermes_env_json,
@@ -61,6 +61,7 @@ try:
         _score_from_woobench_json,
     )
 except ImportError:
+    from campaign_profile import is_full_campaign_profile  # type: ignore[no-redef]
     from bench_cli_types import (  # type: ignore[no-redef]
         BenchmarkDefinition,
         BenchmarkRequirements,
@@ -77,7 +78,6 @@ except ImportError:
         _score_from_clawbench_json,
         _score_from_configbench_json,
         _score_from_contextbench_json,
-        _score_from_eliza_format_json,
         _score_from_gauntlet_json,
         _score_from_gsm8k_json,
         _score_from_hermes_env_json,
@@ -151,7 +151,9 @@ def _mint_subtasks_from_extra(extra: Mapping[str, JSONValue]) -> list[str]:
         return [str(item) for item in subtasks if str(item).strip()]
 
     categories = extra.get("categories")
-    if not isinstance(categories, list) or not all(isinstance(x, str) for x in categories):
+    if not isinstance(categories, list) or not all(
+        isinstance(x, str) for x in categories
+    ):
         return []
 
     selected: list[str] = []
@@ -171,7 +173,10 @@ def _mint_subtasks_from_extra(extra: Mapping[str, JSONValue]) -> list[str]:
 
 
 def _expand_scenarios_requested(extra: Mapping[str, JSONValue]) -> bool:
-    if extra.get("expand_scenarios") is True or extra.get("include_edge_scenarios") is True:
+    if (
+        extra.get("expand_scenarios") is True
+        or extra.get("include_edge_scenarios") is True
+    ):
         return True
     return os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
         "1",
@@ -190,10 +195,14 @@ def _flag_requested(extra: Mapping[str, JSONValue], *keys: str) -> bool:
     if any(extra.get(key) is True for key in keys):
         return True
     truthy = {"1", "true", "yes", "on"}
-    return any(os.environ.get(key.upper(), "").strip().lower() in truthy for key in keys)
+    return any(
+        os.environ.get(key.upper(), "").strip().lower() in truthy for key in keys
+    )
 
 
-def _append_scenario_control_flags(args: list[str], extra: Mapping[str, JSONValue]) -> None:
+def _append_scenario_control_flags(
+    args: list[str], extra: Mapping[str, JSONValue]
+) -> None:
     if _expand_scenarios_requested(extra):
         args.append("--expand-scenarios")
     if _flag_requested(extra, "count_scenarios"):
@@ -208,7 +217,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def repo(path: str) -> str:
         return str((repo_root / path).resolve())
 
-    def _bfcl_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _bfcl_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         args = [python, "-m", "benchmarks.bfcl", "run", "--output", str(output_dir)]
         provider_name = (model.provider or "").strip().lower()
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
@@ -252,13 +263,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--local-data", local_data])
         if extra.get("no_exec") is True:
             args.append("--no-exec")
+        if is_full_campaign_profile(extra.get("campaign_profile")):
+            args.append("--full")
         _append_scenario_control_flags(args, extra)
         return args
 
     def _bfcl_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="bfcl_results_*.json")
 
-    def _realm_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _realm_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         args = [python, "-m", "benchmarks.realm.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
@@ -268,7 +283,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         categories = extra.get("categories")
         if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
             args.extend(["--categories", *cast(list[str], categories)])
-        elif extra.get("use_sample_tasks") is True or extra.get("mock") is True or provider_name == "mock":
+        elif (
+            extra.get("use_sample_tasks") is True
+            or extra.get("mock") is True
+            or provider_name == "mock"
+        ):
             args.append("--use-sample-tasks")
         execution_model = extra.get("execution_model")
         if isinstance(execution_model, str) and execution_model.strip():
@@ -278,6 +297,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
+        if extra.get("full_dataset") is True:
+            args.append("--full-dataset")
         max_steps = extra.get("max_steps")
         if isinstance(max_steps, int) and max_steps > 0:
             args.extend(["--max-steps", str(max_steps)])
@@ -310,8 +331,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _realm_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="realm-benchmark-*.json")
 
-    def _mint_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        args = [python, repo("benchmarks/mint/run_benchmark.py"), "--output-dir", str(output_dir)]
+    def _mint_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        args = [
+            python,
+            repo("benchmarks/mint/run_benchmark.py"),
+            "--output-dir",
+            str(output_dir),
+        ]
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
@@ -374,7 +402,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mint_result(output_dir: Path) -> Path:
         return output_dir / "mint-benchmark-results.json"
 
-    def _agentbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _agentbench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         args = [
             python,
             "-m",
@@ -382,6 +412,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "run",
             "--output",
             str(output_dir),
+            "--data-mode",
+            "full",
+            "--split",
+            "test",
         ]
         envs = extra.get("env")
         if isinstance(envs, list) and all(isinstance(x, str) for x in envs):
@@ -416,9 +450,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _agentbench_result(output_dir: Path) -> Path:
         return output_dir / "agentbench-results.json"
 
-    def _contextbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        agent = extra.get("agent")
-        if agent == "eliza":
+    def _contextbench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             provider_str = "eliza"
         else:
             provider = extra.get("provider")
@@ -436,6 +472,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "vllm": "eliza",
                 "cerebras": "eliza",
                 "eliza": "eliza",
+                "claude-subscription": "eliza",
                 "anthropic": "anthropic",
             }
             provider_str = provider_map.get(provider_name, "mock")
@@ -447,15 +484,24 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output-dir",
             str(output_dir),
         ]
-        harness = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        harness = (
+            str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        )
         if harness in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--harness", harness])
         quick = extra.get("quick")
         if quick is True:
             args.append("--quick")
         context_lengths = extra.get("context_lengths")
-        if isinstance(context_lengths, list) and all(isinstance(x, int) for x in context_lengths):
-            args.extend(["--context-lengths", ",".join(str(x) for x in cast(list[int], context_lengths))])
+        if isinstance(context_lengths, list) and all(
+            isinstance(x, int) for x in context_lengths
+        ):
+            args.extend(
+                [
+                    "--context-lengths",
+                    ",".join(str(x) for x in cast(list[int], context_lengths)),
+                ]
+            )
         elif isinstance(context_lengths, str) and context_lengths.strip():
             args.extend(["--context-lengths", context_lengths.strip()])
         positions = extra.get("positions")
@@ -466,13 +512,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         tasks_per_position = extra.get("tasks_per_position")
         if isinstance(tasks_per_position, int) and tasks_per_position > 0:
             args.extend(["--tasks-per-position", str(tasks_per_position)])
+        _append_scenario_control_flags(args, extra)
         _ = model
         return args
 
     def _contextbench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="context_bench_*.json")
 
-    def _recall_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _recall_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         # recall-bench (#9956): drives the REAL @elizaos/core recall path over a
         # labeled, document-scale corpus. No model/provider — the embedding is a
         # deterministic in-bench function, so it is secret-free and CI-safe.
@@ -494,7 +543,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _recall_result(output_dir: Path) -> Path:
         return output_dir / "recall-bench-results.json"
 
-    def _terminalbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _terminalbench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         # Run module from its python project root.
         args = [
             python,
@@ -566,7 +617,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _terminalbench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="terminal-bench-*.json")
 
-    def _tau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _tau_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         args = [
             python,
             "-m",
@@ -621,10 +674,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(num_trials, int) and num_trials > 0:
             args.extend(["--num-trials", str(num_trials)])
         pass_k_values = extra.get("pass_k_values")
-        if isinstance(pass_k_values, list) and all(isinstance(k, int) and k > 0 for k in pass_k_values):
+        if isinstance(pass_k_values, list) and all(
+            isinstance(k, int) and k > 0 for k in pass_k_values
+        ):
             args.extend(["--pass-k-values", *[str(k) for k in pass_k_values]])
         task_ids = extra.get("task_ids")
-        if isinstance(task_ids, list) and all(isinstance(t, int) and t >= 0 for t in task_ids):
+        if isinstance(task_ids, list) and all(
+            isinstance(t, int) and t >= 0 for t in task_ids
+        ):
             args.extend(["--task-ids", *[str(t) for t in task_ids]])
         start_index = extra.get("start_index")
         if isinstance(start_index, int) and start_index >= 0:
@@ -648,8 +705,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _tau_result(output_dir: Path) -> Path:
         return output_dir / "report.json"
 
-    def _vending_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        args = [python, "-m", "elizaos_vending_bench.cli", "run", "--output-dir", str(output_dir)]
+    def _vending_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        args = [
+            python,
+            "-m",
+            "elizaos_vending_bench.cli",
+            "run",
+            "--output-dir",
+            str(output_dir),
+        ]
         if model.model:
             args.extend(["--model", model.model])
         provider_name = (model.provider or "").strip().lower()
@@ -658,33 +724,63 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--provider", "heuristic"])
         elif agent in {"eliza", "hermes", "openclaw"} or provider_name == "cerebras":
             args.extend(["--provider", "eliza"])
-        elif model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza", "vllm"}:
+        elif model.provider in {
+            "openai",
+            "anthropic",
+            "groq",
+            "heuristic",
+            "eliza",
+            "vllm",
+        }:
             args.extend(["--provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
         runs = extra.get("runs")
         if not isinstance(runs, int):
             runs = extra.get("num_runs")
+        smoke = extra.get("max_tasks") == 1
         if isinstance(runs, int) and runs > 0:
             args.extend(["--runs", str(runs)])
-        elif extra.get("max_tasks") == 1:
+        elif smoke:
             args.extend(["--runs", "1"])
         days = extra.get("days")
         if not isinstance(days, int):
             days = extra.get("max_days_per_run")
         if isinstance(days, int) and days > 0:
-            args.extend(["--days", str(max(days, 3))])
-        elif extra.get("max_tasks") == 1:
+            args.extend(["--days", str(days)])
+        elif smoke:
             args.extend(["--days", "3"])
-        args.append("--starter-inventory")
-        args.extend(["--max-actions-per-day", "6"])
+        starter_inventory = extra.get("starter_inventory")
+        if starter_inventory is True or (smoke and starter_inventory is not False):
+            args.append("--starter-inventory")
+        max_actions = extra.get("max_actions_per_day")
+        if isinstance(max_actions, int) and max_actions > 0:
+            args.extend(["--max-actions-per-day", str(max_actions)])
+        elif smoke:
+            args.extend(["--max-actions-per-day", "6"])
+        max_messages = extra.get("max_messages_per_run")
+        if isinstance(max_messages, int) and max_messages > 0:
+            args.extend(["--max-messages-per-run", str(max_messages)])
+        context_window = extra.get("context_window_tokens")
+        if isinstance(context_window, int) and context_window > 0:
+            args.extend(["--context-window-tokens", str(context_window)])
+        seed = extra.get("seed", extra.get("random_seed"))
+        if isinstance(seed, int) and not isinstance(seed, bool):
+            args.extend(["--seed", str(seed)])
+        expected_scenarios = extra.get("expected_scenarios")
+        if isinstance(expected_scenarios, int) and expected_scenarios > 0:
+            args.extend(["--expected-scenarios", str(expected_scenarios)])
+        if extra.get("no_leaderboard") is True:
+            args.append("--no-leaderboard")
         _append_scenario_control_flags(args, extra)
         return args
 
     def _vending_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="vending-bench-results-*.json")
 
-    def _swe_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _swe_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         args = [python, "-m", "benchmarks.swe_bench.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         if agent in {"eliza", "hermes", "openclaw", "smithers"}:
@@ -777,7 +873,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--trace-dir", trace_dir.strip()])
         required_caps = extra.get("required_capabilities")
         if isinstance(required_caps, list) and required_caps:
-            args.extend(["--required-capabilities", ",".join(str(c) for c in required_caps)])
+            args.extend(
+                ["--required-capabilities", ",".join(str(c) for c in required_caps)]
+            )
         elif isinstance(required_caps, str) and required_caps.strip():
             args.extend(["--required-capabilities", required_caps.strip()])
         if extra.get("strict_capabilities") is True:
@@ -815,6 +913,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--seed", str(seed)])
         if extra.get("strict") is True:
             args.append("--strict")
+        elif extra.get("strict") is False:
+            args.append("--no-strict")
         # Default to bridge mode (real eliza TS agent) for any LLM-backed
         # provider; explicit `--extra '{"mode":"simulate"}'` opts into the
         # deterministic simulator for offline smoke-testing only.
@@ -825,7 +925,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "simulate",
         }:
             args.extend(["--mode", mode_override.strip()])
-        elif provider_name in {"cerebras", "openai", "groq", "openrouter", "vllm", "anthropic", "google", "eliza"}:
+        elif provider_name in {
+            "anthropic",
+            "cerebras",
+            "claude-subscription",
+            "eliza",
+            "google",
+            "groq",
+            "openai",
+            "openrouter",
+            "vllm",
+        }:
             args.extend(["--mode", "bridge"])
         else:
             args.extend(["--mode", "simulate"])
@@ -833,21 +943,26 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return args
 
     def _orchestrator_lifecycle_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="orchestrator-lifecycle-*.json")
+        return find_latest_file(
+            output_dir, glob_pattern="orchestrator-lifecycle-*.json"
+        )
 
-    def _mind2web_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _mind2web_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         args = [python, "-m", "benchmarks.mind2web", "--output", str(output_dir)]
-        agent = extra.get("agent")
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
         # Route LLM-backed providers through the eliza TS bridge so the actual
         # registered eliza agent + plugins are exercised, not the python mock.
-        if agent == "eliza" or provider_name in {
+        if agent in {"eliza", "hermes", "openclaw", "smithers"} or provider_name in {
             "cerebras",
             "openai",
             "groq",
             "openrouter",
             "vllm",
             "eliza",
+            "claude-subscription",
         }:
             args.extend(["--real-llm", "--provider", "eliza"])
             if model.model:
@@ -872,9 +987,46 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_steps = extra.get("max_steps")
         if isinstance(max_steps, int) and max_steps > 0:
             args.extend(["--max-steps", str(max_steps)])
+        timeout = extra.get("timeout")
+        if isinstance(timeout, int) and timeout > 0:
+            args.extend(["--timeout", str(timeout)])
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
+        elif extra.get("hf") is True:
+            args.append("--hf")
+        split = extra.get("split")
+        if isinstance(split, str) and split in {
+            "train",
+            "test_task",
+            "test_website",
+            "test_domain",
+        }:
+            args.extend(["--split", split])
+        trials = extra.get("trials", extra.get("num_trials"))
+        if isinstance(trials, int) and trials > 0:
+            args.extend(["--trials", str(trials)])
+        ranker = extra.get("ranker")
+        if isinstance(ranker, str) and ranker in {"real", "oracle", "none"}:
+            args.extend(["--ranker", ranker])
+        ranker_top_k = extra.get("ranker_top_k")
+        if isinstance(ranker_top_k, int) and ranker_top_k > 0:
+            args.extend(["--ranker-top-k", str(ranker_top_k)])
+        ranker_model = extra.get("ranker_model")
+        if isinstance(ranker_model, str) and ranker_model.strip():
+            args.extend(["--ranker-model", ranker_model.strip()])
+        ranker_revision = extra.get("ranker_revision")
+        if isinstance(ranker_revision, str) and ranker_revision.strip():
+            args.extend(["--ranker-revision", ranker_revision.strip()])
+        ranker_device = extra.get("ranker_device")
+        if isinstance(ranker_device, str) and ranker_device.strip():
+            args.extend(["--ranker-device", ranker_device.strip()])
+        expected_tasks = extra.get("expected_tasks")
+        if isinstance(expected_tasks, int) and expected_tasks > 0:
+            args.extend(["--expected-tasks", str(expected_tasks)])
+        expected_scenarios = extra.get("expected_scenarios")
+        if isinstance(expected_scenarios, int) and expected_scenarios > 0:
+            args.extend(["--expected-scenarios", str(expected_scenarios)])
         mock = extra.get("mock")
         provider_name = (model.provider or "").strip().lower()
         if mock is True or provider_name == "mock":
@@ -885,7 +1037,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mind2web_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="mind2web-results*.json")
 
-    def _visualwebbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _visualwebbench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         args = [
             python,
             "-m",
@@ -894,8 +1048,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        provider_name = str(extra.get("model_provider") or model.provider or "").strip().lower()
-        local_eliza_providers = {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}
+        provider_name = (
+            str(extra.get("model_provider") or model.provider or "").strip().lower()
+        )
+        local_eliza_providers = {
+            "local-eliza",
+            "local_eliza",
+            "eliza-local",
+            "eliza_local",
+        }
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
             if model.model:
@@ -903,7 +1064,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         elif provider_name in local_eliza_providers:
             # Local eliza-1 VLM via llama-mtmd-cli — no agent server / API.
             args.extend(["--provider", provider_name])
-            tier = str(extra.get("tier") or model.model or "eliza-1-9b").strip() or "eliza-1-9b"
+            tier = (
+                str(extra.get("tier") or model.model or "eliza-1-9b").strip()
+                or "eliza-1-9b"
+            )
             args.extend(["--model", tier])
         elif agent == "eliza" or provider_name in {
             "cerebras",
@@ -953,8 +1117,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _visualwebbench_result(output_dir: Path) -> Path:
         return output_dir / "visualwebbench-results.json"
 
-    def _vision_language_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        benchmark = str(extra.get("vision_benchmark") or extra.get("sub_benchmark") or "textvqa").strip().lower()
+    def _vision_language_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        benchmark = (
+            str(
+                extra.get("vision_benchmark") or extra.get("sub_benchmark") or "textvqa"
+            )
+            .strip()
+            .lower()
+        )
         if benchmark not in {"textvqa", "docvqa", "chartqa", "screenspot", "osworld"}:
             benchmark = "textvqa"
         tier = str(extra.get("tier") or "eliza-1-9b").strip() or "eliza-1-9b"
@@ -973,10 +1145,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir / "vision-language-results.json"),
         ]
-        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        agent = (
+            str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        )
         if agent in {"eliza", "hermes", "openclaw"}:
             args.extend(["--harness", agent])
-        provider_name = str(extra.get("model_provider") or model.provider or "").strip().lower()
+        provider_name = (
+            str(extra.get("model_provider") or model.provider or "").strip().lower()
+        )
         if provider_name:
             args.extend(["--model-provider", provider_name])
         model_name = str(extra.get("model") or model.model or "").strip()
@@ -984,7 +1160,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--model", model_name])
         if extra.get("smoke") is True:
             args.append("--smoke")
-        if extra.get("stub") is True or (model.provider or "").strip().lower() == "mock":
+        if (
+            extra.get("stub") is True
+            or (model.provider or "").strip().lower() == "mock"
+        ):
             args.append("--stub")
         _append_scenario_control_flags(args, extra)
         return args
@@ -992,7 +1171,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _vision_language_result(output_dir: Path) -> Path:
         return output_dir / "vision-language-results.json"
 
-    def _rlm_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _rlm_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for RLM benchmark.
 
         Supports S-NIAH (Streaming Needle-in-a-Haystack) and OOLONG benchmarks
@@ -1020,8 +1201,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         context_lengths = extra.get("context_lengths")
         if isinstance(context_lengths, str):
             args.extend(["--context-lengths", context_lengths])
-        elif isinstance(context_lengths, list) and all(isinstance(x, int) for x in context_lengths):
-            args.extend(["--context-lengths", ",".join(str(x) for x in cast(list[int], context_lengths))])
+        elif isinstance(context_lengths, list) and all(
+            isinstance(x, int) for x in context_lengths
+        ):
+            args.extend(
+                [
+                    "--context-lengths",
+                    ",".join(str(x) for x in cast(list[int], context_lengths)),
+                ]
+            )
         tasks_per_config = extra.get("tasks_per_config")
         if isinstance(tasks_per_config, int) and tasks_per_config > 0:
             args.extend(["--tasks-per-config", str(tasks_per_config)])
@@ -1048,7 +1236,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _rlm_bench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="rlm_bench_results_*.json")
 
-    def _solana_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _solana_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for Solana gym benchmark.
 
         The explorer is env-driven (no CLI flags). Caller propagates settings
@@ -1056,7 +1246,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ``ENVIRONMENT_CONFIG``, ``USE_EXTERNAL_SURFPOOL``, and ``OUTPUT_DIR``.
         """
         args = [
-            python, "-m", "benchmarks.solana.eliza_explorer", "--output-dir", str(output_dir),
+            python,
+            "-m",
+            "benchmarks.solana.eliza_explorer",
+            "--output-dir",
+            str(output_dir),
         ]
         harness = extra.get("agent") or extra.get("harness")
         if isinstance(harness, str) and harness.strip():
@@ -1069,7 +1263,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _solana_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="eliza_*_metrics.json")
 
-    def _osworld_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _osworld_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for OSWorld benchmark."""
         args = [
             python,
@@ -1147,7 +1343,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         agent = extra.get("agent")
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"deterministic", "python"} or extra.get("mock") is True or provider_name == "mock":
+        if (
+            agent in {"deterministic", "python"}
+            or extra.get("mock") is True
+            or provider_name == "mock"
+        ):
             args.extend(["--mode", "deterministic"])
         else:
             args.extend(["--mode", "eliza"])
@@ -1186,7 +1386,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
         # Network + demo handling. Default behavior is demo=true with testnet.
         network_raw = extra.get("network")
-        network = network_raw.strip().lower() if isinstance(network_raw, str) else "testnet"
+        network = (
+            network_raw.strip().lower() if isinstance(network_raw, str) else "testnet"
+        )
         if network in {"testnet", "mainnet", "local"}:
             args.extend(["--network", network])
 
@@ -1200,9 +1402,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _hyperliquid_bench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="hyperliquid_bench-*.json")
 
-    def _gauntlet_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _gauntlet_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for Solana Gauntlet benchmark with harness bridge agents."""
-        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        agent = (
+            str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        )
         if agent == "python":
             agent_path = repo("benchmarks/gauntlet/agents/eliza_agent.py")
         elif agent == "hermes":
@@ -1229,7 +1435,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         clone_mainnet = extra.get("clone_mainnet")
         if clone_mainnet is True:
             args.append("--clone-mainnet")
-        elif extra.get("mock") is True or (model.provider or "").strip().lower() == "mock":
+        elif (
+            extra.get("mock") is True
+            or (model.provider or "").strip().lower() == "mock"
+        ):
             args.append("--mock")
         seed = extra.get("seed")
         if isinstance(seed, int) and seed > 0:
@@ -1246,7 +1455,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="*.json")
 
     # ClawBench - OpenClaw agent evaluation via the eliza benchmark bridge
-    def _clawbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _clawbench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for ClawBench scenario evaluation through the eliza bridge.
 
         Routes through ``clawbench/eliza_adapter.py`` which honors the shared
@@ -1254,9 +1465,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         benchmarks reuse the same server. Output filename matches
         ``_clawbench_result``'s ``trajectory_*.json`` glob.
         """
-        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        agent = (
+            str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        )
         scenario = extra.get("scenario")
-        scenario_name = scenario.strip() if isinstance(scenario, str) and scenario.strip() else "inbox_triage"
+        scenario_name = (
+            scenario.strip()
+            if isinstance(scenario, str) and scenario.strip()
+            else "inbox_triage"
+        )
         if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             output_path = output_dir / f"trajectory_{scenario_name}.json"
             args = [
@@ -1296,7 +1513,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="trajectory_*.json")
 
     # OpenClaw Benchmark - AI assistant coding tasks
-    def _openclaw_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _openclaw_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for OpenClaw benchmark tasks."""
         args = [
             python,
@@ -1335,12 +1554,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="openclaw_*_exec_*.json")
 
     # ConfigBench - secrets + plugin-manager security benchmark (Bun runtime)
-    def _configbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _configbench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for ConfigBench (Bun TS).
 
-        ConfigBench instantiates ``@elizaos/core`` in-process when ``--eliza``
-        is set, so it does not route through the TS bridge. The ``eliza`` agent
-        path requires a provider key (GROQ/OPENAI); other paths are oracle/random.
+        Native harness rows use the strict bridge handler selected by
+        ``--harness``. The full campaign owns its dataset shape, so a smoke
+        limit inherited by a caller cannot truncate the 682-case corpus.
         """
         args = [
             "bun",
@@ -1349,15 +1570,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir),
         ]
-        agent = extra.get("agent")
-        if isinstance(agent, str) and agent.strip().lower() in {"hermes", "openclaw"}:
-            raise ValueError("ConfigBench only supports the Eliza handler today")
-        if agent == "eliza" or (model.provider or "").strip().lower() == "eliza":
+        harness = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if harness in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--harness", harness])
+        elif (model.provider or "").strip().lower() == "eliza":
             args.append("--eliza")
         elif extra.get("eliza") is True:
             args.append("--eliza")
         limit = extra.get("limit")
-        if isinstance(limit, int) and limit > 0:
+        full_profile = is_full_campaign_profile(extra.get("campaign_profile"))
+        if isinstance(limit, int) and limit > 0 and not full_profile:
             args.extend(["--limit", str(limit)])
         if extra.get("verbose") is True:
             args.append("--verbose")
@@ -1367,7 +1589,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="configbench-results-*.json")
 
     # VoiceBench - end-to-end voice latency benchmark (Bun TS via run.sh)
-    def _voicebench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _voicebench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for VoiceBench.
 
         VoiceBench instantiates the elizaOS TS runtime in-process and is wrapped
@@ -1390,7 +1614,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             profile = "elevenlabs"
         else:
             profile = "groq"
-        if profile not in {"groq", "elevenlabs", "mock", "local-cerebras", "local-eliza1"}:
+        if profile not in {
+            "groq",
+            "elevenlabs",
+            "mock",
+            "local-cerebras",
+            "local-eliza1",
+        }:
             raise ValueError(
                 f"voicebench: unsupported profile '{profile}' "
                 "(expected groq, elevenlabs, local-cerebras, local-eliza1, or mock)"
@@ -1418,7 +1648,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     # Audio MMAU - audio MCQ benchmark (Sakshi et al., ICLR 2025).
     # Not Salesforce's agent MMAU (arXiv:2407.18961).
-    def _mmau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _mmau_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build the elizaos-mmau-audio CLI invocation.
 
         Routes through the Python-native Audio MMAU package. Pure MCQ -- no
@@ -1455,7 +1687,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         limit_raw = extra.get("limit")
         if isinstance(limit_raw, int) and limit_raw > 0:
             args.extend(["--limit", str(limit_raw)])
-        if extra.get("hf") is True or (agent != "mock" and extra.get("fixture") is not True):
+        if extra.get("hf") is True or (
+            agent != "mock" and extra.get("fixture") is not True
+        ):
             args.append("--hf")
         if model.model:
             args.extend(["--model", model.model])
@@ -1486,7 +1720,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         else:
             agent = "eliza"
         provider_name = (model.provider or "").strip().lower()
-        mock_flag = bool(extra.get("mock")) or provider_name == "mock" or agent == "echo"
+        mock_flag = (
+            bool(extra.get("mock")) or provider_name == "mock" or agent == "echo"
+        )
         args = [
             python,
             "-m",
@@ -1527,7 +1763,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return output_dir / "voicebench-quality-results.json"
 
     # Social-Alpha - trust-marketplace benchmark on real Discord crypto chat data
-    def _social_alpha_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _social_alpha_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for Social-Alpha.
 
         Routes through the click-based ``benchmark.harness`` CLI installed by
@@ -1541,8 +1779,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(data_dir_raw, str) and data_dir_raw.strip():
             data_dir = data_dir_raw.strip()
         else:
-            full_data_dir = repo_root / "benchmarks/social-alpha/trenches-chat-dataset/data"
-            data_dir = "trenches-chat-dataset/data" if full_data_dir.exists() else "fixtures/smoke-data"
+            full_data_dir = (
+                repo_root / "benchmarks/social-alpha/trenches-chat-dataset/data"
+            )
+            data_dir = (
+                "trenches-chat-dataset/data"
+                if full_data_dir.exists()
+                else "fixtures/smoke-data"
+            )
         args = [
             python,
             "-m",
@@ -1584,7 +1828,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _social_alpha_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="benchmark_results_*.json")
 
-    def _trust_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _trust_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         handler_raw = extra.get("handler")
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
@@ -1592,7 +1838,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             handler = "oracle"
         elif isinstance(handler_raw, str) and handler_raw.strip():
             handler = handler_raw.strip()
-        elif agent in {"eliza", "hermes", "openclaw"} or provider_name in {"cerebras", "openai", "groq", "openrouter", "vllm"}:
+        elif agent in {"eliza", "hermes", "openclaw"} or provider_name in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+        }:
             handler = "eliza"
         else:
             handler = "oracle"
@@ -1627,7 +1879,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return output_dir / "trust-results.json"
 
     # WebShop - product-search/purchase benchmark with Eliza agent
-    def _webshop_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _webshop_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         """Build command for WebShop benchmark.
 
         Real harness rows use the upstream WebShop data loader (small profile
@@ -1641,13 +1895,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir),
         ]
-        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_lower = (model.provider or "").strip().lower()
         if extra.get("mock") is True or provider_lower == "mock":
             args.append("--mock")
         else:
             args.append("--bridge")
-            if model.provider and provider_lower not in {"eliza", "eliza-bridge", "eliza-ts"}:
+            if model.provider and provider_lower not in {
+                "eliza",
+                "eliza-bridge",
+                "eliza-ts",
+            }:
                 args.extend(["--model-provider", model.provider])
         if model.model:
             args.extend(["--model", model.model])
@@ -1691,7 +1948,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return output_dir / "webshop-results.json"
 
     # WooBench - mystical-reading conversation benchmark.
-    def _woobench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _woobench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         args = [
             python,
             "-m",
@@ -1706,7 +1965,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         agent = str(agent_raw or extra.get("harness") or "").strip().lower()
         provider_lower = (model.provider or "").strip().lower()
         payment_mode = extra.get("payment") is True or extra.get("payments") is True
-        if agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
+        if (
+            agent_raw == "dummy"
+            or extra.get("mock") is True
+            or provider_lower == "mock"
+        ):
             args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
         elif agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--agent", agent])
@@ -1716,7 +1979,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         evaluator = extra.get("evaluator")
         if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
             args.extend(["--evaluator", evaluator])
-        elif agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
+        elif (
+            agent_raw == "dummy"
+            or extra.get("mock") is True
+            or provider_lower == "mock"
+        ):
             args.extend(["--evaluator", "heuristic"])
 
         scenario = extra.get("scenario")
@@ -1744,7 +2011,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="woobench_*.json")
 
     # scambench
-    def _scambench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _scambench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         provider = (model.provider or "").strip().lower() or "vllm"
         args = [
             python,
@@ -1773,6 +2042,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_examples = extra.get("max_examples")
         if isinstance(max_examples, int) and max_examples > 0:
             args.extend(["--max-examples", str(max_examples)])
+        expected_examples = extra.get("expected_examples")
+        if isinstance(expected_examples, int) and expected_examples > 0:
+            args.extend(["--expected-examples", str(expected_examples)])
+        split = extra.get("split")
+        if isinstance(split, str) and split.strip():
+            args.extend(["--split", split.strip()])
         max_new_tokens = extra.get("max_new_tokens")
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
@@ -1812,30 +2087,46 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         dataset = extra.get("dataset")
         if isinstance(dataset, str) and dataset.strip():
             args.extend(["--dataset", dataset.strip()])
+        dataset_revision = extra.get("dataset_revision")
+        if isinstance(dataset_revision, str) and dataset_revision.strip():
+            args.extend(["--dataset-revision", dataset_revision.strip()])
+        split = extra.get("split")
+        if isinstance(split, str) and split.strip():
+            args.extend(["--split", split.strip()])
         dataset_path = extra.get("dataset_path")
         if isinstance(dataset_path, str) and dataset_path.strip():
             args.extend(["--dataset-path", dataset_path.strip()])
         max_examples = extra.get("max_examples")
         if isinstance(max_examples, int) and max_examples > 0:
             args.extend(["--max-examples", str(max_examples)])
+        expected_examples = extra.get("expected_examples")
+        if isinstance(expected_examples, int) and expected_examples > 0:
+            args.extend(["--expected-examples", str(expected_examples)])
         max_new_tokens = extra.get("max_new_tokens")
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
+        if (
+            isinstance(temperature, (int, float))
+            and not isinstance(temperature, bool)
+            and temperature >= 0
+        ):
             args.extend(["--temperature", str(float(temperature))])
         tool_choice = extra.get("tool_choice")
         if isinstance(tool_choice, str) and tool_choice in {"auto", "required", "none"}:
             args.extend(["--tool-choice", tool_choice])
         else:
             args.extend(["--tool-choice", "none"])
+        _append_scenario_control_flags(args, extra)
         return args
 
     def _abliteration_robustness_result(output_dir: Path) -> Path:
         return output_dir / "abliteration-robustness-results.json"
 
     # action-calling
-    def _action_calling_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _action_calling_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         provider = (model.provider or "").strip().lower() or "vllm"
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         if extra.get("mock") is True or provider == "mock":
@@ -1865,13 +2156,18 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_examples = extra.get("max_examples")
         if isinstance(max_examples, int) and max_examples > 0:
             args.extend(["--max-examples", str(max_examples)])
-        else:
-            args.extend(["--max-examples", "100"])
+        expected_examples = extra.get("expected_examples")
+        if isinstance(expected_examples, int) and expected_examples > 0:
+            args.extend(["--expected-examples", str(expected_examples)])
         max_new_tokens = extra.get("max_new_tokens")
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
+        if (
+            isinstance(temperature, (int, float))
+            and not isinstance(temperature, bool)
+            and temperature >= 0
+        ):
             args.extend(["--temperature", str(float(temperature))])
         tool_choice = extra.get("tool_choice")
         if isinstance(tool_choice, str) and tool_choice in {"auto", "required", "none"}:
@@ -1922,8 +2218,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--mock")
         return args
 
-    def _mmlu_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        args = _standard_bench_base_args("benchmarks.standard.mmlu", output_dir, model, extra)
+    def _mmlu_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        args = _standard_bench_base_args(
+            "benchmarks.standard.mmlu", output_dir, model, extra
+        )
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
             args.extend(["--max-tokens", str(max_tokens)])
@@ -1932,21 +2232,33 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mmlu_result(output_dir: Path) -> Path:
         return output_dir / "mmlu-results.json"
 
-    def _humaneval_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        args = _standard_bench_base_args("benchmarks.standard.humaneval", output_dir, model, extra)
+    def _humaneval_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        args = _standard_bench_base_args(
+            "benchmarks.standard.humaneval", output_dir, model, extra
+        )
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
             args.extend(["--max-tokens", str(max_tokens)])
         timeout_s = extra.get("timeout_s")
-        if isinstance(timeout_s, (int, float)) and not isinstance(timeout_s, bool) and timeout_s > 0:
+        if (
+            isinstance(timeout_s, (int, float))
+            and not isinstance(timeout_s, bool)
+            and timeout_s > 0
+        ):
             args.extend(["--timeout-s", str(float(timeout_s))])
         return args
 
     def _humaneval_result(output_dir: Path) -> Path:
         return output_dir / "humaneval-results.json"
 
-    def _gsm8k_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        args = _standard_bench_base_args("benchmarks.standard.gsm8k", output_dir, model, extra)
+    def _gsm8k_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        args = _standard_bench_base_args(
+            "benchmarks.standard.gsm8k", output_dir, model, extra
+        )
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
             args.extend(["--max-tokens", str(max_tokens)])
@@ -1955,8 +2267,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _gsm8k_result(output_dir: Path) -> Path:
         return output_dir / "gsm8k-results.json"
 
-    def _mt_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        args = _standard_bench_base_args("benchmarks.standard.mt_bench", output_dir, model, extra)
+    def _mt_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        args = _standard_bench_base_args(
+            "benchmarks.standard.mt_bench", output_dir, model, extra
+        )
         judge_endpoint = extra.get("judge_endpoint")
         if isinstance(judge_endpoint, str) and judge_endpoint.strip():
             args.extend(["--judge-endpoint", judge_endpoint.strip()])
@@ -2021,9 +2337,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             )
         args.extend(["--baseline", baseline.strip()])
         reward_threshold = extra.get("reward_threshold")
-        if (
-            isinstance(reward_threshold, (int, float))
-            and not isinstance(reward_threshold, bool)
+        if isinstance(reward_threshold, (int, float)) and not isinstance(
+            reward_threshold, bool
         ):
             args.extend(["--reward-threshold", str(float(reward_threshold))])
         exact_action_sequence = extra.get("exact_action_sequence")
@@ -2032,15 +2347,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         elif exact_action_sequence is True:
             args.append("--exact-action-sequence")
         action_weight = extra.get("action_weight")
-        if (
-            isinstance(action_weight, (int, float))
-            and not isinstance(action_weight, bool)
+        if isinstance(action_weight, (int, float)) and not isinstance(
+            action_weight, bool
         ):
             args.extend(["--action-weight", str(float(action_weight))])
         final_state_weight = extra.get("final_state_weight")
-        if (
-            isinstance(final_state_weight, (int, float))
-            and not isinstance(final_state_weight, bool)
+        if isinstance(final_state_weight, (int, float)) and not isinstance(
+            final_state_weight, bool
         ):
             args.extend(["--final-state-weight", str(float(final_state_weight))])
         max_tokens = extra.get("max_tokens")
@@ -2065,9 +2378,23 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         agent_raw = extra.get("agent") or extra.get("harness")
         if isinstance(agent_raw, str) and agent_raw.strip():
             agent = agent_raw.strip()
-        elif model.model in {"perfect", "wrong", "hermes", "openclaw", "cerebras-direct", "eliza"}:
+        elif model.model in {
+            "perfect",
+            "wrong",
+            "hermes",
+            "openclaw",
+            "cerebras-direct",
+            "eliza",
+        }:
             agent = str(model.model)
-        elif (model.provider or "").strip().lower() in {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}:
+        elif (model.provider or "").strip().lower() in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
             agent = "eliza"
         else:
             agent = "perfect"
@@ -2102,7 +2429,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(concurrency, int) and concurrency > 0:
             args.extend(["--concurrency", str(concurrency)])
         max_cost_usd = extra.get("max_cost_usd")
-        if isinstance(max_cost_usd, (int, float)) and not isinstance(max_cost_usd, bool):
+        if isinstance(max_cost_usd, (int, float)) and not isinstance(
+            max_cost_usd, bool
+        ):
             args.extend(["--max-cost-usd", str(float(max_cost_usd))])
         per_scenario_timeout_s = extra.get("per_scenario_timeout_s")
         if isinstance(per_scenario_timeout_s, int) and per_scenario_timeout_s > 0:
@@ -2148,7 +2477,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             harness = "perfect"
 
         lanes_raw = extra.get("lanes")
-        lanes = lanes_raw.strip() if isinstance(lanes_raw, str) and lanes_raw.strip() else "1,5,10"
+        lanes = (
+            lanes_raw.strip()
+            if isinstance(lanes_raw, str) and lanes_raw.strip()
+            else "1,5,10"
+        )
 
         args = [
             python,
@@ -2162,13 +2495,18 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         model_name = extra.get("model_name") or model.model
-        if isinstance(model_name, str) and model_name.strip() and model_name.strip() not in {
-            "eliza",
-            "hermes",
-            "openclaw",
-            "perfect",
-            "wrong",
-        }:
+        if (
+            isinstance(model_name, str)
+            and model_name.strip()
+            and model_name.strip()
+            not in {
+                "eliza",
+                "hermes",
+                "openclaw",
+                "perfect",
+                "wrong",
+            }
+        ):
             args.extend(["--model", model_name.strip()])
         per_task_timeout_s = extra.get("per_task_timeout_s")
         if isinstance(per_task_timeout_s, (int, float)) and not isinstance(
@@ -2219,7 +2557,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if mock is True or (isinstance(mock, str) and mock.lower() == "true"):
             args.append("--mock")
         no_judge = extra.get("no_judge")
-        if no_judge is True or (isinstance(no_judge, str) and no_judge.lower() == "true"):
+        if no_judge is True or (
+            isinstance(no_judge, str) and no_judge.lower() == "true"
+        ):
             args.append("--no-judge")
         data_path = extra.get("data_path")
         if isinstance(data_path, str) and data_path.strip():
@@ -2239,7 +2579,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(stt_provider, str) and stt_provider.strip():
             args.extend(["--stt-provider", stt_provider.strip()])
         else:
-            env_stt_provider = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip()
+            env_stt_provider = os.environ.get(
+                "VOICEAGENTBENCH_STT_PROVIDER", ""
+            ).strip()
             if env_stt_provider:
                 args.extend(["--stt-provider", env_stt_provider])
         _append_scenario_control_flags(args, extra)
@@ -2252,7 +2594,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
         lane_raw = extra.get("lane")
-        lane = lane_raw.strip() if isinstance(lane_raw, str) and lane_raw.strip() else ""
+        lane = (
+            lane_raw.strip() if isinstance(lane_raw, str) and lane_raw.strip() else ""
+        )
         if not lane:
             provider_name = (model.provider or "").strip().lower()
             lane = "mocked_plumbing" if provider_name == "mock" else "real_product"
@@ -2307,7 +2651,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--model",
             (model.model or "gemma-4-31b"),
         ]
-        harness = str(extra.get("agent") or extra.get("harness") or "hermes").strip().lower()
+        harness = (
+            str(extra.get("agent") or extra.get("harness") or "hermes").strip().lower()
+        )
         if harness in {"eliza", "hermes", "openclaw"}:
             args.extend(["--harness", harness])
         if model.provider:
@@ -2325,29 +2671,43 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(repo_path, str) and repo_path.strip():
             args.extend(["--repo-path", repo_path.strip()])
         timeout_s = extra.get("timeout_seconds")
-        if isinstance(timeout_s, (int, float)) and not isinstance(timeout_s, bool) and timeout_s > 0:
+        if (
+            isinstance(timeout_s, (int, float))
+            and not isinstance(timeout_s, bool)
+            and timeout_s > 0
+        ):
             args.extend(["--timeout-seconds", str(float(timeout_s))])
         if extra.get("force") is True:
             args.append("--force")
         return args
 
-    def _hermes_tblite_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _hermes_tblite_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         return _hermes_env_cmd("tblite", output_dir, model, extra)
 
-    def _hermes_terminalbench_2_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _hermes_terminalbench_2_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         return _hermes_env_cmd("terminalbench_2", output_dir, model, extra)
 
-    def _hermes_yc_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _hermes_yc_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         return _hermes_env_cmd("yc_bench", output_dir, model, extra)
 
-    def _hermes_swe_env_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+    def _hermes_swe_env_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
         return _hermes_env_cmd("hermes_swe_env", output_dir, model, extra)
 
     def _hermes_tblite_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="hermes_tblite_*.json")
 
     def _hermes_terminalbench_2_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="hermes_terminalbench_2_*.json")
+        return find_latest_file(
+            output_dir, glob_pattern="hermes_terminalbench_2_*.json"
+        )
 
     def _hermes_yc_bench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="hermes_yc_bench_*.json")
@@ -2574,10 +2934,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=(),
+                paths=(
+                    "benchmark-data/mind2web/test.zip",
+                    "benchmark-data/mind2web/scores_all_data.pkl",
+                ),
                 notes=(
-                    "Real provider runs need dataset/key setup. Sample/mock paths are "
-                    "smoke-only and not publishable real matrix scores."
+                    "Real rows use the pinned official test archive, real MindAct candidate "
+                    "ranker, and native harness bridge. Sample/mock/oracle paths are not "
+                    "publishable matrix scores."
                 ),
             ),
             build_command=_mind2web_cmd,
@@ -2755,7 +3119,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel="benchmarks/voicebench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("benchmarks/voicebench/run.sh", "benchmarks/voicebench/typescript/src/bench.ts"),
+                paths=(
+                    "benchmarks/voicebench/run.sh",
+                    "benchmarks/voicebench/typescript/src/bench.ts",
+                ),
                 notes=(
                     "Bun runtime via run.sh. Real profiles: groq (needs GROQ_API_KEY), "
                     "elevenlabs (needs GROQ_API_KEY and ELEVENLABS_API_KEY). Audio fixture resolved from "
@@ -2903,12 +3270,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=(
-                    "../../training/data/normalized/scambench.jsonl",
-                    "../../training/data/synthesized/scambench/scambench.jsonl",
-                ),
+                paths=("../../training/data/normalized/scambench.jsonl",),
                 notes=(
-                    "Reads the normalized + Claude-teacher-labeled scambench dataset. "
+                    "Reads the normalized ScamBench evaluation split and fails closed if its "
+                    "expected corpus is unavailable or incomplete. "
                     "Score is the equally-weighted mean of refusal-correctness on scam prompts "
                     "and helpfulness on legit prompts. Higher better."
                 ),
@@ -3067,7 +3432,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel="packages/benchmarks/meeting-transcription-proof",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("packages/benchmarks/meeting-transcription-proof/elizaos_meeting_transcription_proof",),
+                paths=(
+                    "packages/benchmarks/meeting-transcription-proof/elizaos_meeting_transcription_proof",
+                ),
                 notes=(
                     "Manual evidence-gated alias for meeting_transcription_proof with "
                     "lane='real_product'. Requires extra.manifest=<path> containing real "
@@ -3088,7 +3455,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel="packages/benchmarks/meeting-transcription-proof",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("packages/benchmarks/meeting-transcription-proof/elizaos_meeting_transcription_proof",),
+                paths=(
+                    "packages/benchmarks/meeting-transcription-proof/elizaos_meeting_transcription_proof",
+                ),
                 notes=(
                     "Manual evidence-gated alias for meeting_transcription_proof with "
                     "lane='real_product'. The manifest must include stress dataset sources, "
@@ -3109,7 +3478,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel="packages/benchmarks/meeting-transcription-proof",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("packages/benchmarks/meeting-transcription-proof/elizaos_meeting_transcription_proof",),
+                paths=(
+                    "packages/benchmarks/meeting-transcription-proof/elizaos_meeting_transcription_proof",
+                ),
                 notes=(
                     "Manual evidence-gated alias for meeting_transcription_proof with "
                     "lane='real_product'. Requires an AV manifest with video, active speaker, "

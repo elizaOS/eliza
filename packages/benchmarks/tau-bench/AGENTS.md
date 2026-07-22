@@ -61,6 +61,8 @@ pytest packages/benchmarks/tau-bench/ -v
 - Full retail + airline data is fetched lazily into `~/.cache/elizaos_tau_bench/` on first run.
   Set `TAU_BENCH_DATA_DIR` to a pre-populated path, or `TAU_BENCH_DATA_MODE=smoke` to use only
   compact fixtures.
+- `report.json` records the exact base/edge/total counts, pinned upstream ref,
+  and SHA-256 for every consumed domain asset.
 - Vendored upstream commit: `59a200c6d575d595120f1cb70fea53cef0632f6b`.
 - Full background: [README.md](README.md).
 

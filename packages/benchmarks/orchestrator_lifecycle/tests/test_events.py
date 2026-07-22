@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
 
 
@@ -33,6 +37,36 @@ def test_pattern_c_tasks_action_uses_operation_params() -> None:
     assert extract_lifecycle_events(
         [], {"BENCHMARK_ACTIONS": [{"action": "resume"}, {"action": "send"}]}
     ) == ["resume", "send"]
+
+
+def test_tasks_tool_calls_preserve_multiple_sequential_lifecycle_events() -> None:
+    params = {
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "name": "TASKS",
+                "arguments": '{"action":"spawn_agent","task":"fix tests"}',
+            },
+            {
+                "id": "call-2",
+                "name": "TASKS",
+                "arguments": {"action": "list_agents"},
+            },
+        ]
+    }
+
+    assert extract_lifecycle_events(["TASKS", "TASKS"], params) == [
+        "spawn",
+        "status_query",
+    ]
+
+
+def test_malformed_serialized_tool_arguments_fail_loudly() -> None:
+    with pytest.raises(json.JSONDecodeError):
+        extract_lifecycle_events(
+            ["TASKS"],
+            {"tool_calls": [{"name": "TASKS", "arguments": "{"}]},
+        )
 
 
 def test_unmapped_names_and_prose_produce_no_events() -> None:

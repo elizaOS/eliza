@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from benchmarks.publication_contracts import webshop_workload_quarantine_reason
+
 from .analyze_trajectory import summarize as summarize_trajectory
 from .code_agent_latest_contract import (
     CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES,
@@ -15,6 +17,11 @@ from .code_agent_latest_contract import (
     CODE_AGENT_LATEST_REQUIRED_TRUE_FIELDS,
     code_agent_accuracy_for_status,
     expected_code_agent_comparison_status,
+)
+from .runtime_provenance import native_runtime_quarantine_reason
+from .subscription_provenance import (
+    subscription_gateway_quarantine_reason,
+    validate_subscription_gateway_audit_artifact,
 )
 
 NON_REAL_FLAG_KEYS: frozenset[str] = frozenset(
@@ -63,6 +70,7 @@ NON_REAL_STRING_MARKERS: tuple[str, ...] = (
     "using sample task",
 )
 
+
 @dataclass(frozen=True)
 class PublishabilityFinding:
     file: str
@@ -102,7 +110,9 @@ def validate_latest_publishability(
     include_benchmarks: set[str] | None = None,
     exclude_benchmarks: set[str] | None = None,
 ) -> PublishabilityReport:
-    target_dir = latest_dir or workspace_root / "benchmarks" / "benchmark_results" / "latest"
+    target_dir = (
+        latest_dir or workspace_root / "benchmarks" / "benchmark_results" / "latest"
+    )
     findings: list[PublishabilityFinding] = []
     checked = 0
     selected = 0
@@ -180,14 +190,15 @@ def validate_latest_publishability(
 
 
 def print_publishability_report(report: PublishabilityReport) -> None:
-    print(f"Latest publishability: checked={report.checked_files} findings={len(report.findings)}")
+    print(
+        f"Latest publishability: checked={report.checked_files} findings={len(report.findings)}"
+    )
     if report.ok:
         print("No non-real sample/demo/mock/stub markers found in latest rows.")
         return
     for finding in report.findings:
         print(
-            f"- {finding.file} {finding.path}: "
-            f"{finding.reason} value={finding.value}"
+            f"- {finding.file} {finding.path}: {finding.reason} value={finding.value}"
         )
 
 
@@ -243,7 +254,11 @@ def _scan_payload(
     if isinstance(value, str):
         lowered = value.strip().lower()
         marker = next(
-            (candidate for candidate in NON_REAL_STRING_MARKERS if candidate in lowered),
+            (
+                candidate
+                for candidate in NON_REAL_STRING_MARKERS
+                if candidate in lowered
+            ),
             None,
         )
         if marker:
@@ -284,6 +299,76 @@ def _scan_latest_row_contract(
                 value=_short_value(score),
             )
         )
+    metrics = payload.get("metrics")
+    if str(payload.get("benchmark_id") or "").strip() == "webshop":
+        workload_reason = webshop_workload_quarantine_reason(
+            metrics if isinstance(metrics, dict) else {}
+        )
+        if workload_reason is not None:
+            findings.append(
+                PublishabilityFinding(
+                    file=path,
+                    path="$.metrics",
+                    reason=workload_reason,
+                    value=_short_value(metrics),
+                )
+            )
+    provenance = (
+        metrics.get("runtime_provenance")
+        if isinstance(metrics, dict)
+        and isinstance(metrics.get("runtime_provenance"), dict)
+        else None
+    )
+    provenance_reason = native_runtime_quarantine_reason(
+        agent=str(payload.get("agent") or ""),
+        provider=str(payload.get("provider") or ""),
+        model=str(payload.get("model") or ""),
+        provenance=provenance,
+        benchmark_id=str(payload.get("benchmark_id") or ""),
+    )
+    if provenance_reason is not None:
+        findings.append(
+            PublishabilityFinding(
+                file=path,
+                path="$.metrics.runtime_provenance",
+                reason=provenance_reason,
+                value=_short_value(provenance),
+            )
+        )
+    provider = str(payload.get("provider") or "")
+    if provider.strip().lower() == "claude-subscription" and provenance_reason is None:
+        minimum_request_count = (
+            provenance.get("telemetry_records")
+            if isinstance(provenance, dict)
+            and isinstance(provenance.get("telemetry_records"), int)
+            else None
+        )
+        gateway_provenance = (
+            metrics.get("subscription_gateway_provenance")
+            if isinstance(metrics, dict)
+            and isinstance(metrics.get("subscription_gateway_provenance"), dict)
+            else None
+        )
+        gateway_reason = subscription_gateway_quarantine_reason(
+            agent=str(payload.get("agent") or ""),
+            provider=provider,
+            model=str(payload.get("model") or ""),
+            provenance=gateway_provenance,
+            minimum_request_count=minimum_request_count,
+        )
+        if gateway_reason is None:
+            gateway_reason = validate_subscription_gateway_audit_artifact(
+                gateway_provenance
+            )
+        if gateway_reason is not None:
+            findings.append(
+                PublishabilityFinding(
+                    file=path,
+                    path="$.metrics.subscription_gateway_provenance",
+                    reason=gateway_reason,
+                    value=_short_value(gateway_provenance),
+                )
+            )
     if _looks_like_code_agent_report_row(payload, path=path):
         for key in CODE_AGENT_LATEST_REQUIRED_PROVENANCE_FIELDS:
             value = payload.get(key)
@@ -542,7 +627,9 @@ def _code_agent_trajectory_prefix(key: str) -> str | None:
     return None
 
 
-def _looks_like_code_agent_report_row(payload: dict[str, Any], *, path: str = "") -> bool:
+def _looks_like_code_agent_report_row(
+    payload: dict[str, Any], *, path: str = ""
+) -> bool:
     if str(payload.get("agent") or "").strip() == CODE_AGENT_LATEST_AGENT:
         return True
     if path.endswith(f"__{CODE_AGENT_LATEST_AGENT}.json"):

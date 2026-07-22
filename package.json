@@ -256,6 +256,7 @@
     "!packages/feed",
     "packages/security/soc2-verify",
     "packages/benchmarks/lib",
+    "packages/benchmarks/claude-subscription-gateway",
     "packages/benchmarks/interrupt-bench",
     "packages/benchmarks/voice-rtt",
     "packages/benchmarks/eliza-1",

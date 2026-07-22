@@ -116,20 +116,33 @@ function loadOfficial(n: number): Sample<DocVqaPayload>[] {
         "with `val/val_v1.0_withQT.json` and `documents/`, or pass --smoke.",
     );
   }
-  const annPath = path.join(dir, "val_v1.0_withQT.json");
-  if (!existsSync(annPath)) {
+  const annPath = [
+    path.join(dir, "val", "val_v1.0_withQT.json"),
+    path.join(dir, "val_v1.0_withQT.json"),
+  ].find(existsSync);
+  if (!annPath) {
     throw new Error(
-      `DocVQA validation annotations not found at ${annPath}. ` +
+      `DocVQA validation annotations not found under ${dir}. ` +
         "Register at https://www.docvqa.org/ to download.",
     );
   }
   const raw = JSON.parse(readFileSync(annPath, "utf8")) as {
     data: OfficialAnnotation[];
   };
-  return raw.data.slice(0, n).map((entry) => ({
-    id: String(entry.questionId),
-    imagePath: path.join(dir, "documents", entry.image),
-    question: entry.question,
-    payload: { answers: entry.answers },
-  }));
+  if (!Array.isArray(raw.data)) {
+    throw new Error(`DocVQA annotation data is not an array: ${annPath}`);
+  }
+  return raw.data.slice(0, n).map((entry) => {
+    const imageCandidates = [
+      path.join(dir, "documents", entry.image),
+      path.join(dir, "val", "documents", entry.image),
+    ];
+    const imagePath = imageCandidates.find(existsSync) ?? imageCandidates[0];
+    return {
+      id: String(entry.questionId),
+      imagePath,
+      question: entry.question,
+      payload: { answers: entry.answers },
+    };
+  });
 }

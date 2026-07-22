@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from eliza_adapter.client import ElizaClient
+from eliza_adapter.client import (
+    ElizaClient,
+    MessageResponse,
+    _eliza_runtime_provenance,
+)
 
 
 def _client(monkeypatch) -> ElizaClient:
@@ -72,6 +76,13 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
             },
             "metadata": {
                 "agent_label": "eliza",
+                "native_runtime_class": "@elizaos/core.AgentRuntime",
+                "native_runtime_api": "messageService.handleMessage",
+                "transport": "eliza_benchmark_http",
+                "tool_bridge": "native_action_capture",
+                "direct_model_bypass": False,
+                "stand_in": False,
+                "release_evidence": True,
                 "trajectory_step": 3,
                 "native_trajectory_step_id": "native-step-3",
                 "trajectory_endpoint": "/api/benchmark/trajectory?benchmark=loca_bench&task_id=task-1",
@@ -191,12 +202,65 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
     assert record["tool_call_count"] == 1
     assert record["trajectory_step"] == 3
     assert record["native_trajectory_step_id"] == "native-step-3"
+    assert record["runtime_provenance"] == {
+        "agent_runtime": "eliza",
+        "native_runtime_class": "@elizaos/core.AgentRuntime",
+        "native_runtime_api": "messageService.handleMessage",
+        "transport": "eliza_benchmark_http",
+        "path_label": "eliza-native-message-service",
+        "tool_bridge": "native_action_capture",
+        "direct_model_bypass": False,
+        "stand_in": False,
+        "release_evidence": True,
+        "lifecycle_system_hint_attestation": None,
+        "publishable_native": True,
+    }
     assert record["trajectory_snapshot"]["steps"][0]["nativeTrajectory"]["steps"][0][
         "llmCalls"
     ][0]["tools"][0]["function"]["name"] == "mail.search"
     assert record["compaction_strategy"] == "hybrid-ledger"
     assert "csk-redaction-test" not in record["response_text"]
     assert "[REDACTED]" in record["response_text"]
+
+
+def test_runtime_provenance_carries_only_content_free_lifecycle_hint_attestation() -> None:
+    attestation = {
+        "schema_version": 1,
+        "system_hint_sha256": "a" * 64,
+        "model_boundary_call_count": 3,
+        "model_boundary_attested_call_count": 3,
+        "model_boundary_hint_occurrence_count": 3,
+        "exact_once_per_model_call": True,
+        "model_type_call_counts": {
+            "ACTION_PLANNER": 1,
+            "RESPONSE_HANDLER": 2,
+        },
+    }
+    response = MessageResponse(
+        text="done",
+        thought=None,
+        actions=[],
+        params={},
+        metadata={
+            "agent_label": "eliza",
+            "native_runtime_class": "@elizaos/core.AgentRuntime",
+            "native_runtime_api": "messageService.handleMessage",
+            "transport": "eliza_benchmark_http",
+            "tool_bridge": "lifecycle_capture_only",
+            "direct_model_bypass": False,
+            "stand_in": False,
+            "release_evidence": True,
+            "trajectory_endpoint": "/api/benchmark/trajectory?benchmark=orchestrator_lifecycle",
+            "diagnostics_endpoint": "/api/benchmark/diagnostics?benchmark=orchestrator_lifecycle",
+            "lifecycle_system_hint_attestation": attestation,
+        },
+    )
+
+    provenance = _eliza_runtime_provenance(response)
+
+    assert provenance["publishable_native"] is True
+    assert provenance["lifecycle_system_hint_attestation"] == attestation
+    assert "Manage delegated work" not in json.dumps(provenance)
 
 
 def test_send_message_telemetry_normalizes_nested_usage_shapes(

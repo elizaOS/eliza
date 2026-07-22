@@ -18,6 +18,7 @@ Supports the full v3/v4 category taxonomy:
 import json
 import logging
 import re
+from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -29,6 +30,7 @@ from benchmarks.bfcl.types import (
     BFCLConfig,
     BFCLLanguage,
     BFCLTestCase,
+    BFCL_V3_SCORING_CATEGORY_COUNTS,
     FunctionCall,
     FunctionDefinition,
     FunctionParameter,
@@ -78,6 +80,13 @@ EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
         "Do not invent unavailable functions or unsupported arguments to satisfy the request.",
     ),
 )
+
+# The pinned upstream revision has one question/answer ID typo at the same
+# aligned row. Recording the immutable correction here preserves all 4,441
+# official cases without inventing an answer or silently dropping the row.
+_PINNED_V3_GROUND_TRUTH_ID_ALIASES = {
+    "live_multiple_1052-79-0": "live_multiple_1052-279-0",
+}
 
 
 def _edge_turns(
@@ -256,6 +265,7 @@ class BFCLDataset:
         #   - multi-turn:  list[list[str]] (per-turn list of python call strings)
         #   - agentic:     arbitrary (memory state, expected answer, ...)
         self._ground_truth: dict[str, object] = {}
+        self._snapshot_path: Path | None = None
 
     async def load(self) -> None:
         """Load BFCL dataset from HuggingFace or local files."""
@@ -273,8 +283,41 @@ class BFCLDataset:
         # for ``WEB_SEARCH_NO_SNIPPET`` get exactly those entries.
         self._finalize_web_search_split()
 
+        if not self._test_cases:
+            raise RuntimeError("BFCL dataset contains no runnable test cases")
+        if self.config.require_complete_dataset:
+            self._validate_complete_dataset()
+
         self._loaded = True
         logger.info(f"Loaded {len(self._test_cases)} BFCL test cases")
+
+    def _validate_complete_dataset(self) -> None:
+        """Require the exact pinned v3 scoring corpus and usable ground truth."""
+        actual = Counter(test_case.category for test_case in self._test_cases)
+        expected = BFCL_V3_SCORING_CATEGORY_COUNTS
+        mismatches = {
+            category.value: {"expected": count, "actual": actual.get(category, 0)}
+            for category, count in expected.items()
+            if actual.get(category, 0) != count
+        }
+        unexpected = {
+            category.value: count
+            for category, count in actual.items()
+            if category not in expected
+        }
+        if mismatches or unexpected:
+            raise RuntimeError(
+                "BFCL pinned v3 scoring corpus is incomplete or contaminated: "
+                f"mismatches={mismatches}, unexpected={unexpected}"
+            )
+        missing_ground_truth = [
+            test_case.id for test_case in self._test_cases if not test_case.has_ground_truth
+        ]
+        if missing_ground_truth:
+            raise RuntimeError(
+                "BFCL pinned v3 scoring corpus is missing ground truth for "
+                f"{len(missing_ground_truth)} cases; examples={missing_ground_truth[:5]}"
+            )
 
     def _finalize_web_search_split(self) -> None:
         """Partition the loaded WEB_SEARCH_BASE entries into base + no_snippet
@@ -369,7 +412,7 @@ class BFCLDataset:
             ("sql", "BFCL_v3_sql.json", BFCLCategory.SQL),
             ("java", "BFCL_v3_java.json", BFCLCategory.JAVA),
             ("javascript", "BFCL_v3_javascript.json", BFCLCategory.JAVASCRIPT),
-            ("relevance", "BFCL_v3_live_relevance.json", BFCLCategory.RELEVANCE),
+            ("live_relevance", "BFCL_v3_live_relevance.json", BFCLCategory.LIVE_RELEVANCE),
             ("irrelevance", "BFCL_v3_irrelevance.json", BFCLCategory.IRRELEVANCE),
             # Live (user-contributed)
             ("live_simple", "BFCL_v3_live_simple.json", BFCLCategory.LIVE_SIMPLE),
@@ -405,39 +448,29 @@ class BFCLDataset:
                 logger.info(f"Loaded {count} test cases from {file_name}")
 
     async def _ensure_dataset_cached(self) -> None:
-        """Ensure dataset is downloaded to HuggingFace cache."""
-        from pathlib import Path
-
-        cache_base = Path.home() / ".cache" / "huggingface" / "hub"
-        dataset_dir = cache_base / "datasets--gorilla-llm--Berkeley-Function-Calling-Leaderboard"
-
-        if dataset_dir.exists():
-            snapshots_dir = dataset_dir / "snapshots"
-            if snapshots_dir.exists() and list(snapshots_dir.iterdir()):
-                logger.debug("BFCL dataset already in cache")
-                return
-
-        # Download dataset to cache using huggingface_hub
-        logger.info("Downloading BFCL dataset to cache...")
+        """Resolve the configured immutable Hugging Face dataset snapshot."""
+        logger.info(
+            "Resolving BFCL dataset revision %s",
+            self.config.dataset_revision,
+        )
         try:
             from huggingface_hub import snapshot_download
-            snapshot_download(
-                repo_id="gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+        except ImportError as exc:
+            raise RuntimeError(
+                "huggingface_hub is required to resolve the pinned BFCL dataset"
+            ) from exc
+        try:
+            snapshot = snapshot_download(
+                repo_id=self.config.huggingface_dataset,
                 repo_type="dataset",
+                revision=self.config.dataset_revision,
             )
-            logger.info("BFCL dataset downloaded to cache")
-        except ImportError:
-            logger.warning("huggingface_hub not installed, trying datasets library")
-            try:
-                from datasets import load_dataset
-                # Just load one split to trigger caching
-                load_dataset(
-                    self.config.huggingface_dataset,
-                    data_files="BFCL_v3_simple.json",
-                    split="train",
-                )
-            except Exception as e:
-                logger.warning(f"Could not download dataset: {e}")
+        except Exception as exc:
+            raise RuntimeError(
+                "failed to resolve pinned BFCL dataset "
+                f"{self.config.huggingface_dataset}@{self.config.dataset_revision}"
+            ) from exc
+        self._snapshot_path = Path(snapshot).resolve()
 
     async def _load_from_cache_file(
         self,
@@ -446,29 +479,14 @@ class BFCLDataset:
         category: BFCLCategory,
     ) -> int:
         """Load data from a cached NDJSON file."""
-        from pathlib import Path
-
-        cache_base = Path.home() / ".cache" / "huggingface" / "hub"
-        dataset_dir = cache_base / "datasets--gorilla-llm--Berkeley-Function-Calling-Leaderboard"
-
-        if not dataset_dir.exists():
-            logger.warning(f"Dataset not in cache: {dataset_dir}")
-            return 0
-
-        # Find snapshot directory
-        snapshots_dir = dataset_dir / "snapshots"
-        if not snapshots_dir.exists():
-            return 0
-
-        snapshot_dirs = list(snapshots_dir.iterdir())
-        if not snapshot_dirs:
-            return 0
-
-        snapshot_dir = snapshot_dirs[0]
-        data_file = snapshot_dir / file_name
+        if self._snapshot_path is None:
+            raise RuntimeError("BFCL dataset snapshot was not resolved")
+        data_file = self._snapshot_path / file_name
 
         if not data_file.exists():
-            logger.debug(f"Data file not found: {data_file}")
+            if self.config.require_complete_dataset:
+                raise FileNotFoundError(f"required BFCL data file not found: {data_file}")
+            logger.debug("Data file not found: %s", data_file)
             return 0
 
         count = 0
@@ -490,11 +508,17 @@ class BFCLDataset:
                         if test_case:
                             self._test_cases.append(test_case)
                             count += 1
-                    except json.JSONDecodeError as e:
-                        logger.debug(f"Failed to parse line {idx} in {file_name}: {e}")
+                    except json.JSONDecodeError as exc:
+                        if self.config.require_complete_dataset:
+                            raise ValueError(
+                                f"invalid BFCL JSON at {file_name}:{idx + 1}"
+                            ) from exc
+                        logger.debug("Failed to parse line %s in %s: %s", idx, file_name, exc)
 
-        except Exception as e:
-            logger.warning(f"Error loading {file_name}: {e}")
+        except Exception:
+            if self.config.require_complete_dataset:
+                raise
+            logger.exception("Error loading %s", file_name)
 
         return count
 
@@ -504,31 +528,15 @@ class BFCLDataset:
         When ``file_name`` is provided, load only the matching answer file. This
         keeps small category runs from parsing the full BFCL answer corpus.
         """
-        from pathlib import Path
-
-        # Find the HuggingFace cache directory
-        cache_base = Path.home() / ".cache" / "huggingface" / "hub"
-        dataset_dir = cache_base / "datasets--gorilla-llm--Berkeley-Function-Calling-Leaderboard"
-
-        if not dataset_dir.exists():
-            logger.debug("BFCL dataset not in cache, ground truth not available yet")
-            return
-
-        # Find the snapshots directory
-        snapshots_dir = dataset_dir / "snapshots"
-        if not snapshots_dir.exists():
-            return
-
-        # Get the latest snapshot
-        snapshot_dirs = list(snapshots_dir.iterdir())
-        if not snapshot_dirs:
-            return
-
-        # Use the first (usually only) snapshot
-        snapshot_dir = snapshot_dirs[0]
-        possible_answer_dir = snapshot_dir / "possible_answer"
+        if self._snapshot_path is None:
+            raise RuntimeError("BFCL dataset snapshot was not resolved")
+        possible_answer_dir = self._snapshot_path / "possible_answer"
 
         if not possible_answer_dir.exists():
+            if self.config.require_complete_dataset:
+                raise FileNotFoundError(
+                    f"required BFCL possible_answer directory not found: {possible_answer_dir}"
+                )
             logger.debug("possible_answer directory not found in BFCL cache")
             return
 
@@ -551,8 +559,10 @@ class BFCLDataset:
                         ground_truth = item.get("ground_truth", [])
                         if test_id and ground_truth:
                             self._ground_truth[test_id] = ground_truth
-            except Exception as e:
-                logger.debug(f"Error loading ground truth from {gt_file}: {e}")
+            except Exception:
+                if self.config.require_complete_dataset:
+                    raise
+                logger.exception("Error loading ground truth from %s", gt_file)
 
         if self._ground_truth:
             logger.info(f"Loaded ground truth for {len(self._ground_truth)} test cases")
@@ -637,8 +647,10 @@ class BFCLDataset:
                             ground_truth = item.get("ground_truth", [])
                             if test_id and ground_truth:
                                 self._ground_truth[test_id] = ground_truth
-                except Exception as e:
-                    logger.debug(f"Error loading local ground truth from {gt_file}: {e}")
+                except Exception:
+                    if self.config.require_complete_dataset:
+                        raise
+                    logger.exception("Error loading local ground truth from %s", gt_file)
             break
 
     @staticmethod
@@ -732,17 +744,22 @@ class BFCLDataset:
 
             # Parse expected calls — first check possible_answer/ ground truth.
             expected_calls: list[FunctionCall] = []
+            ground_truth_id = (
+                test_id
+                if test_id in self._ground_truth
+                else _PINNED_V3_GROUND_TRUTH_ID_ALIASES.get(test_id, test_id)
+            )
 
             # Single-turn ground truth is list[dict]; multi-turn is list[list[str]].
-            if test_id in self._ground_truth:
-                gt_raw = self._ground_truth[test_id]
+            if ground_truth_id in self._ground_truth:
+                gt_raw = self._ground_truth[ground_truth_id]
                 if isinstance(gt_raw, list) and all(isinstance(x, dict) for x in gt_raw):
                     expected_calls = self._parse_ground_truth_calls(gt_raw)  # type: ignore[arg-type]
 
             # Fall back to inline expected_call/ground_truth fields ONLY when
             # we had no possible_answer entry at all (otherwise we'd clobber
             # multi-turn entries that legitimately have empty single-turn GT).
-            if not expected_calls and test_id not in self._ground_truth:
+            if not expected_calls and ground_truth_id not in self._ground_truth:
                 expected_raw = item.get("expected_call", item.get("ground_truth", []))
                 if isinstance(expected_raw, dict):
                     expected_raw = [expected_raw]
@@ -768,8 +785,8 @@ class BFCLDataset:
                 BFCLCategory.MULTI_TURN_MISS_FUNC,
                 BFCLCategory.MULTI_TURN_MISS_PARAM,
                 BFCLCategory.MULTI_TURN_LONG_CONTEXT,
-            } and test_id in self._ground_truth:
-                raw_gt = self._ground_truth[test_id]
+            } and ground_truth_id in self._ground_truth:
+                raw_gt = self._ground_truth[ground_truth_id]
                 if isinstance(raw_gt, list) and all(isinstance(x, list) for x in raw_gt):
                     multi_turn_gt = [[str(c) for c in turn] for turn in raw_gt]
 
@@ -885,6 +902,8 @@ class BFCLDataset:
             )
 
         except Exception as e:
+            if self.config.require_complete_dataset:
+                raise ValueError(f"failed to parse BFCL test case {default_id}") from e
             logger.error(f"Failed to parse test case {default_id}: {e}")
             return None
 

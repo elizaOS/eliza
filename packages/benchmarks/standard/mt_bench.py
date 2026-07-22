@@ -27,8 +27,6 @@ Result file: ``<output>/mt-bench-results.json``.
 from __future__ import annotations
 
 import argparse
-import logging
-import os
 import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -47,17 +45,17 @@ from ._base import (
 from ._cli import RunnerFactory, cli_dispatch
 from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
 
-log = logging.getLogger("benchmarks.standard.mt_bench")
-
 BENCHMARK_ID = "mt_bench"
-DATASET_VERSION = "lmsys/mt_bench_human_judgments@v1"
-EXPANDED_DATASET_VERSION = "lmsys/mt_bench_human_judgments@v1+edge-v1"
+DATASET_NAME = "lmsys/mt_bench_human_judgments"
+DATASET_REVISION = "f7d2896d2cc5d80f8b55c2bbc722613555233c25"
+DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
+EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
+EXPECTED_QUESTIONS = 80
 DEFAULT_MAX_TOKENS = 4096
 DEFAULT_JUDGE_MAX_TOKENS = 1024
 
-# Built-in question set used for the smoke test and as a fallback when
-# the lmsys dataset can't be fetched. Each entry is one MT-Bench
-# question pair: a primary turn + a follow-up turn.
+# Built-in question set used only for explicit ``--mock`` smoke tests. Each
+# entry is one question pair: a primary turn plus a follow-up turn.
 SMOKE_QUESTIONS: tuple[dict[str, object], ...] = (
     {
         "question_id": 81,
@@ -153,55 +151,71 @@ def _build_strict_judge_prompt(question: str, answer: str, turn: int) -> str:
 
 
 def _load_dataset_questions(limit: int | None) -> list[dict[str, object]]:
-    """Load real MT-Bench from the HF mirror; fall back to the fixture set.
+    """Reconstruct the 80 official prompts from LMSYS human judgments.
 
-    The community mirror at ``lmsys/mt_bench_human_judgments`` exposes
-    each question with ``turns`` (list of turn-1 + turn-2 strings).
+    The mirror stores complete candidate conversations rather than a nested
+    ``question`` object. User messages in either candidate conversation are
+    the original two MT-Bench turns; one row per question is sufficient.
     """
-    if (
-        os.environ.get("BENCHMARK_STANDARD_FULL_DATA", "").strip() != "1"
-        and limit is not None
-        and limit <= len(SMOKE_QUESTIONS)
-    ):
-        return list(SMOKE_QUESTIONS)[:limit]
+    from datasets import load_dataset
 
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        log.warning("`datasets` not installed — using built-in fixture")
-        items = list(SMOKE_QUESTIONS)
-        return items if limit is None else items[:limit]
-
-    try:
-        ds = load_dataset("lmsys/mt_bench_human_judgments", split="human")
-    except Exception as exc:  # noqa: BLE001
-        log.warning("failed to load mt_bench dataset: %s — using fixture", exc)
-        items = list(SMOKE_QUESTIONS)
-        return items if limit is None else items[:limit]
+    target_count = (
+        EXPECTED_QUESTIONS if limit is None else min(limit, EXPECTED_QUESTIONS)
+    )
+    if target_count <= 0:
+        return []
+    ds = load_dataset(
+        DATASET_NAME,
+        split="human",
+        revision=DATASET_REVISION,
+    )
 
     seen: dict[int, dict[str, object]] = {}
     for row in ds:
-        question = row.get("question") or {}
-        qid_raw = question.get("question_id")
+        qid_raw = row.get("question_id")
         if not isinstance(qid_raw, int):
             continue
         if qid_raw in seen:
             continue
-        turns_field = question.get("turns")
-        if not isinstance(turns_field, list) or len(turns_field) < 2:
+        conversation = row.get("conversation_a")
+        if not isinstance(conversation, list):
+            continue
+        turns_field = [
+            message.get("content")
+            for message in conversation
+            if isinstance(message, dict) and message.get("role") == "user"
+        ]
+        if len(turns_field) != 2 or not all(
+            isinstance(turn, str) and turn.strip() for turn in turns_field
+        ):
+            continue
+        category_index = (qid_raw - 81) // 10
+        categories = (
+            "writing",
+            "roleplay",
+            "reasoning",
+            "math",
+            "coding",
+            "extraction",
+            "stem",
+            "humanities",
+        )
+        if qid_raw < 81 or qid_raw > 160 or category_index >= len(categories):
             continue
         seen[qid_raw] = {
             "question_id": qid_raw,
-            "category": question.get("category") or "unknown",
+            "category": categories[category_index],
             "turns": (str(turns_field[0]), str(turns_field[1])),
         }
-        if limit is not None and len(seen) >= limit:
+        if len(seen) >= target_count:
             break
-    if not seen:
-        log.warning("mt_bench dataset schema yielded zero questions — using fixture")
-        items = list(SMOKE_QUESTIONS)
-        return items if limit is None else items[:limit]
-    return list(seen.values())
+    if len(seen) != target_count:
+        raise RuntimeError(
+            "MT-Bench corpus is incomplete: "
+            f"expected {target_count} unique questions, loaded {len(seen)} "
+            f"from revision {DATASET_REVISION}"
+        )
+    return [seen[question_id] for question_id in sorted(seen)]
 
 
 class MTBenchRunner:
@@ -237,11 +251,21 @@ class MTBenchRunner:
         self._temperature = temperature
         self._include_edge_scenarios = include_edge_scenarios
 
-    def _selected_questions(self, limit: int | None) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-        base = list(self._questions if self._questions is not None else _load_dataset_questions(limit))
+    def _selected_questions(
+        self, limit: int | None
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        base = list(
+            self._questions
+            if self._questions is not None
+            else _load_dataset_questions(limit)
+        )
         if self._questions is not None and limit is not None:
             base = base[:limit]
-        questions = expand_mt_bench_questions(base) if self._include_edge_scenarios else list(base)
+        questions = (
+            expand_mt_bench_questions(base)
+            if self._include_edge_scenarios
+            else list(base)
+        )
         validate_mt_bench_questions(questions)
         return base, questions
 
@@ -286,7 +310,9 @@ class MTBenchRunner:
         for item in questions:
             turns_obj = item["turns"]
             if not isinstance(turns_obj, (list, tuple)) or len(turns_obj) < 2:
-                continue
+                raise RuntimeError(
+                    f"MT-Bench question {item.get('question_id')} has fewer than two turns"
+                )
             turn_1, turn_2 = str(turns_obj[0]), str(turns_obj[1])
             category = str(item.get("category") or "unknown")
 
@@ -298,8 +324,10 @@ class MTBenchRunner:
             try:
                 gen_1 = client.generate(history, cand_cfg)
             except Exception as exc:  # noqa: BLE001
-                log.warning("candidate turn-1 failed: %s", exc)
-                continue
+                raise RuntimeError(
+                    f"MT-Bench candidate generation failed for question "
+                    f"{item.get('question_id')} turn 1"
+                ) from exc
             candidate_generations += 1
             empty_1 = not gen_1.text.strip()
             if empty_1:
@@ -315,8 +343,10 @@ class MTBenchRunner:
             try:
                 gen_2 = client.generate(history_t2, cand_cfg)
             except Exception as exc:  # noqa: BLE001
-                log.warning("candidate turn-2 failed: %s", exc)
-                continue
+                raise RuntimeError(
+                    f"MT-Bench candidate generation failed for question "
+                    f"{item.get('question_id')} turn 2"
+                ) from exc
             candidate_generations += 1
             empty_2 = not gen_2.text.strip()
             if empty_2:
@@ -327,35 +357,27 @@ class MTBenchRunner:
             rating_2 = self._judge_turn(turn_2, gen_2.text, turn=2, cfg=judge_cfg)
 
             for r, key in ((rating_1, "turn_1"), (rating_2, "turn_2")):
-                if r is None:
-                    continue
                 ratings.append(r)
                 per_turn[key].append(r)
                 per_category.setdefault(category, []).append(r)
 
-            if (rating_1 is None or rating_2 is None) and len(failures) < 8:
-                failures.append(
-                    {
-                        "question_id": item.get("question_id"),
-                        "category": category,
-                        "rating_1": rating_1,
-                        "rating_2": rating_2,
-                        "answer_1": gen_1.text[:200],
-                        "answer_2": gen_2.text[:200],
-                        "empty_answer_1": empty_1,
-                        "empty_answer_2": empty_2,
-                    }
-                )
-
         n = len(ratings)
-        if candidate_generations > 0 and empty_candidate_generations == candidate_generations:
+        if (
+            candidate_generations > 0
+            and empty_candidate_generations == candidate_generations
+        ):
             raise RuntimeError(
                 "MT-Bench candidate generated empty visible output for all "
                 f"{candidate_generations} turns; treating this as a harness/model "
                 "transport error rather than a judge-scored result"
             )
-        if n == 0:
-            raise RuntimeError("MT-Bench produced zero valid ratings")
+        expected_ratings = len(questions) * 2
+        if candidate_generations != expected_ratings or n != expected_ratings:
+            raise RuntimeError(
+                "MT-Bench completeness failure: "
+                f"generated {candidate_generations}/{expected_ratings} candidate turns "
+                f"and collected {n}/{expected_ratings} ratings"
+            )
         mean_rating = sum(ratings) / n
         score = mean_rating / 10.0
 
@@ -366,7 +388,9 @@ class MTBenchRunner:
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=EXPANDED_DATASET_VERSION if self._include_edge_scenarios else DATASET_VERSION,
+            dataset_version=EXPANDED_DATASET_VERSION
+            if self._include_edge_scenarios
+            else DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(score, 4),
@@ -394,16 +418,17 @@ class MTBenchRunner:
         *,
         turn: int,
         cfg: GenerationConfig,
-    ) -> float | None:
+    ) -> float:
         msgs = [
             ChatMessage(role="system", content=JUDGE_SYSTEM_PROMPT),
-            ChatMessage(role="user", content=_build_judge_prompt(question, answer, turn=turn)),
+            ChatMessage(
+                role="user", content=_build_judge_prompt(question, answer, turn=turn)
+            ),
         ]
         try:
             judgement = self._judge.generate(msgs, cfg)
         except Exception as exc:  # noqa: BLE001
-            log.warning("judge failed (turn %d): %s", turn, exc)
-            return None
+            raise RuntimeError(f"MT-Bench judge generation failed for turn {turn}") from exc
         rating = _extract_rating(judgement.text)
         if rating is not None:
             return rating
@@ -421,14 +446,22 @@ class MTBenchRunner:
         try:
             retry = self._judge.generate(retry_msgs, cfg)
         except Exception as exc:  # noqa: BLE001
-            log.warning("judge retry failed (turn %d): %s", turn, exc)
-            return None
-        return _extract_rating(retry.text)
+            raise RuntimeError(
+                f"MT-Bench judge retry failed for turn {turn}"
+            ) from exc
+        retry_rating = _extract_rating(retry.text)
+        if retry_rating is None:
+            raise RuntimeError(
+                f"MT-Bench judge returned no valid rating for turn {turn} after retry"
+            )
+        return retry_rating
 
 
 class _MTBenchFactory(RunnerFactory):
     prog = "benchmarks.standard.mt_bench"
-    description = "MT-Bench multi-turn open-ended benchmark with judge model (LMSYS-style)."
+    description = (
+        "MT-Bench multi-turn open-ended benchmark with judge model (LMSYS-style)."
+    )
 
     def augment_parser(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
@@ -470,7 +503,9 @@ class _MTBenchFactory(RunnerFactory):
             help="Cap on judge generation per rating",
         )
 
-    def build(self, args: argparse.Namespace) -> tuple[MTBenchRunner, Sequence[str] | None]:
+    def build(
+        self, args: argparse.Namespace
+    ) -> tuple[MTBenchRunner, Sequence[str] | None]:
         candidate_endpoint = (
             "mock://standard-mt-bench"
             if args.mock
@@ -516,7 +551,9 @@ class _MTBenchFactory(RunnerFactory):
             )
             return runner, mock_responses
 
-        judge = HTTPOpenAICompatibleClient(endpoint=judge_endpoint, api_key=judge_api_key)
+        judge = HTTPOpenAICompatibleClient(
+            endpoint=judge_endpoint, api_key=judge_api_key
+        )
         runner = MTBenchRunner(
             judge=judge,
             judge_model=args.judge_model,
@@ -528,19 +565,31 @@ class _MTBenchFactory(RunnerFactory):
         return runner, None
 
 
-def expand_mt_bench_questions(examples: list[dict[str, object]]) -> list[dict[str, object]]:
+def expand_mt_bench_questions(
+    examples: list[dict[str, object]],
+) -> list[dict[str, object]]:
     def mutate(item: dict[str, object], instruction: str) -> None:
         turns = item.get("turns")
         if isinstance(turns, tuple):
-            item["turns"] = (f"{instruction}\n\n{turns[0]}", f"{instruction}\n\n{turns[1]}")
+            item["turns"] = (
+                f"{instruction}\n\n{turns[0]}",
+                f"{instruction}\n\n{turns[1]}",
+            )
         elif isinstance(turns, list) and len(turns) >= 2:
-            item["turns"] = [f"{instruction}\n\n{turns[0]}", f"{instruction}\n\n{turns[1]}"]
+            item["turns"] = [
+                f"{instruction}\n\n{turns[0]}",
+                f"{instruction}\n\n{turns[1]}",
+            ]
 
     return expand_dict_examples(examples, id_key="question_id", mutator=mutate)
 
 
 def validate_mt_bench_questions(examples: list[dict[str, object]]) -> None:
-    validate_dict_examples(examples, id_key="question_id", required_keys=("question_id", "category", "turns"))
+    validate_dict_examples(
+        examples,
+        id_key="question_id",
+        required_keys=("question_id", "category", "turns"),
+    )
 
 
 def main() -> int:

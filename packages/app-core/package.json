@@ -152,6 +152,16 @@
       "import": "./dist/services/vault-mirror.js",
       "default": "./dist/services/vault-mirror.js"
     },
+    "./services/auth-store": {
+      "types": "./dist/services/auth-store.d.ts",
+      "eliza-source": {
+        "types": "./src/services/auth-store.ts",
+        "import": "./src/services/auth-store.ts",
+        "default": "./src/services/auth-store.ts"
+      },
+      "import": "./dist/services/auth-store.js",
+      "default": "./dist/services/auth-store.js"
+    },
     "./security/agent-vault-id": {
       "types": "./dist/security/agent-vault-id.d.ts",
       "import": "./dist/security/agent-vault-id.js",
