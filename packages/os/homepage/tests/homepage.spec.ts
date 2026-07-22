@@ -60,6 +60,10 @@ test("download section distinguishes unavailable release artifacts", async ({
 }) => {
   await page.goto("/");
   await page.waitForSelector("h1", { timeout: 15000 });
+  await page
+    .getByRole("link", { name: /^Download/i })
+    .first()
+    .click();
 
   const downloads = page.locator("#download");
   await expect(downloads).toBeVisible();
