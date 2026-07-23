@@ -252,12 +252,19 @@ describe("agentSessionRepairNeedsCloudToken", () => {
   });
 });
 
-
 describe("dedicatedAgentIdFromApiBase", () => {
   it("extracts dedicated subdomain and REST-adapter ids without matching control plane", () => {
-    expect(dedicatedAgentIdFromApiBase("https://agent-a.elizacloud.ai")).toBe("agent-a");
-    expect(dedicatedAgentIdFromApiBase("https://elizacloud.ai/api/v1/eliza/agents/agent-b/bridge/")).toBe("agent-b");
+    expect(dedicatedAgentIdFromApiBase("https://agent-a.elizacloud.ai")).toBe(
+      "agent-a",
+    );
+    expect(
+      dedicatedAgentIdFromApiBase(
+        "https://elizacloud.ai/api/v1/eliza/agents/agent-b/bridge/",
+      ),
+    ).toBe("agent-b");
     expect(dedicatedAgentIdFromApiBase("https://elizacloud.ai")).toBeNull();
-    expect(dedicatedAgentIdFromApiBase("https://my-box.example.com")).toBeNull();
+    expect(
+      dedicatedAgentIdFromApiBase("https://my-box.example.com"),
+    ).toBeNull();
   });
 });

@@ -24,8 +24,8 @@ import {
   resolveAgentSessionRecovery,
 } from "../state/agent-session-recovery";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
-import { ensureCloudSessionForRepair } from "../state/cloud-session-refresh-for-repair";
 import { clearStalePairCredentialsForAgent } from "../state/cloud-pair-token";
+import { ensureCloudSessionForRepair } from "../state/cloud-session-refresh-for-repair";
 import { loadPersistedActiveServer } from "../state/persistence";
 
 export type AgentSessionRecoveryStatus =

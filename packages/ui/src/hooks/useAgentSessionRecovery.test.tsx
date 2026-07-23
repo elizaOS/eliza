@@ -118,9 +118,7 @@ describe("useAgentSessionRecovery", () => {
     mockActiveServer.mockReturnValue(cloudServer("agent-1"));
     mockRunRecovery.mockReturnValue(new Promise(() => {}));
 
-    render(
-      <Probe active reason="remote_auth_required" onStatus={() => {}} />,
-    );
+    render(<Probe active reason="remote_auth_required" onStatus={() => {}} />);
 
     await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(1));
     const deps = mockRunRecovery.mock.calls[0][0] as {
