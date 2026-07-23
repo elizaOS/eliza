@@ -3597,10 +3597,12 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
     const button = li.querySelector(
       '[data-testid="notification-row"]',
     ) as HTMLElement;
+    expect(swipe.style.willChange).toBe("");
     // Drag left well past SWIPE_DISMISS_PX (88): down at 120, move to 10 (dx=-110
     // → axis locks x, past threshold), release → commitDismiss(left).
     pointer(swipe, "pointerDown", { x: 120, y: 20 });
     pointer(swipe, "pointerMove", { x: 60, y: 22 });
+    expect(swipe.style.willChange).toBe("transform, opacity");
     pointer(swipe, "pointerMove", { x: 10, y: 22 });
     pointer(swipe, "pointerUp", { x: 10, y: 22 });
     // The synthetic click a swipe emits must be swallowed (suppressClick) so the

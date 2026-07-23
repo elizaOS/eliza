@@ -41,6 +41,12 @@ function seedMessages(count: number): ConversationMessage[] {
       text: `Message ${i}`,
       timestamp: now - (count - i) * 1000,
       source: "eliza",
+      ...(i === count - 1
+        ? {
+            reasoning:
+              "Internal reasoning must stay out of the consumer transcript.",
+          }
+        : {}),
     });
   }
   return msgs;
@@ -262,6 +268,18 @@ describe("ChatView transcript render window (#15281)", () => {
 
     expect(container.querySelector("textarea")).not.toBeNull();
     expect(threadRowCount(container)).toBe(MAX_RENDERED_SHELL_MESSAGES);
+  });
+
+  it("keeps reasoning out of the full transcript like the overlay", () => {
+    render(<ChatView hideComposer />);
+
+    expect(screen.getByText(`Message ${THREAD_LENGTH - 1}`)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
+    expect(
+      screen.queryByText(
+        "Internal reasoning must stay out of the consumer transcript.",
+      ),
+    ).toBeNull();
   });
 
   it("renders the terminal loading branch for a session not yet in the live list", () => {

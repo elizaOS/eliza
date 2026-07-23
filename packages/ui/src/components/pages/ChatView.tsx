@@ -799,7 +799,7 @@ export function ChatView({
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent
-        message={message as ConversationMessage}
+        message={withoutTranscriptReasoning(message)}
         analysisMode={analysisMode}
       />
     ),
@@ -1239,12 +1239,21 @@ function withDefaultSource<T extends { source?: string }>(msg: T): T {
   return tagged;
 }
 
+function withoutTranscriptReasoning(
+  message: ChatMessageData,
+): ConversationMessage {
+  if (!message.reasoning) return message as ConversationMessage;
+  const consumerMessage = { ...message };
+  delete consumerMessage.reasoning;
+  return consumerMessage as ConversationMessage;
+}
+
 // Module-level stable identity: an inline arrow here would change every render
 // and break ChatMessage's arePropsEqual (renderContent compare), re-parsing
 // markdown for every inbox message on any panel re-render. (Inbox doesn't use
 // analysisMode, so unlike the main path this needs no closure.)
 function renderInboxMessageContent(message: ChatMessageData) {
-  return <MessageContent message={message as ConversationMessage} />;
+  return <MessageContent message={withoutTranscriptReasoning(message)} />;
 }
 
 function InboxChatPanel({

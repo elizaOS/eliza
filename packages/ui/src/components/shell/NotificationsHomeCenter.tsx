@@ -2754,7 +2754,7 @@ export function NotificationsHomeCenter({
               }
               onClick={clearAll}
               className={cn(
-                "eliza-notif-clear-all eliza-notif-control-transition h-8 shrink-0 overflow-hidden whitespace-nowrap text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90 focus-visible:text-white/90",
+                "eliza-notif-clear-all eliza-notif-control-transition h-8 shrink-0 overflow-hidden whitespace-nowrap text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
                 clearAllStage > 0 && "text-white",
               )}
             >
