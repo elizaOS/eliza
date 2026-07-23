@@ -294,7 +294,7 @@ const ROUTES: DevRouteEntry[] = [
   {
     tabId: "tasks",
     path: "/apps/tasks",
-    label: "Tasks",
+    label: "Projects",
     group: "Apps",
     visibility: "all",
     featureFlag: "VITE_ENABLE_APPS",

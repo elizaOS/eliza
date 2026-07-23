@@ -24,6 +24,7 @@
  */
 
 import { logger } from "./logger";
+import { readEnv } from "./utils/read-env";
 
 // ---------------------------------------------------------------------------
 // Span / mark shapes
@@ -54,8 +55,12 @@ export interface InferenceMark {
 export const INFERENCE_MARKS = {
 	/** First streamed token/char delivered to the caller (streaming only). */
 	firstToken: "first-token",
+	/** First user-visible reply text committed by the host delivery path. */
+	firstVisibleReply: "first-visible-reply",
 	/** The user-visible reply was handed to the delivery callback. */
 	replyDelivered: "reply-delivered",
+	/** Host response normalization and all synchronous turn work completed. */
+	responseFinalized: "response-finalized",
 } as const;
 
 export interface InferenceTurnSummary {
@@ -69,8 +74,12 @@ export interface InferenceTurnSummary {
 	totalMs: number | null;
 	/** `t0` → `first-token` mark; null when nothing streamed. */
 	timeToFirstTokenMs: number | null;
+	/** `t0` → first host-visible reply text; null when no text was emitted. */
+	timeToFirstVisibleMs: number | null;
 	/** `t0` → `reply-delivered` mark; null when no reply was delivered. */
 	timeToReplyMs: number | null;
+	/** `t0` → host response finalization; null outside host-owned chat turns. */
+	timeToResponseFinalizedMs: number | null;
 	spans: InferenceSpan[];
 	marks: InferenceMark[];
 	/**
@@ -80,6 +89,225 @@ export interface InferenceTurnSummary {
 	 */
 	byName: Record<string, { totalMs: number; count: number }>;
 	anomalies: string[];
+}
+
+export const INFERENCE_FLOW_STAGES = [
+	"document-augmentation",
+	"providers",
+	"embedding",
+	"model-queue",
+	"model-routing",
+	"model-preprocess",
+	"llm-inference",
+	"model-postprocess",
+	"actions",
+	"evaluators",
+	"planner-overhead",
+	"response-finalization",
+	"message-ingress",
+	"message-delivery",
+	"message-lifecycle",
+	"message-service-overhead",
+	"unattributed",
+] as const;
+
+export type InferenceFlowStage = (typeof INFERENCE_FLOW_STAGES)[number];
+
+export interface InferenceFlowStageBreakdown {
+	stage: InferenceFlowStage;
+	/** Exclusive wall time: overlapping child/parent spans are counted once. */
+	totalMs: number;
+	/** Exclusive wall time before the first visible reply, when available. */
+	toFirstVisibleMs: number | null;
+	percentOfTotal: number | null;
+}
+
+export interface InferenceFlowBreakdown {
+	turnId: string;
+	totalMs: number | null;
+	timeToFirstVisibleMs: number | null;
+	stages: InferenceFlowStageBreakdown[];
+}
+
+const FLOW_STAGE_PRIORITY: readonly InferenceFlowStage[] = [
+	"embedding",
+	"model-queue",
+	"model-routing",
+	"model-preprocess",
+	"llm-inference",
+	"model-postprocess",
+	"actions",
+	"evaluators",
+	"providers",
+	"document-augmentation",
+	"response-finalization",
+	"message-ingress",
+	"message-delivery",
+	"message-lifecycle",
+	"planner-overhead",
+	"message-service-overhead",
+];
+
+function classifyInferenceSpan(name: string): InferenceFlowStage | null {
+	const normalized = name.toLowerCase();
+	if (
+		normalized.includes("embedding") ||
+		normalized.includes("text_embedding")
+	) {
+		return "embedding";
+	}
+	if (
+		normalized.includes("semaphore-wait") ||
+		normalized.includes("model-queue")
+	) {
+		return "model-queue";
+	}
+	if (normalized.startsWith("model-routing:")) return "model-routing";
+	if (normalized.startsWith("model-preprocess:")) return "model-preprocess";
+	if (normalized.startsWith("model-postprocess:")) return "model-postprocess";
+	if (normalized.startsWith("model:") || normalized.startsWith("model-ttft:")) {
+		return "llm-inference";
+	}
+	if (normalized.startsWith("actions:")) return "actions";
+	if (normalized.includes("evaluator")) return "evaluators";
+	if (
+		normalized === "composestate" ||
+		normalized.startsWith("provider:") ||
+		normalized.startsWith("provider-cache:")
+	) {
+		return "providers";
+	}
+	if (normalized === "chat:document-augmentation") {
+		return "document-augmentation";
+	}
+	if (normalized === "message:planner") return "planner-overhead";
+	if (normalized === "chat:response-finalization") {
+		return "response-finalization";
+	}
+	if (normalized.startsWith("message:ingress:")) {
+		return "message-ingress";
+	}
+	if (normalized.startsWith("message:delivery:")) {
+		return "message-delivery";
+	}
+	if (normalized.startsWith("message:lifecycle:")) {
+		return "message-lifecycle";
+	}
+	if (
+		normalized === "chat:message-service" ||
+		normalized === "message-service"
+	) {
+		return "message-service-overhead";
+	}
+	return null;
+}
+
+function roundedMs(value: number): number {
+	return Math.round(value * 1_000) / 1_000;
+}
+
+function addMeasuredDuration(
+	measurements: Map<InferenceFlowStage, number>,
+	stage: InferenceFlowStage,
+	durationMs: number,
+): void {
+	const current = measurements.get(stage);
+	measurements.set(
+		stage,
+		current === undefined ? durationMs : current + durationMs,
+	);
+}
+
+/**
+ * Partitions the request timeline into exclusive stages. Nested model/provider
+ * spans and parallel providers therefore never inflate the wall-clock total.
+ */
+export function buildInferenceFlowBreakdown(
+	summary: InferenceTurnSummary,
+): InferenceFlowBreakdown {
+	const totalMs = summary.totalMs;
+	if (totalMs === null || totalMs < 0) {
+		return {
+			turnId: summary.turnId,
+			totalMs,
+			timeToFirstVisibleMs: summary.timeToFirstVisibleMs,
+			stages: [],
+		};
+	}
+
+	const spans = summary.spans
+		.map((span) => ({
+			startMs: Math.max(0, Math.min(totalMs, span.startMs)),
+			endMs: Math.max(0, Math.min(totalMs, span.endMs)),
+			stage: classifyInferenceSpan(span.name),
+		}))
+		.filter(
+			(span): span is typeof span & { stage: InferenceFlowStage } =>
+				span.stage !== null && span.endMs > span.startMs,
+		);
+	const boundaries = new Set<number>([0, totalMs]);
+	for (const span of spans) {
+		boundaries.add(span.startMs);
+		boundaries.add(span.endMs);
+	}
+	const ordered = [...boundaries].sort((left, right) => left - right);
+	const totals = new Map<InferenceFlowStage, number>();
+	const visibleTotals = new Map<InferenceFlowStage, number>();
+	const firstVisible =
+		summary.timeToFirstVisibleMs === null
+			? null
+			: Math.max(0, Math.min(totalMs, summary.timeToFirstVisibleMs));
+
+	for (let index = 0; index < ordered.length - 1; index += 1) {
+		const startMs = ordered[index] as number;
+		const endMs = ordered[index + 1] as number;
+		if (endMs <= startMs) continue;
+		const midpoint = startMs + (endMs - startMs) / 2;
+		const active = new Set(
+			spans
+				.filter((span) => span.startMs <= midpoint && midpoint < span.endMs)
+				.map((span) => span.stage),
+		);
+		const stage =
+			FLOW_STAGE_PRIORITY.find((candidate) => active.has(candidate)) ??
+			"unattributed";
+		const duration = endMs - startMs;
+		addMeasuredDuration(totals, stage, duration);
+		if (firstVisible !== null && startMs < firstVisible) {
+			const visibleDuration = Math.min(endMs, firstVisible) - startMs;
+			if (visibleDuration > 0) {
+				addMeasuredDuration(visibleTotals, stage, visibleDuration);
+			}
+		}
+	}
+
+	return {
+		turnId: summary.turnId,
+		totalMs: roundedMs(totalMs),
+		timeToFirstVisibleMs:
+			firstVisible === null ? null : roundedMs(firstVisible),
+		stages: INFERENCE_FLOW_STAGES.flatMap((stage) => {
+			const stageTotal = totals.get(stage);
+			if (stageTotal === undefined || stageTotal === 0) return [];
+			const visibleStageTotal = visibleTotals.get(stage);
+			return [
+				{
+					stage,
+					totalMs: roundedMs(stageTotal),
+					toFirstVisibleMs:
+						firstVisible === null
+							? null
+							: roundedMs(
+									visibleStageTotal === undefined ? 0 : visibleStageTotal,
+								),
+					percentOfTotal:
+						totalMs === 0
+							? null
+							: Math.round((stageTotal / totalMs) * 10_000) / 100,
+				},
+			];
+		}),
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +440,9 @@ export class InferenceTurnTimer {
 			totalMs:
 				this.closedAtEpochMs === null ? null : this.rel(this.closedAtEpochMs),
 			timeToFirstTokenMs: markRel(INFERENCE_MARKS.firstToken),
+			timeToFirstVisibleMs: markRel(INFERENCE_MARKS.firstVisibleReply),
 			timeToReplyMs: markRel(INFERENCE_MARKS.replyDelivered),
+			timeToResponseFinalizedMs: markRel(INFERENCE_MARKS.responseFinalized),
 			spans: [...this.spans].sort((a, b) => a.startMs - b.startMs),
 			marks,
 			byName,
@@ -344,6 +574,7 @@ export interface InferenceHistogramSummary {
 	count: number;
 	p50: number | null;
 	p90: number | null;
+	p95: number | null;
 	p99: number | null;
 	min: number | null;
 	max: number | null;
@@ -365,6 +596,7 @@ class BoundedHistogram {
 				count: 0,
 				p50: null,
 				p90: null,
+				p95: null,
 				p99: null,
 				min: null,
 				max: null,
@@ -381,6 +613,7 @@ class BoundedHistogram {
 			count: n,
 			p50: pct(50),
 			p90: pct(90),
+			p95: pct(95),
 			p99: pct(99),
 			min: sorted[0] as number,
 			max: sorted[n - 1] as number,
@@ -396,7 +629,13 @@ class InferenceTimingRegistry {
 	private readonly ring: InferenceTurnSummary[] = [];
 	private readonly spanHistograms = new Map<string, BoundedHistogram>();
 	private readonly ttft = new BoundedHistogram(REGISTRY_HISTOGRAM_CAPACITY);
+	private readonly firstVisible = new BoundedHistogram(
+		REGISTRY_HISTOGRAM_CAPACITY,
+	);
 	private readonly ttreply = new BoundedHistogram(REGISTRY_HISTOGRAM_CAPACITY);
+	private readonly finalized = new BoundedHistogram(
+		REGISTRY_HISTOGRAM_CAPACITY,
+	);
 	private readonly total = new BoundedHistogram(REGISTRY_HISTOGRAM_CAPACITY);
 
 	record(summary: InferenceTurnSummary): void {
@@ -412,7 +651,11 @@ class InferenceTimingRegistry {
 		}
 		if (summary.timeToFirstTokenMs !== null)
 			this.ttft.add(summary.timeToFirstTokenMs);
+		if (summary.timeToFirstVisibleMs !== null)
+			this.firstVisible.add(summary.timeToFirstVisibleMs);
 		if (summary.timeToReplyMs !== null) this.ttreply.add(summary.timeToReplyMs);
+		if (summary.timeToResponseFinalizedMs !== null)
+			this.finalized.add(summary.timeToResponseFinalizedMs);
 		if (summary.totalMs !== null) this.total.add(summary.totalMs);
 	}
 
@@ -430,7 +673,9 @@ class InferenceTimingRegistry {
 	derivedSummaries(): Record<string, InferenceHistogramSummary> {
 		return {
 			timeToFirstTokenMs: this.ttft.summary(),
+			timeToFirstVisibleMs: this.firstVisible.summary(),
 			timeToReplyMs: this.ttreply.summary(),
+			timeToResponseFinalizedMs: this.finalized.summary(),
 			totalMs: this.total.summary(),
 		};
 	}
@@ -446,8 +691,105 @@ export const inferenceTimingRegistry = new InferenceTimingRegistry();
 export interface InferenceTimingDevPayload {
 	generatedAtEpochMs: number;
 	turns: InferenceTurnSummary[];
+	flows: InferenceFlowBreakdown[];
 	spanHistograms: Record<string, InferenceHistogramSummary>;
 	derivedHistograms: Record<string, InferenceHistogramSummary>;
+	providers: ProviderInferenceTelemetry[];
+}
+
+export interface ProviderInferenceTelemetry {
+	providerName: string;
+	execution: InferenceHistogramSummary;
+	cacheHits: number;
+	successes: number;
+	errors: number;
+	aborted: number;
+	deadlineExceeded: number;
+	coalesced: number;
+	unknown: number;
+}
+
+function summarizeProviderInference(
+	turns: readonly InferenceTurnSummary[],
+): ProviderInferenceTelemetry[] {
+	const summaries = new Map<
+		string,
+		{
+			histogram: BoundedHistogram;
+			cacheHits: number;
+			successes: number;
+			errors: number;
+			aborted: number;
+			deadlineExceeded: number;
+			coalesced: number;
+			unknown: number;
+		}
+	>();
+	const entryFor = (providerName: string) => {
+		const existing = summaries.get(providerName);
+		if (existing) return existing;
+		const created = {
+			histogram: new BoundedHistogram(REGISTRY_HISTOGRAM_CAPACITY),
+			cacheHits: 0,
+			successes: 0,
+			errors: 0,
+			aborted: 0,
+			deadlineExceeded: 0,
+			coalesced: 0,
+			unknown: 0,
+		};
+		summaries.set(providerName, created);
+		return created;
+	};
+
+	for (const turn of turns) {
+		for (const span of turn.spans) {
+			if (span.name.startsWith("provider-cache:")) {
+				entryFor(span.name.slice("provider-cache:".length)).cacheHits += 1;
+				continue;
+			}
+			if (!span.name.startsWith("provider:")) continue;
+			const entry = entryFor(span.name.slice("provider:".length));
+			entry.histogram.add(span.durationMs);
+			if (span.meta?.coalesced === true) entry.coalesced += 1;
+			switch (span.meta?.outcome) {
+				case "success":
+					entry.successes += 1;
+					break;
+				case "aborted":
+					entry.aborted += 1;
+					break;
+				case "deadline_exceeded":
+					entry.deadlineExceeded += 1;
+					break;
+				case "error":
+					entry.errors += 1;
+					break;
+				default:
+					entry.unknown += 1;
+					break;
+			}
+		}
+	}
+
+	return [...summaries.entries()]
+		.map(([providerName, entry]) => ({
+			providerName,
+			execution: entry.histogram.summary(),
+			cacheHits: entry.cacheHits,
+			successes: entry.successes,
+			errors: entry.errors,
+			aborted: entry.aborted,
+			deadlineExceeded: entry.deadlineExceeded,
+			coalesced: entry.coalesced,
+			unknown: entry.unknown,
+		}))
+		.sort(
+			(a, b) =>
+				(b.execution.p95 ?? b.execution.max ?? -1) -
+					(a.execution.p95 ?? a.execution.max ?? -1) ||
+				a.providerName.localeCompare(b.providerName),
+		);
 }
 
 /** JSON body for a dev endpoint (e.g. `GET /api/dev/inference-timing`). */
@@ -474,15 +816,31 @@ export function buildInferenceTimingDevPayload(
 				limit >= combined.length
 					? combined
 					: combined.slice(combined.length - limit),
+			flows: (limit >= combined.length
+				? combined
+				: combined.slice(combined.length - limit)
+			).map(buildInferenceFlowBreakdown),
 			spanHistograms: durableRegistry.spanSummaries(),
 			derivedHistograms: durableRegistry.derivedSummaries(),
+			providers: summarizeProviderInference(combined),
 		};
 	}
+	const recentTurns = inferenceTimingRegistry.recentTurns(
+		REGISTRY_RING_CAPACITY,
+	);
 	return {
 		generatedAtEpochMs: Date.now(),
-		turns: inferenceTimingRegistry.recentTurns(limit),
+		turns:
+			limit >= recentTurns.length
+				? recentTurns
+				: recentTurns.slice(recentTurns.length - limit),
+		flows: (limit >= recentTurns.length
+			? recentTurns
+			: recentTurns.slice(recentTurns.length - limit)
+		).map(buildInferenceFlowBreakdown),
 		spanHistograms: inferenceTimingRegistry.spanSummaries(),
 		derivedHistograms: inferenceTimingRegistry.derivedSummaries(),
+		providers: summarizeProviderInference(recentTurns),
 	};
 }
 
@@ -511,8 +869,12 @@ export function formatInferenceTimingSummary(s: InferenceTurnSummary): string {
 	const parts: string[] = [];
 	if (s.totalMs !== null) parts.push(`total=${s.totalMs}ms`);
 	if (s.timeToReplyMs !== null) parts.push(`ttreply=${s.timeToReplyMs}ms`);
+	if (s.timeToFirstVisibleMs !== null)
+		parts.push(`ttvisible=${s.timeToFirstVisibleMs}ms`);
 	if (s.timeToFirstTokenMs !== null)
 		parts.push(`ttft=${s.timeToFirstTokenMs}ms`);
+	if (s.timeToResponseFinalizedMs !== null)
+		parts.push(`finalized=${s.timeToResponseFinalizedMs}ms`);
 	const ranked = Object.entries(s.byName).sort(
 		(a, b) => b[1].totalMs - a[1].totalMs,
 	);
@@ -529,6 +891,36 @@ export function formatInferenceTimingSummary(s: InferenceTurnSummary): string {
 }
 
 /**
+ * Post-reply tail watchdog. The "tail" is the wall-clock time between the
+ * user-visible reply mark and turn close — work (billing, persistence,
+ * evaluators) the user never sees but that holds the turn open. When the tail
+ * exceeds `ELIZA_TURN_TAIL_BUDGET_MS` (default 500), surface it as a WARN so
+ * the class of "reply ready but the turn is still grinding" regressions is
+ * visible without opting into full timing logs. Observability only — never
+ * throws, never affects the turn. Set the budget to `0` (or negative) to
+ * disable.
+ */
+const DEFAULT_TAIL_BUDGET_MS = 500;
+
+function warnOnPostReplyTail(summary: InferenceTurnSummary): void {
+	if (summary.totalMs === null || summary.timeToReplyMs === null) return;
+	const rawBudget = readEnv("ELIZA_TURN_TAIL_BUDGET_MS");
+	const budgetMs =
+		rawBudget === undefined ? DEFAULT_TAIL_BUDGET_MS : Number(rawBudget);
+	if (!Number.isFinite(budgetMs) || budgetMs <= 0) return;
+	const tailMs = summary.totalMs - summary.timeToReplyMs;
+	if (tailMs <= budgetMs) return;
+	const replyAtMs = summary.timeToReplyMs;
+	const tailSpans = summary.spans
+		.filter((s) => s.startMs > replyAtMs)
+		.map((s) => ({ name: s.name, durationMs: s.durationMs }));
+	logger.warn(
+		{ turnId: summary.turnId, tailMs, tailSpans },
+		`[InferenceTiming] ${summary.label} post-reply tail ${tailMs}ms exceeds budget ${budgetMs}ms (reply at ${replyAtMs}ms, turn closed at ${summary.totalMs}ms)`,
+	);
+}
+
+/**
  * Close the timer, fold it into the process registry, and emit the breakdown.
  * Call once at the end of a turn. No-op-safe for an undefined timer.
  */
@@ -539,6 +931,7 @@ export function emitInferenceTiming(
 	try {
 		const summary = timer.close();
 		inferenceTimingRegistry.record(summary);
+		warnOnPostReplyTail(summary);
 		const line = formatInferenceTimingSummary(summary);
 		if (timingLogEnabled()) {
 			logger.info({ inferenceTiming: summary }, line);

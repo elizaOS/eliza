@@ -1,33 +1,9 @@
-// Eliza-1 manifest schema (`eliza-1.manifest.json`).
-//
-// Source of truth in this checkout: this file (the schema) and the sibling
-// `eliza-1.manifest.v1.json` JSON Schema. The upstream elizaOS source has
-// a longer prose specification under `packages/inference/AGENTS.md` (§6
-// manifest, §3 mandatory kernels, §2 bundle/tier matrix); that file does
-// not exist in the eliza checkout — when editing the schema, treat the
-// Zod definitions below as canonical and consult R5-versioning.md §1 for
-// the latest gap analysis between bundle and per-sub-model versioning.
-//
-// Coupling notes:
-// - The kernel names here are *manifest-level* capabilities (what the bundle
-//   advertises), not the lower-level llama.cpp kernel handles in `../types.ts`
-//   (`turbo3` / `turbo4` / `turbo3_tcq` / `qjl_full`). The two
-//   layers map but are not the same enum.
-// - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
-//   exported as a JSON Schema sibling file in this directory.
-// - Eliza-1 speculative decoding is native llama.cpp MTP. Post-cutover (#9033)
-//   every Gemma 4 tier is SEPARATE-DRAFTER: it ships a dedicated drafter GGUF at
-//   `mtp/drafter-<tier>.gguf` in `files.mtp` (loaded `-md … --spec-type
-//   draft-mtp`), with its own `lineage.drafter`, and declares top-level
-//   `mtp: "separate-drafter"`. (The legacy embedded-draft-head shape carried the
-//   draft head inside the primary text GGUF with `files.mtp` empty; no shipped
-//   Gemma tier uses it.) AGENTS.md §1/§3 require MTP on every tier.
-// - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
-//   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
-//   `packages/shared/src/local-inference/voice-models.ts` and the matching
-//   `models/voice/CHANGELOG.md`. The bundle manifest below ships the *current*
-//   per-tier set of files; the voice-models module ships the *history* the
-//   auto-updater walks.
+/**
+ * Defines and validates the Eliza-1 bundle manifest consumed by publishing,
+ * downloading, and activation. Kernel names describe bundle capabilities,
+ * while drafter artifacts and evaluations enforce the separate-model MTP
+ * contract independently of native kernel requirements.
+ */
 
 import type { LocalRuntimeKernel } from "@elizaos/shared";
 import z from "zod";
@@ -56,6 +32,26 @@ export type Eliza1MtpMode = (typeof ELIZA_1_MTP_MODES)[number];
 // smallest/entry tier.
 export const ELIZA_1_TIERS = ["2b", "4b", "9b", "27b", "27b-256k"] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
+
+// Published (architecture) bundle slug for each stable size-slug tier. The
+// `elizaos/eliza-1` tree was re-slugged during the 2026-06→07 Gemma-4 cutover:
+// bundles now host their per-tier artifacts under architecture slugs
+// (`e2b`/`e4b`/`12b`/`31b`/`31b-256k`) while the manifest keeps its stable
+// size-slug `tier` field. Any per-tier PUBLISHED FILENAME (e.g. the bundled
+// drafter `mtp/drafter-<publishedSlug>.gguf`) must be derived through this map,
+// or the runtime validator rejects the real published manifest (issue #15976).
+// Mirrors packages/shared/src/local-inference/catalog.ts::ELIZA_1_BUNDLE_SLUGS.
+export const ELIZA_1_BUNDLE_TIER_SLUGS: Readonly<Record<Eliza1Tier, string>> = {
+	"2b": "e2b",
+	"4b": "e4b",
+	"9b": "12b",
+	"27b": "31b",
+	"27b-256k": "31b-256k",
+};
+
+export function bundleTierSlug(tier: Eliza1Tier): string {
+	return ELIZA_1_BUNDLE_TIER_SLUGS[tier];
+}
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
 // `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant`, and `mtp` are
@@ -137,13 +133,13 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 // Required-kernel set per tier. Mirrors the active Gemma 4 Eliza-1 release
 // policy:
 // - Every tier requires the geometry-agnostic GGUF weight-quant
-//   (`turboquant_q4`) plus native MTP speculative decoding (`mtp`). Weight
+//   (`turboquant_q4`) plus the long-context trellis kernel (`turbo3_tcq`). Weight
 //   quant operates on (out_features, in_features) matmul tensors and is
 //   independent of attention head geometry, so it applies to Gemma's dense
-//   MQA backbone unchanged. MTP is not a KV-cache kernel; it is listed here
-//   because the shipped Gemma path must load a drafter-backed speculative
-//   decode graph rather than silently running plain greedy decode.
-// - The KV-cache kernels (`qjl`, `polarquant`, `turbo3_tcq`, and the
+//   MQA backbone unchanged. MTP availability is enforced structurally by the
+//   drafter file + eval contract below, rather than being duplicated as a
+//   runtime-kernel declaration.
+// - The KV-cache kernels (`qjl`, `polarquant`, and the
 //   `turbo3`/`turbo4` runtime handles) are 128-element FWHT-group kernels
 //   that are head_dim-coupled. They do NOT match Gemma's MQA geometry
 //   (n_head_kv=1) with dual head dims (512 global / 256 SWA), so Gemma 4
@@ -154,11 +150,11 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"2b": ["turboquant_q4", "mtp"],
-	"4b": ["turboquant_q4", "mtp"],
-	"9b": ["turboquant_q4", "mtp"],
-	"27b": ["turboquant_q4", "mtp"],
-	"27b-256k": ["turboquant_q4", "mtp"],
+	"2b": ["turboquant_q4", "turbo3_tcq"],
+	"4b": ["turboquant_q4", "turbo3_tcq"],
+	"9b": ["turboquant_q4", "turbo3_tcq"],
+	"27b": ["turboquant_q4", "turbo3_tcq"],
+	"27b-256k": ["turboquant_q4", "turbo3_tcq"],
 };
 
 // KV-cache kernels that remain available but are NOT required for any Gemma 4
@@ -167,11 +163,11 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 export const OPTIONAL_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"2b": ["qjl", "polarquant", "turbo3_tcq"],
-	"4b": ["qjl", "polarquant", "turbo3_tcq"],
-	"9b": ["qjl", "polarquant", "turbo3_tcq"],
-	"27b": ["qjl", "polarquant", "turbo3_tcq"],
-	"27b-256k": ["qjl", "polarquant", "turbo3_tcq"],
+	"2b": ["qjl", "polarquant", "mtp"],
+	"4b": ["qjl", "polarquant", "mtp"],
+	"9b": ["qjl", "polarquant", "mtp"],
+	"27b": ["qjl", "polarquant", "mtp"],
+	"27b-256k": ["qjl", "polarquant", "mtp"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -744,12 +740,29 @@ export const Eliza1ManifestSchema = z
 		mtp: z.enum(ELIZA_1_MTP_MODES).optional(),
 	})
 	// The id MUST encode the tier so catalogs can derive tier from id without
-	// re-reading the manifest. Example: `id: "eliza-1-9b"`.
+	// re-reading the manifest. Two spellings are accepted:
+	//   - the stable size-slug id (`eliza-1-9b`) used by pre-cutover / staging /
+	//     test manifests, and
+	//   - the PUBLISHED architecture-slug id (`eliza-1-e2b`, `eliza-1-12b`, …)
+	//     that the live `elizaos/eliza-1` tree now stamps after the 2026-06→07
+	//     Gemma-4 re-slug (issue #15976). The `tier` field always stays the
+	//     stable size slug, so the arch-slug id is derived through
+	//     `ELIZA_1_BUNDLE_TIER_SLUGS` — the single source of truth for the
+	//     size→published mapping (mirrored in the shared catalog).
 	.refine(
-		(m) =>
-			m.id === `eliza-1-${m.tier}` || m.id.startsWith(`eliza-1-${m.tier}-`),
+		(m) => {
+			const sizeId = `eliza-1-${m.tier}`;
+			const publishedId = `eliza-1-${ELIZA_1_BUNDLE_TIER_SLUGS[m.tier]}`;
+			return (
+				m.id === sizeId ||
+				m.id.startsWith(`${sizeId}-`) ||
+				m.id === publishedId ||
+				m.id.startsWith(`${publishedId}-`)
+			);
+		},
 		{
-			message: "id must start with `eliza-1-<tier>`",
+			message:
+				"id must start with `eliza-1-<tier>` or the published `eliza-1-<publishedSlug>`",
 			path: ["id"],
 		},
 	)

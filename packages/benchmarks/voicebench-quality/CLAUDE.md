@@ -57,11 +57,11 @@ pytest tests/ -x
 
 - Results write to `<output>/voicebench-quality-results.json`. Registry expects it at
   `<output_dir>/voicebench-quality-results.json` (`_voicebench_quality_result`).
-- Scored by `_score_from_voicebench_quality_json` in `registry/scores.py` (line 755).
+- Scored by `_score_from_voicebench_quality_json` in `registry/scores.py`.
   Score is the unweighted mean of the 8 per-suite scores.
 - Required env vars for live runs: `CEREBRAS_API_KEY` (LLM judge), `GROQ_API_KEY` or
   `VOICEBENCH_QUALITY_STT_PROVIDER` (STT).
-- Judged suites (`alpacaeval`, `commoneval`, `sd-qa`, `bbh`) use `gpt-oss-120b` on
+- Judged suites (`alpacaeval`, `commoneval`, `sd-qa`, `bbh`) use `gemma-4-31b` on
   Cerebras; deterministic suites (`ifeval`, `advbench`, `openbookqa`, `mmsu`) need no judge key.
 - Full background: [README.md](README.md).
 

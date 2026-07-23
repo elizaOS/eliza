@@ -730,6 +730,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			["Say PONG", "PONG"],
 			["say HELLO", "HELLO"],
 			["please respond with the word PING", "PING"],
+			// quantified connector forms — "the single word" / "one word" between
+			// the verb and the literal (the acceptance-gate smoke phrasing)
+			["Reply with the single word: PONG", "PONG"],
+			["reply with a single word: PONG", "PONG"],
+			["Reply with one word: PONG", "PONG"],
+			["Respond with the single word PONG", "PONG"],
 			// mention-prefixed (Discord/Telegram render the mention into the text)
 			["remilio (@1490833425802854491) Say PONG", "PONG"],
 			["<@1490833425802854491> say HELLO", "HELLO"],
@@ -747,6 +753,53 @@ describe("runV5MessageRuntimeStage1", () => {
 			if (result.kind === "direct_reply") {
 				expect(result.result.responseContent?.text).toBe(want);
 			}
+		}
+	});
+
+	it("keeps PONG from the acceptance-gate smoke's exact raw gemma envelope", async () => {
+		// Byte-for-byte the raw RESPONSE_HANDLER output gemma-4-31b returned
+		// through the Eliza Cloud proxy for the benchmark acceptance-gate smoke
+		// prompt (captured live from the bench-server trajectory recorder). The
+		// plain-JSON plan envelope parses to reply "PONG", which the all-caps
+		// unusable heuristic flags; the say-literal recognizer must classify
+		// "Reply with the single word: PONG" as an explicit request so the reply
+		// ships instead of the "I'm not sure how to answer that." deferral.
+		const runtime = makeRuntime([
+			'{"processMessage":"RESPOND","thought":"","plan":{"contexts":["simple"],"reply":"PONG","simple":true,"requiresTool":false}}',
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Reply with the single word: PONG" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("PONG");
+		}
+		expect(useModelCalls(runtime).length).toBe(1);
+	});
+
+	it("still defers an all-caps echo the user never asked for", async () => {
+		// The say-literal recognizer only accepts complete connector units, never
+		// bare determiners: "write a poem" must not parse as a request to say
+		// "poem", so an all-caps "POEM" echo stays classified as enum/scaffold
+		// leakage and defers.
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "POEM" }),
+			"   ",
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "write a poem" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I'm not sure how to answer that.",
+			);
 		}
 	});
 
@@ -3284,6 +3337,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(providerNames).toContain("RUNTIME_MODEL_CONTEXT");
 		expect(providerNames).not.toContain("PROVIDERS");
 		expect(providerNames).not.toContain("CHARACTER");
+		expect(composeState.mock.calls[0]?.[4]).toEqual([]);
 	});
 
 	it("emits a response-handler reply before planner recomposition when provided", async () => {
@@ -3322,6 +3376,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				text: "I'll check that now.",
 			}),
 		);
+		const composeState = runtime.composeState as {
+			mock: { calls: unknown[][] };
+		};
+		expect(composeState.mock.calls[0]?.[4]).toEqual(["RECENT_MESSAGES"]);
 		expect(order).toEqual(["early-reply", "compose-planner-state"]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {

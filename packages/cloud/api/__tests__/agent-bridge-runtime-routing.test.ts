@@ -103,7 +103,15 @@ describe("agent bridge runtime routing", () => {
       result: { text: "pong" },
     });
     expect(deadControlPlaneFetch).not.toHaveBeenCalled();
-    expect(bridge).toHaveBeenCalledWith("agent-1", "org-1", rpcRequest);
+    // 4th arg: the Workers executionCtx that defers the shared-turn billing
+    // tail — this fixture has none, so the route degrades to undefined
+    // (inline settlement).
+    expect(bridge).toHaveBeenCalledWith(
+      "agent-1",
+      "org-1",
+      rpcRequest,
+      undefined,
+    );
   });
 
   test("stream ignores stale control-plane env and uses sandbox service", async () => {
@@ -133,7 +141,15 @@ describe("agent bridge runtime routing", () => {
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toContain("event: done");
     expect(deadControlPlaneFetch).not.toHaveBeenCalled();
-    expect(bridgeStream).toHaveBeenCalledWith("agent-1", "org-1", rpcRequest);
+    // 4th arg: the Workers executionCtx that defers the shared-turn billing
+    // tail — this fixture has none, so the route degrades to undefined
+    // (inline settlement). Mirrors the bridge (non-stream) assertion above.
+    expect(bridgeStream).toHaveBeenCalledWith(
+      "agent-1",
+      "org-1",
+      rpcRequest,
+      undefined,
+    );
     expect(bridge).not.toHaveBeenCalled();
   });
 });

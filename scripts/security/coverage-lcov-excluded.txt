@@ -64,3 +64,45 @@ packages/agent/src/index.ts
 # assert the classifier's behavior directly. Delete this entry if the script is
 # ever refactored so its logic lives in a Vitest-instrumented module.
 packages/scripts/audit-ui-determinism.mjs
+
+# Dev-process orchestrators (Node-hosted Vite launch, #16892): importing either
+# file immediately kills stale port owners, reserves ports, and spawns real
+# long-lived dev servers (API + Vite) as top-level side effects, so no
+# Vitest/Bun suite can ever import them and they structurally cannot appear in
+# the changed-files LCOV report — same class as
+# packages/scripts/audit-ui-determinism.mjs above. The launch-command logic
+# they share is factored into packages/app-core/scripts/lib/dev-ui-vite.mjs,
+# which IS instrumented (100% in this stack's changed-file LCOV) via
+# packages/app/scripts/lib/dev-vite-command.test.mjs. Delete these entries if
+# the orchestrators are ever refactored so their remaining logic lives in an
+# importable, test-instrumented module.
+packages/app-core/scripts/dev-ui.mjs
+packages/app/scripts/dev-shared.mjs
+
+# Real-voice lane entrypoints + adapter (#16945): every one of these executes
+# through the fused native `libelizainference` (bun:ffi dlopen) with staged
+# multi-GB GGUF bundles. The scripts are top-level CLI entrypoints — importing
+# one in a unit suite immediately probes for the native lib and process.exit()s
+# — and the workbench adapter's every code path acquires real fused
+# encoder/diarizer/Kokoro handles, so none of them can execute inside the
+# Vitest/Bun unit lanes where the native lib does not exist. They are exercised
+# for real, end to end, by the self-provisioning voice-live-e2e nightly
+# (roundtrip + acoustic-matrix jobs run each entrypoint against the real
+# models in require-real mode; green run 29991510871). The pure logic they
+# gained in #16945 IS instrumented: the TTFA budget knob lives in
+# plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-ttfa-budget.ts
+# (kokoro-ttfa-budget.test.ts), the adapter's speaker → Kokoro voice-pack
+# mapping in src/services/voice/workbench-voice-packs.ts
+# (workbench-voice-packs.test.ts), and the lanes' shared corpus/report
+# plumbing in scripts/voice-bench-shared.ts, which is importable and therefore
+# unit-covered directly (__tests__/voice-bench-shared.test.ts) instead of
+# excluded here. Delete an entry if its file is ever refactored so the
+# remaining logic lives in an importable, test-instrumented module.
+packages/app-core/scripts/voice-attribution-smoke.ts
+packages/benchmarks/voice/voice-real-ci-matrix.mjs
+plugins/plugin-local-inference/scripts/asr-real-smoke.ts
+plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts
+plugins/plugin-local-inference/scripts/real-agent-voice-overlap.ts
+plugins/plugin-local-inference/scripts/real-robustness-asr.ts
+plugins/plugin-local-inference/scripts/real-voice-stack.ts
+plugins/plugin-local-inference/src/services/voice/workbench-real-services.ts

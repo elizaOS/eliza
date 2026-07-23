@@ -22,7 +22,7 @@ The plugin requires the OpenRouter API key and can be configured via environment
   "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1", // Optional: Default is OpenRouter endpoint
   "OPENROUTER_SMALL_MODEL": "google/gemini-flash", // Optional: Overrides default small model
   "OPENROUTER_LARGE_MODEL": "google/gemini-pro", // Optional: Overrides default large model
-  "OPENROUTER_IMAGE_MODEL": "x-ai/grok-2-vision-1212", // Optional: Overrides default image model
+  "OPENROUTER_IMAGE_MODEL": "openai/gpt-4o-mini", // Optional: Overrides default image model
   "OPENROUTER_IMAGE_GENERATION_MODEL": "google/gemini-2.5-flash-image-preview", // Optional: Overrides default image generation model
   "OPENROUTER_EMBEDDING_MODEL": "openai/text-embedding-3-small", // Optional: Overrides default embedding model
   "OPENROUTER_EMBEDDING_DIMENSIONS": "1536", // Optional: Sets embedding vector dimensions (384, 512, 768, 1024, 1536, 2048, 3072)
@@ -30,7 +30,7 @@ The plugin requires the OpenRouter API key and can be configured via environment
   // Fallbacks if specific OPENROUTER models are not set
   "SMALL_MODEL": "google/gemini-flash",
   "LARGE_MODEL": "google/gemini-pro",
-  "IMAGE_MODEL": "x-ai/grok-2-vision-1212",
+  "IMAGE_MODEL": "openai/gpt-4o-mini",
   "IMAGE_GENERATION_MODEL": "google/gemini-2.5-flash-image-preview",
   "EMBEDDING_MODEL": "openai/text-embedding-3-small",
   "EMBEDDING_DIMENSIONS": "1536"
@@ -45,7 +45,7 @@ OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_SMALL_MODEL=google/gemini-flash
 OPENROUTER_LARGE_MODEL=google/gemini-pro
-OPENROUTER_IMAGE_MODEL=x-ai/grok-2-vision-1212
+OPENROUTER_IMAGE_MODEL=openai/gpt-4o-mini
 OPENROUTER_IMAGE_GENERATION_MODEL=google/gemini-2.5-flash-image-preview
 OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small
 OPENROUTER_EMBEDDING_DIMENSIONS=1536
@@ -54,7 +54,7 @@ OPENROUTER_BROWSER_BASE_URL=https://your-proxy.example.com/openrouter
 # Fallbacks if specific OPENROUTER models are not set
 SMALL_MODEL=google/gemini-flash
 LARGE_MODEL=google/gemini-pro
-IMAGE_MODEL=x-ai/grok-2-vision-1212
+IMAGE_MODEL=openai/gpt-4o-mini
 IMAGE_GENERATION_MODEL=google/gemini-2.5-flash-image-preview
 EMBEDDING_MODEL=openai/text-embedding-3-small
 EMBEDDING_DIMENSIONS=1536
@@ -108,7 +108,7 @@ app.listen(3000);
 - `OPENROUTER_AUTO_CLEANUP_IMAGES`: Boolean flag for auto-cleanup of generated images, read by `shouldAutoCleanupImages()` in `utils/config.ts` (default: "false").
 - `SMALL_MODEL`: Fallback model for small tasks (default: "google/gemini-2.5-flash-lite"). Used if `OPENROUTER_SMALL_MODEL` is not set.
 - `LARGE_MODEL`: Fallback model for large tasks (default: "google/gemini-2.5-flash"). Used if `OPENROUTER_LARGE_MODEL` is not set.
-- `IMAGE_MODEL`: Fallback model for image analysis (default: "x-ai/grok-2-vision-1212"). Used if `OPENROUTER_IMAGE_MODEL` is not set.
+- `IMAGE_MODEL`: Fallback model for image analysis (default: "openai/gpt-4o-mini"). Used if `OPENROUTER_IMAGE_MODEL` is not set.
 - `IMAGE_GENERATION_MODEL`: Fallback model for image generation (default: "google/gemini-2.5-flash-image-preview"). Used if `OPENROUTER_IMAGE_GENERATION_MODEL` is not set.
 - `EMBEDDING_MODEL`: Fallback model for text embeddings (default: "openai/text-embedding-3-small"). Used if `OPENROUTER_EMBEDDING_MODEL` is not set.
 - `TRANSCRIPTION_MODEL`: Fallback model for audio transcription (default: "openai/whisper-large-v3"). Used if `OPENROUTER_TRANSCRIPTION_MODEL` is not set.
@@ -125,7 +125,7 @@ The plugin registers these model types:
 - `TEXT_MEGA`: Largest text tasks; falls back to the large model when no mega override is set.
 - `RESPONSE_HANDLER`: Should-respond decisions; falls back to the nano model.
 - `ACTION_PLANNER`: Action planning; falls back to the medium model.
-- `IMAGE_DESCRIPTION`: Analyzes images and provides descriptive text (default: `x-ai/grok-2-vision-1212`).
+- `IMAGE_DESCRIPTION`: Analyzes images and provides descriptive text (default: `openai/gpt-4o-mini`).
 - `IMAGE`: Generates images from text prompts (default: `google/gemini-2.5-flash-image-preview`).
 - `TEXT_EMBEDDING`: Vector embeddings with configurable dimensions (default: `openai/text-embedding-3-small`, 1536 dims).
 - `TRANSCRIPTION`: Transcribes audio through OpenRouter's `/audio/transcriptions` endpoint (default: `openai/whisper-large-v3`).

@@ -173,7 +173,7 @@ def _clone_or_update_source(
 
 
 def install_openclaw(version: str = "latest", force: bool = False) -> InstalledAgent:
-    """Install OpenClaw from npm into ``$ELIZA_AGENTS_ROOT/openclaw/<version>/``.
+    """Install OpenClaw from npm into ``$ELIZA_AGENTS_ROOT/openclaw/v<version>/``.
 
     The published ``openclaw`` package ships a built binary at
     ``node_modules/.bin/openclaw`` once installed via npm. The source repo
@@ -194,7 +194,10 @@ def install_openclaw(version: str = "latest", force: bool = False) -> InstalledA
     else:
         resolved_version = version
 
-    prefix = AGENT_ROOT / "openclaw" / resolved_version
+    # The "v" prefix matches openclaw_adapter.client's DEFAULT_BINARY_FALLBACK
+    # (~/.eliza/agents/openclaw/v<version>/...), so an install remains
+    # resolvable even when the manifest is absent or deleted.
+    prefix = AGENT_ROOT / "openclaw" / f"v{resolved_version}"
     binary = prefix / "node_modules" / ".bin" / "openclaw"
 
     if not force:
@@ -273,11 +276,27 @@ def install_hermes(ref: str = "main", force: bool = False) -> InstalledAgent:
         context="hermes-agent",
     )
 
-    _run(
-        [HERMES_VENV_PYTHON, "-m", "venv", ".venv"],
-        cwd=repo_dir,
-        context=f"{HERMES_VENV_PYTHON} -m venv .venv",
-    )
+    try:
+        _run(
+            [HERMES_VENV_PYTHON, "-m", "venv", ".venv"],
+            cwd=repo_dir,
+            context=f"{HERMES_VENV_PYTHON} -m venv .venv",
+        )
+    except AgentInstallError as venv_error:
+        # error-policy:J2 Debian/Ubuntu hosts without python3-venv have no
+        # ensurepip, so stdlib venv creation fails there; virtualenv bundles
+        # pip and produces the same .venv/bin/python layout. Re-raise with the
+        # stdlib failure as cause when no fallback exists.
+        virtualenv = shutil.which("virtualenv")
+        if virtualenv is None:
+            raise AgentInstallError(
+                f"venv creation failed and no virtualenv fallback is on PATH: {venv_error}"
+            ) from venv_error
+        _run(
+            [virtualenv, "-p", HERMES_VENV_PYTHON, ".venv"],
+            cwd=repo_dir,
+            context=f"virtualenv -p {HERMES_VENV_PYTHON} .venv (stdlib venv had no ensurepip)",
+        )
 
     if not venv_python.exists():
         raise AgentInstallError(

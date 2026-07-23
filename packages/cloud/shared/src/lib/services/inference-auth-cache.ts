@@ -234,7 +234,12 @@ export async function writeOrgBalanceHint(
     balanceUsd,
     balanceAt,
   };
-  await cache.set(CacheKeys.inference.orgBalance(orgId), hint, CacheTTL.inference.orgBalance);
+  // Physical lifetime is orgBalanceStale (5m): the hint must survive past the
+  // orgBalance freshness window so getGateBalanceUsd can serve it stale-while-
+  // revalidate. `balanceAt` is the freshness clock the reader checks; the debit
+  // settler (lowerOrgBalanceHint) and top-ups (invalidateOrgBalanceHint) still
+  // keep the served value correct on writes.
+  await cache.set(CacheKeys.inference.orgBalance(orgId), hint, CacheTTL.inference.orgBalanceStale);
 }
 
 /** Drop the org-balance gate hint so the next request re-reads it fresh. */

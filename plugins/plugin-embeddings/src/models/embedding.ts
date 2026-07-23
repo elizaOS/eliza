@@ -58,6 +58,10 @@ function extractText(params: TextEmbeddingParams | string | null): string | null
   throw new Error("Invalid embedding params: expected string, { text: string }, or null");
 }
 
+function extractSignal(params: TextEmbeddingParams | string | null): AbortSignal | undefined {
+  return typeof params === "object" && params !== null ? params.signal : undefined;
+}
+
 /**
  * True only when the operator set `EMBEDDING_DIMENSIONS` explicitly. When unset
  * we omit the `dimensions` request field entirely so the endpoint returns its
@@ -129,7 +133,8 @@ function truncate(text: string): string {
 async function requestEmbeddings(
   runtime: IAgentRuntime,
   input: string | string[],
-  embeddingDimension: VectorDimension
+  embeddingDimension: VectorDimension,
+  signal?: AbortSignal
 ): Promise<number[][]> {
   const endpoints = getEmbeddingEndpoints(runtime);
   const expectedCount = Array.isArray(input) ? input.length : 1;
@@ -142,9 +147,13 @@ async function requestEmbeddings(
         endpoint,
         input,
         embeddingDimension,
-        expectedCount
+        expectedCount,
+        signal
       );
     } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
       failures.push(`${endpoint.role} ${endpoint.baseURL}: ${formatFailure(error)}`);
       if (endpoint.role === "primary" && endpoints.length > 1) {
         logger.warn(
@@ -170,7 +179,8 @@ async function requestEmbeddingsFromEndpoint(
   endpoint: EmbeddingEndpoint,
   input: string | string[],
   embeddingDimension: VectorDimension,
-  expectedCount: number
+  expectedCount: number,
+  signal?: AbortSignal
 ): Promise<number[][]> {
   const url = `${endpoint.baseURL}/embeddings`;
 
@@ -188,6 +198,7 @@ async function requestEmbeddingsFromEndpoint(
       input,
       ...(hasExplicitDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
+    ...(signal ? { signal } : {}),
   });
 
   if (!response.ok) {
@@ -264,6 +275,7 @@ export async function handleTextEmbedding(
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
+  const signal = extractSignal(params);
 
   const text = extractText(params);
   if (text === null) {
@@ -278,7 +290,7 @@ export async function handleTextEmbedding(
     throw new Error("Cannot generate embedding for empty text");
   }
 
-  const vectors = await requestEmbeddings(runtime, truncate(trimmed), embeddingDimension);
+  const vectors = await requestEmbeddings(runtime, truncate(trimmed), embeddingDimension, signal);
   const vector = vectors[0];
   if (!vector) {
     throw new Error("Embedding provider returned no vector for the input");

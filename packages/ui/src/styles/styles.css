@@ -161,6 +161,18 @@ body.pwa-standalone {
   touch-action: pan-y;
 }
 
+/* Native shells can ship an older WebView that accepts Tailwind's custom-
+   property touch-action syntax but resolves its empty custom-property slots to
+   the initial `auto` value. Pin the semantic utility to a literal value in
+   installed shells so nested scroll regions cannot hand horizontal rail drags
+   to the browser and terminate them with `pointercancel`. */
+body.native .touch-pan-y,
+body.platform-ios .touch-pan-y,
+body.platform-android .touch-pan-y,
+body.pwa-standalone .touch-pan-y {
+  touch-action: pan-y;
+}
+
 /* Installed iOS PWAs can report a large viewport (`100lvh`) that reaches the
    physical screen while `100dvh` and `innerHeight` remain collapsed above the
    home indicator. Size `html` to the large viewport so its overflow clip and

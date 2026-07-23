@@ -37,6 +37,7 @@ import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { settleOffResponsePath } from "../utils/settle-off-response-path";
 import { withTimeout } from "../utils/with-timeout";
 import {
   computeStateHash,
@@ -99,6 +100,10 @@ import {
   runWakeRestoreIntegrityGate,
   type WakeRestoreIntegrityFailure,
 } from "./wake-restore-integrity";
+import {
+  buildWarmClaimCharacterPayload,
+  WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS,
+} from "./warm-claim-character-push";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -363,6 +368,14 @@ export interface BridgeRequest {
   method: string;
   params?: Record<string, unknown>;
 }
+
+/**
+ * Structural subset of the Cloudflare Workers `ExecutionContext` the shared-tier
+ * bridge needs to defer its post-reply billing tail off the response path.
+ * Routes pass `c.executionCtx`; non-Worker callers (tests, Node) omit it and
+ * the tail runs inline, preserving fully-synchronous settlement.
+ */
+export type BridgeExecutionContext = { waitUntil(promise: Promise<unknown>): void };
 
 /**
  * JSON-RPC error code for a shared-runtime turn rejected by the credit
@@ -2545,6 +2558,7 @@ export class ElizaSandboxService {
   private async bridgeSharedMessageSend(
     rec: AgentSandbox,
     rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
   ): Promise<BridgeResponse> {
     const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
     const text = typeof params.text === "string" ? params.text : "";
@@ -2616,7 +2630,10 @@ export class ElizaSandboxService {
     // (it runs OUTSIDE the inner billing try/catch) — would otherwise propagate
     // without ever refunding, stranding the hold and over-charging the org.
     // settleReservation is idempotent (reservationSettled), so refunding here
-    // never double-refunds a turn that already settled on a normal path.
+    // never double-refunds a turn that already settled on a normal path. The
+    // deferred billing tail below owns its own settle-or-refund end-to-end, so
+    // this catch never races it: by the time the tail is registered, every
+    // throw it can produce is contained inside the tail's own try/catch.
     try {
       const turn = await runSharedAgentTurn({
         character,
@@ -2634,40 +2651,66 @@ export class ElizaSandboxService {
       } else {
         await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
         if (billingContext) {
-          try {
-            const billing = await billUsage(
-              billingContext,
-              this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
-            );
-            const settlement = await settleReservation(billing.totalCost);
-            const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-              type: "chat",
-              content: turn.reply,
-              prompt: text,
-            });
-            if (usageRecord) {
-              await aiBillingRecordsService
-                .record({
-                  context: billingContext,
-                  billing,
-                  usageRecord,
-                  idempotencyKey,
-                  reconciliation: settlement,
-                })
-                .catch((error) => {
-                  logger.error("[shared-runtime] AI billing audit record failed", {
-                    error: error instanceof Error ? error.message : String(error),
-                    agentId: rec.id,
+          // The reply is final once the turn ran and history persisted, but the
+          // billing tail (billUsage → settleReservation → analytics → audit) is
+          // ~1.7s of cross-region Worker→DB RTT. On a Worker, defer it via
+          // executionCtx.waitUntil so it completes off the response path;
+          // without an executionCtx (tests, non-Worker callers) it runs inline,
+          // exactly as before. The deferred task ALWAYS settles the hold:
+          // success settles at billing.totalCost, any failure refunds via the
+          // idempotent settleReservation(0), and a refund throw is contained
+          // and logged (never an unhandled waitUntil rejection) — the #11169
+          // sweep-credit-reservations cron backstops a hold stranded by a
+          // dropped waitUntil or a failed refund.
+          await settleOffResponsePath(executionCtx, async () => {
+            try {
+              const billing = await billUsage(
+                billingContext,
+                this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
+              );
+              const settlement = await settleReservation(billing.totalCost);
+              const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+                type: "chat",
+                content: turn.reply,
+                prompt: text,
+              });
+              if (usageRecord) {
+                await aiBillingRecordsService
+                  .record({
+                    context: billingContext,
+                    billing,
+                    usageRecord,
+                    idempotencyKey,
+                    reconciliation: settlement,
+                  })
+                  .catch((error) => {
+                    logger.error("[shared-runtime] AI billing audit record failed", {
+                      error: error instanceof Error ? error.message : String(error),
+                      agentId: rec.id,
+                    });
                   });
-                });
+              }
+            } catch (error) {
+              // error-policy:J1 deferred-settlement boundary — the response may
+              // already be gone, so the refund is the handling: settle(0) is
+              // idempotent, and a refund failure is logged for the cron sweep.
+              try {
+                await settleReservation(0);
+              } catch (refundError) {
+                logger.error(
+                  "[shared-runtime] deferred billing refund failed; sweep-credit-reservations will reclaim the hold",
+                  {
+                    error: refundError instanceof Error ? refundError.message : String(refundError),
+                    agentId: rec.id,
+                  },
+                );
+              }
+              logger.error("[shared-runtime] billing failed", {
+                error: error instanceof Error ? error.message : String(error),
+                agentId: rec.id,
+              });
             }
-          } catch (error) {
-            await settleReservation(0);
-            logger.error("[shared-runtime] billing failed", {
-              error: error instanceof Error ? error.message : String(error),
-              agentId: rec.id,
-            });
-          }
+          });
         }
       }
 
@@ -2698,6 +2741,7 @@ export class ElizaSandboxService {
   private async bridgeSharedMessageStream(
     rec: AgentSandbox,
     rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
   ): Promise<Response> {
     const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
     const text = typeof params.text === "string" ? params.text : "";
@@ -2779,6 +2823,14 @@ export class ElizaSandboxService {
         start: async (controller) => {
           let reply = "";
           let finished = false;
+          // Once the billing tail is registered it owns settlement end-to-end
+          // (success settles at totalCost, failure refunds). The stream catch
+          // below must then leave the reservation alone: a client cancel makes
+          // the `done` enqueue throw AFTER registration, and racing a
+          // settle(0) against the deferred tail's settle(totalCost) would turn
+          // a fully-delivered, persisted reply into an unbilled one depending
+          // on which write lands first.
+          let billingTailOwnsSettlement = false;
           try {
             for await (const part of parts) {
               if (part.type === "text-delta") {
@@ -2811,46 +2863,79 @@ export class ElizaSandboxService {
               if (turn.navIntent) {
                 await settleReservation(0);
               } else if (billingContext) {
-                try {
-                  const billing = await billUsage(
-                    billingContext,
-                    this.sharedRuntimeBillingUsageForReply(
-                      finalReply,
-                      part.usage,
-                      estimatedInputTokens,
-                    ),
-                  );
-                  const settlement = await settleReservation(billing.totalCost);
-                  const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-                    type: "chat",
-                    content: finalReply,
-                    prompt: text,
-                  });
-                  if (usageRecord) {
-                    await aiBillingRecordsService
-                      .record({
-                        context: billingContext,
-                        billing,
-                        usageRecord,
-                        idempotencyKey,
-                        reconciliation: settlement,
-                      })
-                      .catch((error) => {
-                        logger.error("[shared-runtime] AI billing audit record failed", {
-                          error: error instanceof Error ? error.message : String(error),
-                          agentId: rec.id,
+                // The reply is final once the last token arrived and history
+                // persisted, but the billing tail (billUsage → settleReservation
+                // → analytics → audit) is ~4 serial cross-region Worker→DB
+                // round-trips (~1.5-2s) that previously ran INLINE before the
+                // `done` SSE frame — the exact firstText≈1.4s / done≈4s gap
+                // measured on staging. Same deferral the non-stream send got
+                // (#8759 / settleOffResponsePath): on a Worker the tail runs via
+                // executionCtx.waitUntil OFF the `done` path; without an
+                // executionCtx (tests, non-Worker callers) it runs inline,
+                // exactly as before. The deferred task ALWAYS settles the hold:
+                // success settles at billing.totalCost, any failure refunds via
+                // the idempotent settleReservation(0), and a refund throw is
+                // contained and logged (never an unhandled waitUntil rejection)
+                // — the #11169 sweep-credit-reservations cron backstops a hold
+                // stranded by a dropped waitUntil or a failed refund.
+                billingTailOwnsSettlement = true;
+                await settleOffResponsePath(executionCtx, async () => {
+                  try {
+                    const billing = await billUsage(
+                      billingContext,
+                      this.sharedRuntimeBillingUsageForReply(
+                        finalReply,
+                        part.usage,
+                        estimatedInputTokens,
+                      ),
+                    );
+                    const settlement = await settleReservation(billing.totalCost);
+                    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+                      type: "chat",
+                      content: finalReply,
+                      prompt: text,
+                    });
+                    if (usageRecord) {
+                      await aiBillingRecordsService
+                        .record({
+                          context: billingContext,
+                          billing,
+                          usageRecord,
+                          idempotencyKey,
+                          reconciliation: settlement,
+                        })
+                        .catch((error) => {
+                          logger.error("[shared-runtime] AI billing audit record failed", {
+                            error: error instanceof Error ? error.message : String(error),
+                            agentId: rec.id,
+                          });
                         });
-                      });
+                    }
+                  } catch (error) {
+                    // error-policy:J1 deferred-settlement boundary — the `done`
+                    // frame may already be flushed, so the refund is the
+                    // handling: settle(0) is idempotent, and a refund failure is
+                    // logged for the cron sweep.
+                    try {
+                      await settleReservation(0);
+                    } catch (refundError) {
+                      logger.error(
+                        "[shared-runtime] deferred billing refund failed; sweep-credit-reservations will reclaim the hold",
+                        {
+                          error:
+                            refundError instanceof Error
+                              ? refundError.message
+                              : String(refundError),
+                          agentId: rec.id,
+                        },
+                      );
+                    }
+                    logger.error("[shared-runtime] billing failed", {
+                      error: error instanceof Error ? error.message : String(error),
+                      agentId: rec.id,
+                    });
                   }
-                } catch (error) {
-                  // error-policy:J1 billing boundary translation — the user got
-                  // the reply, but a failed meter write must release the hold.
-                  await settleReservation(0);
-                  logger.error("[shared-runtime] billing failed", {
-                    error: error instanceof Error ? error.message : String(error),
-                    agentId: rec.id,
-                  });
-                }
+                });
               }
               // Attach a VIEWS navigation handoff for a deterministic nav turn so
               // the PWA opens the view (findViewActionHandoff → navigate event in
@@ -2877,8 +2962,12 @@ export class ElizaSandboxService {
             }
           } catch (error) {
             // error-policy:J1 stream boundary translation — partial SSE streams
-            // cannot become HTTP errors, so emit a terminal error frame.
-            await settleReservation(0);
+            // cannot become HTTP errors, so emit a terminal error frame. The
+            // refund only runs while the reservation is still this scope's to
+            // settle — once the billing tail is registered it owns the hold.
+            if (!billingTailOwnsSettlement) {
+              await settleReservation(0);
+            }
             logger.warn("[shared-runtime] stream failed", {
               error: error instanceof Error ? error.message : String(error),
               agentId: rec.id,
@@ -2950,9 +3039,63 @@ export class ElizaSandboxService {
     return null;
   }
 
+  /**
+   * Post-claim character apply (warm pool). A pool container boots GENERIC
+   * (no ELIZA_AGENT_CHARACTER_JSON — agent-warm-pool-creator provisions with
+   * empty env), so after `claimWarmContainer` transfers the DB row the RUNNING
+   * container would still answer as the default Eliza. This pushes the user's
+   * character onto the live runtime via the container's own
+   * `PUT /api/character` route (which applies it in-memory, persists it to the
+   * agent DB so it survives restarts, and journals character history) — no
+   * container restart, no cold boot.
+   *
+   * Bounded and non-fatal by contract: the CALLER treats a failure as
+   * "claim still succeeds, character applies on next container restart"
+   * (the row's agent_config feeds ensureRuntimeAgentStarted / the env path on
+   * any subsequent boot). Throws on failure so the caller can log the
+   * `warm_pool.character_push_failed` event with context.
+   */
+  async pushClaimedWarmContainerCharacter(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "agent_name"
+      | "agent_config"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+  ): Promise<{ pushed: boolean; agentName?: string }> {
+    const payload = buildWarmClaimCharacterPayload(rec.agent_config, rec.agent_name);
+    if (!payload) return { pushed: false };
+
+    const res = await this.fetchAgentApi(rec, "/api/character", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      // error-policy: enrich with a bounded body excerpt; a failed body read
+      // must never mask the HTTP status.
+      const text = await res.text().catch(() => "");
+      throw new Error(`Warm-claim character push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+    }
+    return { pushed: true, agentName: String(payload.name) };
+  }
+
   // Bridge
 
-  async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
+  async bridge(
+    agentId: string,
+    orgId: string,
+    rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
+  ): Promise<BridgeResponse> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec) {
       // Bootstrap window: a freshly-created dedicated agent whose container is
@@ -2962,7 +3105,7 @@ export class ElizaSandboxService {
       // yet "running", so re-resolve by id+org.)
       const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
       if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
-        return this.bridgeSharedBootstrap(bootstrap, rpc);
+        return this.bridgeSharedBootstrap(bootstrap, rpc, executionCtx);
       }
       logger.warn("[agent-sandbox] Bridge call to non-running sandbox", {
         agentId,
@@ -2981,7 +3124,7 @@ export class ElizaSandboxService {
           return await this.bridgeSharedStatus(rec, rpc);
         }
         if (rpc.method === "message.send") {
-          return await this.bridgeSharedMessageSend(rec, rpc);
+          return await this.bridgeSharedMessageSend(rec, rpc, executionCtx);
         }
         return {
           jsonrpc: "2.0",
@@ -3038,13 +3181,14 @@ export class ElizaSandboxService {
   private async bridgeSharedBootstrap(
     rec: AgentSandbox,
     rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
   ): Promise<BridgeResponse> {
     try {
       if (rpc.method === "status.get" || rpc.method === "heartbeat") {
         return await this.bridgeSharedStatus(rec, rpc);
       }
       if (rpc.method === "message.send") {
-        return await this.bridgeSharedMessageSend(rec, rpc);
+        return await this.bridgeSharedMessageSend(rec, rpc, executionCtx);
       }
       return {
         jsonrpc: "2.0",
@@ -4206,7 +4350,12 @@ export class ElizaSandboxService {
     }
   }
 
-  async bridgeStream(agentId: string, orgId: string, rpc: BridgeRequest): Promise<Response | null> {
+  async bridgeStream(
+    agentId: string,
+    orgId: string,
+    rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
+  ): Promise<Response | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
@@ -4221,7 +4370,7 @@ export class ElizaSandboxService {
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     if (rec.execution_tier === "shared") {
-      const response = await this.bridgeSharedMessageStream(rec, rpc);
+      const response = await this.bridgeSharedMessageStream(rec, rpc, executionCtx);
       return response ?? (fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null);
     }
 

@@ -280,6 +280,20 @@ def env_name(adapter: str, benchmark: str) -> str:
     return f"CODE_AGENT_BENCH_{adapter_key}_{benchmark_key}_CMD"
 
 
+def resolve_cerebras_base_url() -> str:
+    # Operators route benchmark traffic through an OpenAI-compatible proxy by
+    # exporting a base URL (e.g. the Eliza Cloud gateway). Cell env_overrides
+    # are applied on top of os.environ in child_env(), so baking the provider
+    # default here would silently clobber that routing — honor the operator's
+    # ambient value first and fall back to the hardcoded default only when
+    # nothing is set.
+    for name in ("CEREBRAS_BASE_URL", "BENCHMARK_BASE_URL", "OPENAI_BASE_URL"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return DEFAULT_CEREBRAS_BASE_URL
+
+
 def visible_env_overrides(
     *,
     adapter: str,
@@ -287,16 +301,22 @@ def visible_env_overrides(
     provider: str,
     model: str,
 ) -> dict[str, str]:
+    base_url = resolve_cerebras_base_url()
     overrides = {
         "BENCHMARK_TASK_AGENT": adapter,
         "BENCHMARK_MODEL_PROVIDER": provider,
         "BENCHMARK_MODEL_NAME": model,
-        "CEREBRAS_BASE_URL": DEFAULT_CEREBRAS_BASE_URL,
+        "CEREBRAS_BASE_URL": base_url,
         "CODE_AGENT_MATRIX_BENCHMARK": benchmark,
         "CODE_AGENT_MATRIX_ADAPTER": adapter,
     }
     if provider == "cerebras":
-        overrides.setdefault("OPENAI_API_BASE", DEFAULT_CEREBRAS_BASE_URL)
+        # OpenAI-SDK-based harnesses read OPENAI_API_BASE; an ambient value is
+        # the operator's explicit routing choice and wins over the resolved
+        # Cerebras base.
+        overrides["OPENAI_API_BASE"] = (
+            os.environ.get("OPENAI_API_BASE", "").strip() or base_url
+        )
     return overrides
 
 

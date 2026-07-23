@@ -4,6 +4,11 @@ LiteLLM is useful when installed, but the benchmark package should still import
 and run smoke tests without it. This module gives the harness one completion
 surface and falls back to OpenAI-compatible HTTP endpoints for local servers
 such as llama.cpp.
+
+Every LLM call in the harness (agent, user simulator, judge) funnels through
+``completion`` here, which makes this the single seam where operator-exported
+base-URL env vars (see ``resolve_base_url``) redirect traffic to a proxy
+instead of the provider's public API.
 """
 
 from __future__ import annotations
@@ -45,16 +50,59 @@ class CompletionResponse:
         self._hidden_params = {"response_cost": response_cost}
 
 
-def _provider_base_url(provider: str | None) -> str | None:
+# Providers that always resolve to an OpenAI-compatible HTTP server rather
+# than LiteLLM's provider routing (which would otherwise pick its own base URL).
+_LOCAL_PROVIDER_KEYS = {"llama.cpp", "llamacpp", "llama-cpp", "local", "openai-compatible"}
+
+# Providers whose upstream API speaks the OpenAI chat-completions dialect, so a
+# generic OPENAI_BASE_URL proxy override is safe to apply to them.
+_OPENAI_COMPATIBLE_PROVIDER_KEYS = {"openai", "cerebras"} | _LOCAL_PROVIDER_KEYS
+
+
+def resolve_base_url(provider: str | None) -> str | None:
+    """Resolve the completion endpoint, honoring operator env before defaults.
+
+    Campaign runs route every LLM call (agent, user simulator, judge) through
+    one OpenAI-compatible proxy by exporting a base-URL env var. A pre-set env
+    var must therefore always win over any hardcoded provider default — never
+    silently fall through to the provider's public API when the operator has
+    pointed traffic elsewhere. Precedence:
+
+      TAU_BENCH_OPENAI_BASE_URL > BENCHMARK_BASE_URL > OPENAI_BASE_URL
+      > CEREBRAS_BASE_URL (cerebras only) > LLAMA_CPP_BASE_URL + localhost
+      (local providers only) > None (caller falls back to the provider default).
+
+    OPENAI_BASE_URL is only applied to OpenAI-dialect providers so a globally
+    exported value cannot hijack e.g. an Anthropic run.
+    """
     provider_key = (provider or "").strip().lower()
-    if provider_key in {"llama.cpp", "llamacpp", "llama-cpp", "local", "openai-compatible"}:
-        return (
-            os.environ.get("TAU_BENCH_OPENAI_BASE_URL")
-            or os.environ.get("OPENAI_BASE_URL")
-            or os.environ.get("LLAMA_CPP_BASE_URL")
-            or "http://127.0.0.1:8080/v1"
-        )
-    return os.environ.get("TAU_BENCH_OPENAI_BASE_URL")
+    chain: list[str | None] = [
+        os.environ.get("TAU_BENCH_OPENAI_BASE_URL"),
+        os.environ.get("BENCHMARK_BASE_URL"),
+    ]
+    if provider_key in _OPENAI_COMPATIBLE_PROVIDER_KEYS:
+        chain.append(os.environ.get("OPENAI_BASE_URL"))
+    if provider_key == "cerebras":
+        chain.append(os.environ.get("CEREBRAS_BASE_URL"))
+    if provider_key in _LOCAL_PROVIDER_KEYS:
+        chain.append(os.environ.get("LLAMA_CPP_BASE_URL"))
+        chain.append("http://127.0.0.1:8080/v1")
+    for candidate in chain:
+        if candidate and candidate.strip():
+            return candidate.strip()
+    return None
+
+
+def _resolve_api_key(provider: str | None) -> str:
+    provider_key = (provider or "").strip().lower()
+    chain: list[str | None] = [os.environ.get("TAU_BENCH_OPENAI_API_KEY")]
+    if provider_key == "cerebras":
+        chain.append(os.environ.get("CEREBRAS_API_KEY"))
+    chain.append(os.environ.get("OPENAI_API_KEY"))
+    for candidate in chain:
+        if candidate:
+            return candidate
+    return "local-no-key"
 
 
 def _openai_compatible_completion(
@@ -64,20 +112,20 @@ def _openai_compatible_completion(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
+    api_base: str | None = None,
+    api_key: str | None = None,
     **kwargs: Any,
 ) -> CompletionResponse:
-    base_url = _provider_base_url(custom_llm_provider)
+    # Per-call api_base (e.g. per-run extra_config) wins over env resolution.
+    base_url = api_base or resolve_base_url(custom_llm_provider)
     if not base_url:
         raise MissingModelClientDependency(
             "litellm is not installed and no OpenAI-compatible endpoint is configured. "
-            "Install litellm or set TAU_BENCH_OPENAI_BASE_URL/OPENAI_BASE_URL."
+            "Install litellm or set TAU_BENCH_OPENAI_BASE_URL / BENCHMARK_BASE_URL / "
+            "OPENAI_BASE_URL (or CEREBRAS_BASE_URL for provider=cerebras)."
         )
 
-    api_key = (
-        os.environ.get("TAU_BENCH_OPENAI_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or "local-no-key"
-    )
+    api_key = api_key or _resolve_api_key(custom_llm_provider)
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -149,7 +197,15 @@ def completion(**kwargs: Any) -> Any:
     if "messages" in kwargs:
         kwargs = {**kwargs, "messages": _sanitize_messages(kwargs.get("messages"))}
     provider_key = str(kwargs.get("custom_llm_provider") or "").strip().lower()
-    if provider_key in {"llama.cpp", "llamacpp", "llama-cpp", "local", "openai-compatible"}:
+    # Resolve the endpoint once, before choosing a backend: LiteLLM would
+    # otherwise route the call to the provider's public API (e.g.
+    # api.cerebras.ai) even when the operator exported a proxy base URL.
+    # A caller-supplied api_base always wins over env resolution.
+    if not kwargs.get("api_base"):
+        resolved_base = resolve_base_url(provider_key)
+        if resolved_base:
+            kwargs["api_base"] = resolved_base
+    if provider_key in _LOCAL_PROVIDER_KEYS:
         return _openai_compatible_completion(**kwargs)
     try:
         from litellm import completion as litellm_completion  # type: ignore
@@ -175,4 +231,5 @@ __all__ = [
     "CompletionResponse",
     "MissingModelClientDependency",
     "completion",
+    "resolve_base_url",
 ]

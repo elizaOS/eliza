@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
-// Structural tests for TasksPageView (#13565, views-redesign epic): the Tasks
-// nav tab hosts the coding-agent tasks panel under the shared, uniform
+// Structural tests for TasksPageView (#13565, views-redesign epic): the
+// Projects nav tab hosts the coding-agent tasks panel under the shared, uniform
 // `ViewHeader`. We assert (a) the shell `ViewHeader` renders with the centered
-// "Tasks" title and its icon-only back button, and (b) the panel is mounted in
+// "Projects" title and its icon-only back button, and (b) the panel is mounted in
 // `fullPage` mode so it suppresses its own internal title row (one header per
 // view, no duplicate heading). The panel + shell surface are mocked to isolate
 // the host's composition from the panel's data behavior.
@@ -38,13 +38,13 @@ afterEach(() => {
 });
 
 describe("TasksPageView", () => {
-  it("renders the shared ViewHeader with a centered 'Tasks' title", () => {
+  it("renders the shared ViewHeader with a centered 'Projects' title", () => {
     render(<TasksPageView />);
     const header = screen.getByTestId("view-header");
     expect(header).toBeTruthy();
     // The heading text lives in the ViewHeader's <h1>, not the panel.
     const heading = within(header).getByRole("heading", { level: 1 });
-    expect(heading.textContent).toBe("Tasks");
+    expect(heading.textContent).toBe("Projects");
   });
 
   it("exposes the icon-only launcher back control from the header", () => {

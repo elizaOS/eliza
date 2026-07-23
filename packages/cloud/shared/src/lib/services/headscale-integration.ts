@@ -184,16 +184,50 @@ export class HeadscaleIntegration {
       `[headscale-integration] waiting for VPN registration: ${nodeName} (timeout ${timeoutMs}ms)`,
     );
 
+    // Suffixed (collision-renamed) matches are gated to nodes created during
+    // THIS poll: renamed nodes keep their suffix forever, so without the gate a
+    // poll would adopt the previous cycle's live green node or a stale orphan
+    // from an earlier failed upgrade. Exact-name matches are not gated.
+    const pollStart = new Date();
     const deadline = Date.now() + timeoutMs;
     let interval = POLL_INTERVAL_INITIAL_MS;
 
     while (Date.now() < deadline) {
       try {
-        const node = await this.client.getNodeByName(nodeName);
+        // Collision-rename tolerant lookup: when the preserved green node holds
+        // the base hostname, Headscale registers blue as `<name>-<random8>`.
+        // Exact-name polling never finds it and the upgrade times out despite a
+        // healthy registration.
+        const node = await this.client.getNodeByNameOrSuffixed(nodeName, {
+          excludeNodeId: options?.excludeNodeId,
+          createdAfter: pollStart,
+        });
 
         if (node && node.ipAddresses.length > 0 && node.id !== options?.excludeNodeId) {
           const ip = node.ipAddresses[0];
-          logger.info(`[headscale-integration] VPN registered for ${nodeName}: ${ip}`);
+          if (node.name !== nodeName) {
+            // The adopted node otherwise keeps its collision suffix forever,
+            // and the base hostname is how later lifecycle steps find this
+            // node (getNodeByNameStrict on the next provision,
+            // cleanupContainerVPN on teardown). While the preserved green node
+            // still holds the base name Headscale rejects the rename — the
+            // suffixed name then simply persists and the createdAt gate above
+            // keeps future polls correct.
+            try {
+              await this.client.renameNode(node.id, nodeName);
+            } catch (error: unknown) {
+              // error-policy:J6 best-effort name reconciliation; registration is
+              // already secured and a rename rejection (expected during the
+              // blue/green overlap) must never fail the upgrade.
+              const msg = error instanceof Error ? error.message : String(error);
+              logger.warn(
+                `[headscale-integration] could not rename node ${node.id} back to ${nodeName}: ${msg}`,
+              );
+            }
+          }
+          logger.info(
+            `[headscale-integration] VPN registered for ${nodeName}: ${ip} (node name ${node.name})`,
+          );
           return { ip, nodeId: node.id };
         }
       } catch (err) {

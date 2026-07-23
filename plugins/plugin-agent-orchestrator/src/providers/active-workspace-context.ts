@@ -23,10 +23,6 @@ import { getCodingWorkspaceService } from "../services/workspace-service.js";
 
 type FrameworkState = Awaited<ReturnType<typeof getTaskAgentFrameworkState>>;
 
-// Unique sentinel so a genuine empty session list is distinguishable from the
-// 2s timeout branch of the Promise.race (a hung backend, not "no sessions").
-const SESSIONS_TIMEOUT_SENTINEL: SessionInfo[] = [];
-
 const FALLBACK_FRAMEWORK_STATE: FrameworkState = {
   configuredSubscriptionProvider: undefined,
   frameworks: [],
@@ -77,27 +73,7 @@ export const activeWorkspaceContextProvider: Provider = {
     let sessions: SessionInfo[] = [];
     if (acpService) {
       try {
-        sessions = await Promise.race([
-          Promise.resolve(acpService.listSessions()),
-          // error-policy:J4 2s cap keeps a hung ACP backend from stalling every
-          // turn; the timeout branch is treated as a degraded read below, not a
-          // fabricated "no sessions" — see the sentinel wrap.
-          new Promise<SessionInfo[]>((resolve) =>
-            setTimeout(() => resolve(SESSIONS_TIMEOUT_SENTINEL), 2000),
-          ),
-        ]);
-        if (sessions === SESSIONS_TIMEOUT_SENTINEL) {
-          // Hung backend past the 2s cap — unknown, not empty. Flag degraded so
-          // the planner doesn't read the empty session set as authoritative.
-          reportProviderFetchFailure(
-            runtime,
-            "ACTIVE_WORKSPACE_CONTEXT",
-            "listSessions:timeout",
-            new Error("ACP listSessions exceeded 2000ms"),
-          );
-          sessions = [];
-          degraded = true;
-        }
+        sessions = await Promise.resolve(acpService.listSessions());
       } catch (err) {
         // error-policy:J7 listSessions threw — backend down, not zero sessions.
         reportProviderFetchFailure(

@@ -2573,17 +2573,26 @@ export async function readRawBody(request, config = {}) {
   }
   const chunks = [];
   let received = 0;
+  let bodyTooLarge = false;
   for await (const chunk of request) {
     received += chunk.length;
     if (received > maxBodyBytes) {
-      // Drain without retaining the remaining bytes so Node can deliver the
-      // structured 413 response instead of resetting a still-uploading client.
-      request.resume();
-      const error = new Error("request_body_too_large");
-      error.statusCode = 413;
-      throw error;
+      // Bun closes the connection before the boundary can write a 413 when an
+      // exception cancels an unread request stream. Drain excess bytes without
+      // retaining them so the response remains portable and memory stays bounded.
+      if (!bodyTooLarge) {
+        request.resume();
+      }
+      bodyTooLarge = true;
+      continue;
     }
     chunks.push(chunk);
+  }
+
+  if (bodyTooLarge) {
+    const error = new Error("request_body_too_large");
+    error.statusCode = 413;
+    throw error;
   }
 
   return Buffer.concat(chunks);

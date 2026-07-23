@@ -40,6 +40,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
 import { decodeMonoPcm16Wav } from "./engine-bridge";
 import {
+	ELIZA_INFERENCE_ABI_VERSION,
 	type ElizaInferenceContextHandle,
 	type ElizaInferenceFfi,
 	loadElizaInferenceFfi,
@@ -92,8 +93,8 @@ describe.skipIf(!isBun || !LIB_PATH || !HAVE_BUNDLE)(
 			ffi?.close();
 		});
 
-		it("loads a v12 build that advertises timed ASR", () => {
-			expect(ffi.libraryAbiVersion).toBe("12");
+		it("loads a current-ABI build that advertises timed ASR", () => {
+			expect(ffi.libraryAbiVersion).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
 			expect(ffi.timedAsrSupported()).toBe(true);
 		});
 
@@ -131,6 +132,9 @@ describe.skipIf(!isBun || !LIB_PATH || !HAVE_BUNDLE)(
 					audioDurationMs * 0.5,
 				);
 			},
+			// freeman.wav is ~17 s of speech; the CPU-only encode+decode takes
+			// ~10 s on a desktop host, well past the 5 s default test timeout.
+			120_000,
 		);
 	},
 );

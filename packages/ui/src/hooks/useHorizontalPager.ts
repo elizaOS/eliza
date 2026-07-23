@@ -1,7 +1,8 @@
 /**
- * Horizontal paging gesture for the home↔launcher rail: axis-lock, half-viewport
- * commit threshold, and velocity-aware settle so a flick commits early and a
- * slow drag springs back. Tuned for the iOS carousel feel.
+ * Horizontal paging gesture for the home↔launcher rail: recoverable axis-lock,
+ * a deliberate-drag commit threshold, and velocity-aware settle so a flick
+ * commits early while an intentional drag does not require crossing half of a
+ * phone screen.
  */
 import * as React from "react";
 import {
@@ -19,12 +20,11 @@ import { beginRailGesture, endRailGesture } from "../state/rail-gesture-store";
 // module as named PAGER_* overrides (see gestures/constants.ts for why each
 // diverges from the shared defaults); the constants below are pager-only feel.
 const MIN_DISTANCE_THRESHOLD = 64;
-// A slow drag commits the page only once the finger has crossed the halfway
-// point of the viewport; short of that it springs back. This is the iOS
-// carousel feel the user asked for ("past the 50% point if I let go it will
-// animate over"). A fast flick still commits early via the velocity path below,
-// so a quick swipe never has to travel the full 50%.
-const DISTANCE_THRESHOLD_RATIO = 0.5;
+// A slow drag commits after crossing 30% of the viewport. Requiring half the
+// screen made ordinary physical-phone swipes reveal the next page and then snap
+// back; 30% remains deliberate while matching the distance a thumb naturally
+// travels. A fast flick still commits earlier through the velocity path below.
+const DISTANCE_THRESHOLD_RATIO = 0.3;
 const MIN_FLICK_DISTANCE = 48;
 const SETTLE_MS = 460;
 const SETTLE_EASING = "cubic-bezier(0.25, 0.1, 0.25, 1)";
@@ -701,7 +701,17 @@ export function useHorizontalPager<
         const ax = Math.abs(dx);
         const ay = Math.abs(dy);
         if (Math.max(ax, ay) < AXIS_COMMIT_SLOP) return;
-        state.axis = ax > ay * AXIS_DOMINANCE_RATIO ? "horizontal" : "vertical";
+        // A human finger rarely starts on a mathematically straight line. Keep
+        // an ambiguous diagonal pending until one axis actually dominates;
+        // treating every non-horizontal first sample as vertical permanently
+        // cancelled otherwise-valid swipes after only a few pixels of jitter.
+        if (ax > ay * AXIS_DOMINANCE_RATIO) {
+          state.axis = "horizontal";
+        } else if (ay > ax * AXIS_DOMINANCE_RATIO) {
+          state.axis = "vertical";
+        } else {
+          return;
+        }
         // The promotion was armed at pointerdown (so the compositor had the
         // slop window to build the layer before the first tracked frame). A
         // gesture that commits VERTICAL is the home widget list scrolling, not
@@ -711,6 +721,10 @@ export function useHorizontalPager<
         if (state.axis === "vertical") dropRailPromotion();
       }
       if (state.axis !== "horizontal") return;
+
+      // Once horizontal intent is established, keep the WebView from handing a
+      // slightly diagonal continuation to native vertical panning mid-gesture.
+      event.preventDefault();
 
       // Touch pointers are IMPLICITLY captured to the target on pointerdown, so
       // an explicit setPointerCapture is redundant — and on Android WebView it

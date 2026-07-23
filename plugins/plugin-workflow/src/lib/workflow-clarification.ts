@@ -233,13 +233,9 @@ function findArrayIndexByNameOrId(arr: unknown[], key: string): number {
  * `parameters must be object`. Throwing here gives `applyResolutions` a
  * chance to fall back to the userNotes path.
  */
-export function setByDotPath(
-  obj: Record<string, unknown>,
-  paramPath: string,
-  value: unknown
-): void {
+export function setByDotPath(obj: object, paramPath: string, value: unknown): void {
   const segments = parseParamPath(paramPath);
-  let cur: Record<string, unknown> | unknown[] = obj;
+  let cur = obj as Record<string, unknown> | unknown[];
   for (let i = 0; i < segments.length - 1; i += 1) {
     const seg = segments[i];
     const isArrayIndex = /^[0-9]+$/.test(seg);
@@ -314,13 +310,14 @@ export function setByDotPath(
  * Subsequent LLM regeneration rounds read these notes from `_meta` so the
  * user's answer is preserved across the failure rather than discarded.
  */
-function appendUserNote(draft: Record<string, unknown>, value: string): void {
-  const existingMeta = draft._meta;
+function appendUserNote(draft: object, value: string): void {
+  const draftRecord = draft as Record<string, unknown>;
+  const existingMeta = draftRecord._meta;
   const meta =
     existingMeta && typeof existingMeta === 'object'
       ? (existingMeta as Record<string, unknown>)
       : {};
-  draft._meta = meta;
+  draftRecord._meta = meta;
 
   let notes: string[];
   if (Array.isArray(meta.userNotes)) {
@@ -333,7 +330,7 @@ function appendUserNote(draft: Record<string, unknown>, value: string): void {
 }
 
 export function applyResolutions(
-  draft: Record<string, unknown>,
+  draft: object,
   resolutions: ReadonlyArray<unknown>
 ): { ok: true } | { ok: false; error: string; paramPath?: string } {
   for (const r of resolutions) {
@@ -414,7 +411,7 @@ export function applyResolutions(
  * to send the answered question text and match by value here instead.
  */
 export function pruneResolvedClarifications(
-  draft: Record<string, unknown>,
+  draft: object,
   resolved: ReadonlySet<string>,
   freeFormCount = 0
 ): void {

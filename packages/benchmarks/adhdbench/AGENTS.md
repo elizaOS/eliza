@@ -2,8 +2,9 @@
 
 Attention & context scaling benchmark for ElizaOS agents. Measures whether an
 agent selects the correct action and context as cognitive load increases, producing
-an attention scaling curve (accuracy vs. context load). Not registered in the
-suite orchestrator registry — run directly via its own CLI.
+an attention scaling curve (accuracy vs. context load). Runnable directly via
+its own CLI or through the orchestrator's `adhdbench` adapter
+(`orchestrator/adapters.py`).
 
 ## Run
 
@@ -28,8 +29,8 @@ python scripts/run_benchmark.py list
 python scripts/run_benchmark.py baselines
 ```
 
-`--provider` is required (no default). Choices: `mock-passthrough`, `eliza`,
-`openai`, `cerebras`, `groq`, `openrouter`, `vllm`.
+`--provider` defaults to `eliza` (the TypeScript benchmark bridge). Choices:
+`mock-passthrough`, `eliza`, `openai`, `cerebras`, `groq`, `openrouter`, `vllm`.
 
 ## Smoke test (no API keys)
 
@@ -60,13 +61,17 @@ pytest tests/ -v
 | `elizaos_adhdbench/config.py` | All tuneable axes (scale points, levels, configs) |
 | `elizaos_adhdbench/types.py` | Frozen scenario/result types |
 | `elizaos_adhdbench/reporting.py` | Markdown, JSON, ASCII scaling curve output |
-| `tests/` | pytest suite (144 tests) |
+| `elizaos_adhdbench/baselines.py` | Random + always-REPLY baselines |
+| `tests/` | pytest suite (150 tests) |
 
 ## Notes
 
 - Results write to `./adhdbench_results/` by default (override with `--output`).
-- Not registered in `registry/commands.py` or `registry/scores.py` — no orchestrator invocation path.
-- 45 scenarios across 3 levels: L0 (action dispatch), L1 (context tracking), L2 (complex execution).
+- Orchestrator integration is via the `adhdbench` adapter in
+  `orchestrator/adapters.py` (there is no `registry/commands.py` entry).
+- 45 authored scenarios across 3 levels: L0 (action dispatch), L1 (context
+  tracking), L2 (complex execution); `--expand-scenarios` adds 450 generated
+  edge variants (495 total).
 - 5 scale points: 10–200 registered actions; 2 configurations: basic vs full (advancedMemory + advancedPlanning).
 - Full background: [README.md](README.md).
 

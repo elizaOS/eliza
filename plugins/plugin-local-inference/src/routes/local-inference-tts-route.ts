@@ -6,11 +6,14 @@
  * drives the TEXT_TO_SPEECH model over the platform provider chain
  * (`eliza-local-inference` → capacitor → device-bridge → AOSP) and returns the
  * first provider's audio. The sanitizer and `normalizeAudioBytes` are exported
- * as pure helpers for the route-contract fuzz tests.
+ * as pure helpers for the route-contract fuzz tests. With `ELIZA_TTS_DEBUG`
+ * set, the handler traces `server:local-tts:*` phases through the structured
+ * logger, mirroring the cloud proxy's `server:cloud-tts:*` tracing.
  */
 
 import type http from "node:http";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
+import { ttsDebug, ttsDebugTextPreview } from "@elizaos/shared";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
@@ -219,11 +222,20 @@ export async function handleLocalInferenceTtsRoute(
 
 	const runtime = state.current;
 	if (!runtime) {
+		ttsDebug("server:local-tts:reject", { reason: "runtime_unavailable" });
 		sendJson(res, 503, {
 			error: "Local inference TEXT_TO_SPEECH is not available",
 		});
 		return true;
 	}
+
+	const ttsPreview = ttsDebugTextPreview(text);
+	ttsDebug("server:local-tts:request", {
+		textChars: text.length,
+		preview: ttsPreview,
+		...(ttsRequest.voice ? { voice: ttsRequest.voice } : {}),
+		...(ttsRequest.modelId ? { modelId: ttsRequest.modelId } : {}),
+	});
 
 	const abortController = new AbortController();
 	let completed = false;
@@ -243,20 +255,35 @@ export async function handleLocalInferenceTtsRoute(
 			abortController.signal,
 		);
 		if (bytes.length === 0) {
+			ttsDebug("server:local-tts:reject", {
+				reason: "empty_audio",
+				preview: ttsPreview,
+			});
 			sendJson(res, 502, {
 				error: "Local inference TEXT_TO_SPEECH returned empty audio",
 			});
 			return true;
 		}
 		completed = true;
+		const contentType = sniffAudioContentType(bytes);
+		ttsDebug("server:local-tts:success", {
+			bytes: bytes.byteLength,
+			contentType,
+			preview: ttsPreview,
+		});
 		res.writeHead(200, {
-			"Content-Type": sniffAudioContentType(bytes),
+			"Content-Type": contentType,
 			"Cache-Control": "no-store",
 			"Content-Length": String(bytes.byteLength),
 		});
 		res.end(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
 	} catch (err) {
 		if (!clientClosed && !abortController.signal.aborted && !isClosed(res)) {
+			ttsDebug("server:local-tts:reject", {
+				reason: "synthesis_failed",
+				error: err instanceof Error ? err.message : String(err),
+				preview: ttsPreview,
+			});
 			sendJson(res, 502, {
 				error: `Local inference TTS error: ${err instanceof Error ? err.message : String(err)}`,
 			});

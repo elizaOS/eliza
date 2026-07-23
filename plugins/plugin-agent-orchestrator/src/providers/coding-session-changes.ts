@@ -61,17 +61,7 @@ export const codingSessionChangesProvider: Provider = {
 
     let sessions: SessionInfo[] = [];
     try {
-      sessions = await Promise.race([
-        Promise.resolve(acp.listSessions()),
-        // error-policy:J4 the 2s cap prevents a hung ACP backend from stalling
-        // every Stage-1 turn; resolving [] here is a bounded degrade, not a
-        // fabricated "no sessions" — the diff-grounding block is purely additive
-        // (it only ever ADDS a real recent change set), so an empty read drops
-        // the block rather than asserting anything false to the model.
-        new Promise<SessionInfo[]>((resolve) =>
-          setTimeout(() => resolve([]), 2000),
-        ),
-      ]);
+      sessions = await Promise.resolve(acp.listSessions());
     } catch (err) {
       // error-policy:J7 listSessions threw — the ACP backend is broken, not
       // "no coding changes." Surface it (warn + reportError) instead of the

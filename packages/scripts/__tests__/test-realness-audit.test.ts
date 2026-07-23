@@ -321,12 +321,50 @@ describe("test-realness-audit", () => {
     const result = spawnSync(
       "node",
       [SCRIPT_PATH, "--repo-root", root, "--check"],
-      { encoding: "utf8" },
+      { encoding: "utf8", env: { ...process.env, GITHUB_BASE_REF: "" } },
     );
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("diff-scoped ratchet could not run");
-    expect(result.stderr).toContain("Ensure CI fetches origin/develop");
+    expect(result.stderr).toContain("Ensure CI fetches the PR base branch");
+  });
+
+  test("resolveBaseRef honors GITHUB_BASE_REF over the develop default (#16908)", () => {
+    const root = makeRepo();
+    git(root, "init", "--quiet", "--initial-branch=develop");
+    git(root, "config", "user.email", "audit@test");
+    git(root, "config", "user.name", "audit");
+    write(root, "README.md", "base\n");
+    git(root, "add", "README.md");
+    git(root, "commit", "--quiet", "-m", "init");
+    git(root, "branch", "main");
+
+    // A promotion PR targeting main must diff against main, not develop.
+    expect(audit.resolveBaseRef(root, { GITHUB_BASE_REF: "main" })).toBe(
+      "main",
+    );
+    // Local/push runs (no base ref in the environment) keep the develop default.
+    expect(audit.resolveBaseRef(root, {})).toBe("develop");
+    expect(audit.resolveBaseRef(root, { GITHUB_BASE_REF: "  " })).toBe(
+      "develop",
+    );
+  });
+
+  test("a declared but unfetched base ref skips rather than silently diffing develop (#16908)", () => {
+    const root = makeRepo();
+    git(root, "init", "--quiet", "--initial-branch=develop");
+    git(root, "config", "user.email", "audit@test");
+    git(root, "config", "user.name", "audit");
+    write(root, "README.md", "base\n");
+    git(root, "add", "README.md");
+    git(root, "commit", "--quiet", "-m", "init");
+
+    // GITHUB_BASE_REF names a branch this checkout never fetched: the audit
+    // must return null (reported as a fetch problem in --check) instead of
+    // falling back to develop and producing a wrong-base regression list.
+    expect(
+      audit.resolveBaseRef(root, { GITHUB_BASE_REF: "release/next" }),
+    ).toBeNull();
   });
 
   test("--check rejects a source archive without a verifiable Git index", () => {

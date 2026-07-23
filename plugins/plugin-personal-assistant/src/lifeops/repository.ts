@@ -3206,6 +3206,45 @@ export class LifeOpsRepository {
     return rows.map(parseOccurrenceView);
   }
 
+  /**
+   * Recently-completed occurrences (joined with their definitions for titles),
+   * newest first. Feeds the LifeOps provider's "completed today" context so an
+   * end-of-day recap can lead with the owner's real wins instead of reporting
+   * an empty day — the overview query above deliberately excludes completed
+   * occurrences, which left recap turns blind to finished work (#16935).
+   * `sinceIso` bounds on `updated_at` (completion bumps it); callers narrow to
+   * the owner's local day in TypeScript where timezone math belongs.
+   */
+  async listCompletedOccurrenceViewsSince(
+    agentId: string,
+    sinceIso: string,
+    limit = 24,
+  ): Promise<LifeOpsOccurrenceView[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT occurrence.*,
+              definition.kind AS definition_kind,
+              definition.status AS definition_status,
+              definition.cadence_json AS definition_cadence_json,
+              definition.title AS definition_title,
+              definition.description AS definition_description,
+              definition.priority AS definition_priority,
+              definition.timezone AS definition_timezone,
+              definition.source AS definition_source,
+              definition.goal_id AS definition_goal_id
+         FROM app_lifeops.life_task_occurrences AS occurrence
+         JOIN app_lifeops.life_task_definitions AS definition
+           ON definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id
+        WHERE occurrence.agent_id = ${sqlQuote(agentId)}
+          AND occurrence.state = 'completed'
+          AND occurrence.updated_at >= ${sqlQuote(sinceIso)}
+        ORDER BY occurrence.updated_at DESC
+        LIMIT ${sqlInteger(limit)}`,
+    );
+    return rows.map(parseOccurrenceView);
+  }
+
   async updateOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
     await executeRawSql(
       this.runtime,
@@ -7954,18 +7993,23 @@ export class LifeOpsRepository {
     );
   }
 
+  /**
+   * Scheduled-task history entries. `taskId` narrows to one item; omitting it
+   * returns recent history across ALL of the agent's scheduled items — the
+   * shape a recap/"what happened today" turn needs. History reads used to
+   * hard-require a taskId, which made the planner's natural id-less
+   * SCHEDULED_TASKS_HISTORY call error MISSING_TASK_ID mid-recap (#16935).
+   */
   async listScheduledTaskLog(args: {
     agentId: string;
-    taskId: string;
+    taskId?: string;
     sinceIso?: string;
     untilIso?: string;
     excludeRollups?: boolean;
     limit?: number;
   }): Promise<import("@elizaos/plugin-scheduling").ScheduledTaskLogEntry[]> {
-    const clauses: string[] = [
-      `agent_id = ${sqlQuote(args.agentId)}`,
-      `task_id = ${sqlQuote(args.taskId)}`,
-    ];
+    const clauses: string[] = [`agent_id = ${sqlQuote(args.agentId)}`];
+    if (args.taskId) clauses.push(`task_id = ${sqlQuote(args.taskId)}`);
     if (args.sinceIso)
       clauses.push(`occurred_at >= ${sqlQuote(args.sinceIso)}`);
     if (args.untilIso) clauses.push(`occurred_at < ${sqlQuote(args.untilIso)}`);
@@ -7974,12 +8018,16 @@ export class LifeOpsRepository {
       typeof args.limit === "number" && args.limit > 0
         ? `LIMIT ${sqlInteger(args.limit)}`
         : "";
+    // Single-task reads stay chronological (the log-view contract); the
+    // cross-task shape returns most-recent-first so the LIMIT keeps the
+    // entries a recap actually wants instead of the oldest rows in the table.
+    const order = args.taskId ? "ASC" : "DESC";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_scheduling.life_scheduled_task_log
         WHERE ${clauses.join(" AND ")}
-        ORDER BY occurred_at ASC
+        ORDER BY occurred_at ${order}
         ${limit}`,
     );
     return rows.map(parseScheduledTaskLogRow);

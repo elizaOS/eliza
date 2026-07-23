@@ -1,7 +1,14 @@
 #!/usr/bin/env node
+
+/**
+ * Runs a worktree-scoped Vite server with deterministic registered ports. The
+ * registry owns allocation while the shared Vite resolver owns runtime choice.
+ */
+
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveViteCommand } from "../../app-core/scripts/lib/dev-ui-vite.mjs";
 import {
   defaultRegistryPath,
   normalizeWorktreePath,
@@ -28,7 +35,8 @@ console.log(
     `[dev:shared] registry=${registryPath}`,
 );
 
-const child = spawn("bun", ["--bun", "vite"], {
+const viteCommand = resolveViteCommand({ appDir });
+const child = spawn(viteCommand.command, viteCommand.args, {
   cwd: appDir,
   env,
   stdio: "inherit",

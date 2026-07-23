@@ -3,7 +3,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
+import type {
+  BridgeExecutionContext,
+  BridgeRequest,
+} from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -57,10 +60,22 @@ async function __hono_POST(
     }
 
     const rpcRequest = parsed.data as BridgeRequest;
+    // Workers only: hand the bridge an executionCtx so the shared-tier turn can
+    // defer its billing tail (billUsage → settle → analytics → audit) off the
+    // response path via waitUntil. Hono's executionCtx getter THROWS outside a
+    // Worker (tests, Node) — degrade to undefined there so the bridge settles
+    // inline, preserving fully-synchronous behavior.
+    let executionCtx: BridgeExecutionContext | undefined;
+    try {
+      executionCtx = _ctx?.executionCtx;
+    } catch {
+      executionCtx = undefined;
+    }
     const response = await elizaSandboxService.bridge(
       agentId,
       user.organization_id,
       rpcRequest,
+      executionCtx,
     );
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);

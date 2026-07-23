@@ -156,6 +156,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # Fail fast on missing/invalid/unfunded reviewer credentials before the
+      # expensive dependency install + browser/model walkthrough. Runs after
+      # setup-node so it uses the pinned toolchain, not the runner's system node.
+      - name: Preflight visual reviewer credentials and credits
+        run: node scripts/ai-qa/reviewer-preflight.mjs
+
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
@@ -185,7 +191,7 @@ jobs:
         run: bun run --cwd packages/app build:web
 
       - name: Drive + record + vision-review the full walkthrough (live)
-        run: bun run --cwd packages/app test:e2e:walkthrough:live
+        run: bun run --cwd packages/app test:e2e:walkthrough:live -- --reviewer-preflighted
 
       - name: Upload walkthrough screenshots + recording + verdicts
         if: ${{ always() }}
