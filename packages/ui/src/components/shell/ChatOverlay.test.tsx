@@ -3116,9 +3116,37 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     // "+" → "Search chat…" reveals the search panel over the transcript.
     openSearchFromComposerMenu();
     const searchLayer = screen.getByTestId("chat-message-search");
-    expect(searchLayer.className).toContain("bg-black/20");
-    expect(searchLayer.className).not.toContain("bg-scrim");
+    expect(searchLayer.className).not.toContain("bg-black/20");
+    expect(searchLayer.className).not.toContain("backdrop-blur");
     expect(screen.getByTestId("message-search-panel")).toBeTruthy();
+    const transcript = screen.getByTestId("chat-thread-scroll");
+    expect(transcript.getAttribute("aria-hidden")).toBe("true");
+    expect(transcript.getAttribute("tabindex")).toBe("-1");
+    expect(transcript.closest("[inert]")).toBeTruthy();
+  });
+
+  it("keeps search-result scrolling from stepping or closing the chat sheet", () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    openSheet();
+    openSearchFromComposerMenu();
+
+    const sheet = screen.getByTestId("chat-sheet");
+    const searchScroller = screen.getByTestId("message-search-scroll");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+
+    // This bubbles through the fieldset's trackpad-detent handler. The search
+    // viewport must claim it before that handler interprets it as a sheet pull.
+    fireEvent.wheel(searchScroller, { deltaY: -120 });
+
+    // The pinned input is a sibling of the scroll viewport. Its wheel gesture
+    // still belongs to the open search mode and must never resize the sheet.
+    fireEvent.wheel(screen.getByTestId("message-search-input"), {
+      deltaY: -120,
+    });
+
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(screen.getByTestId("chat-message-search")).toBeTruthy();
   });
 
   it("drives the header search → query → jump path against the real search API shape (#14330)", async () => {

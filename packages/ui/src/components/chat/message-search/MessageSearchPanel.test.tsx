@@ -69,6 +69,42 @@ describe("MessageSearchPanel", () => {
     expect(screen.getByText(/Agent ·/)).toBeTruthy();
   });
 
+  it("owns scrolling for long keyboard-anchored result lists", async () => {
+    const search = vi.fn(async () =>
+      Array.from({ length: 18 }, (_, index) =>
+        result({
+          messageId: `m${index}`,
+          snippet: `result ${index}`,
+        }),
+      ),
+    );
+    render(
+      <MessageSearchPanel
+        search={search}
+        onJump={vi.fn()}
+        onClose={vi.fn()}
+        layout="keyboard-anchored"
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("message-search-input"), {
+      target: { value: "history" },
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("message-search-result")).toHaveLength(18),
+    );
+
+    const scroller = screen.getByTestId("message-search-scroll");
+    const list = screen.getByTestId("message-search-results");
+    expect(scroller.hasAttribute("data-chat-sheet-scroll-region")).toBe(true);
+    expect(scroller.className).toContain("touch-pan-y");
+    expect(scroller.className).toContain("overflow-y-auto");
+    expect(scroller.className).not.toContain("justify-end");
+    // Auto margin bottom-aligns a short list, but collapses to zero once the
+    // list overflows so its first result remains reachable by native scrolling.
+    expect(list.className).toContain("mt-auto");
+  });
+
   it("jumps to a result and closes", async () => {
     const onJump = vi.fn();
     const onClose = vi.fn();

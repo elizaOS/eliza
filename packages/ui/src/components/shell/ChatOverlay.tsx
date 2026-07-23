@@ -3308,17 +3308,20 @@ export function ChatOverlay({
   // the pointer drag. Wheel events accumulate with a short decay and step once
   // per threshold with a cooldown, so a single physical swipe moves ONE detent
   // (no accidental multi-jumps). Scoped to the sheet chrome: events that
-  // originate inside the transcript scroller belong to transcript scrolling
-  // and are ignored here, so reading history never resizes the sheet.
+  // originate inside an owned scroll region belong to that region and are
+  // ignored here, so reading history or search results never resize the sheet.
   const wheelStepAccRef = React.useRef(0);
   const wheelStepCooldownRef = React.useRef(0);
   const wheelStepDecayRef = React.useRef<number | null>(null);
   const onSheetWheel = React.useCallback(
     (e: React.WheelEvent) => {
-      if (firstRunOpen || draggingRef.current) return;
+      // Search is a modal interaction inside the full-height sheet. Every wheel
+      // gesture belongs to its query/results surface, including gestures that
+      // begin over the pinned input rather than the scrolling result viewport.
+      if (firstRunOpen || draggingRef.current || searchOpen) return;
       if (
         e.target instanceof Element &&
-        e.target.closest("#continuous-thread")
+        e.target.closest("#continuous-thread, [data-chat-sheet-scroll-region]")
       ) {
         return;
       }
@@ -3361,6 +3364,7 @@ export function ChatOverlay({
     },
     [
       firstRunOpen,
+      searchOpen,
       pilled,
       sheetOpen,
       expanded,
@@ -5539,17 +5543,12 @@ export function ChatOverlay({
                   <div
                     data-testid="chat-message-search"
                     data-keyboard-open={keyboardLiftActive ? "true" : undefined}
-                    // Bottom-anchored, NON-scrolling flex column. The panel
-                    // itself owns scrolling in its results region and pins its
-                    // search input to the bottom (`keyboard-anchored` layout),
-                    // so the input the user types into always sits right above
-                    // a raised soft keyboard — the whole overlay is already
-                    // lifted by `effectiveKeyboardInset`, so the panel bottom IS
-                    // the top of the keyboard. Making THIS wrapper scroll (the
-                    // old `overflow-y-auto`) let the input scroll away under the
-                    // keyboard on iOS; keep it `overflow-hidden` and let the
-                    // inner results list be the only scroll region.
-                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-black/20 px-4 pb-3 pt-2 backdrop-blur-md"
+                    // The sheet already owns the glass surface. Search reuses
+                    // that single layer while the transcript beneath is hidden
+                    // and inert, avoiding the opaque double-blur slab that a
+                    // second backdrop produced. Only the inner results list
+                    // scrolls, keeping the input pinned above the keyboard.
+                    className="absolute inset-0 z-30 flex flex-col overflow-hidden px-4 pb-3 pt-2"
                   >
                     <MessageSearchPanel
                       search={runMessageSearch}
@@ -5567,8 +5566,9 @@ export function ChatOverlay({
                   <MessageScrollerSendFollow request={scrollToEndRequest} />
                   <MessageScroller>
                     <motion.div
+                      inert={searchOpen || undefined}
                       className="flex size-full min-h-0 flex-col"
-                      style={{ opacity: threadContentOpacity }}
+                      style={{ opacity: searchOpen ? 0 : threadContentOpacity }}
                     >
                       <MessageScrollerViewport
                         id="continuous-thread"
@@ -5576,8 +5576,10 @@ export function ChatOverlay({
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
                         aria-label="conversation history"
-                        aria-hidden={!sheetOpen ? true : undefined}
-                        tabIndex={sheetOpen ? 0 : -1}
+                        aria-hidden={
+                          !sheetOpen || searchOpen ? true : undefined
+                        }
+                        tabIndex={sheetOpen && !searchOpen ? 0 : -1}
                         onKeyDown={(e) => {
                           if (e.key === "Escape") {
                             e.preventDefault();
