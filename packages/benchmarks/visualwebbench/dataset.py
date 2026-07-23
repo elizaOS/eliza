@@ -34,6 +34,12 @@ logger = logging.getLogger(__name__)
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "smoke.jsonl"
 DEFAULT_IMAGE_CACHE = Path.home() / ".cache" / "elizaos" / "visualwebbench" / "images"
 
+# Upstream publishes to a moving main branch; this pin names the exact corpus
+# a score was computed over.
+PINNED_HF_REVISIONS: dict[str, str] = {
+    "visualwebbench/VisualWebBench": "9dace8acebf210929bd47256d7ded44439377946",
+}
+
 EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
     (
         "overlay-noise",
@@ -86,6 +92,7 @@ class VisualWebBenchDataset:
         *,
         fixture_path: Path | None = None,
         hf_repo: str = "visualwebbench/VisualWebBench",
+        hf_revision: str | None = None,
         split: str = "test",
         task_types: Iterable[VisualWebBenchTaskType] = VISUALWEBBENCH_TASK_TYPES,
         image_cache_dir: Path | None = None,
@@ -93,6 +100,13 @@ class VisualWebBenchDataset:
     ) -> None:
         self.fixture_path = fixture_path or FIXTURE_PATH
         self.hf_repo = hf_repo
+        # Scores must name an exact corpus; the known upstream repo publishes
+        # to a moving main branch, so pin it unless the caller overrides.
+        self.hf_revision = (
+            hf_revision
+            if hf_revision is not None
+            else PINNED_HF_REVISIONS.get(hf_repo)
+        )
         self.split = split
         self.task_types = tuple(task_types)
         self.image_cache_dir = (image_cache_dir or DEFAULT_IMAGE_CACHE).resolve()
@@ -168,6 +182,7 @@ class VisualWebBenchDataset:
                     self.hf_repo,
                     task_type.value,
                     split=self.split,
+                    revision=self.hf_revision,
                     streaming=True,
                 )
             except Exception as exc:

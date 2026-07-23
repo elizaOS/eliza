@@ -25,6 +25,12 @@ import {
   residualsGateEnabled,
   summarizeResiduals,
 } from "../services/completion-residuals.js";
+import {
+  createOwnedArtifactRecord,
+  ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
+  type OrchestratorOwnedArtifact,
+  readOwnedArtifactsFromMetadata,
+} from "../services/orchestrator-artifact-ownership.js";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -279,6 +285,161 @@ describe("collectCompletionResiduals — unbound tasks (repoExpected=false)", ()
       repoExpected: true,
     });
     expect(result.status).toBe("residuals");
+  });
+});
+
+describe("collectCompletionResiduals — orchestrator-owned scaffold paths", () => {
+  function writeOrchestratorOwnedScaffolds(
+    workdir: string,
+  ): OrchestratorOwnedArtifact[] {
+    const files = [
+      ["AGENTS.md", "agent identity\n"],
+      ["CLAUDE.md", "agent identity\n"],
+      ["SKILLS.md", "# Skills\n"],
+    ] as const;
+    const artifacts: OrchestratorOwnedArtifact[] = [];
+    for (const [path, content] of files) {
+      writeFileSync(join(workdir, path), content);
+      const record = createOwnedArtifactRecord(
+        workdir,
+        path,
+        content,
+        path === "SKILLS.md" ? "skills-manifest" : "identity-scaffold",
+      );
+      if (record) artifacts.push(record);
+    }
+    return artifacts;
+  }
+
+  it("does not classify unchanged fingerprinted orchestrator scaffolds as residuals", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    const orchestratorOwnedArtifacts = writeOrchestratorOwnedScaffolds(workdir);
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      orchestratorOwnedArtifacts,
+    });
+
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+  });
+
+  it("recovers unchanged scaffold ownership from persisted session metadata after restart", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    const orchestratorOwnedArtifacts = writeOrchestratorOwnedScaffolds(workdir);
+    const persistedMetadata = JSON.parse(
+      JSON.stringify({
+        [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]: orchestratorOwnedArtifacts,
+      }),
+    ) as Record<string, unknown>;
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      orchestratorOwnedArtifacts:
+        readOwnedArtifactsFromMetadata(persistedMetadata),
+    });
+
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+  });
+
+  it("still blocks an unchanged orchestrator scaffold after git add stages it", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    const orchestratorOwnedArtifacts = writeOrchestratorOwnedScaffolds(workdir);
+    git(workdir, "add", "SKILLS.md");
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      orchestratorOwnedArtifacts,
+    });
+
+    expect(result.status).toBe("residuals");
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual(["A  SKILLS.md"]);
+  });
+
+  it("still blocks shell-written same-name paths when no orchestrator ownership was recorded", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    writeFileSync(join(workdir, "AGENTS.md"), "agent shell write\n");
+    writeFileSync(join(workdir, "CLAUDE.md"), "agent shell write\n");
+    writeFileSync(join(workdir, "SKILLS.md"), "agent shell write\n");
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+    });
+
+    expect(result.status).toBe("residuals");
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual([
+      "?? AGENTS.md",
+      "?? CLAUDE.md",
+      "?? SKILLS.md",
+    ]);
+  });
+
+  it("still blocks when a fingerprinted orchestrator scaffold is changed later", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    const orchestratorOwnedArtifacts = writeOrchestratorOwnedScaffolds(workdir);
+    writeFileSync(join(workdir, "AGENTS.md"), "agent shell rewrite\n");
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      orchestratorOwnedArtifacts,
+    });
+
+    expect(result.status).toBe("residuals");
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual(["?? AGENTS.md"]);
+  });
+
+  it("still blocks workspace-local completion evidence because it is not a scaffold exemption", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    mkdirSync(join(workdir, ".eliza", "trajectories"), { recursive: true });
+    writeFileSync(
+      join(workdir, ".eliza", "trajectories", "completion-evidence.jsonl"),
+      '{"ok":true}\n',
+    );
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+    });
+
+    expect(result.status).toBe("residuals");
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual(["?? .eliza/"]);
+  });
+
+  it("still blocks tracked scaffold-path modifications even without a tool-path signal", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    writeFileSync(join(workdir, "AGENTS.md"), "tracked manual\n");
+    git(workdir, "add", "AGENTS.md");
+    git(workdir, "commit", "-q", "-m", "add manual");
+    writeFileSync(join(workdir, "AGENTS.md"), "modified manual\n");
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+    });
+
+    expect(result.status).toBe("residuals");
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual([" M AGENTS.md"]);
   });
 });
 

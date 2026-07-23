@@ -21,7 +21,14 @@ import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../src/services/acp-service.js";
-import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
+import {
+  ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
+  type OrchestratorOwnedArtifact,
+} from "../../src/services/orchestrator-artifact-ownership.js";
+import {
+  OrchestratorTaskService,
+  residualsOrchestratorOwnedArtifacts,
+} from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import {
   type CreateTaskInput,
@@ -2731,5 +2738,81 @@ describe("OrchestratorTaskService — retry-budget/router-cap reconciliation (#1
     });
     const afterBlip = must(await service.getTask(task.id), "after blip");
     expect(afterBlip.status).not.toBe("failed");
+  });
+});
+
+describe("OrchestratorTaskService — residuals owned-artifact resolution", () => {
+  function ownedArtifact(artifactPath: string): OrchestratorOwnedArtifact {
+    return {
+      path: artifactPath,
+      sha256: "a".repeat(64),
+      byteLength: 42,
+      source: "identity-scaffold",
+    };
+  }
+
+  it("returns no ownership claims without a session, even with a live ledger", () => {
+    expect(
+      residualsOrchestratorOwnedArtifacts(
+        {
+          getOrchestratorOwnedArtifacts: () => [ownedArtifact("AGENTS.md")],
+        },
+        undefined,
+      ),
+    ).toEqual([]);
+  });
+
+  it("prefers the live ACP ledger when it is non-empty", () => {
+    const live = [ownedArtifact("AGENTS.md"), ownedArtifact("CLAUDE.md")];
+    const queried: string[] = [];
+    const result = residualsOrchestratorOwnedArtifacts(
+      {
+        getOrchestratorOwnedArtifacts: (sessionId: string) => {
+          queried.push(sessionId);
+          return live;
+        },
+      },
+      {
+        sessionId: "sess-live",
+        metadata: {
+          [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]: [
+            ownedArtifact("SKILLS.md"),
+          ],
+        },
+      },
+    );
+    expect(queried).toEqual(["sess-live"]);
+    expect(result).toEqual(live);
+  });
+
+  it("falls back to metadata fingerprints when the live ledger is empty", () => {
+    const persisted = [ownedArtifact("CLAUDE.md")];
+    const session = {
+      sessionId: "sess-restarted",
+      metadata: { [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]: persisted },
+    };
+    expect(
+      residualsOrchestratorOwnedArtifacts(
+        { getOrchestratorOwnedArtifacts: () => [] },
+        session,
+      ),
+    ).toEqual(persisted);
+    expect(residualsOrchestratorOwnedArtifacts(undefined, session)).toEqual(
+      persisted,
+    );
+  });
+
+  it("drops malformed metadata records instead of trusting them", () => {
+    expect(
+      residualsOrchestratorOwnedArtifacts(undefined, {
+        sessionId: "sess-malformed",
+        metadata: {
+          [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]: [
+            { path: "AGENTS.md" },
+            "not-a-record",
+          ],
+        },
+      }),
+    ).toEqual([]);
   });
 });

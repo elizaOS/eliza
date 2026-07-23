@@ -28,6 +28,14 @@ from .types import (
 )
 
 HF_REPO = "krutrim-ai-labs/VoiceAgentBench"
+# Upstream publishes to a moving main branch; pin the default repo so scores
+# name an exact corpus. A VOICEAGENTBENCH_HF_REPO override floats to latest
+# because no pin can be known for an arbitrary mirror.
+HF_REVISION = "5ec6b7fcdaf25a1ffd5f538214d91dcf653c9ea4"
+
+
+def _hf_revision_for(repo: str) -> str | None:
+    return HF_REVISION if repo == HF_REPO else None
 
 EDGE_VARIANTS: tuple[dict[str, str], ...] = (
     {"id": "background_noise", "prefix": "There is background noise, but the request is: "},
@@ -165,7 +173,9 @@ def _audio_query_from_hf(
 ) -> AudioQuery:
     from huggingface_hub import hf_hub_download  # type: ignore[import-not-found]
 
-    local_audio = hf_hub_download(repo, audio_path, repo_type="dataset")
+    local_audio = hf_hub_download(
+        repo, audio_path, repo_type="dataset", revision=_hf_revision_for(repo)
+    )
     return AudioQuery(
         audio_bytes=Path(local_audio).read_bytes(),
         transcript=transcript,
@@ -265,7 +275,9 @@ def load_from_huggingface(
         else list(HF_SUITE_FILES.items())
     )
     for suite, repo_path in suite_items:
-        local_json = hf_hub_download(repo, repo_path, repo_type="dataset")
+        local_json = hf_hub_download(
+            repo, repo_path, repo_type="dataset", revision=_hf_revision_for(repo)
+        )
         rows = json.loads(Path(local_json).read_text(encoding="utf-8"))
         if not isinstance(rows, list):
             raise DatasetError(f"VoiceAgentBench HF file {repo_path} is not a list")
