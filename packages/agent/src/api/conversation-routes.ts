@@ -2577,14 +2577,6 @@ export async function handleConversationRoutes(
     const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
-    try {
-      await ensureConversationRoom(state, conv, caller);
-    } catch (err) {
-      return failStream(
-        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-      );
-    }
-
     const { userMessage, messageToStore } = await buildUserMessages({
       images,
       prompt,
@@ -2596,12 +2588,51 @@ export async function handleConversationRoutes(
       metadata: chatMetadata,
     });
 
-    try {
-      await persistConversationMemory(runtime, messageToStore);
-    } catch (err) {
-      return failStream(
-        `Failed to store user message: ${getErrorMessage(err)}`,
-      );
+    // ── Pre-model DB fast lane ──────────────────────────────────────────
+    // ensureConversationRoom (entity/world/room upserts + participant
+    // reconciliation: 6-8 serial DB round trips) and the route-side
+    // user-message persist do NOT gate prompt construction: the message
+    // pipeline persists the turn's user message itself before composing
+    // state (DefaultMessageService.processMessage ingress persistence). That
+    // pipeline persist and this route persist share the same memory id, so
+    // running them concurrently races two same-id inserts; the base SQL
+    // createMemory now closes that TOCTOU with ON CONFLICT (id) DO NOTHING so
+    // exactly one row lands and neither writer throws. Generation context
+    // therefore never depends on these writes. The only hard ordering
+    // constraint is the room ROW existing before any memory insert for it
+    // (messages.room_id FK). A single getRoom probe proves that: when the
+    // room already exists (every turn after the conversation's first), the
+    // full ensure + persist run CONCURRENTLY with the model call and are
+    // joined before `done`. Cold path (no room yet) keeps the serial order.
+    let preModelWrites: Promise<void> = Promise.resolve();
+    const roomExists = Boolean(
+      await runtime.getRoom(conv.roomId).catch(() => null),
+    );
+    if (roomExists) {
+      preModelWrites = (async () => {
+        await ensureConversationRoom(state, conv, caller);
+        await persistConversationMemory(runtime, messageToStore);
+      })();
+      // Prevent an early rejection from surfacing as an unhandled rejection
+      // while the model call is still in flight; the failure is re-observed
+      // at the await below (before `done`) and flows into the existing
+      // post-generation error handling.
+      preModelWrites.catch(() => {});
+    } else {
+      try {
+        await ensureConversationRoom(state, conv, caller);
+      } catch (err) {
+        return failStream(
+          `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+        );
+      }
+      try {
+        await persistConversationMemory(runtime, messageToStore);
+      } catch (err) {
+        return failStream(
+          `Failed to store user message: ${getErrorMessage(err)}`,
+        );
+      }
     }
 
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
@@ -2609,6 +2640,7 @@ export async function handleConversationRoutes(
       const endActiveChatTurn = beginActiveChatTurn(state);
       try {
         if (!disconnectTracker.isAborted()) {
+          await preModelWrites;
           tokenWriter.writeSnapshot(res, walletModeGuidance);
           try {
             await persistAssistantConversationMemory(
@@ -2731,6 +2763,11 @@ export async function handleConversationRoutes(
           preferredLanguage,
         },
       );
+
+      // Join the raced pre-model writes BEFORE the terminal `done` frame:
+      // a room-ensure/persist failure must surface as this turn's error (the
+      // existing catch below), never silently after the client saw success.
+      await preModelWrites;
 
       if (!disconnectTracker.isAborted()) {
         conv.updatedAt = new Date().toISOString();
