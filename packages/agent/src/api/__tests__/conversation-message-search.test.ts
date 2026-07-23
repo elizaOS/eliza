@@ -45,6 +45,7 @@ interface SeedRow {
   text: string;
   author: "user" | "assistant";
   transcriptVisibility?: "internal";
+  actionCallbackHistory?: string[];
   attachments?: Array<{ title?: string; url?: string }>;
   createdAt: number;
 }
@@ -124,6 +125,9 @@ function modelSearch(
         ...(row.transcriptVisibility
           ? { transcriptVisibility: row.transcriptVisibility }
           : {}),
+        ...(row.actionCallbackHistory
+          ? { actionCallbackHistory: row.actionCallbackHistory }
+          : {}),
         ...(row.attachments ? { attachments: row.attachments } : {}),
       },
       createdAt: row.createdAt,
@@ -142,6 +146,7 @@ function seed(
   author: "user" | "assistant",
   attachments?: Array<{ title?: string; url?: string }>,
   transcriptVisibility?: "internal",
+  actionCallbackHistory?: string[],
 ): UUID {
   const id = randomUUID() as UUID;
   rows.push({
@@ -151,6 +156,7 @@ function seed(
     author,
     attachments,
     transcriptVisibility,
+    actionCallbackHistory,
     createdAt: 1_000 + seq++,
   });
   return id;
@@ -190,6 +196,48 @@ seed(
   "assistant",
   undefined,
   "internal",
+);
+seed(
+  roomA,
+  [
+    "available_views:",
+    "  type: gui",
+    "  count: 1",
+    "views[1]{id,label,type,path,available}:",
+    "  legacy-inventory-marker,Notes,gui,/notes,yes",
+  ].join("\n"),
+  "assistant",
+);
+const callbackInventory = [
+  "available_views:",
+  "views[1]{id,label}: callback-inventory-marker,Notes",
+].join("\n");
+seed(
+  roomA,
+  callbackInventory,
+  "assistant",
+  undefined,
+  undefined,
+  callbackInventory.split("\n"),
+);
+seed(
+  roomA,
+  "available_views: ordinary-prose-marker is valid assistant prose.",
+  "assistant",
+);
+seed(
+  roomA,
+  [
+    "available_views:",
+    "views[1]{id,label,type,path,available}:",
+    "  user-pasted-inventory-marker,Notes,gui,/notes,yes",
+  ].join("\n"),
+  "user",
+);
+seed(
+  roomA,
+  '{"available_views":["notes"],"marker":"legitimate-json-marker"}',
+  "user",
 );
 for (let i = 0; i < 120; i++)
   seed(roomA, `filler chatter number ${i} nothing special`, "user");
@@ -369,6 +417,32 @@ describe("GET /api/conversations/messages/search (route boundary)", () => {
     expect(r.status).toBe(200);
     expect(r.body.count).toBe(0);
     expect(texts(r)).toEqual([]);
+  });
+
+  it("excludes only narrow legacy VIEWS inventories, preserving legitimate prose and user JSON/text", async () => {
+    for (const marker of [
+      "legacy-inventory-marker",
+      "callback-inventory-marker",
+    ]) {
+      const hidden = await runSearch(`q=${marker}`);
+      expect(hidden.status).toBe(200);
+      expect(hidden.body.count).toBe(0);
+      expect(JSON.stringify(hidden.body)).not.toContain(marker);
+    }
+
+    expect(texts(await runSearch("q=ordinary-prose-marker"))).toEqual([
+      "available_views: ordinary-prose-marker is valid assistant prose.",
+    ]);
+    expect(texts(await runSearch("q=user-pasted-inventory-marker"))).toEqual([
+      [
+        "available_views:",
+        "views[1]{id,label,type,path,available}:",
+        "  user-pasted-inventory-marker,Notes,gui,/notes,yes",
+      ].join("\n"),
+    ]);
+    expect(texts(await runSearch("q=legitimate-json-marker"))).toEqual([
+      '{"available_views":["notes"],"marker":"legitimate-json-marker"}',
+    ]);
   });
 
   it("corpus-wide recall — the oldest 'xyzzy' hit survives 120 newer rows", async () => {

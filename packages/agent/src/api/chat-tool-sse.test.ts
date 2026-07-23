@@ -89,6 +89,34 @@ describe("chatEventsFromStructuredStreamPayload (#13535)", () => {
     });
   });
 
+  it("carries internal transcript visibility with a pre-terminal tool result", () => {
+    const inventory =
+      "available_views:\nviews[1]{id,label,type,path,available}:\n  notes,Notes,gui,/notes,yes";
+    const events = chatEventsFromStructuredStreamPayload({
+      type: "tool_result",
+      toolCallId: "call_views",
+      toolCall: { name: "VIEWS" },
+      result: {
+        success: true,
+        text: inventory,
+        transcriptVisibility: "internal",
+      },
+      status: "completed",
+    });
+
+    expect(events?.toolEvent).toEqual({
+      phase: "result",
+      callId: "call_views",
+      toolName: "VIEWS",
+      transcriptVisibility: "internal",
+      result: {
+        success: true,
+        text: inventory,
+        transcriptVisibility: "internal",
+      },
+    });
+  });
+
   it("projects a failed tool into an `error` tool row (tool_error type)", () => {
     const events = chatEventsFromStructuredStreamPayload({
       type: "tool_error",

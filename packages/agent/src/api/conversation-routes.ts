@@ -1584,6 +1584,24 @@ function normalizeMessageSearchQuery(value: string | null): string {
   return (value === null ? "" : value).trim().replace(/\s+/g, " ");
 }
 
+function isLegacyViewsInventoryContent(
+  content: Record<string, unknown>,
+): boolean {
+  const text = typeof content.text === "string" ? content.text.trim() : "";
+  if (!/^available_views:\s*(?:\n|$)/.test(text)) return false;
+
+  const callbackHistory = normalizeActionCallbackHistory(
+    content.actionCallbackHistory,
+  );
+  if (callbackHistory.length > 0 && text === callbackHistory.join("\n")) {
+    return true;
+  }
+  return (
+    /^views\[\d+\]\{id,label,type,path,available\}:/m.test(text) ||
+    /^\s*count:\s*0\s*$/m.test(text)
+  );
+}
+
 /**
  * Parse an optional `since`/`until` search param into epoch ms. Accepts a
  * non-negative epoch-ms integer or any `Date.parse`-able string (ISO 8601).
@@ -1735,10 +1753,15 @@ export async function handleConversationRoutes(
           ? conversationsByRoomId.get(roomId)
           : undefined;
         if (!roomId || !conversation) return [];
-        const content = memory.content as
-          | { text?: unknown; transcriptVisibility?: unknown }
-          | undefined;
+        const content = memory.content as Record<string, unknown> | undefined;
         if (content?.transcriptVisibility === "internal") return [];
+        if (
+          content &&
+          memory.entityId === runtime.agentId &&
+          isLegacyViewsInventoryContent(content)
+        ) {
+          return [];
+        }
         const text = content?.text;
         if (typeof text !== "string") return [];
         const rawText = text.trim();

@@ -192,6 +192,9 @@ function parseChatToolCallEvent(
     phase: parsed.phase,
     callId: parsed.callId,
     toolName: parsed.toolName,
+    ...(parsed.transcriptVisibility === "internal"
+      ? { transcriptVisibility: parsed.transcriptVisibility }
+      : {}),
     ...(parsed.args && typeof parsed.args === "object"
       ? { args: parsed.args }
       : {}),

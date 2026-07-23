@@ -565,6 +565,7 @@ function actionResultToStreamingResult(
 	return {
 		success: result.success,
 		text: result.text,
+		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
 		error: result.error ? stringifyError(result.error) : undefined,

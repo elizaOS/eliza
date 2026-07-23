@@ -61,6 +61,8 @@ export interface ChatToolCallEvent {
   callId: string;
   /** Tool/action name being invoked (e.g. "WEB_SEARCH"). */
   toolName: string;
+  /** Machine-only output must not be previewed in the chat transcript. */
+  transcriptVisibility?: "internal";
   /** Arguments the model passed to the tool; present on `call`. */
   args?: Record<string, unknown>;
   /** Tool output; present on `result`. */

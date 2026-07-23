@@ -833,6 +833,51 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("carries internal transcript visibility on the pre-terminal streaming tool result", async () => {
+		const onToolResult = vi.fn();
+		const inventory =
+			"available_views:\nviews[1]{id,label,type,path,available}:\n  notes,Notes,gui,/notes,yes";
+		const action = makeAction({
+			name: "VIEWS",
+			handler: async () => ({
+				success: true,
+				text: inventory,
+				transcriptVisibility: "internal",
+				data: { views: [{ id: "notes" }] },
+			}),
+		});
+
+		const result = await runWithStreamingContext(
+			{ onStreamChunk: vi.fn(), onToolResult },
+			() =>
+				executePlannedToolCall(
+					makeRuntime([action]),
+					{ message: makeMessage() },
+					{ id: "views-call", name: "VIEWS", params: {} },
+				),
+		);
+
+		expect(result).toMatchObject({
+			text: inventory,
+			transcriptVisibility: "internal",
+		});
+		expect(onToolResult).toHaveBeenCalledWith(
+			expect.objectContaining({
+				toolCallId: "views-call",
+				result: expect.objectContaining({
+					text: inventory,
+					transcriptVisibility: "internal",
+				}),
+				toolCall: expect.objectContaining({
+					result: expect.objectContaining({
+						text: inventory,
+						transcriptVisibility: "internal",
+					}),
+				}),
+			}),
+		);
+	});
+
 	it("suppresses sensitive action result data in ACTION_COMPLETED events", async () => {
 		const emitEvent = vi.fn(async () => {});
 		const onToolResult = vi.fn();

@@ -496,6 +496,40 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     ]);
   });
 
+  it("preserves internal visibility on a pre-terminal tool result", async () => {
+    const inventory = "available_views:\\nviews[1]{id}: notes";
+    const client = streamFromSse(
+      `data: {"type":"tool","phase":"result","callId":"c-views","toolName":"VIEWS","transcriptVisibility":"internal","result":{"success":true,"text":"${inventory}","transcriptVisibility":"internal"}}\n\n` +
+        'data: {"type":"done","fullText":"","agentName":"Eliza","transcriptVisibility":"internal"}\n\n',
+    );
+    const onToolEvent = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "list views",
+      vi.fn(),
+      "DM",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onToolEvent,
+    );
+
+    expect(onToolEvent).toHaveBeenCalledWith({
+      phase: "result",
+      callId: "c-views",
+      toolName: "VIEWS",
+      transcriptVisibility: "internal",
+      result: {
+        success: true,
+        text: "available_views:\nviews[1]{id}: notes",
+        transcriptVisibility: "internal",
+      },
+    });
+    expect(result.transcriptVisibility).toBe("internal");
+  });
+
   it("drops a malformed `tool` frame (missing callId) without crashing the stream", async () => {
     const client = streamFromSse(
       'data: {"type":"tool","phase":"call","toolName":"WEB_SEARCH"}\n\n' +

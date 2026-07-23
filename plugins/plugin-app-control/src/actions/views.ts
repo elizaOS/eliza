@@ -2010,7 +2010,7 @@ async function runViewsLayout({
 
 function withViewsUserFacingText(result: ActionResult): ActionResult {
 	const text = typeof result.text === "string" ? result.text.trim() : "";
-	if (!text) return result;
+	if (!text || result.transcriptVisibility === "internal") return result;
 	return {
 		...result,
 		userFacingText: result.userFacingText ?? text,

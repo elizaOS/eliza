@@ -27,7 +27,11 @@ function toNativeToolCallEvent(event: ChatToolCallEvent): NativeToolCallEvent {
           ? "failed"
           : "completed",
     ...(event.args ? { args: event.args } : {}),
-    ...(event.result !== undefined ? { result: event.result } : {}),
+    ...(event.transcriptVisibility === "internal"
+      ? { result: undefined }
+      : event.result !== undefined
+        ? { result: event.result }
+        : {}),
     ...(event.error ? { error: event.error } : {}),
   };
 }

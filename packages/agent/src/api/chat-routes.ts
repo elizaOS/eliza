@@ -1023,17 +1023,31 @@ export function chatEventsFromStructuredStreamPayload(
     const statusText = firstNonEmptyString(record.status, toolCall?.status);
     const failed = type === "tool_error" || statusText === "failed";
     const result = record.result ?? toolCall?.result;
+    const resultRecord = asRecord(result);
+    const transcriptVisibility =
+      resultRecord?.transcriptVisibility === "internal"
+        ? ("internal" as const)
+        : undefined;
     if (failed) {
       return {
         toolEvent: {
           phase: "error",
           callId,
           toolName,
+          ...(transcriptVisibility ? { transcriptVisibility } : {}),
           error: firstNonEmptyString(result, statusText) ?? "tool failed",
         },
       };
     }
-    return { toolEvent: { phase: "result", callId, toolName, result } };
+    return {
+      toolEvent: {
+        phase: "result",
+        callId,
+        toolName,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
+        result,
+      },
+    };
   }
 
   if (type === "evaluation") {

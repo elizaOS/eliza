@@ -1021,6 +1021,85 @@ describe("useChatSend streaming-frame coalescing (text + status + tool)", () => 
     });
   });
 
+  it("never places internal tool output in the pre-terminal inline row", async () => {
+    const inventory = "available_views:\nviews[1]{id}: notes";
+    let onToolCb!: (event: ChatToolCallEvent) => void;
+    let resolveStream!: (value: {
+      text: string;
+      completed: boolean;
+      transcriptVisibility?: "internal";
+    }) => void;
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        _onToken: (token: string, accumulated?: string) => void,
+        _channelType: string,
+        _signal: AbortSignal,
+        _images: unknown,
+        _metadata: unknown,
+        _onStatus: (status: ChatTurnStatus) => void,
+        onTool: (event: ChatToolCallEvent) => void,
+      ) => {
+        onToolCb = onTool;
+        return new Promise((resolve) => {
+          resolveStream = resolve;
+        });
+      },
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("list views", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    act(() => {
+      onToolCb({
+        phase: "result",
+        callId: "views-call",
+        toolName: "VIEWS",
+        transcriptVisibility: "internal",
+        result: {
+          success: true,
+          text: inventory,
+          transcriptVisibility: "internal",
+        },
+      });
+    });
+    flushRaf();
+
+    const inFlightAssistant = deps.conversationMessagesRef.current.find(
+      (message) => message.role === "assistant",
+    );
+    expect(inFlightAssistant?.toolEvents).toHaveLength(1);
+    expect(JSON.stringify(inFlightAssistant?.toolEvents)).not.toContain(
+      "available_views",
+    );
+
+    await act(async () => {
+      resolveStream({
+        text: inventory,
+        completed: true,
+        transcriptVisibility: "internal",
+      });
+      await sendPromise;
+    });
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.role === "assistant",
+      ),
+    ).toBe(false);
+  });
+
   it("flushes parked tool/status synchronously on the terminal transition even if no frame ran", async () => {
     // A tool event + status arrive, then the stream resolves in the SAME tick
     // before any rAF fires. The synchronous flushStreamingText() before the
