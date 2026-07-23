@@ -485,6 +485,29 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
                 additionalProperties: false,
               },
             },
+            {
+              name: "RECORD_TUPLE_EVIDENCE",
+              description: "Record a tuple containing structured evidence.",
+              strict: true,
+              parameters: {
+                type: "object",
+                properties: {
+                  tuple: {
+                    type: "array",
+                    prefixItems: [
+                      {
+                        type: "object",
+                        properties: { detail: { type: "string" } },
+                        required: ["detail"],
+                      },
+                    ],
+                    items: false,
+                  },
+                },
+                required: ["tuple"],
+                additionalProperties: false,
+              },
+            },
           ],
           toolChoice: { type: "tool", name: "RECORD_EVIDENCE" },
           maxTokens: 160,
@@ -513,12 +536,36 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
         strict: true,
       },
     });
+    const tupleTool = (request.tools as unknown[]).find((candidate) => {
+      if (!isRecord(candidate) || !isRecord(candidate.function)) return false;
+      return candidate.function.name === "RECORD_TUPLE_EVIDENCE";
+    });
+    expect(tupleTool).toMatchObject({
+      function: {
+        name: "RECORD_TUPLE_EVIDENCE",
+        parameters: {
+          properties: {
+            tuple: {
+              prefixItems: [
+                {
+                  type: "object",
+                  properties: { detail: { type: "string" } },
+                  required: ["detail"],
+                  additionalProperties: false,
+                },
+              ],
+            },
+          },
+        },
+        strict: true,
+      },
+    });
     expect(request.tool_choice).toEqual(expect.objectContaining({ type: "function" }));
     expect(wireCalls[0].response?.status).toBe(200);
     expect(wireCalls[0].response?.body?.utf8).toContain("tool_calls");
 
     receipts.push({
-      name: "tool-call-with-empty-terminal",
+      name: "tool-call-with-empty-terminal-and-tuple",
       status: "passed",
       wireCallIds: wireCalls.map((call) => call.id),
       result,

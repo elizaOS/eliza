@@ -57,6 +57,7 @@ describe("normalizeSchemaForCerebras", () => {
 		}) as Record<string, unknown>;
 		expect(result.properties).toEqual({ q: { type: "string" } });
 		expect(result.required).toEqual(["q"]);
+		expect(result.additionalProperties).toBe(false);
 	});
 
 	it("recurses into nested object properties", () => {
@@ -97,13 +98,15 @@ describe("normalizeSchemaForCerebras", () => {
 		expect(items.additionalProperties).toBe(false);
 	});
 
-	it("preserves objects that have anyOf/oneOf even with empty properties", () => {
+	it("preserves anyOf object alternatives without adding an empty properties map", () => {
 		const result = normalizeSchemaForCerebras({
 			type: "object",
 			anyOf: [{ type: "string" }, { type: "number" }],
 		}) as Record<string, unknown>;
 		expect(Array.isArray(result.anyOf)).toBe(true);
 		expect((result.anyOf as unknown[]).length).toBe(2);
+		expect(result.properties).toBeUndefined();
+		expect(result.additionalProperties).toBe(false);
 	});
 
 	it("walks every schema-bearing keyword", () => {
@@ -133,7 +136,7 @@ describe("normalizeSchemaForCerebras", () => {
 			// biome-ignore lint/suspicious/noThenProperty: JSON Schema reserves this key for conditional branches.
 			then: bareObject(),
 			else: bareObject(),
-			additionalProperties: bareObject(),
+			additionalProperties: false,
 			unevaluatedProperties: bareObject(),
 			unevaluatedItems: bareObject(),
 			contentSchema: bareObject(),
@@ -167,7 +170,6 @@ describe("normalizeSchemaForCerebras", () => {
 			"if",
 			"then",
 			"else",
-			"additionalProperties",
 			"unevaluatedProperties",
 			"unevaluatedItems",
 			"contentSchema",
@@ -178,7 +180,8 @@ describe("normalizeSchemaForCerebras", () => {
 	});
 
 	it("closes inferred and nullable object nodes", () => {
-		expect(normalizeSchemaForCerebras({ properties: {} })).toMatchObject({
+		expect(normalizeSchemaForCerebras({ properties: {} })).toEqual({
+			type: "object",
 			properties: {},
 			additionalProperties: false,
 		});
@@ -189,6 +192,36 @@ describe("normalizeSchemaForCerebras", () => {
 			properties: {},
 			additionalProperties: false,
 		});
+	});
+
+	it("closes populated objects reached through tuple schemas", () => {
+		const result = normalizeSchemaForCerebras({
+			type: "array",
+			prefixItems: [
+				{
+					type: "object",
+					properties: { detail: { type: "string" } },
+					required: ["detail"],
+				},
+			],
+			items: false,
+		}) as Record<string, unknown>;
+		expect((result.prefixItems as unknown[])[0]).toEqual({
+			type: "object",
+			properties: { detail: { type: "string" } },
+			required: ["detail"],
+			additionalProperties: false,
+		});
+	});
+
+	it("preserves open-map semantics for non-strict tools", () => {
+		const schema = {
+			type: "object",
+			additionalProperties: { type: "string" },
+		};
+		expect(normalizeSchemaForCerebras(schema, true, { strict: false })).toEqual(
+			schema,
+		);
 	});
 
 	it("returns non-object scalars unchanged", () => {

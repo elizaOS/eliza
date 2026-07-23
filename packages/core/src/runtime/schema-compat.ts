@@ -1,10 +1,11 @@
 /**
  * Provider compatibility for JSON-schema tool grammars and function names.
  *
- * Cerebras requires an object root and an explicit properties map on every
- * object node. The normalizer walks every standard schema-bearing keyword so
- * hoisted definitions, conditionals, tuples, and map schemas cannot bypass the
- * wire contract.
+ * Cerebras requires an object root and, in strict mode, closes every object
+ * with `additionalProperties: false`. The normalizer walks every standard
+ * schema-bearing keyword so hoisted definitions, conditionals, tuples, and map
+ * schemas cannot bypass the wire contract while non-strict schemas retain
+ * their permissive semantics.
  */
 
 const FUNCTION_NAME_PATTERN = /[^a-zA-Z0-9_-]/g;
@@ -58,31 +59,66 @@ function isSchemaRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function objectSchemaNeedsProperties(node: Record<string, unknown>): boolean {
+const OBJECT_SCHEMA_KEYS = [
+	"properties",
+	"patternProperties",
+	"additionalProperties",
+	"required",
+	"dependentSchemas",
+	"dependentRequired",
+	"dependencies",
+	"propertyNames",
+	"minProperties",
+	"maxProperties",
+	"unevaluatedProperties",
+] as const;
+
+function describesObjectSchema(node: Record<string, unknown>): boolean {
 	const type = node.type;
-	const includesObject =
+	return (
 		type === "object" ||
 		(Array.isArray(type) && type.includes("object")) ||
-		"properties" in node ||
-		"patternProperties" in node ||
-		"additionalProperties" in node ||
-		"dependentSchemas" in node;
-	if (!includesObject) return false;
+		OBJECT_SCHEMA_KEYS.some((key) => key in node)
+	);
+}
+
+function enforceStrictObjectShape(node: Record<string, unknown>): void {
+	if (!describesObjectSchema(node)) return;
+	if (node.type === undefined) node.type = "object";
+
 	const properties = node.properties;
 	const hasProperties =
 		isSchemaRecord(properties) && Object.keys(properties).length > 0;
 	const hasAnyOf = Array.isArray(node.anyOf) && node.anyOf.length > 0;
-	return !hasProperties && !hasAnyOf;
+	if (!hasProperties && !hasAnyOf) {
+		node.properties = {};
+		if (Array.isArray(node.required) && node.required.length === 0) {
+			delete node.required;
+		}
+	}
+	node.additionalProperties = false;
 }
 
-function walkSchemaChildren(node: Record<string, unknown>): void {
+export interface CerebrasSchemaNormalizationOptions {
+	/**
+	 * Strict tools require closed objects at every depth. Non-strict tools still
+	 * need root compatibility and recursive cloning, but their open-map
+	 * semantics must remain intact.
+	 */
+	strict?: boolean;
+}
+
+function walkSchemaChildren(
+	node: Record<string, unknown>,
+	options: CerebrasSchemaNormalizationOptions,
+): void {
 	for (const key of SCHEMA_MAP_KEYS) {
 		const value = node[key];
 		if (!isSchemaRecord(value)) continue;
 		node[key] = Object.fromEntries(
 			Object.entries(value).map(([name, schema]) => [
 				name,
-				normalizeSchemaForCerebras(schema),
+				normalizeSchemaForCerebras(schema, false, options),
 			]),
 		);
 	}
@@ -90,20 +126,24 @@ function walkSchemaChildren(node: Record<string, unknown>): void {
 	for (const key of SCHEMA_ARRAY_KEYS) {
 		const value = node[key];
 		if (!Array.isArray(value)) continue;
-		node[key] = value.map((schema) => normalizeSchemaForCerebras(schema));
+		node[key] = value.map((schema) =>
+			normalizeSchemaForCerebras(schema, false, options),
+		);
 	}
 
 	const items = node.items;
 	if (Array.isArray(items)) {
-		node.items = items.map((schema) => normalizeSchemaForCerebras(schema));
+		node.items = items.map((schema) =>
+			normalizeSchemaForCerebras(schema, false, options),
+		);
 	} else if (items !== undefined) {
-		node.items = normalizeSchemaForCerebras(items);
+		node.items = normalizeSchemaForCerebras(items, false, options);
 	}
 
 	for (const key of SCHEMA_SINGLE_KEYS) {
 		const value = node[key];
 		if (!isSchemaRecord(value)) continue;
-		node[key] = normalizeSchemaForCerebras(value);
+		node[key] = normalizeSchemaForCerebras(value, false, options);
 	}
 
 	const dependencies = node.dependencies;
@@ -113,7 +153,7 @@ function walkSchemaChildren(node: Record<string, unknown>): void {
 				name,
 				Array.isArray(dependency)
 					? [...dependency]
-					: normalizeSchemaForCerebras(dependency),
+					: normalizeSchemaForCerebras(dependency, false, options),
 			]),
 		);
 	}
@@ -122,10 +162,15 @@ function walkSchemaChildren(node: Record<string, unknown>): void {
 export function normalizeSchemaForCerebras(
 	schema: unknown,
 	isRoot = false,
+	options: CerebrasSchemaNormalizationOptions = {},
 ): unknown {
 	if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-		// Non-object root → closed empty object schema (tool without arguments).
-		if (isRoot) return closedEmptyObjectSchema();
+		// A missing/non-object tool schema means the tool takes no arguments.
+		if (isRoot) {
+			return options.strict === false
+				? { type: "object" }
+				: closedEmptyObjectSchema();
+		}
 		return schema;
 	}
 	let node = { ...(schema as Record<string, unknown>) };
@@ -142,12 +187,8 @@ export function normalizeSchemaForCerebras(
 		};
 	}
 
-	if (objectSchemaNeedsProperties(node)) {
-		node.properties = {};
-		node.additionalProperties = false;
-		delete node.required;
-	}
+	if (options.strict !== false) enforceStrictObjectShape(node);
 
-	walkSchemaChildren(node);
+	walkSchemaChildren(node, options);
 	return node;
 }

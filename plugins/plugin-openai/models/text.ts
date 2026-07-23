@@ -698,7 +698,9 @@ function normalizeNativeToolsForCall(
       // recursively so deep schemas are accepted by the grammar compiler.
       // Pass isRoot: true so the top-level invariant is enforced (must be
       // type:"object" with no root oneOf/anyOf/enum/not).
-      inputSchema = normalizeSchemaForCerebras(inputSchema, true) as JSONSchema7;
+      inputSchema = normalizeSchemaForCerebras(inputSchema, true, {
+        strict: strict !== false,
+      }) as JSONSchema7;
     }
 
     // Cerebras's grammar compiler rejects function names containing characters
