@@ -211,10 +211,11 @@ def test_env_runner_counts_incomplete_rollouts(tmp_path: Path) -> None:
     assert result.metrics["incomplete_rollouts"] == 1
 
 
-def test_env_runner_budget_exhausted_rollout_is_complete(tmp_path: Path) -> None:
-    """A rollout that spent the full 60-turn budget is a scoreable failure,
-    even when the loop necessarily ends on the last tool execution's result —
-    only an early trailing-tool cut-off marks a rollout incomplete."""
+def test_env_runner_worked_rollout_ending_on_tool_is_complete(tmp_path: Path) -> None:
+    """A rollout with real agent turns that ends on a tool result is a
+    resource-bounded failure (scoreable); only zero-work rollouts stay
+    incomplete. The campaign runs without an artificial turn budget, so hard
+    tasks routinely terminate exactly this way."""
     evals_root = tmp_path / "evals" / "tblite"
     evals_root.mkdir(parents=True)
     (evals_root / "eval-summary.json").write_text(
@@ -224,11 +225,11 @@ def test_env_runner_budget_exhausted_rollout_is_complete(tmp_path: Path) -> None
         json.dumps(
             {
                 "passed": False,
-                "turns_used": 60,
+                "turns_used": 37,
                 "messages": [
                     {"role": "user", "content": "fix it"},
                     {"role": "assistant", "tool_calls": []},
-                    {"role": "tool", "content": "ok"},
+                    {"role": "tool", "content": "wall clock ended here"},
                 ],
             }
         )
@@ -236,11 +237,11 @@ def test_env_runner_budget_exhausted_rollout_is_complete(tmp_path: Path) -> None
         + json.dumps(
             {
                 "passed": False,
-                "turns_used": 12,
+                "turns_used": 0,
                 "messages": [
                     {"role": "user", "content": "fix it"},
                     {"role": "assistant", "tool_calls": []},
-                    {"role": "tool", "content": "cut off"},
+                    {"role": "tool", "content": "died before any turn"},
                 ],
             }
         )

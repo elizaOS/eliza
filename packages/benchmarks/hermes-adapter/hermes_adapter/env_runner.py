@@ -293,6 +293,13 @@ def run_hermes_env(
     if env_id in {"tblite", "terminalbench_2"}:
         config_env_overrides["agent_temperature"] = 0.0
         config_env_overrides["system_prompt"] = _TERMINAL_ENV_SYSTEM_PROMPT
+        # Campaign policy: no artificial turn budget. The upstream default of
+        # 60 turns truncates hard tasks mid-repair and turns capability
+        # measurements into budget measurements; the per-task wall clock
+        # (task_timeout, also raised here) is the only terminator. Values are
+        # overridable by callers via extra_args (--env.max_agent_turns=…).
+        config_env_overrides.setdefault("max_agent_turns", 1000)
+        config_env_overrides.setdefault("task_timeout", 7200)
     forwarded_args: list[str] = list(extra_args or [])
     if not _has_forwarded_arg(forwarded_args, "--env.terminal_backend"):
         forwarded_args.append(f"--env.terminal_backend={terminal_backend}")
@@ -669,12 +676,6 @@ def parse_hermes_env_result(
     )
 
 
-# Both pinned terminal envs (tblite, terminalbench_2) run HermesAgentLoop with
-# max_agent_turns=60; a rollout that spent its whole budget is a completed
-# failure measurement, not a harness cut-off.
-ENV_MAX_AGENT_TURNS = 60
-
-
 def _annotate_sample_completion(
     metrics: dict[str, Any],
     samples_path: Path,
@@ -703,13 +704,15 @@ def _annotate_sample_completion(
             continue
         last = messages[-1]
         if isinstance(last, dict) and last.get("role") == "tool" and not row.get("passed"):
-            # A trailing tool result normally means the loop was cut off before
-            # the agent could conclude. The exception: the agent spent its full
-            # turn budget — that rollout is a real, scoreable failure. Without
-            # this, hard tasks (which exhaust budgets most often) would be
-            # systematically excluded from scoring.
+            # A trailing tool result on a rollout with real agent turns is a
+            # resource-bounded failure (wall clock or turn ceiling ended the
+            # loop after the last tool execution) — a real, scoreable
+            # measurement. Harness deaths surface as row errors and are
+            # raised above; only zero-work rollouts (the agent never took a
+            # turn) stay unscoreable. The campaign runs without an artificial
+            # turn budget, so hard tasks routinely end exactly this way.
             turns = row.get("turns_used")
-            if isinstance(turns, int) and turns >= ENV_MAX_AGENT_TURNS:
+            if isinstance(turns, int) and turns > 0:
                 continue
             incomplete += 1
     if expected_samples is not None and total != expected_samples:
