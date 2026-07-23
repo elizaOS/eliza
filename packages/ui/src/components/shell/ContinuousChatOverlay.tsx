@@ -4455,6 +4455,8 @@ export function ContinuousChatOverlay({
         // misread the maximize thresholds for the rest of the gesture.
         setMode(dragStartModeRef.current);
         setFreeH(dragStartFreeHRef.current);
+        modeRef.current = dragStartModeRef.current;
+        freeHRef.current = dragStartFreeHRef.current;
         if (reduce) fullBleedT.set(0);
         else animateFullBleedTo(0);
         // Void the peak so the release decision does not re-maximize from an
@@ -4473,10 +4475,15 @@ export function ContinuousChatOverlay({
         dragStartHRef.current > 0
           ? -PILL_COMMIT_OVERSHOOT
           : -PILL_OPEN_DISTANCE / 2;
-      if (!pilled && cont <= pillCommitCont) {
+      if (!pilled && cont <= pillCommitCont && !pillCommittedMidDragRef.current) {
         setFreeH(null);
         setMaximized(false);
         setMode("pill");
+        // Sync the live mirrors + the commit flag: the release handlers run in
+        // the same event and must see the committed pill, not the stale mode.
+        modeRef.current = "pill";
+        freeHRef.current = null;
+        pillCommittedMidDragRef.current = true;
         inputRef.current?.blur();
         detentHaptic();
       }
