@@ -24,7 +24,7 @@ COPY eliza/packages/app-core/deploy/cloud-agent-shared.ts ./cloud-agent-shared.t
 COPY eliza/packages/shared/src/restart-exit-code.json /shared/src/restart-exit-code.json
 RUN npx --yes esbuild@0.28.1 cloud-agent-entrypoint.ts \
       --bundle --platform=node --format=esm --target=node24 \
-      --external:@elizaos/* --external:node:* \
+      --external:@elizaos/* --external:node:* --external:drizzle-orm \
       --outfile=entrypoint.js
 
 FROM node:24-bookworm-slim
