@@ -1126,6 +1126,13 @@ export class InferenceAdmissionGate {
             : String(failure.reason),
         ),
       });
+      // error-policy:J1 the Durable Object alarm is the platform retry
+      // boundary. Throwing preserves Cloudflare's alarm retry signal; the
+      // recovering leases and next alarm were persisted before recovery began.
+      throw new AggregateError(
+        failures.map((failure) => failure.reason),
+        "Inference admission lease recovery failed",
+      );
     }
   }
 }

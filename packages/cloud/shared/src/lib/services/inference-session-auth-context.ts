@@ -28,6 +28,7 @@ const sessionHydrations = new Map<string, Promise<InferenceSessionAuthDecision>>
 
 export interface ResolveInferenceSessionAuthOptions {
   cacheOnly?: boolean;
+  useAuthCache?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
@@ -186,7 +187,7 @@ export async function resolveInferenceSessionAuthContext(
   );
   if (!claims) return { kind: "rejected", status: 401 };
 
-  if (cache.isAvailable()) {
+  if (options.useAuthCache && cache.isAvailable()) {
     const cached = await readInferenceSessionAuthDecision(claims.userId).catch((error) => {
       // error-policy:J4 inference remains explicitly unavailable on a cache
       // failure; never fall through to an inline database authorization.
@@ -198,7 +199,7 @@ export async function resolveInferenceSessionAuthContext(
     if (cached) return toResolution(cached, "cache");
   }
 
-  if (options.cacheOnly) {
+  if (options.useAuthCache && options.cacheOnly) {
     if (cache.isAvailable() && options.executionCtx) {
       const hydration = getOrCreateHydration({
         stewardUserId: claims.userId,

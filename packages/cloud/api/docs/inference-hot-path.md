@@ -68,7 +68,7 @@ selected production architecture.
 
 | State | Synchronous owner | Durable/source-of-truth owner | Consistency |
 | --- | --- | --- | --- |
-| API-key and Steward-session authorization | Cloudflare KV | Postgres/Steward | Revisioned TTL cache; cold requests warm and retry |
+| API-key and Steward-session authorization | Postgres/Steward | Postgres/Steward | Authoritative while `INFERENCE_AUTH_CACHE_ENABLED` is false |
 | Moderation decision | Cloudflare KV auth context | Postgres | Invalidated on lifecycle changes; bounded staleness |
 | Model pricing | Cloudflare KV | Pricing tables | Revisioned cache; cold requests warm and retry |
 | Affiliate attribution | Cloudflare KV | Postgres | Immutable snapshot per admitted request |
@@ -88,9 +88,16 @@ remain transactional in Postgres and publish monotonic cache revisions.
 
 ## Authorization and cold-cache behavior
 
-`resolveInferenceAuthContext` accepts positive cache entries only for fully
-authorized credentials. API-key entries are keyed by the full credential hash;
-Steward-session entries are keyed by a verified session subject. Wallet
+Authorization remains authoritative by default. `INFERENCE_AUTH_CACHE_ENABLED`
+is a separate, fail-closed rollout control and stays false in every checked-in
+environment until revocation has a strongly consistent boundary. A successful
+KV deletion is not proof that every point of presence has stopped serving an
+older positive value.
+
+The gated implementation accepts positive cache entries only for fully
+authorized credentials. API-key entries are keyed by the full credential hash.
+Steward-session entries currently use the verified subject, so the gate must
+also remain disabled until they use an immutable session identity. Wallet
 signatures remain outside the cache-only Worker path because their timestamped
 proof cannot safely be replayed as an asynchronous hydration.
 
@@ -102,9 +109,9 @@ On a Worker cache miss:
 - no provider request starts until a later request observes the populated
   cache.
 
-Cache errors never fabricate authorization and never join a Postgres fallback
-to the request promise. User, organization, moderation, API-key, and session
-lifecycle mutations invalidate the relevant cache entries.
+When the gate is enabled, cache errors never fabricate authorization and never
+join a Postgres fallback to the request promise. Invalidation is only a cache
+hygiene mechanism; it is not the authorization revocation boundary.
 
 Pricing, affiliate attribution, app policy, balance, and uninitialized Durable
 Objects follow the same fail-closed warming pattern. The first request may warm
@@ -200,6 +207,10 @@ Staging and production require:
 - `INFERENCE_OPTIMISTIC_BILLING="true"`;
 - `INFERENCE_DEFERRED_ADMISSION="true"`; and
 - `INFERENCE_HOT_PATH_CACHES="true"`.
+
+`INFERENCE_AUTH_CACHE_ENABLED` remains `"false"` in staging and production.
+Enabling it requires the strong revocation and immutable-session contract
+described above plus deployed rollback evidence.
 
 `INFERENCE_BILLING_LEDGER` still selects the compatibility ledger for
 non-Worker callers and sweep migration support. It does not add a ledger write

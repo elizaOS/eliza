@@ -1127,7 +1127,9 @@ describe("InferenceAdmissionGate", () => {
       ).toBe(200);
 
       clock.mockReturnValue(1_300_000);
-      await gate.alarm();
+      await expect(gate.alarm()).rejects.toThrow(
+        "Inference admission lease recovery failed",
+      );
       expect(
         (
           await post(gate, "/lease", {

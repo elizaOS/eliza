@@ -99,6 +99,7 @@ describe("resolveInferenceSessionAuthContext", () => {
 
     const result = await resolveInferenceSessionAuthContext(request(), {
       cacheOnly: true,
+      useAuthCache: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
 
@@ -116,6 +117,7 @@ describe("resolveInferenceSessionAuthContext", () => {
     const waited: Promise<unknown>[] = [];
     await resolveInferenceSessionAuthContext(request(), {
       cacheOnly: true,
+      useAuthCache: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
     await Promise.all(waited);
@@ -124,6 +126,7 @@ describe("resolveInferenceSessionAuthContext", () => {
 
     const result = await resolveInferenceSessionAuthContext(request(), {
       cacheOnly: true,
+      useAuthCache: true,
     });
 
     expect(result).toMatchObject({
@@ -157,10 +160,12 @@ describe("resolveInferenceSessionAuthContext", () => {
     const [first, second] = await Promise.all([
       resolveInferenceSessionAuthContext(request(), {
         cacheOnly: true,
+        useAuthCache: true,
         executionCtx: { waitUntil: (promise) => firstWaited.push(promise) },
       }),
       resolveInferenceSessionAuthContext(request(), {
         cacheOnly: true,
+        useAuthCache: true,
         executionCtx: { waitUntil: (promise) => secondWaited.push(promise) },
       }),
     ]);
@@ -182,6 +187,7 @@ describe("resolveInferenceSessionAuthContext", () => {
     await expect(
       resolveInferenceSessionAuthContext(request(), {
         cacheOnly: true,
+        useAuthCache: true,
         executionCtx: { waitUntil: () => undefined },
       }),
     ).resolves.toEqual({ kind: "rejected", status: 401 });

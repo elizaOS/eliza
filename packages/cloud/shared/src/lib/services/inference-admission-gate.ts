@@ -24,6 +24,7 @@ import type { EndpointType } from "./org-rate-limits";
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
 const HYDRATION_GATE_TIMEOUT_MS = 5_000;
+const GATE_OPERATION_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_TIMEOUT_MS = 1_500;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
 
@@ -383,11 +384,17 @@ export async function consumeInferenceRateLimit(params: {
     );
   }
 
-  const response = await gateFetch(params.organizationId, "/rate-limit", {
-    endpointType: params.endpointType,
-    windowMs: params.windowMs,
-    maxRequests: params.maxRequests,
-  });
+  const response = await gateFetch(
+    params.organizationId,
+    "/rate-limit",
+    {
+      endpointType: params.endpointType,
+      windowMs: params.windowMs,
+      maxRequests: params.maxRequests,
+    },
+    undefined,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  );
   if (response.status !== 200 && response.status !== 429) {
     throw new InferenceAdmissionGateUnavailableError(
       `Inference admission gate rate limit failed with status ${response.status}`,
@@ -444,6 +451,7 @@ export async function acquireInferenceAdmissionLease(params: {
       recovery: params.recovery,
     },
     stub,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
   if (response.status === 503) {
     const code = await readGateErrorCode(response);
@@ -592,6 +600,7 @@ export async function releaseInferenceAdmissionLease(
       }),
     },
     lease.gate,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
   if (!response.ok) {
     throw new InferenceAdmissionGateUnavailableError(
@@ -638,6 +647,7 @@ export async function settleInferenceAdmissionLease(
       balanceRevision: snapshot.revision,
     },
     lease.gate,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
   );
   if (!response.ok) {
     throw new InferenceAdmissionGateUnavailableError(
