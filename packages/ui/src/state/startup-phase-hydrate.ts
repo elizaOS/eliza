@@ -667,9 +667,23 @@ export function bindReadyPhase(
       const d = depsRef.current;
       if (!d) return;
       if (cid === d.activeConversationIdRef.current)
-        d.setConversationMessages((prev: ConversationMessage[]) =>
-          prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
-        );
+        d.setConversationMessages((prev: ConversationMessage[]) => {
+          const existingIndex = prev.findIndex((m) => m.id === msg.id);
+          if (existingIndex >= 0) {
+            const existing = prev[existingIndex];
+            if (
+              existing.text === msg.text &&
+              existing.timestamp === msg.timestamp &&
+              existing.source === msg.source
+            ) {
+              return prev;
+            }
+            const next = [...prev];
+            next[existingIndex] = { ...existing, ...msg };
+            return next;
+          }
+          return [...prev, msg];
+        });
       else
         d.setUnreadConversations(
           (prev: Set<string>) => new Set([...prev, cid]),
