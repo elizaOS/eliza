@@ -217,6 +217,46 @@ describe("TRIGGER create — prompt-kind reminders", () => {
   });
 });
 
+describe("TRIGGER handler — silent, planner-voiced acks (#16863)", () => {
+  it("never invokes the user-visible callback on a successful create", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const callback = vi.fn(async () => []);
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("remind me to stretch"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          instructions: "stretch",
+          delaySeconds: 45,
+        },
+      },
+      callback,
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks).toHaveLength(1);
+    // The planner's final message is the single user-facing ack; a handler
+    // callback here double-posted the mechanical result seconds before it.
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("returns the invalid-op failure without echoing it to chat", async () => {
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const callback = vi.fn(async () => []);
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("do something"),
+      undefined,
+      { parameters: { action: "explode" } },
+      callback,
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("TRIGGER_INVALID");
+    expect(callback).not.toHaveBeenCalled();
+  });
+});
+
 describe("TRIGGER create — workflow triggers", () => {
   it("still requires the autonomy loop for workflow triggers", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
