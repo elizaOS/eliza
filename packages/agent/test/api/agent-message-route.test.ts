@@ -176,6 +176,7 @@ function createRuntime(
     getServicesByType: vi.fn(() => []),
     emitEvent: vi.fn(async () => undefined),
     drainChatPreHandlers: vi.fn(async () => null),
+    reportError: vi.fn(),
     ...overrides,
   };
   return runtime as unknown as AgentRuntime;

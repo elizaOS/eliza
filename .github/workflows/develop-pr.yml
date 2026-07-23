@@ -55,9 +55,9 @@ jobs:
       # Tests run through the canonical orchestrator (run-all-tests.mjs — there
       # is deliberately no Turbo `test` task), scoped to the workspace packages
       # that own the changed files. Owning-package scope keeps this job bounded:
-      # root-level or global-input changes select no package here and rely on
-      # the post-merge exhaustive lane, instead of degenerating into the whole
-      # 250-package suite on one hosted runner.
+      # root-level or global-input changes fall back to the packages/core suite
+      # as a fail-closed floor (every runtime surface depends on core), instead
+      # of degenerating into the whole 250-package suite on one hosted runner.
       - name: Run affected package tests
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -83,8 +83,12 @@ jobs:
             | join("|")
           ' "$RUNNER_TEMP/workspace-packages.json")"
           if [ -z "$dirs" ]; then
-            echo "No changed files belong to a workspace package; package suites are covered by the post-merge exhaustive lane."
-            exit 0
+            # Fail-closed floor: a diff that maps to no workspace package
+            # (root config, workflows, non-workspace scripts) still exercises
+            # the core runtime suite pre-merge; the post-merge exhaustive lane
+            # remains the full-breadth authority.
+            echo "No changed files belong to a workspace package; running the packages/core floor suite."
+            dirs='packages/core'
           fi
           echo "Owning packages under test: ${dirs//|/, }"
           TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs \
