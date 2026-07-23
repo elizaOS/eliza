@@ -792,42 +792,7 @@ export function collectPluginNames(
   // gitpathologist .git auto-detect, config allow-list) added them, so a
   // lean-chat agent is guaranteed minimal. (#8434)
   if (leanChat) {
-    // OPT-IN local-primary embeddings for lean-chat cloud agents.
-    //
-    // #8762 excluded @elizaos/plugin-local-inference from lean-chat entirely
-    // because on a cloud container the on-device gte-small GGUF (a) ran
-    // 1.5-98s/batch on the contended CPU and (b) emitted 384-dim vectors into
-    // a 1536-dim column, dropping every insert. That was the right default at
-    // the time. But local gte-small is now measured at 17-48ms/embed on the
-    // live VPS, 10-20x faster than the cloud OpenAI round-trip (~250ms), so
-    // for a cloud agent whose store is re-provisioned at gte-small's 384-dim
-    // width, local-primary is a strict win on the always-on recall hot path.
-    //
-    // Gated behind ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS (default OFF): a hot flip
-    // for EXISTING 1536-dim agents would degrade recall until re-embedded
-    // (#9911 failure class), so this stays opt-in and rolls out per-agent with
-    // a backfill. When the flag is set, keep plugin-local-inference loaded so
-    // it can win the TEXT_EMBEDDING registration, and signal the cloud plugin
-    // to yield the slot (ELIZAOS_CLOUD_USE_EMBEDDINGS=false unless the operator
-    // explicitly pinned it true) so the two providers don't both register.
-    const localEmbeddingsOptIn =
-      readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
-      process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
     for (const name of LEAN_CHAT_EXCLUDED_PLUGINS) {
-      if (localEmbeddingsOptIn && name === "@elizaos/plugin-local-inference") {
-        // Keep the local embedder; ensure it wins TEXT_EMBEDDING over cloud.
-        pluginsToLoad.add(name);
-        track(
-          name,
-          "lean-chat local-primary embeddings (ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1)",
-        );
-        // Yield the cloud embedding slot so plugin-elizacloud does not also
-        // register TEXT_EMBEDDING (registerCloudEmbeddingModels checks this).
-        if (!process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS) {
-          process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
-        }
-        continue;
-      }
       pluginsToLoad.delete(name);
     }
   }

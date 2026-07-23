@@ -41,7 +41,7 @@ jobs:
       matrix:
         include:
           - lane: benchmark-tests
-            command: bunx vitest run --config vitest.config.ts --root packages/lifeops-bench --passWithNoTests
+            command: bunx vitest run --config packages/lifeops-bench/vitest.config.ts --root packages/lifeops-bench --passWithNoTests
           - lane: benchmark-lint
             command: bunx @biomejs/biome check packages/lifeops-bench/src
 
@@ -63,9 +63,6 @@ jobs:
           bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454); packageManager bun@1.4.0-canary.1 is unresolvable (GH+npm 404)
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           install-native-deps: "false"
-
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Run ${{ matrix.lane }} lane
         env:

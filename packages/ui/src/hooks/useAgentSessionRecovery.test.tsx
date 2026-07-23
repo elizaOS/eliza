@@ -30,11 +30,6 @@ vi.mock("../config/boot-config", () => ({
 vi.mock("../state/agent-session-recovery-runner", () => ({
   runAgentSessionRecovery: (...args: unknown[]) => mockRunRecovery(...args),
 }));
-const mockClearStalePairCredentialsForAgent = vi.fn();
-vi.mock("../state/cloud-pair-token", () => ({
-  clearStalePairCredentialsForAgent: (agentId: string) =>
-    mockClearStalePairCredentialsForAgent(agentId),
-}));
 
 import { useAgentSessionRecovery } from "./useAgentSessionRecovery";
 
@@ -92,38 +87,6 @@ describe("useAgentSessionRecovery", () => {
       cloudApiBase: "https://elizacloud.ai",
       cloudToken: "steward.jwt.token",
     });
-  });
-
-  it("opts into a purge SCOPED to the proven agent (#16666)", async () => {
-    // This hook fires only after the agent origin rejected the adopted pair
-    // bearer, so it may opt into the runner's stale-credential purge — but the
-    // purge it supplies must target exactly the agent whose credential was
-    // proven stale, never a global clear.
-    mockCloudToken.mockReturnValue("steward.jwt.token");
-    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
-    mockRunRecovery.mockReturnValue(new Promise(() => {}));
-
-    const statuses: string[] = [];
-    render(
-      <Probe
-        active
-        reason="remote_auth_required"
-        onStatus={(s) => statuses.push(s)}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(mockRunRecovery).toHaveBeenCalledTimes(1);
-    });
-    const deps = mockRunRecovery.mock.calls[0][0] as {
-      clearStalePairCredentials?: () => void;
-    };
-    expect(deps.clearStalePairCredentials).toEqual(expect.any(Function));
-    expect(mockClearStalePairCredentialsForAgent).not.toHaveBeenCalled();
-    deps.clearStalePairCredentials?.();
-    expect(mockClearStalePairCredentialsForAgent).toHaveBeenCalledWith(
-      "agent-1",
-    );
   });
 
   it("uses in-process pairing on native so the WebView stays on the app origin", async () => {

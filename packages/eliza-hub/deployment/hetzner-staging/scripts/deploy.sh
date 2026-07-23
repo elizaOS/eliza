@@ -170,44 +170,57 @@ run_step() {
 }
 
 base_compose_cmd() {
-  BASE_COMPOSE_CMD=(docker compose)
+  # shellcheck disable=SC2178
+  local -n output=$1
+  shift
+
+  output=(docker compose)
   if [[ -f "$ENV_FILE" ]]; then
-    BASE_COMPOSE_CMD+=(--env-file "$ENV_FILE")
+    output+=(--env-file "$ENV_FILE")
   fi
-  BASE_COMPOSE_CMD+=(-f "$COMPOSE_FILE" --profile steward "$@")
+  output+=(-f "$COMPOSE_FILE" --profile steward "$@")
 }
 
 runner_compose_cmd() {
-  RUNNER_COMPOSE_CMD=(docker compose)
+  # shellcheck disable=SC2178
+  local -n output=$1
+  shift
+
+  output=(docker compose)
   if [[ -f "$ENV_FILE" ]]; then
-    RUNNER_COMPOSE_CMD+=(--env-file "$ENV_FILE")
+    output+=(--env-file "$ENV_FILE")
   fi
-  RUNNER_COMPOSE_CMD+=(-f "$COMPOSE_FILE" -f "$RUNNER_COMPOSE_FILE" --profile steward --profile actions-runner "$@")
+  output+=(-f "$COMPOSE_FILE" -f "$RUNNER_COMPOSE_FILE" --profile steward --profile actions-runner "$@")
 }
 
 run_base_compose() {
   local phase="$1"
   local name="$2"
   shift 2
-  base_compose_cmd "$@"
-  run_step "$phase" "$name" "${BASE_COMPOSE_CMD[@]}"
+  local cmd
+
+  base_compose_cmd cmd "$@"
+  run_step "$phase" "$name" "${cmd[@]}"
 }
 
 run_runner_compose() {
   local phase="$1"
   local name="$2"
   shift 2
-  runner_compose_cmd "$@"
-  run_step "$phase" "$name" "${RUNNER_COMPOSE_CMD[@]}"
+  local cmd
+
+  runner_compose_cmd cmd "$@"
+  run_step "$phase" "$name" "${cmd[@]}"
 }
 
 run_migration() {
   local phase="$1"
   shift
+  local cmd
   local command_text
 
-  base_compose_cmd "$@"
-  command_text="$(shell_join "${BASE_COMPOSE_CMD[@]}") > $(shell_join "$DEPLOY_MIGRATE_LOG") 2>&1"
+  base_compose_cmd cmd "$@"
+  command_text="$(shell_join "${cmd[@]}") > $(shell_join "$DEPLOY_MIGRATE_LOG") 2>&1"
   record_shell_step "$phase" "run merge steward migrations" "$command_text"
 
   if is_true "$DEPLOY_DRY_RUN"; then
@@ -216,7 +229,7 @@ run_migration() {
   fi
 
   mkdir -p "$(dirname "$DEPLOY_MIGRATE_LOG")"
-  "${BASE_COMPOSE_CMD[@]}" >"$DEPLOY_MIGRATE_LOG" 2>&1
+  "${cmd[@]}" >"$DEPLOY_MIGRATE_LOG" 2>&1
 }
 
 validate_mode() {

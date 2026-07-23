@@ -1145,7 +1145,6 @@ export async function handleViewsRoutes(
       broadcastWs: ctx.broadcastWs,
       broadcastWsToClientId: ctx.broadcastWsToClientId,
       clientId: resolveTargetViewClientId(id, req, body),
-      runtime: ctx.runtime ?? undefined,
     });
 
     json(res, {
@@ -1255,9 +1254,7 @@ export async function handleViewsRoutes(
 
     if (typeof entry.serverInteract === "function") {
       try {
-        const result = await entry.serverInteract(capability, params, {
-          runtime: ctx.runtime ?? undefined,
-        });
+        const result = await entry.serverInteract(capability, params);
         ctx.broadcastWs?.({
           type: "view:event",
           viewEventType: `view:${id}:updated`,
@@ -1370,7 +1367,6 @@ interface ViewInteractTransport {
   broadcastWs?: (payload: object) => void;
   broadcastWsToClientId?: (clientId: string, payload: object) => number;
   clientId?: string | null;
-  runtime?: IAgentRuntime;
 }
 
 /**
@@ -1400,9 +1396,7 @@ export async function dispatchViewInteract(
 
   if (typeof entry.serverInteract === "function") {
     try {
-      const result = await entry.serverInteract(capability, params, {
-        runtime: transport.runtime,
-      });
+      const result = await entry.serverInteract(capability, params);
       transport.broadcastWs?.({
         type: "view:event",
         viewEventType: `view:${viewId}:updated`,

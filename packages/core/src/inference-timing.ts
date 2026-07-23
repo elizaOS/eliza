@@ -453,31 +453,7 @@ export interface InferenceTimingDevPayload {
 /** JSON body for a dev endpoint (e.g. `GET /api/dev/inference-timing`). */
 export function buildInferenceTimingDevPayload(
 	limit = 50,
-	persistedTurns: readonly InferenceTurnSummary[] = [],
 ): InferenceTimingDevPayload {
-	if (persistedTurns.length > 0) {
-		const byTurnId = new Map<string, InferenceTurnSummary>();
-		for (const summary of persistedTurns) byTurnId.set(summary.turnId, summary);
-		for (const summary of inferenceTimingRegistry.recentTurns(
-			REGISTRY_RING_CAPACITY,
-		)) {
-			byTurnId.set(summary.turnId, summary);
-		}
-		const combined = [...byTurnId.values()].sort(
-			(a, b) => a.t0EpochMs - b.t0EpochMs,
-		);
-		const durableRegistry = new InferenceTimingRegistry();
-		for (const summary of combined) durableRegistry.record(summary);
-		return {
-			generatedAtEpochMs: Date.now(),
-			turns:
-				limit >= combined.length
-					? combined
-					: combined.slice(combined.length - limit),
-			spanHistograms: durableRegistry.spanSummaries(),
-			derivedHistograms: durableRegistry.derivedSummaries(),
-		};
-	}
 	return {
 		generatedAtEpochMs: Date.now(),
 		turns: inferenceTimingRegistry.recentTurns(limit),

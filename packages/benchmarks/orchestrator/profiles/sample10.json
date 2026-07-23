@@ -73,6 +73,9 @@
       "max_iterations": 5,
       "max_depth": 3
     },
+    "social_alpha": {
+      "suites": ["detect"]
+    },
     "solana": {
       "max_messages": 2,
       "environment_config": "voyager/environments/basic_env.json"

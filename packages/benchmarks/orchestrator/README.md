@@ -158,6 +158,15 @@ lists. The ordered full request manifest is retained only for
 `orchestrator_lifecycle`, whose stage grammar requires exact request-by-request
 validation.
 
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator.full_campaign \
+  --model claude-sonnet-4-6 \
+  --benchmarks social_alpha \
+  --allow-manual \
+  --manual-overrides-json '{"social_alpha":{"data_dir":"/absolute/path/to/trenches-data"}}' \
+  --force
+```
+
 Examples:
 
 ```bash

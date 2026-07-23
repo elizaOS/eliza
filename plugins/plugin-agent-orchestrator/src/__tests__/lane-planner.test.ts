@@ -899,6 +899,6 @@ describe("TASKS create lane planner integration", () => {
     expect(result?.success).toBe(false);
     expect(acp.spawnSession).toHaveBeenCalledTimes(2);
     expect(acp.sendPrompt).toHaveBeenCalledTimes(2);
-    expect(taskService.createTask).toHaveBeenCalledTimes(2);
+    expect(taskService.createTask).toHaveBeenCalledTimes(1);
   });
 });

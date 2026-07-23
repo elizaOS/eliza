@@ -628,6 +628,14 @@ def _rlm_payload(score: float) -> dict[str, Any]:
     }
 
 
+def _social_alpha_payload(score: float) -> dict[str, Any]:
+    raw = score * 100.0
+    return {
+        "COMPOSITE": {"trust_marketplace_score": raw},
+        "detect": {"suite_score": raw},
+    }
+
+
 def _swe_bench_payload(score: float) -> dict[str, Any]:
     total = 2
     return {
@@ -1082,6 +1090,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "personality_bench": ("report.json", _personality_payload),
     "recall_bench": ("recall-bench-results.json", _recall_bench_payload),
     "rlm_bench": ("rlm-results.json", _rlm_payload),
+    "social_alpha": ("benchmark_results_random_v1.json", _social_alpha_payload),
     "solana": ("eliza_random_v1_metrics.json", _solana_payload),
     "swe_bench": ("swe-bench-results.json", _swe_bench_payload),
     "three_agent_dialogue": ("verification.json", _three_agent_dialogue_payload),

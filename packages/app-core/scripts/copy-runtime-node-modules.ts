@@ -721,11 +721,7 @@ export function shouldKeepPackageRelativePath(
   if (packageName === "ffprobe-static") {
     const ffprobeMatch = normalizedPath.match(/^bin\/([^/]+)\/([^/]+)(?:\/|$)/);
     if (ffprobeMatch) {
-      return matchesRuntimeVariant(
-        `${ffprobeMatch[1]}-${ffprobeMatch[2]}`,
-        targetOS,
-        targetArch,
-      );
+      return matchesRuntimeVariant(`${ffprobeMatch[1]}-${ffprobeMatch[2]}`);
     }
   }
 

@@ -359,6 +359,36 @@ function buildTrustAnalysisJson(prompt: string): string {
   });
 }
 
+function buildSocialAlphaExtractionJson(prompt: string): string {
+  const message =
+    /Message:\s*([\s\S]*?)(?:\n\nBENCHMARK CONTEXT|\n\nRespond|$)/i.exec(
+      prompt,
+    )?.[1] ?? prompt;
+  const lower = message.toLowerCase();
+  const ticker = /\$([A-Z][A-Z0-9]{1,12})/.exec(message)?.[1] ?? "";
+  const sell = /sell|dump|short|avoid|bearish|rug|scam/.test(lower);
+  const buy = /buy|moon|pump|bullish|long|ape|gem|alpha|100x/.test(lower);
+  const recommendation_type =
+    buy && !sell ? "BUY" : sell && !buy ? "SELL" : "NOISE";
+  const is_recommendation = recommendation_type !== "NOISE";
+  const conviction = is_recommendation
+    ? /100x|moon|ape|strong|high|gem|alpha/.test(lower)
+      ? "HIGH"
+      : "MEDIUM"
+    : "NONE";
+  return buildJsonResponse(prompt, {
+    thought: "Returning deterministic Social Alpha extraction.",
+    actions: "REPLY",
+    providers: "",
+    text: JSON.stringify({
+      is_recommendation,
+      recommendation_type,
+      conviction,
+      token_mentioned: ticker,
+    }),
+  });
+}
+
 function extractValidationFields(prompt: string): Record<string, string> {
   const tags: Record<string, string> = {};
 
@@ -540,6 +570,15 @@ function buildCompletion(prompt: string): string {
     /security analysis agent|prompt_injection|credential_theft/i.test(prompt)
   ) {
     return buildTrustAnalysisJson(prompt);
+  }
+
+  if (
+    /Benchmark:\*{0,2}\s*(social_alpha|social-alpha)/i.test(prompt) ||
+    /Social-Alpha benchmark|crypto trading signal extraction engine/i.test(
+      prompt,
+    )
+  ) {
+    return buildSocialAlphaExtractionJson(prompt);
   }
 
   return buildJsonResponse(prompt, {

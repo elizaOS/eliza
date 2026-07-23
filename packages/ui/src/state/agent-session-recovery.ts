@@ -71,41 +71,11 @@ export interface AgentSessionRecoveryInput {
 const SHOW_WALL: AgentSessionRecoveryDecision = { action: "show-wall" };
 
 /**
- * Extract the dedicated agent id from an API base alone: the
- * `<agentId>.elizacloud.ai` subdomain form first, then the REST adapter base
- * (`<cloudApiBase>/api/v1/eliza/agents/<agentId>`). Shared by the persisted
- * active-server resolver below and the credential-scoped purge
- * (cloud-pair-token), which must match agent profiles that carry only a base.
- */
-export function dedicatedAgentIdFromApiBase(
-  apiBase: string | null | undefined,
-): string | null {
-  const base = apiBase?.trim();
-  if (!base) return null;
-
-  const subdomainAgentId = dedicatedCloudAgentIdFromBase(base);
-  if (subdomainAgentId) return subdomainAgentId;
-
-  const match = base.match(
-    /\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge)?\/?$/,
-  );
-  if (match?.[1]) {
-    try {
-      return decodeURIComponent(match[1]);
-    } catch {
-      // Malformed encoding, use the raw segment rather than dropping it.
-      return match[1];
-    }
-  }
-
-  return null;
-}
-
-/**
  * Extract the dedicated agent id from a persisted cloud runtime record. Prefers
  * the `cloud:<id>` id form written by `silentlyRepointToDedicated`, then falls
- * back to parsing the API base, so older persisted records without the id
- * prefix still recover.
+ * back to parsing the REST adapter base
+ * (`<cloudApiBase>/api/v1/eliza/agents/<agentId>`), so older persisted records
+ * without the id prefix still recover.
  */
 export function resolveDedicatedAgentId(
   server: PersistedActiveServer,
@@ -115,7 +85,25 @@ export function resolveDedicatedAgentId(
     if (id) return id;
   }
 
-  return dedicatedAgentIdFromApiBase(server.apiBase);
+  const base = server.apiBase?.trim();
+  if (base) {
+    const subdomainAgentId = dedicatedCloudAgentIdFromBase(base);
+    if (subdomainAgentId) return subdomainAgentId;
+
+    const match = base.match(
+      /\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge)?\/?$/,
+    );
+    if (match?.[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        // Malformed encoding, use the raw segment rather than dropping it.
+        return match[1];
+      }
+    }
+  }
+
+  return null;
 }
 
 /**

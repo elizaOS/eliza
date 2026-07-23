@@ -133,8 +133,6 @@ async function dispatchFetch(
 }
 
 const ORIGIN = "https://app.test";
-const VIEWS_CACHE_NAME = "elizaos-views-v1-dev";
-const ASSETS_CACHE_NAME = "elizaos-assets-v1-dev";
 const cacheStorage = new FakeCacheStorage();
 const fetchMock = vi.fn();
 const skipWaiting = vi.fn(async () => {});
@@ -221,7 +219,7 @@ describe("lifecycle", () => {
       new FakeRequest(`${ORIGIN}/stale`),
       new Response("old"),
     );
-    await cacheStorage.open(VIEWS_CACHE_NAME);
+    await cacheStorage.open("elizaos-views-v1");
 
     const pending: Promise<unknown>[] = [];
     handlers.get("activate")?.({
@@ -230,7 +228,7 @@ describe("lifecycle", () => {
     await Promise.all(pending);
 
     expect(await cacheStorage.keys()).not.toContain("elizaos-views-v0");
-    expect(await cacheStorage.keys()).toContain(VIEWS_CACHE_NAME);
+    expect(await cacheStorage.keys()).toContain("elizaos-views-v1");
     expect(preloadEnable).toHaveBeenCalledTimes(1);
     expect(clientsClaim).toHaveBeenCalledTimes(1);
   });
@@ -323,7 +321,7 @@ describe("view bundle stale-while-revalidate", () => {
     const event = await dispatchFetch(new FakeRequest(bundleUrl));
     const response = await event.responded;
     expect(await response?.text()).toBe("bundle-1");
-    const cache = await cacheStorage.open(VIEWS_CACHE_NAME);
+    const cache = await cacheStorage.open("elizaos-views-v1");
     expect(cache.store.has(bundleUrl)).toBe(true);
   });
 
@@ -377,7 +375,7 @@ describe("hero cache-first with max-age", () => {
   });
 
   it("refetches an expired hero", async () => {
-    const cache = await cacheStorage.open(VIEWS_CACHE_NAME);
+    const cache = await cacheStorage.open("elizaos-views-v1");
     await cache.put(
       new FakeRequest(heroUrl),
       new Response("stale-hero", {
@@ -411,7 +409,7 @@ describe("immutable assets", () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     // Overfill past the 220-entry cap; the oldest keys must be evicted.
-    const assets = await cacheStorage.open(ASSETS_CACHE_NAME);
+    const assets = await cacheStorage.open("elizaos-assets-v1");
     for (let i = 0; i < 224; i += 1) {
       await assets.put(
         new FakeRequest(`${ORIGIN}/assets/seed-${i}.js`),
@@ -474,7 +472,7 @@ describe("page message commands", () => {
   }
 
   it("evicts one view's bundle + hero and leaves other views intact", async () => {
-    const cache = await cacheStorage.open(VIEWS_CACHE_NAME);
+    const cache = await cacheStorage.open("elizaos-views-v1");
     await cache.put(
       new FakeRequest(`${ORIGIN}/api/views/v9/bundle.js`),
       new Response("b"),
@@ -492,7 +490,7 @@ describe("page message commands", () => {
 
   it("evicts the whole views cache, ignores malformed commands, and clears the badge", async () => {
     await dispatchMessage({ type: "sw:evict-all-views" });
-    expect(await cacheStorage.keys()).not.toContain(VIEWS_CACHE_NAME);
+    expect(await cacheStorage.keys()).not.toContain("elizaos-views-v1");
 
     await dispatchMessage(null);
     await dispatchMessage({ type: "sw:evict-view", viewId: 42 });

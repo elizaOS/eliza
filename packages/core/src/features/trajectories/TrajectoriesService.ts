@@ -566,19 +566,6 @@ function normalizeProviderAccess(value: unknown): ProviderAccess | null {
 		providerId,
 		providerName,
 		timestamp,
-		startedAt: numberValue(value.startedAt),
-		endedAt: numberValue(value.endedAt),
-		durationMs: numberValue(value.durationMs),
-		overlapsWith: Array.isArray(value.overlapsWith)
-			? value.overlapsWith.flatMap((entry) => {
-					if (!isPlainRecord(entry)) return [];
-					const overlapProviderName = stringValue(entry.providerName);
-					const overlapMs = numberValue(entry.overlapMs);
-					return overlapProviderName && overlapMs !== null
-						? [{ providerName: overlapProviderName, overlapMs }]
-						: [];
-				})
-			: [],
 		data,
 		purpose,
 	};
@@ -1797,10 +1784,6 @@ export class TrajectoriesService extends Service {
 	logProviderAccess(params: {
 		stepId: string;
 		providerName: string;
-		startedAt: number;
-		endedAt: number;
-		durationMs: number;
-		overlapsWith: Array<{ providerName: string; overlapMs: number }>;
 		data: Record<string, unknown>;
 		sha256?: string;
 		tokenCount?: number;
@@ -1818,10 +1801,6 @@ export class TrajectoriesService extends Service {
 		stepId: string,
 		params: {
 			providerName: string;
-			startedAt?: number;
-			endedAt?: number;
-			durationMs?: number;
-			overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 			data: Record<string, unknown>;
 			sha256?: string;
 			tokenCount?: number;
@@ -1842,10 +1821,6 @@ export class TrajectoriesService extends Service {
 			| {
 					stepId: string;
 					providerName: string;
-					startedAt?: number;
-					endedAt?: number;
-					durationMs?: number;
-					overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 					data: Record<string, unknown>;
 					sha256?: string;
 					tokenCount?: number;
@@ -1861,10 +1836,6 @@ export class TrajectoriesService extends Service {
 			  },
 		arg2?: {
 			providerName: string;
-			startedAt?: number;
-			endedAt?: number;
-			durationMs?: number;
-			overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 			data: Record<string, unknown>;
 			sha256?: string;
 			tokenCount?: number;
@@ -1881,10 +1852,6 @@ export class TrajectoriesService extends Service {
 				? {
 						stepId: arg1,
 						providerName: arg2?.providerName ?? "unknown",
-						startedAt: arg2?.startedAt,
-						endedAt: arg2?.endedAt,
-						durationMs: arg2?.durationMs,
-						overlapsWith: arg2?.overlapsWith,
 						data: arg2?.data ?? {},
 						sha256: arg2?.sha256,
 						tokenCount: arg2?.tokenCount,
@@ -1932,10 +1899,6 @@ export class TrajectoriesService extends Service {
 		params: {
 			stepId: string;
 			providerName: string;
-			startedAt?: number;
-			endedAt?: number;
-			durationMs?: number;
-			overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 			data: Record<string, unknown>;
 			sha256?: string;
 			tokenCount?: number;
@@ -1959,12 +1922,6 @@ export class TrajectoriesService extends Service {
 				providerId: uuidv4(),
 				providerName: params.providerName,
 				timestamp: Date.now(),
-				startedAt: params.startedAt ?? null,
-				endedAt: params.endedAt ?? null,
-				durationMs: params.durationMs ?? null,
-				overlapsWith: Array.isArray(params.overlapsWith)
-					? params.overlapsWith
-					: [],
 				data: params.data as Record<string, JsonValue>,
 				sha256: params.sha256,
 				tokenCount: params.tokenCount,
@@ -2004,10 +1961,6 @@ export class TrajectoriesService extends Service {
 		trajectoryId: string,
 		access: {
 			providerName: string;
-			startedAt?: number;
-			endedAt?: number;
-			durationMs?: number;
-			overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 			data: Record<string, unknown>;
 			sha256?: string;
 			tokenCount?: number;

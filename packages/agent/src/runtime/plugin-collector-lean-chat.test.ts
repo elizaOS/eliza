@@ -3,7 +3,7 @@
  * minimal conversational seed is kept while heavy coding/browser/orchestrator/
  * local-inference/wallet/workflow surfaces are force-dropped even when config
  * allow-lists or env request them, and elizacloud stays for a cloud agent.
- * Deterministic - env-driven over an in-memory ElizaConfig, no live model.
+ * Deterministic — env-driven over an in-memory ElizaConfig, no live model.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -22,8 +22,6 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZA_CLOUD_PROVISIONED",
-  "ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS",
-  "ELIZAOS_CLOUD_USE_EMBEDDINGS",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -108,42 +106,9 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-workflow")).toBe(false);
   });
 
-  it("restores local-primary embeddings for lean-chat when ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 (opt-in, default OFF)", () => {
-    // Local-primary restore (sol-emb-restore): local gte-small is 17–48ms vs the
-    // cloud ~250ms round-trip, so an opt-in flag re-keeps plugin-local-inference
-    // in a lean-chat agent so it wins TEXT_EMBEDDING. Default OFF (asserted by
-    // the force-exclude test above); when ON it keeps the local embedder AND
-    // yields the cloud embedding slot so both don't register.
-    process.env.ELIZA_PLUGIN_SET = "lean-chat";
-    process.env.ELIZA_CLOUD_PROVISIONED = "1";
-    process.env.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS = "1";
-    const names = collectPluginNames(emptyConfig);
-    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
-    // Cloud embedding slot yielded so plugin-elizacloud doesn't also register.
-    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
-    // The rest of the lean exclusions still hold - only local-inference is kept.
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
-    expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
-    expect(names.has("@elizaos/plugin-wallet")).toBe(false);
-  });
-
-  it("honors an explicit cloud-embeddings pin over the local-primary opt-in", () => {
-    // If an operator has deliberately pinned ELIZAOS_CLOUD_USE_EMBEDDINGS=true
-    // (a dedicated cloud agent whose 1536-dim store must stay consistent), the
-    // opt-in must NOT override it - local stays excluded and cloud keeps the
-    // slot. This protects the #9911 hot-flip-recall-degradation class.
-    process.env.ELIZA_PLUGIN_SET = "lean-chat";
-    process.env.ELIZA_CLOUD_PROVISIONED = "1";
-    process.env.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS = "1";
-    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
-    const names = collectPluginNames(emptyConfig);
-    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
-    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("true");
-  });
-
   it("keeps plugin-elizacloud for a lean CLOUD agent (cloud serves models + 1536 embeddings)", () => {
     // A lean dedicated cloud agent drops local-inference but MUST keep
-    // elizacloud - that is the inference + 1536-embedding provider for the
+    // elizacloud — that is the inference + 1536-embedding provider for the
     // cloud chat path. Dropping both would leave the agent with no model.
     process.env.ELIZA_PLUGIN_SET = "lean-chat";
     process.env.ELIZAOS_CLOUD_ENABLED = "true";

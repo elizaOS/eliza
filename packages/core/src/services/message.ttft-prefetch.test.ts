@@ -105,9 +105,6 @@ function makeRuntime(opts: RuntimeOptions = {}) {
 		getRoomsByIds: vi.fn(async () => [room]),
 		createMemory: vi.fn(async (memory: Memory) => memory.id),
 		queueEmbeddingGeneration: vi.fn(async () => undefined),
-		createLogs: vi.fn(async () => undefined),
-		getLogs: vi.fn(async () => []),
-		deleteLogs: vi.fn(async () => undefined),
 		getParticipantUserState: vi.fn(async () => (opts.muted ? "MUTED" : null)),
 		updateParticipantUserState: vi.fn(async () => undefined),
 		applyPipelineHooks: vi.fn(async () => undefined),
@@ -227,65 +224,6 @@ describe("recall-query embed prefetch (per-turn cache warm)", () => {
 		await service.handleMessage(runtime, userMessage("   "));
 
 		expect(useModel).not.toHaveBeenCalled();
-	});
-});
-
-describe("post-turn evaluation detachment", () => {
-	it("lets a connector await handleMessage without waiting for post-turn evaluation", async () => {
-		const { runtime } = makeRuntime();
-		let releaseEvaluator: (() => void) | undefined;
-		const evaluatorStarted = new Promise<void>((resolveStarted) => {
-			(runtime.getServiceLoadPromise as ReturnType<typeof vi.fn>) = vi.fn(
-				async () => {
-					resolveStarted();
-					await new Promise<void>((resolve) => {
-						releaseEvaluator = resolve;
-					});
-					return { run: vi.fn(async () => ({ results: [] })) };
-				},
-			);
-		});
-		const service = new DefaultMessageService();
-
-		const connectorWait = service.handleMessage(
-			runtime,
-			userMessage("reply before reflection finishes"),
-		);
-		await expect(connectorWait).resolves.toBeDefined();
-		await evaluatorStarted;
-		expect(releaseEvaluator).toBeTypeOf("function");
-
-		releaseEvaluator?.();
-		await new Promise<void>((resolve) => setTimeout(resolve, 0));
-		expect(runtime.runActionsByMode).toHaveBeenCalledWith(
-			"ALWAYS_AFTER",
-			expect.anything(),
-			expect.anything(),
-			expect.anything(),
-		);
-	});
-
-	it("persists the completed timing summary outside the process ring", async () => {
-		const { runtime } = makeRuntime();
-		const service = new DefaultMessageService();
-
-		await service.handleMessage(
-			runtime,
-			userMessage("persist this turn timing"),
-		);
-		await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-		expect(runtime.createLogs).toHaveBeenCalledWith([
-			expect.objectContaining({
-				type: "inference_timing",
-				body: expect.objectContaining({
-					source: "inference_timing",
-					startTime: expect.any(Number),
-					endTime: expect.any(Number),
-					duration: expect.any(Number),
-				}),
-			}),
-		]);
 	});
 });
 

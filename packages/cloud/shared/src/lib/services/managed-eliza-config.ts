@@ -17,8 +17,8 @@ const DEV_ELIZA_APP_ORIGINS = [
 ] as const;
 /**
  * Platform-reserved env keys for the managed agent path. Aliases the shared
- * {@link RESERVED_PLATFORM_ENV_KEYS} denylist - single source of truth, also
- * enforced on the Apps deploy path - and stays a named export for existing
+ * {@link RESERVED_PLATFORM_ENV_KEYS} denylist — single source of truth, also
+ * enforced on the Apps deploy path — and stays a named export for existing
  * importers (the agent environment route).
  */
 export const RESERVED_MANAGED_ELIZA_ENV_KEYS = RESERVED_PLATFORM_ENV_KEYS;
@@ -184,45 +184,31 @@ export function mergeManagedPublicBaseUrl(
 /**
  * The cloud-managed inference defaults: the embedding endpoint + the cloud
  * embedding handler's OUTPUT dimensions, and the Cerebras-direct small/large
- * model pins. Pure and single-source-of-truth - both the provision path (via
+ * model pins. Pure and single-source-of-truth — both the provision path (via
  * prepareManagedElizaBaseEnvironment) and the blue/green fleet-upgrade path
  * (eliza-sandbox.ts) backfill these onto an agent's stored env so an agent
- * provisioned BEFORE these pins landed heals on upgrade (#8434). An explicit
- * per-agent value always wins.
- *
- * Local-primary restore: when a managed lean-chat agent opts in with
- * ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1, keep cloud text generation defaults but
- * stop pinning the cloud embedding handler as primary. The local gte-small
- * handler emits 384-d vectors, so the managed defaults also move the embedding
- * dimension hints to 384 for that agent. This is deliberately per-agent and
- * flag-gated: existing 1536-d stores must be re-embedded/backfilled before the
- * flag is enabled or recall can degrade (#9911 class).
+ * provisioned BEFORE these pins landed heals on upgrade (#8434). Returns ONLY
+ * these 5 keys; an explicit per-agent value always wins.
  *
  * NOTE on dimensions: EMBEDDING_DIMENSION / ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS
  * set the width of the vectors the plugin-elizacloud TEXT_EMBEDDING handler
- * EMITS when cloud embeddings are enabled (1536 by default, 384 for the
- * local-primary opt-in so all probes/storage hints agree). They do NOT size the
- * plugin-sql storage column - plugin-sql never reads either var. The storage
- * column width is decided at boot by runtime.ensureEmbeddingDimension(), which
- * probes the registered embedding handler's actual vector length and snaps the
- * column to that dimension. That probe must run before bundled docs are seeded;
- * that boot ordering was the real no-memory bug (#8769) - fixed in
- * packages/agent/src/runtime/eliza.ts, not here.
+ * EMITS (1536). They do NOT size the plugin-sql storage column — plugin-sql
+ * never reads either var. The storage column width is decided at boot by
+ * runtime.ensureEmbeddingDimension(), which probes the registered cloud
+ * embedding handler's actual vector length and snaps the column to dim1536.
+ * That probe must run before bundled docs are seeded; that boot ordering was
+ * the real no-memory bug (#8769) — fixed in packages/agent/src/runtime/eliza.ts,
+ * not here. Keeping these env pins ensures the handler emits 1536-wide vectors
+ * for the probe to detect.
  */
 export function applyManagedAgentInferenceEnvDefaults(
   existingEnv: Record<string, string>,
 ): Record<string, string> {
-  const localPrimaryEmbeddings =
-    existingEnv.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS === "1" &&
-    existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
-  const embeddingDimension = localPrimaryEmbeddings ? "384" : "1536";
   return {
-    ...(localPrimaryEmbeddings ? { ELIZAOS_CLOUD_USE_EMBEDDINGS: "false" } : {}),
     ELIZAOS_CLOUD_EMBEDDING_URL:
       existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
-    EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? embeddingDimension,
-    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
-      existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? embeddingDimension,
+    EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? "1536",
+    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? "1536",
     ELIZAOS_CLOUD_SMALL_MODEL:
       existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
     ELIZAOS_CLOUD_LARGE_MODEL:
@@ -238,8 +224,8 @@ export async function prepareManagedElizaBaseEnvironment(
   // (RESERVED_MANAGED_ELIZA_ENV_KEYS); the sandbox layer
   // (computeManagedAgentDbEnv in eliza-sandbox.ts) is the SOLE authority on the
   // agent's DB env. Strip any inherited value here so the control-plane's OWN
-  // DATABASE_URL - which the cloud Worker / provisioning daemon carries in its
-  // process env and which spreads in through params.existingEnv - cannot leak
+  // DATABASE_URL — which the cloud Worker / provisioning daemon carries in its
+  // process env and which spreads in through params.existingEnv — cannot leak
   // into the agent and silently override ELIZA_AGENT_LOCAL_STATE=1. That leak
   // forced every "local-state" agent onto the remote shared Railway Postgres
   // (~166ms/query x dozens of serial reads+writes per turn = the dominant
@@ -265,7 +251,7 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZA_API_TOKEN: apiToken,
       ELIZA_ALLOW_WS_QUERY_TOKEN: "1",
       ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(existingEnv.ELIZA_ALLOWED_ORIGINS),
-      // Public web UI on by default - users access it via the agent
+      // Public web UI on by default — users access it via the agent
       // subdomain (https://<agent-id>.elizacloud.ai), gated by
       // ELIZA_API_TOKEN at the agent-router. Set ELIZA_UI_ENABLE=false in
       // existingEnv to opt out per-agent.
@@ -273,17 +259,19 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
-      // Cloud-managed inference defaults: by default pin embeddings to the
-      // elizacloud Worker base (whose POST /embeddings serves 1536-dim
-      // text-embedding-3-small - without it the plugin falls back to the
-      // Cerebras/BitRouter text base with no /embeddings route -> 503), pin
-      // BOTH embedding-output dimensions to the handler's output width, and pin
-      // the healthy Cerebras-direct small/large models so the container never
-      // resolves a tier to the `:nitro` default. For the explicit
-      // ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 rollout lane, the helper yields the
-      // cloud embedding slot and uses 384-dim hints so local gte-small,
-      // ensureEmbeddingDimension, and storage agree. Each value still honors an
-      // explicit per-agent override in existingEnv.
+      // Cloud-managed inference defaults: pin embeddings to the elizacloud Worker
+      // base (whose POST /embeddings serves 1536-dim text-embedding-3-small —
+      // without it the plugin falls back to the Cerebras/BitRouter text base with
+      // no /embeddings route → 503), pin BOTH embedding-output dimensions to 1536
+      // so the cloud TEXT_EMBEDDING handler EMITS 1536-wide vectors (these vars
+      // size the handler's output, NOT the plugin-sql storage column — plugin-sql
+      // ignores them; the column width is set at boot by the model-length probe,
+      // ensureEmbeddingDimension, see applyManagedAgentInferenceEnvDefaults above
+      // and the #8769 boot-order fix in packages/agent/src/runtime/eliza.ts), and
+      // pin the healthy Cerebras-direct small/large models so the container never
+      // resolves a tier to the `:nitro` default. Shared single-source helper so
+      // the fleet-upgrade path re-applies the same defaults (#8434). Each value
+      // still honors an explicit per-agent override in existingEnv.
       ...applyManagedAgentInferenceEnvDefaults(existingEnv),
       // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
       // the persistent /root/.eliza volume) instead of the shared cloud Postgres;
@@ -291,7 +279,7 @@ export async function prepareManagedElizaBaseEnvironment(
       // This removes the shared-Postgres connection hot path that caused the
       // "too many clients" incident (#8696). The flag is read at container-create
       // time (eliza-sandbox.ts): only agents PROVISIONED with it set go local, so
-      // existing agents keep their shared-DB state untouched - a forward cutover
+      // existing agents keep their shared-DB state untouched — a forward cutover
       // with no migration. Set ELIZA_AGENT_LOCAL_STATE=0 to provision a new agent
       // on the shared DB instead. PGLITE_DATA_DIR is pinned under the persistent
       // mount so local state survives container restarts.
@@ -301,7 +289,7 @@ export async function prepareManagedElizaBaseEnvironment(
       // browser/orchestrator) for fast cold-start (#8434). Override per agent by
       // pinning ELIZA_PLUGIN_SET to another value at create.
       ELIZA_PLUGIN_SET: existingEnv.ELIZA_PLUGIN_SET ?? "lean-chat",
-      // Lean Postgres pool - only applies to agents still on the SHARED DB
+      // Lean Postgres pool — only applies to agents still on the SHARED DB
       // (existing agents, or new agents provisioned with ELIZA_AGENT_LOCAL_STATE=0).
       // The default per-agent pool (max 20 / min 2) exhausts the server's
       // max_connections at scale (50 idle agents × min 2 = 100). Cap bursts at 8

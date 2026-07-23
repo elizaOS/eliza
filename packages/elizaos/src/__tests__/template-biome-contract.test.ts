@@ -29,13 +29,13 @@ describe("standalone template Biome contract", () => {
         $schema: string;
       };
 
-      expect(manifest.devDependencies["@biomejs/biome"]).toBe("2.5.5");
+      expect(manifest.devDependencies["@biomejs/biome"]).toBe("2.5.4");
       expect(manifest.scripts.lint).toMatch(/^biome check\b/);
       expect(manifest.scripts["lint:check"]).toMatch(/^biome check\b/);
       expect(manifest.scripts.lint).not.toContain("||");
       expect(manifest.scripts["lint:check"]).not.toContain("||");
       expect(config.$schema).toBe(
-        "https://biomejs.dev/schemas/2.5.5/schema.json",
+        "https://biomejs.dev/schemas/2.5.4/schema.json",
       );
     });
   }

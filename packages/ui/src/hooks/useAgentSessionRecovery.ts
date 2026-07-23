@@ -23,7 +23,6 @@ import {
   resolveAgentSessionRecovery,
 } from "../state/agent-session-recovery";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
-import { clearStalePairCredentialsForAgent } from "../state/cloud-pair-token";
 import { loadPersistedActiveServer } from "../state/persistence";
 
 export type AgentSessionRecoveryStatus =
@@ -110,12 +109,6 @@ export function useAgentSessionRecovery(
       agentId: decision.agentId,
       cloudToken,
       consumeRedirectInProcess: shouldConsumePairRedirectInProcess(),
-      // This hook fires only after the agent origin rejected the adopted pair
-      // bearer (`/api/auth/me` 401 `remote_auth_required`), so when the mint
-      // ALSO refuses, purging that one agent's persisted credentials is proven
-      // safe — the next boot must not re-adopt the dead credential (#16666).
-      clearStalePairCredentials: () =>
-        clearStalePairCredentialsForAgent(decision.agentId),
       onPairedInProcess: async (apiToken) => {
         const { client } = await import("../api");
         client.setToken(apiToken);

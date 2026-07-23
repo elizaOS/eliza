@@ -265,40 +265,6 @@ describe("resolveSandboxContainerLaunchConfig", () => {
   });
 });
 
-describe("buildAgentSandboxInsertValues", () => {
-  test("derives trusted storage fields while rejecting caller-owned internal config", async () => {
-    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
-
-    expect(
-      buildAgentSandboxInsertValues({
-        organizationId: "22222222-2222-4222-8222-222222222222",
-        userId: "33333333-3333-4333-8333-333333333333",
-        agentName: "bnancy",
-        characterId: "44444444-4444-4444-8444-444444444444",
-        executionTier: "custom",
-        agentConfig: {
-          bio: "A real caller-owned persona",
-          __agentUpgradedFrom: "forged-source-agent",
-        },
-        environmentVars: { ELIZA_API_TOKEN: "encrypted-token" },
-      }),
-    ).toMatchObject({
-      organization_id: "22222222-2222-4222-8222-222222222222",
-      user_id: "33333333-3333-4333-8333-333333333333",
-      agent_name: "bnancy",
-      character_id: "44444444-4444-4444-8444-444444444444",
-      execution_tier: "custom",
-      status: "pending",
-      database_status: "none",
-      agent_config: {
-        bio: "A real caller-owned persona",
-        __agentCharacterOwnership: "reuse-existing",
-      },
-      environment_vars: { ELIZA_API_TOKEN: "encrypted-token" },
-    });
-  });
-});
-
 describe("ElizaSandboxService state restore auth", () => {
   test("attaches the agent token when restoring to a trusted bridge URL string", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");

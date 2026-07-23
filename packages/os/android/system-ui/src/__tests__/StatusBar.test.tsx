@@ -36,6 +36,7 @@ describe("StatusBar", () => {
         <StatusBar />
       </MockSystemProvider>,
     );
-    expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeDefined();
+    const clockEls = screen.getAllByLabelText(/Time \d{2}:\d{2}/);
+    expect(clockEls.length).toBeGreaterThan(0);
   });
 });

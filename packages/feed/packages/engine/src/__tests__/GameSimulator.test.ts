@@ -53,7 +53,6 @@ describe("GameSimulator - Standalone Engine", () => {
       outcome: true, // YES
       numAgents: 5,
       duration: 30,
-      seed: 42,
     };
     simulator = new GameSimulator(config);
   });

@@ -34,7 +34,7 @@ infrastructure that is not present:
 hermes, and openclaw are symmetric (48 each, no eliza-only and no
 hermes-XOR-openclaw benchmarks). At the *factory* level eliza is the **superset**:
 it has per-benchmark adapters for the full suite (osworld, hyperliquid,
-vending, visualwebbench, mmau, …), whereas hermes/openclaw only
+social_alpha, vending, visualwebbench, mmau, …), whereas hermes/openclaw only
 implement the ~13 tool-calling / agentic benchmarks:
 
 | harness | explicit per-benchmark factories |

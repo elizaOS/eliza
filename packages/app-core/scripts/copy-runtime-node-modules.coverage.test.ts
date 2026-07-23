@@ -17,7 +17,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -461,9 +460,7 @@ describe("normalizeResolvedPackage", () => {
 
     const resolved = normalizeResolvedPackage(dir);
     expect(resolved).not.toBeNull();
-    expect(resolved?.packageJsonPath).toBe(
-      path.join(realpathSync.native(dir), "package.json"),
-    );
+    expect(resolved?.packageJsonPath).toBe(manifestPath);
   });
 
   it("returns null for a directory with no manifest and no tracked workspace match", () => {

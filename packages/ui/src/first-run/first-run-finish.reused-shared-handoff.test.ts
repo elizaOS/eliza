@@ -258,14 +258,6 @@ describe("durable first-run completion at the landing (#15903)", () => {
     const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
     expect(outcome.kind).toBe("error");
     expect(savePersistedFirstRunCompleteMock).not.toHaveBeenCalled();
-    // Ordinary first-run pairing has NOT proven any existing pair bearer
-    // stale, so it must never opt into the runner's stale-credential purge —
-    // a Steward-mint refusal here says nothing about persisted agent
-    // credentials and must not destroy them (#16666).
-    const runnerDeps = runAgentSessionRecoveryMock.mock.calls.at(-1)?.[0] as {
-      clearStalePairCredentials?: unknown;
-    };
-    expect(runnerDeps.clearStalePairCredentials).toBeUndefined();
   });
 });
 

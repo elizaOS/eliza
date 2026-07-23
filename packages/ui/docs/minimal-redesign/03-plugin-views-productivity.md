@@ -9,6 +9,7 @@ Redesign direction judged against: **minimalism** (cut text/borders/cards/badges
 
 1. **Two competing visual systems, neither light.**
    - Hand-rolled inline `CSSProperties` with a hard-coded near-black `#0a0a0a` background + white-opacity surfaces: Todos (`TodosView.tsx:209`), Goals (`GoalsView.tsx:275`), Health (`HealthView.tsx:169`), Focus (`FocusView.tsx:127`), Inbox (`InboxView.tsx:240`), Documents (`DocumentsView.tsx:220`), Relationships (`RelationshipsView.tsx:291`).
+   - Tailwind + `@elizaos/ui` components with explicit `dark:` variants: Social-alpha (`bg-slate-50 dark:bg-slate-800/50` at `LeaderboardTable.tsx:65`).
    - Calendar uses `bg-bg/20` / `bg-white/3` / `ring-white/50` dark tints. Feed has since moved to the unified `FeedView` / `FeedSpatialView` path instead of its legacy dark game-shell chrome.
    - Every one hardcodes `#0a0a0a` / `dark:` and orange `#ff6a00` (note: redesign accent is `#ff8a24`). A single light token set would fix the palette in one place.
 
@@ -16,11 +17,11 @@ Redesign direction judged against: **minimalism** (cut text/borders/cards/badges
 
 3. **Always-on subtitle paragraphs** restate the icon+title in nearly every view: Health `:368`, Inbox `:415`, Documents `:398`, Relationships `:464`, Goals `:453`, Todos `:349`, Phone `:553`, Messages `:496`. All deletable.
 
-4. **Borders + card-per-item + per-row dividers** are the universal heaviness. `cardStyle` border (every view) + per-row `borderBottom`. Relationships is the worst remaining case because it renders one bordered card per entity.
+4. **Borders + card-per-item + per-row dividers** are the universal heaviness. `cardStyle` border (every view) + per-row `borderBottom`. Worst: Relationships (one bordered card per entity) and Social-alpha (3 levels of card nesting).
 
 5. **Chat hand-off pattern already exists and is correct** in Todos/Goals/Relationships/Inbox/Health (`client.sendChatMessage(...)`) and partially Calendar (`onChatAboutEvent`). Lean into it: delete CRUD UI in favor of chat-driven mutation.
 
-6. **`useAgentElement` instrumentation is consistently present** on meaningful controls. Preserve the descriptors; shrink visible chrome.
+6. **`useAgentElement` instrumentation is consistently present** on meaningful controls in all views EXCEPT Social-alpha (which has zero agent instrumentation — chat cannot drive it). Preserve the descriptors; shrink visible chrome.
 
 7. **Shared boilerplate duplicated 7×**: each inline-styled view re-defines identical `*-view-btn` / `cardStyle` / `containerStyle` / `headerRowStyle` / `h1Style` blocks. One shared light-theme token set kills all of it.
 

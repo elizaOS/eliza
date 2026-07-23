@@ -7,7 +7,6 @@
     "packages/*",
     "packages/examples/*",
     "tools/*",
-    "../cloud/routing",
     "../contracts",
     "../core",
     "../logger",

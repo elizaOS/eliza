@@ -9,7 +9,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { logger } from "@elizaos/core";
 import { FRAME_FILE } from "@elizaos/plugin-browser";
-import type sharp from "sharp";
 
 export type LifeOpsScreenFocus =
   | "work"
@@ -131,12 +130,15 @@ const TRANSITION_KEYWORDS = [
   "launchpad",
 ];
 
-type SharpFactory = typeof sharp;
+type SharpFactory = typeof import("sharp");
+type SharpModuleWithDefault = { default: SharpFactory };
 
 let sharpImportPromise: Promise<SharpFactory> | null = null;
 
-function isSharpFactory(value: unknown): value is SharpFactory {
-  return typeof value === "function";
+function hasDefaultSharpFactory(
+  mod: SharpFactory | SharpModuleWithDefault,
+): mod is SharpModuleWithDefault {
+  return typeof (mod as SharpModuleWithDefault).default === "function";
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -152,20 +154,9 @@ function keywordMatches(text: string, keywords: readonly string[]): string[] {
 }
 
 async function loadSharp(): Promise<SharpFactory> {
-  sharpImportPromise ??= import("sharp").then((mod: unknown) => {
-    if (isSharpFactory(mod)) {
-      return mod;
-    }
-    if (
-      mod !== null &&
-      typeof mod === "object" &&
-      "default" in mod &&
-      isSharpFactory(mod.default)
-    ) {
-      return mod.default;
-    }
-    throw new TypeError("sharp did not expose a callable image factory");
-  });
+  sharpImportPromise ??= import("sharp").then((mod) =>
+    hasDefaultSharpFactory(mod) ? mod.default : mod,
+  );
   return await sharpImportPromise;
 }
 

@@ -8,7 +8,6 @@ import {
 	MESSAGE_SOURCE_CLIENT_CHAT,
 	MESSAGE_SOURCE_CODING_AGENT,
 	MESSAGE_SOURCE_SUB_AGENT,
-	MESSAGE_SOURCE_TRIGGER_PROMPT,
 	MESSAGE_SOURCES,
 } from "./message-source";
 
@@ -18,13 +17,11 @@ describe("message source sentinels", () => {
 		expect(MESSAGE_SOURCE_SUB_AGENT).toBe("sub_agent");
 		expect(MESSAGE_SOURCE_CODING_AGENT).toBe("coding-agent");
 		expect(MESSAGE_SOURCE_AGENT_GREETING).toBe("agent_greeting");
-		expect(MESSAGE_SOURCE_TRIGGER_PROMPT).toBe("trigger-prompt");
 		expect(MESSAGE_SOURCES).toEqual({
 			CLIENT_CHAT: "client_chat",
 			SUB_AGENT: "sub_agent",
 			CODING_AGENT: "coding-agent",
 			AGENT_GREETING: "agent_greeting",
-			TRIGGER_PROMPT: "trigger-prompt",
 		});
 	});
 });

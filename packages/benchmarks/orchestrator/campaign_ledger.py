@@ -714,6 +714,15 @@ CAMPAIGN_LEDGER: tuple[CampaignLedgerEntry, ...] = (
         basis="The direct KPI lane deterministically indexes and searches 10,000 messages without a selected agent.",
     ),
     _adapter(
+        "social_alpha",
+        _C.MANUAL,
+        None,
+        None,
+        None,
+        _M.DATA_DEPENDENT,
+        basis="The external Trenches data_dir determines corpus size and multi-turn conversation lengths.",
+    ),
+    _adapter(
         "solana",
         _C.MANUAL,
         1,

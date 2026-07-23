@@ -103,10 +103,6 @@ export type TrajectoryLlmCallDetails = {
 export type TrajectoryProviderAccessParams = {
 	stepId: string;
 	providerName: string;
-	startedAt?: number;
-	endedAt?: number;
-	durationMs?: number;
-	overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 	data: Record<string, string | number | boolean | null>;
 	sha256?: string;
 	tokenCount?: number;

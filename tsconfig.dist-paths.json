@@ -108,9 +108,6 @@
       "@elizaos/capacitor-wifi": [
         "./plugins/plugin-native-wifi/dist/esm/index.d.ts"
       ],
-      "@elizaos/claude-subscription-gateway": [
-        "./packages/benchmarks/claude-subscription-gateway/src/index.ts"
-      ],
       "@elizaos/cloud-routing": [
         "./packages/cloud/routing/dist/index.d.ts"
       ],

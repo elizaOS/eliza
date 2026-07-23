@@ -120,13 +120,6 @@ export interface ProviderAccess {
 	providerId: string;
 	providerName: string;
 	timestamp: number;
-	/** Epoch timestamps captured around the provider call, not the later DB write. */
-	startedAt: number | null;
-	endedAt: number | null;
-	/** Wall-clock provider duration. Null only on trajectories written before timing capture. */
-	durationMs: number | null;
-	/** Pairwise wall-clock overlap with sibling providers in the same composeState batch. */
-	overlapsWith: Array<{ providerName: string; overlapMs: number }>;
 
 	// What was requested
 	query?: Record<string, JsonValue>;

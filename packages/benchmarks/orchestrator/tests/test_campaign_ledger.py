@@ -25,8 +25,8 @@ def test_ledger_exactly_covers_every_manifest_entry_and_disposition() -> None:
         if entry.kind is ledger.CampaignEntryKind.DIRECT
     }
 
-    assert len(entries) == 73
-    assert len(adapters) == 58
+    assert len(entries) == 74
+    assert len(adapters) == 59
     assert len(direct) == 15
     assert set(adapters) == {
         entry.benchmark_id for entry in campaign.ADAPTER_CAMPAIGN_ENTRIES
@@ -241,11 +241,12 @@ def test_unknown_comparative_counts_remain_explicit_not_fabricated_totals() -> N
     target = report["comparative_target"]
     expected_unknown = [
         "mint",
+        "social_alpha",
         "voicebench_quality",
         "voiceagentbench",
     ]
 
-    assert target["entry_count"] == 42
+    assert target["entry_count"] == 43
     for metric in ("base_tasks", "expanded_scenarios", "result_cells"):
         assert target["counts"][metric]["unknown_entries"] == expected_unknown
         assert target["counts"][metric]["exact_per_execution_total"] is None
@@ -321,8 +322,8 @@ def test_cli_json_is_a_validated_side_effect_free_report(capsys) -> None:
     assert payload["campaign_profile"] == campaign.FULL_CAMPAIGN_PROFILE
     assert payload["canonical_harnesses"] == ["eliza", "hermes", "openclaw"]
     assert payload["manifest"] == {
-        "entries": 73,
-        "adapter_entries": 58,
+        "entries": 74,
+        "adapter_entries": 59,
         "direct_entries": 15,
     }
-    assert len(payload["entries"]) == 73
+    assert len(payload["entries"]) == 74

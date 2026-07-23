@@ -1051,22 +1051,6 @@ function toPersistedTrajectory(traj: Trajectory): PersistedTrajectory {
             Number.isFinite(access.timestamp)
               ? access.timestamp
               : step.timestamp,
-          startedAt: toFiniteNumber(access.startedAt),
-          endedAt: toFiniteNumber(access.endedAt),
-          durationMs: toFiniteNumber(access.durationMs),
-          overlapsWith: Array.isArray(access.overlapsWith)
-            ? access.overlapsWith.flatMap((overlap) => {
-                const record = asRecord(overlap);
-                const providerName =
-                  typeof record?.providerName === "string"
-                    ? record.providerName
-                    : null;
-                const overlapMs = toFiniteNumber(record?.overlapMs);
-                return providerName && overlapMs !== null
-                  ? [{ providerName, overlapMs }]
-                  : [];
-              })
-            : [],
           data: asRecord(access.data) ?? {},
           query: asRecord(access.query) ?? undefined,
           purpose: typeof access.purpose === "string" ? access.purpose : "",

@@ -1383,6 +1383,7 @@ def _publication_warnings(
         "framework",
         "hermes_yc_bench",
         "personality_bench",
+        "social_alpha",
         "solana",
         "vision_language",
         "voiceagentbench",

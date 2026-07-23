@@ -12,7 +12,7 @@ describe("Electron backend package", () => {
 
     expect(pkg.scripts.test).toBe("bun test smoke.test.js");
     expect(pkg.scripts.test).not.toContain("--passWithNoTests");
-    expect(pkg.scripts.build).toContain("tsc6 --noCheck");
+    expect(pkg.scripts.build).toContain("tsc --noCheck");
     expect(pkg.scripts["lint:check"]).toContain("biome check");
     expect(pkg.scripts["format:check"]).toContain("biome format");
   });

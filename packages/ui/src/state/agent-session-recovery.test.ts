@@ -15,7 +15,6 @@
 import { describe, expect, it } from "vitest";
 import {
   type AgentSessionRecoveryDecision,
-  dedicatedAgentIdFromApiBase,
   resolveAgentSessionRecovery,
 } from "./agent-session-recovery";
 
@@ -169,35 +168,5 @@ describe("resolveAgentSessionRecovery", () => {
     if (decision.action === "re-pair") {
       expect(decision.agentId).toBe("23766030-c096-4a14-932a-a4e43c562432");
     }
-  });
-});
-
-describe("dedicatedAgentIdFromApiBase", () => {
-  // The credential-scoped purge (cloud-pair-token) uses this to decide which
-  // agent profiles belong to the proven-stale agent — a false positive here
-  // would destroy an unrelated valid credential.
-  it("extracts the id from a dedicated subdomain and a REST-adapter base", () => {
-    expect(dedicatedAgentIdFromApiBase("https://agent-a.elizacloud.ai")).toBe(
-      "agent-a",
-    );
-    expect(
-      dedicatedAgentIdFromApiBase(
-        "https://elizacloud.ai/api/v1/eliza/agents/agent-b",
-      ),
-    ).toBe("agent-b");
-    expect(
-      dedicatedAgentIdFromApiBase(
-        "https://elizacloud.ai/api/v1/eliza/agents/agent-b/bridge/",
-      ),
-    ).toBe("agent-b");
-  });
-
-  it("returns null for control-plane, self-hosted, and empty bases", () => {
-    expect(dedicatedAgentIdFromApiBase("https://elizacloud.ai")).toBeNull();
-    expect(
-      dedicatedAgentIdFromApiBase("https://my-box.example.com"),
-    ).toBeNull();
-    expect(dedicatedAgentIdFromApiBase("")).toBeNull();
-    expect(dedicatedAgentIdFromApiBase(undefined)).toBeNull();
   });
 });

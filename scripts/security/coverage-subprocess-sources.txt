@@ -24,10 +24,6 @@ packages/eliza-hub/deployment/hetzner-staging/scripts/storage-evidence.mjs
 packages/eliza-hub/services/merge-steward/scripts/sync-openapi-production-evidence-schema.mjs
 packages/eliza-hub/services/merge-steward/src/cli.js
 
-# The app-core dev server binds ports and installs process-level signal handlers
-# at module evaluation; its importable bootstrap policies carry unit coverage.
-packages/app-core/src/runtime/dev-server.ts
-
 # ACP stdio entrypoint is exercised via spawned runtime contract tests; importing it in-process starts the protocol server.
 packages/examples/code/src/acp.ts
 

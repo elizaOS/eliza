@@ -177,8 +177,6 @@ REDIS_RATE_LIMITING = "false"
 # synchronous-reserve path. The auth+moderation hot-path cache is the default now
 # (no flag); a cache miss falls back to the authoritative slow path.
 INFERENCE_OPTIMISTIC_BILLING = "false"
-# Thin chat-only bootstrap. Keep production off until staging parity/latency soak passes.
-THIN_INFERENCE_ENTRY_ENABLED = "false"
 SAFE_BALANCE_THRESHOLD = ""
 # Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
 # (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
@@ -375,8 +373,6 @@ NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "staging"
-# Staging canary. Set false for an immediate rollback to the full app router.
-THIN_INFERENCE_ENTRY_ENABLED = "true"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
 X402_NETWORK = "base"
@@ -525,7 +521,6 @@ __filename = '"/worker.js"'
 
 [env.production.vars]
 NODE_ENV = "production"
-THIN_INFERENCE_ENTRY_ENABLED = "false"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
 # the no-op stub. Mirrors [env.staging.vars]. CUTOVER GATE — only effective once the prod

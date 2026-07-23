@@ -206,36 +206,6 @@ export async function dispatchViewActionHandoff(
   return true;
 }
 
-/**
- * Dispatch a completed VIEWS navigation handoff DIRECTLY from the turn's
- * `actionResults`, with NO `/api/views/current` round-trip or verification.
- *
- * This is the SHARED-tier (Tier-0) cloud-agent path (#F5-ACTIONS): a shared
- * agent runs container-free, so it serves no `/api/views/*` routes — the normal
- * `dispatchViewActionHandoff` would throw `VIEW_HANDOFF_CURRENT_VIEW_HTTP_FAILED`
- * on the missing endpoint and the navigation would never fire. The shared
- * runtime already resolved the target deterministically and stamped it into the
- * summary (`values.viewId` [+ `values.subview`]), so the client trusts it and
- * dispatches the navigate event straight through. The App shell's
- * NAVIGATE_VIEW_EVENT handler resolves the builtin viewId → path (and a Settings
- * `subview` → section) with no server call.
- *
- * Returns true when a navigation was dispatched, false when the summary carried
- * no show/open VIEWS handoff.
- */
-export function dispatchViewActionHandoffDirect(
-  actionResults: readonly ChatActionResultSummary[] | undefined,
-  dispatch: typeof dispatchNavigateViewEvent = dispatchNavigateViewEvent,
-): boolean {
-  const handoff = findViewActionHandoff(actionResults);
-  if (!handoff) return false;
-  dispatch({
-    viewId: handoff.viewId,
-    ...(handoff.subview ? { subview: handoff.subview } : {}),
-  });
-  return true;
-}
-
 /** Recover one recent agent navigation that was missed while transport was down. */
 export async function recoverMissedCurrentView(
   dependencies: {

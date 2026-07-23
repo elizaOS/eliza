@@ -35,10 +35,6 @@ const agentSessionRecoveryMock = vi.hoisted(() => ({
   runAgentSessionRecovery: vi.fn(),
 }));
 
-const cloudPairTokenMock = vi.hoisted(() => ({
-  clearStalePairCredentialsForAgent: vi.fn(),
-}));
-
 const cloudHandoffMock = vi.hoisted(() => ({
   resumePendingCloudHandoff: vi.fn(),
 }));
@@ -79,11 +75,6 @@ vi.mock("../api/client-cloud", () => ({
 
 vi.mock("./agent-session-recovery-runner", () => ({
   runAgentSessionRecovery: agentSessionRecoveryMock.runAgentSessionRecovery,
-}));
-
-vi.mock("./cloud-pair-token", () => ({
-  clearStalePairCredentialsForAgent:
-    cloudPairTokenMock.clearStalePairCredentialsForAgent,
 }));
 
 vi.mock("../cloud/handoff/resume-pending-handoff", () => ({
@@ -1144,17 +1135,8 @@ describe("runPollingBackend", () => {
         agentId: "agent-123",
         cloudToken: "steward.jwt.token",
         navigate: expect.any(Function),
-        clearStalePairCredentials: expect.any(Function),
       }),
     );
-    // The opt-in purge must be scoped to the agent whose adopted bearer this
-    // poll observed rejected — never a global credential clear (#16666).
-    const recoveryDeps = agentSessionRecoveryMock.runAgentSessionRecovery.mock
-      .calls[0][0] as { clearStalePairCredentials: () => void };
-    recoveryDeps.clearStalePairCredentials();
-    expect(
-      cloudPairTokenMock.clearStalePairCredentialsForAgent,
-    ).toHaveBeenCalledWith("agent-123");
     expect(dispatch).not.toHaveBeenCalledWith({
       type: "BACKEND_AUTH_REQUIRED",
     });

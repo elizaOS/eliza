@@ -234,21 +234,6 @@ function mergedGrant(
 	return out;
 }
 
-function shareGrantsMetadata(
-	grants: readonly ArtifactShareGrant[],
-): JsonObject {
-	return {
-		grants: grants.map((grant) => ({
-			entityId: grant.entityId,
-			mode: grant.mode,
-			...(grant.grantedBy ? { grantedBy: grant.grantedBy } : {}),
-			...(grant.grantedAtMs !== undefined
-				? { grantedAtMs: grant.grantedAtMs }
-				: {}),
-		})),
-	};
-}
-
 /** CRUD for transcript records over the runtime memory partition. */
 export class TranscriptStore {
 	constructor(private readonly runtime: TranscriptStoreRuntime) {}
@@ -493,7 +478,9 @@ export class TranscriptStore {
 				...(metadata ?? {}),
 				type: "custom",
 				source: TRANSCRIPT_METADATA_TYPE,
-				share: shareGrantsMetadata(mergedGrant(grants, nextGrant)),
+				share: {
+					grants: mergedGrant(grants, nextGrant),
+				} as unknown as JsonObject,
 			} as MemoryMetadata,
 		});
 		if (!ok) {
@@ -520,9 +507,9 @@ export class TranscriptStore {
 				...(metadata ?? {}),
 				type: "custom",
 				source: TRANSCRIPT_METADATA_TYPE,
-				share: shareGrantsMetadata(
-					grants.filter((grant) => grant.entityId !== input.entityId),
-				),
+				share: {
+					grants: grants.filter((grant) => grant.entityId !== input.entityId),
+				} as unknown as JsonObject,
 			} as MemoryMetadata,
 		});
 		if (!ok) {

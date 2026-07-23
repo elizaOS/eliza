@@ -81,10 +81,10 @@ describe("extractIconTarget", () => {
 		).toBe("wallet");
 		expect(
 			extractIconTarget(
-				message("give the market pulse view a new image"),
+				message("give the social alpha view a new image"),
 				undefined,
 			),
-		).toBe("market pulse");
+		).toBe("social alpha");
 	});
 });
 

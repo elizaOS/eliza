@@ -10,8 +10,7 @@ VALIDATE_RUNNER="${VALIDATE_RUNNER:-false}"
 VALIDATE_RUNNER_REGISTRATION="${VALIDATE_RUNNER_REGISTRATION:-false}"
 ALLOW_PUBLIC_BINDS="${ALLOW_PUBLIC_BINDS:-false}"
 
-ENV_KEYS=()
-ENV_VALUES=()
+declare -A ENV_VALUES=()
 ERRORS=()
 WARNINGS=()
 
@@ -56,7 +55,7 @@ load_env_file() {
     exit 1
   }
 
-  local line key value index
+  local line key value
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%$'\r'}"
     [[ "$line" =~ ^[[:space:]]*$ ]] && continue
@@ -70,14 +69,7 @@ load_env_file() {
       elif [[ "$value" == \'*\' && ${#value} -ge 2 ]]; then
         value="${value:1:${#value}-2}"
       fi
-      for ((index = 0; index < ${#ENV_KEYS[@]}; index++)); do
-        if [[ "${ENV_KEYS[$index]}" == "$key" ]]; then
-          ENV_VALUES[$index]="$value"
-          continue 2
-        fi
-      done
-      ENV_KEYS+=("$key")
-      ENV_VALUES+=("$value")
+      ENV_VALUES["$key"]="$value"
     else
       warn "ignored malformed env line"
     fi
@@ -86,14 +78,7 @@ load_env_file() {
 
 value_for() {
   local key="$1"
-  local index
-  for ((index = 0; index < ${#ENV_KEYS[@]}; index++)); do
-    if [[ "${ENV_KEYS[$index]}" == "$key" ]]; then
-      printf '%s' "${ENV_VALUES[$index]}"
-      return
-    fi
-  done
-  printf '%s' "${!key-}"
+  printf '%s' "${ENV_VALUES[$key]:-${!key-}}"
 }
 
 has_bad_placeholder() {
@@ -463,11 +448,9 @@ main() {
     check_runner
   fi
 
-  if ((${#WARNINGS[@]})); then
-    for warning in "${WARNINGS[@]}"; do
-      printf '[env-check] warning: %s\n' "$warning" >&2
-    done
-  fi
+  for warning in "${WARNINGS[@]}"; do
+    printf '[env-check] warning: %s\n' "$warning" >&2
+  done
 
   if ((${#ERRORS[@]})); then
     for item in "${ERRORS[@]}"; do

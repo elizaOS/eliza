@@ -180,7 +180,7 @@ describe("managed Eliza environment", () => {
       agentSandboxId: "cloud-agent-1",
     });
 
-    // Local agent-state on the persistent volume - no shared-DB hot path.
+    // Local agent-state on the persistent volume — no shared-DB hot path.
     expect(result.environmentVars.ELIZA_AGENT_LOCAL_STATE).toBe("1");
     expect(result.environmentVars.PGLITE_DATA_DIR).toBe("/root/.eliza/.pgdata");
     // Lean chat plugin set for fast cold-start.
@@ -210,7 +210,7 @@ describe("managed Eliza environment", () => {
     // The provisioning Worker/daemon carries its OWN DATABASE_URL in process env,
     // which spreads in via existingEnv. If it leaks through, the agent's
     // resolveEffectiveDbProvider selects Postgres and silently overrides
-    // ELIZA_AGENT_LOCAL_STATE=1 - forcing every local-state agent back onto the
+    // ELIZA_AGENT_LOCAL_STATE=1 — forcing every local-state agent back onto the
     // shared Railway DB (the latency + blast-radius regression #8779 had to
     // restore the strip for). The strip is THE mechanism; guard it directly.
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
@@ -236,7 +236,7 @@ describe("managed Eliza environment", () => {
     // the cloud TEXT_EMBEDDING handler EMIT 1536-wide vectors. plugin-sql does NOT
     // read these vars; the storage column is sized at boot by the model-length
     // probe (runtime.ensureEmbeddingDimension). Both must agree on 1536 or the boot
-    // probe snaps the column to a width the handler's output won't match -
+    // probe snaps the column to a width the handler's output won't match —
     // re-introducing "Skipping embedding insert: dimension mismatch" (#8769).
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
@@ -296,35 +296,6 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();
   });
 
-  test("local-primary embedding opt-in yields cloud embeddings and uses 384-dim hints", async () => {
-    const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
-
-    const result = applyManagedAgentInferenceEnvDefaults({
-      ELIZA_PLUGIN_SET: "lean-chat",
-      ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "1",
-    });
-
-    expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
-    expect(result.EMBEDDING_DIMENSION).toBe("384");
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
-    // Keep the fallback URL available for rollback/mobile/no-model paths; the
-    // use-embeddings flag is what prevents cloud from registering primary.
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
-  });
-
-  test("explicit cloud-embedding pin wins over local-primary opt-in", async () => {
-    const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
-
-    const result = applyManagedAgentInferenceEnvDefaults({
-      ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "1",
-      ELIZAOS_CLOUD_USE_EMBEDDINGS: "true",
-    });
-
-    expect(result.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
-    expect(result.EMBEDDING_DIMENSION).toBe("1536");
-    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
-  });
-
   test("preserves explicit per-agent overrides", async () => {
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
@@ -372,7 +343,7 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(healed.ELIZAOS_CLOUD_SMALL_MODEL).toBeTruthy();
     expect(healed.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();
     // ...and the stored env is preserved verbatim (no key rotation, no DB strip,
-    // no state flip - the whole point of the narrow helper).
+    // no state flip — the whole point of the narrow helper).
     expect(healed.DATABASE_URL).toBe("postgres://agent/own-db");
     expect(healed.ELIZA_API_TOKEN).toBe("agent_existingtoken");
     expect(healed.ELIZAOS_CLOUD_API_KEY).toBe("sk-existing");

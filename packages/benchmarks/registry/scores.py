@@ -2172,6 +2172,50 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_social_alpha_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from Social-Alpha results.
+
+    Reports the COMPOSITE Trust Marketplace Score (0..100) when all four
+    suites ran. Falls back to averaging the available per-suite scores when
+    only a subset of suites was selected (e.g. ``--suite detect``).
+    """
+    root = expect_dict(data, ctx="social_alpha:root")
+    composite_raw = root.get("COMPOSITE")
+    suite_scores: dict[str, float] = {}
+    for key, value in root.items():
+        if not isinstance(value, dict) or key == "COMPOSITE":
+            continue
+        suite_score_raw = value.get("suite_score")
+        if isinstance(suite_score_raw, (int, float)):
+            suite_scores[key] = float(suite_score_raw)
+    if isinstance(composite_raw, dict):
+        tms_raw = composite_raw.get("trust_marketplace_score")
+        if isinstance(tms_raw, (int, float)):
+            tms = float(tms_raw)
+            return ScoreExtraction(
+                score=tms / 100.0,
+                unit="ratio",
+                higher_is_better=True,
+                metrics={
+                    "trust_marketplace_score": tms,
+                    "suite_scores": cast(JSONValue, suite_scores),
+                },
+            )
+    if not suite_scores:
+        raise ValueError("social_alpha: no suite_score values found")
+    avg_score = sum(suite_scores.values()) / len(suite_scores)
+    return ScoreExtraction(
+        score=avg_score / 100.0,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "average_suite_score": avg_score,
+            "suite_scores": cast(JSONValue, suite_scores),
+            "suites_run": list(suite_scores.keys()),
+        },
+    )
+
+
 def _score_from_trust_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from the trust/security benchmark results."""
     root = expect_dict(data, ctx="trust:root")

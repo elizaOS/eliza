@@ -19,6 +19,11 @@ vi.mock("../../agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 
+const goLauncherMock = vi.hoisted(() => vi.fn());
+vi.mock("../../state/shell-surface-store", () => ({
+  goLauncher: goLauncherMock,
+}));
+
 vi.mock("../../navigation", () => ({
   shouldUseHashNavigation: () => true,
 }));
@@ -27,7 +32,7 @@ import { ViewHeader } from "./ViewHeader";
 
 afterEach(() => {
   cleanup();
-  window.location.hash = "";
+  goLauncherMock.mockClear();
 });
 
 describe("ViewHeader — standardized normal-view header (#13451)", () => {
@@ -85,7 +90,7 @@ describe("ViewHeader — standardized normal-view header (#13451)", () => {
   it("invokes the launcher navigation on back by default", () => {
     render(<ViewHeader title="Knowledge" />);
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
-    expect(window.location.hash).toBe("#/views");
+    expect(goLauncherMock).toHaveBeenCalledTimes(1);
   });
 
   it("routes a sub-view's back through the supplied onBack handler", () => {
@@ -94,7 +99,7 @@ describe("ViewHeader — standardized normal-view header (#13451)", () => {
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
     expect(onBack).toHaveBeenCalledTimes(1);
     // A scoped onBack must not also fire the launcher fallback.
-    expect(window.location.hash).toBe("");
+    expect(goLauncherMock).not.toHaveBeenCalled();
   });
 
   it("opts a view out of the back control with showBack={false}", () => {

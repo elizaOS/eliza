@@ -41,7 +41,6 @@ const accountCaches = new WeakMap<
   IAgentRuntime,
   { value: AccountSnapshot; at: number }
 >();
-const accountRefreshInFlight = new WeakSet<IAgentRuntime>();
 
 /**
  * Drop the cached account snapshot so the next provider read re-fetches live.
@@ -51,43 +50,6 @@ const accountRefreshInFlight = new WeakSet<IAgentRuntime>();
  */
 export function invalidateCloudAccountCache(runtime: IAgentRuntime): void {
   accountCaches.delete(runtime);
-}
-
-/**
- * Shared snapshot for sibling providers (elizacloud_credits) so one
- * /credits/balance window feeds every renderer instead of each provider
- * fetching the same number through its own client on the message hot path.
- */
-export function getCachedAccountSnapshot(
-  runtime: IAgentRuntime,
-): AccountSnapshot | null {
-  return accountCaches.get(runtime)?.value ?? null;
-}
-
-async function fetchAccountSnapshot(
-  runtime: IAgentRuntime,
-): Promise<AccountSnapshot> {
-  const sdk = createElizaCloudClient(runtime);
-  const [{ balance }, agentsResponse] = await Promise.all([
-    sdk.getCreditsBalance(),
-    sdk.listAgents(),
-  ]);
-  const snapshot: AccountSnapshot = { balance, agents: agentsResponse.data };
-  accountCaches.set(runtime, { value: snapshot, at: Date.now() });
-  return snapshot;
-}
-
-/** Refresh the snapshot out-of-band; used when a stale cache was just served. */
-export function scheduleAccountSnapshotRefresh(runtime: IAgentRuntime): void {
-  if (accountRefreshInFlight.has(runtime)) return;
-  accountRefreshInFlight.add(runtime);
-  void fetchAccountSnapshot(runtime)
-    // error-policy:J6 background refresh is best-effort; the caller already
-    // rendered the stale snapshot and the next turn retries.
-    .catch(() => undefined)
-    .finally(() => {
-      accountRefreshInFlight.delete(runtime);
-    });
 }
 
 const EMPTY: ProviderResult = { text: "" };
@@ -161,19 +123,22 @@ export const cloudAccountProvider: Provider = {
     const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) return EMPTY;
 
-    // Stale-while-revalidate: any snapshot renders immediately; expiry only
-    // schedules a background refresh instead of blocking the turn on two WAN
-    // round trips. Only the very first turn after boot blocks.
     const cached = accountCaches.get(runtime);
-    if (cached) {
-      if (Date.now() - cached.at >= TTL) {
-        scheduleAccountSnapshotRefresh(runtime);
-      }
+    if (cached && Date.now() - cached.at < TTL) {
       return render(cached.value, auth.getOrganizationId());
     }
 
     try {
-      const snapshot = await fetchAccountSnapshot(runtime);
+      const sdk = createElizaCloudClient(runtime);
+      const [{ balance }, agentsResponse] = await Promise.all([
+        sdk.getCreditsBalance(),
+        sdk.listAgents(),
+      ]);
+      const snapshot: AccountSnapshot = {
+        balance,
+        agents: agentsResponse.data,
+      };
+      accountCaches.set(runtime, { value: snapshot, at: Date.now() });
       return render(snapshot, auth.getOrganizationId());
     } catch (err) {
       logger.warn(
@@ -181,8 +146,9 @@ export const cloudAccountProvider: Provider = {
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      // Cold fetch failed and there is no snapshot — stay empty; never
-      // narrate fabricated zeros from a failed fetch.
+      // Serve a stale cache when warm; otherwise stay empty — never narrate
+      // fabricated zeros from a failed fetch.
+      if (cached) return render(cached.value, auth.getOrganizationId());
       return { text: "", values: { cloudAccountUnavailable: true }, data: {} };
     }
   },
