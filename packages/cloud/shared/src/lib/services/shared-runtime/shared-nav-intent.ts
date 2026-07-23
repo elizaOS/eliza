@@ -12,7 +12,8 @@
  * The fix mirrors the dedicated runtime's deterministic fast path WITHOUT
  * booting any plugin: the SAME zero-model multilingual matcher the VIEWS action
  * uses (`@elizaos/shared/views/view-command-matcher`) resolves the utterance to
- * a builtin view id, and the turn emits a VIEWS navigation handoff — the exact
+ * a matcher id, the shared nav-target table translates that to a CLIENT view
+ * id, and the turn emits a VIEWS navigation handoff — the exact
  * `actionResults` summary shape the PWA already consumes
  * (`findViewActionHandoff` → `dispatchNavigateViewEvent` in
  * packages/ui/src/view-action-handoff.ts) — plus a short confirmation reply.
@@ -25,11 +26,12 @@
  * strike; content actions (create a note, etc.) still need a real runtime.
  */
 
+import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { matchViewCommand } from "@elizaos/shared/views/view-command-matcher";
 
 /** A resolved navigation directive for a shared-runtime turn. */
 export interface SharedNavIntent {
-  /** Builtin view id the client resolves to a path (settings, wallet, chat, …). */
+  /** Client view id resolved against the routable registry (settings, inventory, chat, …). */
   viewId: string;
   /** Optional settings sub-section token to deep-link (e.g. "voice"). */
   subview?: string;
@@ -38,39 +40,6 @@ export interface SharedNavIntent {
   /** The confirmation text streamed back as the assistant reply. */
   reply: string;
 }
-
-/**
- * Builtin views a shared agent can navigate to, with their human label. Kept as
- * a small local table (NOT an @elizaos/ui import) so the cloud worker bundle
- * stays lean — the client owns the viewId→path resolution, so the server only
- * needs the id + a friendly label for the confirmation copy. Every id here is a
- * `MATCHER_VIEW_IDS` value that also resolves to a real builtin surface on the
- * PWA (see packages/ui navigation TAB_PATHS + view-action-handoff builtin path
- * fallback `/apps/<viewId>`).
- */
-const NAVIGABLE_VIEW_LABELS: Readonly<Record<string, string>> = {
-  settings: "Settings",
-  wallet: "Wallet",
-  calendar: "Calendar",
-  inbox: "Inbox",
-  finances: "Finances",
-  focus: "Focus",
-  goals: "Goals",
-  health: "Health",
-  todos: "To-dos",
-  notes: "Notes",
-  documents: "Documents",
-  memories: "Memories",
-  relationships: "Relationships",
-  background: "Background",
-  transcripts: "Transcripts",
-  character: "Character",
-  automations: "Automations",
-  help: "Help",
-  chat: "Home",
-  camera: "Camera",
-  "task-coordinator": "Task Coordinator",
-};
 
 /**
  * "change my voice" / "change the voice" is a navigation to the Settings view's
@@ -112,16 +81,19 @@ export function resolveSharedNavIntent(message: string | undefined): SharedNavIn
     };
   }
 
-  const viewId = matchViewCommand(text);
-  if (!viewId) return null;
+  const matcherId = matchViewCommand(text);
+  if (!matcherId) return null;
 
-  const label = NAVIGABLE_VIEW_LABELS[viewId];
-  // A matcher id we don't have a builtin label/surface for (should not happen
-  // given the table mirrors MATCHER_VIEW_IDS) is left to the LLM rather than
-  // navigating into a surface the client can't resolve.
-  if (!label) return null;
+  // The table translates matcher vocabulary into CLIENT view ids (the two
+  // namespaces differ — "wallet" emits "inventory") and intentionally omits
+  // matcher ids with no client surface (e.g. "help"), which fall through to
+  // the LLM instead of navigating into the client's not-found state. The
+  // client resolves the emitted id against its routable view registry
+  // (PR #17021); an unresolvable id renders the designed not-found state.
+  const target = SHARED_NAV_TARGETS[matcherId];
+  if (!target) return null;
 
-  return { viewId, label, reply: navReply(label) };
+  return { viewId: target.viewId, label: target.label, reply: navReply(target.label) };
 }
 
 /**
