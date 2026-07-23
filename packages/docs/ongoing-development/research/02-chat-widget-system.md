@@ -21,9 +21,11 @@ excluded from default prompt composition.
 
 **Decision: build no new registry and no new widget framework.** MVP work is
 closing six verified gaps: a dead form link on connectors, a missing date/time
-field type that LifeOps scheduling needs, an oversized model-facing guide, zero
-live-LLM scenario coverage of the widget round-trips, stale widget
-documentation, and unverified settings-in-chat / hosted-secret flows.
+field type that LifeOps scheduling needs, an oversized model-facing guide,
+reviewer-visible live-LLM proof of the widget round-trips (the live-only
+scenarios exist for every leg; attached hand-read runs live on #14488 and
+#16939), stale widget documentation, and the still-uncaptured rendered
+settings-in-chat round trip on both chat surfaces.
 
 ## Current state (verified)
 
@@ -142,15 +144,24 @@ documentation, and unverified settings-in-chat / hosted-secret flows.
   | checkbox | secret | image | file`. No `date` / `time` / `datetime` — yet
   the MVP's center of gravity is scheduling (reminders, events, check-ins).
   Today a reminder-time form field is a free-text input.
-- **Round-trip is text-only and unproven with a live model:** a form submit
+- **Round-trip is text-only, now proven with a live model:** a form submit
   re-enters as the literal user message `[form:submit <id>] {json}`
   (`use-inline-widget-context.ts:49-53`); nothing server-side parses it
-  structurally (repo-wide grep: only the UI hook and its test reference
-  `form:submit`), and the raw marker text is what appears as the user's
-  transcript bubble. The model is trusted to read the JSON. No live-LLM
-  scenario exercises FORM emission → submission → use of the values, CHOICE
-  pick, or `[CONFIG]` emission (only two deterministic computeruse scenarios
-  touch any marker: `packages/scenario-runner/test/scenarios/deterministic-*computeruse*-progress*.scenario.ts`).
+  structurally, and the raw marker text is what appears as the user's
+  transcript bubble — the model is trusted to read the JSON, and live runs
+  show it doing so. Live-only scenarios now cover every leg: FORM
+  emit→submit→use (hand-read 5-run proof on #14488),
+  `live-chat-widgets-choice-roundtrip` / `-config-emission` /
+  `-followups-restraint` (`packages/scenario-runner/test/scenarios/`), and
+  `settings-in-chat-config-card` / `-provider-switch`
+  (`plugins/plugin-app-control/test/scenarios/`, seeded with the production
+  uiWidgets guide + agent-level SETTINGS action and asserting the persisted
+  eliza.json write). Hand-read runs are attached to #16939. These lanes are
+  live-only by design — no CI workflow runs them, so proof is re-captured per
+  change rather than continuously. The earlier #14822 runs were real but never
+  attached reviewer-visible reports; the CHOICE pick leg in fact regressed
+  (a bare "cancel" pick parsed as a turn-retraction abort) until the #16939
+  fixes.
 - **Doc drift:** `packages/ui/src/components/chat/widgets/WIDGET_MATRIX.md`
   divergence "D1 — host-only segments" claims the overlay does not render
   `[CONFIG]`/permission/secret/UiSpec — false since the overlay gained those
