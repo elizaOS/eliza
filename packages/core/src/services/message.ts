@@ -3018,6 +3018,34 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
+// First-person completed-side-effect claims ("I've set…", "all set",
+// "reminders are set", "Done —"). Adjacency is deliberate: "I have not set"
+// and "I can set" do not match, so offers and honest denials pass through.
+const COMPLETED_SIDE_EFFECT_CLAIM_PATTERN =
+	/\b(?:i(?:['’]ve| have| just)?\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b|(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|scheduled|in\s+place)\b|done\s*[—–-])/i;
+// The claim must be ABOUT a schedulable/saved thing, not e.g. "I've set aside
+// some thoughts". Vocabulary mirrors the scheduled-item nouns the LifeOps
+// surfaces own.
+const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
+	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|check[- ]?ins?|follow[- ]?ups?)\b/i;
+
+/**
+ * True when a Stage-1 reply asserts that a scheduling/save side effect already
+ * happened. On the simple path no tool has run, so any such claim is
+ * fabricated — the "not loaded must never read as zero" doctrine applied to
+ * writes: "no tool ran" must never read as "done" (#16935; observed live: a
+ * bill-reminder ask answered "Done — I've set two reminders" with zero tool
+ * calls, plus invented "session-only" caveats).
+ */
+export function replyClaimsCompletedSideEffect(reply: string): boolean {
+	const text = reply.trim();
+	if (!text) return false;
+	return (
+		COMPLETED_SIDE_EFFECT_CLAIM_PATTERN.test(text) &&
+		SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)
+	);
+}
+
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -3152,6 +3180,56 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					reply: "On it.",
 					debug: [
 						`current request matched registered action metadata: ${candidateActions.join(", ")}`,
+					],
+				};
+			},
+		},
+		{
+			// A simple-path turn runs NO tools, so a reply asserting a completed
+			// scheduling/save side effect is fabricated by construction. Reroute the
+			// turn to the planner so a real action performs the work and the
+			// confirmation the user reads is grounded in a tool result. Candidate
+			// hints come from the plugin-registered backstop rules (matched against
+			// the fabricated claim's own vocabulary), so core stays free of
+			// plugin-specific action names.
+			name: "core.simple_completed_side_effect_claim",
+			description:
+				"Blocks simple-path replies that claim an already-completed scheduling/save side effect no tool performed; reroutes the turn to the planner.",
+			priority: 30,
+			shouldRun: ({ messageHandler }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				return replyClaimsCompletedSideEffect(reply);
+			},
+			evaluate: ({ messageHandler, runtime }) => {
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				const candidateActions = [
+					...new Set(
+						getCandidateActionBackstopRules(runtime)
+							.filter((rule) => rule.matches(reply))
+							.flatMap((rule) => [...rule.actionNames]),
+					),
+				];
+				return {
+					requiresTool: true,
+					addContexts: ["general"],
+					...(candidateActions.length > 0
+						? { addCandidateActions: candidateActions }
+						: {}),
+					reply: "On it.",
+					debug: [
+						`simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
 					],
 				};
 			},

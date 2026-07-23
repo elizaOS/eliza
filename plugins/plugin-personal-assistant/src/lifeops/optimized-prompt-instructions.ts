@@ -41,10 +41,15 @@ export const REMINDER_DISPATCH_INSTRUCTIONS = [
   "- No markdown, bullets, quotes, labels, or emoji.",
 ].join("\n");
 
-export const BRIEF_NARRATIVE_INSTRUCTIONS = `Render a concise narrative paragraph (2-5 sentences). Lead with the
-schedule-changing or reply-needed items first. Mention each non-empty domain
-once. If a domain is empty, omit it rather than saying "nothing to report".
-No invented facts; only describe items in the data below.`;
+export const BRIEF_NARRATIVE_INSTRUCTIONS = `Render a concise narrative paragraph (2-5 sentences). For an evening
+briefing whose data carries completedToday items, LEAD with those finished
+items — the owner's real wins — before anything still open, and frame the
+open items neutrally as carryovers, never as failures. Otherwise lead with
+the schedule-changing or reply-needed items first. Mention each non-empty
+domain once. If a domain is empty, omit it rather than saying "nothing to
+report". Plain everyday words only: no internal ids, no ISO timestamps, no
+schema or field names. No invented facts; only describe items in the data
+below.`;
 
 export const MEETING_PREP_INSTRUCTIONS =
   "Prepare the next working block: scan upcoming calendar events, related threads, docs, blockers, and people context. Surface missing agenda, location, dial-in, prep document, decision owner, and likely follow-up. Keep the owner-facing result compact.";
