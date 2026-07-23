@@ -359,7 +359,7 @@ export function NotesView() {
                   }}
                 >
                   {editingNote
-                    ? "Changes save to the shared test state."
+                    ? "Changes save to your shared notes."
                     : "Create a note from here or through chat."}
                 </p>
               </div>

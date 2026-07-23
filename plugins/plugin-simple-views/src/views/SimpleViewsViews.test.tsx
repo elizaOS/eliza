@@ -142,6 +142,18 @@ describe("Simple Views state labels", () => {
 });
 
 describe("Notes direct interactions", () => {
+  it("describes persistence without developer-only test copy", () => {
+    const populated = snapshot(4);
+    populated.notes = [stickyNote()];
+    stateHook.mockReturnValue(hookState({ snapshot: populated }));
+
+    render(<NotesView />);
+    fireEvent.click(screen.getByTitle("Edit note"));
+
+    expect(screen.getByText("Changes save to your shared notes.")).toBeTruthy();
+    expect(screen.queryByText(/shared test state/i)).toBeNull();
+  });
+
   it("creates a colored note and resets an abandoned draft", async () => {
     const mutate = vi.fn().mockResolvedValue(undefined);
     stateHook.mockReturnValue(hookState({ snapshot: snapshot(1), mutate }));
