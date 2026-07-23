@@ -217,9 +217,19 @@ jobs:
         env:
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
           ELIZA_TOOLCALL_STREAM_LIVE: "1"
-        run: >-
-          bun --config=/dev/null --conditions=eliza-source test
-          plugins/plugin-elizacloud/__tests__/text-streaming.live.test.ts
+        run: |
+          # The cloud deliberately reports cold authorization caches as a
+          # retryable 503. Retry the whole immutable-head probe so every failed
+          # attempt remains visible and no partial stream can become evidence.
+          for attempt in 1 2 3 4; do
+            if bun --config=/dev/null --conditions=eliza-source test plugins/plugin-elizacloud/__tests__/text-streaming.live.test.ts; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              sleep 15
+            fi
+          done
+          exit 1
 
       - name: Verify live artifact hash
         run: sha256sum --check reports/16997-plugin-toolcall-stream-live.json.sha256
