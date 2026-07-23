@@ -41,3 +41,8 @@ packages/cloud/shared/scripts/run-bun-tests.mjs
 # Workflow policy checker: both contract validation modes are process
 # entrypoints because importing the module immediately reads workflow files.
 packages/scripts/ci-merge-gate-contract.mjs
+
+# The mobile build CLI orchestrates destructive native build phases in a child process.
+# Its focused contract test spawns the exact entrypoint and fails at the
+# sideload-versus-Play policy guard before any platform files are changed.
+packages/app-core/scripts/run-mobile-build.mjs

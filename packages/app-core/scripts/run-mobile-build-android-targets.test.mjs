@@ -1,4 +1,6 @@
 /** Exercises run mobile build android targets behavior with deterministic app-core test fixtures. */
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
 import {
@@ -8,6 +10,9 @@ import {
 } from "./run-mobile-build.mjs";
 
 const websiteBlockerSettings = "include ':elizaos-capacitor-websiteblocker'";
+const mobileBuildScript = fileURLToPath(
+  new URL("./run-mobile-build.mjs", import.meta.url),
+);
 
 describe("Android mobile build target table", () => {
   it("keeps one descriptor per public Android target", () => {
@@ -59,6 +64,21 @@ describe("Android mobile build target table", () => {
     expect(
       resolveAndroidBuildTarget("android-cloud", { debug: true }).target,
     ).toBe("android-cloud-debug");
+  });
+
+  it("runs the exact mobile CLI through a pre-mutation Android guard", () => {
+    const result = spawnSync(process.execPath, [mobileBuildScript, "android"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ELIZA_PLAY_STORE_BUILD: "1",
+      },
+    });
+
+    expect(result.status).toBe(2);
+    expect(`${result.stdout}\n${result.stderr}`).toContain(
+      "Refusing target `android` under ELIZA_PLAY_STORE_BUILD",
+    );
   });
 
   it("fails loudly for unknown public Android targets", () => {
