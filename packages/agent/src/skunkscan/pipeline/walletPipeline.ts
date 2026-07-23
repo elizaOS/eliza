@@ -23,6 +23,7 @@ import { analyzeWalletProtocols } from "../analyzers/protocols";
 import { analyzeWalletRelationships } from "../analyzers/relationships";
 import { analyzeWalletRisk } from "../analyzers/risk";
 import { analyzeWalletSmartMoney } from "../analyzers/smartMoney";
+import { analyzeWalletConviction } from "../analyzers/conviction";
 import { analyzeWalletStrategy } from "../analyzers/strategy";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
@@ -171,6 +172,15 @@ export function runWalletPipeline(
   smartMoney,
 });
 
+  const conviction = analyzeWalletConviction({
+  activity,
+  portfolio,
+  behavior,
+  strategy,
+  whale,
+  smartMoney,
+});
+
   const investigationReplay =
     analyzeInvestigationReplay(
       portfolio,
@@ -282,6 +292,7 @@ export function runWalletPipeline(
     transactionRiskAssessment,
     smartMoney,
     strategy,
+    conviction,
     investigationReplay,
     evidenceRecords,
     decision,
