@@ -135,8 +135,10 @@ export const webFetchAction: Action = {
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
   roleGate: { minRole: "ADMIN" },
   similes: ["LOOKUP_WEB", "WEB_LOOKUP", "FETCH_URL", "HTTP_GET", "GET_URL"],
+  routingHint:
+    "fetch ONE specific URL, JSON API, or data file whose address you have or can construct exactly -> WEB_FETCH; this is the exact-and-fresh path for live NOW-values: spot crypto price -> https://api.coingecko.com/api/v3/simple/price?ids=<coin>&vs_currencies=usd, current weather -> https://wttr.in/<city>?format=j1; to discover pages with no constructable URL -> WEB_SEARCH",
   description:
-    "Fetch one specific public HTTPS URL and return readable text. Supports HTML extraction, JSON, and plain text. Blocks private/internal hosts, redirects to private/internal hosts, non-HTTPS URLs, binary content, oversized reads, and timeouts.",
+    "Fetch one specific public HTTPS URL and return readable text. Supports HTML extraction, JSON, and plain text. Prefer this over WEB_SEARCH for live NOW-values (spot prices, exchange rates, current weather) by constructing the live API URL yourself. Blocks private/internal hosts, redirects to private/internal hosts, non-HTTPS URLs, binary content, oversized reads, and timeouts.",
   parameters: [
     {
       name: "url",

@@ -8129,7 +8129,7 @@ async function persistInferenceTimingSummary(
 						startMs: span.startMs,
 						endMs: span.endMs,
 						durationMs: span.durationMs,
-						meta: span.meta ?? {},
+						...(span.meta ? { meta: span.meta } : {}),
 					})),
 					marks: summary.marks.map((mark) => ({
 						name: mark.name,
@@ -8145,8 +8145,9 @@ async function persistInferenceTimingSummary(
 		},
 	]);
 
+	const priorWritesSinceSweep = inferenceTimingWritesSinceSweep.get(runtime);
 	const writesSinceSweep =
-		(inferenceTimingWritesSinceSweep.get(runtime) ?? 0) + 1;
+		(priorWritesSinceSweep === undefined ? 0 : priorWritesSinceSweep) + 1;
 	if (writesSinceSweep < INFERENCE_TIMING_LOG_SWEEP_INTERVAL) {
 		inferenceTimingWritesSinceSweep.set(runtime, writesSinceSweep);
 		return;

@@ -56,8 +56,16 @@ import {
   requestViaAgentTransport,
 } from "./csrf-client";
 
+// The unit under test reads raw `document.cookie`, so fixtures must seed it the
+// same way — the async Cookie Store API the lint rule suggests is unavailable in
+// jsdom and would not exercise the sync read path.
+function setCookie(pair: string) {
+  // biome-ignore lint/suspicious/noDocumentCookie: seeding the sync cookie jar the code under test reads.
+  document.cookie = pair;
+}
+
 function clearCookie(name: string) {
-  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+  setCookie(`${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`);
 }
 
 describe("fetchWithCsrf", () => {
@@ -92,20 +100,20 @@ describe("fetchWithCsrf", () => {
   });
 
   it("reads the decoded CSRF token from a semicolon-separated cookie string", () => {
-    document.cookie = "other=value";
-    document.cookie = "eliza_csrf=token%3Dwith%3Bencoded%20parts";
+    setCookie("other=value");
+    setCookie("eliza_csrf=token%3Dwith%3Bencoded%20parts");
 
     expect(readCsrfTokenFromCookie()).toBe("token=with;encoded parts");
   });
 
   it("returns null when the CSRF cookie is absent", () => {
-    document.cookie = "other=value";
+    setCookie("other=value");
 
     expect(readCsrfTokenFromCookie()).toBeNull();
   });
 
   it("mirrors the CSRF cookie only on state-changing requests", async () => {
-    document.cookie = "eliza_csrf=csrf-post-token";
+    setCookie("eliza_csrf=csrf-post-token");
 
     await fetchWithCsrf("/api/things", { method: "POST" });
     const postHeaders = fetchTransportMock.fetchAgentTransport.request.mock

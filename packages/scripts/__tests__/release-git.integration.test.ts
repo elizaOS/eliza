@@ -18,6 +18,8 @@ import {
 import {
   assertReleaseTagAllowed,
   pushAtomicReleaseRefs,
+  pushReleaseTag,
+  verifyReleaseSource,
 } from "../lib/release-git.mjs";
 
 const roots: string[] = [];
@@ -44,11 +46,31 @@ function writeJson(filePath: string, value: unknown) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function preserveGitEvidence(
+  fixture: ReturnType<typeof makeScenario>,
+  receipt: Record<string, unknown>,
+) {
+  const evidenceRoot = process.env.RELEASE_EVIDENCE_DIR;
+  if (!evidenceRoot) return;
+  const target = path.join(evidenceRoot, "git");
+  fs.mkdirSync(target, { recursive: true });
+  fs.cpSync(fixture.candidateDirectory, path.join(target, "candidate"), {
+    recursive: true,
+    errorOnExist: true,
+  });
+  writeJson(path.join(target, "git-receipt.json"), receipt);
+  fs.writeFileSync(
+    path.join(target, "canonical-tag-object.txt"),
+    `${git(fixture.repoRoot, ["cat-file", "tag", "refs/tags/v1.0.0"])}\n`,
+  );
+}
+
 function makeScenario() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "release-git-"));
   roots.push(base);
   const repoRoot = path.join(base, "source");
-  const remote = path.join(base, "remote.git");
+  const remotePath = path.join(base, "remote.git");
+  const remote = "release-test";
   fs.mkdirSync(repoRoot);
   git(repoRoot, ["init", "-b", "develop"]);
   git(repoRoot, ["config", "user.name", "Release Git Test"]);
@@ -57,8 +79,14 @@ function makeScenario() {
   git(repoRoot, ["add", "."]);
   git(repoRoot, ["commit", "-m", "base"]);
   const baseSha = git(repoRoot, ["rev-parse", "HEAD"]);
-  execFileSync("git", ["init", "--bare", remote]);
-  git(repoRoot, ["remote", "add", "release-test", remote]);
+  execFileSync("git", ["init", "--bare", remotePath]);
+  const canonicalRemote = "https://github.com/elizaOS/eliza.git";
+  git(repoRoot, [
+    "config",
+    `url.file://${remotePath}.insteadOf`,
+    canonicalRemote,
+  ]);
+  git(repoRoot, ["remote", "add", remote, canonicalRemote]);
   git(repoRoot, ["push", "release-test", `${baseSha}:refs/heads/develop`]);
 
   writeJson(path.join(repoRoot, "package.json"), {
@@ -85,7 +113,7 @@ function makeScenario() {
   git(repoRoot, ["commit", "-m", "release candidate"]);
   const releaseSha = git(repoRoot, ["rev-parse", "HEAD"]);
   const candidateDirectory = path.join(base, "candidate");
-  buildAndPackReleaseCandidate({
+  const { plan } = buildAndPackReleaseCandidate({
     repoRoot,
     outputDirectory: candidateDirectory,
     packageNames: ["@release-git/a"],
@@ -93,28 +121,93 @@ function makeScenario() {
     channel: "beta",
     sourceSha: releaseSha,
     expectedCommit: releaseSha,
+    repository: "elizaOS/eliza",
+    sourceRef: "refs/heads/develop",
+    registry: "https://registry.npmjs.org/",
+    publisher: "release-git",
     build: { command: process.execPath, args: ["build.mjs"] },
   });
   recordReleaseTransition(candidateDirectory, "registry-bound", {
-    registry: "local",
+    registry: plan.registry,
+    publisher: plan.publisher,
+    candidateTag: plan.candidateTag,
   });
   recordReleaseTransition(candidateDirectory, "registry-staged", {
-    registry: "local",
+    registry: plan.registry,
+    publisher: plan.publisher,
+    candidateTag: plan.candidateTag,
+    actions: [],
   });
   recordReleaseTransition(candidateDirectory, "registry-verified", {
-    registry: "local",
+    registry: plan.registry,
+    packages: [],
   });
   recordReleaseTransition(candidateDirectory, "channel-promoted", {
-    channel: "beta",
+    registry: plan.registry,
+    channel: plan.channel,
+    promotions: [],
+    candidateTagCleanup: [],
   });
-  return { base, repoRoot, remote, baseSha, releaseSha, candidateDirectory };
+  return {
+    base,
+    repoRoot,
+    remote,
+    remotePath,
+    canonicalRemote,
+    baseSha,
+    releaseSha,
+    candidateDirectory,
+  };
 }
 
 describe("atomic release refs", () => {
+  test("binds the exact source ref and canonical repository before mutation", () => {
+    const fixture = makeScenario();
+    git(fixture.repoRoot, [
+      "push",
+      fixture.remote,
+      `${fixture.releaseSha}:refs/heads/develop`,
+    ]);
+    expect(
+      verifyReleaseSource({
+        repoRoot: fixture.repoRoot,
+        remote: fixture.remote,
+        repository: "elizaOS/eliza",
+        sourceRef: "refs/heads/develop",
+        sourceSha: fixture.releaseSha,
+      }),
+    ).toMatchObject({
+      repository: "elizaOS/eliza",
+      sourceRef: "refs/heads/develop",
+      sourceSha: fixture.releaseSha,
+    });
+    expect(() =>
+      verifyReleaseSource({
+        repoRoot: fixture.repoRoot,
+        remote: fixture.remote,
+        repository: "other/repository",
+        sourceRef: "refs/heads/develop",
+        sourceSha: fixture.releaseSha,
+      }),
+    ).toThrow("identifies elizaOS/eliza, expected other/repository");
+    expect(() =>
+      verifyReleaseSource({
+        repoRoot: fixture.repoRoot,
+        remote: fixture.remote,
+        repository: "elizaOS/eliza",
+        sourceRef: "refs/heads/missing",
+        sourceSha: fixture.releaseSha,
+      }),
+    ).toThrow("resolves to null");
+    expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
+      "refs/tags/",
+    );
+  }, 30_000);
+
   test("one rejected ref rejects the entire atomic push and no unrelated tag follows", () => {
     const fixture = makeScenario();
     git(fixture.repoRoot, ["tag", "unrelated-local-tag", fixture.releaseSha]);
-    const hookPath = path.join(fixture.remote, "hooks/update");
+    const hookPath = path.join(fixture.remotePath, "hooks/update");
     fs.writeFileSync(
       hookPath,
       [
@@ -172,7 +265,130 @@ describe("atomic release refs", () => {
         tag: "v1.0.1",
         expectedOldBranchSha: fixture.baseSha,
       }),
-    ).toThrow("Conflicting evidence for already-recorded phase git-bound");
+    ).toThrow("Release tag must be exactly v1.0.0");
+    expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
+      "refs/tags/v1.0.1",
+    );
+  }, 30_000);
+
+  test("tag-only finalization leaves the release branch untouched and retries exactly", () => {
+    const fixture = makeScenario();
+    git(fixture.repoRoot, [
+      "push",
+      fixture.remote,
+      `${fixture.releaseSha}:refs/heads/develop`,
+    ]);
+    const branchBefore = remoteRefs(fixture.repoRoot, fixture.remote);
+    git(fixture.repoRoot, ["tag", "unrelated-local-tag", fixture.releaseSha]);
+
+    const firstPush = pushReleaseTag({
+      repoRoot: fixture.repoRoot,
+      candidateDirectory: fixture.candidateDirectory,
+      remote: fixture.remote,
+      tag: "v1.0.0",
+    });
+    expect(firstPush).toMatchObject({
+      pushed: true,
+      expectedCommit: fixture.releaseSha,
+    });
+    const firstRefs = remoteRefs(fixture.repoRoot, fixture.remote);
+    expect(firstRefs).toContain(`${fixture.releaseSha}\trefs/heads/develop`);
+    expect(firstRefs.match(/refs\/heads\/develop/g)).toEqual(
+      branchBefore.match(/refs\/heads\/develop/g),
+    );
+    expect(firstRefs).toContain(`${fixture.releaseSha}\trefs/tags/v1.0.0^{}`);
+    expect(firstRefs).not.toContain("unrelated-local-tag");
+    expect(
+      git(fixture.repoRoot, [
+        "for-each-ref",
+        "--format=%(taggername)|%(taggeremail)|%(contents)",
+        "refs/tags/v1.0.0",
+      ]),
+    ).toContain(
+      "github-actions[bot]|<41898282+github-actions[bot]@users.noreply.github.com>|Release v1.0.0",
+    );
+    expect(
+      git(fixture.repoRoot, ["cat-file", "tag", "refs/tags/v1.0.0"]),
+    ).toContain(`Plan-Integrity: sha512-`);
+    expect(git(fixture.repoRoot, ["rev-parse", "refs/tags/v1.0.0"])).toBe(
+      firstPush.tagObject,
+    );
+    expect(
+      git(fixture.repoRoot, [
+        "for-each-ref",
+        "--format=%(taggerdate:raw)",
+        "refs/tags/v1.0.0",
+      ]),
+    ).toBe(
+      `${git(fixture.repoRoot, ["show", "-s", "--format=%ct", fixture.releaseSha])} +0000`,
+    );
+
+    expect(
+      pushReleaseTag({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        tag: "v1.0.0",
+      }),
+    ).toMatchObject({ pushed: false, expectedCommit: fixture.releaseSha });
+    expect(remoteRefs(fixture.repoRoot, fixture.remote)).toBe(firstRefs);
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-tagged",
+    );
+    preserveGitEvidence(fixture, {
+      transport: "ephemeral bare Git repository",
+      sourceSha: fixture.releaseSha,
+      branchBefore,
+      refsAfter: firstRefs,
+      canonicalTagObject: firstPush.tagObject,
+      tagger: git(fixture.repoRoot, [
+        "for-each-ref",
+        "--format=%(taggername)|%(taggeremail)|%(taggerdate:raw)",
+        "refs/tags/v1.0.0",
+      ]),
+      tagContents: git(fixture.repoRoot, [
+        "cat-file",
+        "tag",
+        "refs/tags/v1.0.0",
+      ]),
+      finalState: loadReleaseState(fixture.candidateDirectory),
+    });
+  }, 30_000);
+
+  test("tag-only rejection and a mismatched planned tag fail without ref mutation", () => {
+    const fixture = makeScenario();
+    git(fixture.repoRoot, [
+      "push",
+      fixture.remote,
+      `${fixture.releaseSha}:refs/heads/develop`,
+    ]);
+    const hookPath = path.join(fixture.remotePath, "hooks/update");
+    fs.writeFileSync(hookPath, ["#!/bin/sh", "exit 1", ""].join("\n"));
+    fs.chmodSync(hookPath, 0o755);
+    expect(() =>
+      pushReleaseTag({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        tag: "v1.0.0",
+      }),
+    ).toThrow("git push failed");
+    expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
+      "refs/tags/v1.0.0",
+    );
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-bound",
+    );
+
+    fs.unlinkSync(hookPath);
+    expect(() =>
+      pushReleaseTag({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        tag: "v1.0.1",
+      }),
+    ).toThrow("Release tag must be exactly v1.0.0");
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/v1.0.1",
     );
@@ -184,7 +400,7 @@ describe("atomic release refs", () => {
       fixture.candidateDirectory,
       "release-state.json.lock",
     );
-    const hookPath = path.join(fixture.remote, "hooks/post-receive");
+    const hookPath = path.join(fixture.remotePath, "hooks/post-receive");
     fs.writeFileSync(
       hookPath,
       [
@@ -220,7 +436,16 @@ describe("atomic release refs", () => {
     fs.unlinkSync(lockPath);
     const changedRemote = path.join(fixture.base, "changed-remote.git");
     execFileSync("git", ["init", "--bare", changedRemote]);
-    git(fixture.repoRoot, ["remote", "set-url", "release-test", changedRemote]);
+    git(fixture.repoRoot, [
+      "config",
+      "--unset-all",
+      `url.file://${fixture.remotePath}.insteadOf`,
+    ]);
+    git(fixture.repoRoot, [
+      "config",
+      `url.file://${changedRemote}.insteadOf`,
+      fixture.canonicalRemote,
+    ]);
     expect(() =>
       pushAtomicReleaseRefs({
         repoRoot: fixture.repoRoot,
@@ -233,10 +458,14 @@ describe("atomic release refs", () => {
     ).toThrow("already-recorded phase git-bound");
     expect(remoteRefs(fixture.repoRoot, changedRemote)).toBe("");
     git(fixture.repoRoot, [
-      "remote",
-      "set-url",
-      "release-test",
-      fixture.remote,
+      "config",
+      "--unset-all",
+      `url.file://${changedRemote}.insteadOf`,
+    ]);
+    git(fixture.repoRoot, [
+      "config",
+      `url.file://${fixture.remotePath}.insteadOf`,
+      fixture.canonicalRemote,
     ]);
     expect(() =>
       pushAtomicReleaseRefs({
@@ -260,6 +489,27 @@ describe("atomic release refs", () => {
     ).toMatchObject({ pushed: false, expectedCommit: fixture.releaseSha });
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
       "git-tagged",
+    );
+  }, 30_000);
+
+  test("refuses to publish an ambient lightweight local release tag", () => {
+    const fixture = makeScenario();
+    git(fixture.repoRoot, [
+      "push",
+      fixture.remote,
+      `${fixture.releaseSha}:refs/heads/develop`,
+    ]);
+    git(fixture.repoRoot, ["tag", "v1.0.0", fixture.releaseSha]);
+    expect(() =>
+      pushReleaseTag({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        tag: "v1.0.0",
+      }),
+    ).toThrow("expected canonical object");
+    expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
+      "refs/tags/v1.0.0",
     );
   }, 30_000);
 
@@ -291,7 +541,7 @@ describe("atomic release refs", () => {
     );
   }, 30_000);
 
-  test("matching annotated tag dereferences to the expected commit and no-ops", () => {
+  test("same-commit annotated tag with a noncanonical message is a conflict", () => {
     const fixture = makeScenario();
     git(fixture.repoRoot, [
       "tag",
@@ -307,7 +557,7 @@ describe("atomic release refs", () => {
       `${fixture.releaseSha}:refs/heads/develop`,
       "refs/tags/v1.0.0:refs/tags/v1.0.0",
     ]);
-    expect(
+    expect(() =>
       pushAtomicReleaseRefs({
         repoRoot: fixture.repoRoot,
         candidateDirectory: fixture.candidateDirectory,
@@ -316,9 +566,33 @@ describe("atomic release refs", () => {
         tag: "v1.0.0",
         expectedOldBranchSha: fixture.baseSha,
       }),
-    ).toMatchObject({ pushed: false, expectedCommit: fixture.releaseSha });
+    ).toThrow("expected canonical object");
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
-      "git-tagged",
+      "git-bound",
+    );
+  }, 30_000);
+
+  test("same-commit lightweight remote tag is a conflict", () => {
+    const fixture = makeScenario();
+    git(fixture.repoRoot, ["tag", "v1.0.0", fixture.releaseSha]);
+    git(fixture.repoRoot, [
+      "push",
+      "release-test",
+      `${fixture.releaseSha}:refs/heads/develop`,
+      "refs/tags/v1.0.0:refs/tags/v1.0.0",
+    ]);
+    expect(() =>
+      pushAtomicReleaseRefs({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        branch: "develop",
+        tag: "v1.0.0",
+        expectedOldBranchSha: fixture.baseSha,
+      }),
+    ).toThrow("expected canonical object");
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-bound",
     );
   }, 30_000);
 
@@ -339,7 +613,7 @@ describe("atomic release refs", () => {
         tag: "v1.0.0",
         expectedOldBranchSha: fixture.baseSha,
       }),
-    ).toThrow("Remote tag refs/tags/v1.0.0 resolves");
+    ).toThrow("expected canonical object");
     for (const tag of ["v2.0.3-beta.8", "v2.0.3-beta.9", "v2.0.3-beta.10"]) {
       expect(() => assertReleaseTagAllowed(tag)).toThrow(
         "reserved failed-release residue",

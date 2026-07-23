@@ -18,6 +18,14 @@ const TASK_ROOM = "11111111-2222-3333-4444-555555555555";
 const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
 
 describe("TASKS:spawn_agent", () => {
+  it("keeps spawn_agent planner-visible on the umbrella action", () => {
+    expect(
+      spawnAgentAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("spawn_agent");
+  });
+
   it("does not expose lockWorkdir to planner-generated tool calls", () => {
     expect(
       spawnAgentAction.parameters?.map((param) => param.name),

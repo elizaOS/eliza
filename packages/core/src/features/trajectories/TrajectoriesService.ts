@@ -1962,7 +1962,9 @@ export class TrajectoriesService extends Service {
 				startedAt: params.startedAt ?? null,
 				endedAt: params.endedAt ?? null,
 				durationMs: params.durationMs ?? null,
-				overlapsWith: params.overlapsWith ?? [],
+				overlapsWith: Array.isArray(params.overlapsWith)
+					? params.overlapsWith
+					: [],
 				data: params.data as Record<string, JsonValue>,
 				sha256: params.sha256,
 				tokenCount: params.tokenCount,

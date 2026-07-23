@@ -4456,6 +4456,12 @@ export class AgentRuntime implements IAgentRuntime {
 			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
 			for (const [providerIndex, r] of providerData.entries()) {
 				try {
+					const overlapsWith = providerOverlaps[providerIndex];
+					if (!overlapsWith) {
+						throw new Error(
+							`Missing provider overlap row at index ${providerIndex}`,
+						);
+					}
 					const redactedText =
 						currentProviderResults[r.providerName]?.text ?? "";
 					const attribution = providerAttributionByName.get(r.providerName);
@@ -4465,7 +4471,7 @@ export class AgentRuntime implements IAgentRuntime {
 						startedAt: r.providerStartedAt,
 						endedAt: r.providerEndedAt,
 						durationMs: r.providerDurationMs,
-						overlapsWith: providerOverlaps[providerIndex] ?? [],
+						overlapsWith,
 						data: { textLength: redactedText.length },
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,

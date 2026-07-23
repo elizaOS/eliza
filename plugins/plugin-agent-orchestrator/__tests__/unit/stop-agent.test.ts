@@ -16,6 +16,14 @@ import {
 const stopOptions = { parameters: { action: "stop_agent" } };
 
 describe("TASKS:stop_agent", () => {
+  it("keeps stop_agent planner-visible on the umbrella action", () => {
+    expect(
+      stopAgentAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("stop_agent");
+  });
+
   it("stops a specific session", async () => {
     const svc = serviceMock();
     const result = await stopAgentAction.handler(

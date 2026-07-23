@@ -68,6 +68,14 @@ function runtimeWithServices(opts: {
 }
 
 describe("TASKS:history", () => {
+  it("keeps history planner-visible on the umbrella action", () => {
+    expect(
+      taskHistoryAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("history");
+  });
+
   it("validates history when the durable task service is available without ACP", async () => {
     const taskService = { listTasks: vi.fn(async () => []) };
     const runtime = runtimeWithServices({ taskService });

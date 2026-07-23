@@ -269,7 +269,10 @@ describe("post-turn evaluation detachment", () => {
 		const { runtime } = makeRuntime();
 		const service = new DefaultMessageService();
 
-		await service.handleMessage(runtime, userMessage("persist this turn timing"));
+		await service.handleMessage(
+			runtime,
+			userMessage("persist this turn timing"),
+		);
 		await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 		expect(runtime.createLogs).toHaveBeenCalledWith([

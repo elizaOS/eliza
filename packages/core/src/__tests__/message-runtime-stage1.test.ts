@@ -332,7 +332,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"prioritize syntactically valid runnable code",
 		);
 		expect(String(systemMessage?.content ?? "")).toContain(
-			"goals -> OWNER_GOALS",
+			"the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER)",
 		);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");

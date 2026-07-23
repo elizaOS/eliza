@@ -62,8 +62,9 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
           return [];
         }
         const rawMeta = asRecord(span?.meta);
+        const rawMetaEntries = rawMeta ? Object.entries(rawMeta) : [];
         const meta = Object.fromEntries(
-          Object.entries(rawMeta ?? {}).filter(
+          rawMetaEntries.filter(
             (entry): entry is [string, string | number | boolean] =>
               typeof entry[1] === "string" ||
               typeof entry[1] === "number" ||
@@ -91,12 +92,14 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
     : [];
   const byNameRecord = asRecord(metadata.byName);
   const byName: InferenceTurnSummary["byName"] = {};
-  for (const [name, value] of Object.entries(byNameRecord ?? {})) {
-    const aggregate = asRecord(value);
-    const aggregateTotalMs = finiteNumber(aggregate?.totalMs);
-    const count = finiteNumber(aggregate?.count);
-    if (aggregateTotalMs !== null && count !== null) {
-      byName[name] = { totalMs: aggregateTotalMs, count };
+  if (byNameRecord) {
+    for (const [name, value] of Object.entries(byNameRecord)) {
+      const aggregate = asRecord(value);
+      const aggregateTotalMs = finiteNumber(aggregate?.totalMs);
+      const count = finiteNumber(aggregate?.count);
+      if (aggregateTotalMs !== null && count !== null) {
+        byName[name] = { totalMs: aggregateTotalMs, count };
+      }
     }
   }
 

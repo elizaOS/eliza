@@ -173,7 +173,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. Owner life-management: goals -> OWNER_GOALS, todos -> OWNER_TODOS, reminders -> OWNER_REMINDERS, habits/routines -> OWNER_ROUTINES. Empty when no action likely.",
+		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
 	descriptionCompressed:
 		"Likely UPPER_SNAKE_CASE action names; empty when no action likely.",
 	priority: 50,

@@ -17,7 +17,7 @@
  *   - the session: REAL `VoiceSession` orchestrator — uplink reframer, Flux STT
  *     leg, phrase aggregator, Eliza SSE LLM leg, Cartesia TTS leg, §7.5
  *     interruption/barge-in, SEC-15 fail-closed metering + back-pressure, SEC-6
- *     revoke poll + token-expiry self-sever, teardown revoke.
+ *     revoke poll + token-expiry self-sever.
  *   - the merged provider adapters (`createDeepgramFluxRealtimeSession`,
  *     `CartesiaSonicTtsAdapter`) driving LIVE providers.
  *   - the flag: `VOICE_REALTIME_WS_ENABLED=true` is the real consumer working.
@@ -80,7 +80,6 @@ import {
   isVoiceSessionTokenRevoked,
   mintVoiceSessionToken,
   recordVoiceSessionJti,
-  revokeVoiceSessionToken,
 } from "@/lib/voice-session/jwt";
 import {
   __resetVoiceSessionRegistryForTests,
@@ -450,8 +449,12 @@ export async function startRealVoiceServer(
           elizaModel,
           usageStore,
           usageLimits,
+          // Production parity (#16663): NO teardown revoke — production
+          // dropped it in #16636 (a successful hello already claimed the jti
+          // until expiry). Evidence runs must certify what production
+          // actually does. Once the poll's request-scoped store parameter
+          // lands (#16669), forward `rawRedis` here the way the route does.
           isRevoked: (j) => isVoiceSessionTokenRevoked(j),
-          onTeardownRevoke: (j, exp) => revokeVoiceSessionToken(j, exp),
           downlink,
         }),
     });

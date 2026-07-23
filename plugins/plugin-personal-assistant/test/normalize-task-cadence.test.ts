@@ -35,9 +35,8 @@ describe("normalizeWindowNames", () => {
 
 describe("normalizeCadence", () => {
   it("canonicalizes a once cadence ISO date", () => {
-    // biome-ignore lint/suspicious/noExplicitAny: minimal cadence input.
     const out = normalizeCadence(
-      { kind: "once", dueAt: "2026-06-23T00:00:00Z" } as any,
+      { kind: "once", dueAt: "2026-06-23T00:00:00Z" },
       policy,
     );
     expect(out).toMatchObject({
@@ -47,9 +46,8 @@ describe("normalizeCadence", () => {
   });
 
   it("validates a daily cadence's windows against the policy", () => {
-    // biome-ignore lint/suspicious/noExplicitAny: minimal cadence input.
     const out = normalizeCadence(
-      { kind: "daily", windows: ["morning"] } as any,
+      { kind: "daily", windows: ["morning"] },
       policy,
     );
     expect(out).toMatchObject({ kind: "daily", windows: ["morning"] });
