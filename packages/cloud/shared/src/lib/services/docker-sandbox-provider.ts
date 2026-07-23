@@ -25,7 +25,11 @@ import { buildAgentContainerSecurityFlags } from "./agent-container-security";
 import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
-import { isAlreadyGoneMessage, isNodeUnreachableMessage } from "./docker-error-classifier";
+import {
+  isAlreadyGoneMessage,
+  isContainerAbsentMessage,
+  isNodeUnreachableMessage,
+} from "./docker-error-classifier";
 import { dockerNodeManager } from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
@@ -52,6 +56,7 @@ import {
   WEBUI_PORT_MIN,
 } from "./docker-sandbox-utils";
 import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
+import { headscaleClient } from "./headscale-client";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
 import type {
@@ -59,7 +64,9 @@ import type {
   SandboxHandle,
   SandboxHealthOutcome,
   SandboxProvider,
+  SandboxReplacementCleanupLocator,
 } from "./sandbox-provider-types";
+import { SandboxReplacementCleanupUnresolvedError } from "./sandbox-provider-types";
 import {
   ensureStewardTenant,
   resolveStewardTenantCredentials,
@@ -89,6 +96,18 @@ export interface DockerSandboxMetadata {
    */
   imageDigest: string | null;
   headscaleIp?: string;
+  /** Exact Headscale identity for strict replacement cleanup. */
+  vpnNodeId?: string;
+  /** Deterministic Headscale name used to recover a pre-enrichment crash. */
+  vpnNodeName?: string;
+  /** Lower bound for identifying this attempt's Headscale registration. */
+  vpnRegistrationStartedAt?: string;
+  /** Unique Docker label binding this candidate to its durable intent. */
+  replacementAttemptId: string;
+  /** Exact Docker id after create responds; absent on the pre-create intent. */
+  containerId?: string;
+  /** Whether this placement reserved docker_nodes.allocated_count. */
+  allocationCounted: boolean;
   /** Preserved live node id from a reclaimStaleVpnNode=false provision
    *  (#16565) — the upgrade orchestrator deletes it BY ID after the atomic
    *  swap; rolled-back paths must leave it untouched. */
@@ -119,6 +138,11 @@ interface ContainerMeta {
   hostKeyFingerprint?: string;
 }
 
+type DockerNodeConnection = Pick<
+  DockerNode,
+  "node_id" | "hostname" | "ssh_port" | "ssh_user" | "host_key_fingerprint"
+>;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -129,6 +153,42 @@ let hasWarnedMissingStewardTenantApiKey = false;
 
 const DEFAULT_AGENT_PORT = containersEnv.agentPort();
 const DEFAULT_BRIDGE_PORT = containersEnv.agentBridgePort();
+const REPLACEMENT_ATTEMPT_LABEL = "ai.elizaos.replacement-attempt";
+const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
+const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
+const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
+
+class ReplacementPlacementPersistenceError extends Error {
+  constructor(cause: unknown) {
+    super("[docker-sandbox] Failed to persist replacement placement", { cause });
+    this.name = "ReplacementPlacementPersistenceError";
+  }
+}
+
+/**
+ * Keeps the durable intent on the happens-before side of Docker create. The
+ * remote command may commit and then lose its SSH response, so persisting only
+ * after it returns cannot provide a recoverable placement fence.
+ */
+export async function createDockerContainerAfterReplacementIntent<T>({
+  persistIntent,
+  createContainer,
+}: {
+  persistIntent?: () => Promise<void>;
+  createContainer: () => Promise<T>;
+}): Promise<T> {
+  if (persistIntent) {
+    await persistIntent();
+  }
+  return createContainer();
+}
+
+function dockerContainerIdsMatch(expected: string, actual: string): boolean {
+  if (!/^[a-f0-9]{12,64}$/i.test(expected) || !/^[a-f0-9]{12,64}$/i.test(actual)) {
+    return false;
+  }
+  return expected.startsWith(actual) || actual.startsWith(expected);
+}
 
 /** Default SSH port when not specified by DB node record. */
 const DEFAULT_SSH_PORT = 22;
@@ -850,6 +910,18 @@ export class DockerSandboxProvider implements SandboxProvider {
    * (Docker self-hosting) it persists across requests.
    */
   private containers = new Map<string, ContainerMeta>();
+  private readonly replacementVpnSettleDelay: (milliseconds: number) => Promise<void>;
+  private readonly now: () => number;
+
+  constructor(options?: {
+    replacementVpnSettleDelay?: (milliseconds: number) => Promise<void>;
+    now?: () => number;
+  }) {
+    this.replacementVpnSettleDelay =
+      options?.replacementVpnSettleDelay ??
+      ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+    this.now = options?.now ?? Date.now;
+  }
 
   // ------------------------------------------------------------------
   // create
@@ -859,8 +931,9 @@ export class DockerSandboxProvider implements SandboxProvider {
    * Create a sandbox container with automatic retry on port-collision TOCTOU races.
    *
    * Wraps {@link _createOnce} in a retry loop (up to 3 attempts with jitter).
-   * On each attempt, fresh ports are allocated. If a prior attempt left a
-   * ghost container running, it is cleaned up before retrying.
+   * On each attempt, fresh ports are allocated. The single-attempt path proves
+   * the failed candidate absent before a collision may retry; unresolved
+   * cleanup carries its exact placement to the durable service fence.
    *
    * NOTE: The DB INSERT (in agent-sandbox.ts) happens *after* this method
    * returns. If that INSERT hits a UNIQUE constraint violation (PG 23505),
@@ -876,6 +949,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         return await this._createOnce(config);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        if (
+          config.onReplacementCreateIntent ||
+          lastError instanceof SandboxReplacementCleanupUnresolvedError
+        ) {
+          throw lastError;
+        }
         const isPortCollision =
           lastError.message.includes("23505") ||
           lastError.message.includes("unique constraint") ||
@@ -886,17 +965,10 @@ export class DockerSandboxProvider implements SandboxProvider {
           throw lastError;
         }
 
-        // Deletes the ghost container from the failed attempt
         const containerName = getContainerName(config.agentId);
         logger.warn(
-          `[docker-sandbox] Port collision on attempt ${attempt}/${MAX_ATTEMPTS} for ${containerName}, cleaning up and retrying...`,
+          `[docker-sandbox] Port collision on attempt ${attempt}/${MAX_ATTEMPTS} for ${containerName}; prior candidate absence is proven, retrying...`,
         );
-        try {
-          // sandboxId === containerName for Docker provider (both are `agent-${agentId}`)
-          await this.stop(containerName);
-        } catch {
-          // Ghost may not exist or already be gone — safe to ignore
-        }
 
         // Jitter: 200–800ms to desynchronise concurrent callers
         const jitterMs = 200 + Math.floor(Math.random() * 600);
@@ -932,6 +1004,15 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 1. Input validation
     validateAgentName(agentName);
     validateAgentId(agentId);
+    if (
+      (config.onReplacementCreated || config.onReplacementVpnRegistered) &&
+      !config.onReplacementCreateIntent
+    ) {
+      throw new Error(
+        "[docker-sandbox] replacement enrichment callbacks require onReplacementCreateIntent",
+      );
+    }
+    const providerManagesCapacity = !config.onReplacementCreateIntent;
 
     const env = currentHeadscaleRouteEnv();
     // Pass the same snapshot to requiresHeadscaleRoute so that both the
@@ -979,8 +1060,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       sshPort = dbNode.ssh_port ?? DEFAULT_SSH_PORT;
       sshUser = dbNode.ssh_user ?? DEFAULT_SSH_USERNAME;
       hostKeyFingerprint = dbNode.host_key_fingerprint ?? undefined;
-      // Increment allocated_count in DB
-      await dockerNodesRepository.incrementAllocated(nodeId);
+      // Replacement intent persists the capacity reservation and placement in
+      // one service transaction. Ordinary creates retain provider-owned
+      // accounting because they have no durable replacement fence.
+      if (providerManagesCapacity) {
+        await dockerNodesRepository.incrementAllocated(nodeId);
+      }
     } else {
       // Fallback: seed-only path for initial setup before nodes are registered via Admin API.
       // Uses random selection (no least-loaded placement or capacity checks).
@@ -1019,6 +1104,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const webUiPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
     const containerName = getContainerName(agentId);
     const volumePath = getVolumePath(agentId);
+    const replacementAttemptId = crypto.randomUUID();
     // Auto-provision the Steward tenant for this org if it doesn't have one
     // yet. Without this step, fresh organizations fall through to
     // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
@@ -1036,6 +1122,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     let headscaleIp: string | null = null;
     let previousVpnNodeId: string | undefined;
     let vpnNodeId: string | undefined;
+    let vpnRegistrationStartedAt: string | undefined;
 
     // Collect VPN env vars separately to avoid mutating the caller's environmentVars
     let vpnEnvVars: Record<string, string> = {};
@@ -1054,7 +1141,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         logger.info(`[docker-sandbox] Headscale VPN enabled for ${agentId}`);
       } catch (err) {
         if (headscaleRouteRequired) {
-          if (dbNode) {
+          if (dbNode && providerManagesCapacity) {
             await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
               logger.warn(
                 `[docker-sandbox] Failed to decrement allocated_count after Headscale preparation failure for node ${nodeId}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
@@ -1154,6 +1241,15 @@ export class DockerSandboxProvider implements SandboxProvider {
     // then create/start the container. Pass hostKeyFingerprint so pooled
     // clients pin the key when available.
     const ssh = DockerSSHClient.getClient(hostname, sshPort, hostKeyFingerprint, sshUser);
+    const cleanupNode: DockerNodeConnection = {
+      node_id: nodeId,
+      hostname,
+      ssh_port: sshPort,
+      ssh_user: sshUser,
+      host_key_fingerprint: hostKeyFingerprint ?? null,
+    };
+    let replacementIntentPersisted = false;
+    let createdContainerId: string | undefined;
 
     try {
       // Ensure volume directory exists
@@ -1309,6 +1405,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             testOrgIds: containersEnv.testOrgIds(),
           }),
         }),
+        `--label ${shellQuote(`${REPLACEMENT_ATTEMPT_LABEL}=${replacementAttemptId}`)}`,
         "--restart unless-stopped",
         `--network ${shellQuote(DOCKER_NETWORK)}`,
         ...(requiresDockerHostGateway(stewardContainerUrl) || Object.keys(proxyEnv).length > 0
@@ -1338,15 +1435,83 @@ export class DockerSandboxProvider implements SandboxProvider {
         shellQuote(resolvedImage),
       ].join(" ");
 
+      const persistReplacementIntent = config.onReplacementCreateIntent;
+
       // Self-heal nodes missing the shared bridge network (Robot cores never
       // run the cloud-init bootstrap; the network can also be pruned away).
       // Without this, `docker create --network` below fails with an opaque
       // "network not found" and the provision retries forever.
       await ssh.exec(buildEnsureNetworkCmd(DOCKER_NETWORK), DOCKER_CMD_TIMEOUT_MS);
 
+      // This clock starts the durable uncertainty window. Keep it adjacent to
+      // intent/create rather than tenant setup or image pull so recovery does
+      // not widen correlation with unrelated old Headscale registrations.
+      vpnRegistrationStartedAt = headscaleEnabled ? new Date(this.now()).toISOString() : undefined;
       const containerId = extractDockerCreateContainerId(
-        await ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
+        await createDockerContainerAfterReplacementIntent({
+          persistIntent: persistReplacementIntent
+            ? async () => {
+                try {
+                  await persistReplacementIntent({
+                    sandboxId: containerName,
+                    bridgeUrl: `http://${hostname}:${bridgePort}`,
+                    healthUrl: `http://${hostname}:${webUiPort}/api`,
+                    metadata: {
+                      provider: "docker",
+                      nodeId,
+                      hostname,
+                      containerName,
+                      bridgePort,
+                      webUiPort,
+                      agentId,
+                      volumePath,
+                      dockerImage: resolvedImage,
+                      imageDigest: null,
+                      replacementAttemptId,
+                      allocationCounted: Boolean(dbNode),
+                      vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+                      vpnRegistrationStartedAt,
+                      previousVpnNodeId,
+                    } satisfies DockerSandboxMetadata,
+                  });
+                  replacementIntentPersisted = true;
+                } catch (callbackError) {
+                  // error-policy:J2 context-adding rethrow — durable intent failure must
+                  // retain its replacement-placement phase for the caller's cleanup fence.
+                  throw new ReplacementPlacementPersistenceError(callbackError);
+                }
+              }
+            : undefined,
+          createContainer: () => ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
+        }),
       );
+      createdContainerId = containerId;
+      const persistCreatedReplacement = config.onReplacementCreated;
+      if (persistCreatedReplacement) {
+        await persistCreatedReplacement({
+          sandboxId: containerName,
+          bridgeUrl: `http://${hostname}:${bridgePort}`,
+          healthUrl: `http://${hostname}:${webUiPort}/api`,
+          metadata: {
+            provider: "docker",
+            nodeId,
+            hostname,
+            containerName,
+            bridgePort,
+            webUiPort,
+            agentId,
+            volumePath,
+            dockerImage: resolvedImage,
+            imageDigest: null,
+            replacementAttemptId,
+            containerId,
+            allocationCounted: Boolean(dbNode),
+            vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+            vpnRegistrationStartedAt,
+            previousVpnNodeId,
+          } satisfies DockerSandboxMetadata,
+        });
+      }
 
       // Pre-seed the cloud runtime config on the HOST side of the
       // `${volumePath}/eliza:/root/.eliza` mount BEFORE starting the container,
@@ -1452,50 +1617,51 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
-      await ssh
-        .exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS)
-        .catch((cleanupErr) => {
-          // error-policy:J6 provision rollback cleanup is best-effort; the original failure still rethrows.
-          logger.warn(
-            `[docker-sandbox] Failed to remove container ${containerName} after provision failure: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-          );
-        });
+      const cleanupLocator = {
+        sandboxId: containerName,
+        nodeId,
+        containerName,
+        replacementAttemptId,
+        containerId: createdContainerId,
+        vpnNodeId,
+        // Before the adjacent timestamp is captured, the container has not
+        // been created and therefore cannot have committed a VPN registration.
+        vpnNodeName: vpnRegistrationStartedAt ? vpnEnvVars.TS_HOSTNAME : undefined,
+        previousVpnNodeId,
+        vpnRegistrationStartedAt,
+        allocationCounted: Boolean(dbNode),
+      };
+      if (err instanceof ReplacementPlacementPersistenceError) {
+        throw err;
+      }
+      if (replacementIntentPersisted) {
+        throw new SandboxReplacementCleanupUnresolvedError(cleanupLocator, err);
+      }
 
-      // Rollback allocated_count on failure. This is the only place the slot
-      // reserved by incrementAllocated() is released after a failed provision,
-      // so a silent failure here leaks node capacity permanently. Keep the
-      // rollback best-effort (we are already failing and about to rethrow), but
-      // surface the leak so it is observable instead of a mysteriously-full node.
-      if (dbNode) {
+      try {
+        await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
+      } catch (cleanupError) {
+        // error-policy:J2 context-adding rethrow — replacement identity is retained
+        // so the durable reconciler can retry the exact unresolved cleanup.
+        if (cleanupError instanceof SandboxReplacementCleanupUnresolvedError) {
+          throw cleanupError;
+        }
+        throw new SandboxReplacementCleanupUnresolvedError(cleanupLocator, cleanupError);
+      }
+
+      // Releasing capacity is safe only after the exact candidate and its known
+      // VPN identity are absent. An unresolved cleanup retains the allocation
+      // and escapes above with a durable locator.
+      if (dbNode && providerManagesCapacity) {
         await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
           logger.error(
             `[docker-sandbox] Failed to roll back allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
           );
         });
       }
-      // Removes blue's Headscale node if VPN was prepared. Preserve-aware
-      // (#16565): when previousVpnNodeId is recorded, blue has NOT registered
-      // yet, so the only node under this hostname is the LIVE preserved one —
-      // a by-name cleanup here would delete it, the exact hole this feature
-      // closes. Nothing of blue's exists in Headscale at this point; its
-      // unused single-use pre-auth key is inert.
-      if (headscaleEnabled) {
-        if (resolveVpnTeardown({ previousVpnNodeId }).kind === "skip-preserved") {
-          logger.info(
-            `[docker-sandbox] Skipping Headscale cleanup during rollback for ${agentId}: preserved live node holds the hostname and blue never registered`,
-          );
-        } else {
-          await headscaleIntegration
-            .cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId)
-            .catch((cleanupErr) => {
-              logger.warn(
-                `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-              );
-            });
-        }
-      }
       throw new Error(
         `[docker-sandbox] Failed to create container on ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
       );
     }
 
@@ -1557,6 +1723,54 @@ export class DockerSandboxProvider implements SandboxProvider {
       // overlap shares the hostname (#16565).
       if (vpnNodeId) {
         meta.vpnNodeId = vpnNodeId;
+        if (config.onReplacementVpnRegistered) {
+          const registeredPort = Number.parseInt(containerPort, 10);
+          try {
+            await config.onReplacementVpnRegistered({
+              sandboxId: containerName,
+              bridgeUrl: `http://${headscaleIp}:${registeredPort}`,
+              healthUrl: `http://${headscaleIp}:${registeredPort}/api`,
+              metadata: {
+                provider: "docker",
+                nodeId,
+                hostname,
+                containerName,
+                bridgePort,
+                webUiPort,
+                agentId,
+                volumePath,
+                dockerImage: resolvedImage,
+                imageDigest: null,
+                headscaleIp: headscaleIp ?? undefined,
+                vpnNodeId,
+                vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+                vpnRegistrationStartedAt,
+                replacementAttemptId,
+                containerId: createdContainerId,
+                allocationCounted: Boolean(dbNode),
+                previousVpnNodeId,
+              } satisfies DockerSandboxMetadata,
+            });
+          } catch (callbackError) {
+            // error-policy:J2 context-adding rethrow — a committed VPN identity
+            // must remain attached to the durable cleanup failure.
+            throw new SandboxReplacementCleanupUnresolvedError(
+              {
+                sandboxId: containerName,
+                nodeId,
+                containerName,
+                replacementAttemptId,
+                containerId: createdContainerId,
+                vpnNodeId,
+                vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+                previousVpnNodeId,
+                vpnRegistrationStartedAt,
+                allocationCounted: Boolean(dbNode),
+              },
+              callbackError,
+            );
+          }
+        }
       }
     }
 
@@ -1582,13 +1796,53 @@ export class DockerSandboxProvider implements SandboxProvider {
             `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
           );
         });
-      await this.stop(containerName).catch((cleanupErr) => {
-        const cleanupMessage =
-          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
-        logger.warn(
-          `[docker-sandbox] Cleanup after missing Headscale registration failed for ${containerName}: ${cleanupMessage}`,
+      if (replacementIntentPersisted) {
+        throw new SandboxReplacementCleanupUnresolvedError(
+          {
+            sandboxId: containerName,
+            nodeId,
+            containerName,
+            replacementAttemptId,
+            containerId: createdContainerId,
+            vpnNodeId,
+            vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+            previousVpnNodeId,
+            vpnRegistrationStartedAt,
+            allocationCounted: Boolean(dbNode),
+          },
+          new Error(errorMessage),
         );
-      });
+      }
+      const cleanupLocator = {
+        sandboxId: containerName,
+        nodeId,
+        containerName,
+        replacementAttemptId,
+        containerId: createdContainerId,
+        vpnNodeId,
+        vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+        previousVpnNodeId,
+        vpnRegistrationStartedAt,
+        allocationCounted: Boolean(dbNode),
+      };
+      const cleanupNode: DockerNodeConnection = {
+        node_id: nodeId,
+        hostname,
+        ssh_port: sshPort,
+        ssh_user: sshUser,
+        host_key_fingerprint: hostKeyFingerprint ?? null,
+      };
+      await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
+      this.containers.delete(containerName);
+      if (dbNode && providerManagesCapacity) {
+        await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackError) => {
+          // error-policy:J6 best-effort teardown — the candidate is already absent;
+          // capacity reconciliation remains observable while the original failure surfaces.
+          logger.error(
+            `[docker-sandbox] Failed to roll back allocation for node ${nodeId} after unroutable candidate cleanup: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+          );
+        });
+      }
       throw new Error(errorMessage);
     }
 
@@ -1613,6 +1867,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       dockerImage: resolvedImage,
       imageDigest,
       headscaleIp: headscaleIp || undefined,
+      vpnNodeId,
+      vpnNodeName: vpnEnvVars.TS_HOSTNAME,
+      vpnRegistrationStartedAt,
+      replacementAttemptId,
+      containerId: createdContainerId,
+      allocationCounted: Boolean(dbNode),
       previousVpnNodeId,
     };
 
@@ -1628,12 +1888,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     const bridgeUrlPort = headscaleIp ? containerPortNum : bridgePort;
     const webUiUrlPort = headscaleIp ? containerPortNum : webUiPort;
 
-    return {
+    const handle: SandboxHandle = {
       sandboxId: containerName,
       bridgeUrl: `http://${targetHost}:${bridgeUrlPort}`,
       healthUrl: `http://${targetHost}:${webUiUrlPort}/api`,
       metadata: { ...metadata },
     };
+    return handle;
   }
 
   private async provisionAutoscaledNodeForAgent({
@@ -1725,6 +1986,42 @@ export class DockerSandboxProvider implements SandboxProvider {
     containerName: string,
     gracefulSeconds = 30,
   ): Promise<void> {
+    await this.stopOnSpecificNodeWithPolicy(node, containerName, gracefulSeconds, true, true);
+  }
+
+  async stopOnSpecificNodeForReplacement(
+    nodeId: string,
+    containerName: string,
+    vpnNodeId?: string | null,
+    identity?: Omit<
+      SandboxReplacementCleanupLocator,
+      "sandboxId" | "nodeId" | "containerName" | "vpnNodeId"
+    >,
+  ): Promise<void> {
+    const locator: SandboxReplacementCleanupLocator = {
+      ...identity,
+      sandboxId: containerName,
+      nodeId,
+      containerName,
+      vpnNodeId,
+    };
+    const node = await dockerNodesRepository.findByNodeId(nodeId);
+    if (!node) {
+      throw new SandboxReplacementCleanupUnresolvedError(
+        locator,
+        new Error(`[docker-sandbox] Node ${nodeId} is not registered`),
+      );
+    }
+    await this.retireReplacementCandidateOnNode(locator, node);
+  }
+
+  private async stopOnSpecificNodeWithPolicy(
+    node: DockerNodeConnection,
+    containerName: string,
+    gracefulSeconds: number,
+    allowUnreachableAbandon: boolean,
+    releaseCapacity: boolean,
+  ): Promise<void> {
     const ssh = DockerSSHClient.getClient(
       node.hostname,
       node.ssh_port ?? DEFAULT_SSH_PORT,
@@ -1759,17 +2056,25 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    // Only decrement allocated_count when we have evidence the container is
-    // actually gone: at least one call landed, or one reported "already gone".
-    // If BOTH calls failed for a non-already-gone reason (SSH down, daemon
-    // hung), the container may still be running on the node — decrementing
-    // would under-count and let the scheduler over-place onto this node.
-    // Mirrors the escalation guard in stop(), but stays best-effort (no throw)
-    // because traffic has already been redirected to the new container.
-    if (stopErr && rmErr) {
+    // Replacement cleanup needs positive `docker rm` evidence: a successful
+    // stop leaves a restartable container behind. The permissive post-cutover
+    // path keeps its historical best-effort policy, while durable replacement
+    // fences reject until removal or canonical Docker absence is observed.
+    if (!allowUnreachableAbandon && rmErr) {
+      const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
+      if (!isContainerAbsentMessage(rmMsg)) {
+        const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr ?? "succeeded");
+        throw new Error(
+          `[docker-sandbox] Cannot prove ${containerName} absent on ${node.node_id}: ` +
+            `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,
+        );
+      }
+    } else if (stopErr && rmErr) {
       const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
-      if (!isAlreadyGoneMessage(stopMsg) && !isAlreadyGoneMessage(rmMsg)) {
+      const stopIsGone = isAlreadyGoneMessage(stopMsg);
+      const rmIsGone = isAlreadyGoneMessage(rmMsg);
+      if (!stopIsGone && !rmIsGone) {
         logger.warn(
           `[docker-sandbox] stopOnSpecificNode: both stop and rm failed for ${containerName} on ${node.node_id}; leaving allocated_count intact (possible zombie) — stop -> ${stopMsg}; rm -> ${rmMsg}`,
         );
@@ -1777,14 +2082,208 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
-      logger.warn(
-        `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,
+    if (releaseCapacity) {
+      await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
+        // error-policy:J6 best-effort teardown — remote absence is already proven,
+        // so a bookkeeping failure is logged for reconciliation rather than reviving it.
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
+  }
+
+  private async retireReplacementCandidateOnNode(
+    locator: SandboxReplacementCleanupLocator,
+    node: DockerNodeConnection,
+  ): Promise<void> {
+    try {
+      const cleanupTarget = locator.replacementAttemptId
+        ? await this.resolveReplacementContainerForCleanup(locator, node)
+        : locator.containerName;
+      if (cleanupTarget) {
+        await this.stopOnSpecificNodeWithPolicy(node, cleanupTarget, 10, false, false);
+      }
+      if (locator.vpnNodeId) {
+        await withTimeout(
+          headscaleClient.deleteNode(locator.vpnNodeId),
+          HEADSCALE_CLEANUP_TIMEOUT_MS,
+          "replacement headscale cleanup",
+        );
+      } else if (locator.vpnNodeName) {
+        await this.retireReplacementVpnByRegistration(locator);
+      }
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — the exact persisted locator is
+      // required to retry cleanup without guessing at remote identities.
+      throw new SandboxReplacementCleanupUnresolvedError(locator, error);
+    }
+  }
+
+  private async resolveReplacementContainerForCleanup(
+    locator: SandboxReplacementCleanupLocator,
+    node: DockerNodeConnection,
+  ): Promise<string | null> {
+    const ssh = DockerSSHClient.getClient(
+      node.hostname,
+      node.ssh_port ?? DEFAULT_SSH_PORT,
+      node.host_key_fingerprint ?? undefined,
+      node.ssh_user ?? DEFAULT_SSH_USERNAME,
+    );
+    const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}`;
+    let output: string;
+    try {
+      output = await ssh.exec(
+        `docker inspect --format ${shellQuote(format)} ${shellQuote(locator.containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
       );
-    });
+    } catch (error) {
+      // error-policy:J3 untrusted Docker response classification — only canonical
+      // container absence becomes null; every ambiguous transport failure rethrows.
+      const message = error instanceof Error ? error.message : String(error);
+      if (isContainerAbsentMessage(message)) {
+        return null;
+      }
+      throw error;
+    }
+
+    const lines = output
+      .trim()
+      .split(/\r?\n/)
+      .filter((line) => line.length > 0);
+    if (lines.length !== 1) {
+      throw new Error(
+        `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: expected one inspect record`,
+      );
+    }
+    const separator = lines[0]!.indexOf("|");
+    if (separator <= 0) {
+      throw new Error(
+        `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: malformed inspect record`,
+      );
+    }
+    const containerId = lines[0]!.slice(0, separator).trim();
+    const attemptId = lines[0]!.slice(separator + 1).trim();
+    if (!/^[a-f0-9]{12,64}$/i.test(containerId)) {
+      throw new Error(
+        `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: invalid Docker id`,
+      );
+    }
+    if (attemptId !== locator.replacementAttemptId) {
+      throw new Error(
+        `[docker-sandbox] Replacement attempt label mismatch for ${locator.containerName}`,
+      );
+    }
+    if (locator.containerId && !dockerContainerIdsMatch(locator.containerId, containerId)) {
+      throw new Error(
+        `[docker-sandbox] Replacement container id mismatch for ${locator.containerName}`,
+      );
+    }
+    return containerId;
+  }
+
+  private async retireReplacementVpnByRegistration(
+    locator: SandboxReplacementCleanupLocator,
+  ): Promise<void> {
+    const baseName = locator.vpnNodeName;
+    if (!baseName) {
+      throw new Error(
+        `[docker-sandbox] Cannot recover VPN identity for ${locator.containerName} without a node name`,
+      );
+    }
+    if (!locator.vpnRegistrationStartedAt) {
+      throw new Error(
+        `[docker-sandbox] Cannot recover VPN identity for ${locator.containerName} without a registration start time`,
+      );
+    }
+    const startedAt = Date.parse(locator.vpnRegistrationStartedAt);
+    if (!Number.isFinite(startedAt)) {
+      throw new Error(
+        `[docker-sandbox] Cannot recover VPN identity for ${locator.containerName}: invalid registration start time`,
+      );
+    }
+    const registrationDeadline =
+      startedAt + DEFAULT_REGISTRATION_TIMEOUT_MS + REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS;
+    if (this.now() < registrationDeadline) {
+      throw new Error(
+        `[docker-sandbox] VPN registration window remains open for ${locator.containerName} until ${new Date(registrationDeadline).toISOString()}`,
+      );
+    }
+
+    let consecutiveEmptyObservations = 0;
+    for (let observation = 0; observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS; observation += 1) {
+      const nodes = await withTimeout(
+        headscaleClient.listNodesStrict(),
+        HEADSCALE_CLEANUP_TIMEOUT_MS,
+        "replacement headscale lookup",
+      );
+      const candidates = nodes.filter((node) => {
+        if (node.id === locator.previousVpnNodeId) {
+          return false;
+        }
+        const suffix = node.name.startsWith(`${baseName}-`)
+          ? node.name.slice(baseName.length + 1)
+          : null;
+        const nameMatches =
+          node.name === baseName || (suffix !== null && /^[a-z0-9]{8}$/.test(suffix));
+        if (!nameMatches) {
+          return false;
+        }
+        const createdAt = Date.parse(node.createdAt);
+        if (!Number.isFinite(createdAt)) {
+          throw new Error(
+            `[docker-sandbox] Cannot classify Headscale node ${node.id}: invalid createdAt`,
+          );
+        }
+        // Headscale may stamp the registration on a different host clock. The
+        // conservative lookback prevents a small negative skew from disguising
+        // this attempt; any extra match remains ambiguous and fails closed.
+        return createdAt >= startedAt - REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS;
+      });
+
+      if (candidates.length > 1) {
+        throw new Error(
+          `[docker-sandbox] Cannot recover VPN identity for ${locator.containerName}: ${candidates.length} matching registrations`,
+        );
+      }
+      const candidate = candidates[0];
+      if (candidate) {
+        consecutiveEmptyObservations = 0;
+        await withTimeout(
+          headscaleClient.deleteNode(candidate.id),
+          HEADSCALE_CLEANUP_TIMEOUT_MS,
+          "replacement headscale cleanup",
+        );
+      } else {
+        consecutiveEmptyObservations += 1;
+      }
+
+      if (observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS - 1) {
+        await this.replacementVpnSettleDelay(REPLACEMENT_VPN_SETTLE_INTERVAL_MS);
+      }
+    }
+
+    if (consecutiveEmptyObservations < 2) {
+      throw new Error(
+        `[docker-sandbox] Cannot prove VPN registration settled for ${locator.containerName}`,
+      );
+    }
   }
 
   async stop(sandboxId: string): Promise<void> {
+    await this.stopWithPolicy(sandboxId, true);
+  }
+
+  /**
+   * Replacement teardown cannot use the delete path's unreachable-node
+   * abandonment policy. The old container may resume when its node returns, so
+   * an unresolved stop must retain the database fence and block replacement.
+   */
+  async stopForReplacement(sandboxId: string): Promise<void> {
+    await this.stopWithPolicy(sandboxId, false);
+  }
+
+  private async stopWithPolicy(sandboxId: string, allowUnreachableAbandon: boolean): Promise<void> {
     const meta = await this.resolveContainer(sandboxId);
 
     logger.info(
@@ -1835,8 +2334,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       // already gone — that is a success, not a failure. We only escalate
       // when both calls failed for a reason that does NOT indicate the
       // container is absent (SSH down, Docker daemon hung, etc.).
-      const stopIsGone = isAlreadyGoneMessage(stopMsg);
-      const rmIsGone = isAlreadyGoneMessage(rmMsg);
+      const stopIsGone = allowUnreachableAbandon
+        ? isAlreadyGoneMessage(stopMsg)
+        : isContainerAbsentMessage(stopMsg);
+      const rmIsGone = allowUnreachableAbandon
+        ? isAlreadyGoneMessage(rmMsg)
+        : isContainerAbsentMessage(rmMsg);
       // An UNREACHABLE node (SSH connect timeout, refused/unreachable socket,
       // DNS failure on BOTH legs) is treated as TERMINAL: the delete is
       // completed instead of re-queued. Re-queuing an unreachable delete re-runs
@@ -1854,7 +2357,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // a node-reconcile sweep (and revisit the allocated_count decrement below)
       // when one lands. Do NOT claim a reconciler already reclaims it.
       const unreachable = isNodeUnreachableMessage(stopMsg) && isNodeUnreachableMessage(rmMsg);
-      if (!stopIsGone && !rmIsGone && !unreachable) {
+      if (!stopIsGone && !rmIsGone && (!unreachable || !allowUnreachableAbandon)) {
         throw new Error(
           `Failed to stop container ${meta.containerName} on ${meta.hostname}: ` +
             `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,

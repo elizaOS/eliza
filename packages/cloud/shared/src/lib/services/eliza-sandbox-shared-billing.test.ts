@@ -268,7 +268,7 @@ async function readSharedStreamEvents(
 }
 
 describe("ElizaSandboxService shared runtime billing", () => {
-  test("running dedicated turns use the Worker router origin and bypass shared billing", async () => {
+  test("a running demo-canary image still uses the Worker router and bypasses shared billing", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     enterWorkerRuntime();
     const sandbox = {
@@ -282,6 +282,10 @@ describe("ElizaSandboxService shared runtime billing", () => {
       headscale_ip: "100.64.0.10",
       sandbox_id: "sandbox-e06bb509",
       environment_vars: { ELIZA_API_TOKEN: "agent-token" },
+      docker_image: `ghcr.io/elizaos/eliza-demo@sha256:${"b".repeat(64)}`,
+      image_digest: `sha256:${"b".repeat(64)}`,
+      previous_docker_image: "ghcr.io/elizaos/eliza:sha-production",
+      previous_image_digest: `sha256:${"a".repeat(64)}`,
     } as AgentSandbox;
     const findRunningSandboxSpy = spyOn(
       agentSandboxesRepository,

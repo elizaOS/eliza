@@ -1,4 +1,4 @@
-// Coordinates cloud service sandbox provider types behavior behind route handlers.
+/** Coordinates cloud service sandbox provider contracts behind route handlers. */
 
 /**
  * Why a readiness probe finished the way it did.
@@ -21,9 +21,80 @@ export interface SandboxHealthOutcome {
   verdict: SandboxHealthVerdict;
 }
 
+export interface SandboxReplacementCleanupLocator {
+  sandboxId: string;
+  nodeId: string;
+  containerName: string;
+  replacementAttemptId?: string | null;
+  containerId?: string | null;
+  vpnNodeId?: string | null;
+  vpnNodeName?: string | null;
+  previousVpnNodeId?: string | null;
+  vpnRegistrationStartedAt?: string | null;
+  allocationCounted?: boolean | null;
+}
+
+/**
+ * Carries the exact placement that must remain fenced when a replacement
+ * candidate cannot be proven absent. Callers persist this locator before
+ * retrying so an unreachable node can never produce two live agent runtimes.
+ */
+export class SandboxReplacementCleanupUnresolvedError extends Error {
+  readonly sandboxId: string;
+  readonly nodeId: string;
+  readonly containerName: string;
+  readonly replacementAttemptId: string | null;
+  readonly containerId: string | null;
+  readonly vpnNodeId: string | null;
+  readonly vpnNodeName: string | null;
+  readonly previousVpnNodeId: string | null;
+  readonly vpnRegistrationStartedAt: string | null;
+  readonly allocationCounted: boolean | null;
+
+  constructor(locator: SandboxReplacementCleanupLocator, cause: unknown) {
+    const causeMessage = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Replacement cleanup is unresolved for ${locator.containerName} on ${locator.nodeId}: ${causeMessage}`,
+      { cause },
+    );
+    this.name = "SandboxReplacementCleanupUnresolvedError";
+    this.sandboxId = locator.sandboxId;
+    this.nodeId = locator.nodeId;
+    this.containerName = locator.containerName;
+    this.replacementAttemptId = locator.replacementAttemptId ?? null;
+    this.containerId = locator.containerId ?? null;
+    this.vpnNodeId = locator.vpnNodeId ?? null;
+    this.vpnNodeName = locator.vpnNodeName ?? null;
+    this.previousVpnNodeId = locator.previousVpnNodeId ?? null;
+    this.vpnRegistrationStartedAt = locator.vpnRegistrationStartedAt ?? null;
+    this.allocationCounted = locator.allocationCounted ?? null;
+  }
+}
+
 export interface SandboxProvider {
   create(config: SandboxCreateConfig): Promise<SandboxHandle>;
   stop(sandboxId: string): Promise<void>;
+  /**
+   * Retires a sandbox before a replacement is allowed to start. Unlike the
+   * ordinary delete-oriented stop path, this must reject whenever the provider
+   * cannot prove the old workload is no longer running; abandoning an
+   * unreachable container would create two live agents after the node returns.
+   */
+  stopForReplacement?(sandboxId: string): Promise<void>;
+  /**
+   * Reclaims a replacement candidate from its durable placement record. This
+   * bypasses sandbox-id lookup because the routed agent row may still point at
+   * the old blue/green leg while the candidate cleanup fence points elsewhere.
+   */
+  stopOnSpecificNodeForReplacement?(
+    nodeId: string,
+    containerName: string,
+    vpnNodeId?: string | null,
+    identity?: Omit<
+      SandboxReplacementCleanupLocator,
+      "sandboxId" | "nodeId" | "containerName" | "vpnNodeId"
+    >,
+  ): Promise<void>;
   checkHealth(handle: SandboxHandle): Promise<boolean>;
   /**
    * Richer readiness probe that distinguishes a genuine `not_ready` from a
@@ -95,4 +166,19 @@ export interface SandboxCreateConfig {
    * keeps today's reclaim).
    */
   reclaimStaleVpnNode?: boolean;
+  /**
+   * Atomically reserves node capacity and persists the exact replacement
+   * attempt before the remote Docker create can commit. The attempt token and
+   * deterministic container name let recovery find the candidate even when the
+   * SSH response carrying Docker's container id is lost.
+   */
+  onReplacementCreateIntent?: (handle: SandboxHandle) => Promise<void>;
+  /** CAS-enriches a persisted intent with Docker's exact container id. */
+  onReplacementCreated?: (handle: SandboxHandle) => Promise<void>;
+  /**
+   * Enriches the durable candidate fence with the exact Headscale identity as
+   * soon as registration completes. The initial placement remains authoritative
+   * if this callback fails, and the provider returns its exact locator.
+   */
+  onReplacementVpnRegistered?: (handle: SandboxHandle) => Promise<void>;
 }

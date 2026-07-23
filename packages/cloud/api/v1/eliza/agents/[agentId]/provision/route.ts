@@ -170,6 +170,7 @@ async function __hono_POST(
     // (returns null) when the pool is empty, disabled, or the user's row
     // already has a database (re-provision).
     if (containersEnv.warmPoolEnabled() && !sync) {
+      let committedWarmClaim = false;
       try {
         const claimed = await agentSandboxesRepository.claimWarmContainer({
           userAgentId: agentId,
@@ -183,6 +184,7 @@ async function __hono_POST(
           expectedUpdatedAt: existing.updated_at,
         });
         if (claimed) {
+          committedWarmClaim = true;
           logger.info("[agent-api] Warm pool claim succeeded", {
             agentId,
             orgId: user.organization_id,
@@ -242,11 +244,6 @@ async function __hono_POST(
                 organizationId: user.organization_id,
                 userId: user.id,
               });
-            await agentSandboxesRepository.update(claimed.id, {
-              status: "provisioning",
-              error_message:
-                "Warm-pool credential handoff requires restart recovery",
-            });
             if (recovery.created) {
               void provisioningJobService
                 .triggerImmediate(ctx?.env)
@@ -289,7 +286,7 @@ async function __hono_POST(
               data: {
                 id: claimed.id,
                 agentName: claimed.agent_name,
-                status: claimed.status,
+                status: "running",
                 bridgeUrl: claimed.bridge_url,
                 healthUrl: claimed.health_url,
               },
@@ -322,6 +319,29 @@ async function __hono_POST(
           // Observability probe is best-effort; never block the provision path.
         }
       } catch (err) {
+        if (committedWarmClaim) {
+          logger.error(
+            "[agent-api] Warm pool claim committed but recovery enqueue failed",
+            {
+              event: "warm_pool.recovery_enqueue_failed",
+              agentId,
+              orgId: user.organization_id,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          );
+          return applyCorsHeaders(
+            Response.json(
+              {
+                success: false,
+                code: "service_unavailable",
+                error:
+                  "Warm-pool credential recovery is pending but could not be scheduled",
+              },
+              { status: 503 },
+            ),
+            CORS_METHODS,
+          );
+        }
         // Don't block on claim errors — fall through to the normal path.
         logger.warn("[agent-api] Warm pool claim threw; falling back", {
           agentId,

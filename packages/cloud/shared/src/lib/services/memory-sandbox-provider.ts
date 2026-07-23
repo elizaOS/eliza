@@ -181,6 +181,10 @@ export class MemorySandboxProvider implements SandboxProvider {
     await Promise.race([close, delay(2_000)]);
   }
 
+  async stopForReplacement(sandboxId: string): Promise<void> {
+    await this.stop(sandboxId);
+  }
+
   async checkHealth(handle: SandboxHandle): Promise<boolean> {
     return this.sandboxes.has(handle.sandboxId);
   }

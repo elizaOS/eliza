@@ -1,0 +1,454 @@
+name: Production Admin Agent Image Canary
+
+# Manual, approval-gated control for one fixed production demo agent. Upgrade
+# runs prove the immutable public image, execute the canary, and preview the
+# exact rollback pair without rolling back. A later rollback dispatch names the
+# completed upgrade job and is the only mode that executes the restoration. An
+# explicit prior request UUID selects an actor-bound GET/poll recovery path that
+# cannot create a new preview or execution.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Upgrade to the demo image or roll back a completed upgrade
+        required: true
+        default: upgrade
+        type: choice
+        options:
+          - upgrade
+          - rollback
+      target_digest:
+        description: "Upgrade only: public eliza-demo digest (sha256:...)"
+        required: false
+        type: string
+      prior_upgrade_job_id:
+        description: "Rollback only: completed upgrade job UUID"
+        required: false
+        type: string
+      recovery_request_id:
+        description: "Recovery only: prior actor-bound request UUID"
+        required: false
+        type: string
+
+concurrency:
+  group: production-admin-agent-image-canary
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: ${{ inputs.mode }} fixed production demo agent
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 25
+    env:
+      AGENT_IMAGE_CANARY_BASE_URL: https://api.elizacloud.ai
+      AGENT_IMAGE_CANARY_EVIDENCE_PATH: reports/agent-image-canary.json
+      AGENT_IMAGE_CANARY_MODE: ${{ inputs.mode }}
+      AGENT_IMAGE_CANARY_TARGET_DIGEST: ${{ inputs.target_digest }}
+      AGENT_IMAGE_CANARY_SOURCE_JOB_ID: ${{ inputs.prior_upgrade_job_id }}
+      AGENT_IMAGE_CANARY_RECOVERY_REQUEST_ID: ${{ inputs.recovery_request_id }}
+    steps:
+      - name: Require trusted production dispatch
+        shell: bash
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$SOURCE_REF" != "refs/heads/main" ]; then
+            echo "::error::Production canaries must dispatch from refs/heads/main."
+            exit 1
+          fi
+          if [ -n "$AGENT_IMAGE_CANARY_RECOVERY_REQUEST_ID" ] &&
+             [[ ! "$AGENT_IMAGE_CANARY_RECOVERY_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+            echo "::error::Recovery requires one lowercase prior request UUID."
+            exit 1
+          fi
+
+          case "$AGENT_IMAGE_CANARY_MODE" in
+            upgrade)
+              if [[ ! "$AGENT_IMAGE_CANARY_TARGET_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                echo "::error::Upgrade requires one lowercase sha256 digest."
+                exit 1
+              fi
+              if [ -n "$AGENT_IMAGE_CANARY_SOURCE_JOB_ID" ]; then
+                echo "::error::Upgrade must not name a prior job."
+                exit 1
+              fi
+              ;;
+            rollback)
+              if [[ ! "$AGENT_IMAGE_CANARY_SOURCE_JOB_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+                echo "::error::Rollback requires one lowercase prior upgrade job UUID."
+                exit 1
+              fi
+              if [ -n "$AGENT_IMAGE_CANARY_TARGET_DIGEST" ]; then
+                echo "::error::Rollback must not accept a target digest."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Unsupported canary mode."
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout exact trusted ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.0
+
+      - name: Validate live-client and workflow contracts
+        run: bun test packages/scripts/cloud/admin/agent-image-canary-live.test.ts
+
+      - name: Select stable actor-bound request ID
+        id: request
+        shell: bash
+        env:
+          REPOSITORY_ID: ${{ github.repository_id }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RECOVERY_REQUEST_ID: ${{ inputs.recovery_request_id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::GitHub reported an invalid run attempt."
+            exit 1
+          fi
+          recover_existing=false
+          recovery_only=false
+          if [ -n "$RECOVERY_REQUEST_ID" ]; then
+            if [[ ! "$RECOVERY_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+              echo "::error::Recovery requires one lowercase prior request UUID."
+              exit 1
+            fi
+            request_id="$RECOVERY_REQUEST_ID"
+            recover_existing=true
+            recovery_only=true
+          else
+            request_id="$(
+              bun -e '
+                import {
+                  deriveAgentImageCanaryRequestId,
+                } from "./packages/scripts/cloud/admin/agent-image-canary-live.ts";
+                process.stdout.write(
+                  deriveAgentImageCanaryRequestId(
+                    process.env.REPOSITORY_ID ?? "",
+                    process.env.RUN_ID ?? "",
+                  ),
+                );
+              '
+            )"
+            if [[ ! "$request_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+              echo "::error::Stable canary request ID derivation failed."
+              exit 1
+            fi
+            if [ "$RUN_ATTEMPT" -gt 1 ]; then
+              recover_existing=true
+            fi
+          fi
+          echo "request_id=$request_id" >> "$GITHUB_OUTPUT"
+          echo "recover_existing=$recover_existing" >> "$GITHUB_OUTPUT"
+          echo "recovery_only=$recovery_only" >> "$GITHUB_OUTPUT"
+
+      - name: Verify trusted production deployment before mutation
+        id: deploy-pre
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployed_commit="$(
+            bun -e '
+              import {
+                readAgentImageCanaryDeploymentCommit,
+              } from "./packages/scripts/cloud/admin/agent-image-canary-live.ts";
+              try {
+                process.stdout.write(
+                  await readAgentImageCanaryDeploymentCommit(),
+                );
+              } catch {
+                process.stderr.write(
+                  "[agent-image-canary] production deploy probe failed\n",
+                );
+                process.exit(1);
+              }
+            '
+          )"
+          if [[ ! "$deployed_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Production reported an invalid deploy commit."
+            exit 1
+          fi
+          if ! git cat-file -e "${deployed_commit}^{commit}" 2>/dev/null; then
+            echo "::error::Production deploy commit is absent from the trusted checkout."
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          main_head="$(git rev-parse origin/main)"
+          if [ "$GITHUB_SHA" != "$main_head" ]; then
+            echo "::error::Canary checkout is not the current trusted main head."
+            exit 1
+          fi
+          if [ "$deployed_commit" != "$GITHUB_SHA" ]; then
+            echo "::error::Production must run the exact workflow main commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "$deployed_commit"; then
+            echo "::error::Production deploy does not contain this workflow commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$deployed_commit" "origin/main"; then
+            echo "::error::Production deploy is outside trusted main history."
+            exit 1
+          fi
+          echo "commit=$deployed_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Run bounded production canary
+        id: live
+        shell: bash
+        env:
+          AGENT_IMAGE_CANARY_EXPECTED_DEPLOY_COMMIT: ${{ steps.deploy-pre.outputs.commit }}
+          AGENT_IMAGE_CANARY_REQUEST_ID: ${{ steps.request.outputs.request_id }}
+          AGENT_IMAGE_CANARY_RECOVER_EXISTING: ${{ steps.request.outputs.recover_existing }}
+          AGENT_IMAGE_CANARY_RECOVERY_ONLY: ${{ steps.request.outputs.recovery_only }}
+          ELIZACLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+        run: |
+          set +e
+          mkdir -p reports
+          bun run packages/scripts/cloud/admin/agent-image-canary-live.ts
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Verify production deployment did not drift
+        id: deploy-post
+        if: ${{ always() }}
+        shell: bash
+        env:
+          EXPECTED_DEPLOY_COMMIT: ${{ steps.deploy-pre.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${EXPECTED_DEPLOY_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Trusted pre-mutation deploy proof is missing."
+            exit 1
+          fi
+          deployed_commit="$(
+            bun -e '
+              import {
+                readAgentImageCanaryDeploymentCommit,
+              } from "./packages/scripts/cloud/admin/agent-image-canary-live.ts";
+              try {
+                process.stdout.write(
+                  await readAgentImageCanaryDeploymentCommit(),
+                );
+              } catch {
+                process.stderr.write(
+                  "[agent-image-canary] production deploy probe failed\n",
+                );
+                process.exit(1);
+              }
+            '
+          )"
+          if [ "$deployed_commit" != "$EXPECTED_DEPLOY_COMMIT" ]; then
+            echo "::error::Production deployment changed during the canary."
+            exit 1
+          fi
+          if [ "$deployed_commit" != "$GITHUB_SHA" ]; then
+            echo "::error::Post-run production deploy is not the exact workflow commit."
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+            echo "::error::Trusted main moved during the canary run."
+            exit 1
+          fi
+          if ! git cat-file -e "${deployed_commit}^{commit}" 2>/dev/null; then
+            echo "::error::Post-run deploy commit is absent from the trusted checkout."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "$deployed_commit"; then
+            echo "::error::Post-run deploy does not contain this workflow commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$deployed_commit" "origin/main"; then
+            echo "::error::Post-run deploy is outside trusted main history."
+            exit 1
+          fi
+          echo "validated=true" >> "$GITHUB_OUTPUT"
+          echo "commit=$deployed_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Validate privacy-safe evidence and scan for credential leakage
+        id: privacy
+        if: ${{ always() }}
+        env:
+          ELIZACLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+        run: |
+          set -euo pipefail
+          bun -e '
+            import {
+              appendFileSync,
+              readFileSync,
+              renameSync,
+              writeFileSync,
+            } from "node:fs";
+            import {
+              canonicalizeAgentImageCanaryArtifact,
+            } from "./packages/scripts/cloud/admin/agent-image-canary-live.ts";
+
+            const evidencePath = process.env.AGENT_IMAGE_CANARY_EVIDENCE_PATH;
+            const outputPath = process.env.GITHUB_OUTPUT;
+            const secret = process.env.ELIZACLOUD_API_KEY;
+            if (!evidencePath || !outputPath || !secret) {
+              console.error("::error::Evidence validation is not configured.");
+              process.exit(1);
+            }
+            const raw = readFileSync(evidencePath, "utf8");
+            if (raw.includes(secret)) {
+              console.error("::error::Evidence contains the Cloud credential.");
+              process.exit(1);
+            }
+            if (/"(?:agentId|organizationId|userId|actorUserId|targetOwnerUserId|apiKey|responseBody)"\s*:/.test(raw)) {
+              console.error("::error::Evidence contains a forbidden identity or response field.");
+              process.exit(1);
+            }
+            const { canonical, errors } =
+              canonicalizeAgentImageCanaryArtifact(raw);
+            if (!canonical || errors.length > 0) {
+              console.error(
+                "::error::Evidence failed its closed schema: " +
+                  errors.join(","),
+              );
+              process.exit(1);
+            }
+            const canonicalPath = evidencePath + ".validated-" + process.pid;
+            writeFileSync(canonicalPath, canonical, { mode: 0o600 });
+            renameSync(canonicalPath, evidencePath);
+            const evidence = JSON.parse(canonical);
+            appendFileSync(
+              outputPath,
+              [
+                "validated=true",
+                "verdict=" + evidence.verdict,
+                "mode=" + evidence.mode,
+                "deployed_commit=" + evidence.deployedCommit,
+                "request_id=" + (evidence.execution.requestId ?? ""),
+                "plan_fingerprint=" + (evidence.execution.planFingerprint ?? ""),
+                "recovery_only=" + evidence.execution.recoveryOnly,
+                "job_id=" + (evidence.execution.jobId ?? ""),
+                "source_job_id=" + (evidence.execution.sourceJobId ?? ""),
+                "target_digest=" + (evidence.image.targetDigest ?? ""),
+                "rollback_dry_run=" + evidence.execution.rollbackDryRunPassed,
+                "recovery_required=" + evidence.execution.recoveryRequired,
+                "recovery_action=" + (evidence.execution.recoveryAction ?? ""),
+                "",
+              ].join("\n"),
+            );
+          '
+
+      - name: Upload privacy-safe canary evidence
+        if: ${{ always() && steps.privacy.outputs.validated == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: production-agent-image-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/agent-image-canary.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce live proof and deployed source
+        if: ${{ always() }}
+        env:
+          LIVE_STATUS: ${{ steps.live.outputs.status }}
+          PRIVACY_VALIDATED: ${{ steps.privacy.outputs.validated }}
+          EVIDENCE_VERDICT: ${{ steps.privacy.outputs.verdict }}
+          EVIDENCE_MODE: ${{ steps.privacy.outputs.mode }}
+          DEPLOYED_COMMIT: ${{ steps.privacy.outputs.deployed_commit }}
+          REQUEST_ID: ${{ steps.privacy.outputs.request_id }}
+          EXPECTED_REQUEST_ID: ${{ steps.request.outputs.request_id }}
+          PLAN_FINGERPRINT: ${{ steps.privacy.outputs.plan_fingerprint }}
+          RECOVERY_ONLY: ${{ steps.privacy.outputs.recovery_only }}
+          EXPECTED_RECOVERY_ONLY: ${{ steps.request.outputs.recovery_only }}
+          JOB_ID: ${{ steps.privacy.outputs.job_id }}
+          SOURCE_JOB_ID: ${{ steps.privacy.outputs.source_job_id }}
+          TARGET_DIGEST: ${{ steps.privacy.outputs.target_digest }}
+          ROLLBACK_DRY_RUN: ${{ steps.privacy.outputs.rollback_dry_run }}
+          PRE_DEPLOYED_COMMIT: ${{ steps.deploy-pre.outputs.commit }}
+          POST_DEPLOYED_COMMIT: ${{ steps.deploy-post.outputs.commit }}
+          POST_DEPLOY_VALIDATED: ${{ steps.deploy-post.outputs.validated }}
+          RECOVERY_REQUIRED: ${{ steps.privacy.outputs.recovery_required }}
+          RECOVERY_ACTION: ${{ steps.privacy.outputs.recovery_action }}
+        run: |
+          set -euo pipefail
+          if [ "${PRIVACY_VALIDATED:-}" != "true" ]; then
+            echo "::error::Canary evidence did not pass privacy validation."
+            exit 1
+          fi
+          if [ "${POST_DEPLOY_VALIDATED:-}" != "true" ] ||
+             [ "$DEPLOYED_COMMIT" != "$PRE_DEPLOYED_COMMIT" ] ||
+             [ "$DEPLOYED_COMMIT" != "$POST_DEPLOYED_COMMIT" ] ||
+             [ "$DEPLOYED_COMMIT" != "$GITHUB_SHA" ]; then
+            echo "::error::Production deployment trust changed across the canary."
+            exit 1
+          fi
+          if [ "$REQUEST_ID" != "$EXPECTED_REQUEST_ID" ]; then
+            echo "::error::Evidence request ID does not match the selected actor-bound request."
+            exit 1
+          fi
+          if [ "$RECOVERY_ONLY" != "$EXPECTED_RECOVERY_ONLY" ]; then
+            echo "::error::Evidence recovery mode does not match this dispatch."
+            exit 1
+          fi
+          if ! git cat-file -e "${DEPLOYED_COMMIT}^{commit}" 2>/dev/null; then
+            echo "::error::Production reported a deploy commit absent from the trusted checkout."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "$DEPLOYED_COMMIT"; then
+            echo "::error::Production API deploy does not contain this workflow commit."
+            exit 1
+          fi
+          if [ "${EVIDENCE_VERDICT:-}" = "nonterminal" ] ||
+             [ "${RECOVERY_REQUIRED:-}" = "true" ]; then
+            {
+              echo "### Production admin agent image canary — NONTERMINAL"
+              echo
+              echo "- request ID: \`$REQUEST_ID\`"
+              echo "- last known job: \`${JOB_ID:-not-yet-recovered}\`"
+              echo "- required action while this commit is current: use **Re-run jobs** on this run."
+              echo "- if main or production advanced: dispatch this workflow from current main with \`recovery_request_id=$REQUEST_ID\` and the same mode inputs."
+              echo "- recovery-only dispatches use the actor-bound GET/poll path and cannot preview or execute."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::NONTERMINAL canary request. Re-run jobs while this commit is current; otherwise dispatch current main with recovery_request_id=$REQUEST_ID and the same mode inputs."
+            exit 1
+          fi
+          if [ "${RECOVERY_ACTION:-}" != "" ]; then
+            echo "::error::Terminal evidence unexpectedly contains a recovery action."
+            exit 1
+          fi
+          if [ "${LIVE_STATUS:-}" != "0" ] || [ "${EVIDENCE_VERDICT:-}" != "pass" ]; then
+            echo "::error::Production canary did not complete its requested proof."
+            exit 1
+          fi
+
+          {
+            echo "### Production admin agent image canary"
+            echo
+            echo "- mode: \`$EVIDENCE_MODE\`"
+            echo "- deployed commit: \`$DEPLOYED_COMMIT\`"
+            echo "- request ID: \`$REQUEST_ID\`"
+            echo "- plan fingerprint: \`$PLAN_FINGERPRINT\`"
+            echo "- completed job: \`$JOB_ID\`"
+            echo "- recovery-only: \`$RECOVERY_ONLY\`"
+            if [ -n "$SOURCE_JOB_ID" ]; then
+              echo "- rollback source job: \`$SOURCE_JOB_ID\`"
+            fi
+            if [ -n "$TARGET_DIGEST" ]; then
+              echo "- target digest: \`$TARGET_DIGEST\`"
+            fi
+            if [ "$RECOVERY_ONLY" = "false" ]; then
+              echo "- rollback dry-run proved: \`$ROLLBACK_DRY_RUN\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

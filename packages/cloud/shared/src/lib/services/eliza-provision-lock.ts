@@ -51,3 +51,12 @@ export function elizaAgentTierUpgradeAdvisoryLockSql(
 ) {
   return sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId}), hashtext(${`tier-upgrade:${sharedAgentId}`}))`;
 }
+
+/**
+ * Global serialization point for the explicit five-agent canary enqueue.
+ * The rollout takes this before per-agent locks so two admins cannot each
+ * atomically admit a different batch past the shared image-change budget.
+ */
+export function elizaAdminCanaryRolloutAdvisoryLockSql() {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${"admin-canary-image-rollout"}))`;
+}

@@ -1,6 +1,11 @@
 // Persists jobs records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
+import {
+  assertAdminCanaryImageJobData,
+  isAdminCanaryImageJobData,
+  isPendingAdminCanaryCutoverAudit,
+} from "../../lib/services/admin-canary-image";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
   hydrateJsonField,
@@ -49,6 +54,179 @@ function inlineJobData(data: Record<string, unknown>): Record<string, unknown> {
     if (value) inline[field] = value;
   }
   return inline;
+}
+
+function timestampMillis(value: Date | string | null): number | null {
+  return value === null
+    ? null
+    : value instanceof Date
+      ? value.getTime()
+      : Date.parse(String(value));
+}
+
+function sameTimestamp(left: Date | string | null, right: Date | string | null): boolean {
+  return timestampMillis(left) === timestampMillis(right);
+}
+
+function normalizedTimestamp(value: Date | string | null): Date | null {
+  return value === null ? null : value instanceof Date ? value : new Date(value);
+}
+
+function hasValidTimestamp(value: string): boolean {
+  return Number.isFinite(Date.parse(value));
+}
+
+// A committed canary cutover is already the serving generation, so recovery
+// resumes idempotent cleanup/finalization instead of consuming the terminal
+// attempt reserved for pre-cutover execution. Every durable input and audit
+// identity must agree before the exceptional retry policy is admitted.
+function hasRecoverableAdminCanaryCutover(job: Job): boolean {
+  if (
+    job.type !== "agent_admin_canary_image" ||
+    job.data_storage !== "inline" ||
+    job.data_key !== null ||
+    job.result_storage !== "inline" ||
+    job.result_key !== null ||
+    !isAdminCanaryImageJobData(job.data) ||
+    !isPendingAdminCanaryCutoverAudit(job.result)
+  ) {
+    return false;
+  }
+
+  try {
+    assertAdminCanaryImageJobData(job.data);
+  } catch {
+    // error-policy:J3 the persisted job payload is untrusted input; invalid
+    // canary data must take the ordinary attempt-consuming recovery path.
+    return false;
+  }
+
+  const { data, result } = job;
+  const startedAt = Date.parse(result.startedAt);
+  const cutoverAt = Date.parse(result.cutoverAt);
+  const rowStartedAt = timestampMillis(job.started_at);
+  const rowUpdatedAt = timestampMillis(job.updated_at);
+  const directCutoverSnapshot =
+    sameTimestamp(result.startedAt, job.started_at) &&
+    sameTimestamp(result.cutoverAt, job.updated_at);
+  const resumedCleanupClaim =
+    rowStartedAt !== null &&
+    rowUpdatedAt !== null &&
+    cutoverAt <= rowStartedAt &&
+    rowStartedAt <= rowUpdatedAt;
+  return (
+    job.organization_id === data.organizationId &&
+    job.user_id === data.userId &&
+    job.agent_id === data.agentId &&
+    result.jobId === job.id &&
+    result.operation === data.operation &&
+    result.rolloutId === data.rolloutId &&
+    result.actorUserId === data.actorUserId &&
+    result.decisionAt === data.decisionAt &&
+    result.agentId === data.agentId &&
+    result.organizationId === data.organizationId &&
+    result.targetOwnerUserId === data.targetOwnerUserId &&
+    result.sourceImage === data.sourceImage &&
+    result.sourceDigest === data.sourceDigest &&
+    result.targetImage === data.targetImage &&
+    result.targetDigest === data.targetDigest &&
+    hasValidTimestamp(result.startedAt) &&
+    hasValidTimestamp(result.cutoverAt) &&
+    result.finishedAt === result.cutoverAt &&
+    startedAt <= cutoverAt &&
+    job.started_at !== null &&
+    job.completed_at === null &&
+    (directCutoverSnapshot || resumedCleanupClaim) &&
+    typeof result.oldNodeId === "string" &&
+    result.oldNodeId.trim().length > 0 &&
+    typeof result.oldContainerName === "string" &&
+    result.oldContainerName.trim().length > 0 &&
+    typeof result.newNodeId === "string" &&
+    result.newNodeId.trim().length > 0 &&
+    typeof result.newContainerName === "string" &&
+    result.newContainerName.trim().length > 0
+  );
+}
+
+function adminCanaryRecoveryFence(job: Job) {
+  return retryPayloadFence(job);
+}
+
+function retryPayloadFence(job: Job) {
+  const dataFence =
+    job.data_storage === "inline"
+      ? sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`
+      : sql`${jobs.data_key} IS NOT DISTINCT FROM ${job.data_key}`;
+  const resultFence =
+    job.result_storage === "inline"
+      ? job.result == null
+        ? sql`${jobs.result} IS NULL`
+        : sql`${jobs.result} IS NOT DISTINCT FROM ${JSON.stringify(job.result)}::jsonb`
+      : sql`${jobs.result_key} IS NOT DISTINCT FROM ${job.result_key}`;
+  const errorFence =
+    job.error_storage === "inline"
+      ? sql`${jobs.error} IS NOT DISTINCT FROM ${job.error ?? null}`
+      : sql`${jobs.error_key} IS NOT DISTINCT FROM ${job.error_key}`;
+  return sql`
+    ${jobs.type} = ${job.type}
+    AND ${jobs.organization_id} = ${job.organization_id}
+    AND ${jobs.user_id} IS NOT DISTINCT FROM ${job.user_id}
+    AND ${jobs.agent_id} IS NOT DISTINCT FROM ${job.agent_id}
+    AND ${jobs.character_id} IS NOT DISTINCT FROM ${job.character_id}
+    AND ${jobs.attempts} = ${job.attempts}
+    AND ${jobs.max_attempts} = ${job.max_attempts}
+    AND ${jobs.started_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.started_at)}
+    AND ${jobs.completed_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.completed_at)}
+    AND ${jobs.updated_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.updated_at)}
+    AND ${jobs.data_storage} = ${job.data_storage}
+    AND ${jobs.data_key} IS NOT DISTINCT FROM ${job.data_key}
+    AND ${dataFence}
+    AND ${jobs.result_storage} = ${job.result_storage}
+    AND ${jobs.result_key} IS NOT DISTINCT FROM ${job.result_key}
+    AND ${resultFence}
+    AND ${jobs.error_storage} = ${job.error_storage}
+    AND ${jobs.error_key} IS NOT DISTINCT FROM ${job.error_key}
+    AND ${errorFence}
+  `;
+}
+
+function sameRetrySnapshot(left: Job, right: Job): boolean {
+  const sameData =
+    left.data_storage === "inline"
+      ? JSON.stringify(left.data) === JSON.stringify(right.data)
+      : left.data_key === right.data_key;
+  const sameResult =
+    left.result_storage === "inline"
+      ? JSON.stringify(left.result ?? null) === JSON.stringify(right.result ?? null)
+      : left.result_key === right.result_key;
+  const sameError =
+    left.error_storage === "inline"
+      ? (left.error ?? null) === (right.error ?? null)
+      : left.error_key === right.error_key;
+  return (
+    left.id === right.id &&
+    left.status === "in_progress" &&
+    right.status === "in_progress" &&
+    left.type === right.type &&
+    left.organization_id === right.organization_id &&
+    left.user_id === right.user_id &&
+    left.agent_id === right.agent_id &&
+    left.character_id === right.character_id &&
+    left.attempts === right.attempts &&
+    left.max_attempts === right.max_attempts &&
+    sameTimestamp(left.started_at, right.started_at) &&
+    sameTimestamp(left.completed_at, right.completed_at) &&
+    sameTimestamp(left.updated_at, right.updated_at) &&
+    left.data_storage === right.data_storage &&
+    left.data_key === right.data_key &&
+    sameData &&
+    left.result_storage === right.result_storage &&
+    left.result_key === right.result_key &&
+    sameResult &&
+    left.error_storage === right.error_storage &&
+    left.error_key === right.error_key &&
+    sameError
+  );
 }
 
 export async function hydrateJob(job: Job): Promise<Job> {
@@ -220,6 +398,51 @@ export class JobsRepository {
   }
 
   /**
+   * Primary-DB lookup for control-plane decisions that immediately enqueue or
+   * derive a compensating operation from a terminal job.
+   */
+  async findByIdForWrite(id: string): Promise<Job | undefined> {
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, id)).limit(1);
+    return job ? await hydrateJob(job) : undefined;
+  }
+
+  /**
+   * Reads every durable job in one admin canary rollout from the primary.
+   * Canary payloads are forced inline, so the JSON predicate is authoritative.
+   */
+  async findAdminCanaryRolloutForWrite(type: string, rolloutId: string): Promise<Job[]> {
+    const rows = await dbWrite
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.type, type), sql`${jobs.data}->>'rolloutId' = ${rolloutId}`))
+      .orderBy(jobs.created_at);
+    return await Promise.all(rows.map(hydrateJob));
+  }
+
+  /**
+   * Reads one actor-owned admin-canary request from the primary. Legacy rows
+   * have no requestId and therefore cannot accidentally satisfy this lookup.
+   */
+  async findAdminCanaryRequestForWrite(
+    type: string,
+    actorUserId: string,
+    requestId: string,
+  ): Promise<Job[]> {
+    const rows = await dbWrite
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.type, type),
+          eq(jobs.user_id, actorUserId),
+          sql`${jobs.data}->>'requestId' = ${requestId}`,
+        ),
+      )
+      .orderBy(jobs.created_at, jobs.id);
+    return await Promise.all(rows.map(hydrateJob));
+  }
+
+  /**
    * Gets jobs filtered by type, status, and organization.
    * Generic method that can be used by any service.
    *
@@ -378,6 +601,65 @@ export class JobsRepository {
   }
 
   /**
+   * Claims one image-change job type while enforcing a shared running budget
+   * across every listed type. The transaction-scoped advisory lock makes the
+   * count and claim one decision even when cron invocations overlap.
+   */
+  async claimPendingJobsWithinSharedRunningLimit(filters: {
+    type: string;
+    sharedTypes: string[];
+    maxRunning: number;
+    limit: number;
+    organizationId?: string;
+  }): Promise<Job[]> {
+    if (filters.sharedTypes.length === 0 || filters.maxRunning < 1 || filters.limit < 1) {
+      return [];
+    }
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended('eliza:image-change-capacity:v1', 0))`,
+      );
+      const [running] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobs)
+        .where(and(inArray(jobs.type, filters.sharedTypes), eq(jobs.status, "in_progress")));
+      if (!running) {
+        throw new Error("Shared image-change capacity query returned no aggregate row");
+      }
+      const claimLimit = Math.min(filters.limit, Math.max(0, filters.maxRunning - running.count));
+      if (claimLimit === 0) return [];
+
+      const orgFilter = filters.organizationId
+        ? sql`AND organization_id = ${filters.organizationId}`
+        : sql``;
+      const rows = await sqlRows<Job>(
+        tx,
+        sql`
+          WITH claimed AS (
+            SELECT id FROM ${jobs}
+            WHERE type = ${filters.type}
+              AND status = 'pending'
+              ${orgFilter}
+              AND scheduled_for <= NOW()
+            ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
+            LIMIT ${claimLimit}
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE ${jobs}
+          SET
+            status = 'in_progress',
+            started_at = NOW(),
+            updated_at = NOW()
+          WHERE id IN (SELECT id FROM claimed)
+          RETURNING *
+        `,
+      );
+      return await Promise.all(rows.map(hydrateJob));
+    });
+  }
+
+  /**
    * Recovers stale jobs that have been stuck in in_progress status.
    * Jobs older than the threshold are reset to pending for retry.
    * Only recovers jobs with a valid started_at timestamp.
@@ -416,24 +698,25 @@ export class JobsRepository {
 
     // Process each stale job, incrementing attempts and failing if max reached
     for (const job of staleJobs) {
-      const newAttempts = (job.attempts || 0) + 1;
+      const resumeCommittedCanary = hasRecoverableAdminCanaryCutover(job);
+      const newAttempts = resumeCommittedCanary ? job.attempts : (job.attempts || 0) + 1;
       const maxAttempts = job.max_attempts ?? filters.maxAttempts ?? 3;
-      const isFailed = newAttempts >= maxAttempts;
-      const timeoutError = isFailed
-        ? `Job timed out ${newAttempts} times - max attempts reached`
-        : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
-
-      await dbWrite
-        .update(jobs)
-        .set({
-          status: isFailed ? "failed" : "pending",
-          ...(await prepareJobPayload({ error: timeoutError }, job)),
-          attempts: newAttempts,
-          updated_at: new Date(),
-        })
-        .where(eq(jobs.id, job.id));
-
-      if (!isFailed) {
+      const isFailed = !resumeCommittedCanary && newAttempts >= maxAttempts;
+      const timeoutError = resumeCommittedCanary
+        ? "Admin canary cutover cleanup timed out - recovered without consuming a terminal attempt"
+        : isFailed
+          ? `Job timed out ${newAttempts} times - max attempts reached`
+          : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
+      const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
+      const updated = await this.recoverJobFromSnapshot({
+        job,
+        startedBefore: staleThreshold,
+        isFailed,
+        newAttempts,
+        error: timeoutError,
+        recoveryFence,
+      });
+      if (updated && !isFailed) {
         recoveredCount++;
       }
     }
@@ -474,29 +757,59 @@ export class JobsRepository {
     let recoveredCount = 0;
 
     for (const job of interruptedJobs) {
-      const newAttempts = (job.attempts || 0) + 1;
+      const resumeCommittedCanary = hasRecoverableAdminCanaryCutover(job);
+      const newAttempts = resumeCommittedCanary ? job.attempts : (job.attempts || 0) + 1;
       const maxAttempts = job.max_attempts ?? filters.maxAttempts ?? 3;
-      const isFailed = newAttempts >= maxAttempts;
-      const error = isFailed
-        ? `Job interrupted by worker restart ${newAttempts} times - max attempts reached`
-        : `Job interrupted by worker restart - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
-
-      await dbWrite
-        .update(jobs)
-        .set({
-          status: isFailed ? "failed" : "pending",
-          ...(await prepareJobPayload({ error }, job)),
-          attempts: newAttempts,
-          updated_at: new Date(),
-        })
-        .where(eq(jobs.id, job.id));
-
-      if (!isFailed) {
+      const isFailed = !resumeCommittedCanary && newAttempts >= maxAttempts;
+      const error = resumeCommittedCanary
+        ? "Admin canary cutover cleanup interrupted by worker restart - recovered without consuming a terminal attempt"
+        : isFailed
+          ? `Job interrupted by worker restart ${newAttempts} times - max attempts reached`
+          : `Job interrupted by worker restart - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
+      const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
+      const updated = await this.recoverJobFromSnapshot({
+        job,
+        startedBefore: filters.startedBefore,
+        isFailed,
+        newAttempts,
+        error,
+        recoveryFence,
+      });
+      if (updated && !isFailed) {
         recoveredCount++;
       }
     }
 
     return recoveredCount;
+  }
+
+  private async recoverJobFromSnapshot(params: {
+    job: Job;
+    startedBefore: Date;
+    isFailed: boolean;
+    newAttempts: number;
+    error: string;
+    recoveryFence: SQL;
+  }): Promise<boolean> {
+    const [updated] = await dbWrite
+      .update(jobs)
+      .set({
+        status: params.isFailed ? "failed" : "pending",
+        ...(await prepareJobPayload({ error: params.error }, params.job)),
+        attempts: params.newAttempts,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(jobs.id, params.job.id),
+          eq(jobs.status, "in_progress"),
+          eq(jobs.attempts, params.job.attempts),
+          lt(jobs.started_at, params.startedBefore),
+          params.recoveryFence,
+        ),
+      )
+      .returning({ id: jobs.id });
+    return Boolean(updated);
   }
 
   /**
@@ -584,7 +897,7 @@ export class JobsRepository {
     maxAttempts: number,
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
   ): Promise<Job | undefined> {
-    const job = await this.findById(id);
+    const job = await this.findByIdForWrite(id);
     if (!job) return undefined;
 
     const newAttempts = (job.attempts || 0) + 1;
@@ -613,7 +926,9 @@ export class JobsRepository {
           updated_at: new Date(),
           scheduled_for: isFailed ? job.scheduled_for : scheduledFor,
         })
-        .where(eq(jobs.id, id))
+        .where(
+          and(eq(jobs.id, id), eq(jobs.status, "in_progress"), eq(jobs.attempts, job.attempts)),
+        )
         .returning();
 
       if (!updated) return undefined;
@@ -639,20 +954,23 @@ export class JobsRepository {
    * re-check/adopt that state instead of counting it as a failed attempt.
    */
   async retryLaterWithoutIncrementingAttempts(
-    id: string,
+    claimedJob: Job,
     error: string,
     delayMs: number,
   ): Promise<Job | undefined> {
-    const job = await this.findById(id);
-    if (!job) return undefined;
+    const current = await this.findByIdForWrite(claimedJob.id);
+    if (!current) return undefined;
+    if (!sameRetrySnapshot(claimedJob, current)) {
+      return undefined;
+    }
 
     const scheduledFor = new Date(Date.now() + delayMs);
     const payload = await prepareJobPayload(
       { error },
       {
-        id: job.id,
-        organization_id: job.organization_id,
-        created_at: job.created_at,
+        id: claimedJob.id,
+        organization_id: claimedJob.organization_id,
+        created_at: claimedJob.created_at,
       },
     );
 
@@ -664,7 +982,13 @@ export class JobsRepository {
         updated_at: new Date(),
         scheduled_for: scheduledFor,
       })
-      .where(eq(jobs.id, id))
+      .where(
+        and(
+          eq(jobs.id, claimedJob.id),
+          eq(jobs.status, "in_progress"),
+          retryPayloadFence(claimedJob),
+        ),
+      )
       .returning();
 
     return updated ? await hydrateJob(updated) : undefined;
@@ -690,6 +1014,23 @@ export class JobsRepository {
       .from(jobs)
       .where(and(eq(jobs.type, type), sql`${jobs.status} IN ('pending', 'in_progress')`));
     return rows[0]?.count ?? 0;
+  }
+
+  /**
+   * Count pending and running image-change jobs across the ordinary fleet and
+   * explicit admin-canary lanes so both share the same capacity budget.
+   */
+  async countInFlightByTypes(types: string[]): Promise<number> {
+    if (types.length === 0) return 0;
+    const rows = await dbWrite
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(inArray(jobs.type, types), sql`${jobs.status} IN ('pending', 'in_progress')`));
+    const [aggregate] = rows;
+    if (!aggregate) {
+      throw new Error("Image-change in-flight query returned no aggregate row");
+    }
+    return aggregate.count;
   }
 
   /**

@@ -6,7 +6,11 @@
  * both-calls-failed throws only when the failures are unrelated to "gone".
  */
 import { describe, expect, test } from "bun:test";
-import { isAlreadyGoneMessage, isNodeUnreachableMessage } from "../docker-error-classifier";
+import {
+  isAlreadyGoneMessage,
+  isContainerAbsentMessage,
+  isNodeUnreachableMessage,
+} from "../docker-error-classifier";
 
 describe("isAlreadyGoneMessage", () => {
   test('recognizes "No such container" (Docker 24)', () => {
@@ -59,6 +63,43 @@ describe("isAlreadyGoneMessage", () => {
   test("stays false for SSH timeout (handled by isNodeUnreachableMessage instead)", () => {
     expect(
       isAlreadyGoneMessage("[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms"),
+    ).toBe(false);
+  });
+});
+
+describe("isContainerAbsentMessage", () => {
+  test("accepts explicit Docker container-absence responses", () => {
+    expect(
+      isContainerAbsentMessage("Error response from daemon: No such container: agent-abc123"),
+    ).toBe(true);
+    expect(isContainerAbsentMessage("No such container: agent-abc123")).toBe(true);
+    expect(isContainerAbsentMessage("Error: No such container: agent-abc123")).toBe(true);
+    expect(isContainerAbsentMessage("Error: No such object: agent-abc123")).toBe(true);
+    expect(
+      isContainerAbsentMessage(
+        "[docker-ssh] Command exited with code 1 on node.example: [stderr] Error: No such object: agent-abc123",
+      ),
+    ).toBe(true);
+    expect(
+      isContainerAbsentMessage(
+        "[docker-ssh] Command exited with code 1 on node.example: [stderr] Error response from daemon: No such container: agent-abc123",
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects generic not-found text that does not prove container absence", () => {
+    expect(isContainerAbsentMessage("ssh helper binary not found")).toBe(false);
+    expect(isContainerAbsentMessage("container metadata not found")).toBe(false);
+    expect(isContainerAbsentMessage('Container "agent-x" not found in memory or DB')).toBe(false);
+    expect(isContainerAbsentMessage("container metadata no longer exists")).toBe(false);
+    expect(isContainerAbsentMessage("container registry says container already gone")).toBe(false);
+    expect(isContainerAbsentMessage("resolver failed: no such container: agent-abc123")).toBe(
+      false,
+    );
+    expect(
+      isContainerAbsentMessage(
+        "[docker-ssh] Command exited with code 1: [stderr] resolver failed: no such container: agent-abc123",
+      ),
     ).toBe(false);
   });
 });

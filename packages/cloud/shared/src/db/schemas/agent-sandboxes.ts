@@ -28,9 +28,11 @@
  * that polymorphism is higher than the cost of two clearly-scoped tables.
  */
 
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -86,6 +88,7 @@ export type AgentBillingStatus = "active" | "warning" | "suspended" | "shutdown_
  * have containers. See services/shared-runtime/agent-tier.ts for derivation.
  */
 export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+export type WarmClaimCredentialState = "pending" | "attested" | "ready" | "failed";
 
 export const agentSandboxes = pgTable(
   "agent_sandboxes",
@@ -102,6 +105,8 @@ export const agentSandboxes = pgTable(
     }),
     sandbox_id: text("sandbox_id"),
     status: text("status").$type<AgentSandboxStatus>().notNull().default("pending"),
+    deletion_attempt_id: uuid("deletion_attempt_id"),
+    deletion_started_at: timestamp("deletion_started_at", { withTimezone: true }),
     /**
      * Execution tier (see AgentExecutionTier). New agents default to "shared"
      * (container-free); only a real need escalates to a dedicated container.
@@ -127,6 +132,13 @@ export const agentSandboxes = pgTable(
       .$type<Record<string, string>>()
       .notNull()
       .default({}),
+    /**
+     * Monotonic version of the stored environment. Image swaps capture this
+     * before provisioning blue and require the same value at cutover, so a
+     * concurrent credential rotation or environment update cannot strand the
+     * replacement container on stale credentials.
+     */
+    environment_revision: integer("environment_revision").notNull().default(0),
     // Docker infrastructure columns (added by 0047_docker_nodes migration)
     node_id: text("node_id"),
     container_name: text("container_name"),
@@ -175,6 +187,36 @@ export const agentSandboxes = pgTable(
     pool_status: text("pool_status").$type<AgentSandboxPoolStatus>(),
     pool_ready_at: timestamp("pool_ready_at", { withTimezone: true }),
     claimed_at: timestamp("claimed_at", { withTimezone: true }),
+    /**
+     * Server-owned state for the pool-org to user-org inference credential
+     * handoff. Null denotes a row that was never warm-claimed.
+     */
+    warm_claim_credential_state: text(
+      "warm_claim_credential_state",
+    ).$type<WarmClaimCredentialState>(),
+    warm_claim_source_pool_id: uuid("warm_claim_source_pool_id"),
+    warm_claim_key_fingerprint: text("warm_claim_key_fingerprint"),
+    warm_claim_attested_at: timestamp("warm_claim_attested_at", { withTimezone: true }),
+    warm_claim_attested_environment_revision: integer("warm_claim_attested_environment_revision"),
+    warm_claim_cleanup_completed_at: timestamp("warm_claim_cleanup_completed_at", {
+      withTimezone: true,
+    }),
+    replacement_cleanup_sandbox_id: text("replacement_cleanup_sandbox_id"),
+    replacement_cleanup_node_id: text("replacement_cleanup_node_id"),
+    replacement_cleanup_container_name: text("replacement_cleanup_container_name"),
+    replacement_cleanup_attempt_id: uuid("replacement_cleanup_attempt_id"),
+    replacement_cleanup_container_id: text("replacement_cleanup_container_id"),
+    replacement_cleanup_vpn_node_id: text("replacement_cleanup_vpn_node_id"),
+    replacement_cleanup_vpn_node_name: text("replacement_cleanup_vpn_node_name"),
+    replacement_cleanup_preserved_vpn_node_id: text("replacement_cleanup_preserved_vpn_node_id"),
+    replacement_cleanup_vpn_registration_started_at: timestamp(
+      "replacement_cleanup_vpn_registration_started_at",
+      { withTimezone: true },
+    ),
+    replacement_cleanup_allocation_counted: boolean("replacement_cleanup_allocation_counted"),
+    replacement_cleanup_created_at: timestamp("replacement_cleanup_created_at", {
+      withTimezone: true,
+    }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
@@ -187,6 +229,81 @@ export const agentSandboxes = pgTable(
     sandbox_id_idx: index("agent_sandboxes_sandbox_id_idx").on(table.sandbox_id),
     billing_status_idx: index("agent_sandboxes_billing_status_idx").on(table.billing_status),
     deleted_at_idx: index("agent_sandboxes_deleted_at_idx").on(table.deleted_at),
+    deletion_intent_pair_check: check(
+      "agent_sandboxes_deletion_intent_pair_check",
+      sql`(
+        ${table.deletion_attempt_id} IS NULL
+        AND ${table.deletion_started_at} IS NULL
+      ) OR (
+        ${table.deletion_attempt_id} IS NOT NULL
+        AND ${table.deletion_started_at} IS NOT NULL
+      )`,
+    ),
+    warm_claim_credential_state_check: check(
+      "agent_sandboxes_warm_claim_credential_state_check",
+      sql`${table.warm_claim_credential_state} IS NULL OR ${table.warm_claim_credential_state} IN ('pending', 'attested', 'ready', 'failed')`,
+    ),
+    warm_claim_pending_idx: index("agent_sandboxes_warm_claim_pending_idx")
+      .on(table.updated_at)
+      .where(
+        sql`${table.claimed_at} IS NOT NULL AND ${table.warm_claim_credential_state} IS DISTINCT FROM 'ready'`,
+      ),
+    warm_claim_cleanup_idx: index("agent_sandboxes_warm_claim_cleanup_idx")
+      .on(table.updated_at)
+      .where(
+        sql`${table.warm_claim_credential_state} = 'failed' AND ${table.warm_claim_cleanup_completed_at} IS NULL`,
+      ),
+    replacement_cleanup_locator_check: check(
+      "agent_sandboxes_replacement_cleanup_locator_check",
+      sql`(
+        ${table.replacement_cleanup_sandbox_id} IS NULL
+        AND ${table.replacement_cleanup_node_id} IS NULL
+        AND ${table.replacement_cleanup_container_name} IS NULL
+        AND ${table.replacement_cleanup_attempt_id} IS NULL
+        AND ${table.replacement_cleanup_container_id} IS NULL
+        AND ${table.replacement_cleanup_vpn_node_id} IS NULL
+        AND ${table.replacement_cleanup_vpn_node_name} IS NULL
+        AND ${table.replacement_cleanup_preserved_vpn_node_id} IS NULL
+        AND ${table.replacement_cleanup_vpn_registration_started_at} IS NULL
+        AND ${table.replacement_cleanup_allocation_counted} IS NULL
+        AND ${table.replacement_cleanup_created_at} IS NULL
+      ) OR (
+        ${table.replacement_cleanup_sandbox_id} IS NOT NULL
+        AND ${table.replacement_cleanup_node_id} IS NOT NULL
+        AND ${table.replacement_cleanup_container_name} IS NOT NULL
+        AND ${table.replacement_cleanup_allocation_counted} IS NOT NULL
+        AND ${table.replacement_cleanup_created_at} IS NOT NULL
+        AND (
+          (
+            ${table.replacement_cleanup_attempt_id} IS NOT NULL
+            AND (
+              (
+                ${table.replacement_cleanup_vpn_node_id} IS NULL
+                AND
+                ${table.replacement_cleanup_vpn_node_name} IS NULL
+                AND ${table.replacement_cleanup_vpn_registration_started_at} IS NULL
+                AND ${table.replacement_cleanup_preserved_vpn_node_id} IS NULL
+              )
+              OR (
+                ${table.replacement_cleanup_vpn_node_name} IS NOT NULL
+                AND ${table.replacement_cleanup_vpn_registration_started_at} IS NOT NULL
+              )
+            )
+          )
+          OR (
+            ${table.replacement_cleanup_attempt_id} IS NULL
+            AND ${table.replacement_cleanup_container_id} IS NULL
+            AND ${table.replacement_cleanup_vpn_node_name} IS NULL
+            AND ${table.replacement_cleanup_preserved_vpn_node_id} IS NULL
+            AND ${table.replacement_cleanup_vpn_registration_started_at} IS NULL
+            AND ${table.replacement_cleanup_allocation_counted} = TRUE
+          )
+        )
+      )`,
+    ),
+    replacement_cleanup_pending_idx: index("agent_sandboxes_replacement_cleanup_pending_idx")
+      .on(table.replacement_cleanup_created_at)
+      .where(sql`${table.replacement_cleanup_sandbox_id} IS NOT NULL`),
   }),
 );
 

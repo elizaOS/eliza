@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -41,6 +42,9 @@ app.get("/", async (c) => {
       : await provisioningJobService.getJob(jobId);
 
     if (!job) {
+      return c.json({ success: false, error: "Job not found" }, 404);
+    }
+    if (!serviceIdentity && job.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
       return c.json({ success: false, error: "Job not found" }, 404);
     }
 

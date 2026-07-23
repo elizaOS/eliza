@@ -13,6 +13,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { readFileSync } from "node:fs";
 import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/security/kms";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -33,7 +34,7 @@ import { apiKeysService } from "./api-keys";
 import { DockerSSHClient } from "./docker-ssh";
 import { provisioningJobService } from "./provisioning-jobs";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
-import type { SandboxProvider } from "./sandbox-provider-types";
+import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
 
 // Drive the REAL @elizaos/security crypto stack so the errors the snapshot-degrade
 // path classifies are genuine (`AeadError`, `KeyNotFoundError`) — not hand-rolled
@@ -85,34 +86,423 @@ async function realKeyRotatedAwayError(): Promise<Error> {
 // never touch this swapped `dbWrite`. The override is restored in `afterAll` so
 // it cannot leak into other files in the shared single-process run.
 type UpgradeTx = { execute: (query: unknown) => Promise<{ rows: Array<{ id: string }> }> };
+type UpgradeTransactionOutcome =
+  | { status: "resolved"; value: unknown }
+  | { status: "rejected" }
+  | null;
 // VALUE snapshot taken at module evaluation, while no mock is installed:
 // `db/helpers` re-exports `dbWrite` from `db/client`, so bun's module mocks
 // patch the SHARED live binding — building the restore (or this override's
 // spread) from the live namespace after a mock landed would capture the mock.
 const realHelpers = { ...realHelpersNs };
 let upgradeTransactionImpl: (<T>(fn: (tx: UpgradeTx) => Promise<T>) => Promise<T>) | null = null;
-const upgradeDbWrite = {
-  ...(realHelpers.dbWrite as unknown as Record<string, unknown>),
-  transaction: <T>(fn: (tx: UpgradeTx) => Promise<T>): Promise<T> => {
-    if (!upgradeTransactionImpl) {
-      throw new Error(
-        "dbWrite.transaction called without an active upgradeTransactionImpl (test wiring bug)",
-      );
+let upgradeTransactionOutcome: UpgradeTransactionOutcome = null;
+const realDbWrite = realHelpers.dbWrite as unknown as object;
+const upgradeDbWrite = new Proxy(realDbWrite, {
+  get(target, property, receiver) {
+    if (property === "transaction") {
+      return async <T>(fn: (tx: UpgradeTx) => Promise<T>): Promise<T> => {
+        if (!upgradeTransactionImpl) {
+          throw new Error(
+            "dbWrite.transaction called without an active upgradeTransactionImpl (test wiring bug)",
+          );
+        }
+        try {
+          const value = await upgradeTransactionImpl(fn);
+          upgradeTransactionOutcome = { status: "resolved", value };
+          return value;
+        } catch (error) {
+          upgradeTransactionOutcome = { status: "rejected" };
+          throw error;
+        }
+      };
     }
-    return upgradeTransactionImpl(fn);
+    const value = Reflect.get(target, property, receiver);
+    return typeof value === "function" ? value.bind(target) : value;
   },
+});
+
+type ReplacementExpectation = {
+  status: AgentSandbox["status"];
+  environmentRevision: number;
+  sandboxId: string | null;
+  nodeId: string | null;
+  containerName: string | null;
 };
+
+type TestReplacementLocator = {
+  sandboxId: string;
+  nodeId: string;
+  containerName: string;
+  replacementAttemptId: string | null;
+  containerId: string | null;
+  vpnNodeId: string | null;
+  vpnNodeName: string | null;
+  previousVpnNodeId: string | null;
+  vpnRegistrationStartedAt: Date | null;
+  allocationCounted: boolean;
+  createdAt: Date;
+};
+
+type ReplacementLifecycleHarnessState = {
+  candidate: TestReplacementLocator | null;
+  expected: ReplacementExpectation | null;
+};
+
+type ReplacementLifecycleHarnessService = {
+  persistReplacementCleanupStage(
+    agentId: string,
+    orgId: string,
+    handle: SandboxHandle,
+    expected: ReplacementExpectation,
+    stage: "intent" | "created" | "vpn",
+  ): Promise<void>;
+  transferReplacementToPrimary(
+    agentId: string,
+    orgId: string,
+    handle: SandboxHandle,
+    expectedEnvironmentRevision: number,
+    updateData: Partial<AgentSandbox>,
+  ): Promise<AgentSandbox>;
+  retirePersistedReplacementCleanup(agentId: string, orgId: string): Promise<boolean>;
+  getReplacementCleanupLocator(rec: AgentSandbox): TestReplacementLocator | null;
+  getProvider(): Promise<SandboxProvider>;
+};
+
+const replacementLifecycleHarnessState = new WeakMap<object, ReplacementLifecycleHarnessState>();
+let restoreReplacementLifecycleHarness: (() => void) | null = null;
+const replacementAwareProviderMarker = Symbol("replacement-aware-provider");
+let replacementAttemptSequence = 0;
+
+function replacementLocatorFromTestHandle(
+  handle: SandboxHandle,
+  createdAt = new Date("2026-07-23T00:00:00.000Z"),
+): TestReplacementLocator {
+  const metadata = handle.metadata ?? {};
+  const nodeId = typeof metadata.nodeId === "string" ? metadata.nodeId : "";
+  const containerName = typeof metadata.containerName === "string" ? metadata.containerName : "";
+  const replacementAttemptId =
+    typeof metadata.replacementAttemptId === "string" ? metadata.replacementAttemptId : null;
+  const vpnRegistrationStartedAt =
+    typeof metadata.vpnRegistrationStartedAt === "string"
+      ? new Date(metadata.vpnRegistrationStartedAt)
+      : null;
+  return {
+    sandboxId: handle.sandboxId,
+    nodeId,
+    containerName,
+    replacementAttemptId,
+    containerId: typeof metadata.containerId === "string" ? metadata.containerId : null,
+    vpnNodeId: typeof metadata.vpnNodeId === "string" ? metadata.vpnNodeId : null,
+    vpnNodeName: typeof metadata.vpnNodeName === "string" ? metadata.vpnNodeName : null,
+    previousVpnNodeId:
+      typeof metadata.previousVpnNodeId === "string" ? metadata.previousVpnNodeId : null,
+    vpnRegistrationStartedAt,
+    allocationCounted: metadata.allocationCounted === true,
+    createdAt,
+  };
+}
+
+function expectSameReplacement(
+  existing: TestReplacementLocator,
+  incoming: TestReplacementLocator,
+): void {
+  expect(incoming).toMatchObject({
+    sandboxId: existing.sandboxId,
+    nodeId: existing.nodeId,
+    containerName: existing.containerName,
+    replacementAttemptId: existing.replacementAttemptId,
+    vpnNodeName: existing.vpnNodeName,
+    previousVpnNodeId: existing.previousVpnNodeId,
+    allocationCounted: existing.allocationCounted,
+  });
+  expect(incoming.vpnRegistrationStartedAt?.getTime() ?? null).toBe(
+    existing.vpnRegistrationStartedAt?.getTime() ?? null,
+  );
+}
+
+/**
+ * Makes the deterministic provider fixtures honor Docker's durable replacement
+ * callback order. Real provider coverage owns the remote Docker/VPN mechanics;
+ * this harness keeps orchestration tests faithful without opening SSH.
+ */
+function replacementAwareProvider<T extends SandboxProvider>(provider: T): T {
+  const mutable = provider as T & {
+    [replacementAwareProviderMarker]?: true;
+  };
+  if (mutable[replacementAwareProviderMarker]) return provider;
+  mutable[replacementAwareProviderMarker] = true;
+  const originalCreate = provider.create.bind(provider);
+  if (!provider.stopForReplacement) {
+    provider.stopForReplacement = async (sandboxId) => {
+      await provider.stop(sandboxId);
+    };
+  }
+  provider.create = async (config: SandboxCreateConfig): Promise<SandboxHandle> => {
+    let intentCalled = false;
+    let createdCalled = false;
+    let vpnCalled = false;
+    const wrappedConfig: SandboxCreateConfig = {
+      ...config,
+      onReplacementCreateIntent: config.onReplacementCreateIntent
+        ? async (handle) => {
+            intentCalled = true;
+            await config.onReplacementCreateIntent?.(handle);
+          }
+        : undefined,
+      onReplacementCreated: config.onReplacementCreated
+        ? async (handle) => {
+            createdCalled = true;
+            await config.onReplacementCreated?.(handle);
+          }
+        : undefined,
+      onReplacementVpnRegistered: config.onReplacementVpnRegistered
+        ? async (handle) => {
+            vpnCalled = true;
+            await config.onReplacementVpnRegistered?.(handle);
+          }
+        : undefined,
+    };
+    const rawHandle = await originalCreate(wrappedConfig);
+    const rawMetadata = rawHandle.metadata ?? {};
+    const nodeId = typeof rawMetadata.nodeId === "string" ? rawMetadata.nodeId : "";
+    const containerName =
+      typeof rawMetadata.containerName === "string" ? rawMetadata.containerName : "";
+    if (
+      rawMetadata.provider !== "docker" ||
+      !nodeId ||
+      !containerName ||
+      !config.onReplacementCreateIntent
+    ) {
+      return rawHandle;
+    }
+
+    replacementAttemptSequence += 1;
+    const replacementAttemptId =
+      typeof rawMetadata.replacementAttemptId === "string"
+        ? rawMetadata.replacementAttemptId
+        : `00000000-0000-4000-8000-${replacementAttemptSequence.toString().padStart(12, "0")}`;
+    const baseMetadata = {
+      ...rawMetadata,
+      replacementAttemptId,
+      allocationCounted: rawMetadata.allocationCounted !== false,
+    };
+    const intentHandle: SandboxHandle = {
+      ...rawHandle,
+      metadata: {
+        ...baseMetadata,
+        containerId: null,
+        vpnNodeId: null,
+      },
+    };
+    if (!intentCalled) await config.onReplacementCreateIntent(intentHandle);
+
+    const createdHandle: SandboxHandle = {
+      ...rawHandle,
+      metadata: {
+        ...baseMetadata,
+        containerId:
+          typeof rawMetadata.containerId === "string"
+            ? rawMetadata.containerId
+            : `container-${rawHandle.sandboxId}`,
+        vpnNodeId: null,
+      },
+    };
+    if (!createdCalled) await config.onReplacementCreated?.(createdHandle);
+
+    if (typeof rawMetadata.vpnNodeId === "string") {
+      const vpnHandle: SandboxHandle = {
+        ...createdHandle,
+        metadata: {
+          ...createdHandle.metadata,
+          vpnNodeId: rawMetadata.vpnNodeId,
+        },
+      };
+      if (!vpnCalled) await config.onReplacementVpnRegistered?.(vpnHandle);
+      return vpnHandle;
+    }
+    return createdHandle;
+  };
+  return provider;
+}
 // Installed in beforeAll — never at module scope: `bun test` evaluates every
 // test file's module scope up front, so a module-scope mock would clobber the
 // shared helpers/client bindings under every OTHER suite in a multi-file run
 // (the changed-files coverage lane co-runs suites in one process, #15943).
-beforeAll(() => {
+beforeAll(async () => {
   mock.module("../../db/helpers", () => ({
     ...realHelpers,
     dbWrite: upgradeDbWrite,
   }));
+
+  const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+  const prototype = ElizaSandboxService.prototype as unknown as ReplacementLifecycleHarnessService;
+  const originals = {
+    persistReplacementCleanupStage: prototype.persistReplacementCleanupStage,
+    transferReplacementToPrimary: prototype.transferReplacementToPrimary,
+    retirePersistedReplacementCleanup: prototype.retirePersistedReplacementCleanup,
+    getReplacementCleanupLocator: prototype.getReplacementCleanupLocator,
+  };
+
+  prototype.persistReplacementCleanupStage = async function (
+    _agentId,
+    _orgId,
+    handle,
+    expected,
+    stage,
+  ): Promise<void> {
+    const state = replacementLifecycleHarnessState.get(this) ?? {
+      candidate: null,
+      expected: null,
+    };
+    const incoming = replacementLocatorFromTestHandle(handle, state.candidate?.createdAt);
+    if (!incoming.nodeId || !incoming.containerName || !incoming.replacementAttemptId) {
+      throw new Error("Replacement fixture has incomplete durable placement identity");
+    }
+    if (stage === "intent") {
+      expect(incoming.containerId).toBeNull();
+      expect(incoming.vpnNodeId).toBeNull();
+      expect(incoming.allocationCounted).toBe(true);
+      if (state.candidate) expectSameReplacement(state.candidate, incoming);
+      state.candidate = incoming;
+      state.expected = expected;
+      upgradeTransactionOutcome = null;
+    } else {
+      if (!state.candidate) {
+        throw new Error("Replacement fixture enrichment arrived before durable intent");
+      }
+      expectSameReplacement(state.candidate, incoming);
+      if (stage === "created") {
+        expect(incoming.containerId).not.toBeNull();
+        state.candidate.containerId = incoming.containerId;
+      } else {
+        expect(incoming.vpnNodeId).not.toBeNull();
+        state.candidate.containerId = incoming.containerId;
+        state.candidate.vpnNodeId = incoming.vpnNodeId;
+      }
+    }
+    replacementLifecycleHarnessState.set(this, state);
+  };
+
+  prototype.transferReplacementToPrimary = async function (
+    agentId,
+    _orgId,
+    handle,
+    expectedEnvironmentRevision,
+    updateData,
+  ): Promise<AgentSandbox> {
+    const state = replacementLifecycleHarnessState.get(this) ?? {
+      candidate: null,
+      expected: null,
+    };
+    let incoming = replacementLocatorFromTestHandle(handle, state.candidate?.createdAt);
+    if (state.candidate) {
+      expectSameReplacement(state.candidate, incoming);
+      expect(incoming.containerId).toBe(state.candidate.containerId);
+      expect(incoming.vpnNodeId).toBe(state.candidate.vpnNodeId);
+      expect(state.expected?.environmentRevision).toBe(expectedEnvironmentRevision);
+    } else if (handle.metadata?.provider === "docker") {
+      // Provision tests whose provider fake intentionally omits Docker's remote
+      // internals still enter adoption with the exact returned handle. Model
+      // the provider's already-covered durable intent+created result here;
+      // retry-adoption fixtures likewise begin with this handle on the row.
+      expect(handle.sandboxId).toBe(updateData.sandbox_id);
+      replacementAttemptSequence += 1;
+      incoming = {
+        ...incoming,
+        replacementAttemptId: `00000000-0000-4000-8000-${replacementAttemptSequence
+          .toString()
+          .padStart(12, "0")}`,
+        containerId: `container-${handle.sandboxId}`,
+        allocationCounted: true,
+      };
+      state.candidate = incoming;
+      state.expected = {
+        status: "provisioning",
+        environmentRevision: expectedEnvironmentRevision,
+        sandboxId: null,
+        nodeId: null,
+        containerName: null,
+      };
+      replacementLifecycleHarnessState.set(this, state);
+    }
+    replacementAwareProvider(await this.getProvider());
+    const adopted = await agentSandboxesRepository.update(agentId, updateData);
+    if (!adopted) throw new Error("Replacement adoption CAS failed");
+    state.candidate = null;
+    state.expected = null;
+    replacementLifecycleHarnessState.set(this, state);
+    return adopted;
+  };
+
+  prototype.getReplacementCleanupLocator = function (
+    rec: AgentSandbox,
+  ): TestReplacementLocator | null {
+    const persisted = originals.getReplacementCleanupLocator.call(this, rec);
+    if (persisted) return persisted;
+    return replacementLifecycleHarnessState.get(this)?.candidate ?? null;
+  };
+
+  prototype.retirePersistedReplacementCleanup = async function (): Promise<boolean> {
+    const state = replacementLifecycleHarnessState.get(this);
+    if (!state?.candidate) return false;
+    const provider = await this.getProvider();
+    const cutoverCommitted =
+      upgradeTransactionOutcome?.status === "resolved" &&
+      upgradeTransactionOutcome.value === true &&
+      state.expected?.status === "running";
+    const locator = cutoverCommitted
+      ? {
+          ...state.candidate,
+          sandboxId: state.expected?.sandboxId ?? "",
+          nodeId: state.expected?.nodeId ?? "",
+          containerName: state.expected?.containerName ?? "",
+          replacementAttemptId: null,
+          containerId: null,
+          vpnNodeId: state.candidate.previousVpnNodeId,
+          vpnNodeName: null,
+          previousVpnNodeId: null,
+          vpnRegistrationStartedAt: null,
+          allocationCounted: true,
+        }
+      : state.candidate;
+    if (!locator.sandboxId || !locator.nodeId || !locator.containerName) {
+      throw new Error("Replacement fixture has no cleanup identity");
+    }
+    if (provider.stopOnSpecificNodeForReplacement) {
+      await provider.stopOnSpecificNodeForReplacement(
+        locator.nodeId,
+        locator.containerName,
+        locator.vpnNodeId,
+        {
+          replacementAttemptId: locator.replacementAttemptId,
+          containerId: locator.containerId,
+          vpnNodeName: locator.vpnNodeName,
+          previousVpnNodeId: locator.previousVpnNodeId,
+          vpnRegistrationStartedAt: locator.vpnRegistrationStartedAt?.toISOString() ?? null,
+          allocationCounted: locator.allocationCounted,
+        },
+      );
+    } else if (provider.stopForReplacement) {
+      await provider.stopForReplacement(locator.sandboxId);
+    } else {
+      throw new Error("Sandbox provider cannot prove failed provision absent");
+    }
+    state.candidate = null;
+    state.expected = null;
+    replacementLifecycleHarnessState.set(this, state);
+    return true;
+  };
+
+  restoreReplacementLifecycleHarness = () => {
+    prototype.persistReplacementCleanupStage = originals.persistReplacementCleanupStage;
+    prototype.transferReplacementToPrimary = originals.transferReplacementToPrimary;
+    prototype.retirePersistedReplacementCleanup = originals.retirePersistedReplacementCleanup;
+    prototype.getReplacementCleanupLocator = originals.getReplacementCleanupLocator;
+  };
 });
 afterAll(() => {
+  restoreReplacementLifecycleHarness?.();
   mock.module("../../db/helpers", () => realHelpers);
 });
 
@@ -160,6 +550,8 @@ function customSandbox(): AgentSandbox {
     character_id: null,
     sandbox_id: "sandbox-e06bb509",
     status: "running",
+    deletion_attempt_id: null,
+    deletion_started_at: null,
     execution_tier: "custom",
     bridge_url: "https://legacy-bridge.example",
     health_url: "https://legacy-bridge.example/health",
@@ -174,6 +566,7 @@ function customSandbox(): AgentSandbox {
     error_message: null,
     error_count: 0,
     environment_vars: { ELIZA_API_TOKEN: "agent-token" },
+    environment_revision: 0,
     node_id: "node-1",
     container_name: "agent-e06bb509",
     bridge_port: 18923,
@@ -192,6 +585,23 @@ function customSandbox(): AgentSandbox {
     pool_status: null,
     pool_ready_at: null,
     claimed_at: null,
+    warm_claim_credential_state: null,
+    warm_claim_source_pool_id: null,
+    warm_claim_key_fingerprint: null,
+    warm_claim_attested_at: null,
+    warm_claim_attested_environment_revision: null,
+    warm_claim_cleanup_completed_at: null,
+    replacement_cleanup_sandbox_id: null,
+    replacement_cleanup_node_id: null,
+    replacement_cleanup_container_name: null,
+    replacement_cleanup_attempt_id: null,
+    replacement_cleanup_container_id: null,
+    replacement_cleanup_vpn_node_id: null,
+    replacement_cleanup_vpn_node_name: null,
+    replacement_cleanup_preserved_vpn_node_id: null,
+    replacement_cleanup_vpn_registration_started_at: null,
+    replacement_cleanup_allocation_counted: null,
+    replacement_cleanup_created_at: null,
     created_at: now,
     updated_at: now,
     deleted_at: null,
@@ -1102,11 +1512,11 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
       metadata,
     }));
     const stop = mock(async () => {});
-    const provider: SandboxProvider = {
+    const provider = replacementAwareProvider({
       create,
       stop,
       checkHealth: mock(async () => true),
-    };
+    } as SandboxProvider);
 
     // A 404 on GET /api/agents makes listRuntimeAgents report the runtime as
     // unsupported, so ensureRuntimeAgentStarted short-circuits (returns null)
@@ -1494,7 +1904,7 @@ describe("ElizaSandboxService heartbeat", () => {
       async () => sandbox,
     );
     const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
-      async () => undefined as never,
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
     );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(undefined);
     globalThis.fetch = mock(async () => {
@@ -1523,7 +1933,7 @@ describe("ElizaSandboxService heartbeat", () => {
       async () => sandbox,
     );
     const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
-      async () => undefined as never,
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
     );
     let calls = 0;
     globalThis.fetch = mock(async () => {
@@ -1546,6 +1956,36 @@ describe("ElizaSandboxService heartbeat", () => {
     }
   });
 
+  test("a successful probe cannot write through a concurrent delete intent", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(undefined);
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(false);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      const [id, patch, expectedGeneration] = updateSpy.mock.calls[0];
+      expect(id).toBe(sandbox.id);
+      expect(patch.last_heartbeat_at).toBeInstanceOf(Date);
+      expect(expectedGeneration).toEqual({
+        organizationId: sandbox.organization_id,
+        environmentRevision: sandbox.environment_revision,
+        sandboxId: sandbox.sandbox_id,
+        nodeId: sandbox.node_id,
+        containerName: sandbox.container_name,
+        updatedAt: sandbox.updated_at,
+      });
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+
   test("terminal database liveness failure enqueues a bounded restart", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = customSandbox();
@@ -1553,7 +1993,7 @@ describe("ElizaSandboxService heartbeat", () => {
       async () => sandbox,
     );
     const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
-      async () => undefined as never,
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
     );
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
       async () =>
@@ -1590,6 +2030,44 @@ describe("ElizaSandboxService heartbeat", () => {
         organizationId: sandbox.organization_id,
         userId: sandbox.user_id,
       });
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      enqueueSpy.mockRestore();
+    }
+  });
+
+  test("a terminal probe cannot enqueue recovery after concurrent deletion takes ownership", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(undefined);
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockResolvedValue({
+      created: true,
+      job: { id: "job-must-not-start" },
+    } as never);
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          databaseLiveness: {
+            ok: false,
+            status: "terminal_error",
+            terminal: true,
+            message: "PGlite is closed",
+          },
+        },
+        { status: 503 },
+      ),
+    );
+
+    try {
+      await expect(
+        new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id),
+      ).resolves.toBe(false);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(enqueueSpy).not.toHaveBeenCalled();
     } finally {
       findSpy.mockRestore();
       updateSpy.mockRestore();
@@ -1652,7 +2130,7 @@ describe("ElizaSandboxService heartbeat", () => {
       async () => sandbox,
     );
     const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
-      async () => undefined as never,
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
     );
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
       async () =>
@@ -1802,7 +2280,11 @@ describe("ElizaSandboxService heartbeat", () => {
       async (agentId) => (agentId === exhausted.id ? exhausted : fresh),
     );
     const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
-      async () => undefined as never,
+      async (agentId, updates) =>
+        ({
+          ...(agentId === exhausted.id ? exhausted : fresh),
+          ...updates,
+        }) as AgentSandbox,
     );
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
       async () =>
@@ -1888,6 +2370,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       ssh_port: 22,
       ssh_user: "root",
       host_key_fingerprint: null,
+      allocated_count: 1,
     } as unknown as DockerNode;
   }
 
@@ -1933,8 +2416,8 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
     const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
       sandbox,
     );
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
-      undefined as never,
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
     );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(nodeRecord());
     // tailscale CLI prints the v4 line first; the parser must take the 100.x line.
@@ -2309,6 +2792,478 @@ describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () =
   }
 });
 
+describe("replacement lifecycle teardown is absence-proof", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const ORG = "22222222-2222-4222-8222-222222222222";
+
+  function claimedPendingRow(): AgentSandbox {
+    return {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      status: "running",
+      claimed_at: new Date("2026-07-23T00:00:00.000Z"),
+      warm_claim_credential_state: "pending",
+      sandbox_id: "warm-live-container",
+      node_id: "unreachable-node",
+      container_name: "warm-live-container",
+      bridge_url: null,
+      health_url: null,
+    };
+  }
+
+  test("restart on an unreachable old node preserves the handle and never provisions", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = claimedPendingRow();
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {
+        throw new Error("old node unreachable");
+      }),
+      checkHealth: mock(async () => true),
+    };
+    type LifecycleSvc = {
+      executeRestart(
+        agentId: string,
+        orgId: string,
+      ): Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+      provision(agentId: string, orgId: string): Promise<unknown>;
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as LifecycleSvc;
+    const getForWrite = spyOn(svc, "getAgentForWrite").mockResolvedValue(rec);
+    const lockLifecycleSpy = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const activeJob = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const provision = spyOn(svc, "provision");
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [] };
+        },
+      });
+
+    try {
+      const result = await svc.executeRestart(AGENT, ORG);
+      expect(result).toEqual({
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: "Failed to prove the previous sandbox stopped",
+      });
+      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(0);
+      expect(provision).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      lockLifecycleSpy.mockRestore();
+      getForMutation.mockRestore();
+      activeJob.mockRestore();
+      provision.mockRestore();
+    }
+  });
+
+  test("legacy warm recovery with no compute handle reaches cold provision", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec: AgentSandbox = {
+      ...claimedPendingRow(),
+      status: "provisioning",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("provision is spied");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    type RestartSvc = {
+      executeRestart(
+        agentId: string,
+        orgId: string,
+      ): Promise<{
+        success: boolean;
+        containerStopped: boolean;
+        containerStarted: boolean;
+      }>;
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+      provision(
+        agentId: string,
+        orgId: string,
+      ): Promise<{
+        success: true;
+        sandboxRecord: AgentSandbox;
+        bridgeUrl: string;
+        healthUrl: string;
+      }>;
+      recoverPendingWarmClaimInferenceKey(
+        agentId: string,
+        orgId: string,
+      ): Promise<{ pushed: boolean }>;
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as RestartSvc;
+    const getForWrite = spyOn(svc, "getAgentForWrite").mockResolvedValue(rec);
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const provision = spyOn(svc, "provision").mockResolvedValue({
+      success: true,
+      sandboxRecord: { ...rec, status: "running" },
+      bridgeUrl: "https://replacement.example",
+      healthUrl: "https://replacement.example/api",
+    });
+    const recoverCredential = spyOn(svc, "recoverPendingWarmClaimInferenceKey").mockResolvedValue({
+      pushed: true,
+    });
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [] };
+        },
+      });
+
+    try {
+      const result = await svc.executeRestart(AGENT, ORG);
+      expect(result).toEqual({
+        success: true,
+        containerStopped: true,
+        containerStarted: true,
+        bridgeUrl: "https://replacement.example",
+        healthUrl: "https://replacement.example/api",
+      });
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(1);
+      expect(provision).toHaveBeenCalledWith(AGENT, ORG);
+      expect(recoverCredential).toHaveBeenCalledWith(AGENT, ORG);
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      provision.mockRestore();
+      recoverCredential.mockRestore();
+    }
+  });
+
+  test("legacy warm recovery with a partial locator fails closed", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec: AgentSandbox = {
+      ...claimedPendingRow(),
+      status: "provisioning",
+      sandbox_id: null,
+      node_id: "orphan-node",
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    type ShutdownSvc = {
+      shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }>;
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as ShutdownSvc;
+    const getForWrite = spyOn(svc, "getAgentForWrite").mockResolvedValue(rec);
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [] };
+        },
+      });
+
+    try {
+      expect(await svc.shutdown(AGENT, ORG)).toEqual({
+        success: false,
+        error: "Warm-claim recovery locator is incomplete",
+      });
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+    }
+  });
+
+  test("suspend on an unreachable old node does not write stopped state", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = claimedPendingRow();
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {
+        throw new Error("old node unreachable");
+      }),
+      checkHealth: mock(async () => true),
+    };
+    type SuspendSvc = {
+      executeSuspend(
+        agentId: string,
+        orgId: string,
+      ): Promise<{
+        success: boolean;
+        containerStopped: boolean;
+        error?: string;
+      }>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as SuspendSvc;
+    const lockLifecycleSpy = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const activeJob = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [] };
+        },
+      });
+
+    try {
+      const result = await svc.executeSuspend(AGENT, ORG);
+      expect(result).toEqual({
+        success: false,
+        containerStopped: false,
+        error: "old node unreachable",
+      });
+      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
+      expect(writes).toHaveLength(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycleSpy.mockRestore();
+      getForMutation.mockRestore();
+      activeJob.mockRestore();
+    }
+  });
+
+  type SleepSvc = {
+    executeSleep(
+      agentId: string,
+      orgId: string,
+    ): Promise<{
+      success: boolean;
+      containerRemoved: boolean;
+      backupId?: string;
+      error?: string;
+    }>;
+    lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+    getAgentForLifecycleMutation(
+      tx: unknown,
+      agentId: string,
+      orgId: string,
+    ): Promise<AgentSandbox | undefined>;
+    hasActiveReplacementJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+  };
+
+  function armSleepTransaction(
+    svc: SleepSvc,
+    current: AgentSandbox,
+  ): {
+    lockLifecycle: ReturnType<typeof spyOn>;
+    getForMutation: ReturnType<typeof spyOn>;
+    activeReplacement: ReturnType<typeof spyOn>;
+    writes: unknown[];
+  } {
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(current);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [{ id: current.id }] };
+        },
+      });
+    return { lockLifecycle, getForMutation, activeReplacement, writes };
+  }
+
+  test("sleep on an unreachable old node retains compute locators for retry", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = { ...claimedPendingRow(), status: "stopped" as const };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {
+        throw new Error("old node unreachable");
+      }),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as SleepSvc;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec);
+    const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
+      id: "durable-backup",
+    } as never);
+    const tx = armSleepTransaction(svc, rec);
+    try {
+      const result = await svc.executeSleep(AGENT, ORG);
+      expect(result).toEqual({
+        success: false,
+        containerRemoved: false,
+        error: "old node unreachable",
+      });
+      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(tx.writes).toHaveLength(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      find.mockRestore();
+      backup.mockRestore();
+      tx.lockLifecycle.mockRestore();
+      tx.getForMutation.mockRestore();
+      tx.activeReplacement.mockRestore();
+    }
+  });
+
+  test("sleep rejects a newer lifecycle generation without stopping or clearing it", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = { ...claimedPendingRow(), status: "stopped" as const };
+    const replacement: AgentSandbox = {
+      ...rec,
+      sandbox_id: "replacement-container",
+      node_id: "replacement-node",
+      container_name: "replacement-container",
+      updated_at: new Date(rec.updated_at.getTime() + 1_000),
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as SleepSvc;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec);
+    const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
+      id: "durable-backup",
+    } as never);
+    const tx = armSleepTransaction(svc, replacement);
+
+    try {
+      const result = await svc.executeSleep(AGENT, ORG);
+      expect(result).toEqual({
+        success: false,
+        containerRemoved: false,
+        error: "Agent lifecycle changed while sleep was prepared",
+      });
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(tx.writes).toHaveLength(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      find.mockRestore();
+      backup.mockRestore();
+      tx.lockLifecycle.mockRestore();
+      tx.getForMutation.mockRestore();
+      tx.activeReplacement.mockRestore();
+    }
+  });
+
+  test("sleep holds the lifecycle generation through strict stop and exact locator clear", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = { ...claimedPendingRow(), status: "stopped" as const };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as SleepSvc;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec);
+    const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
+      id: "durable-backup",
+    } as never);
+    const prune = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(undefined);
+    const tx = armSleepTransaction(svc, rec);
+
+    try {
+      const result = await svc.executeSleep(AGENT, ORG);
+      expect(result).toEqual({
+        success: true,
+        containerRemoved: true,
+        backupId: "durable-backup",
+      });
+      expect(provider.stopForReplacement).toHaveBeenCalledTimes(1);
+      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
+      expect(tx.writes).toHaveLength(1);
+      expect(prune).toHaveBeenCalledWith(rec.id, expect.any(Number));
+    } finally {
+      upgradeTransactionImpl = null;
+      find.mockRestore();
+      backup.mockRestore();
+      prune.mockRestore();
+      tx.lockLifecycle.mockRestore();
+      tx.getForMutation.mockRestore();
+      tx.activeReplacement.mockRestore();
+    }
+  });
+});
+
 // Orphaned shared-runtime history on delete is covered at the repository level
 // in shared-runtime-history.test.ts: the post-commit deletion is a best-effort
 // call to sharedRuntimeHistoryRepository.deleteByAgent.
@@ -2329,7 +3284,13 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       agentId: string,
       orgId: string,
     ): Promise<
-      { ok: true; sandboxId: string | null; status: string } | { ok: false; error: string }
+      | {
+          ok: true;
+          sandboxId: string | null;
+          status: string;
+          sourcePoolId: string | null;
+        }
+      | { ok: false; error: string }
     >;
     commitAgentRowDelete(agentId: string, orgId: string): Promise<unknown>;
     runBoundedSandboxStop(sandboxId: string): Promise<unknown>;
@@ -2347,6 +3308,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       ok: true,
       sandboxId: SANDBOX_ID,
       status: "running",
+      sourcePoolId: null,
     });
     // Timed-out teardown is reported as the { error, timedOut } shape.
     const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
@@ -2391,6 +3353,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       ok: true,
       sandboxId: SANDBOX_ID,
       status: "running",
+      sourcePoolId: null,
     });
     // Bounded (non-timeout) failure with a non-ignorable message.
     const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
@@ -2420,6 +3383,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       ok: true,
       sandboxId: SANDBOX_ID,
       status: "running",
+      sourcePoolId: null,
     });
     const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
       error: new Error("container not found"),
@@ -2455,9 +3419,15 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
   test("the bounded teardown runs OUTSIDE the row-delete phase (sequenced, not nested)", async () => {
     const svc = await makeSvc();
     const order: string[] = [];
+    const sourcePoolId = "44444444-4444-4444-8444-444444444444";
     const prepare = spyOn(svc, "prepareAgentDelete").mockImplementation(async () => {
       order.push("prepare");
-      return { ok: true, sandboxId: SANDBOX_ID, status: "running" };
+      return {
+        ok: true,
+        sandboxId: SANDBOX_ID,
+        status: "running",
+        sourcePoolId,
+      };
     });
     const stop = spyOn(svc, "runBoundedSandboxStop").mockImplementation(async () => {
       order.push("teardown");
@@ -2467,19 +3437,55 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       order.push("commit");
       return { success: true, deletedSandbox: { ...customSandbox(), id: AGENT } };
     });
-    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockImplementation(
+      async (credentialOwnerId) => {
+        order.push(`revoke:${credentialOwnerId}`);
+      },
+    );
     const historySpy = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent").mockResolvedValue(0);
     try {
       await svc.deleteAgent(AGENT, ORG);
       // Teardown must happen between the precheck txn and the row-delete txn,
       // never inside the write-lock/transaction.
-      expect(order).toEqual(["prepare", "teardown", "commit"]);
+      expect(order).toEqual([
+        "prepare",
+        "teardown",
+        `revoke:${AGENT}`,
+        `revoke:${sourcePoolId}`,
+        "commit",
+      ]);
     } finally {
       prepare.mockRestore();
       stop.mockRestore();
       commit.mockRestore();
       apiKeySpy.mockRestore();
       historySpy.mockRestore();
+    }
+  });
+
+  test("an authoritative credential revoke failure preserves the row for retry", async () => {
+    const svc = await makeSvc();
+    const sourcePoolId = "44444444-4444-4444-8444-444444444444";
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "error",
+      sourcePoolId,
+    });
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue(null);
+    const commit = spyOn(svc, "commitAgentRowDelete");
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent")
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("authoritative revoke unavailable"));
+    try {
+      await expect(svc.deleteAgent(AGENT, ORG)).rejects.toThrow("authoritative revoke unavailable");
+      expect(apiKeySpy.mock.calls.map(([owner]) => owner)).toEqual([AGENT, sourcePoolId]);
+      expect(commit).not.toHaveBeenCalled();
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      apiKeySpy.mockRestore();
     }
   });
 
@@ -2557,6 +3563,406 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     } finally {
       jest.useRealTimers();
       getProvider.mockRestore();
+    }
+  });
+});
+
+describe("failed warm-claim replacement teardown", () => {
+  type RetrySvc = {
+    provision(agentId: string, orgId: string): Promise<unknown>;
+    retireFailedWarmClaimForRetry(
+      agentId: string,
+      orgId: string,
+    ): Promise<{ success: true } | { success: false; error: string }>;
+    lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+    getAgentForLifecycleMutation(
+      tx: unknown,
+      agentId: string,
+      orgId: string,
+    ): Promise<AgentSandbox | undefined>;
+    ensureRuntimeAgentStarted(): Promise<unknown>;
+  };
+
+  function failedWarmClaim(): AgentSandbox {
+    return {
+      ...customSandbox(),
+      status: "error",
+      claimed_at: new Date("2026-07-23T00:00:00.000Z"),
+      warm_claim_credential_state: "failed",
+      warm_claim_cleanup_completed_at: new Date("2026-07-23T00:05:00.000Z"),
+      sandbox_id: "old-warm-container",
+      node_id: "unreachable-node",
+      container_name: "old-warm-container",
+    };
+  }
+
+  test("an unreachable old container preserves the fence and never creates a replacement", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const failed = failedWarmClaim();
+    const create = mock(async () => {
+      throw new Error("replacement must not be created");
+    });
+    const stop = mock(async () => {});
+    const stopForReplacement = mock(async () => {
+      throw new Error("node unreachable; absence unresolved");
+    });
+    const provider: SandboxProvider = {
+      create,
+      stop,
+      stopForReplacement,
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as RetrySvc;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(failed);
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(failed);
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [] };
+        },
+      });
+
+    try {
+      const result = (await svc.provision(failed.id, failed.organization_id)) as {
+        success: boolean;
+        error?: string;
+      };
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: false,
+          error: "Failed to retire the previous warm-claim container",
+        }),
+      );
+      expect(stopForReplacement).toHaveBeenCalledTimes(1);
+      expect(stop).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(0);
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      find.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+    }
+  });
+
+  test("a partial old locator fails closed before teardown or reset", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const failed = failedWarmClaim();
+    const create = mock(async () => {
+      throw new Error("replacement must not be created");
+    });
+    const stopForReplacement = mock(async () => {});
+    const provider: SandboxProvider = {
+      create,
+      stop: mock(async () => {}),
+      stopForReplacement,
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as RetrySvc;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(failed);
+    const partial = { ...failed, sandbox_id: null };
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(partial);
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [] };
+        },
+      });
+
+    try {
+      const result = (await svc.provision(failed.id, failed.organization_id)) as {
+        success: boolean;
+        error?: string;
+      };
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: false,
+          error: "Previous warm-claim container locator is incomplete",
+        }),
+      );
+      expect(stopForReplacement).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(0);
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      find.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+    }
+  });
+
+  test("a proven stop resets the exact handle and creates one cold replacement", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const failed = failedWarmClaim();
+    const resetRow: AgentSandbox = {
+      ...failed,
+      status: "stopped",
+      claimed_at: null,
+      warm_claim_credential_state: null,
+      warm_claim_source_pool_id: null,
+      warm_claim_key_fingerprint: null,
+      warm_claim_attested_at: null,
+      warm_claim_attested_environment_revision: null,
+      warm_claim_cleanup_completed_at: null,
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      database_uri: "postgres://shared.example/railway",
+      database_status: "ready",
+      execution_tier: "custom",
+    };
+    const finalRow: AgentSandbox = {
+      ...resetRow,
+      status: "running",
+      sandbox_id: "replacement-sandbox",
+      node_id: "replacement-node",
+      container_name: "replacement-container",
+      bridge_url: "https://replacement.example",
+      health_url: "https://replacement.example/api",
+    };
+    const order: string[] = [];
+    const stopForReplacement = mock(async () => {
+      order.push("strict-stop");
+    });
+    const create = mock(async () => {
+      order.push("create");
+      return {
+        sandboxId: "replacement-sandbox",
+        bridgeUrl: "https://replacement.example",
+        healthUrl: "https://replacement.example/api",
+        metadata: {
+          provider: "docker",
+          nodeId: "replacement-node",
+          hostname: "replacement.internal",
+          containerName: "replacement-container",
+          bridgePort: 21070,
+          webUiPort: 23900,
+          agentId: failed.id,
+          volumePath: "/var/lib/eliza/replacement",
+          dockerImage: "ghcr.io/elizaos/eliza:sha-current",
+          imageDigest: "sha256:replacement",
+        },
+      };
+    });
+    const provider: SandboxProvider = {
+      create,
+      stop: mock(async () => {}),
+      stopForReplacement,
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as RetrySvc;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrg")
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValue(resetRow);
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(failed);
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => {
+          order.push("cas-reset");
+          return { rows: [{ id: failed.id }] };
+        },
+      });
+    const lock = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...resetRow,
+      status: "provisioning",
+    });
+    const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(undefined);
+    const update = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => (data.status === "running" ? finalRow : { ...resetRow, ...data }),
+    );
+    const mint = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const ensureStarted = spyOn(svc, "ensureRuntimeAgentStarted").mockResolvedValue(null);
+
+    try {
+      const result = (await svc.provision(failed.id, failed.organization_id)) as {
+        success: boolean;
+        sandboxRecord?: AgentSandbox;
+      };
+      expect(result.success).toBe(true);
+      expect(result.sandboxRecord).toBe(finalRow);
+      expect(order).toEqual(["strict-stop", "cas-reset", "create"]);
+      expect(stopForReplacement).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(1);
+    } finally {
+      upgradeTransactionImpl = null;
+      find.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      lock.mockRestore();
+      backup.mockRestore();
+      update.mockRestore();
+      mint.mockRestore();
+      ensureStarted.mockRestore();
+    }
+  });
+
+  test("two failed-claim retries serialize teardown ownership and create one replacement", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const failed = failedWarmClaim();
+    const resetRow: AgentSandbox = {
+      ...failed,
+      status: "stopped",
+      claimed_at: null,
+      warm_claim_credential_state: null,
+      warm_claim_source_pool_id: null,
+      warm_claim_key_fingerprint: null,
+      warm_claim_attested_at: null,
+      warm_claim_attested_environment_revision: null,
+      warm_claim_cleanup_completed_at: null,
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      database_uri: "postgres://shared.example/railway",
+      database_status: "ready",
+      execution_tier: "custom",
+    };
+    const finalRow: AgentSandbox = {
+      ...resetRow,
+      status: "running",
+      sandbox_id: "replacement-sandbox",
+      node_id: "replacement-node",
+      container_name: "replacement-container",
+      bridge_url: "https://replacement.example",
+      health_url: "https://replacement.example/api",
+    };
+
+    let releaseInitialReads!: () => void;
+    const bothInitialReads = new Promise<void>((resolve) => {
+      releaseInitialReads = resolve;
+    });
+    let initialReadCount = 0;
+    let lifecycleRow = failed;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(async () => {
+      if (initialReadCount < 2) {
+        initialReadCount += 1;
+        if (initialReadCount === 2) releaseInitialReads();
+        await bothInitialReads;
+        return failed;
+      }
+      return lifecycleRow;
+    });
+
+    let releaseStrictStop!: () => void;
+    const strictStopMayFinish = new Promise<void>((resolve) => {
+      releaseStrictStop = resolve;
+    });
+    let signalStrictStopStarted!: () => void;
+    const strictStopStarted = new Promise<void>((resolve) => {
+      signalStrictStopStarted = resolve;
+    });
+    const stopForReplacement = mock(async () => {
+      signalStrictStopStarted();
+      await strictStopMayFinish;
+    });
+    const create = mock(async () => ({
+      sandboxId: "replacement-sandbox",
+      bridgeUrl: "https://replacement.example",
+      healthUrl: "https://replacement.example/api",
+      metadata: {
+        provider: "docker",
+        nodeId: "replacement-node",
+        hostname: "replacement.internal",
+        containerName: "replacement-container",
+        bridgePort: 21070,
+        webUiPort: 23900,
+        agentId: failed.id,
+        volumePath: "/var/lib/eliza/replacement",
+        dockerImage: "ghcr.io/elizaos/eliza:sha-current",
+        imageDigest: "sha256:replacement",
+      },
+    }));
+    const provider: SandboxProvider = {
+      create,
+      stop: mock(async () => {}),
+      stopForReplacement,
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as RetrySvc;
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockImplementation(
+      async () => lifecycleRow,
+    );
+
+    let transactionTail = Promise.resolve();
+    upgradeTransactionImpl = async (fn) => {
+      const previous = transactionTail;
+      let releaseTransaction!: () => void;
+      transactionTail = new Promise<void>((resolve) => {
+        releaseTransaction = resolve;
+      });
+      await previous;
+      try {
+        return await fn({
+          execute: async () => {
+            lifecycleRow = resetRow;
+            return { rows: [{ id: failed.id }] };
+          },
+        });
+      } finally {
+        releaseTransaction();
+      }
+    };
+
+    const setProvisioning = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(
+      { ...resetRow, status: "provisioning" },
+    );
+    const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(undefined);
+    const update = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => (data.status === "running" ? finalRow : { ...resetRow, ...data }),
+    );
+    const mint = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const ensureStarted = spyOn(svc, "ensureRuntimeAgentStarted").mockResolvedValue(null);
+
+    try {
+      const first = svc.provision(failed.id, failed.organization_id);
+      const second = svc.provision(failed.id, failed.organization_id);
+      await strictStopStarted;
+      await Promise.resolve();
+      releaseStrictStop();
+      const results = (await Promise.all([first, second])) as Array<{
+        success: boolean;
+        error?: string;
+      }>;
+
+      expect(results.filter((result) => result.success)).toHaveLength(1);
+      expect(results.filter((result) => !result.success)).toEqual([
+        expect.objectContaining({
+          error: "Warm-claim retry ownership changed before teardown",
+        }),
+      ]);
+      expect(stopForReplacement).toHaveBeenCalledTimes(1);
+      expect(stopForReplacement).toHaveBeenCalledWith(failed.sandbox_id);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(setProvisioning).toHaveBeenCalledTimes(1);
+    } finally {
+      upgradeTransactionImpl = null;
+      find.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      setProvisioning.mockRestore();
+      backup.mockRestore();
+      update.mockRestore();
+      mint.mockRestore();
+      ensureStarted.mockRestore();
     }
   });
 });
@@ -3907,15 +5313,17 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     const getProviderSpy = spyOn(
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
       "getProvider",
-    ).mockResolvedValue({
-      create,
-      stop,
-      checkHealth: async () => false,
-      checkHealthDetailed: async () => ({
-        ready: false,
-        verdict: "transport_unresolved" as const,
-      }),
-    } as unknown as SandboxProvider);
+    ).mockResolvedValue(
+      replacementAwareProvider({
+        create,
+        stop,
+        checkHealth: async () => false,
+        checkHealthDetailed: async () => ({
+          ready: false,
+          verdict: "transport_unresolved" as const,
+        }),
+      } as unknown as SandboxProvider),
+    );
 
     try {
       const res = await svc.provision(AGENT, ORG);
@@ -3984,15 +5392,17 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     const getProviderSpy = spyOn(
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
       "getProvider",
-    ).mockResolvedValue({
-      create,
-      stop,
-      checkHealth: async () => false,
-      checkHealthDetailed: async () => ({
-        ready: false,
-        verdict: "transport_unresolved" as const,
-      }),
-    } as unknown as SandboxProvider);
+    ).mockResolvedValue(
+      replacementAwareProvider({
+        create,
+        stop,
+        checkHealth: async () => false,
+        checkHealthDetailed: async () => ({
+          ready: false,
+          verdict: "transport_unresolved" as const,
+        }),
+      } as unknown as SandboxProvider),
+    );
 
     try {
       const res = await svc.provision(AGENT, ORG);
@@ -4136,15 +5546,17 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     const getProviderSpy = spyOn(
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
       "getProvider",
-    ).mockResolvedValue({
-      create,
-      stop,
-      checkHealth: async () => true,
-      checkHealthDetailed: async (handle) => {
-        healthInputs.push({ sandboxId: handle.sandboxId, metadata: handle.metadata });
-        return { ready: true, verdict: "ready" as const };
-      },
-    } as unknown as SandboxProvider);
+    ).mockResolvedValue(
+      replacementAwareProvider({
+        create,
+        stop,
+        checkHealth: async () => true,
+        checkHealthDetailed: async (handle) => {
+          healthInputs.push({ sandboxId: handle.sandboxId, metadata: handle.metadata });
+          return { ready: true, verdict: "ready" as const };
+        },
+      } as unknown as SandboxProvider),
+    );
 
     try {
       const res = await svc.provision(AGENT, ORG);
@@ -4354,6 +5766,43 @@ describe("isPermanentlyLostSnapshot (prune-vs-preserve gating)", () => {
   });
 });
 
+describe("replacement runtime authentication contract", () => {
+  test("keeps /api/status protected while only GET /api/health bypasses authentication", () => {
+    const agentApiDirectory = new URL("../../../../../agent/src/api/", import.meta.url);
+    const routeClassifierSource = readFileSync(
+      new URL("static-file-server.ts", agentApiDirectory),
+      "utf8",
+    );
+    const serverSource = readFileSync(new URL("server.ts", agentApiDirectory), "utf8");
+
+    // Both endpoints enter the normal protected /api namespace. The agent
+    // server then exempts only the public liveness probe; rollout identity and
+    // startup checks deliberately use /api/status so a missing or rejected
+    // agent token fails before the public readiness probe can pass.
+    expect(routeClassifierSource).toMatch(
+      /export function isAuthProtectedRoute\(pathname: string\): boolean \{[\s\S]*pathname\.startsWith\("\/api\/"\)/,
+    );
+    expect(serverSource).toContain(
+      'const isHealthEndpoint = method === "GET" && pathname === "/api/health";',
+    );
+
+    const authGateStart = serverSource.indexOf(
+      'method !== "OPTIONS" &&\n    isAuthProtectedPath &&',
+    );
+    const authGateEnd = serverSource.indexOf(
+      'json(res, { error: "Unauthorized" }, 401);',
+      authGateStart,
+    );
+    expect(authGateStart).toBeGreaterThan(-1);
+    expect(authGateEnd).toBeGreaterThan(authGateStart);
+
+    const authGate = serverSource.slice(authGateStart, authGateEnd);
+    expect(authGate).toContain("!isHealthEndpoint");
+    expect(authGate).not.toContain('"/api/status"');
+    expect(authGate).not.toContain("isStatusEndpoint");
+  });
+});
+
 // LARP H3 — executeUpgrade() blue/green rollback, digest-mismatch, and the
 // compare-and-swap race guard that protects a LIVE billed agent row.
 // The provider MUST be a real DockerSandboxProvider instance (the method bails
@@ -4366,16 +5815,33 @@ describe("isPermanentlyLostSnapshot (prune-vs-preserve gating)", () => {
 describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LARP H3)", () => {
   const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
   const ORG = "22222222-2222-4222-8222-222222222222";
+  const OWNER = "33333333-3333-4333-8333-333333333333";
   const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
   const FROM_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
   const TO_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
 
+  function runtimeStatusResponse(
+    body: Record<string, unknown> = {
+      state: "running",
+      canRespond: true,
+      startup: { phase: "running", attempt: 0 },
+    },
+    status = 200,
+  ): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   function runtimeHealthResponse(
     body: Record<string, unknown> = {
       ready: true,
+      canRespond: true,
       runtime: "ok",
       database: "ok",
-      plugins: { failed: 0 },
+      plugins: { loaded: 18, failed: 0 },
+      startup: { phase: "running", attempt: 0 },
     },
     status = 200,
   ): Response {
@@ -4410,6 +5876,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       ssh_port: 22,
       ssh_user: "root",
       host_key_fingerprint: null,
+      allocated_count: 1,
     } as unknown as DockerNode;
   }
 
@@ -4454,14 +5921,24 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     const checkHealth = mock(overrides.checkHealth);
     const stop = mock(async () => {});
     const stopOnSpecificNode = mock(async () => {});
-    Object.assign(provider, { create, checkHealth, stop, stopOnSpecificNode });
-    globalThis.fetch = mock(async () => runtimeHealthResponse()) as unknown as typeof fetch;
+    Object.assign(provider, {
+      create,
+      checkHealth,
+      stop,
+      stopOnSpecificNodeForReplacement: stopOnSpecificNode,
+    });
+    replacementAwareProvider(provider as unknown as SandboxProvider);
+    const runtimeFetch = mock(async (input: RequestInfo | URL, _init?: RequestInit) =>
+      fetchUrl(input).endsWith("/api/status") ? runtimeStatusResponse() : runtimeHealthResponse(),
+    );
+    globalThis.fetch = runtimeFetch as unknown as typeof fetch;
     return {
       provider: provider as unknown as SandboxProvider,
       create,
       checkHealth,
       stop,
       stopOnSpecificNode,
+      runtimeFetch,
     };
   }
 
@@ -4469,12 +5946,42 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     upgradeTransactionImpl = null;
   });
 
+  test("a pending warm-claim credential fence blocks blue provisioning", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent = {
+      ...liveAgentRow(),
+      claimed_at: new Date("2026-07-23T00:00:00.000Z"),
+      warm_claim_credential_state: "pending" as const,
+      warm_claim_source_pool_id: "44444444-4444-4444-8444-444444444444",
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId");
+    try {
+      const res = await new ElizaSandboxService().executeUpgrade(
+        AGENT,
+        ORG,
+        TO_DIGEST,
+        DOCKER_IMAGE,
+        FROM_DIGEST,
+      );
+      expect(res).toMatchObject({
+        success: false,
+        rolledBack: true,
+        error: "Warm-claim credential handoff is not ready",
+      });
+      expect(nodeSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+    }
+  });
+
   test("(a) blue health-check FAILS → blue torn down, row stays on OLD, rolled-back error", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
-    const { provider, create, checkHealth, stop } = await makeDockerProvider({
+    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
       checkHealth: async () => false, // blue never comes up
     });
@@ -4493,12 +6000,21 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         FROM_DIGEST,
       );
       expect(res.success).toBe(false);
-      expect(res.error).toContain("rolled back to old container");
+      expect(res.error).toContain("kept agent on old container");
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
-      // The unhealthy blue is torn down...
-      expect(stop).toHaveBeenCalledTimes(1);
-      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      // The unhealthy blue is retired through the durable placement locator.
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
       // ...and the live row is never swapped.
       expect(transactionCalled).toBe(false);
       expect(res.oldNodeId).toBe("node-old");
@@ -4515,7 +6031,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const WRONG_DIGEST = "sha256:dededededededededededededededededededededededededededededede0000";
-    const { provider, create, checkHealth, stop } = await makeDockerProvider({
+    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(WRONG_DIGEST), // healthy but wrong image
       checkHealth: async () => true,
     });
@@ -4537,9 +6053,19 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.error).toContain(TO_DIGEST);
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
-      // Serving the WRONG image would silently ship an unintended build — tear blue down.
-      expect(stop).toHaveBeenCalledTimes(1);
-      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      // Serving the WRONG image would silently ship an unintended build — retire
+      // the exact durable blue placement and never target the live sandbox.
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
       // No swap of the live row.
       expect(transactionCalled).toBe(false);
     } finally {
@@ -4557,17 +6083,20 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       create: async () => blueHandle(TO_DIGEST),
       checkHealth: async () => true,
     });
-    const healthFetch = mock(async () =>
-      runtimeHealthResponse({
-        ready: false,
-        runtime: "ok",
-        database: "ok",
-        plugins: { failed: 1 },
-        agentState: "starting",
-        startup: { lastError: "migration failed" },
-      }),
+    const runtimeFetch = mock(async (input: RequestInfo | URL) =>
+      fetchUrl(input).endsWith("/api/status")
+        ? runtimeStatusResponse()
+        : runtimeHealthResponse({
+            ready: false,
+            canRespond: false,
+            runtime: "ok",
+            database: "ok",
+            plugins: { loaded: 17, failed: 1 },
+            agentState: "starting",
+            startup: { phase: "error", attempt: 1, lastError: "migration failed" },
+          }),
     );
-    globalThis.fetch = healthFetch as unknown as typeof fetch;
+    globalThis.fetch = runtimeFetch as unknown as typeof fetch;
     const svc = new ElizaSandboxService(provider);
     const snapshotSpy = spyOn(
       svc as unknown as {
@@ -4585,14 +6114,26 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.success).toBe(false);
       expect(res.error).toContain("Blue runtime readiness gate failed");
       expect(res.error).toContain("ready=false");
+      expect(res.error).toContain("canRespond=false");
       expect(res.error).toContain("plugins.failed=1");
       expect(res.error).toContain("migration failed");
-      expect(healthFetch).toHaveBeenCalledTimes(1);
+      expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+        "https://new-bridge.example/api/status",
+        "https://new-bridge.example/api/health",
+      ]);
       expect(snapshotSpy).not.toHaveBeenCalled();
       expect(transactionCalled).toBe(false);
-      expect(stop).toHaveBeenCalledTimes(1);
-      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
-      expect(stopOnSpecificNode).not.toHaveBeenCalled();
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
     } finally {
@@ -4602,15 +6143,80 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     }
   }, 20_000);
 
+  for (const missing of ["plugins", "startup"] as const) {
+    test(`upgrade runtime readiness fails closed when ${missing} structure is missing`, async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const agent = liveAgentRow();
+      const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+      const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+      const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+        create: async () => blueHandle(TO_DIGEST),
+        checkHealth: async () => true,
+      });
+      const runtimeFetch = mock(async (input: RequestInfo | URL) =>
+        fetchUrl(input).endsWith("/api/status")
+          ? runtimeStatusResponse()
+          : runtimeHealthResponse({
+              ready: true,
+              runtime: "ok",
+              database: "ok",
+              ...(missing === "plugins" ? {} : { plugins: { loaded: 18, failed: 0 } }),
+              ...(missing === "startup" ? {} : { startup: { phase: "running", attempt: 0 } }),
+            }),
+      );
+      globalThis.fetch = runtimeFetch as unknown as typeof fetch;
+      const svc = new ElizaSandboxService(provider);
+      const snapshotSpy = spyOn(
+        svc as unknown as {
+          snapshot: (...a: unknown[]) => Promise<{ success: boolean }>;
+        },
+        "snapshot",
+      ).mockResolvedValue({ success: true });
+      let transactionCalled = false;
+      upgradeTransactionImpl = async () => {
+        transactionCalled = true;
+        return false as never;
+      };
+      try {
+        const result = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(`Blue runtime readiness gate failed`);
+        expect(result.error).toContain(`${missing}=missing`);
+        expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+          "https://new-bridge.example/api/status",
+          "https://new-bridge.example/api/health",
+        ]);
+        expect(snapshotSpy).not.toHaveBeenCalled();
+        expect(transactionCalled).toBe(false);
+        expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+        expect(stopOnSpecificNode).toHaveBeenCalledWith(
+          "node-new",
+          "agent-new-1",
+          null,
+          expect.objectContaining({
+            replacementAttemptId: expect.any(String),
+            containerId: "container-sandbox-new-1",
+          }),
+        );
+        expect(stop).not.toHaveBeenCalled();
+      } finally {
+        findSpy.mockRestore();
+        nodeSpy.mockRestore();
+        snapshotSpy.mockRestore();
+      }
+    });
+  }
+
   test("(c) happy path → atomic swap writes blue's node/container/bridge + image_digest=toDigest", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
-    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
-      create: async () => blueHandle(TO_DIGEST),
-      checkHealth: async () => true,
-    });
+    const { provider, create, checkHealth, stop, stopOnSpecificNode, runtimeFetch } =
+      await makeDockerProvider({
+        create: async () => blueHandle(TO_DIGEST),
+        checkHealth: async () => true,
+      });
     const svc = new ElizaSandboxService(provider);
     // Pin the lifecycle lock + the FOR-UPDATE read to a no-op / unchanged row so
     // the CAS guard passes and control reaches the UPDATE.
@@ -4674,6 +6280,13 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(stop).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
+      expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+        "https://new-bridge.example/api/status",
+        "https://new-bridge.example/api/health",
+      ]);
+      for (const call of runtimeFetch.mock.calls) {
+        expect(new Headers(call[1]?.headers).get("authorization")).toBe("Bearer agent-token");
+      }
     } finally {
       findSpy.mockRestore();
       nodeSpy.mockRestore();
@@ -4685,7 +6298,6 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
 
   test("(h1) preserved live VPN node: create gets reclaimStaleVpnNode=false, node deleted BY ID only after the swap (#16565)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const { headscaleIntegration } = await import("./headscale-integration");
     const agent = liveAgentRow();
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
@@ -4710,14 +6322,10 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "snapshot",
     ).mockResolvedValue({ success: true });
-    // Event order: the old node's by-id deletion must come AFTER the swap
-    // commit AND after old-container teardown started — never before.
+    // Event order: the old placement retirement must start only after the swap.
+    // The provider's replacement-cleanup suite owns the remote Docker/Headscale
+    // mechanics; this orchestration suite verifies the exact VPN id is delegated.
     const events: string[] = [];
-    const removeSpy = spyOn(headscaleIntegration, "removeVpnNodeById").mockImplementation(
-      async (id: string) => {
-        events.push(`vpn-delete:${id}`);
-      },
-    );
     stopOnSpecificNode.mockImplementation(async () => {
       events.push("old-teardown");
     });
@@ -4738,31 +6346,35 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         | { reclaimStaleVpnNode?: boolean }
         | undefined;
       expect(createConfig?.reclaimStaleVpnNode).toBe(false);
-      // The preserved node was deleted exactly once, by id, after the swap.
-      expect(removeSpy).toHaveBeenCalledTimes(1);
-      expect(removeSpy).toHaveBeenCalledWith("old-live-node-7");
-      expect(events).toEqual(["swap-commit", "old-teardown", "vpn-delete:old-live-node-7"]);
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-old",
+        "agent-old-1",
+        "old-live-node-7",
+        expect.objectContaining({
+          replacementAttemptId: null,
+          previousVpnNodeId: null,
+        }),
+      );
+      expect(events).toEqual(["swap-commit", "old-teardown"]);
     } finally {
       findSpy.mockRestore();
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
       snapshotSpy.mockRestore();
-      removeSpy.mockRestore();
     }
   });
 
   test("(h2) rolled-back upgrade never deletes the preserved live node (#16565)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const { headscaleIntegration } = await import("./headscale-integration");
     const agent = liveAgentRow();
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
-    const { provider, stop } = await makeDockerProvider({
+    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST, "old-live-node-7"),
       checkHealth: async () => false, // blue never comes up → rollback
     });
-    const removeSpy = spyOn(headscaleIntegration, "removeVpnNodeById").mockResolvedValue(undefined);
     try {
       const res = await new ElizaSandboxService(provider).executeUpgrade(
         AGENT,
@@ -4775,12 +6387,18 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.rolledBack).toBe(true);
       // Blue is torn down; the preserved live node is left untouched — the
       // agent keeps serving on old.
-      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
-      expect(removeSpy).not.toHaveBeenCalled();
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          previousVpnNodeId: "old-live-node-7",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
     } finally {
       findSpy.mockRestore();
       nodeSpy.mockRestore();
-      removeSpy.mockRestore();
     }
   });
 
@@ -4811,9 +6429,17 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.error).toContain("Pre-upgrade snapshot failed");
       expect(res.error).toContain("manifest missing");
       expect(snapshotSpy).toHaveBeenCalledWith(AGENT, ORG, "pre-upgrade");
-      expect(stop).toHaveBeenCalledTimes(1);
-      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
-      expect(stopOnSpecificNode).not.toHaveBeenCalled();
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
       expect(transactionCalled).toBe(false);
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
@@ -4873,11 +6499,19 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.error).toContain("Agent changed during upgrade");
       // The guard short-circuits BEFORE the UPDATE — never writes a stale swap.
       expect(executeCalled).toBe(false);
-      // The orphaned blue (built but never adopted) is torn down...
-      expect(stop).toHaveBeenCalledTimes(1);
-      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
-      // ...and the old container is left running (it still serves traffic).
-      expect(stopOnSpecificNode).not.toHaveBeenCalled();
+      // The orphaned blue (built but never adopted) is retired by its exact
+      // placement identity; the old container stays live.
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
     } finally {
@@ -4896,7 +6530,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agentRow);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
-    const { provider, stop } = await makeDockerProvider({
+    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
       checkHealth: async () => true,
     });
@@ -4927,7 +6561,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     };
     try {
       const res = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
-      return { res, executedSql, stop };
+      return { res, executedSql, stop, stopOnSpecificNode };
     } finally {
       findSpy.mockRestore();
       nodeSpy.mockRestore();
@@ -4969,12 +6603,323 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       ...liveAgentRow(),
       docker_image: "ghcr.io/acme/custom-agent:latest",
     };
-    const { res, executedSql, stop } = await runSwapWithRow(liveAgentRow(), movedRow);
+    const { res, executedSql, stop, stopOnSpecificNode } = await runSwapWithRow(
+      liveAgentRow(),
+      movedRow,
+    );
     expect(res.success).toBe(false);
     expect(res.error).toContain("Agent changed during upgrade");
     // No UPDATE was issued and the orphaned blue is stopped.
     expect(executedSql).toBeUndefined();
-    expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-new",
+      "agent-new-1",
+      null,
+      expect.objectContaining({
+        replacementAttemptId: expect.any(String),
+        containerId: "container-sandbox-new-1",
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  test("admin canary requires reported blue digest and uses the primary exact-pair read", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const replicaSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(null),
+      checkHealth: async () => true,
+    });
+    let transactionCalled = false;
+    upgradeTransactionImpl = async () => {
+      transactionCalled = true;
+      return false as never;
+    };
+    try {
+      const result = await new ElizaSandboxService(provider).executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: async () => {},
+        onConvergedInTx: async () => {},
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("got missing");
+      expect(primarySpy).toHaveBeenCalledTimes(1);
+      expect(replicaSpy).not.toHaveBeenCalled();
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
+      expect(transactionCalled).toBe(false);
+    } finally {
+      primarySpy.mockRestore();
+      replicaSpy.mockRestore();
+      nodeSpy.mockRestore();
+    }
+  });
+
+  test("admin canary refuses an ownership change before provisioning blue", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const movedAgent: AgentSandbox = {
+      ...liveAgentRow(),
+      user_id: "44444444-4444-4444-8444-444444444444",
+      docker_image: SOURCE_IMAGE,
+    };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      movedAgent,
+    );
+    const { provider, create } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    try {
+      const result = await new ElizaSandboxService(provider).executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: async () => {},
+        onConvergedInTx: async () => {},
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("audited canary source image pair");
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      primarySpy.mockRestore();
+    }
+  });
+
+  test("admin canary exact CAS persists target repo+digest and exact rollback pair", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    const snapshotSpy = spyOn(
+      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    let executedSql: unknown;
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async (query: unknown) => {
+          executedSql = query;
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: async () => {},
+        onConvergedInTx: async () => {},
+      });
+      expect(result.success).toBe(true);
+      const params = sqlBoundParams(executedSql);
+      expect(params).toContain(TARGET_IMAGE);
+      expect(params).toContain(TO_DIGEST);
+      expect(params).toContain(SOURCE_IMAGE);
+      expect(params).toContain(FROM_DIGEST);
+      expect(params).toContain(OWNER);
+    } finally {
+      primarySpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  });
+
+  test("admin canary audit failure rolls back cutover and tears down blue", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    const snapshotSpy = spyOn(
+      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    const audit = mock(async () => {
+      throw new Error("durable audit write failed");
+    });
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async () => ({ rows: [{ id: AGENT }] }),
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: audit,
+        onConvergedInTx: async () => {},
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("durable audit write failed");
+      expect(audit).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
+    } finally {
+      primarySpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  });
+
+  test("admin canary keeps committed success when old-container and VPN cleanup fail", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST, "vpn-old"),
+      checkHealth: async () => true,
+    });
+    stopOnSpecificNode.mockImplementation(async () => {
+      throw new Error("old container teardown unavailable");
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    const snapshotSpy = spyOn(
+      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    const audit = mock(() => Promise.resolve());
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async () => ({ rows: [{ id: AGENT }] }),
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: audit,
+        onConvergedInTx: async () => {},
+      });
+      expect(result.success).toBe(true);
+      expect(result.cleanupPending).toBe(true);
+      expect(audit).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-old",
+        "agent-old-1",
+        "vpn-old",
+        expect.objectContaining({
+          replacementAttemptId: null,
+          previousVpnNodeId: null,
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
+    } finally {
+      primarySpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
   });
 });
 
@@ -4987,6 +6932,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
 describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_digest (#9964)", () => {
   const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
   const ORG = "22222222-2222-4222-8222-222222222222";
+  const OWNER = "33333333-3333-4333-8333-333333333333";
   const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
   // The agent currently runs on the post-upgrade digest; rollback targets PREV.
   const CURRENT_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
@@ -5018,10 +6964,11 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       ssh_port: 22,
       ssh_user: "root",
       host_key_fingerprint: null,
+      allocated_count: 1,
     } as unknown as DockerNode;
   }
 
-  function blueMetadata(imageDigest: string | null) {
+  function blueMetadata(imageDigest: string | null, previousVpnNodeId?: string) {
     return {
       provider: "docker" as const,
       nodeId: "node-rb",
@@ -5033,21 +6980,55 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       volumePath: "/var/lib/eliza/agent-rb-1",
       dockerImage: DOCKER_IMAGE,
       imageDigest,
+      ...(previousVpnNodeId ? { previousVpnNodeId } : {}),
     };
   }
 
-  function blueHandle(imageDigest: string | null) {
+  function blueHandle(imageDigest: string | null, previousVpnNodeId?: string) {
     return {
       sandboxId: "sandbox-rb-1",
       bridgeUrl: "https://rb-bridge.example",
       healthUrl: "https://rb-bridge.example/health",
-      metadata: blueMetadata(imageDigest),
+      metadata: blueMetadata(imageDigest, previousVpnNodeId),
     };
+  }
+
+  function runtimeStatusResponse(
+    body: Record<string, unknown> = {
+      state: "running",
+      canRespond: true,
+      startup: { phase: "running", attempt: 0 },
+    },
+    status = 200,
+  ): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  function runtimeHealthResponse(
+    body: Record<string, unknown> = {
+      ready: true,
+      canRespond: true,
+      runtime: "ok",
+      database: "ok",
+      plugins: { loaded: 18, failed: 0 },
+      startup: { phase: "running", attempt: 0 },
+    },
+    status = 200,
+  ): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
   }
 
   async function makeDockerProvider(overrides: {
     create: () => Promise<unknown>;
     checkHealth: () => Promise<boolean>;
+    runtimeStatus?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
+    runtimeHealth?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
   }) {
     const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
     const provider = new DockerSandboxProvider();
@@ -5055,19 +7036,145 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     const checkHealth = mock(overrides.checkHealth);
     const stop = mock(async () => {});
     const stopOnSpecificNode = mock(async () => {});
-    Object.assign(provider, { create, checkHealth, stop, stopOnSpecificNode });
+    Object.assign(provider, {
+      create,
+      checkHealth,
+      stop,
+      stopOnSpecificNodeForReplacement: stopOnSpecificNode,
+    });
+    replacementAwareProvider(provider as unknown as SandboxProvider);
+    const runtimeFetch = mock(async (input: RequestInfo | URL, init?: RequestInit) =>
+      fetchUrl(input).endsWith("/api/status")
+        ? await (overrides.runtimeStatus?.(input, init) ?? runtimeStatusResponse())
+        : await (overrides.runtimeHealth?.(input, init) ?? runtimeHealthResponse()),
+    );
+    globalThis.fetch = runtimeFetch as unknown as typeof fetch;
     return {
       provider: provider as unknown as SandboxProvider,
       create,
       checkHealth,
       stop,
       stopOnSpecificNode,
+      runtimeFetch,
     };
   }
 
   afterEach(() => {
     upgradeTransactionImpl = null;
   });
+
+  async function runAdminCanaryRollback(options: {
+    onCutoverInTx: () => Promise<void>;
+    failPostCutoverCleanup?: boolean;
+    runtimeStatus?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
+    runtimeHealth?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
+    environmentVars?: Record<string, string>;
+  }) {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${CURRENT_DIGEST}`;
+    const TARGET_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const agent: AgentSandbox = {
+      ...upgradedAgentRow(),
+      docker_image: SOURCE_IMAGE,
+      previous_docker_image: TARGET_IMAGE,
+      ...(options.environmentVars ? { environment_vars: options.environmentVars } : {}),
+    };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
+    const backup = {
+      id: "backup-admin-canary-adversarial",
+      sandbox_record_id: AGENT,
+      snapshot_type: "pre-upgrade",
+    } as unknown as AgentSandboxBackup;
+    const byTypeSpy = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      backup,
+    );
+    const reconstructSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({ memories: [], config: {}, workspaceFiles: {} });
+    const lifecycleEvents: string[] = [];
+    const { provider, stop, stopOnSpecificNode, runtimeFetch } = await makeDockerProvider({
+      create: async () =>
+        blueHandle(PREV_DIGEST, options.failPostCutoverCleanup ? "vpn-old-rollback" : undefined),
+      checkHealth: async () => true,
+      runtimeStatus: async (input, init) => {
+        lifecycleEvents.push("status");
+        return options.runtimeStatus
+          ? await options.runtimeStatus(input, init)
+          : runtimeStatusResponse();
+      },
+      runtimeHealth: async (input, init) => {
+        lifecycleEvents.push("health");
+        return options.runtimeHealth
+          ? await options.runtimeHealth(input, init)
+          : runtimeHealthResponse();
+      },
+    });
+    if (options.failPostCutoverCleanup) {
+      stopOnSpecificNode.mockImplementation(async () => {
+        throw new Error("rollback old-container teardown unavailable");
+      });
+    }
+    const svc = new ElizaSandboxService(provider);
+    const pushSpy = spyOn(
+      svc as unknown as { pushState: (...a: unknown[]) => Promise<void> },
+      "pushState",
+    ).mockImplementation(async () => {
+      lifecycleEvents.push("restore");
+    });
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    let transactionCalled = false;
+    upgradeTransactionImpl = async (fn) => {
+      transactionCalled = true;
+      lifecycleEvents.push("swap");
+      const tx: UpgradeTx = {
+        execute: async () => ({ rows: [{ id: AGENT }] }),
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryRollback({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: CURRENT_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: PREV_DIGEST,
+        onCutoverInTx: options.onCutoverInTx,
+        onConvergedInTx: async () => {},
+      });
+      return {
+        result,
+        stop,
+        stopOnSpecificNode,
+        runtimeFetch,
+        lifecycleEvents,
+        transactionCalled,
+        pushCalls: pushSpy.mock.calls.length,
+      };
+    } finally {
+      primarySpy.mockRestore();
+      nodeSpy.mockRestore();
+      byTypeSpy.mockRestore();
+      reconstructSpy.mockRestore();
+      pushSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  }
 
   test("no previous_image_digest → refuses, never touches the live agent", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -5092,6 +7199,377 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       findSpy.mockRestore();
     }
   });
+
+  const rollbackRuntimeHealthFailures: Array<{
+    name: string;
+    response: () => Response;
+    expectedError: string;
+  }> = [
+    {
+      name: "rejects a 503",
+      response: () => runtimeHealthResponse({ error: "Unavailable" }, 503),
+      expectedError: "/api/health returned HTTP 503",
+    },
+    {
+      name: "rejects malformed JSON",
+      response: () =>
+        new Response("{", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      expectedError: "/api/health returned malformed JSON",
+    },
+    {
+      name: "rejects a runtime that cannot respond",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          canRespond: false,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 18, failed: 0 },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "canRespond=false",
+    },
+    {
+      name: "rejects a missing plugins structure",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "plugins=missing",
+    },
+    {
+      name: "rejects a missing startup structure",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 18, failed: 0 },
+        }),
+      expectedError: "startup=missing",
+    },
+    {
+      name: "rejects malformed plugin counters",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: "18", failed: "0" },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "plugins.loaded=18",
+    },
+    {
+      name: "rejects a runtime with no loaded plugins",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 0, failed: 0 },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "plugins.loaded=0",
+    },
+    {
+      name: "rejects plugin load failures",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 17, failed: 1 },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "plugins.failed=1",
+    },
+    {
+      name: "rejects database failures",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "terminal_error",
+          plugins: { loaded: 18, failed: 0 },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "database=terminal_error",
+    },
+    {
+      name: "rejects startup failures",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 18, failed: 0 },
+          startup: { phase: "error", attempt: 1, lastError: "migration failed" },
+        }),
+      expectedError: "startup.phase=error",
+    },
+  ];
+
+  const rollbackRuntimeStatusFailures: Array<{
+    name: string;
+    response: () => Response;
+    expectedError: string;
+  }> = [
+    {
+      name: "rejects malformed JSON",
+      response: () =>
+        new Response("{", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      expectedError: "/api/status returned malformed JSON",
+    },
+    {
+      name: "rejects a non-running runtime",
+      response: () =>
+        runtimeStatusResponse({
+          state: "starting",
+          canRespond: true,
+          startup: { phase: "starting", attempt: 1 },
+        }),
+      expectedError: "state=starting",
+    },
+    {
+      name: "rejects a runtime that cannot respond",
+      response: () =>
+        runtimeStatusResponse({
+          state: "running",
+          canRespond: false,
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "canRespond=false",
+    },
+    {
+      name: "rejects missing startup state",
+      response: () => runtimeStatusResponse({ state: "running" }),
+      expectedError: "startup=missing",
+    },
+  ];
+
+  for (const scenario of rollbackRuntimeStatusFailures) {
+    test(`pre-restore protected status gate ${scenario.name} before public health`, async () => {
+      const audit = mock(() => Promise.resolve());
+      const {
+        result,
+        stop,
+        stopOnSpecificNode,
+        runtimeFetch,
+        lifecycleEvents,
+        transactionCalled,
+        pushCalls,
+      } = await runAdminCanaryRollback({
+        onCutoverInTx: audit,
+        runtimeStatus: async () => scenario.response(),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Blue runtime readiness gate failed before state restore");
+      expect(result.error).toContain(scenario.expectedError);
+      expect(pushCalls).toBe(0);
+      expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+        "https://rb-bridge.example/api/status",
+      ]);
+      expect(lifecycleEvents).toEqual(["status"]);
+      expect(transactionCalled).toBe(false);
+      expect(audit).not.toHaveBeenCalled();
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stop).not.toHaveBeenCalled();
+    });
+  }
+
+  test("pre-restore protected status gate rejects 401 before public health or state mutation", async () => {
+    const audit = mock(() => Promise.resolve());
+    const {
+      result,
+      stop,
+      stopOnSpecificNode,
+      runtimeFetch,
+      lifecycleEvents,
+      transactionCalled,
+      pushCalls,
+    } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+      runtimeStatus: async () => runtimeStatusResponse({ error: "Unauthorized" }, 401),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Blue runtime readiness gate failed before state restore");
+    expect(result.error).toContain("/api/status returned HTTP 401");
+    expect(result.oldNodeId).toBe("node-cur");
+    expect(result.oldContainerName).toBe("agent-cur-1");
+    expect(pushCalls).toBe(0);
+    expect(runtimeFetch).toHaveBeenCalledTimes(1);
+    expect(fetchUrl(runtimeFetch.mock.calls[0]![0])).toBe("https://rb-bridge.example/api/status");
+    expect(new Headers(runtimeFetch.mock.calls[0]![1]?.headers).get("authorization")).toBe(
+      "Bearer agent-token",
+    );
+    expect(lifecycleEvents).toEqual(["status"]);
+    expect(transactionCalled).toBe(false);
+    expect(audit).not.toHaveBeenCalled();
+    expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-rb",
+      "agent-rb-1",
+      null,
+      expect.objectContaining({
+        replacementAttemptId: expect.any(String),
+        containerId: "container-sandbox-rb-1",
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  test("pre-restore runtime gate refuses an unauthenticated request when the API token is absent", async () => {
+    const audit = mock(() => Promise.resolve());
+    const {
+      result,
+      stop,
+      stopOnSpecificNode,
+      runtimeFetch,
+      lifecycleEvents,
+      transactionCalled,
+      pushCalls,
+    } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+      environmentVars: {},
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("agent API token is unavailable");
+    expect(pushCalls).toBe(0);
+    expect(runtimeFetch).not.toHaveBeenCalled();
+    expect(lifecycleEvents).toEqual([]);
+    expect(transactionCalled).toBe(false);
+    expect(audit).not.toHaveBeenCalled();
+    expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-rb",
+      "agent-rb-1",
+      null,
+      expect.objectContaining({
+        replacementAttemptId: expect.any(String),
+        containerId: "container-sandbox-rb-1",
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  test("post-restore protected status gate rejects a lost authorization before public health or swap", async () => {
+    const audit = mock(() => Promise.resolve());
+    let statusAttempt = 0;
+    const {
+      result,
+      stop,
+      stopOnSpecificNode,
+      runtimeFetch,
+      lifecycleEvents,
+      transactionCalled,
+      pushCalls,
+    } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+      runtimeStatus: async () => {
+        statusAttempt += 1;
+        return statusAttempt === 1
+          ? runtimeStatusResponse()
+          : runtimeStatusResponse({ error: "Unauthorized" }, 401);
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Blue runtime readiness gate failed after state restore");
+    expect(result.error).toContain("/api/status returned HTTP 401");
+    expect(result.oldNodeId).toBe("node-cur");
+    expect(result.oldContainerName).toBe("agent-cur-1");
+    expect(pushCalls).toBe(1);
+    expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+      "https://rb-bridge.example/api/status",
+      "https://rb-bridge.example/api/health",
+      "https://rb-bridge.example/api/status",
+    ]);
+    for (const call of runtimeFetch.mock.calls) {
+      expect(new Headers(call[1]?.headers).get("authorization")).toBe("Bearer agent-token");
+    }
+    expect(lifecycleEvents).toEqual(["status", "health", "restore", "status"]);
+    expect(transactionCalled).toBe(false);
+    expect(audit).not.toHaveBeenCalled();
+    expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-rb",
+      "agent-rb-1",
+      null,
+      expect.objectContaining({
+        replacementAttemptId: expect.any(String),
+        containerId: "container-sandbox-rb-1",
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  for (const scenario of rollbackRuntimeHealthFailures) {
+    test(`post-restore runtime gate ${scenario.name}, preserves current primary, and retires blue`, async () => {
+      const audit = mock(() => Promise.resolve());
+      let healthAttempt = 0;
+      const {
+        result,
+        stop,
+        stopOnSpecificNode,
+        runtimeFetch,
+        lifecycleEvents,
+        transactionCalled,
+        pushCalls,
+      } = await runAdminCanaryRollback({
+        onCutoverInTx: audit,
+        runtimeHealth: async () => {
+          healthAttempt += 1;
+          return healthAttempt === 1 ? runtimeHealthResponse() : scenario.response();
+        },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Blue runtime readiness gate failed after state restore");
+      expect(result.error).toContain(scenario.expectedError);
+      expect(result.oldNodeId).toBe("node-cur");
+      expect(result.oldContainerName).toBe("agent-cur-1");
+      expect(pushCalls).toBe(1);
+      expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+        "https://rb-bridge.example/api/status",
+        "https://rb-bridge.example/api/health",
+        "https://rb-bridge.example/api/status",
+        "https://rb-bridge.example/api/health",
+      ]);
+      for (const call of runtimeFetch.mock.calls) {
+        const healthHeaders = new Headers((call[1] as RequestInit | undefined)?.headers);
+        expect(healthHeaders.get("authorization")).toBe("Bearer agent-token");
+        expect(healthHeaders.get("x-api-key")).toBe("agent-token");
+        expect(healthHeaders.get("x-eliza-token")).toBe("agent-token");
+      }
+      expect(lifecycleEvents).toEqual(["status", "health", "restore", "status", "health"]);
+      expect(transactionCalled).toBe(false);
+      expect(audit).not.toHaveBeenCalled();
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-rb",
+        "agent-rb-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-rb-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
+    });
+  }
 
   test("happy path with empty persisted image ref → restores pre-upgrade snapshot then swaps back onto PREV_DIGEST", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -5178,6 +7656,157 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       readSpy.mockRestore();
     }
   });
+
+  test("admin canary rollback restores and atomically returns to the exact canonical pair", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${CURRENT_DIGEST}`;
+    const TARGET_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const agent: AgentSandbox = {
+      ...upgradedAgentRow(),
+      docker_image: SOURCE_IMAGE,
+      previous_docker_image: TARGET_IMAGE,
+    };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const replicaSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
+    const backup = {
+      id: "backup-admin-canary",
+      sandbox_record_id: AGENT,
+      snapshot_type: "pre-upgrade",
+    } as unknown as AgentSandboxBackup;
+    const byTypeSpy = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      backup,
+    );
+    const reconstructSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({ memories: [], config: {}, workspaceFiles: {} });
+    const { provider, create } = await makeDockerProvider({
+      create: async () => blueHandle(PREV_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const pushSpy = spyOn(
+      svc as unknown as { pushState: (...a: unknown[]) => Promise<void> },
+      "pushState",
+    ).mockResolvedValue(undefined);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    let executedSql: unknown;
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async (query: unknown) => {
+          executedSql = query;
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryRollback({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: CURRENT_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: PREV_DIGEST,
+        onCutoverInTx: async () => {},
+        onConvergedInTx: async () => {},
+      });
+      expect(result.success).toBe(true);
+      expect(primarySpy).toHaveBeenCalledTimes(1);
+      expect(replicaSpy).not.toHaveBeenCalled();
+      expect(create.mock.calls[0]?.[0]).toMatchObject({
+        dockerImage: `ghcr.io/elizaos/eliza@${PREV_DIGEST}`,
+      });
+      const params = sqlBoundParams(executedSql);
+      expect(params).toContain(TARGET_IMAGE);
+      expect(params).toContain(PREV_DIGEST);
+      expect(params).toContain(SOURCE_IMAGE);
+      expect(params).toContain(CURRENT_DIGEST);
+    } finally {
+      primarySpy.mockRestore();
+      replicaSpy.mockRestore();
+      nodeSpy.mockRestore();
+      byTypeSpy.mockRestore();
+      reconstructSpy.mockRestore();
+      pushSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  });
+
+  test("admin canary rollback audit failure preserves demo and tears down blue", async () => {
+    const audit = mock(async () => {
+      throw new Error("durable rollback audit write failed");
+    });
+    const { result, stop, stopOnSpecificNode } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("durable rollback audit write failed");
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-rb",
+      "agent-rb-1",
+      null,
+      expect.objectContaining({
+        replacementAttemptId: expect.any(String),
+        containerId: "container-sandbox-rb-1",
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  test("admin canary rollback remains successful when post-cutover cleanup fails", async () => {
+    const audit = mock(() => Promise.resolve());
+    const {
+      result,
+      stop,
+      stopOnSpecificNode,
+      runtimeFetch,
+      lifecycleEvents,
+      transactionCalled,
+      pushCalls,
+    } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+      failPostCutoverCleanup: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.cleanupPending).toBe(true);
+    expect(pushCalls).toBe(1);
+    expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+      "https://rb-bridge.example/api/status",
+      "https://rb-bridge.example/api/health",
+      "https://rb-bridge.example/api/status",
+      "https://rb-bridge.example/api/health",
+    ]);
+    expect(lifecycleEvents).toEqual(["status", "health", "restore", "status", "health", "swap"]);
+    expect(transactionCalled).toBe(true);
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-cur",
+      "agent-cur-1",
+      "vpn-old-rollback",
+      expect.objectContaining({
+        replacementAttemptId: null,
+        previousVpnNodeId: null,
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
 });
 
 // Compile a drizzle SQL object to its bound parameter list so a test can assert
@@ -5190,123 +7819,281 @@ function sqlBoundParams(query: unknown): unknown[] {
 }
 
 describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () => {
-  test("updateAgentProfile merges a partial config edit into the existing config and applies the name", async () => {
+  type MutableProfileService = {
+    updateAgentProfile(
+      agentId: string,
+      orgId: string,
+      input: { agentName?: string; agentConfig?: Record<string, unknown> },
+    ): Promise<AgentSandbox | undefined>;
+    updateAgentEnvironment(
+      agentId: string,
+      orgId: string,
+      environmentVars: Record<string, string>,
+    ): Promise<AgentSandbox | undefined>;
+    prepareManagedLaunchEnvironment(params: {
+      agentId: string;
+      organizationId: string;
+      userId: string;
+    }): Promise<
+      | {
+          sandbox: AgentSandbox;
+          environment: { agentApiKey: string };
+        }
+      | undefined
+    >;
+    lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+    getAgentForLifecycleMutation(
+      tx: unknown,
+      agentId: string,
+      orgId: string,
+    ): Promise<AgentSandbox | undefined>;
+  };
+
+  function installLifecycleUpdateTransaction(
+    existing: AgentSandbox | undefined,
+    options: { persist?: boolean } = {},
+  ) {
+    let whereClause: SQL | undefined;
+    const updateSet = mock((values: Record<string, unknown>) => ({
+      where: mock((clause: SQL) => {
+        whereClause = clause;
+        return {
+          returning: mock(async () =>
+            existing && options.persist !== false
+              ? [{ ...existing, ...values } as AgentSandbox]
+              : [],
+          ),
+        };
+      }),
+    }));
+    const update = mock(() => ({ set: updateSet }));
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({ rows: [] }),
+        update,
+      } as unknown as UpgradeTx);
+    return {
+      update,
+      updateSet,
+      getWhereClause: () => whereClause,
+    };
+  }
+
+  async function makeMutableService(existing: AgentSandbox | undefined) {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService() as unknown as MutableProfileService;
+    const lock = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const read = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(existing);
+    return { svc, lock, read };
+  }
+
+  test("updateAgentProfile merges a partial config edit into the existing config and applies the name", async () => {
     const existing = {
       ...customSandbox(),
       agent_config: { system: "old system", temperature: 0.7 },
     };
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
-      existing,
-    );
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
-      async (_id, updates) => ({ ...existing, ...updates }) as AgentSandbox,
-    );
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
     try {
-      const result = await new ElizaSandboxService().updateAgentProfile(
-        existing.id,
-        existing.organization_id,
-        { agentName: "Renamed", agentConfig: { system: "new system" } },
-      );
+      const result = await svc.updateAgentProfile(existing.id, existing.organization_id, {
+        agentName: "Renamed",
+        agentConfig: { system: "new system" },
+      });
       // A partial config edit must never drop sibling keys (the merge is the
       // whole reason this method exists — a raw update would clobber them).
-      expect(updateSpy).toHaveBeenCalledWith(existing.id, {
+      expect(tx.updateSet).toHaveBeenCalledWith({
         agent_name: "Renamed",
         agent_config: { system: "new system", temperature: 0.7 },
+        updated_at: expect.any(Date),
       });
       expect(result?.agent_name).toBe("Renamed");
+      const whereClause = tx.getWhereClause();
+      if (!whereClause) throw new Error("profile update did not build a delete fence");
+      const query = new PgDialect().sqlToQuery(whereClause);
+      expect(query.sql.toLowerCase()).toContain("deletion_attempt_id");
+      expect(query.sql.toLowerCase()).toContain("is null");
     } finally {
-      findSpy.mockRestore();
-      updateSpy.mockRestore();
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
     }
   });
 
   test("updateAgentProfile returns undefined for an unknown/foreign agent and writes nothing", async () => {
-    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
-      undefined,
-    );
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(undefined);
+    const tx = installLifecycleUpdateTransaction(undefined);
+    const { svc, lock, read } = await makeMutableService(undefined);
     try {
-      const result = await new ElizaSandboxService().updateAgentProfile(
+      const result = await svc.updateAgentProfile(
         "dddddddd-9999-4999-8999-999999999999",
         "22222222-2222-4222-8222-222222222222",
         { agentName: "Nope" },
       );
       expect(result).toBeUndefined();
-      expect(updateSpy).not.toHaveBeenCalled();
+      expect(tx.update).not.toHaveBeenCalled();
     } finally {
-      findSpy.mockRestore();
-      updateSpy.mockRestore();
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
     }
   });
 
   test("updateAgentProfile with no edits returns the row untouched without writing", async () => {
-    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const existing = customSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
-      existing,
-    );
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(existing);
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
     try {
-      const result = await new ElizaSandboxService().updateAgentProfile(
-        existing.id,
-        existing.organization_id,
-        {},
-      );
+      const result = await svc.updateAgentProfile(existing.id, existing.organization_id, {});
       expect(result).toBe(existing);
-      expect(updateSpy).not.toHaveBeenCalled();
+      expect(tx.update).not.toHaveBeenCalled();
     } finally {
-      findSpy.mockRestore();
-      updateSpy.mockRestore();
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
     }
   });
 
-  test("updateAgentEnvironment writes through the at-rest encryption boundary (org-scoped read, repo update)", async () => {
-    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+  test("updateAgentEnvironment writes through the at-rest encryption boundary under the lifecycle lock", async () => {
     const existing = customSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(existing);
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
-      async (_id, updates) => ({ ...existing, ...updates }) as AgentSandbox,
-    );
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
     try {
-      const result = await new ElizaSandboxService().updateAgentEnvironment(
-        existing.id,
-        existing.organization_id,
-        { MY_FLAG: "on" },
-      );
+      const result = await svc.updateAgentEnvironment(existing.id, existing.organization_id, {
+        MY_FLAG: "on",
+      });
       // Without SECRETS_MASTER_KEY the encryptor passes values through
       // (legacy plaintext behavior) — the write must still round through it
       // so configured environments encrypt BYO secrets at rest (#11332).
-      expect(updateSpy).toHaveBeenCalledWith(existing.id, {
+      expect(tx.updateSet.mock.calls[0]?.[0]).toMatchObject({
         environment_vars: { MY_FLAG: "on" },
+        updated_at: expect.any(Date),
       });
       expect(result).toBeDefined();
       if (!result) {
         throw new Error("Expected the updated sandbox environment row");
       }
       expect((result.environment_vars as Record<string, string>).MY_FLAG).toBe("on");
+      const whereClause = tx.getWhereClause();
+      if (!whereClause) throw new Error("environment update did not build a delete fence");
+      const sql = new PgDialect().sqlToQuery(whereClause).sql.toLowerCase();
+      expect(sql).toContain("deletion_attempt_id");
+      expect(sql).toContain("is null");
     } finally {
-      findSpy.mockRestore();
-      updateSpy.mockRestore();
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
     }
   });
 
   test("updateAgentEnvironment returns undefined for an unknown agent and writes nothing", async () => {
-    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(undefined);
-    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(undefined);
+    const tx = installLifecycleUpdateTransaction(undefined);
+    const { svc, lock, read } = await makeMutableService(undefined);
     try {
-      const result = await new ElizaSandboxService().updateAgentEnvironment(
+      const result = await svc.updateAgentEnvironment(
         "dddddddd-9999-4999-8999-999999999999",
         "22222222-2222-4222-8222-222222222222",
         { MY_FLAG: "on" },
       );
       expect(result).toBeUndefined();
-      expect(updateSpy).not.toHaveBeenCalled();
+      expect(tx.update).not.toHaveBeenCalled();
     } finally {
-      findSpy.mockRestore();
-      updateSpy.mockRestore();
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+    }
+  });
+
+  test("profile and environment writes reject a durable deletion owner before touching the row", async () => {
+    const deleting = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
+    };
+    const tx = installLifecycleUpdateTransaction(deleting);
+    const { svc, lock, read } = await makeMutableService(deleting);
+    try {
+      await expect(
+        svc.updateAgentProfile(deleting.id, deleting.organization_id, {
+          agentName: "must-not-write",
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      await expect(
+        svc.updateAgentEnvironment(deleting.id, deleting.organization_id, {
+          MUST_NOT_WRITE: "true",
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(tx.update).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+    }
+  });
+
+  test("managed launch revokes a newly minted credential when its environment CAS loses", async () => {
+    const existing = customSandbox();
+    const tx = installLifecycleUpdateTransaction(existing, { persist: false });
+    const { svc, lock, read } = await makeMutableService(existing);
+    const mint = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      apiKey: { id: "replacement-key" },
+      plainKey: "eliza_replacement_key",
+    } as never);
+    const revoke = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined);
+    try {
+      await expect(
+        svc.prepareManagedLaunchEnvironment({
+          agentId: existing.id,
+          organizationId: existing.organization_id,
+          userId: existing.user_id,
+        }),
+      ).resolves.toBeUndefined();
+      expect(mint).toHaveBeenCalledTimes(1);
+      expect(revoke).toHaveBeenCalledWith(existing.id);
+      expect(tx.update).toHaveBeenCalledTimes(1);
+      const whereClause = tx.getWhereClause();
+      if (!whereClause) throw new Error("managed launch did not build its ownership CAS");
+      const sql = new PgDialect().sqlToQuery(whereClause).sql.toLowerCase();
+      expect(sql).toContain("deletion_attempt_id");
+      expect(sql).toContain("environment_revision");
+      expect(sql).toContain("updated_at");
+      expect(sql).toContain("claimed_at");
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+      mint.mockRestore();
+      revoke.mockRestore();
+    }
+  });
+
+  test("managed launch never mints when deletion already owns the lifecycle", async () => {
+    const deleting = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
+    };
+    const tx = installLifecycleUpdateTransaction(deleting);
+    const { svc, lock, read } = await makeMutableService(deleting);
+    const mint = spyOn(apiKeysService, "createForAgent");
+    const revoke = spyOn(apiKeysService, "revokeForAgent");
+    try {
+      await expect(
+        svc.prepareManagedLaunchEnvironment({
+          agentId: deleting.id,
+          organizationId: deleting.organization_id,
+          userId: deleting.user_id,
+        }),
+      ).resolves.toBeUndefined();
+      expect(mint).not.toHaveBeenCalled();
+      expect(revoke).not.toHaveBeenCalled();
+      expect(tx.update).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+      mint.mockRestore();
+      revoke.mockRestore();
     }
   });
 });

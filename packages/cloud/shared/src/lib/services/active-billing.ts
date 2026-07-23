@@ -5,6 +5,7 @@ import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import type { AppEnv } from "../../types/cloud-worker-env";
+import { ApiError } from "../api/cloud-worker-errors";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { calculateDailyContainerCost } from "../constants/pricing";
 import { logger } from "../utils/logger";
@@ -415,7 +416,6 @@ class ActiveBillingService {
         const [updated] = await dbWrite
           .update(agentSandboxes)
           .set({
-            status: agent.status,
             billing_status: "suspended",
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,
@@ -425,9 +425,59 @@ class ActiveBillingService {
             and(
               eq(agentSandboxes.id, resourceId),
               eq(agentSandboxes.organization_id, organizationId),
+              sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             ),
           )
           .returning();
+        const effective =
+          updated ??
+          (
+            await dbRead
+              .select()
+              .from(agentSandboxes)
+              .where(
+                and(
+                  eq(agentSandboxes.id, resourceId),
+                  eq(agentSandboxes.organization_id, organizationId),
+                ),
+              )
+              .limit(1)
+          )[0];
+        if (!effective) {
+          return {
+            stoppedBilling: true,
+            message: "Managed agent was deleted while billing cancellation was in progress.",
+            infrastructureAction,
+            resource: {
+              resourceType: "agent_sandbox",
+              resourceId: agent.id,
+              name: agent.agent_name ?? agent.id.slice(0, 8),
+              status: "deleted",
+              billingStatus: "suspended",
+              unitPrice,
+              billingInterval: "hour",
+              lastBilledAt: iso(agent.last_billed_at),
+              nextBillingAt: null,
+              estimatedNextBillingAt: null,
+              totalBilled,
+              cancelEndpoint: cancelEndpoint("agent_sandbox", agent.id),
+              cancelAction: "suspend_billing",
+              metadata: {
+                characterId: agent.character_id,
+                cancelledAt: now.toISOString(),
+                mode,
+                infrastructureAction,
+              },
+            },
+          };
+        }
+        if (!updated) {
+          throw new ApiError(409, "session_not_ready", "Managed agent deletion is in progress", {
+            agentId: effective.id,
+            status: effective.status,
+            billingStatus: effective.billing_status,
+          });
+        }
 
         return {
           stoppedBilling: true,
@@ -438,20 +488,20 @@ class ActiveBillingService {
           infrastructureAction,
           resource: {
             resourceType: "agent_sandbox",
-            resourceId: updated.id,
-            name: updated.agent_name ?? updated.id.slice(0, 8),
-            status: updated.status,
-            billingStatus: updated.billing_status,
+            resourceId: effective.id,
+            name: effective.agent_name ?? effective.id.slice(0, 8),
+            status: effective.status,
+            billingStatus: effective.billing_status,
             unitPrice,
             billingInterval: "hour",
-            lastBilledAt: iso(updated.last_billed_at),
+            lastBilledAt: iso(effective.last_billed_at),
             nextBillingAt: null,
             estimatedNextBillingAt: null,
             totalBilled,
-            cancelEndpoint: cancelEndpoint("agent_sandbox", updated.id),
+            cancelEndpoint: cancelEndpoint("agent_sandbox", effective.id),
             cancelAction: "suspend_billing",
             metadata: {
-              characterId: updated.character_id,
+              characterId: effective.character_id,
               cancelledAt: now.toISOString(),
               mode,
               infrastructureAction,
