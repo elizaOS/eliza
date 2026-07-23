@@ -573,7 +573,8 @@ async function main() {
     `\n[walkthrough] spec exit=${result.code} (${specOk ? "PASS" : "FAIL"})`,
   );
 
-  // 2) Vision review (best-effort; gated separately).
+  // 2) Vision review. A non-zero reviewer exit fails the whole walkthrough
+  // (reviewOk gates the final exit code) unless --skip-review was passed.
   const verdictMd = join(
     REPO_ROOT,
     "packages/app/test/ui-smoke/walkthrough/WALKTHROUGH_VERDICTS.md",

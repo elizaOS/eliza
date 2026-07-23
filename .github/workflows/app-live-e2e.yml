@@ -145,9 +145,6 @@ jobs:
         with:
           submodules: false
 
-      - name: Preflight visual reviewer credentials and credits
-        run: node scripts/ai-qa/reviewer-preflight.mjs
-
       - name: Free disk space for browser smoke
         run: |
           set -euxo pipefail
@@ -158,6 +155,12 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
+
+      # Fail fast on missing/invalid/unfunded reviewer credentials before the
+      # expensive dependency install + browser/model walkthrough. Runs after
+      # setup-node so it uses the pinned toolchain, not the runner's system node.
+      - name: Preflight visual reviewer credentials and credits
+        run: node scripts/ai-qa/reviewer-preflight.mjs
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace

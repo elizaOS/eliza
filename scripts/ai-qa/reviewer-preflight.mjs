@@ -71,6 +71,9 @@ export async function preflightReviewer({
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
+    // error-policy:J1 transport boundary — translate fetch-layer failures
+    // (timeout/abort, DNS, connection refusal) into a typed preflight failure
+    // so the walkthrough halts before browser/model work instead of crashing.
     return {
       ok: false,
       classification:
