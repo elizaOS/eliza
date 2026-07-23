@@ -1,5 +1,6 @@
 /**
- * Views management tests for create, edit, delete, and follow-up routing flows.
+ * Views management tests for create, edit, delete, follow-up routing, and the
+ * authenticated loopback transport used by direct shell operations.
  */
 
 import {
@@ -233,7 +234,66 @@ describe("view management actions", () => {
 	});
 
 	afterEach(() => {
+		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
+	});
+
+	it("authenticates direct manager and broadcast loopback requests", async () => {
+		vi.stubEnv("ELIZA_API_TOKEN", "views-management-loopback-token");
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+		const { runtime } = createRuntime();
+		const action = createViewsAction({
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const managerResult = await action.handler(
+			runtime as never,
+			message("open view manager") as never,
+			undefined,
+			{ action: "manager" },
+			vi.fn(),
+		);
+		const broadcastResult = await action.handler(
+			runtime as never,
+			message("broadcast refresh") as never,
+			undefined,
+			{ action: "broadcast", eventType: "demo:refresh" },
+			vi.fn(),
+		);
+
+		expect(managerResult?.success).toBe(true);
+		expect(broadcastResult?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenNthCalledWith(
+			1,
+			"http://127.0.0.1:3456/api/views/__view-manager__/navigate",
+			expect.objectContaining({
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer views-management-loopback-token",
+				},
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenNthCalledWith(
+			2,
+			"http://127.0.0.1:3456/api/views/events/broadcast",
+			expect.objectContaining({
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer views-management-loopback-token",
+				},
+			}),
+		);
+		for (const [url, init] of vi.mocked(globalThis.fetch).mock.calls) {
+			expect(`${String(url)}\n${String(init?.body ?? "")}`).not.toContain(
+				"views-management-loopback-token",
+			);
+		}
 	});
 
 	it("routes active-view mutation follow-ups through VIEWS before direct reply", async () => {
