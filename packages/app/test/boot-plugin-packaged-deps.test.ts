@@ -50,9 +50,12 @@ function appPackageDependencies(): Record<string, string> {
 }
 
 function packageNameForBootModule(moduleId: string): string {
-  const scopedPackage = moduleId.match(/^(@[^/]+\/[^/]+)/);
-  if (scopedPackage) return scopedPackage[1] ?? moduleId;
-  return moduleId.replace(/\/register$/, "");
+  // Discovery keys are `${packageName}#${mode}` (see vite/app-side-effect-modules);
+  // main.tsx call sites may use bare names or `/register` subpaths.
+  const bare = moduleId.split("#")[0] ?? moduleId;
+  const scopedPackage = bare.match(/^(@[^/]+\/[^/]+)/);
+  if (scopedPackage) return scopedPackage[1] ?? bare;
+  return bare.replace(/\/register$/, "");
 }
 
 describe("app boot-plugin packaged dependencies", () => {
