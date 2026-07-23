@@ -519,13 +519,16 @@ class _MTBenchFactory(RunnerFactory):
         if args.mock:
             judge_endpoint = candidate_endpoint
         else:
-            try:
-                judge_endpoint = resolve_endpoint(
-                    model_endpoint=judge_endpoint_input,
-                    provider=judge_provider,
-                )
-            except ValueError:
-                judge_endpoint = candidate_endpoint
+            # Same resolution chain as the candidate (explicit endpoint >
+            # BENCHMARK/OPENAI/CEREBRAS base-URL env > provider default), so
+            # proxy-routed campaigns never leak judge traffic to a provider's
+            # public API. A judge misconfiguration (e.g. unknown
+            # --judge-provider with no endpoint/env) raises instead of
+            # silently reusing the candidate endpoint.
+            judge_endpoint = resolve_endpoint(
+                model_endpoint=judge_endpoint_input,
+                provider=judge_provider,
+            )
         judge_api_key = resolve_api_key(args.judge_api_key_env)
 
         judge: OpenAICompatibleClient

@@ -1140,7 +1140,9 @@ def test_gateway_summary_rejects_per_tool_hash_map_drift(tmp_path: Path) -> None
 
     summary = summarize_subscription_gateway_audit(audit, harness="hermes")
 
-    assert summary["audit_records"] == 1
+    # Durable audits only count contract-valid logical completions, so the
+    # drifted record is excluded from audit_records entirely.
+    assert summary["audit_records"] == 0
     assert summary["valid_records"] == 0
     assert summary["invalid_contract_records"] == 1
 
@@ -1213,7 +1215,9 @@ def test_gateway_summary_rejects_missing_or_invalid_reasoning_effort(
 
     summary = summarize_subscription_gateway_audit(audit, harness="hermes")
 
-    assert summary["audit_records"] == 1
+    # Durable audits only count contract-valid logical completions, so the
+    # drifted record is excluded from audit_records entirely.
+    assert summary["audit_records"] == 0
     assert summary["valid_records"] == 0
     assert summary["invalid_contract_records"] == 1
 

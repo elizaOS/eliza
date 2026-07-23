@@ -22,6 +22,7 @@ from .db import (
     repair_nonzero_returncode_statuses,
     tag_run_with_comparison,
 )
+from .hf_publish import PublishRefusedError, print_publish_report, publish_to_hf
 from .latest_comparability import print_comparability_report, validate_latest_comparability
 from .latest_publishability import print_publishability_report, validate_latest_publishability
 from .latest_readiness import print_readiness_report, validate_latest_readiness
@@ -481,6 +482,27 @@ def _cmd_validate_runtime_gates(args: argparse.Namespace) -> int:
     else:
         print_runtime_gate_report(report)
     return 0 if report.ok else 1
+
+
+def _cmd_publish_hf(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    try:
+        report = publish_to_hf(
+            workspace_root,
+            repo_id=str(args.repo_id),
+            dry_run=bool(args.dry_run),
+            private=bool(args.private),
+            skip_gates=bool(args.skip_gates),
+            check_runtime_gates=not bool(args.skip_runtime_gates),
+        )
+    except PublishRefusedError as error:
+        # error-policy:J1 CLI boundary translation — fail-closed refusals
+        # (gates, missing token, secret scrub, missing nested repo) become the
+        # operator message + nonzero exit instead of a traceback.
+        print(f"publish-hf REFUSED: {error}")
+        return 1
+    print_publish_report(report)
+    return 0 if report.would_publish else 1
 
 
 def _cmd_verify_artifacts(args: argparse.Namespace) -> int:
@@ -1410,6 +1432,52 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_latest_readiness.add_argument("--json", action="store_true", help="Print full JSON report")
     p_latest_readiness.set_defaults(func=_cmd_validate_latest_readiness)
+
+    p_publish_hf = sub.add_parser(
+        "publish-hf",
+        help=(
+            "Publish benchmark_results as a HuggingFace dataset (fail-closed: "
+            "readiness gates, secret scrub, private by default)"
+        ),
+    )
+    p_publish_hf.add_argument(
+        "--repo-id",
+        required=True,
+        help="Target dataset repo id, e.g. elizaos/eliza-benchmark-results",
+    )
+    p_publish_hf.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print gates + the would-publish file set; commit/upload nothing (no token needed)",
+    )
+    visibility = p_publish_hf.add_mutually_exclusive_group()
+    visibility.add_argument(
+        "--private",
+        dest="private",
+        action="store_true",
+        default=True,
+        help="Create/keep the dataset private (default)",
+    )
+    visibility.add_argument(
+        "--public",
+        dest="private",
+        action="store_false",
+        help="Create the dataset public",
+    )
+    p_publish_hf.add_argument(
+        "--skip-gates",
+        action="store_true",
+        help=(
+            "Bypass failing publication gates with a loud warning; the bypass "
+            "and every finding are recorded in meta/publish_manifest.json"
+        ),
+    )
+    p_publish_hf.add_argument(
+        "--skip-runtime-gates",
+        action="store_true",
+        help="Validate published latest artifacts without probing host runtime prerequisites",
+    )
+    p_publish_hf.set_defaults(func=_cmd_publish_hf)
 
     p_runtime_gates = sub.add_parser(
         "validate-runtime-gates",

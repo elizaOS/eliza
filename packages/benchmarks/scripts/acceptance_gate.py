@@ -34,6 +34,33 @@ DB_PATH = PACKAGE_ROOT / "benchmark_results" / "orchestrator.sqlite"
 
 CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 CEREBRAS_DEFAULT_MODEL = "gemma-4-31b"
+
+# Operator env precedence for the OpenAI-compatible endpoint. Campaign runs
+# route all traffic through the Eliza Cloud proxy by exporting these vars;
+# the hardcoded Cerebras default applies only when nothing is set. Never
+# overwrite a pre-set operator env var.
+BASE_URL_ENV_CHAIN = ("CEREBRAS_BASE_URL", "BENCHMARK_BASE_URL", "OPENAI_BASE_URL")
+API_KEY_ENV_CHAIN = ("CEREBRAS_API_KEY", "OPENAI_API_KEY")
+
+
+def _resolve_base_url() -> tuple[str, str]:
+    """Return ``(base_url, source)`` where ``source`` names the env var that
+    supplied the value, or ``"default"`` when none of the chain is set."""
+    for var in BASE_URL_ENV_CHAIN:
+        value = os.environ.get(var, "").strip()
+        if value:
+            return value, var
+    return CEREBRAS_DEFAULT_BASE_URL, "default"
+
+
+def _resolve_api_key() -> tuple[str, str | None]:
+    """Return ``(api_key, source)``; ``("", None)`` when no key is set."""
+    for var in API_KEY_ENV_CHAIN:
+        value = os.environ.get(var, "").strip()
+        if value:
+            return value, var
+    return "", None
+
 DEFAULT_BENCHMARK_FALLBACK = "bfcl"
 DEFAULT_BENCHMARK_PRIMARY = "hermes_tblite"
 DEFAULT_SCORE_FLOOR = 0.1
@@ -298,10 +325,13 @@ def _step_precheck(
     details: dict[str, Any] = {}
     failures: list[str] = []
 
-    api_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
-    details["cerebras_api_key_set"] = bool(api_key)
+    api_key, key_source = _resolve_api_key()
+    details["api_key_set"] = bool(api_key)
+    details["api_key_source"] = key_source
     if not api_key:
-        failures.append("CEREBRAS_API_KEY is not set or empty")
+        failures.append(
+            "no API key set: export one of " + " > ".join(API_KEY_ENV_CHAIN)
+        )
 
     if not skip_install_check:
         try:
@@ -347,8 +377,8 @@ def _step_precheck(
 
 def _step_cerebras_smoke() -> GateStepResult:
     start = _now_ms()
-    api_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
-    base_url = os.environ.get("CEREBRAS_BASE_URL", CEREBRAS_DEFAULT_BASE_URL)
+    api_key, key_source = _resolve_api_key()
+    base_url, base_url_source = _resolve_base_url()
     model = CEREBRAS_DEFAULT_MODEL
     prompt = "Reply with the single word: PONG"
 
@@ -365,6 +395,8 @@ def _step_cerebras_smoke() -> GateStepResult:
     details: dict[str, Any] = {
         "model": model,
         "base_url": base_url,
+        "base_url_source": base_url_source,
+        "api_key_source": key_source,
         "http_status": status,
         "request_ms": round(request_ms, 2),
     }

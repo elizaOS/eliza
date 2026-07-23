@@ -40,21 +40,86 @@ gate = _load_module()
 # ---------------------------------------------------------------------------
 
 
+def _clear_credential_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for var in (*gate.API_KEY_ENV_CHAIN, *gate.BASE_URL_ENV_CHAIN):
+        monkeypatch.delenv(var, raising=False)
+
+
 def test_precheck_fails_when_key_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    _clear_credential_env(monkeypatch)
     result = gate._step_precheck(skip_install_check=True)
     assert result.passed is False
     assert result.step_id == "PRECHECK"
     assert "CEREBRAS_API_KEY" in (result.error or "")
-    assert result.details["cerebras_api_key_set"] is False
+    assert "OPENAI_API_KEY" in (result.error or "")
+    assert result.details["api_key_set"] is False
+    assert result.details["api_key_source"] is None
 
 
 def test_precheck_passes_with_key_and_install_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_credential_env(monkeypatch)
     monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test-123")
     result = gate._step_precheck(skip_install_check=True)
     assert result.passed is True
     assert result.error is None
-    assert result.details["cerebras_api_key_set"] is True
+    assert result.details["api_key_set"] is True
+    assert result.details["api_key_source"] == "CEREBRAS_API_KEY"
+
+
+def test_precheck_accepts_openai_key_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_credential_env(monkeypatch)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-cloud-key")
+    result = gate._step_precheck(skip_install_check=True)
+    assert result.passed is True
+    assert result.details["api_key_source"] == "OPENAI_API_KEY"
+
+
+# ---------------------------------------------------------------------------
+# Env resolution chains
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_base_url_defaults_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_credential_env(monkeypatch)
+    assert gate._resolve_base_url() == (gate.CEREBRAS_DEFAULT_BASE_URL, "default")
+
+
+def test_resolve_base_url_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_credential_env(monkeypatch)
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://elizacloud.ai/api/v1")
+    assert gate._resolve_base_url() == (
+        "https://elizacloud.ai/api/v1",
+        "OPENAI_BASE_URL",
+    )
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://bench.example/v1")
+    assert gate._resolve_base_url() == (
+        "https://bench.example/v1",
+        "BENCHMARK_BASE_URL",
+    )
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://cerebras.example/v1")
+    assert gate._resolve_base_url() == (
+        "https://cerebras.example/v1",
+        "CEREBRAS_BASE_URL",
+    )
+
+
+def test_resolve_base_url_skips_blank_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_credential_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "   ")
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://elizacloud.ai/api/v1")
+    assert gate._resolve_base_url() == (
+        "https://elizacloud.ai/api/v1",
+        "BENCHMARK_BASE_URL",
+    )
+
+
+def test_resolve_api_key_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_credential_env(monkeypatch)
+    assert gate._resolve_api_key() == ("", None)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-cloud-key")
+    assert gate._resolve_api_key() == ("sk-cloud-key", "OPENAI_API_KEY")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "csk-native")
+    assert gate._resolve_api_key() == ("csk-native", "CEREBRAS_API_KEY")
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +142,27 @@ def test_cerebras_smoke_classifies_pong(monkeypatch: pytest.MonkeyPatch) -> None
     assert result.passed is True
     assert result.error is None
     assert result.details["response_text"] == "PONG"
+
+
+def test_cerebras_smoke_routes_through_operator_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pre-set operator env (cloud proxy base URL + OpenAI-style key) must be
+    honored by the smoke call instead of the hardcoded Cerebras default."""
+    _clear_credential_env(monkeypatch)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-cloud-key")
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://elizacloud.ai/api/v1")
+    seen: dict[str, Any] = {}
+
+    def _fake_chat(**kwargs: Any) -> tuple[int, dict[str, Any], str]:
+        seen.update(kwargs)
+        return 200, {"choices": [{"message": {"content": "PONG"}}]}, "{}"
+
+    monkeypatch.setattr(gate, "_cerebras_chat", _fake_chat)
+    result = gate._step_cerebras_smoke()
+    assert result.passed is True
+    assert seen["base_url"] == "https://elizacloud.ai/api/v1"
+    assert seen["api_key"] == "sk-cloud-key"
+    assert result.details["base_url_source"] == "BENCHMARK_BASE_URL"
+    assert result.details["api_key_source"] == "OPENAI_API_KEY"
 
 
 def test_cerebras_smoke_fails_on_missing_pong(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -244,7 +330,7 @@ def test_trajectory_normalization_succeeds_when_files_present(monkeypatch: pytes
 
 
 def test_cli_exits_one_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    _clear_credential_env(monkeypatch)
     rc = gate.cli(["--skip-install-check", "--benchmark", "no_such_bench"])
     assert rc == 1
 

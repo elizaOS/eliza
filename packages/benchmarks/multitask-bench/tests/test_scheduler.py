@@ -93,6 +93,54 @@ def test_hermes_lane_factory_uses_native_subscription_client(
     assert factory_kwargs["model_name"] == "claude-opus-4-6"
 
 
+def test_eliza_lane_factory_builds_without_usage_fix_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The eliza lane must build ungated: per-session usage attribution is the
+    AsyncLocalStorage buffer in packages/lifeops-bench/src/server.ts (#13777),
+    so the old MULTITASK_ELIZA_USAGE_FIX escape hatch no longer exists."""
+    captured: dict[str, object] = {}
+
+    class FakeElizaClient:
+        def __init__(self) -> None:
+            captured["client"] = self
+
+        def wait_until_ready(self, timeout: int) -> None:
+            captured["ready_timeout"] = timeout
+
+    def fake_builder(**kwargs: object) -> str:
+        captured["factory_kwargs"] = kwargs
+        return "native-eliza-agent"
+
+    package = types.ModuleType("eliza_adapter")
+    client_module = types.ModuleType("eliza_adapter.client")
+    factory_module = types.ModuleType("eliza_adapter.lifeops_bench")
+    client_module.ElizaClient = FakeElizaClient
+    factory_module.build_lifeops_bench_agent_fn = fake_builder
+    monkeypatch.setitem(sys.modules, "eliza_adapter", package)
+    monkeypatch.setitem(sys.modules, "eliza_adapter.client", client_module)
+    monkeypatch.setitem(sys.modules, "eliza_adapter.lifeops_bench", factory_module)
+    monkeypatch.setattr(
+        harness_module,
+        "ensure_benchmark_adapter_importable",
+        lambda _name: None,
+    )
+    # A pre-set bench URL keeps the factory from spawning a real server; the
+    # deleted env var proves the gate is gone rather than merely satisfied.
+    monkeypatch.setenv("ELIZA_BENCH_URL", "http://127.0.0.1:1")
+    monkeypatch.delenv("MULTITASK_ELIZA_USAGE_FIX", raising=False)
+
+    factory = harness_module.build_agent_factory("eliza", model="gemma-4-31b")
+    result = factory(object())
+
+    assert result == "native-eliza-agent"
+    assert captured["ready_timeout"] == 120
+    factory_kwargs = captured["factory_kwargs"]
+    assert isinstance(factory_kwargs, dict)
+    assert isinstance(factory_kwargs["client"], FakeElizaClient)
+    assert factory_kwargs["model_name"] == "gemma-4-31b"
+
+
 def test_perfect_lane_scores_one_with_no_interference(perfect_lanes) -> None:
     metrics = [compute_lane_metrics(lane) for lane in perfect_lanes]
     assert [m["n"] for m in metrics] == [1, 5, 10]
