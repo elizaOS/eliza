@@ -9,8 +9,16 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application>
+        <provider
+            android:name=".Lp3ColorPolicyInitializer"
+            android:authorities="${applicationId}.lp3-color-policy-initializer"
+            android:exported="false"
+            android:grantUriPermissions="false"
+            android:initOrder="100" />
+
         <service
             android:name=".Lp3ColorPolicyService"
             android:exported="false"

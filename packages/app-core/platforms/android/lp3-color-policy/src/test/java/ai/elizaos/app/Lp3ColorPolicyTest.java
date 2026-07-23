@@ -147,7 +147,215 @@ public class Lp3ColorPolicyTest {
     }
 
     @Test
-    public void optOutAndPermissionRevokeMakeTheNextReconcileIneligible() {
+    public void missingNotificationPermissionNeverRunsAnInvisibleGuard() {
+        FakeState state = eligibleState();
+        state.hasNotificationPermission = false;
+
+        assertEquals(
+            Lp3ColorPolicy.Outcome.MISSING_NOTIFICATION_PERMISSION,
+            Lp3ColorPolicy.reconcile(state)
+        );
+        assertEquals(0, state.secureReads);
+        assertEquals(List.of(), state.writes);
+    }
+
+    @Test
+    public void blockedAppNotificationsNeverReadOrWriteSecureSettings() {
+        FakeState state = eligibleState();
+        state.hasNotificationDisclosure = false;
+
+        assertEquals(
+            Lp3ColorPolicy.Outcome.MISSING_NOTIFICATION_DISCLOSURE,
+            Lp3ColorPolicy.reconcile(state)
+        );
+        assertEquals(0, state.secureReads);
+        assertEquals(List.of(), state.writes);
+    }
+
+    @Test
+    public void notificationDisclosureAllowsFirstChannelButRejectsAppAndChannelBlocks() {
+        assertTrue(
+            Lp3ColorPolicy.hasVisibleNotificationDisclosure(true, false, false)
+        );
+        assertTrue(
+            Lp3ColorPolicy.hasVisibleNotificationDisclosure(true, true, false)
+        );
+        assertFalse(
+            Lp3ColorPolicy.hasVisibleNotificationDisclosure(false, false, false)
+        );
+        assertFalse(
+            Lp3ColorPolicy.hasVisibleNotificationDisclosure(false, true, false)
+        );
+        assertFalse(
+            Lp3ColorPolicy.hasVisibleNotificationDisclosure(true, true, true)
+        );
+    }
+
+    @Test
+    public void notificationStateFilterRejectsSpoofAndIrrelevantChannelEvents() {
+        assertTrue(
+            Lp3ColorPolicy.acceptsNotificationStateChange(
+                Lp3ColorPolicy.ACTION_APP_NOTIFICATION_BLOCK_STATE_CHANGED,
+                null
+            )
+        );
+        assertTrue(
+            Lp3ColorPolicy.acceptsNotificationStateChange(
+                Lp3ColorPolicy.ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED,
+                Lp3ColorPolicy.NOTIFICATION_CHANNEL_ID
+            )
+        );
+        assertFalse(
+            Lp3ColorPolicy.acceptsNotificationStateChange(
+                Lp3ColorPolicy.ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED,
+                "unrelated"
+            )
+        );
+        assertFalse(
+            Lp3ColorPolicy.acceptsNotificationStateChange(
+                Lp3ColorPolicy.ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED,
+                null
+            )
+        );
+        assertFalse(
+            Lp3ColorPolicy.acceptsNotificationStateChange(
+                "example.app.action.APP_BLOCK_STATE_CHANGED",
+                Lp3ColorPolicy.NOTIFICATION_CHANNEL_ID
+            )
+        );
+        assertFalse(Lp3ColorPolicy.acceptsNotificationStateChange(null, null));
+    }
+
+    @Test
+    public void notificationRecoveryDoesNotRepromptWhenDisclosureIsBlocked() {
+        assertTrue(
+            Lp3ColorPolicy.canRecoverThroughNotificationState(
+                Lp3ColorPolicy.Decision.ELIGIBLE
+            )
+        );
+        assertTrue(
+            Lp3ColorPolicy.canRecoverThroughNotificationState(
+                Lp3ColorPolicy.Decision.MISSING_NOTIFICATION_PERMISSION
+            )
+        );
+        assertTrue(
+            Lp3ColorPolicy.canRecoverThroughNotificationState(
+                Lp3ColorPolicy.Decision.MISSING_NOTIFICATION_DISCLOSURE
+            )
+        );
+        assertFalse(
+            Lp3ColorPolicy.canRecoverThroughNotificationState(
+                Lp3ColorPolicy.Decision.OPTED_OUT
+            )
+        );
+        assertTrue(
+            Lp3ColorPolicy.shouldRequestPostNotifications(
+                Lp3ColorPolicy.Decision.MISSING_NOTIFICATION_PERMISSION,
+                false
+            )
+        );
+        assertFalse(
+            Lp3ColorPolicy.shouldRequestPostNotifications(
+                Lp3ColorPolicy.Decision.MISSING_NOTIFICATION_PERMISSION,
+                true
+            )
+        );
+        assertFalse(
+            Lp3ColorPolicy.shouldRequestPostNotifications(
+                Lp3ColorPolicy.Decision.MISSING_NOTIFICATION_DISCLOSURE,
+                false
+            )
+        );
+    }
+
+    @Test
+    public void notificationReceiverRegistrationIsIdempotentAndReversible() {
+        Lp3ColorPolicy.LifecycleRegistration registration =
+            new Lp3ColorPolicy.LifecycleRegistration();
+        int[] registered = {0};
+        int[] unregistered = {0};
+        Lp3ColorPolicy.RegistrationHooks hooks = new Lp3ColorPolicy.RegistrationHooks() {
+            @Override
+            public void register() {
+                registered[0] += 1;
+            }
+
+            @Override
+            public void unregister() {
+                unregistered[0] += 1;
+            }
+        };
+
+        registration.update(true, hooks);
+        registration.update(true, hooks);
+        assertTrue(registration.isRegistered());
+        assertEquals(1, registered[0]);
+        assertEquals(0, unregistered[0]);
+
+        registration.update(false, hooks);
+        registration.update(false, hooks);
+        assertFalse(registration.isRegistered());
+        assertEquals(1, registered[0]);
+        assertEquals(1, unregistered[0]);
+
+        registration.update(true, hooks);
+        assertTrue(registration.isRegistered());
+        assertEquals(2, registered[0]);
+    }
+
+    @Test
+    public void failedRegistrationTransitionsRetainTheTruthfulLifecycleState() {
+        Lp3ColorPolicy.LifecycleRegistration failedRegister =
+            new Lp3ColorPolicy.LifecycleRegistration();
+        Lp3ColorPolicy.RegistrationHooks registerFailure =
+            new Lp3ColorPolicy.RegistrationHooks() {
+                @Override
+                public void register() {
+                    throw new IllegalStateException("register failed");
+                }
+
+                @Override
+                public void unregister() {}
+            };
+        assertThrows(
+            IllegalStateException.class,
+            () -> failedRegister.update(true, registerFailure)
+        );
+        assertFalse(failedRegister.isRegistered());
+
+        Lp3ColorPolicy.LifecycleRegistration failedUnregister =
+            new Lp3ColorPolicy.LifecycleRegistration();
+        failedUnregister.update(
+            true,
+            new Lp3ColorPolicy.RegistrationHooks() {
+                @Override
+                public void register() {}
+
+                @Override
+                public void unregister() {}
+            }
+        );
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                failedUnregister.update(
+                    false,
+                    new Lp3ColorPolicy.RegistrationHooks() {
+                        @Override
+                        public void register() {}
+
+                        @Override
+                        public void unregister() {
+                            throw new IllegalStateException("unregister failed");
+                        }
+                    }
+                )
+        );
+        assertTrue(failedUnregister.isRegistered());
+    }
+
+    @Test
+    public void optOutAndPermissionRevokesMakeTheNextReconcileIneligible() {
         FakeState optedOut = eligibleState();
         assertEquals(
             Lp3ColorPolicy.Outcome.ALREADY_CORRECT,
@@ -168,6 +376,30 @@ public class Lp3ColorPolicyTest {
             Lp3ColorPolicy.reconcile(revoked)
         );
         assertEquals(2, revoked.secureReads);
+
+        FakeState notificationsRevoked = eligibleState();
+        assertEquals(
+            Lp3ColorPolicy.Outcome.ALREADY_CORRECT,
+            Lp3ColorPolicy.reconcile(notificationsRevoked)
+        );
+        notificationsRevoked.hasNotificationPermission = false;
+        assertEquals(
+            Lp3ColorPolicy.Outcome.MISSING_NOTIFICATION_PERMISSION,
+            Lp3ColorPolicy.reconcile(notificationsRevoked)
+        );
+        assertEquals(2, notificationsRevoked.secureReads);
+
+        FakeState notificationsBlocked = eligibleState();
+        assertEquals(
+            Lp3ColorPolicy.Outcome.ALREADY_CORRECT,
+            Lp3ColorPolicy.reconcile(notificationsBlocked)
+        );
+        notificationsBlocked.hasNotificationDisclosure = false;
+        assertEquals(
+            Lp3ColorPolicy.Outcome.MISSING_NOTIFICATION_DISCLOSURE,
+            Lp3ColorPolicy.reconcile(notificationsBlocked)
+        );
+        assertEquals(2, notificationsBlocked.secureReads);
     }
 
     @Test
@@ -346,6 +578,8 @@ public class Lp3ColorPolicyTest {
         String model = "tlp301";
         boolean optedIn = true;
         boolean hasPermission = true;
+        boolean hasNotificationPermission = true;
+        boolean hasNotificationDisclosure = true;
         int enabled = 0;
         int mode = -1;
         boolean acceptEnabledWrite = true;
@@ -378,6 +612,16 @@ public class Lp3ColorPolicyTest {
         @Override
         public boolean hasWriteSecureSettings() {
             return hasPermission;
+        }
+
+        @Override
+        public boolean hasPostNotificationsPermission() {
+            return hasNotificationPermission;
+        }
+
+        @Override
+        public boolean hasVisibleNotificationDisclosure() {
+            return hasNotificationDisclosure;
         }
 
         @Override
