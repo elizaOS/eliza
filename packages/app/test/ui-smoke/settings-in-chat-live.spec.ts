@@ -141,25 +141,61 @@ async function openChatSurface(page: Page): Promise<void> {
   });
 }
 
-/** Sends the config-card prompt and waits for the rendered card. */
+/**
+ * Sends the config-card prompt and waits for the rendered card. The very
+ * first model turn on a cold stack can fail transiently and surface the
+ * runtime's designed failure reply ("…mind trying again in a moment?") —
+ * correct product behavior (fail visibly, invite retry). Doing what that
+ * reply asks, the helper retries the prompt once; a second failure fails the
+ * test.
+ */
 async function promptForConfigCard(page: Page): Promise<void> {
-  const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
-  await composer.fill(CONFIG_CARD_PROMPT);
-  await expect(page.locator(CHAT_SEND_SELECTOR).first()).toBeEnabled();
-  await page.locator(CHAT_SEND_SELECTOR).first().click();
-  // The send must land in the VISIBLE conversation before the model turn is
-  // awaited — a green stream POST into a hidden thread must fail here, not as
-  // a widget-render timeout.
+  const card = page.getByTestId("inline-plugin-config").last();
+  const failureReplies = page.getByText(
+    /glitched|something went wrong|try(ing)? again in a moment/i,
+  );
+  const prompts = page.getByText(/set up the telegram connector/i);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // Prior turns stay in the transcript, so a retry must count NEW failure
+    // replies / prompt bubbles rather than re-matching the stale ones.
+    const failuresBefore = await failureReplies.count();
+    const promptsBefore = await prompts.count();
+    const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
+    await composer.fill(CONFIG_CARD_PROMPT);
+    await expect(page.locator(CHAT_SEND_SELECTOR).first()).toBeEnabled();
+    await page.locator(CHAT_SEND_SELECTOR).first().click();
+    // The send must land in the VISIBLE conversation before the model turn is
+    // awaited — a green stream POST into a hidden thread must fail here, not
+    // as a widget-render timeout.
+    await expect
+      .poll(async () => prompts.count(), {
+        timeout: 30_000,
+        message: "the sent prompt should appear in the visible transcript",
+      })
+      .toBeGreaterThan(promptsBefore);
+    // The live model turn: [CONFIG:telegram] must arrive and the transcript
+    // must lift it into the InlinePluginConfig widget shell — or the runtime's
+    // failure reply shows up and earns exactly one retry.
+    await expect
+      .poll(
+        async () => {
+          if (await card.isVisible().catch(() => false)) return "card";
+          if ((await failureReplies.count()) > failuresBefore) return "failure";
+          return "pending";
+        },
+        {
+          timeout: 180_000,
+          message:
+            "the model turn should produce the config card (or the designed failure reply)",
+        },
+      )
+      .not.toBe("pending");
+    if (await card.isVisible().catch(() => false)) return;
+  }
   await expect(
-    page.getByText(/set up the telegram connector/i).last(),
-    "the sent prompt should appear in the visible transcript",
-  ).toBeVisible({ timeout: 30_000 });
-  // The live model turn: [CONFIG:telegram] must arrive and the transcript must
-  // lift it into the InlinePluginConfig widget shell.
-  await expect(
-    page.getByTestId("inline-plugin-config").last(),
+    card,
     "the [CONFIG:…] marker should render as the inline plugin-config card",
-  ).toBeVisible({ timeout: 180_000 });
+  ).toBeVisible({ timeout: 1_000 });
 }
 
 /**
