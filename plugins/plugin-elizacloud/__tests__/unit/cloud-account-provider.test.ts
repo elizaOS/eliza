@@ -76,6 +76,32 @@ describe("cloudAccountProvider", () => {
     expect(second.text).toContain("$12.34");
   });
 
+  it("serves the stale snapshot immediately past the TTL and refreshes in the background", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const runtime = makeRuntime({ baseUrl: server.url });
+    const first = await cloudAccountProvider.get(runtime, MESSAGE, STATE);
+    expect(first.text).toContain("$12.34");
+    const fetchesAfterFirst = server.state.requests.length;
+
+    // Balance changes upstream; the next turn past the TTL must still render
+    // the OLD snapshot synchronously (never block on the WAN round trip) and
+    // schedule a background refresh.
+    server.state.balance = 55.0;
+    vi.setSystemTime(Date.now() + 61_000);
+    const stale = await cloudAccountProvider.get(runtime, MESSAGE, STATE);
+    expect(stale.text).toContain("$12.34");
+
+    // The background refresh fires (more requests) and the following turn sees
+    // the fresh balance without any turn ever having blocked on it.
+    await vi.waitFor(() => {
+      expect(server.state.requests.length).toBeGreaterThan(fetchesAfterFirst);
+    });
+    await vi.waitFor(async () => {
+      const refreshed = await cloudAccountProvider.get(runtime, MESSAGE, STATE);
+      expect(refreshed.text).toContain("$55.00");
+    });
+  });
+
   it("renders empty (never zeros) when the fetch fails with a cold cache", async () => {
     server.state.failBalance = true;
     const runtime = makeRuntime({ baseUrl: server.url });
