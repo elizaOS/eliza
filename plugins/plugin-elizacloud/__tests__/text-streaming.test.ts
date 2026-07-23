@@ -522,6 +522,28 @@ describe("streamNativeChatCompletion", () => {
     expect((await result.usage)?.totalTokens).toBe(5);
   });
 
+  it("accepts null usage on choice frames before the usage-only frame", async () => {
+    nextResponse = sseResponse([
+      dataFrame({ ...contentDelta("hello"), usage: null }),
+      dataFrame({ ...finishFrame(), usage: null }),
+      dataFrame({
+        choices: [],
+        usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+      }),
+      DONE_FRAME,
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "TEXT_SMALL" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    expect((await readStream(result)).join("")).toBe("hello");
+    expect((await result.usage)?.totalTokens).toBe(3);
+  });
+
   it("surfaces streamed tool calls on the result", async () => {
     nextResponse = sseResponse([
       dataFrame({

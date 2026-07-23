@@ -1933,9 +1933,9 @@ export async function streamNativeChatCompletion(
         if (frameFinishReason) {
           finishReason = frameFinishReason;
         }
-        if (frame.usage !== undefined) {
+        if (frame.usage !== undefined && frame.usage !== null) {
           if (!isRecord(frame.usage)) {
-            throw invalidNativeStream("stream usage must be an object");
+            throw invalidNativeStream("stream usage must be an object or null");
           }
           rawUsage = frame.usage;
           nativeUsage = convertNativeUsage(frame.usage);
