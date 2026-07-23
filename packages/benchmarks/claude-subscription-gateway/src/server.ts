@@ -19,21 +19,21 @@ import {
   stableJson,
 } from "./canonical.js";
 import {
-  buildGatewayContentAttestation,
-  gatewayContentAttestationViolation,
-} from "./content-attestation.js";
-import {
   CLAUDE_AGENT_SDK_VERSION,
   ClaudeCompletionError,
   ClaudeRateLimitError,
   ClaudeSdkCompletionRunner,
 } from "./claude-completion.js";
+import {
+  buildGatewayContentAttestation,
+  gatewayContentAttestationViolation,
+} from "./content-attestation.js";
 import { FairHarnessQueue, QueueCapacityError } from "./fair-queue.js";
 import {
-  LogicalRequestAllocator,
   type LogicalRequest,
+  LogicalRequestAllocator,
 } from "./logical-request.js";
-import { ReplayJournal, ReplayMismatchError } from "./replay-journal.js";
+import { type ReplayJournal, ReplayMismatchError } from "./replay-journal.js";
 import type {
   ClaudeCompletionResult,
   CompletionFinishReason,
@@ -404,13 +404,8 @@ async function handleRequest(
         ),
       };
     });
-    const {
-      result,
-      serviceMs,
-      created,
-      executionOrigin,
-      responseQueueWaitMs,
-    } = queued.value;
+    const { result, serviceMs, created, executionOrigin, responseQueueWaitMs } =
+      queued.value;
     const finishReason: CompletionFinishReason =
       result.toolCalls.length > 0 ? "tool_calls" : "stop";
     const completionAlreadyAudited =
@@ -726,11 +721,7 @@ interface AuditRecordInput {
     | "pause_control";
   deliveryAttempt: number | null;
   retryAt?: string | null;
-  pauseReason?:
-    | "rate_limit"
-    | "rate_limit_unknown"
-    | "storage_reserve"
-    | null;
+  pauseReason?: "rate_limit" | "rate_limit_unknown" | "storage_reserve" | null;
 }
 
 function makeAuditRecord(input: AuditRecordInput): GatewayAuditRecord {
@@ -781,10 +772,8 @@ function makeAuditRecord(input: AuditRecordInput): GatewayAuditRecord {
     deliveryAttempt: input.deliveryAttempt ?? undefined,
     executionOrigin: input.executionOrigin,
     auditEvent: input.auditEvent,
-    credentialEpochHmacSha256:
-      input.result?.credentialEpochHmacSha256 ?? null,
-    credentialTierHmacSha256:
-      input.result?.credentialTierHmacSha256 ?? null,
+    credentialEpochHmacSha256: input.result?.credentialEpochHmacSha256 ?? null,
+    credentialTierHmacSha256: input.result?.credentialTierHmacSha256 ?? null,
     credentialCapabilityHmacSha256:
       input.result?.credentialCapabilityHmacSha256 ?? null,
     retryAt: input.retryAt ?? null,
@@ -894,7 +883,7 @@ function normalizeHarness(value: string): string {
   return normalized;
 }
 
-function normalizeRequestId(value: string): string {
+function _normalizeRequestId(value: string): string {
   const normalized = value
     .trim()
     .replace(/[^A-Za-z0-9_-]/g, "")

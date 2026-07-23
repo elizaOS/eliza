@@ -705,6 +705,14 @@ assertFails(
 );
 
 assertFails(
+  "manual remote capability live observation is explicit",
+  workflow.replace(
+    '      remote_capability_live:\n        description: "Run strict remote-capability Cloud and provider live smokes"\n        required: false\n        default: false\n        type: boolean\n',
+    "",
+  ),
+);
+
+assertFails(
   "provider live job is required by ci-ok",
   // Drop `schedule` from strict_results; the check requires both dispatch and
   // schedule to gate the aggregate on the two live jobs.
@@ -741,8 +749,8 @@ assertFails(
 assertFails(
   "cloud capability live smoke is explicitly configured",
   workflow.replace(
-    '            echo "::notice::Remote capability cloud sandbox live smoke skipped because ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED is not configured."\n            echo "capability_skip=true" >> "$GITHUB_OUTPUT"\n          fi\n',
-    "          fi\n",
+    '          if [ "${CAPABILITY_LIVE_REQUIRED}" != "true" ]; then\n            echo "::notice::Remote capability cloud sandbox live smoke was not requested for ${EVENT_NAME}."\n            echo "capability_skip=true" >> "$GITHUB_OUTPUT"\n',
+    '          if [ "${ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED}" = "1" ]; then\n',
   ),
 );
 
@@ -773,7 +781,7 @@ assertFails(
 assertFails(
   "cloud live report prune only runs after checkout-backed live runs",
   workflow.replace(
-    "      - name: Prune remote capability cloud report\n        if: always() && steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud",
+    "      - name: Prune remote capability cloud report\n        if: always() && steps.checkout.outcome == 'success' && steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud",
     "      - name: Prune remote capability cloud report\n        if: always()\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud",
   ),
 );
@@ -866,18 +874,26 @@ assertFails(
 );
 
 assertFails(
-  "provider live endpoints skip cleanly when absent",
+  "provider live smoke skips when manual observation was not requested",
   workflow.replace(
-    '            echo "::warning::${message} - skipping optional provider live E2E."\n            echo "skip=true" >> "$GITHUB_OUTPUT"\n            exit 0\n',
-    '            echo "::error::No remote capability provider endpoints configured for observed provider live E2E."\n            exit 1\n',
+    '          if [ "${LIVE_REQUIRED}" != "true" ]; then\n            echo "::notice::Remote capability provider live smoke was not requested for ${EVENT_NAME}."\n            echo "skip=true" >> "$GITHUB_OUTPUT"\n            exit 0\n          fi\n\n',
+    "",
   ),
 );
 
 assertFails(
-  "provider live primary endpoint gaps skip cleanly",
+  "provider live endpoints fail observed runs when absent",
   workflow.replace(
-    '            echo "::warning::${message}. Skipping optional provider live E2E for ${EVENT_NAME}."\n            echo "skip=true" >> "$GITHUB_OUTPUT"\n',
-    '            echo "::error::${message}"\n            exit 1\n',
+    '            echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."\n            exit 1\n',
+    '            echo "skip=true" >> "$GITHUB_OUTPUT"\n            exit 0\n',
+  ),
+);
+
+assertFails(
+  "provider live primary endpoint gaps fail observed runs",
+  workflow.replace(
+    '            echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."\n            exit 1\n          else\n',
+    '            echo "skip=true" >> "$GITHUB_OUTPUT"\n          else\n',
   ),
 );
 
@@ -908,7 +924,7 @@ assertFails(
 assertFails(
   "provider live report prune only runs after checkout-backed live runs",
   workflow.replace(
-    "      - name: Prune remote capability provider reports\n        if: always() && steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers",
+    "      - name: Prune remote capability provider reports\n        if: always() && steps.checkout.outcome == 'success' && steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers",
     "      - name: Prune remote capability provider reports\n        if: always()\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers",
   ),
 );

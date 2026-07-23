@@ -6,8 +6,8 @@
 
 import {
   HashChainCorruptionError,
-  type HashChainedJsonlCursor,
   HashChainedJsonl,
+  type HashChainedJsonlCursor,
 } from "./hash-chained-jsonl.js";
 import {
   computeLogicalKeySha256,
@@ -42,7 +42,9 @@ export class ReplayMismatchError extends Error {
   readonly statusCode = 409;
 
   constructor() {
-    super("A replay ordinal was reused with different canonical request content.");
+    super(
+      "A replay ordinal was reused with different canonical request content.",
+    );
     this.name = "ReplayMismatchError";
   }
 }
@@ -115,7 +117,8 @@ export class ReplayJournal {
     while (true) {
       const pending = cursor.pending;
       if (pending !== null) cursor.pending = null;
-      const next = pending === null ? await this.log.readNext(cursor.stream) : null;
+      const next =
+        pending === null ? await this.log.readNext(cursor.stream) : null;
       if (pending === null) {
         if (next === null) {
           cursor.lastResult = null;
@@ -236,7 +239,9 @@ interface ParsedJournalRecord {
 
 function parseJournalRecord(record: JsonObject): ParsedJournalRecord {
   if (record.kind !== "completion" || record.journal_schema_version !== 1) {
-    throw new HashChainCorruptionError("Replay journal record kind is invalid.");
+    throw new HashChainCorruptionError(
+      "Replay journal record kind is invalid.",
+    );
   }
   const harness = requiredString(record.harness, "harness");
   const logicalNamespaceSha256 = requiredHash(
@@ -317,7 +322,10 @@ function parseCompletionResult(value: unknown): ClaudeCompletionResult {
           })(),
     resultSubtype: requiredString(value.resultSubtype, "result subtype"),
     terminalReason: nullableString(value.terminalReason, "terminal reason"),
-    subscriptionType: requiredString(value.subscriptionType, "subscription tier"),
+    subscriptionType: requiredString(
+      value.subscriptionType,
+      "subscription tier",
+    ),
     credentialEpochHmacSha256: requiredHash(
       value.credentialEpochHmacSha256,
       "credential epoch",
@@ -410,11 +418,7 @@ function nullableString(value: unknown, label: string): string | null {
 }
 
 function requiredInteger(value: unknown, label: string): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isSafeInteger(value) ||
-    value < 0
-  ) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw new HashChainCorruptionError(`Replay ${label} is invalid.`);
   }
   return value;

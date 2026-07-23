@@ -7,10 +7,10 @@
  * model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
-import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import {
 	__renderRoutingHintsBlockForTests,
 	PROGRESS_ONLY_ANSWER_REJECT,
@@ -3277,8 +3277,7 @@ describe("routing hints — promoted-family fallback", () => {
 				},
 			],
 		};
-		const [createVirtual, deleteVirtual] =
-			promoteSubactionsToActions(parent);
+		const [createVirtual, deleteVirtual] = promoteSubactionsToActions(parent);
 		const ctx = {
 			events: [createVirtual, deleteVirtual].map((action, i) => ({
 				id: `tool-${i}`,
@@ -3290,8 +3289,57 @@ describe("routing hints — promoted-family fallback", () => {
 		expect(block).toContain("# Routing hints");
 		expect(block).toContain("reminders -> TRIGGER_CREATE");
 		// One line for the whole family, not one per virtual.
-		expect(
-			(block ?? "").split("reminders -> TRIGGER_CREATE").length - 1,
-		).toBe(1);
+		expect((block ?? "").split("reminders -> TRIGGER_CREATE").length - 1).toBe(
+			1,
+		);
+	});
+});
+
+describe("verified widget payloads stay pure in the combine path", () => {
+	// A verified [CHOICE]/[FORM] interaction block is grammar the client
+	// renders; appending evaluator prose would corrupt the block contract, so
+	// the combine path must return the widget alone even when the evaluator
+	// also supplied grounded prose.
+	it("never appends evaluator prose to a verified interaction block", async () => {
+		const widget =
+			"[CHOICE:contact id=pick]\nvalue=Shaw\nvalue=Stan\n[/CHOICE]";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ id: "call-1", name: "MESSAGE", arguments: {} }],
+					usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+				})
+				.mockResolvedValueOnce({
+					text: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Tool asked the user to pick.",
+						messageToUser: "pick whichever contact you meant.",
+					}),
+					usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70 },
+				}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "disambiguation required",
+			userFacingText: widget,
+			verifiedUserFacing: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Tool asked the user to pick.",
+			messageToUser: "pick whichever contact you meant.",
+		}));
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(widget);
 	});
 });

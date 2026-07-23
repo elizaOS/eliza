@@ -24,6 +24,7 @@ import {
   advanceReleaseState,
   createReleaseState,
   deriveReleaseCandidateTag,
+  deriveReleaseCohortIntegrity,
   RELEASE_PLAN_SCHEMA_VERSION,
   resolveReleaseCohort,
   sha512Hex,
@@ -259,6 +260,10 @@ export function buildAndPackReleaseCandidate({
   channel,
   sourceSha,
   expectedCommit,
+  repository,
+  sourceRef,
+  registry,
+  publisher,
   build,
   npmCommand = "npm",
 }) {
@@ -271,6 +276,10 @@ export function buildAndPackReleaseCandidate({
     channel,
     sourceSha,
     expectedCommit,
+    repository,
+    sourceRef,
+    registry,
+    publisher,
   });
   assertCleanExpectedCommit(root, identity);
   const cohort = resolveReleaseCohort({
@@ -317,13 +326,23 @@ export function buildAndPackReleaseCandidate({
     }
     assertCleanExpectedCommit(root, identity);
 
+    const cohortIntegrity = deriveReleaseCohortIntegrity(identity, {
+      packages,
+      publishOrder: cohort.publishOrder,
+      dependencyGraph: cohort.dependencyGraph,
+    });
     const plan = {
       schemaVersion: RELEASE_PLAN_SCHEMA_VERSION,
       sourceSha: identity.sourceSha,
       expectedCommit: identity.expectedCommit,
+      repository: identity.repository,
+      sourceRef: identity.sourceRef,
+      registry: identity.registry,
+      publisher: identity.publisher,
       version: identity.version,
       channel: identity.channel,
-      candidateTag: deriveReleaseCandidateTag(identity, cohort.publishOrder),
+      cohortIntegrity,
+      candidateTag: deriveReleaseCandidateTag(identity, cohortIntegrity),
       build: { command: build.command, args: [...build.args] },
       publishOrder: cohort.publishOrder,
       dependencyGraph: cohort.dependencyGraph,
@@ -339,6 +358,11 @@ export function buildAndPackReleaseCandidate({
       expectedCommit: identity.expectedCommit,
       version: identity.version,
       channel: identity.channel,
+      repository: identity.repository,
+      sourceRef: identity.sourceRef,
+      registry: identity.registry,
+      publisher: identity.publisher,
+      cohortIntegrity,
       packages: cohort.publishOrder,
     });
     state = advanceReleaseState(state, "built-packed", {
@@ -351,6 +375,7 @@ export function buildAndPackReleaseCandidate({
     state = advanceReleaseState(state, "candidate-recorded", {
       planIntegrity,
       candidateTag: plan.candidateTag,
+      cohortIntegrity,
     });
     writeCandidateFile(stagingDirectory, RELEASE_STATE_FILENAME, state);
     renameSync(stagingDirectory, output);
@@ -559,7 +584,12 @@ export function recordReleaseTransition(
 }
 
 /** Verify Git, manifests, plan integrity, and every tarball before side effects. */
-export function verifyReleaseCandidate({ repoRoot, candidateDirectory }) {
+export function verifyReleaseCandidate({
+  repoRoot,
+  candidateDirectory,
+  expectedIdentity,
+  expectedPlanIntegrity,
+}) {
   const root = path.resolve(repoRoot);
   const candidate = path.resolve(candidateDirectory);
   const { plan, planPath } = loadReleasePlan(candidate);
@@ -570,6 +600,34 @@ export function verifyReleaseCandidate({ repoRoot, candidateDirectory }) {
     throw new Error(
       `Release state expects ${state.planIntegrity}, but the plan is ${planIntegrity}`,
     );
+  }
+  if (
+    expectedPlanIntegrity !== undefined &&
+    planIntegrity !== expectedPlanIntegrity
+  ) {
+    throw new Error(
+      `Candidate plan integrity ${planIntegrity} does not match requested ${expectedPlanIntegrity}`,
+    );
+  }
+  if (expectedIdentity !== undefined) {
+    const expected = validateReleaseIdentity({
+      ...expectedIdentity,
+      expectedCommit: expectedIdentity.sourceSha,
+    });
+    if (
+      plan.sourceSha !== expected.sourceSha ||
+      plan.expectedCommit !== expected.expectedCommit ||
+      plan.repository !== expected.repository ||
+      plan.sourceRef !== expected.sourceRef ||
+      plan.registry !== expected.registry ||
+      plan.publisher !== expected.publisher ||
+      plan.version !== expected.version ||
+      plan.channel !== expected.channel
+    ) {
+      throw new Error(
+        `Candidate identity ${plan.repository}/${plan.sourceRef}/${plan.sourceSha}/${plan.registry}/${plan.publisher}/${plan.version}/${plan.channel} does not match requested ${expected.repository}/${expected.sourceRef}/${expected.sourceSha}/${expected.registry}/${expected.publisher}/${expected.version}/${expected.channel}`,
+      );
+    }
   }
   assertCleanExpectedCommit(root, plan);
   for (const packageRecord of plan.packages) {
