@@ -144,13 +144,24 @@ async function postJson(
   baseUrl: string,
   path: string,
   body: Record<string, unknown>,
+  expectedStatus = 200,
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  expect(response.status).toBe(200);
+  expect(response.status).toBe(expectedStatus);
+  return (await response.json()) as Record<string, unknown>;
+}
+
+async function getJson(
+  baseUrl: string,
+  path: string,
+  expectedStatus = 200,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(`${baseUrl}${path}`);
+  expect(response.status).toBe(expectedStatus);
   return (await response.json()) as Record<string, unknown>;
 }
 
@@ -247,6 +258,108 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     const started = await startViewsServer(runtime);
     server = started.server;
 
+    const platform = await getJson(started.baseUrl, "/api/views/platform-info");
+    expect(platform).toMatchObject({
+      dynamicLoadingAllowed: true,
+      prebuiltOnly: false,
+    });
+
+    const list = await getJson(started.baseUrl, "/api/views");
+    expect(list.views).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: VIEW_ID, builtin: false }),
+      ]),
+    );
+
+    const detail = await getJson(started.baseUrl, `/api/views/${VIEW_ID}`);
+    expect(detail).toMatchObject({
+      id: VIEW_ID,
+      label: "Runtime-owned records",
+    });
+
+    const search = await getJson(
+      started.baseUrl,
+      "/api/views/search?q=runtime-owned&limit=1",
+    );
+    expect(search).toMatchObject({ query: "runtime-owned" });
+    expect(search.results).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: VIEW_ID })]),
+    );
+
+    const missing = await getJson(
+      started.baseUrl,
+      "/api/views/missing-runtime-view",
+      404,
+    );
+    expect(missing.error).toBe('View "missing-runtime-view" not found');
+
+    const hero = await fetch(`${started.baseUrl}/api/views/${VIEW_ID}/hero`);
+    expect(hero.status).toBe(200);
+    expect(hero.headers.get("content-type")).toContain("image/svg+xml");
+    expect(await hero.text()).toContain("Runtime-owned records");
+
+    const broadcast = await postJson(
+      started.baseUrl,
+      "/api/views/events/broadcast",
+      { type: "runtime-records:refresh", payload: { source: "test" } },
+    );
+    expect(broadcast).toEqual({
+      ok: true,
+      type: "runtime-records:refresh",
+      payload: { source: "test" },
+    });
+
+    const invalidBroadcast = await postJson(
+      started.baseUrl,
+      "/api/views/events/broadcast",
+      { payload: { source: "test" } },
+      400,
+    );
+    expect(invalidBroadcast.error).toBe('Missing required field "type"');
+
+    const emptySearch = await getJson(started.baseUrl, "/api/views/search?q=");
+    expect(emptySearch).toEqual({ results: [], query: "" });
+
+    const malformedView = await getJson(
+      started.baseUrl,
+      "/api/views/%E0%A4%A",
+      400,
+    );
+    expect(malformedView.error).toBe("Malformed view id");
+
+    const missingResultId = await postJson(
+      started.baseUrl,
+      "/api/views/interact-result",
+      {},
+      400,
+    );
+    expect(missingResultId.error).toBe(
+      "Missing requestId in interact-result body",
+    );
+
+    const undeclared = await postJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/interact`,
+      { capability: "undeclared-record-operation" },
+      400,
+    );
+    expect(undeclared.error).toContain("is not declared");
+
+    const missingUpdate = await postJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/interact`,
+      {
+        capability: "update-record",
+        params: { id: "missing-record", value: "cannot-save" },
+      },
+    );
+    expect(missingUpdate).toMatchObject({
+      success: false,
+      error: 'Record "missing-record" not found.',
+      result: { success: false },
+    });
+    expect(service.records.size).toBe(0);
+
     const created = await postJson(
       started.baseUrl,
       `/api/views/${VIEW_ID}/interact`,
@@ -264,15 +377,55 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     });
     expect(service.records.get("record-1")).toBe("saved");
 
-    await postJson(started.baseUrl, `/api/views/${VIEW_ID}/activate`, {
+    const navigated = await postJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/navigate`,
+      { payload: { recordId: "record-1" } },
+    );
+    expect(navigated).toMatchObject({
+      ok: true,
+      viewId: VIEW_ID,
+      payload: { recordId: "record-1" },
+    });
+
+    const current = await getJson(started.baseUrl, "/api/views/current");
+    expect(current.currentView).toMatchObject({ viewId: VIEW_ID });
+    expect(current.justSwitched).toBe(true);
+
+    const elements = await postJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/elements`,
+      {
+        elements: [
+          {
+            id: "activate-current",
+            role: "button",
+            label: "Activate current record",
+          },
+        ],
+      },
+    );
+    expect(elements).toMatchObject({ accepted: true, count: 1 });
+
+    const activated = await postJson(
+      started.baseUrl,
+      `/api/views/${VIEW_ID}/activate`,
+      { elementId: "activate-current" },
+    );
+    expect(activated).toMatchObject({
+      ok: true,
       elementId: "activate-current",
+      element: { label: "Activate current record" },
     });
     expect(service.records.get("record-1")).toBe("activated");
 
-    await postJson(started.baseUrl, `/api/views/${VIEW_ID}/navigate`, {});
     const action = buildViewScopedAction(VIEW_ID, scopedAction);
     const deleted = await action.handler(runtime, {} as never);
     expect(deleted?.success).toBe(true);
     expect(service.records.size).toBe(0);
+
+    await expect(action.handler(runtime, {} as never)).rejects.toThrow(
+      "No active record.",
+    );
   });
 });
