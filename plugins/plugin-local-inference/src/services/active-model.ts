@@ -579,7 +579,7 @@ export function resolveMmprojPath(
 	if (!visionComponent?.file) return undefined;
 	const bundleRoot = installed.bundleRoot;
 	if (!bundleRoot) return undefined;
-	const local = stripBundlePrefix(visionComponent.file, installed.id);
+	const local = stripBundlePrefix(visionComponent.file);
 	const candidate = pathJoin(bundleRoot, local);
 	if (!existsSync(candidate)) return undefined;
 	return candidate;
@@ -603,7 +603,7 @@ function resolveMtpDrafterPath(
 		catalog?.runtime?.mtp?.drafterFile ??
 		catalog?.sourceModel?.components?.mtp?.file;
 	if (!catalogFile) return undefined;
-	const local = stripBundlePrefix(catalogFile, installed.id);
+	const local = stripBundlePrefix(catalogFile);
 	const candidate = pathJoin(bundleRoot, local);
 	if (!existsSync(candidate)) return undefined;
 	return candidate;
@@ -620,7 +620,7 @@ function expectedMtpDrafterPath(
 		catalog?.sourceModel?.components?.mtp?.file;
 	const expected = manifestPath ?? catalogFile;
 	if (!expected) return undefined;
-	const local = stripBundlePrefix(expected, installed.id);
+	const local = stripBundlePrefix(expected);
 	return installed.bundleRoot ? pathJoin(installed.bundleRoot, local) : local;
 }
 
@@ -667,19 +667,15 @@ export class MissingMtpDrafterError extends Error {
 }
 
 /**
- * Strip the `bundles/<tier-slug>/` prefix the catalog uses for HF
- * paths so the remaining string is bundle-root-relative. When the
- * prefix isn't present, return the input unchanged.
+ * Strip the `bundles/<bundle-slug>/` prefix the catalog uses for HF
+ * paths so the remaining string is bundle-root-relative. The bundle slug
+ * is an architecture slug (`e2b`, `12b`, …) that no longer matches the
+ * tier-id suffix after the Gemma-4 cutover, so strip any single
+ * `bundles/<segment>/` prefix rather than re-deriving the slug from the
+ * model id. When the prefix isn't present, return the input unchanged.
  */
-function stripBundlePrefix(catalogFile: string, modelId: string): string {
-	const slug = modelId.startsWith("eliza-1-")
-		? modelId.slice("eliza-1-".length)
-		: modelId;
-	const prefix = `bundles/${slug}/`;
-	if (catalogFile.startsWith(prefix)) {
-		return catalogFile.slice(prefix.length);
-	}
-	return catalogFile;
+function stripBundlePrefix(catalogFile: string): string {
+	return catalogFile.replace(/^bundles\/[^/]+\//, "");
 }
 
 const DEFAULT_MOBILE_CONTEXT_CEILING = 8192;
