@@ -1,3 +1,9 @@
+/**
+ * Eliza Cloud text-model handlers for Responses API calls and native
+ * OpenAI-compatible chat completions. The native path preserves tool identity,
+ * validates structured inputs, and exposes streaming results to the runtime.
+ */
+
 import type {
   GenerateTextParams,
   IAgentRuntime,
@@ -8,6 +14,7 @@ import type {
 import {
   buildCanonicalSystemPrompt,
   DEFAULT_CEREBRAS_TEXT_MODEL,
+  ElizaError,
   logger,
   ModelType,
   recordInferenceSpan,
@@ -446,15 +453,47 @@ function firstNumber(...values: unknown[]): number | undefined {
   return undefined;
 }
 
-function parseJsonIfPossible(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value ?? {};
+const NATIVE_TOOL_CALL_ERROR_CODE = "ELIZA_CLOUD_TOOL_CALL_INVALID";
+const NATIVE_STREAM_ERROR_CODE = "ELIZA_CLOUD_STREAM_INVALID";
+
+function invalidNativeToolCall(reason: string, cause?: unknown): ElizaError {
+  return new ElizaError("elizaOS Cloud returned an invalid tool call", {
+    code: NATIVE_TOOL_CALL_ERROR_CODE,
+    context: { reason },
+    cause,
+    severity: "ephemeral",
+  });
+}
+
+function invalidNativeStream(reason: string, cause?: unknown): ElizaError {
+  return new ElizaError("elizaOS Cloud returned an invalid stream", {
+    code: NATIVE_STREAM_ERROR_CODE,
+    context: { reason },
+    cause,
+    severity: "ephemeral",
+  });
+}
+
+function parseNativeToolCallInput(value: unknown): Record<string, unknown> {
+  let parsed = value;
+  if (typeof value === "string") {
+    if (value.trim() === "") {
+      throw invalidNativeToolCall("tool-call arguments are empty");
+    }
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch (cause) {
+      // error-policy:J2 preserve the wire parse failure under a stable tool-call classification.
+      throw invalidNativeToolCall(
+        "tool-call arguments are not one complete JSON value",
+        cause
+      );
+    }
   }
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return value;
+  if (!isRecord(parsed)) {
+    throw invalidNativeToolCall("tool-call arguments must be a JSON object");
   }
+  return parsed;
 }
 
 function stringifyMessageContent(content: unknown): string {
@@ -878,27 +917,56 @@ function extractChatCompletionText(data: ChatCompletionsResponse): string {
 }
 
 function extractNativeToolCalls(data: ChatCompletionsResponse): NativeToolCall[] {
-  const rawCalls = data.choices?.[0]?.message?.tool_calls ?? [];
-  if (!Array.isArray(rawCalls)) {
+  const rawCalls = data.choices?.[0]?.message?.tool_calls;
+  if (rawCalls === undefined) {
     return [];
   }
+  if (!Array.isArray(rawCalls)) {
+    throw invalidNativeToolCall("tool_calls must be an array");
+  }
 
-  return rawCalls
-    .map<NativeToolCall | undefined>((rawCall) => {
-      const call = asRecord(rawCall);
-      const fn = recordAt(call, "function");
-      const toolName = firstString(call.name, call.toolName, fn.name);
-      if (!toolName) {
-        return undefined;
-      }
-      return {
-        type: "tool-call",
-        toolCallId: firstString(call.id, call.toolCallId) ?? `call_${toolName}`,
-        toolName,
-        input: parseJsonIfPossible(call.input ?? call.arguments ?? fn.arguments ?? {}),
-      };
-    })
-    .filter((call): call is NativeToolCall => call !== undefined);
+  const ids = new Set<string>();
+  return rawCalls.map((rawCall, index) => {
+    if (!isRecord(rawCall)) {
+      throw invalidNativeToolCall(`tool_calls[${index}] must be an object`);
+    }
+    const call = rawCall;
+    if (call.function !== undefined && !isRecord(call.function)) {
+      throw invalidNativeToolCall(`tool_calls[${index}].function must be an object`);
+    }
+    const fn = asRecord(call.function);
+    const toolCallId = firstString(call.id, call.toolCallId);
+    if (!toolCallId) {
+      throw invalidNativeToolCall(`tool_calls[${index}] is missing an id`);
+    }
+    if (ids.has(toolCallId)) {
+      throw invalidNativeToolCall(`tool-call id ${toolCallId} is duplicated`);
+    }
+    ids.add(toolCallId);
+
+    const toolName = firstString(call.name, call.toolName, fn.name);
+    if (!toolName) {
+      throw invalidNativeToolCall(`tool_calls[${index}] is missing a function name`);
+    }
+
+    let input: unknown;
+    if (Object.hasOwn(call, "input")) {
+      input = call.input;
+    } else if (Object.hasOwn(call, "arguments")) {
+      input = call.arguments;
+    } else if (Object.hasOwn(fn, "arguments")) {
+      input = fn.arguments;
+    } else {
+      throw invalidNativeToolCall(`tool_calls[${index}] is missing function arguments`);
+    }
+
+    return {
+      type: "tool-call",
+      toolCallId,
+      toolName,
+      input: parseNativeToolCallInput(input),
+    };
+  });
 }
 
 function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
@@ -1294,21 +1362,35 @@ export async function generateNativeChatCompletion(
 interface Deferred<T> {
   promise: Promise<T>;
   resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
 }
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  // error-policy:J5 consumers observe the original promise; this branch only
+  // prevents an unhandled rejection when textStream fails before side fields
+  // are awaited.
+  void promise.catch(() => undefined);
+  return { promise, resolve, reject };
+}
+
+function streamCancellationError(signal: AbortSignal | undefined): unknown {
+  if (signal?.aborted && signal.reason !== undefined) {
+    return signal.reason;
+  }
+  return new DOMException("Stream consumer cancelled", "AbortError");
 }
 
 /**
  * Parse an OpenAI-compatible SSE byte stream into the decoded JSON frame of
- * each `data:` line. Yields one object per frame; stops at `data: [DONE]`.
- * Tolerates partial reads (buffers across chunk boundaries) and ignores
- * non-`data:` lines (comments, blank separators). Exported for unit tests.
+ * each `data:` line. Yields one object per frame and requires `data: [DONE]`
+ * before transport EOF. Partial reads are buffered across chunk boundaries;
+ * comments and blank separators remain valid SSE framing.
  */
 export async function* parseOpenAiSseStream(
   body: ReadableStream<Uint8Array>
@@ -1320,13 +1402,22 @@ export async function* parseOpenAiSseStream(
     const trimmed = line.trimStart();
     if (!trimmed.startsWith("data:")) return null;
     const payload = trimmed.slice(5).trim();
-    if (payload === "") return null;
-    if (payload === "[DONE]") return "DONE";
-    try {
-      return JSON.parse(payload) as Record<string, unknown>;
-    } catch {
-      return null;
+    if (payload === "") {
+      throw invalidNativeStream("encountered an empty data frame");
     }
+    if (payload === "[DONE]") return "DONE";
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payload) as unknown;
+    } catch (cause) {
+      // error-policy:J2 retain the provider payload parse error under the
+      // stable stream classification consumed by callers and diagnostics.
+      throw invalidNativeStream("encountered malformed data-frame JSON", cause);
+    }
+    if (!isRecord(parsed)) {
+      throw invalidNativeStream("data-frame JSON must be an object");
+    }
+    return parsed;
   };
   try {
     for (;;) {
@@ -1342,8 +1433,11 @@ export async function* parseOpenAiSseStream(
         if (frame) yield frame;
       }
     }
+    buffer += decoder.decode();
     const tail = handle(buffer);
-    if (tail && tail !== "DONE") yield tail;
+    if (tail === "DONE") return;
+    if (tail) yield tail;
+    throw invalidNativeStream("transport ended before the [DONE] frame");
   } finally {
     // cancel() (not just releaseLock()) tears down the underlying connection,
     // so an EARLY consumer break (runtime abort / turn-supersede / a downstream
@@ -1356,7 +1450,8 @@ export async function* parseOpenAiSseStream(
     try {
       await reader.cancel();
     } catch {
-      // Reader already cancelled/released by an upstream abort — nothing to do.
+      // error-policy:J6 the stream result already exposes the primary failure;
+      // cancelling an already-closed reader is best-effort transport teardown.
     }
   }
 }
@@ -1388,6 +1483,8 @@ function isCompleteJsonObject(value: string): boolean {
       parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
     );
   } catch {
+    // error-policy:J3 an incomplete fragment is an explicit false predicate;
+    // finalization separately parses and surfaces invalid terminal arguments.
     return false;
   }
 }
@@ -1397,17 +1494,72 @@ export function accumulateToolCallDeltas(
   acc: Map<number, StreamingToolCallAcc>,
   deltas: unknown
 ): void {
-  if (!Array.isArray(deltas)) return;
+  if (!Array.isArray(deltas)) {
+    throw invalidNativeToolCall("delta.tool_calls must be an array");
+  }
   for (const raw of deltas) {
-    const d = asRecord(raw);
-    const index = typeof d.index === "number" ? d.index : 0;
+    if (!isRecord(raw)) {
+      throw invalidNativeToolCall("each streamed tool-call delta must be an object");
+    }
+    const d = raw;
+    if (
+      typeof d.index !== "number" ||
+      !Number.isInteger(d.index) ||
+      d.index < 0
+    ) {
+      throw invalidNativeToolCall(
+        "each streamed tool-call delta requires a non-negative integer index"
+      );
+    }
+    const index = d.index;
     const cur = acc.get(index) ?? { args: "" };
-    const id = firstString(d.id);
-    if (id) cur.id = id;
-    const fn = recordAt(d, "function");
-    const name = firstString(fn.name);
-    if (name) cur.name = name;
-    if (typeof fn.arguments === "string") {
+    const previousId = cur.id;
+    const previousName = cur.name;
+    let id: string | undefined;
+    if (Object.hasOwn(d, "id")) {
+      id = firstString(d.id);
+      if (!id) {
+        throw invalidNativeToolCall(`tool-call index ${index} has an invalid id`);
+      }
+      if (cur.id && cur.id !== id) {
+        throw invalidNativeToolCall(
+          `tool-call index ${index} changed id from ${cur.id} to ${id}`
+        );
+      }
+      for (const [otherIndex, other] of acc) {
+        if (otherIndex !== index && other.id === id) {
+          throw invalidNativeToolCall(
+            `tool-call id ${id} is mapped to indexes ${otherIndex} and ${index}`
+          );
+        }
+      }
+      cur.id = id;
+    }
+
+    if (d.function !== undefined && !isRecord(d.function)) {
+      throw invalidNativeToolCall(`tool-call index ${index} has an invalid function`);
+    }
+    const fn = asRecord(d.function);
+    let name: string | undefined;
+    if (Object.hasOwn(fn, "name")) {
+      name = firstString(fn.name);
+      if (!name) {
+        throw invalidNativeToolCall(`tool-call index ${index} has an invalid function name`);
+      }
+      if (cur.name && cur.name !== name) {
+        throw invalidNativeToolCall(
+          `tool-call index ${index} changed function name from ${cur.name} to ${name}`
+        );
+      }
+      cur.name = name;
+    }
+
+    if (Object.hasOwn(fn, "arguments")) {
+      if (typeof fn.arguments !== "string") {
+        throw invalidNativeToolCall(
+          `tool-call index ${index} has non-string argument fragments`
+        );
+      }
       // Cerebras streams the tool-call arguments incrementally, then emits a
       // FINAL aggregated frame that re-sends the COMPLETE arguments object
       // (re-carrying id + name). Blindly appending that re-send doubles the
@@ -1417,11 +1569,25 @@ export function accumulateToolCallDeltas(
       // the accumulated args AND the incoming fragment are each a complete,
       // self-contained object the incoming is the authoritative full copy:
       // replace rather than concatenate.
-      if (isCompleteJsonObject(cur.args) && isCompleteJsonObject(fn.arguments)) {
+      if (
+        id !== undefined &&
+        name !== undefined &&
+        previousId === id &&
+        previousName === name &&
+        isCompleteJsonObject(cur.args) &&
+        isCompleteJsonObject(fn.arguments)
+      ) {
         cur.args = fn.arguments;
       } else {
         cur.args += fn.arguments;
       }
+    }
+    if (
+      !Object.hasOwn(d, "id") &&
+      !Object.hasOwn(fn, "name") &&
+      !Object.hasOwn(fn, "arguments")
+    ) {
+      throw invalidNativeToolCall(`tool-call index ${index} contains no identity or arguments`);
     }
     acc.set(index, cur);
   }
@@ -1446,13 +1612,26 @@ export function finalizeStreamedToolCalls(
   acc: Map<number, StreamingToolCallAcc>
 ): NativeToolCall[] {
   const out: NativeToolCall[] = [];
+  const ids = new Set<string>();
   for (const [index, c] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
-    if (!c.name) continue;
+    if (!Number.isInteger(index) || index < 0) {
+      throw invalidNativeToolCall("streamed tool-call index is invalid");
+    }
+    if (!c.id) {
+      throw invalidNativeToolCall(`tool-call index ${index} is missing an id`);
+    }
+    if (ids.has(c.id)) {
+      throw invalidNativeToolCall(`tool-call id ${c.id} is duplicated`);
+    }
+    ids.add(c.id);
+    if (!c.name) {
+      throw invalidNativeToolCall(`tool-call index ${index} is missing a function name`);
+    }
     out.push({
       type: "tool-call",
-      toolCallId: c.id ?? `call_${c.name}_${index}`,
+      toolCallId: c.id,
       toolName: c.name,
-      input: parseJsonIfPossible(c.args.trim() === "" ? "{}" : c.args),
+      input: parseNativeToolCallInput(c.args),
     });
   }
   return out;
@@ -1609,6 +1788,12 @@ export async function streamNativeChatCompletion(
   const usageD = deferred<TokenUsage | undefined>();
   const finishD = deferred<string | undefined>();
   const toolCallsD = deferred<NativeToolCall[]>();
+  const rejectDeferreds = (reason: unknown): void => {
+    textD.reject(reason);
+    usageD.reject(reason);
+    finishD.reject(reason);
+    toolCallsD.reject(reason);
+  };
 
   // Stage-1 RESPONSE_HANDLER forces `tool_choice:"required"`, so Cerebras returns
   // the whole reply envelope (incl. `replyText`) as tool-call ARGUMENT deltas —
@@ -1624,30 +1809,84 @@ export async function streamNativeChatCompletion(
   let streamedReplyArgs = "";
 
   async function* generate(): AsyncGenerator<string> {
+    let completed = false;
+    let failed = false;
     try {
       for await (const frame of parseOpenAiSseStream(body)) {
         if (frame.error) {
           const message = asRecord(frame.error).message;
-          throw new Error(
+          const providerError = new Error(
             typeof message === "string" && message.trim()
               ? message.trim()
               : "elizaOS Cloud stream error"
           );
+          throw invalidNativeStream("provider returned an error frame", providerError);
         }
-        const choices = Array.isArray(frame.choices) ? frame.choices : [];
-        const choice = asRecord(choices[0]);
-        const delta = recordAt(choice, "delta");
+        if (!Array.isArray(frame.choices)) {
+          throw invalidNativeStream("each stream frame requires a choices array");
+        }
+        if (frame.choices.length > 1) {
+          throw invalidNativeStream("stream frame contains multiple choices");
+        }
+        if (frame.choices.length === 0) {
+          if (frame.usage === undefined) {
+            throw invalidNativeStream("stream frame has neither a choice nor usage");
+          }
+          if (!isRecord(frame.usage)) {
+            throw invalidNativeStream("stream usage must be an object");
+          }
+          rawUsage = frame.usage;
+          nativeUsage = convertNativeUsage(frame.usage);
+          continue;
+        }
+        if (finishReason !== undefined) {
+          throw invalidNativeStream("received a choice after the terminal finish frame");
+        }
+        const rawChoice = frame.choices[0];
+        if (!isRecord(rawChoice)) {
+          throw invalidNativeStream("stream choice must be an object");
+        }
+        const choice = rawChoice;
+        if (
+          typeof choice.index !== "number" ||
+          !Number.isInteger(choice.index) ||
+          choice.index < 0
+        ) {
+          throw invalidNativeStream("stream choice requires a non-negative integer index");
+        }
+        if (choice.index !== 0) {
+          throw invalidNativeStream("stream returned an unexpected choice index");
+        }
+        if (choice.delta !== undefined && !isRecord(choice.delta)) {
+          throw invalidNativeStream("stream choice delta must be an object");
+        }
+        const delta = asRecord(choice.delta);
+        const finishValue = choice.finish_reason;
+        if (
+          finishValue !== undefined &&
+          finishValue !== null &&
+          firstString(finishValue) === undefined
+        ) {
+          throw invalidNativeStream("stream finish_reason must be a non-empty string or null");
+        }
+        const frameFinishReason = firstString(finishValue);
+        if (Object.keys(delta).length === 0 && frameFinishReason === undefined) {
+          throw invalidNativeStream("stream choice has neither a delta nor finish_reason");
+        }
         // Raw (un-trimmed) content — inter-token whitespace is significant.
         // Structured Stage-1 streams must start with the tool-argument envelope;
         // compatible providers that narrate before the forced tool call would
         // otherwise flip the runtime extractor into plaintext passthrough.
-        if (typeof delta.content === "string" && delta.content.length > 0) {
-          if (!streamReplyToolArgs) {
+        if (delta.content !== undefined && delta.content !== null) {
+          if (typeof delta.content !== "string") {
+            throw invalidNativeStream("stream content delta must be a string or null");
+          }
+          if (delta.content.length > 0 && !streamReplyToolArgs) {
             accumulated += delta.content;
             yield delta.content;
           }
         }
-        if (delta.tool_calls) {
+        if (delta.tool_calls !== undefined) {
           accumulateToolCallDeltas(toolAcc, delta.tool_calls);
           if (streamReplyToolArgs) {
             const replyArgs = lowestIndexToolCallArgs(toolAcc);
@@ -1667,20 +1906,41 @@ export async function streamNativeChatCompletion(
             }
           }
         }
-        const fr = firstString(choice.finish_reason);
-        if (fr) finishReason = fr;
-        if (frame.usage) {
+        if (frameFinishReason) {
+          finishReason = frameFinishReason;
+        }
+        if (frame.usage !== undefined) {
+          if (!isRecord(frame.usage)) {
+            throw invalidNativeStream("stream usage must be an object");
+          }
           rawUsage = frame.usage;
           nativeUsage = convertNativeUsage(frame.usage);
         }
       }
-    } finally {
-      releasePermit();
+      if (!finishReason) {
+        throw invalidNativeStream("stream ended without a terminal finish frame");
+      }
       const toolCalls = finalizeStreamedToolCalls(toolAcc);
+      if (!accumulated.trim() && toolCalls.length === 0) {
+        throw invalidNativeStream("stream completed without text or tool calls");
+      }
+      completed = true;
       textD.resolve(accumulated);
       usageD.resolve(nativeUsage);
       finishD.resolve(finishReason);
       toolCallsD.resolve(toolCalls);
+    } catch (error) {
+      // error-policy:J1 this generator is the boundary shared by textStream and
+      // its deferred result fields, so one transport failure must reject all of
+      // them before the original error propagates to the stream consumer.
+      failed = true;
+      rejectDeferreds(error);
+      throw error;
+    } finally {
+      releasePermit();
+      if (!completed && !failed) {
+        rejectDeferreds(streamCancellationError(signal));
+      }
       if (nativeUsage) {
         emitModelUsageEvent(runtime, modelType, context.prompt, nativeUsage, {
           modelName: context.modelName,

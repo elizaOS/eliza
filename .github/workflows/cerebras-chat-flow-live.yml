@@ -1,12 +1,20 @@
 name: Cerebras Chat Flow Live
 
-# Manual real-model evidence for the complete local AgentRuntime chat path. The
-# credential uses the repository's established benchmark secret; reports
-# contain only synthetic prompts, outputs, timing spans, token usage, and
-# provider/cache telemetry.
+# Manual real-model evidence for the complete local AgentRuntime chat path and
+# the exact-head Eliza Cloud plugin tool-call consumer. Provider credentials are
+# scoped to their live steps; reports contain only synthetic prompts, outputs,
+# timing/usage telemetry, and schema-limited tool-call fragments.
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Live evidence lane
+        required: true
+        default: chat-flow
+        type: choice
+        options:
+          - chat-flow
+          - plugin-toolcall-stream-evidence
       samples:
         description: Measured turns after warmup
         required: true
@@ -15,6 +23,11 @@ on:
         options:
           - "10"
           - "30"
+      expected_sha:
+        description: Exact commit required by the plugin tool-call evidence lane
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -26,13 +39,13 @@ concurrency:
 jobs:
   live:
     name: Gemma 4 31B full runtime
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'chat-flow'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       # Match deployed runtime semantics: production keeps trajectory persistence
       # opt-in, so diagnostic file flushes cannot inflate the request hot path.
       NODE_ENV: production
-      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       ELIZA_CEREBRAS_CHAT_MODEL: gemma-4-31b
       ELIZA_CEREBRAS_CHAT_SAMPLES: ${{ inputs.samples }}
       ELIZA_CEREBRAS_CHAT_WARMUPS: "3"
@@ -43,6 +56,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -69,11 +84,15 @@ jobs:
         run: bunx vitest run packages/agent/scripts/cerebras-chat-flow-latency.test.ts --coverage.enabled=false
 
       - name: Measure every provider in parallel and max-cached
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
           mkdir -p reports
           bun run --cwd packages/core perf:providers > reports/provider-latency.log
 
       - name: Measure live Cerebras Gemma 4 production chat flow
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: bun run --cwd packages/agent perf:cerebras-chat > reports/cerebras-gemma-4-chat-flow.log
 
       - name: Publish exact latency summary
@@ -128,5 +147,119 @@ jobs:
         with:
           name: cerebras-gemma-4-chat-flow-${{ github.sha }}
           path: reports/
+          if-no-files-found: error
+          retention-days: 30
+
+  plugin-toolcall-stream-evidence:
+    name: Issue 16997 exact-head plugin tool-call stream
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' &&
+        inputs.mode == 'plugin-toolcall-stream-evidence' &&
+        github.repository == 'elizaOS/eliza' &&
+        github.actor == 'lalalune' &&
+        github.ref == 'refs/heads/fix/16997-stream-tool-call-arguments' &&
+        inputs.expected_sha == github.sha
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      ELIZA_SKIP_ARTIFACT_SYNC: "1"
+      ELIZA_TOOLCALL_EXPECTED_SHA: ${{ inputs.expected_sha }}
+      ELIZA_TOOLCALL_EVIDENCE_PATH: reports/16997-plugin-toolcall-stream-live.json
+    steps:
+      - name: Bind trusted exact-head dispatch
+        env:
+          REQUESTED_MODE: ${{ inputs.mode }}
+          REQUESTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const required = {
+            GITHUB_EVENT_NAME: "workflow_dispatch",
+            GITHUB_REPOSITORY: "elizaOS/eliza",
+            GITHUB_ACTOR: "lalalune",
+            GITHUB_REF: "refs/heads/fix/16997-stream-tool-call-arguments",
+            REQUESTED_MODE: "plugin-toolcall-stream-evidence",
+          };
+          for (const [name, expected] of Object.entries(required)) {
+            if (process.env[name] !== expected) {
+              throw new Error(`Trusted dispatch binding failed: ${name}`);
+            }
+          }
+          if (!/^[a-f0-9]{40}$/.test(process.env.GITHUB_SHA ?? "")) {
+            throw new Error("Trusted dispatch binding failed: GITHUB_SHA");
+          }
+          if (process.env.REQUESTED_SHA !== process.env.GITHUB_SHA) {
+            throw new Error("Trusted dispatch binding failed: REQUESTED_SHA");
+          }
+          NODE
+
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+
+      - name: Install workspace
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Generate source-mode keyword data
+        run: node packages/shared/scripts/generate-keywords.mjs
+
+      - name: Run live plugin tool-call stream evidence
+        env:
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_TOOLCALL_STREAM_LIVE: "1"
+        run: >-
+          bun --config=/dev/null --conditions=eliza-source test
+          plugins/plugin-elizacloud/__tests__/text-streaming.live.test.ts
+
+      - name: Verify live artifact hash
+        run: sha256sum --check reports/16997-plugin-toolcall-stream-live.json.sha256
+
+      - name: Publish exact-head verdict
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          import { createHash } from "node:crypto";
+          import { readFileSync } from "node:fs";
+          const path = process.env.ELIZA_TOOLCALL_EVIDENCE_PATH;
+          const bytes = readFileSync(path);
+          const evidence = JSON.parse(bytes);
+          const sha256 = createHash("sha256").update(bytes).digest("hex");
+          console.log("## Issue #16997 live plugin tool-call stream");
+          console.log("");
+          console.log(`Commit: \`${evidence.headSha}\``);
+          console.log("");
+          console.log(`Provider/model: \`${evidence.provider}/${evidence.model}\``);
+          console.log("");
+          console.log(`Provider argument fragments: ${evidence.providerArgumentFragmentCount}`);
+          console.log("");
+          console.log(`Finish reason: \`${evidence.verdict.terminalFinishReason}\``);
+          console.log("");
+          console.log(`Plugin → execution equal: ${evidence.verdict.pluginMatchesExecuted}`);
+          console.log("");
+          console.log(`End-to-end input equal: ${evidence.verdict.endToEndInputEquality}`);
+          console.log("");
+          console.log(`Artifact SHA-256: \`${sha256}\``);
+          NODE
+
+      - name: Upload exact-head live evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: issue-16997-plugin-toolcall-stream-${{ github.sha }}
+          path: |
+            reports/16997-plugin-toolcall-stream-live.json
+            reports/16997-plugin-toolcall-stream-live.json.sha256
           if-no-files-found: error
           retention-days: 30
