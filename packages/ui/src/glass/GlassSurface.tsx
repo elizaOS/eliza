@@ -30,6 +30,7 @@ import {
   activateNativeBackdrop,
   isNativeBackdropActive,
   releaseNativeBackdrop,
+  setNativeGlassDiag,
   subscribeNativeBackdrop,
   useNativeBackdropActive,
 } from "./native-backdrop";
@@ -144,10 +145,21 @@ export function useNativeGlassAnchor(
   const wantNative = enabled && available && nativeGlassPlatform() === "ios";
 
   useEffect(() => {
-    if (!wantNative) return;
+    if (!wantNative) {
+      // Disambiguate exactly which gate is holding the anchor on CSS —
+      // e=caller-enabled, p=platform-is-ios, a=plugin-available.
+      const platformOk = nativeGlassPlatform() === "ios";
+      setNativeGlassDiag(
+        `anchor-idle:e${enabled ? 1 : 0}p${platformOk ? 1 : 0}a${available ? 1 : 0}`,
+      );
+      return;
+    }
     const el = ref.current;
     const bridge = glassBridge();
-    if (!el || !bridge) return;
+    if (!el || !bridge) {
+      setNativeGlassDiag(el ? "anchor-no-bridge" : "anchor-no-element");
+      return;
+    }
     let alive = true;
     let held = false;
     let attached = false;
@@ -204,9 +216,11 @@ export function useNativeGlassAnchor(
       }
       if (ok) attached = true;
       if (!alive || !ok) {
+        if (!ok) setNativeGlassDiag("native-refused-region");
         teardown();
         return;
       }
+      setNativeGlassDiag("native-anchored");
       activateNativeBackdrop();
       setNativeLive(true);
       unsubscribe = subscribeNativeBackdrop(() => {

@@ -63,6 +63,7 @@ import {
   useRafCoalescer,
 } from "../../gestures";
 import { useNativeGlassAnchor } from "../../glass/GlassSurface";
+import { useNativeGlassDiag } from "../../glass/native-backdrop";
 import {
   GLASS_SHEET_BACKDROP_FILTER,
   GLASS_SHEET_FILL,
@@ -5007,6 +5008,9 @@ export function ChatOverlay({
       !firstRunOpen,
   });
   const nativeInsetSheet = nativeSheetTier === "native";
+  // Why-not-native, as a slug (glass/native-backdrop.ts) — the observable
+  // half of the tier system's J4 degrades, rendered into the AX probe below.
+  const nativeGlassDiag = useNativeGlassDiag();
 
   return (
     <motion.div
@@ -5360,9 +5364,11 @@ export function ChatOverlay({
           </span>
           {/* AX-tree mirror of data-glass-tier: the on-device XCUITest legs for
               #15891 read this to prove the sheet adopted (or correctly refused)
-              the native material at each detent/drag state. */}
+              the native material at each detent/drag state. The diag suffix
+              says WHY a css tier is showing (the observable half of the
+              tier system's silent J4 degrades). */}
           <span className="sr-only" data-testid="chat-glass-tier-probe">
-            {`chat-glass-tier:${nativeSheetTier}`}
+            {`chat-glass-tier:${nativeSheetTier} chat-glass-diag:${nativeGlassDiag} chat-glass-gate:o${sheetOpen ? 1 : 0}s${sheetSettled ? 1 : 0}d${isDragging ? 1 : 0}r${restoreDragging ? 1 : 0}b${fullBleed ? 1 : 0}f${firstRunOpen ? 1 : 0}`}
           </span>
           {firstRunProbe ? (
             <span className="sr-only" data-testid="onboarding-state-probe">

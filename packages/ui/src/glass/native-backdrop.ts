@@ -52,6 +52,26 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
+/**
+ * Last decision the backdrop/anchor machinery took, as a short slug — the
+ * observable half of the J4 degrades in this module. Silent CSS fallback is
+ * correct product behavior, but "why is this device on CSS?" must be
+ * answerable from the outside: ChatOverlay appends this to its
+ * `chat-glass-tier:` AX probe, which is exactly what the on-device XCUITest
+ * (and a human with the Accessibility Inspector) reads.
+ */
+let diag = "idle";
+
+export function nativeGlassDiag(): string {
+  return diag;
+}
+
+export function setNativeGlassDiag(next: string): void {
+  if (diag === next) return;
+  diag = next;
+  notify();
+}
+
 /** Store subscription (also the seam `useNativeBackdropActive` rides on).
  *  Anchors use it to tear down when the backdrop force-deactivates. */
 export function subscribeNativeBackdrop(listener: () => void): () => void {
@@ -69,6 +89,15 @@ export function useNativeBackdropActive(): boolean {
     subscribeNativeBackdrop,
     isNativeBackdropActive,
     () => false,
+  );
+}
+
+/** Live view of {@link nativeGlassDiag} for probe rendering. */
+export function useNativeGlassDiag(): string {
+  return useSyncExternalStore(
+    subscribeNativeBackdrop,
+    nativeGlassDiag,
+    () => "idle",
   );
 }
 
@@ -114,12 +143,26 @@ async function pipe(
 ): Promise<boolean> {
   const key = `${target.imageUrl}|${target.color}`;
   const imageBase64 = await encodeSource(target);
-  if (imageBase64 === null || targetEpoch !== epoch) return false;
+  if (imageBase64 === null) {
+    // encodeSource already recorded the specific encode-error diag.
+    return false;
+  }
+  if (targetEpoch !== epoch) {
+    setNativeGlassDiag("stale-encode");
+    return false;
+  }
   const applied = await setNativeBackdrop({
     imageBase64,
     color: target.color,
   });
-  if (!applied || targetEpoch !== epoch) return false;
+  if (!applied) {
+    setNativeGlassDiag("native-refused-backdrop");
+    return false;
+  }
+  if (targetEpoch !== epoch) {
+    setNativeGlassDiag("stale-backdrop");
+    return false;
+  }
   installed = key;
   return true;
 }
@@ -133,7 +176,10 @@ async function pipe(
 export async function acquireNativeBackdrop(): Promise<boolean> {
   const requested = source;
   const requestedEpoch = epoch;
-  if (!requested) return false;
+  if (!requested) {
+    setNativeGlassDiag("no-image-wallpaper");
+    return false;
+  }
   // Cancel a scheduled clear first: a drag → settle cycle inside the clear's
   // two-frame grace re-leases the layer native still holds.
   pendingClear = null;
@@ -142,8 +188,12 @@ export async function acquireNativeBackdrop(): Promise<boolean> {
     const applied = await pipe(requested, requestedEpoch);
     if (!applied) return false;
   }
-  if (requestedEpoch !== epoch) return false;
+  if (requestedEpoch !== epoch) {
+    setNativeGlassDiag("stale-acquire");
+    return false;
+  }
   holders += 1;
+  setNativeGlassDiag("backdrop-leased");
   return true;
 }
 
@@ -234,7 +284,10 @@ function encodeSource(target: NativeWallpaperSource): Promise<string | null> {
           (window.devicePixelRatio || 1),
       );
       const largest = Math.max(image.naturalWidth, image.naturalHeight);
-      if (largest === 0) return null;
+      if (largest === 0) {
+        setNativeGlassDiag("encode-error:empty-image");
+        return null;
+      }
       const scale = Math.min(1, scaleBound / largest);
       const width = Math.max(1, Math.round(image.naturalWidth * scale));
       const height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -242,7 +295,10 @@ function encodeSource(target: NativeWallpaperSource): Promise<string | null> {
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext("2d");
-      if (!context) return null;
+      if (!context) {
+        setNativeGlassDiag("encode-error:no-2d-context");
+        return null;
+      }
       // JPEG has no alpha channel — flatten transparency onto the wallpaper
       // color so the native copy matches the DOM composite exactly.
       context.fillStyle = target.color;
@@ -250,10 +306,19 @@ function encodeSource(target: NativeWallpaperSource): Promise<string | null> {
       context.drawImage(image, 0, 0, width, height);
       const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
       const comma = dataUrl.indexOf(",");
-      return comma === -1 ? null : dataUrl.slice(comma + 1);
-    } catch {
+      if (comma === -1) {
+        setNativeGlassDiag("encode-error:no-data-url");
+        return null;
+      }
+      return dataUrl.slice(comma + 1);
+    } catch (error) {
       // error-policy:J4 explicit degrade — an undecodable or CORS-tainted
       // wallpaper keeps the DOM paint and the CSS tier; never a black region.
+      // The diag probe carries the error name so a device lane can tell a
+      // decode failure from a taint/security refusal without a debugger.
+      setNativeGlassDiag(
+        `encode-error:${error instanceof Error ? error.name : "unknown"}`,
+      );
       return null;
     }
   })();

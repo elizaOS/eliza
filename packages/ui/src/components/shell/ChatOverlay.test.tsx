@@ -488,7 +488,7 @@ describe("ChatOverlay", () => {
     // and sheen stay — the branded edge survives on every tier.
     expect(surface.style.backgroundColor).toBe("transparent");
     expect(surface.style.backdropFilter).toBe("");
-    expect(screen.getByTestId("chat-glass-tier-probe").textContent).toBe(
+    expect(screen.getByTestId("chat-glass-tier-probe").textContent).toContain(
       "chat-glass-tier:native",
     );
   }, 20_000);
