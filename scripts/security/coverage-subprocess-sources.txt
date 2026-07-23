@@ -48,6 +48,11 @@ packages/cloud/shared/scripts/run-bun-tests.mjs
 # dedicated-pipe and runtime-module behavior match production.
 plugins/plugin-workflow/src/services/smithers-runtime.ts
 
+# Docker dependency collectors are command entrypoints exercised through their
+# real spawned-process manifest tests; importing them would execute the command.
+packages/app-core/scripts/collect-docker-runtime-deps.mjs
+packages/app-core/scripts/link-docker-local-app-packages.mjs
+
 # Workflow policy checker: both contract validation modes are process
 # entrypoints because importing the module immediately reads workflow files.
 packages/scripts/ci-merge-gate-contract.mjs
