@@ -40,6 +40,9 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
   } = overrides;
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
+    // No pending AWAITING_CHOICE tasks by default — the abort-path pick guard
+    // queries this before honoring an abort op.
+    getTasks: async () => [],
     logger: {
       debug: () => {},
       info: () => {},
@@ -278,6 +281,97 @@ describe("threadOpsFieldEvaluator", () => {
       effect?.mutateResult?.(mutated as never);
       expect(mutated.replyText).toBe("Stopped — partial work preserved.");
       expect((mutated.contexts as string[]).includes("simple")).toBe(true);
+    });
+  });
+
+  describe("handle — abort suppressed for a pending CHOICE pick", () => {
+    it("routes a bare pending-choice option value to the resolver action instead of aborting", async () => {
+      let aborted = false;
+      const runtime = buildFakeRuntime({
+        onAbortTurn: () => {
+          aborted = true;
+        },
+      }) as Record<string, unknown>;
+      // Pending AWAITING_CHOICE task in the room — the app-create picker shape
+      // (core convention: metadata.options + metadata.choiceActionName).
+      runtime.getTasks = async (query: { roomId: string; tags: string[] }) => {
+        expect(query.tags).toContain("AWAITING_CHOICE");
+        return [
+          {
+            metadata: {
+              options: [
+                { name: "new", description: "Create a new app" },
+                { name: "edit-1", description: "Edit existing: Notes" },
+                { name: "cancel", description: "Cancel" },
+              ],
+              choiceActionName: "APP",
+            },
+          },
+        ];
+      };
+      const handleCtx: ResponseHandlerFieldHandleContext<unknown> = {
+        ...buildCtx(runtime, buildMessage("cancel", "room-1")),
+        value: [{ type: "abort", reason: "user retracted the request" }],
+        parsed: {
+          shouldRespond: "RESPOND",
+          contexts: ["general", "simple"],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "Cancelled.",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        },
+      };
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
+      expect(effect).toBeDefined();
+      // No preempt, no turn abort — the pick must reach the planner.
+      expect(effect?.preempt).toBeUndefined();
+      expect(aborted).toBe(false);
+      const mutated = { ...handleCtx.parsed } as Record<string, unknown>;
+      effect?.mutateResult?.(mutated as never);
+      expect(mutated.candidateActionNames).toContain("APP");
+      expect((mutated.contexts as string[]).includes("simple")).toBe(false);
+    });
+
+    it("still aborts when the message matches no pending option", async () => {
+      let aborted = false;
+      const runtime = buildFakeRuntime({
+        onAbortTurn: () => {
+          aborted = true;
+        },
+      }) as Record<string, unknown>;
+      runtime.getTasks = async () => [
+        {
+          metadata: {
+            options: [{ name: "new" }, { name: "cancel" }],
+            choiceActionName: "APP",
+          },
+        },
+      ];
+      const handleCtx: ResponseHandlerFieldHandleContext<unknown> = {
+        ...buildCtx(
+          runtime,
+          buildMessage("actually stop everything", "room-1"),
+        ),
+        value: [{ type: "abort", reason: "user retracted" }],
+        parsed: {
+          shouldRespond: "RESPOND",
+          contexts: [],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        },
+      };
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
+      expect(effect?.preempt).toEqual({
+        mode: "ack-and-stop",
+        reason: "user retracted",
+      });
+      expect(aborted).toBe(true);
     });
   });
 

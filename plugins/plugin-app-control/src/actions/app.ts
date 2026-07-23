@@ -264,6 +264,24 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				required: false,
 				schema: { type: "string" },
 			},
+			// Live planners naturally decorate create calls with a title and/or a
+			// description alongside (or instead of) `intent`; argument validation
+			// is strict, so leaving these undeclared hard-fails the whole call
+			// (#16939). Declared here and folded into the build intent.
+			{
+				name: "title",
+				description:
+					"Display title for the app to build (create mode); folded into the build intent.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "description",
+				description:
+					"Longer description of the app to build (create mode); folded into the build intent when `intent` is absent.",
+				required: false,
+				schema: { type: "string" },
+			},
 			{
 				name: "editTarget",
 				description:
