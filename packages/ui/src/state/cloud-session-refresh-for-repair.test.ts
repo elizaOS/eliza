@@ -20,7 +20,19 @@ vi.mock("@elizaos/shared/steward-session-client", () => ({
   writeStoredStewardToken: () => {},
 }));
 
-import { ensureCloudSessionForRepair } from "./cloud-session-refresh-for-repair";
+import {
+  type EnsureCloudSessionForRepairDeps,
+  ensureCloudSessionForRepair,
+} from "./cloud-session-refresh-for-repair";
+
+/**
+ * Resolve type of the injected refresh (`typeof refreshCloudStewardSession`
+ * unwrapped). Keeps the never-resolving timeout promise below assignable to
+ * the deps' refreshFn instead of inferring `Promise<unknown>`.
+ */
+type RefreshResult = Awaited<
+  ReturnType<NonNullable<EnsureCloudSessionForRepairDeps["refreshFn"]>>
+>;
 
 function makeDeps(
   over: Partial<Parameters<typeof ensureCloudSessionForRepair>[0]> = {},
@@ -86,7 +98,8 @@ describe("ensureCloudSessionForRepair", () => {
 
   it("returns null when the refresh times out (bounded, never hangs the gate)", async () => {
     const deps = makeDeps({
-      refreshFn: vi.fn(() => new Promise(() => {})), // never resolves
+      // never resolves — the stubbed raceTimeout below decides the outcome
+      refreshFn: vi.fn(() => new Promise<RefreshResult>(() => {})),
       raceTimeout: (() => Promise.resolve(null)) as <T>(
         p: Promise<T>,
         ms: number,
