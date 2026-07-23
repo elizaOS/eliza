@@ -11,13 +11,17 @@
  *   - VAD: Silero scores speech frames high, silence low.
  *   - LOCAL TTS: Kokoro / OmniVoice synthesizes audio on-device.
  *
- * Real speech comes from ElevenLabs (two distinct voices). Inputs (env):
- * ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_BUNDLE, ELEVENLABS_API_KEY,
- * ELIZA_SPEAKER_GGUF, ELIZA_DIARIZ_GGUF. Exits 2 (skip) on a missing artifact.
+ * Real speech: two distinct ElevenLabs voices when ELEVENLABS_API_KEY is set,
+ * else a keyless corpus synthesized once with two distinct fused Kokoro voice
+ * packs and cached (#9577 — same contract as the other real benches). Inputs
+ * (env): ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_BUNDLE, ELIZA_SPEAKER_GGUF,
+ * ELIZA_DIARIZ_GGUF, optional ELEVENLABS_API_KEY, and ELIZA_KOKORO_MODEL_DIR
+ * for the keyless corpus. Exits 2 (skip) on a missing artifact.
  */
 
 import { existsSync } from "node:fs";
 import { loadElizaInferenceFfi } from "../src/services/voice/ffi-bindings";
+import { type BenchGates, ensureKokoroCorpus } from "./voice-bench-shared";
 
 const SR = 16_000;
 const VOICE_A = "21m00Tcm4TlvDq8ikWAM"; // Rachel (female)
@@ -27,6 +31,10 @@ function skip(m: string): never {
 	console.log(`[real-voice-stack] SKIP: ${m}`);
 	process.exit(2);
 }
+function hardFail(m: string): never {
+	console.error(`[real-voice-stack] FAIL: ${m}`);
+	process.exit(1);
+}
 
 const lib = process.env.ELIZA_INFERENCE_LIBRARY?.trim();
 const bundle = process.env.ELIZA_ASR_BUNDLE?.trim();
@@ -35,7 +43,6 @@ const speakerGguf = process.env.ELIZA_SPEAKER_GGUF?.trim() ?? null;
 const diarizGguf = process.env.ELIZA_DIARIZ_GGUF?.trim() ?? null;
 if (!lib || !existsSync(lib)) skip("set ELIZA_INFERENCE_LIBRARY");
 if (!bundle) skip("set ELIZA_ASR_BUNDLE");
-if (!elKey) skip("set ELEVENLABS_API_KEY");
 
 async function tts(text: string, voice: string): Promise<Float32Array> {
 	const r = await fetch(
@@ -73,10 +80,46 @@ function rms(p: Float32Array): number {
 	return Math.sqrt(s / p.length);
 }
 
-console.log("[real-voice-stack] synthesizing real voices (ElevenLabs)…");
-const a1 = await tts("The weather today is sunny and pleasant", VOICE_A);
-const a2 = await tts("Please remind me to call the dentist tomorrow", VOICE_A);
-const b1 = await tts("I would like to book a table for two at seven", VOICE_B);
+// Keyless (#9577): synthesize the same three utterances once with two distinct
+// fused Kokoro voice packs (cached across runs). The key only upgrades the
+// human turns to real ElevenLabs voices.
+let a1: Float32Array;
+let a2: Float32Array;
+let b1: Float32Array;
+if (elKey) {
+	console.log("[real-voice-stack] synthesizing real voices (ElevenLabs)…");
+	a1 = await tts("The weather today is sunny and pleasant", VOICE_A);
+	a2 = await tts("Please remind me to call the dentist tomorrow", VOICE_A);
+	b1 = await tts("I would like to book a table for two at seven", VOICE_B);
+} else {
+	console.log(
+		"[real-voice-stack] keyless — synthesizing corpus with fused Kokoro voice packs (#9577)…",
+	);
+	const gates: BenchGates = { required: false, skip, fail: hardFail };
+	const items = await ensureKokoroCorpus(
+		"voice-stack",
+		[
+			{
+				id: "a1",
+				voiceId: "af_bella",
+				text: "The weather today is sunny and pleasant",
+			},
+			{
+				id: "a2",
+				voiceId: "af_bella",
+				text: "Please remind me to call the dentist tomorrow",
+			},
+			{
+				id: "b1",
+				voiceId: "am_michael",
+				text: "I would like to book a table for two at seven",
+			},
+		],
+		gates,
+		(m) => console.log(`[real-voice-stack] ${m}`),
+	);
+	[a1, a2, b1] = items.map((i) => i.pcm);
+}
 console.log(
 	`  voiceA1=${a1.length} voiceA2=${a2.length} voiceB1=${b1.length} samples`,
 );
@@ -172,7 +215,11 @@ try {
 	pass &&= !!ok;
 	ffi.mmapEvict(ctx, "tts");
 } catch (e) {
-	console.log(`[real-voice-stack] local TTS: error ${(e as Error).message}`);
+	// error-policy:J4 the TTS-region check is one row of this smoke's verdict;
+	// an exception is that row's FAIL, reported through the same pass flag the
+	// other rows use rather than aborting the remaining stack coverage.
+	console.log(`[real-voice-stack] local TTS: FAIL ${(e as Error).message}`);
+	pass = false;
 }
 
 ffi.destroy(ctx);

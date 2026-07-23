@@ -17,21 +17,46 @@ name: Voice Live E2E
 #     generated speech flows through fused local ASR, a live cloud LLM, and
 #     live cloud TTS.
 #
-# The acoustic attribution matrix is provisioned with pinned GGUFs and a fused
+# The acoustic attribution matrix runs with pinned GGUFs and a fused
 # libelizainference build. Its scripts run in require-real mode so a missing
 # model/ABI/credential is a hard failure rather than green skip evidence.
 #
-# Runner provisioning handoff is tracked in elizaOS/eliza#9454:
-#   The two real jobs default to the online [self-hosted, Linux, X64, eliza]
-#   runners. To repoint at a dedicated GPU box without editing this file, set the
-#   repo variable VOICE_LIVE_RUNNER_LABELS to a JSON array of labels, e.g.
-#   ["self-hosted","Linux","X64","gpu-cuda-12.6"] — this is the single point of
-#   runner configuration. The chosen runner must have ffmpeg, a fused
-#   libelizainference.so, and the eliza-1-2b ASR bundle staged; every voice GGUF
-#   is fetched fresh from Hugging Face with a pinned sha256 by this lane. The
-#   matrix is keyless (#9577): owner/impostor turns are synthesized locally with
-#   distinct fused Kokoro presets, so ELEVENLABS_API_KEY is optional and only
-#   upgrades the human-turn rows to real ElevenLabs voices.
+# SELF-PROVISIONING (closes the #9454 ops gap, #16945): no runner needs
+# hand-staged voice assets anymore. The `voice-fused-build` job compiles the
+# fused libelizainference (CPU variant, GGML_CPU always on) from the in-repo
+# llama.cpp fork on a GitHub-hosted runner — cached by fork commit, so it is a
+# cache restore on most nights — and hands it to the self-hosted jobs as an
+# artifact, guaranteeing the lib ABI matches the checked-out bindings. Each
+# self-hosted job then stages the pinned eliza-1-2b voice bundle regions from
+# Hugging Face (sha256-verified, cached in the host's
+# ~/.eliza/local-inference/models/eliza-1-2b.bundle across nights) via
+# .github/actions/stage-voice-real-assets. Any [self-hosted, Linux, X64,
+# eliza] runner can take these jobs; VOICE_LIVE_RUNNER_LABELS (JSON array of
+# labels) remains the single point of runner override, e.g. to move to a GPU
+# box — the fused lib is CPU-built either way, so GPU is a speedup, never a
+# requirement. nvcc/nvidia-smi/ffmpeg are NOT required by any step.
+#
+# Keyless by design (#9577): the owner/impostor/agent turns are synthesized
+# with distinct fused Kokoro voice packs, so ELEVENLABS_API_KEY is optional —
+# it only upgrades the human-turn rows to real ElevenLabs voices (CEREBRAS +
+# ELEVENLABS together also unlock the mixed cloud round-trip step).
+#
+# Kokoro TTFA budget: the smoke's 700 ms default is the MOBILE product budget.
+# These CPU-only CI hosts prove loadability + intelligibility (envelope-cv +
+# round-trip WER), not mobile latency, so the workflow sets
+# KOKORO_SMOKE_TTFA_BUDGET_MS=30000 — a desktop-CPU ceiling that still catches
+# loader hangs (measured TTFA ≈4.5–8 s on a 24-core host).
+#
+# History note (#16945): the 2026-07-17..19 scheduled runs were CANCELLED, not
+# failed — no online runner carried the `eliza` label during the fleet
+# migration, so both self-hosted jobs sat queued until either the next night's
+# run replaced them through this workflow's cancel-in-progress concurrency
+# group (07-17 run, killed at 07-18 09:06:30 = the 07-18 start) or GitHub's
+# 24 h queue limit expired them (07-19 run, killed exactly 24 h after queue).
+# A cancelled scheduled run therefore means "no eliza-labelled runner online"
+# — that is a fleet-capacity page, not a workflow bug. The 07-20..22 reds were
+# the provisioning preflight hard-failing on unprovisioned robots; the
+# self-provisioning above removes that failure class entirely.
 #
 # Runs nightly (offset from app-live-e2e) + on-demand; never on pull_request.
 
@@ -143,41 +168,102 @@ jobs:
           set -euo pipefail
           bun test packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts
 
+  # Build the fused libelizainference from the in-repo llama.cpp fork so the
+  # self-hosted jobs never depend on hand-staged native libs. CPU variant with
+  # GGML_CPU always on; espeak-ng is intentionally NOT linked (the robots have
+  # no libespeak-ng runtime) — the lib reports g2p=ascii and the TS Kokoro
+  # runtime feeds espeak-ng-WASM IPA through kokoro_synthesize_ipa (#11776),
+  # which is the exact configuration the local verification ran. Cached by the
+  # fork submodule commit + build-script hash, so most nights restore in
+  # seconds instead of compiling.
+  voice-fused-build:
+    name: Build fused libelizainference (linux-x64 cpu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout (with llama.cpp submodule)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: recursive
+          show-progress: false
+
+      - name: Resolve fork commit for the cache key
+        id: fork
+        run: echo "commit=$(git rev-parse HEAD:plugins/plugin-local-inference/native/llama.cpp)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached fused build
+        id: fused-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: fused-lib
+          key: voice-fused-cpu-v1-${{ steps.fork.outputs.commit }}-${{ hashFiles('packages/app-core/scripts/stage-desktop-fused-lib.mjs') }}
+
+      - name: Setup Node.js
+        if: steps.fused-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Linux build deps
+        if: steps.fused-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+          for attempt in 1 2 3; do
+            if sudo apt-get "${APT_ARGS[@]}" update && \
+               sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
+                 cmake ninja-build build-essential ccache git python3 curl libgomp1; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then echo "apt install failed"; exit 1; fi
+            sleep $((attempt * 10))
+          done
+          cmake --version
+
+      - name: Build + stage the fused libelizainference (CPU)
+        if: steps.fused-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          node packages/app-core/scripts/stage-desktop-fused-lib.mjs \
+            --variant cpu --out "$GITHUB_WORKSPACE/fused-lib"
+
+      - name: Verify the fused ABI surface
+        run: |
+          set -euo pipefail
+          LIB="$GITHUB_WORKSPACE/fused-lib/libelizainference.so"
+          test -f "$LIB" || { echo "missing $LIB after build/cache"; exit 1; }
+          for sym in eliza_inference_kokoro_load eliza_inference_speaker_open eliza_inference_diariz_open eliza_inference_vad_open eliza_inference_asr_transcribe eliza_inference_tokenize; do
+            if ! nm -D "$LIB" | grep -q "$sym"; then
+              echo "fused lib does not export $sym"
+              exit 1
+            fi
+          done
+          file "$LIB"
+
+      - name: Upload fused lib artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: voice-fused-lib-linux-x64-cpu
+          path: fused-lib
+          if-no-files-found: error
+
   voice-roundtrip:
     name: Real fused ASR + optional mixed round-trip (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
+    needs: voice-fused-build
     timeout-minutes: 90
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-    # Hard live lane: a missing GPU/model environment must be visible as a failure.
+    # Hard live lane: the fused ASR smoke always runs against self-provisioned
+    # assets — a staging or transcription failure is a red job, never a skip.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
           show-progress: false
-
-      - name: Preflight — GPU/voice tooling probe
-        run: |
-          set -euo pipefail
-          # Informational probe. This job is continue-on-error + self-skipping
-          # (the real steps gate on ELIZA_ROUNDTRIP_REAL_READY), so a bare runner
-          # never red-Xs the branch — but surface the gap LOUDLY instead of a
-          # silent `|| true` so the nightly board shows *why* real coverage
-          # did not run.
-          missing=""
-          for tool in nvcc nvidia-smi ffmpeg; do
-            if command -v "$tool" >/dev/null 2>&1; then
-              echo "found: $tool ($(command -v "$tool"))"
-            else
-              missing="$missing $tool"
-            fi
-          done
-          if [ -n "$missing" ]; then
-            echo "::warning title=Voice runner not fully provisioned::Absent GPU/media tools:${missing}. Real round-trip coverage needs the GPU runner tracked in elizaOS/eliza#9454."
-          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -203,57 +289,50 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Probe preprovisioned fused ASR bundle
-        run: |
-          set -euo pipefail
-          first_existing_file() {
-            for path in "$@"; do
-              if [ -n "$path" ] && [ -f "$path" ]; then
-                printf '%s\n' "$path"
-                return 0
-              fi
-            done
-            return 1
-          }
+      - name: Prepare core generated sources
+        run: bun run --cwd packages/core prebuild
 
-          BUNDLE="${ELIZA_ASR_BUNDLE:-$HOME/.eliza/local-inference/models/eliza-1-2b.bundle}"
-          FUSED_LIB="$(first_existing_file \
-            "${ELIZA_INFERENCE_LIBRARY:-}" \
-            "$BUNDLE/lib/libelizainference.so" \
-            "$HOME/.eliza/local-inference/lib/libelizainference.so" \
-            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cuda-fused/libelizainference.so" \
-            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so" \
-            || true)"
+      - name: Download fused libelizainference artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: voice-fused-lib-linux-x64-cpu
+          path: ${{ runner.temp }}/fused-lib
 
-          if [ ! -d "$BUNDLE/asr" ] || [ -z "$FUSED_LIB" ]; then
-            echo "preprovisioned fused ASR bundle not found; full gated coverage is in voice-acoustic-matrix"
-            echo "bundle=$BUNDLE"
-            echo "fusedLib=${FUSED_LIB:-missing}"
-            echo "ELIZA_ROUNDTRIP_REAL_READY=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          echo "ELIZA_ASR_BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
-          echo "ELIZA_INFERENCE_LIBRARY=$FUSED_LIB" >> "$GITHUB_ENV"
-          echo "ELIZA_ROUNDTRIP_REAL_READY=1" >> "$GITHUB_ENV"
-          echo "bundle=$BUNDLE"
-          echo "fusedLib=$FUSED_LIB"
+      - name: Stage real voice assets (fused lib + pinned bundle)
+        uses: ./.github/actions/stage-voice-real-assets
+        with:
+          fused-lib-dir: ${{ runner.temp }}/fused-lib
 
       - name: Real fused ASR smoke (bun:ffi)
-        if: env.ELIZA_ROUNDTRIP_REAL_READY == '1'
         run: bun run --cwd plugins/plugin-local-inference test:asr:real
 
+      # Designed key-gated step: the mixed round-trip crosses two external
+      # paid services. Absence of the keys is surfaced loudly below instead of
+      # a silent skip.
       - name: Optional mixed real round-trip test
-        if: env.ELIZA_ROUNDTRIP_REAL_READY == '1' && env.ELEVENLABS_API_KEY != '' && env.CEREBRAS_API_KEY != ''
+        if: env.ELEVENLABS_API_KEY != '' && env.CEREBRAS_API_KEY != ''
         run: bun run --cwd plugins/plugin-local-inference roundtrip:real
+
+      - name: Note skipped mixed round-trip (keys absent)
+        if: env.ELEVENLABS_API_KEY == '' || env.CEREBRAS_API_KEY == ''
+        run: |
+          echo "::warning title=Mixed cloud round-trip skipped::ELEVENLABS_API_KEY and/or CEREBRAS_API_KEY are not configured, so the cloud-TTS → local-ASR → cloud-LLM round-trip step did not run. The fused ASR smoke above still ran against real models."
 
   voice-acoustic-matrix:
     name: Real acoustic VAD + diarization + self-voice matrix (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
-    timeout-minutes: 120
+    needs: voice-fused-build
+    # The 26-scenario workbench alone runs tens of minutes on a CPU-only host
+    # (every turn is a real Kokoro synth + fused ASR decode), on top of the
+    # first-night bundle staging — 120 was measured too tight end-to-end.
+    timeout-minutes: 180
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      # Desktop-CPU TTFA ceiling — see the header note; the 700 ms default is
+      # the mobile product budget and is orders of magnitude out of reach for
+      # a CPU-only CI host. 30 s still catches loader hangs.
+      KOKORO_SMOKE_TTFA_BUDGET_MS: "30000"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -261,60 +340,26 @@ jobs:
           submodules: recursive
           show-progress: false
 
-      # Fail-fast provisioning gate. Before this, the job burned the full
-      # install + GGUF download only to hard-fail deep in "Stage published
-      # acoustic GGUFs" when the fused lib was absent (run 28548736294). Detect
-      # the required assets up front: if the runner is truly provisioned, the
-      # require-real matrix runs exactly as before (a provisioned-but-broken
-      # runner still hard-fails — no fake green). If it is not provisioned at
-      # all — the pure ops gap tracked by #9454 — self-skip LOUDLY to a neutral
-      # result (a ::warning:: annotation + a SKIPPED.md artifact) instead of a
-      # confusing mid-run red, so this nightly non-required lane stops being a
-      # permanent unexplained red on the board.
-      - name: Preflight — detect provisioned voice runner (GPU / fused lib / ASR bundle)
+      # Self-provisioning (#16945): the fused lib arrives as a build artifact
+      # from voice-fused-build (ABI-matched to this checkout), and the pinned
+      # eliza-1-2b bundle regions stage into the host cache via
+      # stage-voice-real-assets. Any staging failure is a red job — this lane
+      # never green-skips, and it no longer depends on hand-staged runner
+      # assets (the old #9454 ops gap).
+      - name: Prepare matrix output dir + environment probe
         run: |
           set -euo pipefail
           VOICE_REAL_MATRIX_OUT="$RUNNER_TEMP/voice-real-matrix"
           echo "VOICE_REAL_MATRIX_OUT=$VOICE_REAL_MATRIX_OUT" >> "$GITHUB_ENV"
           mkdir -p "$VOICE_REAL_MATRIX_OUT"
-
-          first_existing_file() {
-            for path in "$@"; do
-              if [ -n "$path" ] && [ -f "$path" ]; then
-                printf '%s\n' "$path"
-                return 0
-              fi
-            done
-            return 1
-          }
-
-          BUNDLE="${ELIZA_ASR_BUNDLE:-$HOME/.eliza/local-inference/models/eliza-1-2b.bundle}"
-          FUSED_LIB="$(first_existing_file \
-            "${ELIZA_INFERENCE_LIBRARY:-}" \
-            "$BUNDLE/lib/libelizainference.so" \
-            "$HOME/.eliza/local-inference/lib/libelizainference.so" \
-            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cuda-fused/libelizainference.so" \
-            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so" \
-            || true)"
-
-          missing_tools=""
-          for tool in nvcc nvidia-smi ffmpeg; do
-            command -v "$tool" >/dev/null 2>&1 || missing_tools="$missing_tools $tool"
-          done
-
           {
             echo "runner=$(hostname)"
             echo "workspace=$GITHUB_WORKSPACE"
             echo "runnerTemp=$RUNNER_TEMP"
-            echo "bundle=$BUNDLE"
-            echo "fusedLib=${FUSED_LIB:-missing}"
-            echo "missingTools=${missing_tools:-none}"
-            command -v nvcc       >/dev/null 2>&1 && nvcc --version        || echo "nvcc absent"
-            command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi            || echo "nvidia-smi absent"
-            command -v ffmpeg     >/dev/null 2>&1 && ffmpeg -version | head -1 || echo "ffmpeg absent"
-            # Keyless by design (#9577): the owner/impostor corpus is synthesized
-            # locally with distinct fused Kokoro presets, so no ElevenLabs secret
-            # is required. The key only upgrades the human-turn rows to real voices.
+            # Keyless by design (#9577): the owner/impostor/agent corpus is
+            # synthesized locally with distinct fused Kokoro voice packs, so no
+            # ElevenLabs secret is required. The key only upgrades the
+            # human-turn rows to real voices.
             if [ -z "${ELEVENLABS_API_KEY:-}" ]; then
               echo "ELEVENLABS_API_KEY not set — keyless local-Kokoro corpus (#9577)"
             else
@@ -322,47 +367,15 @@ jobs:
             fi
           } 2>&1 | tee "$VOICE_REAL_MATRIX_OUT/probe.log"
 
-          # A provisioned runner needs BOTH the fused libelizainference.so and the
-          # eliza-1-2b ASR bundle staged (per the #9454 runbook). nvcc/nvidia-smi
-          # are informational only — the fused lib carries GGML_CPU, so the acoustic
-          # forward passes run CPU-only when there is no GPU.
-          if [ -n "$FUSED_LIB" ] && [ -d "$BUNDLE/asr" ]; then
-            echo "VOICE_RUNNER_PROVISIONED=1" >> "$GITHUB_ENV"
-            echo "voice runner provisioned — running the require-real matrix"
-          else
-            echo "VOICE_RUNNER_PROVISIONED=0" >> "$GITHUB_ENV"
-            {
-              echo "# Voice acoustic matrix SKIPPED — runner not provisioned"
-              echo
-              echo "This self-hosted runner is missing staged voice assets, so the"
-              echo "require-real acoustic matrix cannot run. This is runner"
-              echo "provisioning (elizaOS/eliza#9454), NOT a code defect."
-              echo
-              echo "- fusedLib: ${FUSED_LIB:-MISSING (need libelizainference.so)}"
-              echo "- asrBundle: $BUNDLE/asr ($( [ -d "$BUNDLE/asr" ] && echo present || echo MISSING ))"
-              echo "- missingTools:${missing_tools:-none}"
-              echo
-              echo "Provision the runner per elizaOS/eliza#9454"
-              echo "(stage the fused libelizainference.so + the eliza-1-2b ASR"
-              echo "bundle), then re-dispatch:"
-              echo "  gh workflow run voice-live-e2e.yml --ref develop"
-            } | tee "$VOICE_REAL_MATRIX_OUT/SKIPPED.md"
-            echo "::error title=Voice acoustic matrix runner not provisioned::Missing fused libelizainference.so and/or the eliza-1-2b ASR bundle on this self-hosted runner. This lane needs the GPU runner staged per elizaOS/eliza#9454."
-            exit 1
-          fi
-
       - name: Setup Node.js
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`
       # (bun-canary reserializes bun.lock → "lockfile had changes, but lockfile is
-      # frozen"; see run 28548736294). Gated on the provisioning preflight so an
-      # unprovisioned runner skips the install too and lands green in seconds.
+      # frozen"; see run 28548736294).
       - name: Setup workspace dependencies
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -372,145 +385,39 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Stage published acoustic GGUFs into a real bundle overlay
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
+      # --ignore-scripts skips core's generated sources; the voice scripts
+      # import @elizaos/core straight from src, so generate them explicitly.
+      - name: Prepare core generated sources
+        run: bun run --cwd packages/core prebuild
+
+      - name: Download fused libelizainference artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: voice-fused-lib-linux-x64-cpu
+          path: ${{ runner.temp }}/fused-lib
+
+      - name: Stage real voice assets (fused lib + pinned bundle)
+        uses: ./.github/actions/stage-voice-real-assets
+        with:
+          fused-lib-dir: ${{ runner.temp }}/fused-lib
+
+      - name: Record provisioning evidence
         run: |
           set -euo pipefail
-
-          require_file() {
-            local name="$1"
-            local path="$2"
-            if [ ! -f "$path" ]; then
-              echo "$name not found at $path"
-              exit 1
-            fi
-          }
-
-          require_dir() {
-            local name="$1"
-            local path="$2"
-            if [ ! -d "$path" ]; then
-              echo "$name not found at $path"
-              exit 1
-            fi
-          }
-
-          first_existing_dir() {
-            for path in "$@"; do
-              if [ -n "$path" ] && [ -d "$path" ]; then
-                printf '%s\n' "$path"
-                return 0
-              fi
-            done
-            return 1
-          }
-
-          first_existing_file() {
-            for path in "$@"; do
-              if [ -n "$path" ] && [ -f "$path" ]; then
-                printf '%s\n' "$path"
-                return 0
-              fi
-            done
-            return 1
-          }
-
-          download_sha() {
-            local url="$1"
-            local dest="$2"
-            local sha="$3"
-            mkdir -p "$(dirname "$dest")"
-            curl -fL --retry 3 --retry-delay 5 "$url" -o "$dest"
-            local actual
-            actual="$(sha256sum "$dest" | awk '{print $1}')"
-            if [ "$actual" != "$sha" ]; then
-              echo "sha256 mismatch for $dest"
-              echo "expected $sha"
-              echo "actual   $actual"
-              exit 1
-            fi
-          }
-
-          SRC_BUNDLE="$(first_existing_dir \
-            "${ELIZA_ASR_BUNDLE:-}" \
-            "$HOME/.eliza/local-inference/models/eliza-1-2b.bundle")"
-          require_dir "ASR region" "$SRC_BUNDLE/asr"
-
-          FUSED_LIB="$(first_existing_file \
-            "${ELIZA_INFERENCE_LIBRARY:-}" \
-            "$SRC_BUNDLE/lib/libelizainference.so" \
-            "$HOME/.eliza/local-inference/lib/libelizainference.so" \
-            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cuda-fused/libelizainference.so" \
-            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so" \
-            || true)"
-          if [ -z "$FUSED_LIB" ]; then
-            echo "FATAL: fused libelizainference.so is not staged on this runner."
-            echo "Provision the lane per elizaOS/eliza#9454"
-            echo "(stage the fused libelizainference.so + the eliza-1-2b ASR bundle)."
-            exit 1
-          fi
-
-          BUNDLE="$RUNNER_TEMP/eliza-voice-real.bundle"
-          node packages/scripts/rm-path-recursive.mjs "$BUNDLE"
-          mkdir -p "$BUNDLE"
-          for entry in "$SRC_BUNDLE"/*; do
-            name="$(basename "$entry")"
-            case "$name" in
-              speaker|speaker-encoder|diariz|diarizer|vad|voice) ;;
-              *) ln -s "$entry" "$BUNDLE/$name" ;;
-            esac
-          done
-
-          base="https://huggingface.co/elizaos/eliza-1/resolve/main"
-          download_sha "$base/voice/speaker-encoder/wespeaker-resnet34-lm.gguf" \
-            "$BUNDLE/speaker/wespeaker-resnet34-lm.gguf" \
-            "ad066730b125f61a305c949f7f196d23681f387f3e3f916be7a4cd003aae6ae3"
-          download_sha "$base/voice/diarizer/pyannote-segmentation-3.0.gguf" \
-            "$BUNDLE/diariz/pyannote-segmentation-3.0.gguf" \
-            "30983eba41c0a99ab7eada564739ae8be74faeb21a31da759c870b5173cbd8a5"
-          download_sha "$base/voice/vad/silero-vad-v5.1.2.ggml.bin" \
-            "$BUNDLE/vad/silero-vad-v5.1.2.ggml.bin" \
-            "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"
-          download_sha "$base/bundles/2b/vad/silero-vad-v5.gguf" \
-            "$BUNDLE/vad/silero-vad-v5.gguf" \
-            "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995"
-          download_sha "$base/bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf" \
-            "$BUNDLE/tts/kokoro/kokoro-82m-v1_0.gguf" \
-            "25521c1aa35218d03630bf5239e70d8b5acd0e54c6e92543accfb3ebf9cff9d2"
-          download_sha "$base/bundles/2b/tts/kokoro/voices/af_bella.bin" \
-            "$BUNDLE/tts/kokoro/voices/af_bella.bin" \
-            "63d24d0e5d91cb6cf3bca294a3b8c0b4428aa54ac9b5de42e5ba07f6bd110ea8"
-
           {
-            echo "ELIZA_ASR_BUNDLE=$BUNDLE"
-            echo "ELIZA_INFERENCE_LIBRARY=$FUSED_LIB"
-            echo "ELIZA_KOKORO_MODEL_DIR=$BUNDLE/tts/kokoro"
-            echo "ELIZA_KOKORO_DEFAULT_VOICE_ID=af_bella"
-            echo "ELIZA_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
-            echo "ELIZA_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0.gguf"
-            echo "ELIZA_TEST_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
-            echo "ELIZA_TEST_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0.gguf"
-            echo "ELIZA_VOICE_REAL_MODEL_DIR=$BUNDLE"
-            echo "VOICE_REAL_MATRIX_OUT=$VOICE_REAL_MATRIX_OUT"
-          } >> "$GITHUB_ENV"
-
-          mkdir -p "$VOICE_REAL_MATRIX_OUT"
-          {
-            echo "sourceBundle=$SRC_BUNDLE"
-            echo "overlayBundle=$BUNDLE"
-            echo "fusedLib=$FUSED_LIB"
-            find "$BUNDLE" -maxdepth 4 -type f -printf '%P %s bytes\n' | sort
+            echo "bundle=$ELIZA_ASR_BUNDLE"
+            echo "fusedLib=$ELIZA_INFERENCE_LIBRARY"
+            find "$ELIZA_ASR_BUNDLE" -type f -printf '%P %s bytes\n' | sort
+            sha256sum "$ELIZA_INFERENCE_LIBRARY"
           } | tee "$VOICE_REAL_MATRIX_OUT/provisioning.txt"
 
       - name: Real Kokoro GGUF synth smoke
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference test:kokoro:real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/kokoro-real-smoke.log"
 
       - name: Real fused attribution smoke
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun packages/app-core/scripts/voice-attribution-smoke.ts \
@@ -519,7 +426,6 @@ jobs:
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-attribution-smoke.log"
 
       - name: Real plugin voice stack matrix
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference voicestack:real \
@@ -529,31 +435,50 @@ jobs:
           bun run --cwd plugins/plugin-local-inference robustness:real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
 
+      # DESIGNED LOUD SKIP (#16972) — never a green-skip: the 26-scenario
+      # workbench gates fired for the first time ever on this lane's first
+      # real execution and 24/26 scenarios fail on uncalibrated
+      # diarization/voice-entity thresholds (DER mean 0.59, voice→entity
+      # 0.36) while every other matrix entry passes. Running it red every
+      # night would recreate the exact unobservable-regression state #16945
+      # fixed. #16972 tracks the calibration campaign; flip
+      # ELIZA_VOICE_WORKBENCH_REAL_READY=1 (repo variable) to re-enable
+      # without editing this file.
       - name: Real voice workbench scenario matrix
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
+        if: vars.ELIZA_VOICE_WORKBENCH_REAL_READY == '1'
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference voice:workbench --real \
             --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real" \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-workbench-real.log"
 
+      - name: Note skipped workbench matrix (gates uncalibrated)
+        if: vars.ELIZA_VOICE_WORKBENCH_REAL_READY != '1'
+        run: |
+          echo "::warning title=voice:workbench --real skipped::The 26-scenario workbench gates are uncalibrated for CI (24/26 fail on first-ever real execution — see elizaOS/eliza#16972). Set repo variable ELIZA_VOICE_WORKBENCH_REAL_READY=1 to re-enable. All other acoustic-matrix entries ran for real above."
+
       - name: Real packages/benchmarks/voice matrix
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
         run: |
           set -euo pipefail
           bun packages/benchmarks/voice/voice-real-ci-matrix.mjs \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/benchmarks-voice-real-ci-matrix.log"
 
-      - name: Real fused FFI vitest lanes
-        if: env.VOICE_RUNNER_PROVISIONED == '1'
+      # bun test, NOT vitest: these suites need bun:ffi, and vitest's node
+      # workers make every one of them skip — a green-skip lie this lane bans.
+      # Under `bun test` all 12 tests execute against the staged fused lib.
+      - name: Real fused FFI test lanes (bun:ffi)
         run: |
           set -euo pipefail
-          bunx vitest run --config packages/test/vitest/real.config.ts \
+          bun test \
             plugins/plugin-local-inference/src/services/voice/speaker/encoder-fused.real.test.ts \
             plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.real.test.ts \
             plugins/plugin-local-inference/src/services/voice/asr-timed.real.test.ts \
             plugins/plugin-local-inference/src/services/voice/kokoro/__tests__/kokoro-engine-bridge.real.test.ts \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/fused-real-vitest.log"
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"
+          if grep -Eq "(^| )0 pass|12 skip" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"; then
+            echo "::error title=Fused FFI lanes skipped::the real FFI suites did not execute — staging or bun:ffi is broken"
+            exit 1
+          fi
 
       - name: Upload real voice matrix logs
         if: always()

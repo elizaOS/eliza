@@ -16,9 +16,12 @@ import path from "node:path";
 import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 import { resolveFusedLibraryPath } from "../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts";
 import { computeDiarizationErrorRate } from "../../../plugins/plugin-local-inference/src/services/voice/diarization-error-rate.ts";
+import { createKokoroTtsBackend } from "../../../plugins/plugin-local-inference/src/services/voice/engine-bridge.ts";
 import { loadElizaInferenceFfi } from "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings.ts";
+import { resolveKokoroEngineConfig } from "../../../plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-engine-discovery.ts";
 import { FusedDiarizer } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.ts";
 import { FusedSpeakerEncoder } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/encoder-fused.ts";
+import { resampleLinear } from "../../../plugins/plugin-local-inference/src/services/voice/transcriber.ts";
 
 const SAMPLE_RATE = 16_000;
 const OWNER_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
@@ -100,26 +103,61 @@ async function elevenLabsPcm(text, voiceId, apiKey) {
   return pcm16ToFloat32(new Uint8Array(await response.arrayBuffer()));
 }
 
-// Distinct fused-TTS (Kokoro) presets for the keyless corpus. Owner and impostor
-// MUST be different voices so the owner-security + diarization checks stay
-// meaningful without ElevenLabs. Requires the voice packs in the bundle cache.
+// Distinct fused Kokoro voice packs for the local synthesis paths. Owner and
+// impostor MUST be different voices so the owner-security + diarization checks
+// stay meaningful without ElevenLabs; the agent uses a third pack so the
+// self-voice margin is measured against genuinely different human voices.
+// Kokoro (not the OmniVoice `tts` bundle region) is the product's on-device
+// TTS engine, and — unlike OmniVoice's auto-voice fallback — a fixed pack has
+// a deterministic speaker identity, which is the property the echo/self-voice
+// checks exist to measure.
 const KEYLESS_OWNER_PRESET = "af_bella";
 const KEYLESS_IMPOSTOR_PRESET = "am_michael";
+const AGENT_PRESET = "af_nicole";
 
-function synthesizeAgent(ffi, ctx, text, speakerPresetId = null) {
-  const out = new Float32Array(SAMPLE_RATE * 12);
-  const samples = ffi.ttsSynthesize({
-    ctx,
-    text,
-    speakerPresetId,
-    out,
+// Kokoro emits fp32 mono at its native 24 kHz. Every downstream consumer here
+// (WeSpeaker, pyannote, ASR calls, DER windows) works in 16 kHz corpus time —
+// treating a 24 kHz buffer as 16 kHz slowed the audio 1.5x and quietly wrecked
+// the speaker embeddings while ASR still transcribed, so the mismatch surfaced
+// as impossible owner/echo cosines rather than an obvious decode failure.
+async function synthesizeKokoro(backend, text, voiceId) {
+  const chunks = [];
+  let sampleRate = 0;
+  await backend.synthesizeStream({
+    phrase: {
+      id: 1,
+      text,
+      fromIndex: 0,
+      toIndex: text.length,
+      terminator: "punctuation",
+    },
+    preset: {
+      voiceId,
+      embedding: new Float32Array(0),
+      bytes: new Uint8Array(0),
+    },
+    cancelSignal: { cancelled: false },
+    onChunk: (c) => {
+      if (!c.isFinal && c.pcm.length > 0) {
+        chunks.push(c.pcm);
+        sampleRate = c.sampleRate;
+      }
+      return undefined;
+    },
   });
-  if (!Number.isFinite(samples) || samples < SAMPLE_RATE) {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  if (total < sampleRate || sampleRate === 0) {
     throw new Error(
-      `[voice-real-ci] fused TTS returned too little audio (${samples} samples)`,
+      `[voice-real-ci] Kokoro produced too little audio for "${text}" (${total} samples @ ${sampleRate} Hz)`,
     );
   }
-  return out.slice(0, samples);
+  const pcm = new Float32Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    pcm.set(c, off);
+    off += c.length;
+  }
+  return resampleLinear(pcm, sampleRate, SAMPLE_RATE);
 }
 
 function cosine(a, b) {
@@ -302,6 +340,7 @@ async function main() {
   let ctx = null;
   let encoder = null;
   let diarizer = null;
+  let kokoroBackend = null;
 
   try {
     ctx = ffi.create(bundle);
@@ -326,14 +365,26 @@ async function main() {
       ggufPath: diarizGguf,
     });
 
-    // TTS is needed up front in keyless mode (the corpus is synthesized locally).
-    ffi.mmapAcquire(ctx, "tts");
-    // ElevenLabs supplies distinct real voices; keyless falls back to the local
-    // fused TTS with distinct presets so owner/impostor stay separable.
+    // The Kokoro engine synthesizes the agent turns always, and the human
+    // turns too in keyless mode (distinct packs keep owner/impostor separable).
+    if (typeof ffi.kokoroSupported !== "function" || !ffi.kokoroSupported()) {
+      throw new Error(
+        "[voice-real-ci] fused library does not link the Kokoro engine (eliza_inference_kokoro_*)",
+      );
+    }
+    const kokoro = resolveKokoroEngineConfig();
+    if (!kokoro) {
+      throw new Error(
+        "[voice-real-ci] no Kokoro model staged (set ELIZA_KOKORO_MODEL_DIR to a dir with kokoro-82m-v1_0*.gguf + voices/<voice>.bin)",
+      );
+    }
+    kokoroBackend = createKokoroTtsBackend(kokoro, { ffi });
+    // ElevenLabs supplies distinct real human voices; keyless falls back to
+    // distinct local Kokoro packs so owner/impostor stay separable.
     const corpusPcm = (text, voiceId, presetId) =>
       apiKey
         ? elevenLabsPcm(text, voiceId, apiKey)
-        : Promise.resolve(synthesizeAgent(ffi, ctx, text, presetId));
+        : synthesizeKokoro(kokoroBackend, text, presetId);
     const corpus = {
       ownerEnroll: {
         text: "Hey Eliza, this is my owner voice for the room.",
@@ -361,17 +412,16 @@ async function main() {
       },
     };
 
-    const agentOne = synthesizeAgent(
-      ffi,
-      ctx,
+    const agentOne = await synthesizeKokoro(
+      kokoroBackend,
       "Your two o'clock meeting was moved to four.",
+      AGENT_PRESET,
     );
-    const agentTwo = synthesizeAgent(
-      ffi,
-      ctx,
+    const agentTwo = await synthesizeKokoro(
+      kokoroBackend,
       "The kitchen light is now set to thirty percent.",
+      AGENT_PRESET,
     );
-    ffi.mmapEvict?.(ctx, "tts");
 
     const ownerEnroll = await encoder.encode(corpus.ownerEnroll.pcm);
     const ownerHeldout = await encoder.encode(corpus.ownerHeldout.pcm);
@@ -555,6 +605,7 @@ async function main() {
       throw new Error("[voice-real-ci] one or more real voice checks failed");
     }
   } finally {
+    kokoroBackend?.dispose?.();
     await encoder?.dispose?.();
     await diarizer?.dispose?.();
     if (ctx !== null) ffi.destroy(ctx);
