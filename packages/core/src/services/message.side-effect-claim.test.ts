@@ -113,6 +113,29 @@ describe("replyClaimsCompletedSideEffect", () => {
 			replyClaimsCompletedSideEffect("I've set aside my doubts about this."),
 		).toBe(false);
 	});
+
+	it("anchors the bare 'done —' branch to reply or sentence start", () => {
+		// Reply-start "Done —" is a completion claim (also carried by "I've set").
+		expect(
+			replyClaimsCompletedSideEffect("Done — I've set two reminders."),
+		).toBe(true);
+		// The anchored branch alone: no completion verb, no "are set" phrasing.
+		expect(replyClaimsCompletedSideEffect("Done — two reminders.")).toBe(true);
+		// Sentence-start mid-reply still counts.
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Both are handled. Done — see your reminders list.",
+			),
+		).toBe(true);
+		// "All done —" is caught via the "reminders are set" branch, not "done —".
+		expect(
+			replyClaimsCompletedSideEffect("All done — reminders are set."),
+		).toBe(true);
+		// Congratulations must pass through: "done —" mid-sentence is not a claim.
+		expect(
+			replyClaimsCompletedSideEffect("Well done — that's every task cleared."),
+		).toBe(false);
+	});
 });
 
 describe(CLAIM_EVALUATOR_NAME, () => {
