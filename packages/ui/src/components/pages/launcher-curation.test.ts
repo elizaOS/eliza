@@ -243,6 +243,30 @@ describe("curateLauncherPages", () => {
     }
   });
 
+  it("shows Notes and Calendar only for an active Eliza Cloud session (#16864)", () => {
+    const views = [
+      entry("notes", { label: "Notes" }),
+      entry("simple-calendar", { label: "Calendar" }),
+    ];
+
+    expect(
+      curateLauncherPages(views, {
+        isAosp: false,
+        enabledKinds: APPS_ONLY,
+        cloudActive: false,
+      }),
+    ).toEqual([]);
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: APPS_ONLY,
+          cloudActive: true,
+        }),
+      ),
+    ).toEqual(["simple-calendar", "notes"]);
+  });
+
   it("collapses duplicate wallet + automations registrations, keeping Tasks its own tile", () => {
     const page = curateLauncherPages(
       [

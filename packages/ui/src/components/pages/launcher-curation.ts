@@ -42,6 +42,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "settings",
   "wallet",
   "tasks",
+  "simple-calendar",
+  "notes",
   "automations",
   "my-apps",
   "browser",
@@ -253,7 +255,11 @@ function preferenceScore(entry: ViewEntry): number {
  * (LAUNCHER_HIDDEN_IDS) — My Apps owns its entry point and applies the same
  * signed-in gate to that row.
  */
-export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud"]);
+export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set([
+  "cloud",
+  "notes",
+  "simple-calendar",
+]);
 
 export interface CurateLauncherOptions {
   /** Include the native-OS tiles (phone/messages/contacts/camera/files). */
