@@ -26,6 +26,7 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  ElizaError,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -83,6 +84,16 @@ import {
   writeSseJson,
 } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import {
+  assertConversationConnectionRuntime,
+  type ConversationConnectionDescriptor,
+  captureConversationConnectionDescriptor,
+  hasReadyConversationConnection,
+  isConversationConnectionError,
+  prepareConversationConnectionRoom,
+  scheduleConversationConnectionEnsure,
+  serializeConversationConnectionRoomDeletion,
+} from "./conversation-connection-readiness.ts";
 import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
@@ -549,18 +560,56 @@ function isTurnAbortError(err: unknown): boolean {
   );
 }
 
+type PromiseOutcome<T> =
+  | { readonly status: "fulfilled"; readonly value: T }
+  | { readonly status: "rejected"; readonly reason: unknown };
+
+function observePromise<T>(promise: Promise<T>): Promise<PromiseOutcome<T>> {
+  return promise.then<PromiseOutcome<T>, PromiseOutcome<T>>(
+    (value) => ({ status: "fulfilled", value }),
+    (reason: unknown) => ({ status: "rejected", reason }),
+  );
+}
+
+function unwrapPromiseOutcome<T>(outcome: PromiseOutcome<T>): T {
+  if (outcome.status === "rejected") {
+    throw outcome.reason;
+  }
+  return outcome.value;
+}
+
+function ensureAdminEntityIdForRuntime(
+  state: ConversationRouteState,
+  runtime: AgentRuntime | null,
+): UUID {
+  const resolutionState = {
+    runtime,
+    adminEntityId: state.adminEntityId,
+    chatUserId: state.chatUserId,
+    config: state.config,
+    agentName: state.agentName,
+  };
+  const ownerId = resolveClientChatAdminEntityId(resolutionState);
+  if (state.runtime === runtime) {
+    state.adminEntityId = ownerId;
+    state.chatUserId = ownerId;
+  }
+  return ownerId;
+}
+
 function ensureAdminEntityId(state: ConversationRouteState): UUID {
-  return resolveConversationAdminEntityId(state);
+  return ensureAdminEntityIdForRuntime(state, state.runtime);
 }
 
 function resolveConversationCaller(
   req: http.IncomingMessage,
   state: ConversationRouteState,
+  runtime: AgentRuntime | null = state.runtime,
 ): { entityId: UUID; role: WaifuChatWorldRole; userName: string } {
   const access = resolveWaifuChatAccess(req);
   if (!access) {
     return {
-      entityId: ensureAdminEntityId(state),
+      entityId: ensureAdminEntityIdForRuntime(state, runtime),
       role: "OWNER",
       userName: resolveAppUserName(state.config),
     };
@@ -636,7 +685,21 @@ async function ensureWorldOwnershipAndRoles(
   callerRole: WaifuChatWorldRole,
 ): Promise<void> {
   const world = await runtime.getWorld(worldId);
-  if (!world) return;
+  if (!world) {
+    throw new ElizaError(
+      "Conversation world is missing after connection initialization",
+      {
+        code: "CONVERSATION_WORLD_MISSING",
+        context: {
+          agentId: runtime.agentId,
+          worldId,
+          ownerId,
+          callerId,
+        },
+        severity: "fatal",
+      },
+    );
+  }
   let needsUpdate = false;
   if (!world.metadata) {
     world.metadata = {};
@@ -715,24 +778,30 @@ async function deleteConversationRoomData(
   runtime: AgentRuntime,
   roomId: UUID,
 ): Promise<void> {
-  const runtimeWithDelete = runtime as AgentRuntime & {
-    deleteRoom?: (id: UUID) => Promise<unknown>;
-    adapter?: {
-      db?: {
+  await serializeConversationConnectionRoomDeletion(
+    runtime,
+    roomId,
+    async () => {
+      const runtimeWithDelete = runtime as AgentRuntime & {
         deleteRoom?: (id: UUID) => Promise<unknown>;
+        adapter?: {
+          db?: {
+            deleteRoom?: (id: UUID) => Promise<unknown>;
+          };
+        };
       };
-    };
-  };
 
-  if (typeof runtimeWithDelete.deleteRoom === "function") {
-    await runtimeWithDelete.deleteRoom(roomId);
-    return;
-  }
+      if (typeof runtimeWithDelete.deleteRoom === "function") {
+        await runtimeWithDelete.deleteRoom(roomId);
+        return;
+      }
 
-  const dbDeleteRoom = runtimeWithDelete.adapter.db.deleteRoom;
-  if (typeof dbDeleteRoom === "function") {
-    await dbDeleteRoom.call(runtimeWithDelete.adapter.db, roomId);
-  }
+      const dbDeleteRoom = runtimeWithDelete.adapter.db.deleteRoom;
+      if (typeof dbDeleteRoom === "function") {
+        await dbDeleteRoom.call(runtimeWithDelete.adapter.db, roomId);
+      }
+    },
+  );
 }
 
 async function deleteConversationMemories(
@@ -798,77 +867,78 @@ async function deleteConversationMemories(
   return deletedCount;
 }
 
-async function ensureConversationRoom(
+function captureConversationConnection(
   state: ConversationRouteState,
+  runtime: AgentRuntime,
   conv: ConversationMeta,
   caller: {
     entityId: UUID;
     role: WaifuChatWorldRole;
     userName: string;
   },
-): Promise<void> {
-  if (!state.runtime) return;
-  const runtime = state.runtime;
+): ConversationConnectionDescriptor {
   const agentName = runtime.character.name ?? "Eliza";
-  const ownerId = ensureAdminEntityId(state);
+  const ownerId = ensureAdminEntityIdForRuntime(state, runtime);
   const worldId = stringToUuid(`${agentName}-web-chat-world`);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
-  await runtime.ensureConnection({
-    entityId: caller.entityId,
+  return captureConversationConnectionDescriptor({
+    runtime,
+    conversationId: conv.id,
     roomId: conv.roomId,
+    agentName,
     worldId,
-    userName: caller.userName,
-    source: MESSAGE_SOURCE_CLIENT_CHAT,
-    channelId: `web-conv-${conv.id}`,
-    type: ChannelType.DM,
     messageServerId,
-    metadata: { ownership: { ownerId }, waifuRole: caller.role },
+    channelId: `web-conv-${conv.id}`,
+    ownerId,
+    callerEntityId: caller.entityId,
+    callerRole: caller.role,
+    callerUserName: caller.userName,
+  });
+}
+
+async function establishConversationConnection(
+  descriptor: ConversationConnectionDescriptor,
+): Promise<void> {
+  await descriptor.runtime.ensureConnection({
+    entityId: descriptor.callerEntityId,
+    roomId: descriptor.roomId,
+    worldId: descriptor.worldId,
+    userName: descriptor.callerUserName,
+    source: MESSAGE_SOURCE_CLIENT_CHAT,
+    channelId: descriptor.channelId,
+    type: ChannelType.DM,
+    messageServerId: descriptor.messageServerId,
+    metadata: {
+      ownership: { ownerId: descriptor.ownerId },
+      waifuRole: descriptor.callerRole,
+    },
   });
   await ensureWorldOwnershipAndRoles(
-    runtime,
-    worldId as UUID,
-    ownerId,
-    caller.entityId,
-    caller.role,
+    descriptor.runtime,
+    descriptor.worldId,
+    descriptor.ownerId,
+    descriptor.callerEntityId,
+    descriptor.callerRole,
   );
-  let readyConnections = conversationConnectionReadiness.get(runtime);
-  if (!readyConnections) {
-    readyConnections = new Set<string>();
-    conversationConnectionReadiness.set(runtime, readyConnections);
-  }
-  readyConnections.add(conversationConnectionKey(state, conv, caller));
 }
 
-const conversationConnectionReadiness = new WeakMap<
-  AgentRuntime,
-  Set<string>
->();
-
-function conversationConnectionKey(
-  state: ConversationRouteState,
-  conv: ConversationMeta,
-  caller: { entityId: UUID; role: WaifuChatWorldRole; userName: string },
-): string {
-  return [
-    conv.roomId,
-    caller.entityId,
-    caller.role,
-    caller.userName,
-    ensureAdminEntityId(state),
-  ].join(":");
-}
-
-function hasReadyConversationConnection(
+async function ensureConversationRoom(
   state: ConversationRouteState,
   runtime: AgentRuntime,
   conv: ConversationMeta,
   caller: { entityId: UUID; role: WaifuChatWorldRole; userName: string },
-): boolean {
-  return (
-    conversationConnectionReadiness
-      .get(runtime)
-      ?.has(conversationConnectionKey(state, conv, caller)) === true
+): Promise<ConversationConnectionDescriptor> {
+  const descriptor = captureConversationConnection(
+    state,
+    runtime,
+    conv,
+    caller,
   );
+  await scheduleConversationConnectionEnsure(descriptor, () =>
+    establishConversationConnection(descriptor),
+  );
+  assertConversationConnectionRuntime(state.runtime, descriptor);
+  return descriptor;
 }
 
 async function syncConversationRoomState(
@@ -1860,12 +1930,15 @@ export async function handleConversationRoutes(
     // Soft cap: evict the oldest conversation when the map exceeds 500
     evictOldestConversation(state.conversations, 500);
 
-    if (state.runtime) {
+    const runtime = state.runtime;
+    if (runtime) {
       try {
+        prepareConversationConnectionRoom(runtime, conv.roomId);
         await ensureConversationRoom(
           state,
+          runtime,
           conv,
-          resolveConversationCaller(req, state),
+          resolveConversationCaller(req, state, runtime),
         );
         await syncConversationRoomState(state, conv);
         if (body.includeGreeting === true) {
@@ -2282,6 +2355,7 @@ export async function handleConversationRoutes(
     await waitForConversationRestore(state);
 
     let conv = state.conversations.get(convId);
+    let createdConversation = false;
     if (!conv) {
       const now = new Date().toISOString();
       conv = {
@@ -2296,11 +2370,15 @@ export async function handleConversationRoutes(
       };
       state.conversations.set(convId, conv);
       evictOldestConversation(state.conversations, 500);
+      createdConversation = true;
     }
 
-    const caller = resolveConversationCaller(req, state);
+    if (createdConversation) {
+      prepareConversationConnectionRoom(runtime, conv.roomId);
+    }
+    const caller = resolveConversationCaller(req, state, runtime);
     try {
-      await ensureConversationRoom(state, conv, caller);
+      await ensureConversationRoom(state, runtime, conv, caller);
     } catch (err) {
       error(
         res,
@@ -2613,7 +2691,7 @@ export async function handleConversationRoutes(
       return failStream("Agent is not running");
     }
 
-    const caller = resolveConversationCaller(req, state);
+    const caller = resolveConversationCaller(req, state, runtime);
     const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
@@ -2628,14 +2706,26 @@ export async function handleConversationRoutes(
       metadata: chatMetadata,
     });
 
-    let connectionRefresh: Promise<void> = Promise.resolve();
-    if (hasReadyConversationConnection(state, runtime, conv, caller)) {
-      connectionRefresh = ensureConversationRoom(state, conv, caller);
-      // error-policy:J5 the rejection is observed before the terminal frame.
-      connectionRefresh.catch(() => {});
-    } else {
+    const connectionDescriptor = captureConversationConnection(
+      state,
+      runtime,
+      conv,
+      caller,
+    );
+    const connectionWasReady =
+      hasReadyConversationConnection(connectionDescriptor);
+    const connectionRefreshOutcome = observePromise(
+      scheduleConversationConnectionEnsure(connectionDescriptor, () =>
+        establishConversationConnection(connectionDescriptor),
+      ),
+    );
+    if (!connectionWasReady) {
       try {
-        await ensureConversationRoom(state, conv, caller);
+        unwrapPromiseOutcome(await connectionRefreshOutcome);
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
       } catch (err) {
         return failStream(
           `Failed to initialize conversation room: ${getErrorMessage(err)}`,
@@ -2643,8 +2733,20 @@ export async function handleConversationRoutes(
       }
     }
     try {
+      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
       await persistConversationMemory(runtime, messageToStore);
     } catch (err) {
+      try {
+        unwrapPromiseOutcome(await connectionRefreshOutcome);
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+      } catch (connectionErr) {
+        return failStream(
+          `Failed to refresh conversation room: ${getErrorMessage(connectionErr)}`,
+        );
+      }
       return failStream(
         `Failed to store user message: ${getErrorMessage(err)}`,
       );
@@ -2654,8 +2756,12 @@ export async function handleConversationRoutes(
     if (walletModeGuidance) {
       const endActiveChatTurn = beginActiveChatTurn(state);
       try {
+        unwrapPromiseOutcome(await connectionRefreshOutcome);
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
         if (!disconnectTracker.isAborted()) {
-          await connectionRefresh;
           tokenWriter.writeSnapshot(res, walletModeGuidance);
           try {
             const persisted = await persistAssistantConversationMemory(
@@ -2664,6 +2770,10 @@ export async function handleConversationRoutes(
               walletModeGuidance,
               channelType,
               turnStartedAt,
+            );
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
             );
             conv.updatedAt = new Date().toISOString();
             writeSseJson(res, {
@@ -2679,6 +2789,15 @@ export async function handleConversationRoutes(
             });
             return true;
           }
+        }
+      } catch (err) {
+        if (!disconnectTracker.isAborted()) {
+          writeSse(res, {
+            type: "error",
+            message: isConversationConnectionError(err)
+              ? `Failed to refresh conversation room: ${getErrorMessage(err)}`
+              : getErrorMessage(err),
+          });
         }
       } finally {
         clearInterval(heartbeatInterval);
@@ -2706,83 +2825,85 @@ export async function handleConversationRoutes(
     let deferredPersistence: Promise<void> | null = null;
 
     try {
-      const result = await generateChatResponse(
-        runtime,
-        userMessage,
-        state.agentName,
-        {
-          isAborted: () => disconnectTracker.isAborted(),
-          abortSignal: disconnectTracker.signal,
-          onStatus: (status) => {
-            if (
-              disconnectTracker.isAborted() ||
-              disconnectTracker.checkConnectionClosed()
-            ) {
-              return;
-            }
-            // Array.join renders absent optional fields as empty segments, so
-            // the dedup key is stable without nullish-coalescing each field.
-            const signature = [
-              status.kind,
-              status.actionName,
-              status.toolName,
-            ].join(":");
-            if (signature === lastStatusSignature) {
-              return;
-            }
-            lastStatusSignature = signature;
-            writeChatStatusSse(res, status);
-          },
-          onToolEvent: (event) => {
-            if (
-              disconnectTracker.isAborted() ||
-              disconnectTracker.checkConnectionClosed()
-            ) {
-              return;
-            }
-            writeChatToolSse(res, event);
-          },
-          onChunk: (chunk) => {
-            if (!chunk) return;
-            if (
-              disconnectTracker.isAborted() ||
-              disconnectTracker.checkConnectionClosed()
-            ) {
-              return;
-            }
-            streamedText += chunk;
-            tokenWriter.writeChunk(res, chunk, streamedText);
-          },
-          onSnapshot: (text) => {
-            if (!text) return;
-            if (
-              !streamedText ||
-              disconnectTracker.isAborted() ||
-              disconnectTracker.checkConnectionClosed()
-            ) {
-              return;
-            }
-            // Structured field extractors can briefly normalize whitespace or
-            // closing punctuation while the same visible field is still
-            // streaming. Do not shrink the user-visible token stream for
-            // prefix-equivalent snapshots; later longer snapshots/deltas still
-            // advance normally.
-            if (
-              text.length < streamedText.length &&
-              streamedText.startsWith(text)
-            ) {
-              return;
-            }
-            streamedText = text;
-            tokenWriter.writeSnapshot(res, streamedText);
-          },
-          resolveNoResponseText: () =>
-            resolveNoResponseFallback(state.logBuffer, runtime),
-          preferredLanguage,
-        },
-      );
+      const [generationOutcome, refreshOutcome] = await Promise.all([
+        observePromise(
+          generateChatResponse(runtime, userMessage, state.agentName, {
+            isAborted: () => disconnectTracker.isAborted(),
+            abortSignal: disconnectTracker.signal,
+            onStatus: (status) => {
+              if (
+                disconnectTracker.isAborted() ||
+                disconnectTracker.checkConnectionClosed()
+              ) {
+                return;
+              }
+              // Array.join renders absent optional fields as empty segments, so
+              // the dedup key is stable without nullish-coalescing each field.
+              const signature = [
+                status.kind,
+                status.actionName,
+                status.toolName,
+              ].join(":");
+              if (signature === lastStatusSignature) {
+                return;
+              }
+              lastStatusSignature = signature;
+              writeChatStatusSse(res, status);
+            },
+            onToolEvent: (event) => {
+              if (
+                disconnectTracker.isAborted() ||
+                disconnectTracker.checkConnectionClosed()
+              ) {
+                return;
+              }
+              writeChatToolSse(res, event);
+            },
+            onChunk: (chunk) => {
+              if (!chunk) return;
+              if (
+                disconnectTracker.isAborted() ||
+                disconnectTracker.checkConnectionClosed()
+              ) {
+                return;
+              }
+              streamedText += chunk;
+              tokenWriter.writeChunk(res, chunk, streamedText);
+            },
+            onSnapshot: (text) => {
+              if (!text) return;
+              if (
+                !streamedText ||
+                disconnectTracker.isAborted() ||
+                disconnectTracker.checkConnectionClosed()
+              ) {
+                return;
+              }
+              // Structured field extractors can briefly normalize whitespace or
+              // closing punctuation while the same visible field is still
+              // streaming. Do not shrink the user-visible token stream for
+              // prefix-equivalent snapshots; later longer snapshots/deltas still
+              // advance normally.
+              if (
+                text.length < streamedText.length &&
+                streamedText.startsWith(text)
+              ) {
+                return;
+              }
+              streamedText = text;
+              tokenWriter.writeSnapshot(res, streamedText);
+            },
+            resolveNoResponseText: () =>
+              resolveNoResponseFallback(state.logBuffer, runtime),
+            preferredLanguage,
+          }),
+        ),
+        connectionRefreshOutcome,
+      ]);
 
-      await connectionRefresh;
+      unwrapPromiseOutcome(refreshOutcome);
+      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
+      const result = unwrapPromiseOutcome(generationOutcome);
 
       if (!disconnectTracker.isAborted()) {
         conv.updatedAt = new Date().toISOString();
@@ -2831,6 +2952,10 @@ export async function handleConversationRoutes(
           // Emit `done` before the DB insert so user-perceived end-of-turn
           // latency excludes the memory write, but include the pre-minted
           // persisted id so the client can reconcile its streamed temp bubble.
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
           writeSseJson(res, {
             type: "done",
             fullText: resolvedText,
@@ -2878,6 +3003,10 @@ export async function handleConversationRoutes(
             }
           })();
         } else {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
           writeSseJson(res, {
             type: "done",
             fullText: "",
@@ -2891,7 +3020,34 @@ export async function handleConversationRoutes(
         }
       }
     } catch (err) {
-      if (isTurnAbortError(err)) {
+      let terminalError = err;
+      try {
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+      } catch (runtimeError) {
+        terminalError = runtimeError;
+      }
+
+      if (isConversationConnectionError(terminalError)) {
+        logger.warn(
+          {
+            err: getErrorMessage(terminalError),
+            conversationId: conv.id,
+            roomId: conv.roomId,
+          },
+          "[ConversationStream] connection prerequisite failed",
+        );
+        if (disconnectTracker.isAborted()) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        } else {
+          writeSse(res, {
+            type: "error",
+            message: `Failed to refresh conversation room: ${getErrorMessage(terminalError)}`,
+          });
+        }
+      } else if (isTurnAbortError(terminalError)) {
         logger.info(
           { conversationId: conv.id, roomId: conv.roomId },
           "[ConversationStream] generation aborted",
@@ -2909,7 +3065,7 @@ export async function handleConversationRoutes(
         if (streamedText) {
           logger.warn(
             {
-              err: getErrorMessage(err),
+              err: getErrorMessage(terminalError),
               streamedTextLength: streamedText.length,
             },
             "Post-generation error after text was already streamed — using streamed text",
@@ -2921,6 +3077,10 @@ export async function handleConversationRoutes(
               streamedText,
               channelType,
               turnStartedAt,
+            );
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
             );
             conv.updatedAt = new Date().toISOString();
             writeSseJson(res, {
@@ -2938,8 +3098,11 @@ export async function handleConversationRoutes(
         } else {
           logger.warn(
             {
-              err: getErrorMessage(err),
-              stack: err instanceof Error ? err.stack : undefined,
+              err: getErrorMessage(terminalError),
+              stack:
+                terminalError instanceof Error
+                  ? terminalError.stack
+                  : undefined,
             },
             "Chat generation failed with no streamed text",
           );
@@ -2952,12 +3115,24 @@ export async function handleConversationRoutes(
           if (alreadyPersistedVisibleAssistantTurn) {
             logger.warn(
               {
-                err: getErrorMessage(err),
+                err: getErrorMessage(terminalError),
                 conversationId: conv.id,
                 roomId: conv.roomId,
               },
               "Chat generation failed after an assistant reply was already persisted — suppressing synthetic fallback",
             );
+            try {
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+            } catch (connectionErr) {
+              writeSse(res, {
+                type: "error",
+                message: getErrorMessage(connectionErr),
+              });
+              return true;
+            }
             writeSseJson(res, {
               type: "done",
               fullText: "",
@@ -2965,14 +3140,24 @@ export async function handleConversationRoutes(
             });
             return true;
           }
-          const providerIssueReply = getChatFailureReply(err, state.logBuffer);
-          const failureKind = classifyChatFailure(err, state.logBuffer);
+          const providerIssueReply = getChatFailureReply(
+            terminalError,
+            state.logBuffer,
+          );
+          const failureKind = classifyChatFailure(
+            terminalError,
+            state.logBuffer,
+          );
           try {
             const persisted = await persistAssistantConversationMemory(
               runtime,
               conv.roomId,
               providerIssueReply,
               channelType,
+            );
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
             );
             conv.updatedAt = new Date().toISOString();
             writeSse(res, {
@@ -3090,12 +3275,12 @@ export async function handleConversationRoutes(
       error(res, "Agent is not running", 503);
       return true;
     }
-    const caller = resolveConversationCaller(req, state);
+    const caller = resolveConversationCaller(req, state, runtime);
     const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
     try {
-      await ensureConversationRoom(state, conv, caller);
+      await ensureConversationRoom(state, runtime, conv, caller);
     } catch (err) {
       error(
         res,
@@ -3276,8 +3461,9 @@ export async function handleConversationRoutes(
     try {
       await ensureConversationRoom(
         state,
+        runtime,
         conv,
-        resolveConversationCaller(req, state),
+        resolveConversationCaller(req, state, runtime),
       );
     } catch (err) {
       error(

@@ -346,6 +346,15 @@ function createState(
     updatedAt: new Date().toISOString(),
   };
   const useModel = createStreamingUseModelFixture();
+  const worlds = new Map<
+    UUID,
+    {
+      id: UUID;
+      agentId: UUID;
+      messageServerId?: UUID;
+      metadata: Record<string, unknown>;
+    }
+  >();
   const runtime = {
     agentId: AGENT_ID,
     character: {
@@ -359,9 +368,21 @@ function createState(
     emitEvent: vi.fn(async () => undefined),
     useModel: useModel as unknown as AgentRuntime["useModel"],
     messageService: messageServiceOverride ?? createModelBackedMessageService(),
-    ensureConnection: vi.fn(async () => undefined),
+    ensureConnection: vi.fn(
+      async (input: { worldId?: UUID; messageServerId?: UUID }) => {
+        if (!input.worldId) throw new Error("worldId is required");
+        if (!worlds.has(input.worldId)) {
+          worlds.set(input.worldId, {
+            id: input.worldId,
+            agentId: AGENT_ID,
+            messageServerId: input.messageServerId,
+            metadata: {},
+          });
+        }
+      },
+    ),
     updateWorld: vi.fn(async () => undefined),
-    getWorld: vi.fn(async () => null),
+    getWorld: vi.fn(async (worldId: UUID) => worlds.get(worldId) ?? null),
     getRoom: vi.fn(async () => null),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
@@ -416,6 +437,40 @@ function createCtx(
     }),
   } as unknown as ConversationRouteContext;
   return { ctx, record, state, useModel };
+}
+
+function createFollowupCtx(
+  baseCtx: ConversationRouteContext,
+  state: ConversationRouteState,
+): {
+  ctx: ConversationRouteContext;
+  record: MockResponseRecord;
+} {
+  const req = createReq(createMockSocket());
+  const { res, record } = createMockRes();
+  return {
+    ctx: {
+      ...baseCtx,
+      req,
+      res,
+      state,
+    },
+    record,
+  };
+}
+
+function createDeferred() {
+  let resolve: (() => void) | undefined;
+  let reject: ((reason: unknown) => void) | undefined;
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return {
+    promise,
+    resolve: () => resolve?.(),
+    reject: (reason: unknown) => reject?.(reason),
+  };
 }
 
 describe("conversation stream SSE contract (#10712)", () => {
@@ -549,6 +604,139 @@ describe("conversation stream SSE contract (#10712)", () => {
     finishRefresh?.();
     await turn;
     expect(record.ended).toBe(true);
+  });
+
+  it("fails closed when a warm refresh rejects after visible tokens stream", async () => {
+    const first = createCtx();
+    await handleConversationRoutes(first.ctx);
+
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const failedRefresh = createDeferred();
+    vi.mocked(runtime.ensureConnection).mockImplementationOnce(
+      async () => failedRefresh.promise,
+    );
+    first.useModel.mockClear();
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    const second = createFollowupCtx(first.ctx, first.state);
+    const secondTurn = handleConversationRoutes(second.ctx);
+    await vi.waitFor(() => {
+      expect(first.useModel).toHaveBeenCalledTimes(1);
+      expect(
+        parseSsePayloads(second.record.writes).some(
+          (payload) => payload.type === "token",
+        ),
+      ).toBe(true);
+    });
+
+    failedRefresh.reject(new Error("role reconciliation failed"));
+    await secondTurn;
+
+    const failedPayloads = parseSsePayloads(second.record.writes);
+    expect(failedPayloads).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("role reconciliation failed"),
+      }),
+    );
+    expect(failedPayloads.some((payload) => payload.type === "done")).toBe(
+      false,
+    );
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+
+    const coldRetryGate = createDeferred();
+    vi.mocked(runtime.ensureConnection).mockClear();
+    vi.mocked(runtime.ensureConnection).mockImplementationOnce(
+      async () => coldRetryGate.promise,
+    );
+    first.useModel.mockClear();
+    const third = createFollowupCtx(first.ctx, first.state);
+    const thirdTurn = handleConversationRoutes(third.ctx);
+
+    await vi.waitFor(() => {
+      expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
+    });
+    expect(first.useModel).not.toHaveBeenCalled();
+    expect(third.record.ended).toBe(false);
+
+    coldRetryGate.resolve();
+    await thirdTurn;
+    expect(first.useModel).toHaveBeenCalledTimes(1);
+    expect(third.record.ended).toBe(true);
+  });
+
+  it("joins a warm refresh when generation fails and gives the prerequisite failure priority", async () => {
+    const first = createCtx();
+    await handleConversationRoutes(first.ctx);
+
+    const runtime = first.state.runtime;
+    if (!runtime?.messageService) throw new Error("runtime fixture missing");
+    const failedRefresh = createDeferred();
+    const generationStarted = createDeferred();
+    vi.mocked(runtime.ensureConnection).mockImplementationOnce(
+      async () => failedRefresh.promise,
+    );
+    runtime.messageService = {
+      ...runtime.messageService,
+      handleMessage: vi.fn(async () => {
+        generationStarted.resolve();
+        throw new Error("generation failed first");
+      }),
+    };
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    const second = createFollowupCtx(first.ctx, first.state);
+    const turn = handleConversationRoutes(second.ctx);
+    await generationStarted.promise;
+
+    expect(second.record.ended).toBe(false);
+    failedRefresh.reject(new Error("refresh failed second"));
+    await turn;
+
+    const payloads = parseSsePayloads(second.record.writes);
+    expect(payloads).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("refresh failed second"),
+      }),
+    );
+    expect(payloads.some((payload) => payload.type === "done")).toBe(false);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it("fails the terminal frame if route state swaps runtimes mid-turn", async () => {
+    const first = createCtx();
+    await handleConversationRoutes(first.ctx);
+
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const refreshGate = createDeferred();
+    vi.mocked(runtime.ensureConnection).mockImplementationOnce(
+      async () => refreshGate.promise,
+    );
+    first.useModel.mockClear();
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    const second = createFollowupCtx(first.ctx, first.state);
+    const turn = handleConversationRoutes(second.ctx);
+    await vi.waitFor(() => expect(first.useModel).toHaveBeenCalledTimes(1));
+
+    const replacement = createState().state.runtime;
+    if (!replacement) throw new Error("replacement fixture missing");
+    first.state.runtime = replacement;
+    refreshGate.resolve();
+    await turn;
+
+    const payloads = parseSsePayloads(second.record.writes);
+    expect(payloads).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("runtime changed"),
+      }),
+    );
+    expect(payloads.some((payload) => payload.type === "done")).toBe(false);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
   });
 
   it("carries a direct VIEWS shortcut result on the terminal done frame", async () => {

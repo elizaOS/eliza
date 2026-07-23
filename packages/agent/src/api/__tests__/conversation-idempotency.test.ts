@@ -128,6 +128,10 @@ function createHarness(): TestHarness {
     },
   );
   const storedMemories: Memory[] = [];
+  const worlds = new Map<
+    UUID,
+    { id: UUID; agentId: UUID; metadata: Record<string, unknown> }
+  >();
   const createMemory = vi.fn(async (memory: Memory) => {
     storedMemories.push(memory);
     return memory.id ?? stringToUuid("created-memory");
@@ -159,9 +163,18 @@ function createHarness(): TestHarness {
     createMemory,
     createLogs: vi.fn(async () => undefined),
     getMemories: vi.fn(async () => storedMemories),
-    ensureConnection: vi.fn(async () => undefined),
+    ensureConnection: vi.fn(async (input: { worldId?: UUID }) => {
+      if (!input.worldId) throw new Error("worldId is required");
+      if (!worlds.has(input.worldId)) {
+        worlds.set(input.worldId, {
+          id: input.worldId,
+          agentId: AGENT_ID,
+          metadata: {},
+        });
+      }
+    }),
     updateWorld: vi.fn(async () => undefined),
-    getWorld: vi.fn(async () => null),
+    getWorld: vi.fn(async (worldId: UUID) => worlds.get(worldId) ?? null),
     getRoom: vi.fn(async () => null),
     reportError: vi.fn(),
     adapter: {} as never,
