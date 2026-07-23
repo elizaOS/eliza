@@ -145,7 +145,10 @@ export function applyServerEvent(
       // eot_timeout with no speech). No speaking_end will ever follow, so
       // parking in 'thinking' would strand the client there forever (#16662).
       // Treat it as terminal-of-turn; the caller loops back to listening.
-      if (event.text === "") {
+      // trim() matches the server's own LLM-dispatch gate (session.ts
+      // commitTurn): the wire text is the raw provider transcript, so a
+      // whitespace-only final is equally leg-less and must not park.
+      if (event.text.trim() === "") {
         return {
           ...state,
           phase: "complete",
