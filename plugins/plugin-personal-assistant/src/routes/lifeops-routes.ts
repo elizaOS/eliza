@@ -97,6 +97,7 @@ import {
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
+import { getSignalSourceRegistry } from "../lifeops/registries/signal-source-registry.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 
@@ -1996,6 +1997,15 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/activity-signals") {
+    const runtime = ctx.state.runtime;
+    if (!runtime || getSignalSourceRegistry(runtime) === null) {
+      ctx.error(
+        res,
+        "Personal Assistant activity signals are unavailable because the runtime plugin is not active",
+        503,
+      );
+      return true;
+    }
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<CaptureLifeOpsActivitySignalRequest>(
       req,

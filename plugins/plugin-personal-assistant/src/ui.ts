@@ -1,11 +1,11 @@
-// Renderer-safe browser entry for @elizaos/plugin-personal-assistant.
-//
-// The legacy /lifeops dashboard was decomposed into domain views, but the app
-// shell still imports this module for browser-only settings cards and old boot
-// hooks. Keep this facade thin so Vite never follows the server-side plugin
-// entrypoint into connector/native dependencies.
+/**
+ * Renderer-safe browser entry for Personal Assistant settings and lifecycle
+ * hooks. The app shell consumes this facade without following the server-side
+ * plugin entrypoint into connector and native dependencies.
+ */
 import "./api/client-lifeops.js";
-import React from "react";
+import { useAppSelector } from "@elizaos/ui/state";
+import React, { useEffect } from "react";
 import { AppBlockerSettingsCard as AppBlockerSettingsCardImpl } from "./components/AppBlockerSettingsCard.js";
 import { WebsiteBlockerSettingsCard as WebsiteBlockerSettingsCardImpl } from "./components/WebsiteBlockerSettingsCard.js";
 import { useLifeOpsActivitySignals } from "./hooks/useLifeOpsActivitySignals.js";
@@ -20,8 +20,35 @@ import type {
   WebsiteBlockerSettingsMode,
 } from "./types/website-blocker-settings-card.js";
 
+const selectPlugins = (state: {
+  plugins: Array<{ id: string; isActive?: boolean; npmName?: string }>;
+}) => state.plugins;
+const selectPluginsLoaded = (state: { pluginsLoaded: boolean }) =>
+  state.pluginsLoaded;
+const selectEnsurePluginsLoaded = (state: {
+  ensurePluginsLoaded: () => Promise<void>;
+}) => state.ensurePluginsLoaded;
+
 export function LifeOpsActivitySignalsEffect() {
-  useLifeOpsActivitySignals();
+  const plugins = useAppSelector(selectPlugins);
+  const pluginsLoaded = useAppSelector(selectPluginsLoaded);
+  const ensurePluginsLoaded = useAppSelector(selectEnsurePluginsLoaded);
+
+  useEffect(() => {
+    if (!pluginsLoaded) {
+      void ensurePluginsLoaded();
+    }
+  }, [ensurePluginsLoaded, pluginsLoaded]);
+
+  const personalAssistantActive =
+    pluginsLoaded &&
+    plugins.some(
+      (plugin) =>
+        (plugin.id === "personal-assistant" ||
+          plugin.npmName === "@elizaos/plugin-personal-assistant") &&
+        plugin.isActive === true,
+    );
+  useLifeOpsActivitySignals(personalAssistantActive);
   return null;
 }
 
