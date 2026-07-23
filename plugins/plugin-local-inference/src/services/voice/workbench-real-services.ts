@@ -43,6 +43,11 @@ import type {
 	VoiceTurnObservation,
 	VoiceWorkbenchServices,
 } from "./workbench-headless-runner";
+import {
+	KOKORO_AGENT_VOICE,
+	labelHash,
+	resolveKokoroVoicePack,
+} from "./workbench-voice-packs";
 
 const SAMPLE_RATE = 16_000;
 const EOT_COMMIT_THRESHOLD = 0.5;
@@ -80,41 +85,9 @@ const VOICE_ID_ALIASES: Record<string, string> = {
 };
 
 // Keyless mode (#9577): human turns are synthesized with distinct fused Kokoro
-// voice packs instead of ElevenLabs voices. The agent's pack is reserved — it
-// must never collide with a human speaker, or the self-voice margin the echo
-// scenarios measure would collapse by construction.
-const KOKORO_AGENT_VOICE = "af_nicole";
-const KOKORO_HUMAN_VOICE_IDS = [
-	"af_bella",
-	"am_adam",
-	"am_michael",
-	"af_sarah",
-	"bf_emma",
-	"bm_george",
-	"af_sky",
-	"bf_isabella",
-	"bm_lewis",
-] as const;
-const KOKORO_VOICE_ALIASES: Record<string, string> = {
-	af_bella: "af_bella",
-	af_sarah: "af_sarah",
-	af_sky: "af_sky",
-	am_adam: "am_adam",
-	am_michael: "am_michael",
-	bf_emma: "bf_emma",
-	bf_isabella: "bf_isabella",
-	bm_george: "bm_george",
-	bm_lewis: "bm_lewis",
-	owner: "af_bella",
-	alice: "af_bella",
-	jill: "af_bella",
-	bob: "am_adam",
-	guest: "am_adam",
-	intruder: "am_adam",
-	marcus: "am_michael",
-	priya: "af_sarah",
-	aria: "bf_emma",
-};
+// voice packs instead of ElevenLabs voices. The pack constants and the
+// label → pack resolution live in `workbench-voice-packs.ts` so the mapping is
+// unit-coverable without the fused native library this adapter binds.
 
 interface SpeakerProfile {
 	label: string;
@@ -201,15 +174,6 @@ function parseVoiceMap(raw: string | undefined): Record<string, string> {
 		out[key.toLowerCase()] = value.trim();
 	}
 	return out;
-}
-
-function labelHash(label: string): number {
-	let h = 0x811c9dc5;
-	for (let i = 0; i < label.length; i += 1) {
-		h ^= label.charCodeAt(i);
-		h = Math.imul(h, 0x01000193);
-	}
-	return h >>> 0;
 }
 
 function ensureSampleRate(
@@ -437,10 +401,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 					})
 				: await this.synthesizeKokoro(
 						SPEAKER_ENROLLMENT_PHRASE,
-						this.resolveKokoroVoiceId(
-							participant.ttsVoiceId,
-							participant.label,
-						),
+						resolveKokoroVoicePack(participant.ttsVoiceId, participant.label),
 					);
 			const embedding = await this.encoder.encode(
 				ensureMinSpeakerSamples(enrollment),
@@ -571,7 +532,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		}
 		// Keyless (#9577): distinct fused Kokoro packs stand in for the human
 		// voices, resolved deterministically from the same label/voiceId keys.
-		const pack = this.resolveKokoroVoiceId(args.voiceId, args.speakerLabel);
+		const pack = resolveKokoroVoicePack(args.voiceId, args.speakerLabel);
 		const pcm = await this.synthesizeKokoro(args.text, pack);
 		return ensureSampleRate(pcm, SAMPLE_RATE, args.sampleRate);
 	}
@@ -590,22 +551,6 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		}
 		return ELEVENLABS_VOICE_IDS[
 			labelHash(speakerLabel) % ELEVENLABS_VOICE_IDS.length
-		];
-	}
-
-	private resolveKokoroVoiceId(
-		voiceId: string | undefined,
-		speakerLabel: string,
-	): string {
-		const keys = [voiceId, speakerLabel].filter(
-			(value): value is string => typeof value === "string" && value.length > 0,
-		);
-		for (const key of keys) {
-			const mapped = KOKORO_VOICE_ALIASES[key.toLowerCase()];
-			if (mapped) return mapped;
-		}
-		return KOKORO_HUMAN_VOICE_IDS[
-			labelHash(speakerLabel) % KOKORO_HUMAN_VOICE_IDS.length
 		];
 	}
 

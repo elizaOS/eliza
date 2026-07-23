@@ -89,11 +89,15 @@ packages/app/scripts/dev-shared.mjs
 # for real, end to end, by the self-provisioning voice-live-e2e nightly
 # (roundtrip + acoustic-matrix jobs run each entrypoint against the real
 # models in require-real mode; green run 29991510871). The pure logic they
-# gained in #16945 is factored into
-# plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-ttfa-budget.ts,
-# which IS instrumented via kokoro-ttfa-budget.test.ts. Delete an entry if its
-# file is ever refactored so the remaining logic lives in an importable,
-# test-instrumented module.
+# gained in #16945 IS instrumented: the TTFA budget knob lives in
+# plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-ttfa-budget.ts
+# (kokoro-ttfa-budget.test.ts), the adapter's speaker → Kokoro voice-pack
+# mapping in src/services/voice/workbench-voice-packs.ts
+# (workbench-voice-packs.test.ts), and the lanes' shared corpus/report
+# plumbing in scripts/voice-bench-shared.ts, which is importable and therefore
+# unit-covered directly (__tests__/voice-bench-shared.test.ts) instead of
+# excluded here. Delete an entry if its file is ever refactored so the
+# remaining logic lives in an importable, test-instrumented module.
 packages/app-core/scripts/voice-attribution-smoke.ts
 packages/benchmarks/voice/voice-real-ci-matrix.mjs
 plugins/plugin-local-inference/scripts/asr-real-smoke.ts
@@ -101,5 +105,4 @@ plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts
 plugins/plugin-local-inference/scripts/real-agent-voice-overlap.ts
 plugins/plugin-local-inference/scripts/real-robustness-asr.ts
 plugins/plugin-local-inference/scripts/real-voice-stack.ts
-plugins/plugin-local-inference/scripts/voice-bench-shared.ts
 plugins/plugin-local-inference/src/services/voice/workbench-real-services.ts
