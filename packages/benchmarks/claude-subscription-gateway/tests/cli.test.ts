@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   inspectBrokerReadiness,
+  MinimumFreeSpaceGuard,
+  parseGatewayCliArguments,
   runGatewayCli,
   writeAuditJsonl,
 } from "../src/cli.js";
@@ -51,6 +53,105 @@ function withoutApiBillingEnvironment(): NodeJS.ProcessEnv {
 }
 
 describe("gateway CLI", () => {
+  it("parses the complete lifecycle contract and derives private artifact defaults", () => {
+    expect(
+      parseGatewayCliArguments([
+        "--",
+        "--ready-file",
+        "/tmp/gateway.ready",
+        "--audit-file",
+        "/tmp/gateway.audit",
+        "--content-contract-file",
+        "/tmp/gateway.contract",
+        "--benchmark-namespace",
+        "cohort-a",
+        "--storage-root",
+        "/tmp",
+        "--minimum-free-bytes",
+        "4096",
+      ]),
+    ).toEqual({
+      readyFile: "/tmp/gateway.ready",
+      auditFile: "/tmp/gateway.audit",
+      contentContractFile: "/tmp/gateway.contract",
+      replayFile: "/tmp/gateway.audit.responses.jsonl",
+      hmacKeyFile: "/tmp/gateway.audit.responses.jsonl.hmac-key",
+      benchmarkNamespace: "cohort-a",
+      storageRoot: "/tmp",
+      minimumFreeBytes: 4096,
+    });
+  });
+
+  it.each([
+    [[], "invalid_arguments"],
+    [["--ready-file"], "invalid_arguments"],
+    [
+      ["--ready-file", "relative", "--audit-file", "/tmp/audit"],
+      "invalid_arguments",
+    ],
+    [
+      ["--ready-file", "/tmp/same", "--audit-file", "/tmp/same"],
+      "invalid_arguments",
+    ],
+    [
+      [
+        "--ready-file",
+        "/tmp/ready",
+        "--audit-file",
+        "/tmp/audit",
+        "--replay-file",
+        "/tmp/ready",
+      ],
+      "invalid_arguments",
+    ],
+    [
+      [
+        "--ready-file",
+        "/tmp/ready",
+        "--audit-file",
+        "/tmp/audit",
+        "--content-contract-file",
+        "/tmp/audit",
+      ],
+      "invalid_arguments",
+    ],
+    [
+      [
+        "--ready-file",
+        "/tmp/ready",
+        "--audit-file",
+        "/tmp/audit",
+        "--minimum-free-bytes",
+        "-1",
+      ],
+      "invalid_arguments",
+    ],
+    [
+      [
+        "--ready-file",
+        "/tmp/ready",
+        "--audit-file",
+        "/tmp/audit",
+        "--wat",
+        "x",
+      ],
+      "invalid_arguments",
+    ],
+  ])("rejects invalid lifecycle arguments %#", (argv, code) => {
+    expect(() => parseGatewayCliArguments(argv)).toThrow(
+      expect.objectContaining({ code }),
+    );
+  });
+
+  it("checks configured storage reserves without I/O when the threshold is zero", async () => {
+    await expect(
+      new MinimumFreeSpaceGuard("/missing", 0).assertReady(),
+    ).resolves.toBeUndefined();
+    await expect(
+      new MinimumFreeSpaceGuard("/tmp", Number.MAX_SAFE_INTEGER).assertReady(),
+    ).rejects.toThrow("storage reserve is below its required threshold");
+  });
+
   it("projects allowlisted redacted audit fields to private JSONL", async () => {
     const directory = await mkdtemp(join(tmpdir(), "claude-gateway-audit-"));
     const auditFile = join(directory, "cohort.jsonl");
