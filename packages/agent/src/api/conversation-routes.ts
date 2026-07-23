@@ -830,6 +830,44 @@ async function ensureConversationRoom(
     caller.entityId,
     caller.role,
   );
+  let readyConnections = conversationConnectionReadiness.get(runtime);
+  if (!readyConnections) {
+    readyConnections = new Set<string>();
+    conversationConnectionReadiness.set(runtime, readyConnections);
+  }
+  readyConnections.add(conversationConnectionKey(state, conv, caller));
+}
+
+const conversationConnectionReadiness = new WeakMap<
+  AgentRuntime,
+  Set<string>
+>();
+
+function conversationConnectionKey(
+  state: ConversationRouteState,
+  conv: ConversationMeta,
+  caller: { entityId: UUID; role: WaifuChatWorldRole; userName: string },
+): string {
+  return [
+    conv.roomId,
+    caller.entityId,
+    caller.role,
+    caller.userName,
+    ensureAdminEntityId(state),
+  ].join(":");
+}
+
+function hasReadyConversationConnection(
+  state: ConversationRouteState,
+  runtime: AgentRuntime,
+  conv: ConversationMeta,
+  caller: { entityId: UUID; role: WaifuChatWorldRole; userName: string },
+): boolean {
+  return (
+    conversationConnectionReadiness
+      .get(runtime)
+      ?.has(conversationConnectionKey(state, conv, caller)) === true
+  );
 }
 
 async function syncConversationRoomState(
@@ -2577,14 +2615,6 @@ export async function handleConversationRoutes(
     const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
-    try {
-      await ensureConversationRoom(state, conv, caller);
-    } catch (err) {
-      return failStream(
-        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-      );
-    }
-
     const { userMessage, messageToStore } = await buildUserMessages({
       images,
       prompt,
@@ -2596,6 +2626,20 @@ export async function handleConversationRoutes(
       metadata: chatMetadata,
     });
 
+    let connectionRefresh: Promise<void> = Promise.resolve();
+    if (hasReadyConversationConnection(state, runtime, conv, caller)) {
+      connectionRefresh = ensureConversationRoom(state, conv, caller);
+      // error-policy:J5 the rejection is observed before the terminal frame.
+      connectionRefresh.catch(() => {});
+    } else {
+      try {
+        await ensureConversationRoom(state, conv, caller);
+      } catch (err) {
+        return failStream(
+          `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+        );
+      }
+    }
     try {
       await persistConversationMemory(runtime, messageToStore);
     } catch (err) {
@@ -2609,6 +2653,7 @@ export async function handleConversationRoutes(
       const endActiveChatTurn = beginActiveChatTurn(state);
       try {
         if (!disconnectTracker.isAborted()) {
+          await connectionRefresh;
           tokenWriter.writeSnapshot(res, walletModeGuidance);
           try {
             await persistAssistantConversationMemory(
@@ -2731,6 +2776,8 @@ export async function handleConversationRoutes(
           preferredLanguage,
         },
       );
+
+      await connectionRefresh;
 
       if (!disconnectTracker.isAborted()) {
         conv.updatedAt = new Date().toISOString();
