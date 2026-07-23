@@ -126,12 +126,22 @@ Use `--github` to also install and execute the optional GitHub CLI; this does
 not authenticate, persist credentials, change repository permissions, or prove
 that a token can upload evidence. Use `--skip-deps` only when the locked
 workspace dependencies are already installed. `--dry-run` prints the exact
-argument-safe commands in the current platform plan without changing the host.
+argument-safe commands of the one resolved plan execution also consumes —
+including the trailing strict doctor verification — without changing the host;
+lines beginning `# assumes:` note where resolution depends on the dependency
+step having run (packaged media binaries only resolve after `bun install`).
+Add `--strict` to a dry run to fail when such assumptions remain. Every step
+carries a deadline (15 minutes for package-manager operations, 2 minutes for
+probes, 10 minutes for the doctor) so a wedged package manager or download
+cannot block forever; multiply all deadlines on slow hosts with
+`--timeout-scale=<factor>` or `ELIZA_EVIDENCE_INSTALL_TIMEOUT_SCALE`.
 
 ```bash
 bun run evidence:install-tools -- --github
 bun run evidence:install-tools -- --skip-deps
 bun run evidence:install-tools -- --dry-run
+bun run evidence:install-tools -- --dry-run --strict
+bun run evidence:install-tools -- --timeout-scale=3
 ```
 
 Package downloads, Playwright browser installation, and package-manager index

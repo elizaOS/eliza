@@ -62,11 +62,22 @@ jobs:
       - name: Exercise real platform installer
         run: node scripts/evidence-install-tools.mjs --skip-deps --github
 
+      - name: Record first-install capability report
+        run: node scripts/evidence-doctor.mjs --json > evidence-tools-after-first-run.json
+
+      - name: Require a fully resolved post-install plan
+        run: node scripts/evidence-install-tools.mjs --dry-run --strict --skip-deps --github
+
       - name: Prove installer idempotence
         run: node scripts/evidence-install-tools.mjs --skip-deps --github
 
       - name: Require baseline capture capabilities
         run: node scripts/evidence-doctor.mjs --strict --json > evidence-tools-after.json
+
+      - name: Prove the repeated run changed no capability
+        shell: bash
+        run: |
+          node -e 'const fs=require("node:fs");const first=JSON.parse(fs.readFileSync("evidence-tools-after-first-run.json","utf8"));const second=JSON.parse(fs.readFileSync("evidence-tools-after.json","utf8"));require("node:assert/strict").deepEqual(second,first);console.log("installer idempotence: normalized capability reports are identical");'
 
       - name: Upload normalized capability reports
         if: ${{ always() }}

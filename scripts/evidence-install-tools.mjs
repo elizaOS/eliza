@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
  * Installs the baseline evidence toolchain on macOS, Linux, and Windows.
- * The exported requirement catalog also drives the doctor, while direct
+ * One side-effect-free planner (`resolveInstallPlan`) produces the step list
+ * that both `--dry-run` display and real execution consume, so the printed
+ * plan is the executed plan; when packaged media binaries can only resolve
+ * after the workspace dependency step, the plan says so explicitly and
+ * execution re-resolves through the same planner. Every step carries a
+ * deadline so no package manager, download, or probe can block forever. The
+ * exported requirement catalog also drives the doctor, while direct
  * argument-vector execution and process-local PATH refresh keep reruns
  * deterministic without editing shell profiles or persisting credentials.
  */
@@ -18,6 +24,30 @@ import {
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "..");
 const SUPPORTED_PLATFORMS = new Set(["darwin", "linux", "win32"]);
+
+const MINUTE_MS = 60_000;
+
+/**
+ * Default per-step deadlines. Package-manager operations download and unpack;
+ * probes answer `--version`-style checks; the trailing strict doctor launches
+ * Chromium and runs OCR. Scale all of them with `--timeout-scale=<factor>` or
+ * ELIZA_EVIDENCE_INSTALL_TIMEOUT_SCALE on slow hosts.
+ */
+export const STEP_TIMEOUT_DEFAULTS_MS = Object.freeze({
+  packageManager: 15 * MINUTE_MS,
+  probe: 2 * MINUTE_MS,
+  verification: 10 * MINUTE_MS,
+});
+
+/** Typed step failure so callers can distinguish timeout, start, and exit. */
+export class InstallStepError extends Error {
+  constructor(message, { step, code, cause } = {}) {
+    super(message, cause ? { cause } : undefined);
+    this.name = "InstallStepError";
+    this.step = step?.label;
+    this.code = code;
+  }
+}
 
 export const EVIDENCE_REQUIREMENTS = Object.freeze({
   ocr: Object.freeze({
@@ -94,6 +124,22 @@ export function assertSupportedPlatform(platform) {
   }
 }
 
+/**
+ * The deadline scale multiplies every per-step deadline; a factor is easier
+ * to reason about on a slow host than editing absolute values per step.
+ */
+export function resolveStepTimeoutScale(env = process.env, flagValue) {
+  const raw = flagValue ?? env.ELIZA_EVIDENCE_INSTALL_TIMEOUT_SCALE;
+  if (raw === undefined || raw === "") return 1;
+  const scale = Number(raw);
+  if (!Number.isFinite(scale) || scale <= 0) {
+    throw new Error(
+      `invalid step timeout scale ${JSON.stringify(raw)}; expected a positive number (via --timeout-scale=<factor> or ELIZA_EVIDENCE_INSTALL_TIMEOUT_SCALE)`,
+    );
+  }
+  return scale;
+}
+
 function pathKeyFor(env) {
   return Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "Path";
 }
@@ -138,8 +184,13 @@ export function withWindowsWingetLinksPath(env) {
  * MSI-backed WinGet packages update registry PATH values, which a running
  * Node process does not inherit. Reading and merging those values after each
  * WinGet mutation makes verification in the same installer process reliable.
+ * Registry entries merge Machine before User, matching how Windows composes
+ * the effective PATH for a new process.
  */
-export function refreshWindowsPath(env, { run = spawnSync } = {}) {
+export function refreshWindowsPath(
+  env,
+  { run = spawnSync, timeoutMs = STEP_TIMEOUT_DEFAULTS_MS.probe } = {},
+) {
   const seeded = withWindowsWingetLinksPath(env);
   const script =
     "[Console]::Out.Write((@([Environment]::GetEnvironmentVariable('Path','Machine'),[Environment]::GetEnvironmentVariable('Path','User')) -join [Environment]::NewLine))";
@@ -150,8 +201,16 @@ export function refreshWindowsPath(env, { run = spawnSync } = {}) {
       encoding: "utf8",
       env: seeded,
       windowsHide: true,
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
     },
   );
+  if (result.error?.code === "ETIMEDOUT") {
+    throw new InstallStepError(
+      `Windows PATH refresh timed out after ${formatDeadline(timeoutMs)}`,
+      { step: { label: "Windows PATH refresh" }, code: "step-timeout" },
+    );
+  }
   if (result.error) {
     throw new Error(`could not refresh Windows PATH: ${result.error.message}`, {
       cause: result.error,
@@ -166,7 +225,7 @@ export function refreshWindowsPath(env, { run = spawnSync } = {}) {
     /\r?\n/u,
     2,
   );
-  return mergeWindowsPath(seeded, [userPath, machinePath]);
+  return mergeWindowsPath(seeded, [machinePath, userPath]);
 }
 
 function commandExists(
@@ -188,6 +247,7 @@ function nonInteractiveSudoSteps(isRoot) {
           label: "passwordless sudo preflight",
           bin: "sudo",
           args: ["-n", "true"],
+          timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.probe,
           failureMessage:
             "Evidence tool installation requires passwordless sudo on this unattended runner. Install the tools manually or grant this runner noninteractive sudo, then rerun.",
         },
@@ -209,6 +269,7 @@ function linuxInstallSteps(manager, args, isRoot, label) {
             label: `${label} package index`,
             bin: command,
             args: [...prefix, ...manager.updateArgs],
+            timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
           },
         ]
       : []),
@@ -216,6 +277,7 @@ function linuxInstallSteps(manager, args, isRoot, label) {
       label,
       bin: command,
       args: [...prefix, ...args],
+      timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
     },
   ];
 }
@@ -230,6 +292,7 @@ function mediaVerificationSteps(resolutions) {
         ? resolutions.ffmpeg.bin
         : ffmpeg.systemCommand,
       args: [...ffmpeg.versionArgs],
+      timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.probe,
     },
     {
       label: "ffprobe verification",
@@ -237,10 +300,16 @@ function mediaVerificationSteps(resolutions) {
         ? resolutions.ffprobe.bin
         : ffprobe.systemCommand,
       args: [...ffprobe.versionArgs],
+      timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.probe,
     },
   ];
 }
 
+/**
+ * Media steps always plan from an explicit `resolveMediaRequirements` result;
+ * there is deliberately no system-presence shortcut here, so every caller
+ * (dry-run and execution alike) plans from the same resolution machinery.
+ */
 export function mediaInstallSteps(
   platform,
   {
@@ -252,16 +321,13 @@ export function mediaInstallSteps(
   } = {},
 ) {
   assertSupportedPlatform(platform);
-  const healthy =
-    resolutions?.ffmpeg?.available && resolutions?.ffprobe?.available;
-  if (healthy) return mediaVerificationSteps(resolutions);
-  if (
-    resolutions === undefined &&
-    has(EVIDENCE_REQUIREMENTS.ffmpeg.systemCommand) &&
-    has(EVIDENCE_REQUIREMENTS.ffprobe.systemCommand)
-  ) {
-    return mediaVerificationSteps();
+  if (!resolutions?.ffmpeg || !resolutions?.ffprobe) {
+    throw new Error(
+      "mediaInstallSteps requires ffmpeg/ffprobe resolutions from resolveMediaRequirements",
+    );
   }
+  const healthy = resolutions.ffmpeg.available && resolutions.ffprobe.available;
+  if (healthy) return mediaVerificationSteps(resolutions);
 
   if (platform === "darwin") {
     if (!has("brew")) {
@@ -270,7 +336,12 @@ export function mediaInstallSteps(
       );
     }
     return [
-      { label: "ffmpeg and ffprobe", bin: "brew", args: ["install", "ffmpeg"] },
+      {
+        label: "ffmpeg and ffprobe",
+        bin: "brew",
+        args: ["install", "ffmpeg"],
+        timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
+      },
       ...mediaVerificationSteps(),
     ];
   }
@@ -294,6 +365,7 @@ export function mediaInstallSteps(
           "--silent",
           "--disable-interactivity",
         ],
+        timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
         refreshWindowsPath: true,
       },
       ...mediaVerificationSteps(),
@@ -331,6 +403,7 @@ export function githubInstallSteps(
     label: "GitHub CLI verification",
     bin: EVIDENCE_REQUIREMENTS.githubCli.systemCommand,
     args: ["--version"],
+    timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.probe,
   };
   if (has(EVIDENCE_REQUIREMENTS.githubCli.systemCommand)) {
     return [verification];
@@ -342,7 +415,12 @@ export function githubInstallSteps(
       );
     }
     return [
-      { label: "GitHub CLI", bin: "brew", args: ["install", "gh"] },
+      {
+        label: "GitHub CLI",
+        bin: "brew",
+        args: ["install", "gh"],
+        timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
+      },
       verification,
     ];
   }
@@ -366,6 +444,7 @@ export function githubInstallSteps(
           "--silent",
           "--disable-interactivity",
         ],
+        timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
         refreshWindowsPath: true,
       },
       verification,
@@ -400,51 +479,92 @@ function workspaceDependencyStep() {
     label: "workspace evidence dependencies",
     bin: "bun",
     args: ["install", "--frozen-lockfile", "--ignore-scripts"],
+    timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
   };
 }
 
-export function buildInstallPlan({
-  platform = process.platform,
-  includeGithub = false,
-  skipDependencies = false,
-  githubOptions,
-  mediaOptions,
-} = {}) {
+function playwrightInstallStep(platform) {
+  return platform === "linux"
+    ? {
+        label: "Playwright Chromium and available Linux OS dependencies",
+        bin: "bash",
+        args: [
+          path.join(
+            REPO_ROOT,
+            ".github",
+            "scripts",
+            "install-playwright-browsers.sh",
+          ),
+          EVIDENCE_REQUIREMENTS.playwright.browserName,
+        ],
+        timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
+      }
+    : {
+        label: "Playwright Chromium",
+        bin: "bunx",
+        args: [
+          "playwright",
+          "install",
+          EVIDENCE_REQUIREMENTS.playwright.browserName,
+        ],
+        timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.packageManager,
+      };
+}
+
+function doctorVerificationStep() {
+  return {
+    label: "evidence toolchain verification",
+    bin: process.execPath,
+    args: [path.join(REPO_ROOT, "scripts", "evidence-doctor.mjs"), "--strict"],
+    timeoutMs: STEP_TIMEOUT_DEFAULTS_MS.verification,
+  };
+}
+
+/**
+ * The single planner both dry-run display and real execution consume. It is
+ * side-effect-free: it resolves media through `resolveMediaRequirements` and
+ * read-only command probes, and never runs an install step. When packaged
+ * ffmpeg-static/ffprobe-static binaries cannot resolve before the workspace
+ * dependency step has run, the plan records that assumption instead of
+ * planning a premature system install; execution then re-resolves through
+ * this same planner after the dependency step.
+ */
+export async function resolveInstallPlan(
+  {
+    platform = process.platform,
+    includeGithub = false,
+    skipDependencies = false,
+    githubOptions,
+    mediaOptions,
+  } = {},
+  { resolveMedia = resolveMediaRequirements } = {},
+) {
   assertSupportedPlatform(platform);
+  const resolutions = mediaOptions?.resolutions ?? (await resolveMedia());
+  const mediaResolved = Boolean(
+    resolutions.ffmpeg?.available && resolutions.ffprobe?.available,
+  );
+  const deferredMedia = !mediaResolved && !skipDependencies;
   const steps = [];
+  const assumptions = [];
   if (!skipDependencies) {
     steps.push(workspaceDependencyStep());
   }
-  steps.push(...mediaInstallSteps(platform, mediaOptions));
-  steps.push(
-    platform === "linux"
-      ? {
-          label: "Playwright Chromium and available Linux OS dependencies",
-          bin: "bash",
-          args: [
-            path.join(
-              REPO_ROOT,
-              ".github",
-              "scripts",
-              "install-playwright-browsers.sh",
-            ),
-            EVIDENCE_REQUIREMENTS.playwright.browserName,
-          ],
-        }
-      : {
-          label: "Playwright Chromium",
-          bin: "bunx",
-          args: [
-            "playwright",
-            "install",
-            EVIDENCE_REQUIREMENTS.playwright.browserName,
-          ],
-        },
-  );
+  if (deferredMedia) {
+    assumptions.push(
+      "ffmpeg/ffprobe did not resolve from the current host state; the packaged ffmpeg-static and ffprobe-static binaries can only resolve after the workspace dependency step, so execution re-resolves this plan after that step and falls back to the system package manager only if they still cannot run",
+    );
+  } else {
+    steps.push(
+      ...mediaInstallSteps(platform, { ...mediaOptions, resolutions }),
+    );
+  }
+  steps.push(playwrightInstallStep(platform));
   if (includeGithub) {
     steps.push(...githubInstallSteps(platform, githubOptions));
   }
-  return steps;
+  steps.push(doctorVerificationStep());
+  return { steps, assumptions, resolutions, deferredMedia };
 }
 
 export function formatCommand(step, platform = process.platform) {
@@ -458,22 +578,47 @@ export function formatCommand(step, platform = process.platform) {
   return [step.bin, ...step.args].map(quote).join(" ");
 }
 
-function runStep(step, { run, env, platform }) {
-  console.log(`\n[install] ${step.label}\n  ${formatCommand(step, platform)}`);
+function formatDeadline(timeoutMs) {
+  return timeoutMs % MINUTE_MS === 0
+    ? `${timeoutMs / MINUTE_MS}m`
+    : `${Math.round(timeoutMs / 1000)}s`;
+}
+
+function runStep(step, { run, env, platform, timeoutScale }) {
+  if (!Number.isFinite(step.timeoutMs) || step.timeoutMs <= 0) {
+    throw new InstallStepError(
+      `${step.label} has no per-step deadline; every planned step must carry a positive timeoutMs`,
+      { step, code: "step-plan" },
+    );
+  }
+  const timeoutMs = Math.round(step.timeoutMs * timeoutScale);
+  console.log(
+    `\n[install] ${step.label} (deadline ${formatDeadline(timeoutMs)})\n  ${formatCommand(step, platform)}`,
+  );
   const result = run(step.bin, step.args, {
     cwd: REPO_ROOT,
     stdio: "inherit",
     env,
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
   });
+  if (result.error?.code === "ETIMEDOUT") {
+    throw new InstallStepError(
+      `${step.label} timed out after ${formatDeadline(timeoutMs)}; rerun with --timeout-scale=<factor> or ELIZA_EVIDENCE_INSTALL_TIMEOUT_SCALE to extend deadlines on slow hosts`,
+      { step, code: "step-timeout", cause: result.error },
+    );
+  }
   if (result.error) {
-    throw new Error(`${step.label} could not start: ${result.error.message}`, {
-      cause: result.error,
-    });
+    throw new InstallStepError(
+      `${step.label} could not start: ${result.error.message}`,
+      { step, code: "step-start", cause: result.error },
+    );
   }
   if (result.status !== 0) {
-    throw new Error(
+    throw new InstallStepError(
       step.failureMessage ??
         `${step.label} failed with exit code ${result.status ?? "unknown"}`,
+      { step, code: "step-exit" },
     );
   }
 }
@@ -485,15 +630,19 @@ export function executeInstallPlan(
     env = process.env,
     run = spawnSync,
     refreshPath = refreshWindowsPath,
+    timeoutScale = 1,
   } = {},
 ) {
   assertSupportedPlatform(platform);
   let executionEnv =
     platform === "win32" ? withWindowsWingetLinksPath(env) : { ...env };
   for (const step of steps) {
-    runStep(step, { run, env: executionEnv, platform });
+    runStep(step, { run, env: executionEnv, platform, timeoutScale });
     if (platform === "win32" && step.refreshWindowsPath) {
-      executionEnv = refreshPath(executionEnv, { run });
+      executionEnv = refreshPath(executionEnv, {
+        run,
+        timeoutMs: Math.round(STEP_TIMEOUT_DEFAULTS_MS.probe * timeoutScale),
+      });
     }
   }
   return executionEnv;
@@ -503,31 +652,55 @@ function usage() {
   console.log(`Usage: bun run evidence:install-tools -- [options]
 
 Options:
-  --github       Also install and verify GitHub CLI. Authentication and
-                 repository permissions are not changed or inferred.
-  --skip-deps    Do not run bun install; useful when dependencies are current.
-  --dry-run      Print argument-safe platform commands without running them.
-  --help, -h     Show this help.`);
+  --github              Also install and verify GitHub CLI. Authentication and
+                        repository permissions are not changed or inferred.
+  --skip-deps           Do not run bun install; useful when dependencies are
+                        current.
+  --dry-run             Print the resolved platform plan without running it.
+                        Lines starting with "# assumes:" note where resolution
+                        depends on the dependency step having run.
+  --strict              With --dry-run: fail when the plan carries unresolved
+                        pre-dependency assumptions.
+  --timeout-scale=<n>   Multiply every per-step deadline by <n> (also
+                        ELIZA_EVIDENCE_INSTALL_TIMEOUT_SCALE) for slow hosts.
+  --help, -h            Show this help.`);
 }
 
 export function parseInstallerArgs(argv) {
-  const known = new Set([
+  const flags = new Set([
     "--github",
     "--skip-deps",
     "--dry-run",
+    "--strict",
     "--help",
     "-h",
   ]);
-  const unknown = argv.filter((arg) => !known.has(arg));
+  let timeoutScale;
+  const unknown = [];
+  for (const arg of argv) {
+    if (arg.startsWith("--timeout-scale=")) {
+      timeoutScale = arg.slice("--timeout-scale=".length);
+      continue;
+    }
+    if (!flags.has(arg)) unknown.push(arg);
+  }
   if (unknown.length > 0) {
     throw new Error(`unknown argument(s): ${unknown.join(", ")}`);
   }
-  return {
+  const options = {
     includeGithub: argv.includes("--github"),
     skipDependencies: argv.includes("--skip-deps"),
     dryRun: argv.includes("--dry-run"),
+    strict: argv.includes("--strict"),
+    timeoutScale,
     help: argv.includes("--help") || argv.includes("-h"),
   };
+  if (options.strict && !options.dryRun) {
+    throw new Error(
+      "--strict requires --dry-run; it asserts the displayed plan is fully resolved",
+    );
+  }
+  return options;
 }
 
 async function main() {
@@ -540,53 +713,60 @@ async function main() {
     throw new Error(`repository root not found at ${REPO_ROOT}`);
   }
   assertSupportedPlatform(process.platform);
+  const timeoutScale = resolveStepTimeoutScale(
+    process.env,
+    options.timeoutScale,
+  );
 
-  if (options.dryRun) {
-    const plan = buildInstallPlan(options);
-    console.log(
-      plan.map((step) => formatCommand(step, process.platform)).join("\n"),
-    );
-    return;
-  }
-
+  // Seed the WinGet links path before planning so resolution probes and every
+  // child process observe the same PATH the executed plan will use.
   let executionEnv =
     process.platform === "win32"
       ? withWindowsWingetLinksPath(process.env)
       : { ...process.env };
   Object.assign(process.env, executionEnv);
-  if (!options.skipDependencies) {
-    executionEnv = executeInstallPlan([workspaceDependencyStep()], {
-      platform: process.platform,
-      env: executionEnv,
-    });
-    Object.assign(process.env, executionEnv);
+
+  let plan = await resolveInstallPlan(options);
+
+  if (options.dryRun) {
+    console.log(
+      plan.steps
+        .map((step) => formatCommand(step, process.platform))
+        .join("\n"),
+    );
+    for (const assumption of plan.assumptions) {
+      console.log(`# assumes: ${assumption}`);
+    }
+    if (options.strict && plan.assumptions.length > 0) {
+      throw new Error(
+        `--strict dry run: the plan could not be fully resolved from the current host state:\n${plan.assumptions
+          .map((assumption) => `  - ${assumption}`)
+          .join("\n")}`,
+      );
+    }
+    return;
   }
 
-  const resolutions = await resolveMediaRequirements();
-  const plan = buildInstallPlan({
-    ...options,
-    skipDependencies: true,
-    mediaOptions: { resolutions },
-  });
-  executionEnv = executeInstallPlan(plan, {
+  if (plan.deferredMedia) {
+    // The plan's recorded assumption: packaged media binaries resolve only
+    // after the dependency step. Run that step, then re-resolve the remainder
+    // through the same planner so execution stays on the displayed contract.
+    const [dependencyStep] = plan.steps;
+    executionEnv = executeInstallPlan([dependencyStep], {
+      platform: process.platform,
+      env: executionEnv,
+      timeoutScale,
+    });
+    Object.assign(process.env, executionEnv);
+    plan = await resolveInstallPlan({ ...options, skipDependencies: true });
+  }
+
+  executeInstallPlan(plan.steps, {
     platform: process.platform,
     env: executionEnv,
+    timeoutScale,
   });
 
-  const doctorArgs = [
-    path.join(REPO_ROOT, "scripts", "evidence-doctor.mjs"),
-    "--strict",
-  ];
-  executeInstallPlan(
-    [
-      {
-        label: "evidence toolchain verification",
-        bin: process.execPath,
-        args: doctorArgs,
-      },
-    ],
-    { platform: process.platform, env: executionEnv },
-  );
   if (options.includeGithub) {
     console.log(
       "\nGitHub CLI installation verified; authentication and repository permissions were left unchanged.",

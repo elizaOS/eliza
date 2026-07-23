@@ -8,7 +8,7 @@
 
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -156,6 +156,7 @@ export async function probePackagedOcr({
   timeoutMs = 60_000,
 } = {}) {
   const directory = await mkdtemp(path.join(tempRoot, "eliza-ocr-doctor-"));
+  let workerPromise;
   let worker;
   let result;
   try {
@@ -166,8 +167,11 @@ export async function probePackagedOcr({
         detail: `${EVIDENCE_REQUIREMENTS.ocr.packageName} lacks createWorker`,
       };
     }
-    worker = await withTimeout(
+    workerPromise = Promise.resolve(
       tesseract.createWorker("eng", 1, { cachePath: directory }),
+    );
+    worker = await withTimeout(
+      workerPromise,
       timeoutMs,
       "packaged OCR worker initialization",
     );
@@ -209,17 +213,78 @@ export async function probePackagedOcr({
   } finally {
     try {
       if (worker) {
-        await withTimeout(
-          worker.terminate(),
-          timeoutMs,
-          "packaged OCR worker teardown",
-        );
+        try {
+          await withTimeout(
+            worker.terminate(),
+            timeoutMs,
+            "packaged OCR worker teardown",
+          );
+        } catch {
+          // error-policy:J6 teardown is best-effort; a hung terminate must not
+          // replace the probe result or crash the doctor.
+        }
+      } else if (workerPromise) {
+        // error-policy:J5 a createWorker call that outlived its deadline can
+        // still resolve later; its threads would keep the process alive, so
+        // terminate the late worker here — the timeout above already reported
+        // the failure, making this fire-and-forget teardown the only observer.
+        workerPromise
+          .then((lateWorker) => lateWorker?.terminate?.())
+          .catch(() => {});
       }
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   }
   return result;
+}
+
+/**
+ * Behavioral probe for a system tesseract binary: it must recognize the
+ * generated ELIZA fixture, mirroring the evidence OCR engine's CLI shape
+ * (`tesseract <img> - --psm <n>`, see packages/evidence/src/analyzers/ocr/
+ * engines.ts). The probe uses `--psm 8` (single word) because the fixture is
+ * one word — the engine's screenshot default `--psm 6` segments the blocky
+ * glyph grid unreliably. A binary that answers --version but cannot read the
+ * fixture is not a working OCR capability and must not be reported as one.
+ */
+export async function probeSystemTesseract({
+  bin = "tesseract",
+  run = execFileAsync,
+  tempRoot = os.tmpdir(),
+  timeoutMs = 60_000,
+} = {}) {
+  const directory = await mkdtemp(
+    path.join(tempRoot, "eliza-ocr-doctor-system-"),
+  );
+  const fixturePath = path.join(directory, "fixture.bmp");
+  try {
+    await writeFile(fixturePath, buildOcrFixtureBmp());
+    const { stdout } = await run(bin, [fixturePath, "-", "--psm", "8"], {
+      timeout: timeoutMs,
+      windowsHide: true,
+    });
+    const transcript = String(stdout ?? "")
+      .toUpperCase()
+      .replaceAll(/[^A-Z0-9]/gu, "");
+    return transcript.includes(OCR_FIXTURE_TEXT)
+      ? {
+          ok: true,
+          detail: `system tesseract at ${bin} recognized the bundled ${OCR_FIXTURE_TEXT} fixture`,
+        }
+      : {
+          ok: false,
+          detail: `system tesseract at ${bin} did not recognize the bundled fixture`,
+        };
+  } catch {
+    // error-policy:J4 a missing or failing binary is an explicit probe result.
+    return {
+      ok: false,
+      detail: `system tesseract at ${bin} is unavailable or failed on the bundled fixture`,
+    };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 export async function probeMediaPipeline(
@@ -361,6 +426,7 @@ export async function runProbes(
     mediaResolver = resolveMediaRequirements,
     mediaPipelineProbe = probeMediaPipeline,
     ocrProbe = probePackagedOcr,
+    systemOcrProbe = probeSystemTesseract,
     playwrightProbe = probePlaywrightChromium,
     pathExists = existsSync,
   } = {},
@@ -370,18 +436,20 @@ export async function runProbes(
   const fixes = platformFixes(platform);
 
   const packagedOcr = await ocrProbe();
-  const systemTesseract = packagedOcr.ok
+  // The fallback is behavioral like the packaged probe: the system binary must
+  // recognize the same fixture, never merely answer --version.
+  const systemOcr = packagedOcr.ok
     ? null
-    : await commandProbe(env.ELIZA_TESSERACT_BIN || "tesseract", ["--version"]);
+    : await systemOcrProbe({ bin: env.ELIZA_TESSERACT_BIN || "tesseract" });
   probes.push({
     id: EVIDENCE_REQUIREMENTS.ocr.id,
     required: EVIDENCE_REQUIREMENTS.ocr.requiredByDefault,
-    ok: packagedOcr.ok || systemTesseract !== null,
+    ok: packagedOcr.ok || systemOcr?.ok === true,
     detail: packagedOcr.ok
       ? packagedOcr.detail
-      : systemTesseract
-        ? `${firstLine(systemTesseract)} (system fallback)`
-        : `${packagedOcr.detail}; system tesseract is also unavailable`,
+      : systemOcr?.ok
+        ? `${systemOcr.detail} (system fallback)`
+        : `${packagedOcr.detail}; ${systemOcr.detail}`,
     fix: `bun run evidence:install-tools · ${fixes.systemTesseract}`,
   });
 

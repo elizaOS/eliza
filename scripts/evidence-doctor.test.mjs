@@ -9,10 +9,12 @@ import { writeFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  buildOcrFixtureBmp,
   createDoctorReport,
   parseDoctorArgs,
   probeMediaPipeline,
   probePackagedOcr,
+  probeSystemTesseract,
   runProbes,
   summarize,
 } from "./evidence-doctor.mjs";
@@ -79,6 +81,11 @@ describe("evidence toolchain doctor", () => {
           ok: false,
           detail: "tesseract.js is not loadable",
         }),
+        systemOcrProbe: async () => ({
+          ok: false,
+          detail:
+            "system tesseract at tesseract is unavailable or failed on the bundled fixture",
+        }),
         playwrightProbe: async () => ({
           ok: false,
           detail: "Chromium launch failed",
@@ -97,34 +104,106 @@ describe("evidence toolchain doctor", () => {
     );
   });
 
-  it("accepts system Tesseract only when packaged OCR cannot load", async () => {
+  it("accepts system Tesseract only when it recognizes the fixture behaviorally", async () => {
     const calls = [];
+    const systemOcrProbe = async ({ bin }) => {
+      calls.push({ bin });
+      return {
+        ok: true,
+        detail: `system tesseract at ${bin} recognized the bundled ELIZA fixture`,
+      };
+    };
     const probes = await runProbes(
       { ELIZA_TESSERACT_BIN: "/tools/tesseract" },
       {
-        commandProbe: async (bin, args) => {
-          calls.push({ bin, args });
-          return bin === "/tools/tesseract"
-            ? "tesseract 5.5.0\n additional output"
-            : null;
-        },
+        commandProbe: async () => null,
         mediaResolver: healthyMedia,
         mediaPipelineProbe: healthyMediaPipeline,
         ocrProbe: async () => ({
           ok: false,
           detail: "tesseract.js is not loadable",
         }),
+        systemOcrProbe,
         playwrightProbe: healthyPlaywright,
         pathExists: () => false,
       },
     );
     const ocr = probes.find(({ id }) => id === "ocr");
     assert.equal(ocr.ok, true);
-    assert.match(ocr.detail, /tesseract 5\.5\.0 \(system fallback\)/);
-    assert.deepEqual(calls[0], {
+    assert.match(
+      ocr.detail,
+      /recognized the bundled ELIZA fixture \(system fallback\)/,
+    );
+    assert.deepEqual(calls, [{ bin: "/tools/tesseract" }]);
+  });
+
+  it("rejects a system tesseract that answers --version but fails the fixture", async () => {
+    const probes = await runProbes(
+      {},
+      {
+        commandProbe: async (bin) =>
+          bin === "tesseract" ? "tesseract 5.5.0" : null,
+        mediaResolver: healthyMedia,
+        mediaPipelineProbe: healthyMediaPipeline,
+        ocrProbe: async () => ({
+          ok: false,
+          detail: "tesseract.js could not recognize the bundled fixture",
+        }),
+        systemOcrProbe: async ({ bin }) => ({
+          ok: false,
+          detail: `system tesseract at ${bin} did not recognize the bundled fixture`,
+        }),
+        playwrightProbe: healthyPlaywright,
+        pathExists: () => false,
+      },
+    );
+    const ocr = probes.find(({ id }) => id === "ocr");
+    assert.equal(ocr.ok, false);
+    assert.match(ocr.detail, /tesseract\.js could not recognize/);
+    assert.match(ocr.detail, /system tesseract at tesseract did not recognize/);
+  });
+
+  it("probes the system binary with the evidence engine's exact invocation", async () => {
+    const calls = [];
+    const result = await probeSystemTesseract({
       bin: "/tools/tesseract",
-      args: ["--version"],
+      run: async (bin, args, options) => {
+        const { readFileSync } = await import("node:fs");
+        calls.push({
+          bin,
+          args,
+          timeout: options.timeout,
+          fixtureMatchesGenerator: readFileSync(args[0]).equals(
+            buildOcrFixtureBmp(),
+          ),
+        });
+        return { stdout: "ELIZA\n" };
+      },
     });
+    assert.equal(result.ok, true);
+    assert.match(result.detail, /recognized the bundled ELIZA fixture/);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].bin, "/tools/tesseract");
+    assert.match(calls[0].args[0], /eliza-ocr-doctor-system-.*fixture\.bmp$/);
+    assert.deepEqual(calls[0].args.slice(1), ["-", "--psm", "8"]);
+    assert.equal(calls[0].fixtureMatchesGenerator, true);
+    assert.ok(calls[0].timeout > 0);
+
+    const wrong = await probeSystemTesseract({
+      bin: "/tools/tesseract",
+      run: async () => ({ stdout: "SOMETHING ELSE" }),
+    });
+    assert.equal(wrong.ok, false);
+    assert.match(wrong.detail, /did not recognize the bundled fixture/);
+
+    const broken = await probeSystemTesseract({
+      bin: "/missing/tesseract",
+      run: async () => {
+        throw new Error("ENOENT");
+      },
+    });
+    assert.equal(broken.ok, false);
+    assert.match(broken.detail, /unavailable or failed on the bundled fixture/);
   });
 
   it("reports GitHub CLI without probing credentials or repository permissions", async () => {
@@ -262,6 +341,46 @@ describe("evidence toolchain doctor", () => {
     });
     assert.equal(result.ok, false);
     assert.match(result.detail, /did not recognize/);
+  });
+
+  it("terminates a worker whose creation outlives the probe deadline", async () => {
+    let terminated = false;
+    const result = await probePackagedOcr({
+      timeoutMs: 20,
+      loadTesseract: async () => ({
+        createWorker: () =>
+          new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  terminate: async () => {
+                    terminated = true;
+                  },
+                }),
+              80,
+            );
+          }),
+      }),
+    });
+    assert.equal(result.ok, false);
+    // The late worker resolves after the probe returned; it must still be
+    // terminated so its threads cannot keep the doctor process alive.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(terminated, true);
+  });
+
+  it("keeps the probe result when worker teardown hangs past its deadline", async () => {
+    const result = await probePackagedOcr({
+      timeoutMs: 20,
+      loadTesseract: async () => ({
+        createWorker: async () => ({
+          recognize: async () => ({ data: { text: "ELIZA" } }),
+          terminate: () => new Promise(() => {}),
+        }),
+      }),
+    });
+    assert.equal(result.ok, true);
+    assert.match(result.detail, /recognized the bundled ELIZA fixture/);
   });
 
   it("requires a real ffmpeg encode, ffprobe inspection, and ffmpeg decode", async () => {

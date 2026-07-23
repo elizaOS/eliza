@@ -13,6 +13,7 @@ interface WorkflowStep {
   if?: string;
   name?: string;
   run?: string;
+  shell?: string;
   uses?: string;
   with?: Record<string, string | number | boolean>;
   "continue-on-error"?: boolean | string;
@@ -107,12 +108,50 @@ describe("evidence tools platform smoke workflow", () => {
     expect(namedStep(job, "Exercise real platform installer").run).toBe(
       installCommand,
     );
+    expect(namedStep(job, "Record first-install capability report").run).toBe(
+      "node scripts/evidence-doctor.mjs --json > evidence-tools-after-first-run.json",
+    );
+    expect(
+      namedStep(job, "Require a fully resolved post-install plan").run,
+    ).toBe(
+      "node scripts/evidence-install-tools.mjs --dry-run --strict --skip-deps --github",
+    );
     expect(namedStep(job, "Prove installer idempotence").run).toBe(
       installCommand,
     );
     expect(namedStep(job, "Require baseline capture capabilities").run).toBe(
       "node scripts/evidence-doctor.mjs --strict --json > evidence-tools-after.json",
     );
+
+    // Idempotence must be proven by comparing the normalized capability
+    // reports captured after each real installer run, not by exit code alone.
+    const idempotenceProof = namedStep(
+      job,
+      "Prove the repeated run changed no capability",
+    );
+    expect(idempotenceProof.shell).toBe("bash");
+    expect(idempotenceProof.run).toContain(
+      "evidence-tools-after-first-run.json",
+    );
+    expect(idempotenceProof.run).toContain("evidence-tools-after.json");
+    expect(idempotenceProof.run).toContain("deepEqual");
+    const orderedNames = job.steps?.map(({ name }) => name) ?? [];
+    for (const [before, after] of [
+      [
+        "Exercise real platform installer",
+        "Record first-install capability report",
+      ],
+      ["Record first-install capability report", "Prove installer idempotence"],
+      ["Prove installer idempotence", "Require baseline capture capabilities"],
+      [
+        "Require baseline capture capabilities",
+        "Prove the repeated run changed no capability",
+      ],
+    ] as const) {
+      expect(orderedNames.indexOf(before)).toBeLessThan(
+        orderedNames.indexOf(after),
+      );
+    }
     expect(
       job.steps?.some(
         (step) =>
