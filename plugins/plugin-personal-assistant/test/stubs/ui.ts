@@ -19,6 +19,22 @@ export class ElizaClient {}
 
 export const client = new ElizaClient();
 
+// Lifecycle constants + platform probes the activity-signal capture imports at
+// module scope; the capture only calls them once a renderer-service host
+// starts it, so inert values are enough for import-time linking.
+export const APP_PAUSE_EVENT = "eliza:app-pause";
+export const APP_RESUME_EVENT = "eliza:app-resume";
+
+export function isElectrobunRuntime(): boolean {
+  return false;
+}
+
+export async function loadDesktopWorkspaceSnapshot(): Promise<{
+  supported: boolean;
+}> {
+  return { supported: false };
+}
+
 export const Badge = NullComponent;
 export const Button = NullComponent;
 export const Input = NullComponent;

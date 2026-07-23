@@ -37,7 +37,8 @@ import {
 } from "./provider-map";
 
 const DEFAULT_MAX_ORG_POOLS = 200;
-const SNAPSHOT_TTL_MS = 15_000;
+const SNAPSHOT_TTL_MS = 5 * 60_000;
+const DECRYPTED_CREDENTIAL_TTL_MS = 60_000;
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
 const KEEP_ALIVE_PROBES_PER_SWEEP = 8;
 /** Healthy credentials get re-verified when older than this. */
@@ -55,6 +56,7 @@ export interface SelectPooledCredentialParams {
   /** Stable affinity key (e.g. agent sandbox id). */
   sessionKey?: string;
   strategy?: Strategy;
+  defer?: (task: Promise<void>) => void;
 }
 
 export interface SelectedPooledCredential {
@@ -69,6 +71,7 @@ export class TeamPoolRegistry {
   private readonly pools = new Map<string, OrgPoolEntry>();
   private readonly maxOrgPools: number;
   private keepAlive: ReturnType<typeof setInterval> | null = null;
+  private readonly decryptedCredentials = new Map<string, { apiKey: string; expiresAt: number }>();
 
   constructor(options?: { maxOrgPools?: number }) {
     this.maxOrgPools = options?.maxOrgPools ?? DEFAULT_MAX_ORG_POOLS;
@@ -82,6 +85,17 @@ export class TeamPoolRegistry {
   /** Drop an org's cached pool so the next acquire re-reads the DB. */
   invalidate(organizationId: string): void {
     this.pools.delete(organizationId);
+    const prefix = `${organizationId}\u0000`;
+    for (const key of this.decryptedCredentials.keys()) {
+      if (key.startsWith(prefix)) this.decryptedCredentials.delete(key);
+    }
+  }
+
+  private invalidateDecryptedCredential(organizationId: string, credentialId: string): void {
+    const prefix = `${organizationId}\u0000${credentialId}\u0000`;
+    for (const key of this.decryptedCredentials.keys()) {
+      if (key.startsWith(prefix)) this.decryptedCredentials.delete(key);
+    }
   }
 
   /**
@@ -140,11 +154,30 @@ export class TeamPoolRegistry {
       if (!account) return null;
       const secretId = entry.deps.secretIdFor(account.id);
       if (!secretId) return null;
-      const apiKey = await secretsService.getDecryptedValue(secretId, params.organizationId, {
-        actorType: "system",
-        actorId: "team-credential-pool",
-        source: "team-credential-pool",
-      });
+      const cacheKey = `${params.organizationId}\u0000${account.id}\u0000${secretId}`;
+      const cached = this.decryptedCredentials.get(cacheKey);
+      const now = Date.now();
+      const apiKey =
+        cached && cached.expiresAt > now
+          ? cached.apiKey
+          : await secretsService
+              .getDecryptedValue(
+                secretId,
+                params.organizationId,
+                {
+                  actorType: "system",
+                  actorId: "team-credential-pool",
+                  source: "team-credential-pool",
+                },
+                params.defer ? { defer: params.defer } : undefined,
+              )
+              .then((value) => {
+                this.decryptedCredentials.set(cacheKey, {
+                  apiKey: value,
+                  expiresAt: now + DECRYPTED_CREDENTIAL_TTL_MS,
+                });
+                return value;
+              });
       return {
         credentialId: account.id,
         providerId: params.providerId,
@@ -175,19 +208,13 @@ export class TeamPoolRegistry {
   }): Promise<void> {
     try {
       const day = new Date().toISOString().slice(0, 10);
-      await pooledCredentialsRepository.recordDailyUsage({
+      await pooledCredentialsRepository.recordInferenceUse({
         organizationId: params.organizationId,
         credentialId: params.credentialId,
         userId: params.userId,
         day,
+        usedAt: new Date(),
       });
-      await pooledCredentialsRepository.updatePoolStateForOrganization(
-        params.credentialId,
-        params.organizationId,
-        {
-          last_used_at: new Date(),
-        },
-      );
     } catch (err) {
       logger.warn("[TeamPoolRegistry] usage attribution failed", {
         organizationId: params.organizationId,
@@ -212,6 +239,9 @@ export class TeamPoolRegistry {
     detail?: string;
   }): Promise<void> {
     if (![401, 403, 429].includes(params.status)) return;
+    if (params.status === 401 || params.status === 403) {
+      this.invalidateDecryptedCredential(params.organizationId, params.credentialId);
+    }
     try {
       const entry = await this.getOrgPool(params.organizationId);
       if (!entry) return;

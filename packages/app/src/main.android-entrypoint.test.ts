@@ -114,7 +114,10 @@ vi.mock("./boot-voice-load", () => ({
 vi.mock("./ios-attachment-smoke", () => ({
   runIosAttachmentSmokeIfRequested: vi.fn(async () => false),
 }));
-vi.mock("./embed-bootstrap", () => ({
+vi.mock("./embed-bootstrap", async (importOriginal) => ({
+  // Keep the real isEmbedPath (pure route predicate consumed by the renderer
+  // shell-scope resolution); only the network-touching handshake is stubbed.
+  ...(await importOriginal<typeof import("./embed-bootstrap")>()),
   runEmbedHandshake: vi.fn(async () => undefined),
 }));
 vi.mock("./sw-registration", () => ({

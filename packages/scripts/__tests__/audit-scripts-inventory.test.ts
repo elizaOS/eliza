@@ -9,11 +9,17 @@
  *   bun test packages/scripts/__tests__/audit-scripts-inventory.test.ts
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import fs, { readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildInventory } from "../audit-scripts-inventory.mjs";
+import {
+  buildInventory,
+  parseInventoryArgs,
+  readRepositoryCandidateText,
+  workflowExecutionSteps,
+} from "../audit-scripts-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
@@ -51,6 +57,23 @@ function appScriptNames() {
 
 describe("script inventory: packages/app surface (issue #10200)", () => {
   const inv = buildInventory();
+
+  test("rejects misspelled and positional CLI arguments", () => {
+    expect(parseInventoryArgs(["--json"])).toEqual({
+      help: false,
+      json: true,
+    });
+    expect(() => parseInventoryArgs(["--jsoon"])).toThrow(
+      "unknown argument: --jsoon",
+    );
+    expect(() => parseInventoryArgs(["unexpected"])).toThrow(
+      "unknown argument: unexpected",
+    );
+    expect(() => parseInventoryArgs(["--json", "--json"])).toThrow("only once");
+    expect(() => parseInventoryArgs(["--help", "--json"])).toThrow(
+      "cannot be combined",
+    );
+  });
 
   test("classifies every packages/app script exactly once", () => {
     const names = appScriptNames();
@@ -95,6 +118,9 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(Array.isArray(inv.roots)).toBe(true);
     expect(Array.isArray(inv.files)).toBe(true);
     expect(inv.summary.totalRootScripts).toBe(inv.roots.length);
+    expect(inv.scriptTests.discoveredCount).toBeGreaterThan(100);
+    expect(inv.scriptTests.excluded).toEqual([]);
+    expect(inv.summary.totalScriptTests).toBe(inv.scriptTests.discoveredCount);
   });
 
   test("package-local script callers keep helper files out of the orphan bucket", () => {
@@ -129,10 +155,10 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
       script: "dev:all",
     });
     expect(byRoot("audit:scripts:inventory")?.category).toBe(
-      "reachable-from-operator-script",
+      "reachable-from-verify",
     );
     expect(byFile("audit-scripts-inventory.mjs")?.category).toBe(
-      "reachable-from-operator-script",
+      "reachable-from-verify",
     );
     expect(
       byFile("audit-scripts-inventory.mjs")?.operatorScriptCallers,
@@ -159,5 +185,59 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(inv.summary.filesByCategory.orphan).toBe(0);
     expect(inv.summary.orphanFiles).toBe(0);
     expect(inv.summary.documentationFileReferences).toBeGreaterThan(0);
+  });
+
+  test("repository candidate readers reject symlinked files and parents", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "script-audit-root-"));
+    const outside = fs.mkdtempSync(
+      path.join(os.tmpdir(), "script-audit-outside-"),
+    );
+    try {
+      fs.mkdirSync(path.join(root, "fixtures"));
+      for (const name of [
+        "runner.mjs",
+        "package.json",
+        "guide.md",
+        "workflow.yml",
+      ]) {
+        const source = path.join(outside, name);
+        fs.writeFileSync(source, "outside\n");
+        fs.symlinkSync(source, path.join(root, "fixtures", name));
+        expect(() =>
+          readRepositoryCandidateText(root, `fixtures/${name}`),
+        ).toThrow("may not traverse a symlink");
+      }
+      fs.mkdirSync(path.join(outside, "nested"));
+      fs.writeFileSync(path.join(outside, "nested", "guide.md"), "outside\n");
+      fs.symlinkSync(path.join(outside, "nested"), path.join(root, "linked"));
+      expect(() =>
+        readRepositoryCandidateText(root, "linked/guide.md"),
+      ).toThrow("may not traverse a symlink");
+    } finally {
+      fs.rmSync(root, { force: true, recursive: true });
+      fs.rmSync(outside, { force: true, recursive: true });
+    }
+  });
+
+  test("workflow execution seeds come only from structural run steps", () => {
+    const steps = workflowExecutionSteps(`
+      jobs:
+        proof:
+          env:
+            COMMENT_ONLY: bun run hidden:env
+          steps:
+            - uses: actions/checkout@v4
+              with:
+                note: bun run hidden:input
+            # bun run hidden:comment
+            - working-directory: packages/app
+              run: bun run visible:command
+    `);
+    expect(steps).toEqual([
+      {
+        run: "bun run visible:command",
+        workingDirectory: "packages/app",
+      },
+    ]);
   });
 });

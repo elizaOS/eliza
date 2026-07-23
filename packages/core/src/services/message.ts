@@ -19,6 +19,7 @@ import {
 } from "../actions/to-tool";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { createUniqueUuid } from "../entities";
+import { ElizaError } from "../errors";
 import {
 	formatTaskCompletionStatus,
 	type TaskCompletionAssessment,
@@ -171,6 +172,10 @@ import {
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
 import {
+	sanitizeUserVisibleModelOutput,
+	type UserVisibleModelOutput,
+} from "../runtime/user-visible-model-output";
+import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
 	runWithStreamingContext,
@@ -321,6 +326,7 @@ import {
 	type OptimizedPromptRuntimeLike,
 	resolveOptimizedPromptForRuntime,
 } from "./optimized-prompt-resolver";
+import { trackPostDeliveryTask } from "./post-delivery-task-tracker.ts";
 
 export {
 	findWebLookupActionName,
@@ -3018,35 +3024,90 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-// First-person completed-side-effect claims ("I've set…", "all set",
-// "reminders are set", "Done —"). Adjacency is deliberate: "I have not set"
-// and "I can set" do not match, so offers and honest denials pass through.
-// The bare "done —" branch is anchored to the start of the (trimmed) reply or
-// of a sentence, so congratulations like "Well done — that's every task
-// cleared." are not misread as completion claims.
-const COMPLETED_SIDE_EFFECT_CLAIM_PATTERN =
-	/\b(?:i(?:['’]ve| have| just)?\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b|(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|scheduled|in\s+place)\b|(?:^|[.!?]\s+)done\s*[—–-])/i;
+// Completed-side-effect detection is split by grammatical certainty so that
+// only ASSERTIONS of finished work fire; consent-seeking offers, questions,
+// and conditionals must pass through untouched (a rewritten offer forces an
+// unwanted planner run — the user asked a question and got an action).
+//
+// Perfective first-person claims ("I've set…", "I have scheduled…", "I just
+// added…") carry an explicit completion auxiliary, so they read as reports in
+// any sentence shape — including tag questions ("I've set it — anything
+// else?"). Only a leading subordinator ("Once I've set…") turns one into a
+// plan instead of a report. Adjacency keeps denials out: "I have not set"
+// never matches.
+const PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN =
+	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
+// Bare simple-past claims ("I set a reminder for 9am."). "set" is the one
+// verb here whose past tense equals its base form, so offers ("Should I
+// set…?", "Before I set…") collide with reports on the raw pattern — this
+// branch is additionally gated on the word preceding "I" and on the
+// containing sentence not being a question.
+const BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN =
+	/\bi\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
+// State-of-the-world completion claims that need no first-person subject
+// ("that's all set", "your reminders are set", "Done —"). The bare "done —"
+// branch is anchored to the start of the (trimmed) reply or of a sentence, so
+// congratulations like "Well done — that's every task cleared." are not
+// misread as completion claims.
+const STATE_SIDE_EFFECT_CLAIM_PATTERN =
+	/\b(?:(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|scheduled|in\s+place)\b)|(?:^|[.!?]\s+)done\s*[—–-]/i;
+// A modal, interrogative auxiliary, or subordinator immediately before the
+// matched "I" makes the clause an offer/question/condition ("Should I
+// set…?", "Shall I set…?", "When I set…", "Once I've set…"), not a report of
+// finished work.
+const NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN =
+	/\b(?:should|shall|can|could|may|might|would|will|do|does|did|must|if|unless|once|when|whenever|while|before|after|until|whether)\s+$/i;
 // The claim must be ABOUT a schedulable/saved thing, not e.g. "I've set aside
 // some thoughts". Vocabulary mirrors the scheduled-item nouns the LifeOps
 // surfaces own.
 const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
 	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|check[- ]?ins?|follow[- ]?ups?)\b/i;
 
+// True when the sentence containing the match (scanning forward from the
+// match) terminates in "?" — the shape of a consent-seeking offer or a
+// clarifying question ("I set reminders in the morning usually — should I?").
+function sideEffectClaimSentenceIsQuestion(
+	text: string,
+	fromIndex: number,
+): boolean {
+	for (let i = fromIndex; i < text.length; i += 1) {
+		const ch = text[i];
+		if (ch === "?") return true;
+		if (ch === "." || ch === "!" || ch === "\n") return false;
+	}
+	return false;
+}
+
 /**
- * True when a Stage-1 reply asserts that a scheduling/save side effect already
- * happened. On the simple path no tool has run, so any such claim is
+ * True when a Stage-1 reply ASSERTS that a scheduling/save side effect already
+ * happened. On the simple path no tool has run, so any such assertion is
  * fabricated — the "not loaded must never read as zero" doctrine applied to
  * writes: "no tool ran" must never read as "done" (#16935; observed live: a
  * bill-reminder ask answered "Done — I've set two reminders" with zero tool
- * calls, plus invented "session-only" caveats).
+ * calls, plus invented "session-only" caveats). Consent-seeking offers,
+ * questions, and conditionals ("Want me to set…?", "Should I set…?", "I could
+ * set…") are NOT claims and must return false — rewriting them to "On it."
+ * turns a question the user asked into an action they did not consent to.
  */
 export function replyClaimsCompletedSideEffect(reply: string): boolean {
 	const text = reply.trim();
 	if (!text) return false;
-	return (
-		COMPLETED_SIDE_EFFECT_CLAIM_PATTERN.test(text) &&
-		SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)
-	);
+	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) return false;
+	if (STATE_SIDE_EFFECT_CLAIM_PATTERN.test(text)) return true;
+	for (const match of text.matchAll(PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN)) {
+		if (
+			!NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(text.slice(0, match.index))
+		) {
+			return true;
+		}
+	}
+	for (const match of text.matchAll(BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN)) {
+		const prefix = text.slice(0, match.index);
+		if (NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(prefix)) continue;
+		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+		return true;
+	}
+	return false;
 }
 
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
@@ -3944,6 +4005,42 @@ function exposedActionMatches(
 				normalizeActionIdentifier(String(simile)) === normalizedCandidate,
 		);
 	});
+}
+
+function userVisibleOutputClassification(
+	output: Exclude<UserVisibleModelOutput, { kind: "empty" }>,
+): string {
+	if (output.kind === "control") {
+		return `${output.malformed ? "malformed-" : ""}${output.envelope}`;
+	}
+	if (output.kind === "invalid") {
+		return output.reason;
+	}
+	return output.format === "json" ? "unexpected-json" : "unexpected-text";
+}
+
+function reportRejectedUserVisibleModelOutput(args: {
+	runtime: IAgentRuntime;
+	scope: string;
+	code: string;
+	message: string;
+	stage: string;
+	output: Exclude<UserVisibleModelOutput, { kind: "empty" }>;
+	context?: Record<string, unknown>;
+}): void {
+	args.runtime.reportError(
+		args.scope,
+		new ElizaError(args.message, {
+			code: args.code,
+			context: {
+				stage: args.stage,
+				classification: userVisibleOutputClassification(args.output),
+				fieldPath: args.output.fieldPath,
+				...args.context,
+			},
+			severity: "ephemeral",
+		}),
+	);
 }
 
 export function messageHandlerFromFieldResult(
@@ -6230,6 +6327,9 @@ function collectPreviousActionResults(
 					? { verifiedUserFacing: step.result.verifiedUserFacing }
 					: {}),
 				data: { actionName },
+				...(step.result.turnComplete !== undefined
+					? { turnComplete: step.result.turnComplete }
+					: {}),
 				...(step.result.continueChain !== undefined
 					? { continueChain: step.result.continueChain }
 					: {}),
@@ -6279,6 +6379,9 @@ function collectPreviousActionResults(
 			},
 			...(values ? { values } : {}),
 			...(error !== undefined ? { error } : {}),
+			...(step.result.turnComplete !== undefined
+				? { turnComplete: step.result.turnComplete }
+				: {}),
 			...(step.result.continueChain !== undefined
 				? { continueChain: step.result.continueChain }
 				: {}),
@@ -6922,6 +7025,28 @@ export async function runV5MessageRuntimeStage1(args: {
 			throw new Error(
 				"v5 messageHandler returned invalid MessageHandlerResult",
 			);
+		}
+		const stageOneVisibleReply = sanitizeUserVisibleModelOutput(
+			getMessageHandlerReply(messageHandler),
+		);
+		if (stageOneVisibleReply.kind === "text") {
+			messageHandler.plan.reply = stageOneVisibleReply.text;
+		} else {
+			messageHandler.plan.reply = "";
+			if (stageOneVisibleReply.kind !== "empty") {
+				// error-policy:J3 Stage 1 is an untrusted model boundary. A
+				// control/invalid reply becomes an observable invalid signal,
+				// never a string that a direct or early-reply channel can send.
+				reportRejectedUserVisibleModelOutput({
+					runtime: args.runtime,
+					scope: "MessageService.runV5MessageRuntimeStage1",
+					code: "STAGE1_INVALID_USER_VISIBLE_OUTPUT",
+					message:
+						"Stage-1 model placed control data in the user-visible reply field",
+					stage: "response-handler",
+					output: stageOneVisibleReply,
+				});
+			}
 		}
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
@@ -8308,29 +8433,12 @@ function clearLatestResponseId(
 	}
 }
 
-async function runPostDeliverySideEffect(
-	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
-	label: string,
-	task: () => Promise<unknown>,
-): Promise<void> {
-	try {
-		await task();
-	} catch (err) {
-		// error-policy:J1 Detached background-task boundary reports failures
-		// without converting them into a successful user-visible operation.
-		runtime.reportError("MessageService.postDeliverySideEffect", err, {
-			agentId: runtime.agentId,
-			label,
-		});
-	}
-}
-
 function detachPostDeliverySideEffect(
 	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
 	label: string,
 	task: () => Promise<unknown>,
 ): void {
-	void runPostDeliverySideEffect(runtime, label, task);
+	void trackPostDeliveryTask(runtime, label, task);
 }
 
 export function isSimpleReplyResponse(
@@ -8342,6 +8450,21 @@ export function isSimpleReplyResponse(
 		typeof responseContent.actions[0] === "string" &&
 		isReplyActionIdentifier(responseContent.actions[0])
 	);
+}
+
+const POST_TURN_SEMANTIC_SIGNAL =
+	/(?:https?:\/\/|\b(?:i am|i'm|i have|i've|i feel|i like|i love|i hate|i prefer|i need|i want|my|we|our|remember|friend|partner|wife|husband|relationship|work at|live in|located in|goal|plan)\b)/i;
+
+export function hasPostTurnSemanticSignal(
+	message: Pick<Memory, "content">,
+	state: Pick<State, "data"> | undefined,
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	if (!isSimpleReplyResponse(responseContent)) return true;
+	const actionResults = state?.data?.actionResults;
+	if (Array.isArray(actionResults) && actionResults.length > 0) return true;
+	const text = message.content.text?.trim() ?? "";
+	return POST_TURN_SEMANTIC_SIGNAL.test(text);
 }
 
 function isStopResponse(
@@ -10991,16 +11114,24 @@ export class DefaultMessageService implements IMessageService {
 		// that are not part of the unified evaluator service.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
+		const semanticSignal = hasPostTurnSemanticSignal(
+			message,
+			state,
+			responseContent,
+		);
 		// Post-turn work is never part of connector completion. Connectors await
 		// handleMessage for generation/delivery bookkeeping, so awaiting an
 		// evaluator here makes every connector wait even though the reply has
 		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
 		// one detached task while keeping both failures observable at the boundary.
 		detachPostDeliverySideEffect(runtime, "post_turn", async () => {
-			await runPostTurnEvaluators(runtime, message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
-			});
+			if (semanticSignal) {
+				await runPostTurnEvaluators(runtime, message, state, {
+					didRespond: didRespondGate,
+					responses: responseMessages,
+					semanticSignal,
+				});
+			}
 			await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 				didRespond: didRespondGate,
 				responses: responseMessages,
@@ -11602,19 +11733,30 @@ export class DefaultMessageService implements IMessageService {
 				}
 
 				const cleaned = stripReasoningBlocks(response);
-				const looksStructuredReply =
-					cleaned.startsWith("{") && cleaned.includes("}");
-				const parsed = looksStructuredReply
-					? parseJSONObjectFromText(cleaned)
-					: null;
-				const replyText =
-					typeof parsed?.text === "string" && parsed.text.trim().length > 0
-						? parsed.text.trim()
-						: cleaned;
-				if (replyText) {
-					return { kind: "text", value: replyText };
+				const visible = sanitizeUserVisibleModelOutput(cleaned);
+				if (visible.kind === "text" && visible.format === "plain") {
+					return { kind: "text", value: visible.text };
 				}
+				if (visible.kind === "empty") {
+					continue;
+				}
+
+				// error-policy:J3 the fallback prompt requires plain text. A
+				// typed invalid/control result advances to the next model slot
+				// and is reported instead of masquerading as a valid reply.
+				reportRejectedUserVisibleModelOutput({
+					runtime,
+					scope: "MessageService.generateFailureReplyText",
+					code: "FAILURE_REPLY_INVALID_MODEL_OUTPUT",
+					message:
+						"Failure-reply model violated the plain-text output contract",
+					stage,
+					output: visible,
+					context: { modelType },
+				});
 			} catch (error) {
+				// error-policy:J1 this model-fallback boundary translates
+				// provider failures into the typed outcome the caller renders.
 				// If the runtime reports no LLM provider is configured at all,
 				// no further model attempts will succeed. Surface the actionable
 				// hint instead of the generic transient-failure message. See

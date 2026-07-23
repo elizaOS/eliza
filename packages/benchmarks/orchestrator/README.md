@@ -704,12 +704,14 @@ latest artifact set.
 credentials that unlock benchmarks where sample/demo fallbacks are forbidden.
 
 After the latest matrix is generated and manually spot-reviewed, package the
-reviewed result set into the committed evidence location:
+reviewed result set into a local evidence bundle (gitignored; attach the
+contents inline on the issue/PR — the committed `.github/issue-evidence/`
+location is retired):
 
 ```bash
 python3 -m benchmarks.orchestrator review-package \
   --latest-dir packages/benchmarks/benchmark_results/latest \
-  --out-dir .github/issue-evidence/10199-benchmark-review \
+  --out-dir test-results/evidence/10199-benchmark-review \
   --reviewed-by <handle> \
   --reviewer-note "Opened the selected trajectories/replays and spot-reviewed model inputs, outputs, scores, and failure diagnostics."
 ```

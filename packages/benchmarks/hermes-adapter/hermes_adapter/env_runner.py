@@ -297,6 +297,15 @@ def run_hermes_env(
     if env_id in {"tblite", "terminalbench_2"}:
         config_env_overrides["agent_temperature"] = 0.0
         config_env_overrides["system_prompt"] = _TERMINAL_ENV_SYSTEM_PROMPT
+        # Campaign policy: no artificial limits. The upstream defaults
+        # (max_agent_turns=60, task_timeout=1200s) truncate hard tasks
+        # mid-repair and turn capability measurements into budget
+        # measurements. Both are pydantic ints upstream, so "unlimited" is
+        # expressed as values no real rollout can reach; the task ends when
+        # the agent concludes or the surrounding orchestrator deadline (if
+        # any) fires. Caller-overridable via extra_args (--env.<key>=…).
+        config_env_overrides.setdefault("max_agent_turns", 1_000_000_000)
+        config_env_overrides.setdefault("task_timeout", 1_000_000_000)
     forwarded_args: list[str] = list(extra_args or [])
     if not _has_forwarded_arg(forwarded_args, "--env.terminal_backend"):
         forwarded_args.append(f"--env.terminal_backend={terminal_backend}")
@@ -743,6 +752,16 @@ def _annotate_sample_completion(
             continue
         last = messages[-1]
         if isinstance(last, dict) and last.get("role") == "tool" and not row.get("passed"):
+            # A trailing tool result on a rollout with real agent turns is a
+            # resource-bounded failure (wall clock or turn ceiling ended the
+            # loop after the last tool execution) — a real, scoreable
+            # measurement. Harness deaths surface as row errors and are
+            # raised above; only zero-work rollouts (the agent never took a
+            # turn) stay unscoreable. The campaign runs without an artificial
+            # turn budget, so hard tasks routinely end exactly this way.
+            turns = row.get("turns_used")
+            if isinstance(turns, int) and turns > 0:
+                continue
             incomplete += 1
     if expected_samples is not None and total != expected_samples:
         raise RuntimeError(

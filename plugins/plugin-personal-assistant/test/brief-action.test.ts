@@ -37,6 +37,11 @@ import {
 function makeRuntime(
   options: {
     useModel?: (modelType: string, args: { prompt: string }) => Promise<string>;
+    reportError?: (
+      scope: string,
+      error: unknown,
+      context?: Record<string, unknown>,
+    ) => void;
   } = {},
 ): IAgentRuntime {
   return {
@@ -49,6 +54,10 @@ function makeRuntime(
     },
     useModel:
       options.useModel ?? (async () => "Composed narrative from the model."),
+    // The J4 degrade in loadCompletedTodayFromService reports through the
+    // diagnostic boundary; the harness runtime must carry it so the evening
+    // composer can run without a LifeOpsService registered.
+    reportError: options.reportError ?? (() => undefined),
   } as unknown as IAgentRuntime;
 }
 
@@ -330,6 +339,36 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(args.prompt).toContain("Sorted receipts");
       expect(args.prompt).toContain("completedToday");
       expect(args.prompt).toContain("LEAD with those finished");
+    });
+
+    // Regression (#16966 post-merge review): the completed-today catch used
+    // to degrade with a log-only warn — a broken load silently read as a
+    // win-less day. The J4 degrade must surface through runtime.reportError
+    // so RECENT_ERRORS and owner escalation see it.
+    it("surfaces a failed completed-today load via reportError while the brief still composes", async () => {
+      const reportError = vi.fn();
+      // Default composers + a runtime with no LifeOpsService: the DEFAULT
+      // loadCompletedTodayFromService path fails for real and must degrade
+      // through its own J4 catch, not an injected stand-in.
+      const runtime = makeRuntime({ reportError });
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_evening",
+        include: { calendar: false, inbox: false, life: true, money: false },
+        format: "json",
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        briefing: { sections: Record<string, unknown> };
+      };
+      // The degrade omits the wins section entirely — a designed absence, not
+      // a fabricated empty win list rendered as a healthy day.
+      expect(data.briefing.sections).not.toHaveProperty("completedToday");
+      expect(reportError).toHaveBeenCalledTimes(1);
+      expect(reportError).toHaveBeenCalledWith(
+        "Brief.loadCompletedToday",
+        expect.anything(),
+        { surface: "evening-brief-wins" },
+      );
     });
 
     it("keeps morning briefs forward-looking (no completedToday load)", async () => {

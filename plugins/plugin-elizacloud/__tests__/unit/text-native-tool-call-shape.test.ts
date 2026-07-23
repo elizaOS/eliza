@@ -41,7 +41,20 @@ function runtime(): IAgentRuntime {
  * planner's tool decision lands in `message.tool_calls[0]` as an OpenAI-shaped
  * function call whose `arguments` is a JSON *string* (not an object).
  */
-function cerebrasToolCallResponse(): Response {
+function cerebrasToolCallResponse(
+  toolCalls: unknown = [
+    {
+      id: "call_abc123",
+      type: "function",
+      function: {
+        name: "PLAN_ACTIONS",
+        arguments: JSON.stringify({
+          actions: [{ action: "REPLY", thought: "greet the user" }],
+        }),
+      },
+    },
+  ]
+): Response {
   return new Response(
     JSON.stringify({
       id: "chatcmpl-1",
@@ -54,18 +67,7 @@ function cerebrasToolCallResponse(): Response {
           message: {
             role: "assistant",
             content: null,
-            tool_calls: [
-              {
-                id: "call_abc123",
-                type: "function",
-                function: {
-                  name: "PLAN_ACTIONS",
-                  arguments: JSON.stringify({
-                    actions: [{ action: "REPLY", thought: "greet the user" }],
-                  }),
-                },
-              },
-            ],
+            tool_calls: toolCalls,
           },
         },
       ],
@@ -140,6 +142,105 @@ describe("non-streaming planner tool-call shape (offline)", () => {
     // consumes `input`, not a raw string).
     expect(call?.input).toEqual({
       actions: [{ action: "REPLY", thought: "greet the user" }],
+    });
+  });
+
+  it.each([
+    [
+      "a non-array tool_calls payload",
+      {
+        invalid: true,
+      },
+    ],
+    [
+      "a missing id",
+      [
+        {
+          type: "function",
+          function: { name: "PLAN_ACTIONS", arguments: "{}" },
+        },
+      ],
+    ],
+    [
+      "a missing name",
+      [
+        {
+          id: "call_1",
+          type: "function",
+          function: { arguments: "{}" },
+        },
+      ],
+    ],
+    [
+      "missing arguments",
+      [
+        {
+          id: "call_1",
+          type: "function",
+          function: { name: "PLAN_ACTIONS" },
+        },
+      ],
+    ],
+    [
+      "empty arguments",
+      [
+        {
+          id: "call_1",
+          type: "function",
+          function: { name: "PLAN_ACTIONS", arguments: "" },
+        },
+      ],
+    ],
+    [
+      "truncated arguments",
+      [
+        {
+          id: "call_1",
+          type: "function",
+          function: { name: "PLAN_ACTIONS", arguments: '{"actions":' },
+        },
+      ],
+    ],
+    [
+      "array arguments",
+      [
+        {
+          id: "call_1",
+          type: "function",
+          function: { name: "PLAN_ACTIONS", arguments: "[]" },
+        },
+      ],
+    ],
+    [
+      "scalar arguments",
+      [
+        {
+          id: "call_1",
+          type: "function",
+          function: { name: "PLAN_ACTIONS", arguments: '"reply"' },
+        },
+      ],
+    ],
+    [
+      "duplicate ids",
+      [
+        {
+          id: "call_1",
+          type: "function",
+          function: { name: "PLAN_ACTIONS", arguments: "{}" },
+        },
+        {
+          id: "call_1",
+          type: "function",
+          function: { name: "PLAN_ACTIONS", arguments: "{}" },
+        },
+      ],
+    ],
+  ])("rejects %s instead of fabricating a buffered tool call", async (_label, toolCalls) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(cerebrasToolCallResponse(toolCalls));
+
+    await expect(handleActionPlanner(runtime(), PLANNER_PARAMS as never)).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
     });
   });
 });

@@ -318,6 +318,16 @@
       "import": "./dist/views/view-command-matcher.js",
       "default": "./dist/views/view-command-matcher.js"
     },
+    "./views/shared-nav-targets": {
+      "types": "./dist/views/shared-nav-targets.d.ts",
+      "eliza-source": {
+        "types": "./src/views/shared-nav-targets.ts",
+        "import": "./src/views/shared-nav-targets.ts",
+        "default": "./src/views/shared-nav-targets.ts"
+      },
+      "import": "./dist/views/shared-nav-targets.js",
+      "default": "./dist/views/shared-nav-targets.js"
+    },
     "./voice-wer": {
       "types": "./dist/voice-wer.d.ts",
       "eliza-source": {

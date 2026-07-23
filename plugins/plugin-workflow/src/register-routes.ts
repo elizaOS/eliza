@@ -6,9 +6,17 @@
  */
 import { registerAppRoutePluginLoader } from '@elizaos/core';
 
-registerAppRoutePluginLoader('@elizaos/plugin-workflow:routes', async () => {
-  const { workflowRoutePlugin } = await import('./plugin-routes');
-  return workflowRoutePlugin;
-});
+type RegisterAppRoutePluginLoader = typeof registerAppRoutePluginLoader;
+
+export function registerWorkflowRoutePlugin(
+  register: RegisterAppRoutePluginLoader = registerAppRoutePluginLoader
+): void {
+  register('@elizaos/plugin-workflow:routes', async () => {
+    const { workflowRoutePlugin } = await import('./plugin-routes');
+    return workflowRoutePlugin;
+  });
+}
+
+registerWorkflowRoutePlugin();
 
 export const workflowRouteRegistration = true;

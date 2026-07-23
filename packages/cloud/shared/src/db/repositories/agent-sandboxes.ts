@@ -47,6 +47,15 @@ export type {
 
 export type AgentSandboxBackupMetadata = Omit<StoredAgentSandboxBackup, "state_data">;
 
+/**
+ * A user sandbox row freshly claimed from the warm pool. `warm_pool_row_id`
+ * is the id of the pool row the claim transaction deleted — the container's
+ * boot-time inference key is named `agent-sandbox:<that id>`, so the
+ * post-claim re-key needs it to revoke the pool-org credential; it exists
+ * nowhere else once the pool row is gone (#17066 review).
+ */
+export type WarmClaimedAgentSandbox = AgentSandbox & { warm_pool_row_id: string };
+
 const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   memories: [],
   config: {},
@@ -1075,7 +1084,12 @@ export class AgentSandboxesRepository {
    * from the pool row, status flips to 'running', and the pool row is
    * deleted in the same transaction.
    *
-   * Returns the updated user row, or null when the pool is empty.
+   * Returns the updated user row — augmented with `warm_pool_row_id`, the id
+   * of the pool row deleted by this claim — or null when the pool is empty.
+   * The pool row id is otherwise lost with the deletion, but the container's
+   * BOOT credentials are named for it (`agent-sandbox:<poolRowId>` inference
+   * key), so the post-claim re-key needs it to revoke the pool-org key
+   * (#17066 review): the claimed row's own id can never reach that key name.
    */
   async claimWarmContainer(params: {
     userAgentId: string;
@@ -1085,7 +1099,7 @@ export class AgentSandboxesRepository {
     agentConfig?: Record<string, unknown>;
     characterId?: string | null;
     expectedUpdatedAt?: Date | string | null;
-  }): Promise<AgentSandbox | null> {
+  }): Promise<WarmClaimedAgentSandbox | null> {
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
       // Attribution guard (audit §C1c): NEVER claim a pool row whose node_id is
@@ -1102,6 +1116,17 @@ export class AgentSandboxesRepository {
       // returns null cleanly and the caller falls through to the cold provision
       // path (which itself enforces the C1b guard). The skipped null-node rows
       // are left unclaimed for the drain/reap sweeps to clear.
+      // F2 (warm-pool flip report): claim readiness must require a resolved
+      // BRIDGE URL, not just docker-health. `pool_ready_at` is stamped at
+      // docker-health, but a pool entry whose bridge URL never resolved (or
+      // whose tailnet session rotted before the bridge URL was persisted) is
+      // unreachable — claiming it hands the user a dead container (observed:
+      // flip-report runs 1-3 claimed tailnet-dead / `health: starting`
+      // entries). Gating on `bridge_url IS NOT NULL AND <> ''` at selection
+      // means such entries are skipped and the next reachable candidate is
+      // claimed; a pool with only unreachable rows returns null and the caller
+      // falls through to the cold path. Deeper liveness (a booted-then-rotted
+      // tailnet session) remains the health sweep's job (healthProbe reaps it).
       const poolRows = await sqlRows<AgentSandbox>(
         tx,
         sql`
@@ -1113,6 +1138,8 @@ export class AgentSandboxesRepository {
             AND ${agentSandboxes.pool_ready_at} IS NOT NULL
             AND ${agentSandboxes.node_id} IS NOT NULL
             AND ${agentSandboxes.node_id} <> ''
+            AND ${agentSandboxes.bridge_url} IS NOT NULL
+            AND ${agentSandboxes.bridge_url} <> ''
           ORDER BY ${agentSandboxes.pool_ready_at} ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
@@ -1220,7 +1247,11 @@ export class AgentSandboxesRepository {
 
       await tx.delete(agentSandboxes).where(eq(agentSandboxes.id, pool.id));
 
-      return updated ?? null;
+      // Carry the deleted pool row's id out of the transaction: the container's
+      // boot-time inference key is named `agent-sandbox:<pool.id>`, and this is
+      // the last moment that id exists anywhere — the post-claim re-key uses it
+      // to revoke the pool-org credential (#17066 review).
+      return updated ? { ...updated, warm_pool_row_id: pool.id } : null;
     });
   }
 

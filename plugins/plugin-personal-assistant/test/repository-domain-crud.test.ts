@@ -696,6 +696,124 @@ describe("LifeOpsRepository domain CRUD", () => {
     ).toHaveLength(1);
   });
 
+  // Regression (#16966 post-merge review): the completed-today read applied
+  // its LIMIT before the caller's owner filter, so newer agent-subject
+  // completions under multi-room load consumed the window and silently
+  // evicted owner wins from the evening brief. The subject filter now lives
+  // in the SQL WHERE, ahead of the LIMIT.
+  it("keeps owner completions inside the limit under multi-subject load", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const ownerBase = ownership(runtime.agentId);
+    const agentBase = {
+      agentId: runtime.agentId,
+      domain: "agent_ops" as const,
+      subjectType: "agent" as const,
+      subjectId: runtime.agentId,
+      visibilityScope: "agent_and_admin" as const,
+      contextPolicy: "never" as const,
+    };
+
+    const makeDefinition = (base: typeof ownerBase | typeof agentBase) =>
+      createLifeOpsTaskDefinition({
+        ...base,
+        kind: "reminder",
+        title: base.subjectType === "owner" ? "Owner win" : "Agent chore",
+        description: "multi-subject limit regression",
+        originalIntent: "seeded",
+        timezone: "UTC",
+        status: "active",
+        priority: 2,
+        cadence: { kind: "once", dueAt: LATER },
+        windowPolicy: { timezone: "UTC", windows: [] },
+        progressionRule: { kind: "none" },
+        websiteAccess: null,
+        reminderPlanId: null,
+        goalId: null,
+        source: "manual",
+        metadata: {},
+      });
+    const ownerDefinition = makeDefinition(ownerBase);
+    const agentDefinition = makeDefinition(agentBase);
+    await repository.createDefinition(ownerDefinition);
+    await repository.createDefinition(agentDefinition);
+
+    const completedAt = (minutesAfterNow: number) =>
+      new Date(Date.parse(NOW) + minutesAfterNow * 60_000).toISOString();
+    const seedCompleted = async (
+      base: typeof ownerBase | typeof agentBase,
+      definitionId: string,
+      key: string,
+      updatedAt: string,
+    ) => {
+      await repository.upsertOccurrence({
+        id: crypto.randomUUID(),
+        ...base,
+        definitionId,
+        occurrenceKey: key,
+        scheduledAt: NOW,
+        dueAt: LATER,
+        relevanceStartAt: NOW,
+        relevanceEndAt: LATER,
+        windowName: null,
+        state: "completed",
+        snoozedUntil: null,
+        completionPayload: { ok: true },
+        derivedTarget: null,
+        metadata: {},
+        createdAt: NOW,
+        updatedAt,
+      });
+    };
+
+    // Two OLDER owner wins, then six NEWER agent completions: newest-first
+    // ordering puts every agent row ahead of the owner rows.
+    await seedCompleted(
+      ownerBase,
+      ownerDefinition.id,
+      "owner-1",
+      completedAt(1),
+    );
+    await seedCompleted(
+      ownerBase,
+      ownerDefinition.id,
+      "owner-2",
+      completedAt(2),
+    );
+    for (let i = 0; i < 6; i += 1) {
+      await seedCompleted(
+        agentBase,
+        agentDefinition.id,
+        `agent-${i}`,
+        completedAt(10 + i),
+      );
+    }
+
+    // Unfiltered read at the small limit shows the eviction pressure: the
+    // window fills entirely with agent-subject rows.
+    const unfiltered = await repository.listCompletedOccurrenceViewsSince(
+      runtime.agentId,
+      NOW,
+      { limit: 4 },
+    );
+    expect(unfiltered).toHaveLength(4);
+    expect(unfiltered.every((view) => view.subjectType === "agent")).toBe(true);
+
+    // With the subject filter in SQL, the same limit returns every owner win.
+    const ownerOnly = await repository.listCompletedOccurrenceViewsSince(
+      runtime.agentId,
+      NOW,
+      { subjectType: "owner", limit: 4 },
+    );
+    expect(ownerOnly.map((view) => view.occurrenceKey).sort()).toEqual([
+      "owner-1",
+      "owner-2",
+    ]);
+    expect(ownerOnly.every((view) => view.subjectType === "owner")).toBe(true);
+  });
+
   it("round-trips connector sync, schedule, and work-thread records", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;

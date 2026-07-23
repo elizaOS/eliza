@@ -9,6 +9,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { resolveGnuBash } from "../lib/gnu-shell.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -47,8 +48,25 @@ const preflight = publishStep.run.slice(
   publishStep.run.indexOf("# The Worker is the gateway"),
 );
 
+// The executed cases run the workflow's VERBATIM preflight bash, which uses
+// bash >= 4 `${1,,}` lowercasing (GitHub's Linux runners). macOS /bin/bash 3.2
+// aborts on that expansion with "bad substitution", zeroing every gate the
+// snippet enforces — so the executed cases only run where a modern bash
+// resolves (Linux natively; macOS via `brew install bash`) and skip otherwise.
+// The static expression-layer and wrangler assertions still run everywhere.
+const GNU_BASH = resolveGnuBash();
+
+function requirePreflightBash(): string {
+  if (!GNU_BASH) {
+    throw new Error(
+      "preflight execution requires bash >= 4 (lowercase parameter expansion); install GNU bash",
+    );
+  }
+  return GNU_BASH;
+}
+
 function runPreflight(env: Record<string, string>) {
-  return spawnSync("bash", ["-c", preflight], {
+  return spawnSync(requirePreflightBash(), ["-c", preflight], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -87,117 +105,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     );
   });
 
-  test("does not require realtime secrets when staging opt-in is absent", () => {
-    const result = runPreflight({
-      DEEPGRAM_API_KEY: "",
-      CARTESIA_API_KEY: "",
-      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-      VOICE_REALTIME_WS_ENABLED: "false",
-    });
-    expect(result.status).toBe(0);
-    expect(result.stdout).not.toContain("Bearer repo-key-must-not-be-used");
-  });
-
-  test("requires every realtime provider and bridge secret in opted-in staging", () => {
-    for (const missing of [
-      "DEEPGRAM_API_KEY",
-      "CARTESIA_API_KEY",
-      "VOICE_REALTIME_ELIZA_AUTHORIZATION",
-    ]) {
-      const result = runPreflight({
-        [missing]: " \t\n",
-        STAGING_ELIZACLOUD_API_KEY: "",
-        VOICE_REALTIME_WS_ENABLED: "true",
-      });
-      expect(
-        result.status,
-        `${missing}: ${result.stdout}${result.stderr}`,
-      ).toBe(1);
-      expect(result.stdout).toContain(missing);
-    }
-  });
-
-  test("constructs the staging fallback only after truthy opt-in and a nonblank source key", () => {
-    const configured = spawnSync(
-      "bash",
-      [
-        "-c",
-        `${preflight}\nprintf '<%s>' "$VOICE_REALTIME_ELIZA_AUTHORIZATION"`,
-      ],
-      {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          DEPLOY_ENVIRONMENT: "staging",
-          DEEPGRAM_API_KEY: "deepgram-test",
-          CARTESIA_API_KEY: "cartesia-test",
-          VOICE_REALTIME_WS_ENABLED: "true",
-          VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-          STAGING_ELIZACLOUD_API_KEY: "stage-cloud-key",
-        },
-      },
-    );
-    expect(configured.status).toBe(0);
-    expect(configured.stdout).toBe("<Bearer stage-cloud-key>");
-
-    const empty = runPreflight({
-      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-      STAGING_ELIZACLOUD_API_KEY: " \t\n",
-      VOICE_REALTIME_WS_ENABLED: "true",
-    });
-    expect(empty.status).toBe(1);
-    expect(empty.stdout).not.toContain("Bearer ");
-  });
-
-  test("keeps disabled production deployable but fails a future enable without dedicated secrets", () => {
-    const disabled = runPreflight({
-      DEPLOY_ENVIRONMENT: "production",
-      DEEPGRAM_API_KEY: "",
-      CARTESIA_API_KEY: "",
-      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-    });
-    expect(disabled.status).toBe(0);
-    expect(disabled.stdout).not.toContain("Bearer repo-key-must-not-be-used");
-
-    const missingDedicated = runPreflight({
-      DEPLOY_ENVIRONMENT: "production",
-      PRODUCTION_REALTIME_WS_ENABLED: "true",
-      DEEPGRAM_API_KEY: "",
-      CARTESIA_API_KEY: "",
-      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-    });
-    expect(missingDedicated.status).toBe(1);
-    expect(missingDedicated.stdout).toContain(
-      "Production realtime voice is enabled",
-    );
-    expect(missingDedicated.stdout).toContain("DEEPGRAM_API_KEY");
-    expect(missingDedicated.stdout).toContain("CARTESIA_API_KEY");
-    expect(missingDedicated.stdout).toContain(
-      "VOICE_REALTIME_ELIZA_AUTHORIZATION",
-    );
-    expect(missingDedicated.stdout).toContain(
-      "PRODUCTION_REALTIME_CARTESIA_VOICE_ID",
-    );
-    expect(missingDedicated.stdout).toContain(
-      "PRODUCTION_REALTIME_ELIZA_ENDPOINT",
-    );
-
-    const configured = runPreflight({
-      DEPLOY_ENVIRONMENT: "production",
-      PRODUCTION_REALTIME_WS_ENABLED: "true",
-      DEEPGRAM_API_KEY: "deepgram-production",
-      CARTESIA_API_KEY: "cartesia-production",
-      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated",
-      PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "production-voice-id",
-      PRODUCTION_REALTIME_ELIZA_ENDPOINT:
-        "https://api.elizacloud.ai/api/v1/chat/completions",
-      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-    });
-    expect(configured.status).toBe(0);
-
+  test("keeps production wrangler vars and workflow env realtime-off with no dedicated-secret advertisement", () => {
     const wrangler = read("packages/cloud/api/wrangler.toml");
     const stagingVars = wrangler.slice(
       wrangler.indexOf("[env.staging.vars]"),
@@ -283,3 +191,124 @@ describe("Cloud CF realtime voice deploy contract", () => {
     }
   });
 });
+
+// Skip the executed preflight cases when no bash >= 4 is reachable (macOS
+// /bin/bash 3.2 without a brew-installed bash); CI runs on Linux and keeps
+// full executed coverage.
+const executedDescribe = GNU_BASH ? describe : describe.skip;
+executedDescribe(
+  "Cloud CF realtime voice deploy preflight (executed verbatim)",
+  () => {
+    test("does not require realtime secrets when staging opt-in is absent", () => {
+      const result = runPreflight({
+        DEEPGRAM_API_KEY: "",
+        CARTESIA_API_KEY: "",
+        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+        VOICE_REALTIME_WS_ENABLED: "false",
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).not.toContain("Bearer repo-key-must-not-be-used");
+    });
+
+    test("requires every realtime provider and bridge secret in opted-in staging", () => {
+      for (const missing of [
+        "DEEPGRAM_API_KEY",
+        "CARTESIA_API_KEY",
+        "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+      ]) {
+        const result = runPreflight({
+          [missing]: " \t\n",
+          STAGING_ELIZACLOUD_API_KEY: "",
+          VOICE_REALTIME_WS_ENABLED: "true",
+        });
+        expect(
+          result.status,
+          `${missing}: ${result.stdout}${result.stderr}`,
+        ).toBe(1);
+        expect(result.stdout).toContain(missing);
+      }
+    });
+
+    test("constructs the staging fallback only after truthy opt-in and a nonblank source key", () => {
+      const configured = spawnSync(
+        requirePreflightBash(),
+        [
+          "-c",
+          `${preflight}\nprintf '<%s>' "$VOICE_REALTIME_ELIZA_AUTHORIZATION"`,
+        ],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            DEPLOY_ENVIRONMENT: "staging",
+            DEEPGRAM_API_KEY: "deepgram-test",
+            CARTESIA_API_KEY: "cartesia-test",
+            VOICE_REALTIME_WS_ENABLED: "true",
+            VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+            STAGING_ELIZACLOUD_API_KEY: "stage-cloud-key",
+          },
+        },
+      );
+      expect(configured.status).toBe(0);
+      expect(configured.stdout).toBe("<Bearer stage-cloud-key>");
+
+      const empty = runPreflight({
+        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+        STAGING_ELIZACLOUD_API_KEY: " \t\n",
+        VOICE_REALTIME_WS_ENABLED: "true",
+      });
+      expect(empty.status).toBe(1);
+      expect(empty.stdout).not.toContain("Bearer ");
+    });
+
+    test("keeps disabled production deployable but fails a future enable without dedicated secrets", () => {
+      const disabled = runPreflight({
+        DEPLOY_ENVIRONMENT: "production",
+        DEEPGRAM_API_KEY: "",
+        CARTESIA_API_KEY: "",
+        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+      });
+      expect(disabled.status).toBe(0);
+      expect(disabled.stdout).not.toContain("Bearer repo-key-must-not-be-used");
+
+      const missingDedicated = runPreflight({
+        DEPLOY_ENVIRONMENT: "production",
+        PRODUCTION_REALTIME_WS_ENABLED: "true",
+        DEEPGRAM_API_KEY: "",
+        CARTESIA_API_KEY: "",
+        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+      });
+      expect(missingDedicated.status).toBe(1);
+      expect(missingDedicated.stdout).toContain(
+        "Production realtime voice is enabled",
+      );
+      expect(missingDedicated.stdout).toContain("DEEPGRAM_API_KEY");
+      expect(missingDedicated.stdout).toContain("CARTESIA_API_KEY");
+      expect(missingDedicated.stdout).toContain(
+        "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+      );
+      expect(missingDedicated.stdout).toContain(
+        "PRODUCTION_REALTIME_CARTESIA_VOICE_ID",
+      );
+      expect(missingDedicated.stdout).toContain(
+        "PRODUCTION_REALTIME_ELIZA_ENDPOINT",
+      );
+
+      const configured = runPreflight({
+        DEPLOY_ENVIRONMENT: "production",
+        PRODUCTION_REALTIME_WS_ENABLED: "true",
+        DEEPGRAM_API_KEY: "deepgram-production",
+        CARTESIA_API_KEY: "cartesia-production",
+        VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated",
+        PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "production-voice-id",
+        PRODUCTION_REALTIME_ELIZA_ENDPOINT:
+          "https://api.elizacloud.ai/api/v1/chat/completions",
+        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+      });
+      expect(configured.status).toBe(0);
+    });
+  },
+);

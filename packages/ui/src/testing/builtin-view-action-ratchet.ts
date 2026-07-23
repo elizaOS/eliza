@@ -9,8 +9,10 @@
  *
  * Two checks compose the ratchet (#14369 shipped the first, #16944 the second):
  * the per-view coverage validator pins each baseline entry's mutation-site
- * count and verifies its semantic actions against the live registered-action
- * inventory, and the shell-page completeness sweep walks every module under
+ * count in both directions (above = unmapped local mutation, below = stale
+ * baseline that must be pinned down, #16951) and verifies its semantic actions
+ * against the live registered-action inventory, and the shell-page
+ * completeness sweep walks every module under
  * `packages/ui/src/components/pages` and fails when a mutating page is neither
  * claimed by a baseline entry nor exempt with a reason — so a brand-new
  * mutating view cannot ship un-ratcheted.
@@ -20,6 +22,12 @@ export interface BuiltinViewMutationBaselineEntry {
   viewId: string;
   sourceFiles: readonly string[];
   semanticActions: readonly string[];
+  /**
+   * Exact pinned mutation-site count across sourceFiles. The validator fails
+   * in BOTH directions: above is a new unmapped local mutation, below is a
+   * stale baseline that must be pinned down — freed headroom may never
+   * silently accrue for later local-only growth (#16951).
+   */
   maxMutationSites: number;
   exemptReason?: string;
   notes?: string;
@@ -27,7 +35,11 @@ export interface BuiltinViewMutationBaselineEntry {
 
 export interface BuiltinViewMutationFinding {
   viewId: string;
-  code: "missing-source" | "missing-semantic-action" | "new-local-mutation";
+  code:
+    | "missing-source"
+    | "missing-semantic-action"
+    | "new-local-mutation"
+    | "stale-baseline";
   message: string;
 }
 
@@ -279,6 +291,14 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "read-only launcher grid; tile taps navigate to views (VIEWS action drives the same navigation) and mutate no domain state",
   },
   {
+    viewId: "app-route-not-found",
+    sourceFiles: ["packages/ui/src/components/pages/AppRouteNotFound.tsx"],
+    semanticActions: [],
+    maxMutationSites: 2,
+    exemptReason:
+      "designed not-found state for unclaimed /apps/<slug> routes (#17033); both controls are pure navigation (history push to the view's canonical path or /apps) and mutate no domain state",
+  },
+  {
     viewId: "native-os-apps",
     sourceFiles: ["packages/ui/src/components/pages/ElizaOsAppsView.tsx"],
     semanticActions: [],
@@ -342,9 +362,11 @@ export function validateBuiltinViewMutationCoverage(args: {
 
   for (const entry of baseline) {
     let observedMutationSites = 0;
+    let missingSource = false;
     for (const sourceFile of entry.sourceFiles) {
       const source = args.readSource(sourceFile);
       if (source == null) {
+        missingSource = true;
         findings.push({
           viewId: entry.viewId,
           code: "missing-source",
@@ -369,6 +391,20 @@ export function validateBuiltinViewMutationCoverage(args: {
         viewId: entry.viewId,
         code: "new-local-mutation",
         message: `${entry.viewId}: observed ${observedMutationSites} mutation sites exceeds baseline ${entry.maxMutationSites}; add a semantic action mapping or deliberately update the baseline`,
+      });
+    } else if (
+      observedMutationSites < entry.maxMutationSites &&
+      !missingSource
+    ) {
+      // A drop must force-pin the count down: leftover headroom would let
+      // that many future local-only mutations land unnoticed — worst on
+      // multi-file aggregates where one refactored file frees a big block
+      // (#16951). Skipped when a source is missing, since the partial count
+      // is meaningless next to the missing-source finding already emitted.
+      findings.push({
+        viewId: entry.viewId,
+        code: "stale-baseline",
+        message: `${entry.viewId}: observed ${observedMutationSites} mutation sites is below baseline ${entry.maxMutationSites}; pin maxMutationSites to ${observedMutationSites} so the freed headroom cannot absorb future local-only mutations`,
       });
     }
 

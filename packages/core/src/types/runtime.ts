@@ -1177,6 +1177,14 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	): SearchCategoryRegistration;
 
 	registerSendHandler(source: string, handler: SendHandlerFunction): void;
+	/**
+	 * Register an outbound transport that runtime-owned relays may address
+	 * without advertising it as a user-selectable message connector.
+	 */
+	registerInternalSendHandler(
+		source: string,
+		handler: SendHandlerFunction,
+	): void;
 	registerMessageConnector(registration: MessageConnectorRegistration): void;
 	unregisterMessageConnector(source: string, accountId?: string): boolean;
 	getMessageConnectors(): MessageConnector[];

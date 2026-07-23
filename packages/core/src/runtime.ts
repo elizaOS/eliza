@@ -89,13 +89,17 @@ import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-f
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
 import { ShortcutRegistry } from "./runtime/shortcut-registry";
+import { SingleFlightMemo } from "./runtime/single-flight-memo";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
 import { buildProviderAttributionsFromState } from "./runtime/trajectory-provider-attribution";
-import { TurnControllerRegistry } from "./runtime/turn-controller";
+import {
+	TurnAbortedError,
+	TurnControllerRegistry,
+} from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import {
 	CompositeEntityRecognizer,
@@ -125,6 +129,10 @@ import {
 } from "./services/message/fallback-reply";
 import { sanitizeOutboundText } from "./services/message/outbound-sanitize";
 import { ensureAgentVoice } from "./services/message/voice-gate";
+import {
+	drainPostDeliveryTasks,
+	pendingPostDeliveryTaskCount,
+} from "./services/post-delivery-task-tracker.ts";
 import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
@@ -988,6 +996,29 @@ export class AgentRuntime implements IAgentRuntime {
 		string,
 		InFlightProviderExecution
 	>();
+	// Turn-scoped single-flight read coalescing (see runtime/single-flight-memo).
+	// A Stage-1 compose issues getRoom 4x (RECENT_MESSAGES / CHARACTER /
+	// PLATFORM_* / WORLD) and 3 overlapping room messages-scans (RECENT_MESSAGES
+	// at conversationLength, FACTS at 10, ATTACHMENTS at ≤50); on a serializing
+	// store each duplicate is a full extra round-trip. The 1s TTL comfortably
+	// covers one compose fan-out while bounding staleness from out-of-process
+	// writers; in-process correctness comes from the mutation wrappers below
+	// invalidating the relevant key (createMemory → roomMessagesMemo,
+	// room mutators → roomReadMemo), never from the TTL.
+	private static readonly READ_MEMO_TTL_MS = 1_000;
+	private static readonly READ_MEMO_MAX_ENTRIES = 1_000;
+	// Floor for the coalesced messages window so every standard compose-time
+	// consumer (conversationLength, FACTS' 10, ATTACHMENTS' 50) is served by
+	// one superset fetch sliced per caller.
+	private static readonly ROOM_MESSAGES_MEMO_MIN_WINDOW = 50;
+	private readonly roomReadMemo = new SingleFlightMemo<Room | null>(
+		AgentRuntime.READ_MEMO_TTL_MS,
+		AgentRuntime.READ_MEMO_MAX_ENTRIES,
+	);
+	private readonly roomMessagesMemo = new SingleFlightMemo<Memory[], number>(
+		AgentRuntime.READ_MEMO_TTL_MS,
+		AgentRuntime.READ_MEMO_MAX_ENTRIES,
+	);
 	readonly fetch = fetch;
 	promptBatcher: PromptBatcher;
 	services = new Map<ServiceTypeName, Service[]>();
@@ -2255,6 +2286,16 @@ export class AgentRuntime implements IAgentRuntime {
 			return;
 		}
 		const fast = options?.fast === true;
+		if (!fast) {
+			const pending = pendingPostDeliveryTaskCount(this);
+			if (pending > 0) {
+				this.logger.info(
+					{ src: "agent", agentId: this.agentId, pending },
+					"Draining post-delivery work before runtime shutdown",
+				);
+				await drainPostDeliveryTasks(this);
+			}
+		}
 		const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
 		if (fast) {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";
@@ -2383,6 +2424,8 @@ export class AgentRuntime implements IAgentRuntime {
 		this.events = {};
 		this.stateCache.clear();
 		this.providerExecutionsInFlight.clear();
+		this.roomReadMemo.invalidate();
+		this.roomMessagesMemo.invalidate();
 		this.servicePromises.clear();
 		this.servicePromiseHandlers.clear();
 		this.startingServices.clear();
@@ -2741,6 +2784,8 @@ export class AgentRuntime implements IAgentRuntime {
 					worldId: this.agentId,
 				},
 			]);
+			// The getRoom above memoized null for this id; drop it.
+			this.roomReadMemo.invalidate(this.agentId);
 		}
 		const [participantsResult] = await this.adapter.getParticipantsForRooms([
 			this.agentId,
@@ -3992,6 +4037,12 @@ export class AgentRuntime implements IAgentRuntime {
 			...params,
 			source: params.source ?? "default",
 		});
+		// ensureConnectionStandalone writes the room through adapter.upsertRooms directly
+		// rather than this.upsertRooms, so it bypasses the room-read memo invalidation.
+		// Invalidate here to uphold the "every room mutation is immediately visible"
+		// invariant — otherwise a concurrent compose could be served a memoized null (for
+		// a just-created room) or a <=1s-stale Room after a metadata upsert.
+		this.roomReadMemo.invalidate(params.roomId);
 		if (result.createdRoomParticipants > 0) {
 			this.logger.debug(
 				{
@@ -4163,6 +4214,8 @@ export class AgentRuntime implements IAgentRuntime {
 				metadata,
 			},
 		]);
+		// The existence probe above may have memoized null/stale for this id.
+		this.roomReadMemo.invalidate(id);
 
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, channelId: id },
@@ -4627,6 +4680,24 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 				}
 			}
+		}
+		// A designed turn abort (threadOps abort op, user "stop", client
+		// disconnect) cancels every in-flight provider at once. Those provider
+		// "failures" are a consequence of the abort, not a broken pipeline —
+		// surface the abort itself so the message boundary keeps its ack-and-stop
+		// contract instead of emitting a canned runtime-failure apology (#16939:
+		// a CHOICE "cancel" tap turned into "Something went wrong on my end").
+		if (
+			failedProviderData.length > 0 &&
+			providerSignal?.aborted &&
+			failedProviderData.every((record) => record.providerOutcome === "aborted")
+		) {
+			const reason = providerSignal.reason;
+			throw reason instanceof TurnAbortedError
+				? reason
+				: new TurnAbortedError(
+						reason instanceof Error ? reason.message : String(reason),
+					);
 		}
 		if (failedProviderData.length === 1) {
 			const failedProvider = failedProviderData[0];
@@ -9540,10 +9611,112 @@ ${section_end}`;
 		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
+		const coalesced = this.coalesceRoomMessagesScan(params);
+		if (coalesced) return coalesced;
 		return this.adapter.getMemories({
 			...params,
 			limit: params.limit ?? params.count,
 			tableName: params.tableName,
+		});
+	}
+
+	/**
+	 * Single-flight coalescing for the compose-time room messages-scan. Several
+	 * providers issue the same newest-first `messages` window at different
+	 * limits within one turn (RECENT_MESSAGES at conversationLength, FACTS at
+	 * 10, ATTACHMENTS at ≤50, REPLY_CONTEXT's dedupe window); one superset
+	 * fetch serves them all, sliced per caller. Only the exact newest-first
+	 * room-scoped shape is eligible — any filter, ordering, pagination, or
+	 * access-context variation falls through to the adapter untouched, so this
+	 * can narrow no query's semantics.
+	 *
+	 * Slicing is exact, not approximate: the adapter orders newest-first
+	 * (createdAt desc, id desc), so the superset's first `limit` rows are
+	 * byte-identical to a direct `limit`-bounded query. A `start` bound (the
+	 * compaction cutoff) is a pure suffix predicate on that ordering — every
+	 * row ≥ start is newer than every row < start — so filtering the superset
+	 * then slicing reproduces the adapter's start+limit result for any
+	 * requested limit ≤ the fetched window. Requests larger than the window
+	 * bypass the memo entirely rather than risk a truncated result.
+	 *
+	 * Returns null when the query shape is not eligible.
+	 */
+	private coalesceRoomMessagesScan(params: {
+		entityId?: UUID;
+		agentId?: UUID;
+		roomId?: UUID;
+		limit?: number;
+		count?: number;
+		offset?: number;
+		unique?: boolean;
+		tableName: string;
+		start?: number;
+		end?: number;
+		worldId?: UUID;
+		metadata?: Record<string, unknown>;
+		textContains?: string;
+		orderBy?: "createdAt";
+		orderDirection?: "asc" | "desc";
+		includeEmbedding?: boolean;
+		accessContext?: AccessContext;
+	}): Promise<Memory[]> | null {
+		if (params.tableName !== "messages" || !params.roomId) return null;
+		if (
+			params.entityId !== undefined ||
+			params.agentId !== undefined ||
+			params.worldId !== undefined ||
+			params.unique ||
+			(params.offset !== undefined && params.offset !== 0) ||
+			params.end !== undefined ||
+			params.metadata !== undefined ||
+			params.textContains !== undefined ||
+			params.orderDirection === "asc" ||
+			// The coalesced superset scan omits includeEmbedding, so it can only serve
+			// callers that don't pin the flag either way — a `true` caller would get
+			// embedding-less rows from an adapter that honors it, a `false` caller would
+			// get embeddings it asked to skip. Bypass the memo whenever it's set.
+			params.includeEmbedding !== undefined ||
+			params.accessContext !== undefined
+		) {
+			return null;
+		}
+		const requested = params.limit ?? params.count;
+		if (
+			typeof requested !== "number" ||
+			!Number.isFinite(requested) ||
+			requested <= 0
+		) {
+			return null;
+		}
+		const roomId = params.roomId;
+		const supersetLimit = Math.max(
+			requested,
+			this.getConversationLength(),
+			AgentRuntime.ROOM_MESSAGES_MEMO_MIN_WINDOW,
+		);
+		const cached = this.roomMessagesMemo.peek(roomId);
+		const window =
+			cached && cached.meta >= requested
+				? cached.promise
+				: this.roomMessagesMemo.put(
+						roomId,
+						supersetLimit,
+						this.adapter.getMemories({
+							tableName: "messages",
+							roomId,
+							limit: supersetLimit,
+							unique: false,
+						}),
+					);
+		const start = params.start;
+		return window.then((rows) => {
+			const filtered =
+				start !== undefined
+					? rows.filter((row) => (row.createdAt ?? 0) >= start)
+					: rows;
+			// Fresh array per caller (consumers sort/filter in place); the Memory
+			// objects themselves are shared read-only, like the turn state cache.
+			return filtered.slice(0, requested);
 		});
 	}
 	async getAllMemories(): Promise<Memory[]> {
@@ -9715,6 +9888,7 @@ ${section_end}`;
 		}
 
 		await this.adapter.deleteMemories(memoryIds);
+		this.roomMessagesMemo.invalidate();
 		this.logger.info(
 			{ src: "agent", agentId: this.agentId, count: memoryIds.length },
 			"Memories cleared",
@@ -9722,6 +9896,9 @@ ${section_end}`;
 	}
 	async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
 		await this.adapter.deleteAllMemories(roomIds, tableName);
+		if (tableName === "messages") {
+			for (const roomId of roomIds) this.roomMessagesMemo.invalidate(roomId);
+		}
 	}
 	async countMemories(
 		roomIdOrParams:
@@ -9831,9 +10008,19 @@ ${section_end}`;
 	}
 
 	async getRoom(roomId: UUID): Promise<Room | null> {
-		const rooms = await this.adapter.getRoomsByIds([roomId]);
-		if (!rooms.length) return null;
-		return rooms[0];
+		// Coalesced: a Stage-1 compose resolves the same room several times in
+		// parallel; share one in-flight adapter query. Room mutators below
+		// invalidate the key, so a create/update/delete is visible immediately.
+		const cached = this.roomReadMemo.peek(roomId);
+		if (cached) return cached.promise;
+		return this.roomReadMemo.put(
+			roomId,
+			undefined,
+			(async () => {
+				const rooms = await this.adapter.getRoomsByIds([roomId]);
+				return rooms[0] ?? null;
+			})(),
+		);
 	}
 
 	async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
@@ -9861,18 +10048,29 @@ ${section_end}`;
 			},
 		]);
 		if (!res.length) throw new Error("Failed to create room");
+		// Bust a possibly-memoized null from a pre-creation lookup.
+		this.roomReadMemo.invalidate(res[0]);
+		if (id) this.roomReadMemo.invalidate(id);
 		return res[0];
 	}
 
 	async createRooms(rooms: Room[]): Promise<UUID[]> {
-		return this.adapter.createRooms(rooms);
+		const ids = await this.adapter.createRooms(rooms);
+		for (const roomId of ids) this.roomReadMemo.invalidate(roomId);
+		return ids;
 	}
 	async upsertRooms(rooms: Room[]): Promise<void> {
-		return this.adapter.upsertRooms(rooms);
+		await this.adapter.upsertRooms(rooms);
+		for (const room of rooms) {
+			if (room.id) this.roomReadMemo.invalidate(room.id);
+		}
 	}
 
 	async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
 		await this.adapter.deleteRoomsByWorldIds([worldId]);
+		// Room ids under the world are unknown here; drop everything.
+		this.roomReadMemo.invalidate();
+		this.roomMessagesMemo.invalidate();
 	}
 	async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
 		return this.adapter.getRoomsForParticipants([entityId]);
@@ -10338,17 +10536,27 @@ ${section_end}`;
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
-		return this.adapter.createMemories(memories);
+		const ids = await this.adapter.createMemories(memories);
+		for (const entry of memories) {
+			if (entry.tableName === "messages" && entry.memory.roomId) {
+				this.roomMessagesMemo.invalidate(entry.memory.roomId);
+			}
+		}
+		return ids;
 	}
 
 	async updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void> {
-		return this.adapter.updateMemories(memories);
+		await this.adapter.updateMemories(memories);
+		// Partial updates carry no table/room; drop every cached window rather
+		// than risk serving a pre-update snapshot.
+		this.roomMessagesMemo.invalidate();
 	}
 
 	async deleteMemories(memoryIds: UUID[]): Promise<void> {
-		return this.adapter.deleteMemories(memoryIds);
+		await this.adapter.deleteMemories(memoryIds);
+		this.roomMessagesMemo.invalidate();
 	}
 
 	// ── Single-item memory wrappers ────────────────────────────────────
@@ -10409,6 +10617,13 @@ ${section_end}`;
 		const ids = await this.adapter.createMemories([
 			{ memory, tableName, unique },
 		]);
+		// The intake path persists the user message immediately before
+		// composeState reads the room window; busting the key here makes the
+		// coalesced messages-scan self-enforcing — a stale window can never
+		// drop the message currently being answered.
+		if (tableName === "messages" && memory.roomId) {
+			this.roomMessagesMemo.invalidate(memory.roomId);
+		}
 		const memoryId = ids[0];
 		await this.applyPipelineHooks(
 			"after_memory_persisted",
@@ -10421,11 +10636,13 @@ ${section_end}`;
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean> {
 		await this.adapter.updateMemories([memory]);
+		this.roomMessagesMemo.invalidate();
 		return true; // Successfully updated if no error thrown
 	}
 
 	async deleteMemory(memoryId: UUID): Promise<void> {
-		return this.adapter.deleteMemories([memoryId]);
+		await this.adapter.deleteMemories([memoryId]);
+		this.roomMessagesMemo.invalidate();
 	}
 
 	// ── Participant passthroughs & wrappers ──────────────────────────────
@@ -10451,20 +10668,27 @@ ${section_end}`;
 
 	// ── Room passthroughs & wrappers ────────────────────────────────────
 	async updateRooms(rooms: Room[]): Promise<void> {
-		return this.adapter.updateRooms(rooms);
+		await this.adapter.updateRooms(rooms);
+		for (const room of rooms) {
+			if (room.id) this.roomReadMemo.invalidate(room.id);
+		}
 	}
 
 	async deleteRooms(roomIds: UUID[]): Promise<void> {
-		return this.adapter.deleteRooms(roomIds);
+		await this.adapter.deleteRooms(roomIds);
+		for (const roomId of roomIds) {
+			this.roomReadMemo.invalidate(roomId);
+			this.roomMessagesMemo.invalidate(roomId);
+		}
 	}
 
 	// Single-item room wrappers
 	async updateRoom(room: Room): Promise<void> {
-		return this.adapter.updateRooms([room]);
+		return this.updateRooms([room]);
 	}
 
 	async deleteRoom(roomId: UUID): Promise<void> {
-		return this.adapter.deleteRooms([roomId]);
+		return this.deleteRooms([roomId]);
 	}
 
 	on(event: string, callback: (data: EventPayload) => void): void {
@@ -10621,6 +10845,36 @@ ${section_end}`;
 				handlerSource: normalized,
 			},
 			"Send handler registered",
+		);
+	}
+
+	registerInternalSendHandler(
+		source: string,
+		handler: SendHandlerFunction,
+	): void {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) {
+			throw new Error("Internal send handler registration requires a source");
+		}
+		const routeKey = connectorRouteKey(normalized);
+		if (this.sendHandlers.has(routeKey)) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+				},
+				"Internal send handler already registered, overwriting",
+			);
+		}
+		this.sendHandlers.set(routeKey, handler);
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				handlerSource: normalized,
+			},
+			"Internal send handler registered",
 		);
 	}
 
@@ -11185,7 +11439,10 @@ ${section_end}`;
 	// ── Batch pass-throughs required by IDatabaseAdapter ────────────────
 
 	async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
-		return this.adapter.deleteRoomsByWorldIds(worldIds);
+		await this.adapter.deleteRoomsByWorldIds(worldIds);
+		// Room ids under these worlds are unknown here; drop everything.
+		this.roomReadMemo.invalidate();
+		this.roomMessagesMemo.invalidate();
 	}
 
 	async getRoomsByWorlds(

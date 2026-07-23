@@ -79,6 +79,82 @@ describe("bindReadyPhase voice-control agent-event bridge", () => {
     window.removeEventListener(VOICE_CONTROL_EVENT, voiceHandler);
   }
 
+  it("reconciles a proactive echo with the same persisted id instead of appending", () => {
+    const deps = makeDeps();
+    deps.activeConversationIdRef.current = "conv-1";
+    let messages = [
+      { id: "temp-user-1", role: "user", text: "hi", timestamp: 1 },
+      {
+        id: "server-assistant-1",
+        role: "assistant",
+        text: "hello there",
+        timestamp: 1,
+      },
+    ];
+    deps.setConversationMessages = vi.fn((updater) => {
+      messages = typeof updater === "function" ? updater(messages) : updater;
+    });
+    const cleanup = bindReadyPhase({ current: deps });
+
+    clientMock.handlers.get("proactive-message")?.({
+      conversationId: "conv-1",
+      message: {
+        id: "server-assistant-1",
+        role: "assistant",
+        text: "hello there",
+        timestamp: 2,
+        source: "client_chat",
+      },
+    });
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({
+      id: "server-assistant-1",
+      text: "hello there",
+      timestamp: 2,
+      source: "client_chat",
+    });
+
+    teardown(cleanup);
+  });
+
+  it("appends genuinely new proactive assistant messages", () => {
+    const deps = makeDeps();
+    deps.activeConversationIdRef.current = "conv-1";
+    let messages = [
+      { id: "temp-user-1", role: "user", text: "hi", timestamp: 1 },
+      {
+        id: "temp-resp-1",
+        role: "assistant",
+        text: "hello there",
+        timestamp: 1,
+      },
+    ];
+    deps.setConversationMessages = vi.fn((updater) => {
+      messages = typeof updater === "function" ? updater(messages) : updater;
+    });
+    const cleanup = bindReadyPhase({ current: deps });
+
+    clientMock.handlers.get("proactive-message")?.({
+      conversationId: "conv-1",
+      message: {
+        id: "server-assistant-1",
+        role: "assistant",
+        text: "different answer",
+        timestamp: 2,
+        source: "client_chat",
+      },
+    });
+
+    expect(messages.map((message) => message.id)).toEqual([
+      "temp-user-1",
+      "temp-resp-1",
+      "server-assistant-1",
+    ]);
+
+    teardown(cleanup);
+  });
+
   it("re-dispatches a START_TRANSCRIPTION voice-control agent_event to the shell", () => {
     const cleanup = bindReadyPhase({ current: makeDeps() });
 

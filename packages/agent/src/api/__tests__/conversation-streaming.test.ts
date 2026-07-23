@@ -735,6 +735,47 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("hello world");
   });
 
+  it("uses authoritative accumulated text so repeated characters survive chunk boundaries", async () => {
+    const first = "runtime message lo";
+    const complete = "runtime message loop, HTTP SSE";
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, _callback, options) {
+        await options?.onStreamChunk?.(first, undefined, first);
+        await options?.onStreamChunk?.("op, HTTP SSE", undefined, complete);
+        return {
+          didRespond: true,
+          responseContent: { text: complete },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "streaming-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("preserve repeated characters"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => chunks.push(chunk),
+        onSnapshot: (text) => snapshots.push(text),
+      },
+    );
+
+    expect(chunks.join("")).toBe(complete);
+    expect(snapshots).toEqual([]);
+    expect(result.text).toBe(complete);
+  });
+
   it("returns sanitized action result summaries for UI handoffs", async () => {
     const message = createChatMessage("create a workflow");
     const getActionResults = vi.fn(() => [

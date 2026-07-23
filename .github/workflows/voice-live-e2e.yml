@@ -475,8 +475,12 @@ jobs:
             plugins/plugin-local-inference/src/services/voice/asr-timed.real.test.ts \
             plugins/plugin-local-inference/src/services/voice/kokoro/__tests__/kokoro-engine-bridge.real.test.ts \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"
-          if grep -Eq "(^| )0 pass|12 skip" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"; then
-            echo "::error title=Fused FFI lanes skipped::the real FFI suites did not execute — staging or bun:ffi is broken"
+          # Per-cell accounting: ANY nonzero skip count means some matrix cell
+          # did not execute against the staged lib — a partial skip is as much
+          # a green-skip lie as a full-lane skip, so it fails the same way.
+          if grep -Eq "(^| )0 pass" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log" \
+            || grep -Eq "(^| )[1-9][0-9]* skip" "$VOICE_REAL_MATRIX_OUT/fused-real-bun-test.log"; then
+            echo "::error title=Fused FFI lanes skipped::one or more real FFI suite cells did not execute — staging or bun:ffi is broken"
             exit 1
           fi
 

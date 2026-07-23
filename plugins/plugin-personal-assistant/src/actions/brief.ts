@@ -317,7 +317,10 @@ async function loadLifeFromOverview(args: {
  * Owner items completed today, for the evening/recap narrative. Loaded from
  * the same service read the lifeops provider uses so the brief's "wins" and
  * the chat context can never disagree. A failed load degrades to an empty
- * list like the sibling loaders — the brief still composes.
+ * list like the sibling loaders — the brief still composes — but the failure
+ * is surfaced through `runtime.reportError` so the agent sees it in
+ * RECENT_ERRORS instead of an evening brief that silently implies a win-less
+ * day.
  */
 async function loadCompletedTodayFromService(args: {
   runtime: IAgentRuntime;
@@ -332,9 +335,14 @@ async function loadCompletedTodayFromService(args: {
       dueAt: occurrence.dueAt ?? null,
     }));
   } catch (error) {
-    logger.warn(
-      `[BRIEF] completed-today load failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    // error-policy:J4 the brief composes from independent optional sources;
+    // one broken source must not kill the whole evening brief. The degrade is
+    // designed (section omitted, narrative simply cannot claim wins) and the
+    // failure stays observable: reportError feeds RECENT_ERRORS + owner
+    // escalation rather than a log-only warn masquerading as an empty day.
+    args.runtime.reportError("Brief.loadCompletedToday", error, {
+      surface: "evening-brief-wins",
+    });
     return [];
   }
 }

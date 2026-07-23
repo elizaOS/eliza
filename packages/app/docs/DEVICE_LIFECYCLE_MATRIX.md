@@ -30,7 +30,10 @@ Prereqs match the rest of the Android lane (`test/android/README.md`): a
 WebView-debuggable APK installed, and for `ELIZA_ANDROID_BACKEND=local`
 (default) a working on-device agent (emulators additionally need
 root + SELinux-permissive, `ensureEmulatorPermissive`). Artifacts land in
-`.github/issue-evidence/12185-device-lifecycle/{android,ios}/`.
+`test-results/android-artifacts/12185-device-lifecycle/android/` (repo root;
+override with `ELIZA_ANDROID_ARTIFACT_DIR`) and
+`packages/app/capture-output/ios-lifecycle/` (`--out-dir`) — both gitignored;
+attach them inline on the issue/PR.
 
 ## Standard assertions (Android, after every event)
 

@@ -132,7 +132,7 @@ Artifacts match the live format but `run_meta.json` includes `"demoMode": true` 
 
 You can still exercise the LLM pipeline in demo mode. That lets you validate prompts, caching, and plan decoding without hitting the exchange.
 
-1. **Set credentials** (Cerebras is the benchmark default for gpt-oss-120b; OpenRouter remains usable if you explicitly select it):
+1. **Set credentials** (Cerebras is the benchmark default for gemma-4-31b; OpenRouter remains usable if you explicitly select it):
    ```bash
    export CEREBRAS_API_KEY=csk-...
    export BENCHMARK_MODEL_PROVIDER=cerebras

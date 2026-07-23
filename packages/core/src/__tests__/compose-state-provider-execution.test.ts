@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
+import { TurnAbortedError } from "../runtime/turn-controller";
 import type {
 	Character,
 	Memory,
@@ -176,8 +177,21 @@ describe("composeState provider execution", () => {
 			true,
 		);
 
+		// A designed turn abort surfaces as the abort itself (TURN_ABORTED), so
+		// the message boundary keeps its ack-and-stop contract instead of
+		// treating cancellation as a runtime failure. The per-provider
+		// cancellation stays observable through the error report stream.
 		const error = await turn.catch((cause: unknown) => cause);
-		expect(error).toBeInstanceOf(ElizaError);
-		expect((error as ElizaError).code).toBe("PROVIDER_COMPOSITION_ABORTED");
+		expect(error).toBeInstanceOf(TurnAbortedError);
+		expect((error as TurnAbortedError).code).toBe("TURN_ABORTED");
+		expect((error as TurnAbortedError).reason).toBe("user stopped");
+		expect(runtime.getRecentReportedErrors()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					code: "PROVIDER_COMPOSITION_ABORTED",
+					context: expect.objectContaining({ provider: "ABORTABLE" }),
+				}),
+			]),
+		);
 	});
 });

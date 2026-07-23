@@ -46,6 +46,26 @@ describe("deterministic LLM proxy plugin", () => {
     expect(plugin.models?.[ModelType.TEXT_LARGE]).toBeTypeOf("function");
   });
 
+  it("can expose deterministic model output through the real streaming callback", async () => {
+    const chunks: string[] = [];
+    const plugin = createDeterministicLlmProxyPlugin({
+      stream: { chunkSize: 5, intervalMs: 0 },
+    });
+
+    const raw = await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime, {
+      messages: [{ role: "user", content: "stream this response" }],
+      onStreamChunk: (chunk) => {
+        chunks.push(chunk);
+      },
+    });
+
+    expect(plugin.modelMetadata?.[ModelType.TEXT_SMALL]).toEqual({
+      streamable: true,
+    });
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("")).toBe(raw);
+  });
+
   it("returns a deterministic HANDLE_RESPONSE payload for Stage 1", async () => {
     const plugin = createDeterministicLlmProxyPlugin();
     const raw = await plugin.models?.[ModelType.RESPONSE_HANDLER]?.(runtime, {

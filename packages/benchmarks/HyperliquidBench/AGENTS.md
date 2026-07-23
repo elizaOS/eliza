@@ -99,7 +99,7 @@ the Rust `cargo test` target and the Makefile shortcuts (`make format`, `make ch
 - Rust crates must be built before live runs:
   `cargo build --release -p hl-runner -p hl-evaluator`
 - Live network runs require `HL_PRIVATE_KEY` and `--no-demo`.
-  Default model provider is Cerebras (`gpt-oss-120b`); OpenRouter is also supported.
+  Default model provider is Cerebras (`gemma-4-31b`); OpenRouter is also supported.
 - Full background: [README.md](README.md).
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

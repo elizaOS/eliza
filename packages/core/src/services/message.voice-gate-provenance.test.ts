@@ -113,6 +113,7 @@ function makePipelineRuntime(
 		runActionsByMode: vi.fn(async () => undefined),
 		applyPipelineHooks: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
+		reportError: vi.fn(),
 		startRun: vi.fn(() => RUN_ID),
 		getCurrentRunId: vi.fn(() => RUN_ID),
 		endRun: vi.fn(),

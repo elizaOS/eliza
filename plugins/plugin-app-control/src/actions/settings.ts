@@ -1730,9 +1730,10 @@ async function defaultRouteFetch(
 	const port = resolveServerOnlyPort(process.env);
 	const response = await fetch(`http://127.0.0.1:${port}${request.path}`, {
 		method: request.method,
-		headers: request.path.startsWith("/api/views")
-			? createViewsRequestHeaders()
-			: { "Content-Type": "application/json" },
+		// Every settings route crosses the same token-protected local API
+		// boundary (/api/config, /api/permissions, /api/wallet, /api/backups,
+		// ...), not just /api/views/*. Attach the canonical bearer everywhere.
+		headers: createViewsRequestHeaders(),
 		body: request.body === undefined ? undefined : JSON.stringify(request.body),
 		signal: AbortSignal.timeout(30_000),
 	});
@@ -1899,6 +1900,9 @@ async function handleSet(
 	return {
 		success: true,
 		text: reply,
+		userFacingText: reply,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			section: request.sectionId,
 			key: keyName,
@@ -2162,6 +2166,9 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 				return {
 					success: true,
 					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					data: { sections: listing },
 				};
 			}

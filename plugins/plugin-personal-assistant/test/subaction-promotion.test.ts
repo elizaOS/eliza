@@ -195,25 +195,26 @@ describe("promoteSubactionsToActions", () => {
     });
   });
 
-  it("does not overwrite nested action params when a legacy discriminator is declared", async () => {
+  it("rejects a conflicting legacy discriminator without invoking the parent", async () => {
     const stub = makeStubAction();
     const handlerSpy = vi.spyOn(stub, "handler");
     const [, virtualList] = promoteSubactionsToActions(stub);
-    await virtualList?.handler(
+    const result = await virtualList?.handler(
       STATIC_RUNTIME,
       STATIC_MESSAGE,
       NOOP_STATE,
       { parameters: { action: "pause" } },
       NOOP_CALLBACK,
     );
-    const passedOptions = handlerSpy.mock.calls[0][3] as HandlerOptions;
-    expect(passedOptions.parameters).toMatchObject({
-      action: "pause",
-      subaction: "list",
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("pinned to list"),
+      error: expect.any(Error),
     });
+    expect(handlerSpy).not.toHaveBeenCalled();
   });
 
-  it("virtual handler caller-supplied subaction is overridden by virtual's name", async () => {
+  it("virtual handler rejects a caller-supplied contradictory subaction", async () => {
     const stub = makeStubAction();
     const [, , virtualCreate] = promoteSubactionsToActions(stub);
     const result = await virtualCreate?.handler(
@@ -223,7 +224,11 @@ describe("promoteSubactionsToActions", () => {
       { parameters: { subaction: "list" } },
       NOOP_CALLBACK,
     );
-    expect(result?.text).toBe("dispatched create");
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("pinned to create"),
+      error: expect.any(Error),
+    });
   });
 
   it("is idempotent: calling twice returns structurally identical virtuals", () => {

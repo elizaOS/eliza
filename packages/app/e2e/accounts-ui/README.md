@@ -33,8 +33,9 @@ server binds 34110 (scans up through 34139; override with
 
 Screenshots, frontend console/network logs, backend server logs, and the
 assertion transcript land in
-`.github/issue-evidence/10722-accounts-ui-e2e/`. Exit code is non-zero on any
-failed assertion or page error.
+`test-results/evidence/10722-accounts-ui-e2e/` (repo root, gitignored — attach
+the artifacts inline on the PR). Exit code is non-zero on any failed assertion
+or page error.
 
 ## Covered scenarios
 

@@ -1,0 +1,6 @@
+# Script-suite execution owns its own reporting and must not inherit the root
+# coverage pass, which traverses unrelated runtime graphs before JUnit finalizes.
+
+[test]
+coverage = false
+timeout = 60000

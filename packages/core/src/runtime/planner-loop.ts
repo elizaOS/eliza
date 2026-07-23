@@ -29,6 +29,7 @@ import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
+	type JSONSchema,
 	ModelType,
 	type PromptSegment,
 	type ResponseSkeleton,
@@ -101,11 +102,17 @@ import type {
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
 import { captureToolStageIO } from "./trajectory-recorder";
+import { sanitizeUserVisibleModelOutput } from "./user-visible-model-output";
 
 export {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
+export {
+	looksLikeActionEnvelopeJson,
+	looksLikeEvaluatorEnvelopeJson,
+	looksLikeSpawnEnvelopeJson,
+} from "./user-visible-model-output";
 
 // Test-only re-exports for the rendering memoization unit tests.
 // Underscore-prefixed so they're impossible to mistake for production API.
@@ -417,21 +424,23 @@ async function runPlannerLoopIterations(
 			// in `parsePlannerOutput` falls back to `raw.text`, but in native mode
 			// `text` can be a pre-tool thought rather than a final answer — too
 			// ambiguous to drive the gate. We therefore probe `raw.messageToUser`
-			// directly here; native-mode returns won't have that key, so the gate
-			// stays inert in that path.
+			// directly here; native-mode returns won't have that key, so the
+			// planner-reply gate stays inert in that path (the action-owned
+			// `turnComplete` path still applies).
 			const explicit = plannerOutput.raw.messageToUser;
 			lastPlannerExplicitMessageToUser =
 				typeof explicit === "string" && explicit.trim().length > 0
 					? explicit
 					: undefined;
-			// Capture the planner's explicit `completed` boolean when present.
-			// Any non-boolean (string "false", number, null, missing) is treated
-			// as "unspecified" and does not influence the gate — only an actual
-			// `false` boolean blocks. This keeps backward compat with planner
-			// outputs that don't carry the field.
-			const completedRaw = plannerOutput.raw.completed;
-			lastPlannerExplicitCompleted =
-				typeof completedRaw === "boolean" ? completedRaw : undefined;
+			// Capture the planner's explicit completion signal when present.
+			// `parsePlannerOutput` derives it lane-appropriately: the JSON lane's
+			// top-level `completed` boolean, or — in native mode, where the
+			// provider envelope has no such field — the reserved
+			// `eliza_turn_scope` tool argument (#17034). Anything unspecified is
+			// "no opinion" and does not influence the gate — only an explicit
+			// "not complete" blocks. This keeps backward compat with planner
+			// outputs that don't carry either signal.
+			lastPlannerExplicitCompleted = plannerOutput.completed;
 
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
@@ -988,18 +997,19 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
-		// Conservative gate (PR #7514): when a successful tool drained the queue
-		// and the just-completed planner call gave us a clean explicit
-		// `messageToUser`, synthesize a FINISH and skip the in-loop evaluator.
-		// Falls through on any ambiguity. See `tryGateEvaluator` doc-comment.
+		// Conservative gate (PR #7514): once a successful tool drains the queue,
+		// synthesize FINISH only from a clean explicit planner reply or a verified
+		// action-owned completion. Falls through on any ambiguity. See
+		// `tryGateEvaluator` for the full contract.
 		const gateStartedAt = Date.now();
-		const gated = tryGateEvaluator({
+		const gatedDecision = tryGateEvaluator({
 			trajectory,
 			failures,
 			lastPlannerExplicitMessageToUser,
 			lastPlannerExplicitCompleted,
 		});
-		if (gated) {
+		if (gatedDecision) {
+			const { output: gated, reason } = gatedDecision;
 			trajectory.evaluatorOutputs.push(gated);
 			trajectory.context = appendEvaluationEvent({
 				context: trajectory.context,
@@ -1014,6 +1024,7 @@ async function runPlannerLoopIterations(
 				startedAt: gateStartedAt,
 				endedAt: Date.now(),
 				output: gated,
+				reason,
 				logger: params.runtime.logger,
 			});
 			return {
@@ -1336,13 +1347,125 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	return tools;
 }
 
+/**
+ * Reserved native tool argument carrying the planner's turn-scope declaration
+ * (#17034). Native function-calling envelopes have no side channel for the
+ * planner schema's top-level `completed` boolean, which left the
+ * `tryGateEvaluator` "planner said the turn is incomplete" veto structurally
+ * inert on exactly the lane the action-owned `turnComplete` gate targets — a
+ * sequential multi-op request could be truncated after its first terminal
+ * action result. Every exposed tool schema therefore accepts this optional
+ * enum (`withTurnScopeToolArg`), the planner sets it per call, and
+ * `parsePlannerOutput` lifts it into the parse result's `completed` field
+ * while stripping the argument so no action handler ever sees it. Absence
+ * keeps the pre-#17034 behavior (gate eligible); only an explicit
+ * "more_work_pending" vetoes, mirroring the JSON lane where only
+ * `completed: false` blocks.
+ */
+export const TURN_SCOPE_ARG = "eliza_turn_scope";
+export const TURN_SCOPE_FINAL = "final";
+export const TURN_SCOPE_MORE_WORK_PENDING = "more_work_pending";
+
+const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
+	type: "string",
+	enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+	description:
+		`"${TURN_SCOPE_FINAL}" when this batch of tool calls is everything the ` +
+		`user's request needs this turn; "${TURN_SCOPE_MORE_WORK_PENDING}" when ` +
+		"further tool calls will follow after these results. Stripped before " +
+		"the tool runs.",
+};
+
+/**
+ * Expose the reserved turn-scope argument on every native tool schema so the
+ * model has a structured channel for the JSON lane's `completed` signal.
+ * Non-mutating; only object-shaped parameter schemas are extended, and a
+ * schema that already declares the reserved name is left untouched so a
+ * (namespaced, implausible) genuine parameter can never be overwritten.
+ */
+export function withTurnScopeToolArg(
+	tools: ToolDefinition[] | undefined,
+): ToolDefinition[] | undefined {
+	if (!tools) return tools;
+	return tools.map((tool) => {
+		const parameters = tool.parameters;
+		if (
+			!parameters ||
+			typeof parameters !== "object" ||
+			(parameters.type !== undefined && parameters.type !== "object")
+		) {
+			return tool;
+		}
+		const properties = parameters.properties ?? {};
+		if (properties[TURN_SCOPE_ARG] !== undefined) return tool;
+		return {
+			...tool,
+			parameters: {
+				...parameters,
+				properties: {
+					...properties,
+					[TURN_SCOPE_ARG]: TURN_SCOPE_ARG_SCHEMA,
+				},
+			},
+		};
+	});
+}
+
+/**
+ * Strip the reserved turn-scope argument from every call and fold the
+ * declarations into one turn-level completion signal. Any
+ * "more_work_pending" in the batch wins — the planner told us at least one
+ * more round is coming — otherwise a positive "final" is captured; unknown
+ * values strip silently and carry no opinion.
+ */
+function extractTurnScopeSignal(calls: PlannerToolCall[]): {
+	toolCalls: PlannerToolCall[];
+	completed: boolean | undefined;
+} {
+	let sawPending = false;
+	let sawFinal = false;
+	const toolCalls = calls.map((call) => {
+		const value = call.params?.[TURN_SCOPE_ARG];
+		if (value === undefined) return call;
+		if (value === TURN_SCOPE_MORE_WORK_PENDING) sawPending = true;
+		else if (value === TURN_SCOPE_FINAL) sawFinal = true;
+		const { [TURN_SCOPE_ARG]: _scope, ...params } = call.params as Record<
+			string,
+			unknown
+		>;
+		return { ...call, params };
+	});
+	return {
+		toolCalls,
+		completed: sawPending ? false : sawFinal ? true : undefined,
+	};
+}
+
 export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	thought?: string;
 	toolCalls: PlannerToolCall[];
 	messageToUser?: string;
+	/**
+	 * Lane-appropriate planner completion signal: the JSON lane's top-level
+	 * `completed` boolean, or the folded native `eliza_turn_scope` tool-arg
+	 * declarations. `undefined` means the planner expressed no opinion.
+	 */
+	completed?: boolean;
 	raw: Record<string, unknown>;
 } {
 	if (typeof raw === "string") {
+		const visibleOutput = sanitizeUserVisibleModelOutput(raw);
+		if (
+			visibleOutput.kind === "text" &&
+			visibleOutput.format === "json" &&
+			visibleOutput.fieldPath.length === 0
+		) {
+			return {
+				toolCalls: [],
+				messageToUser: visibleOutput.text,
+				raw: { text: raw },
+			};
+		}
 		return parseJsonPlannerOutput(raw);
 	}
 
@@ -1379,7 +1502,10 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	) {
 		textRecoveredCalls = mergeToolCalls(textRecoveredCalls, embeddedToolCalls);
 	}
-	const toolCalls = mergeToolCalls(nativeToolCalls, textRecoveredCalls);
+	const merged = extractTurnScopeSignal(
+		mergeToolCalls(nativeToolCalls, textRecoveredCalls),
+	);
+	const toolCalls = merged.toolCalls;
 
 	return {
 		toolCalls,
@@ -1394,6 +1520,7 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 					? controlText.messageToUser
 					: text,
 		thought: controlText?.thought,
+		completed: merged.completed ?? controlText?.completed,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
@@ -1412,17 +1539,11 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
  * `decision`).
  */
 function looksLikePlannerControlJson(text: string): boolean {
-	if (looksLikeEvaluatorEnvelopeJson(text)) return true;
-	const parsed = parseJsonObject<RawPlannerOutput & { decision?: unknown }>(
-		text.trim(),
-	);
-	if (!parsed) return false;
+	const output = sanitizeUserVisibleModelOutput(text);
 	return (
-		parsed.action !== undefined ||
-		parsed.toolCalls !== undefined ||
-		parsed.messageToUser !== undefined ||
-		parsed.text !== undefined ||
-		parsed.decision !== undefined
+		output.kind === "control" ||
+		output.kind === "invalid" ||
+		output.fieldPath.length > 0
 	);
 }
 
@@ -1430,6 +1551,7 @@ function parseJsonPlannerOutput(raw: string): {
 	thought?: string;
 	toolCalls: PlannerToolCall[];
 	messageToUser?: string;
+	completed?: boolean;
 	raw: Record<string, unknown>;
 } {
 	const trimmed = raw.trim();
@@ -1441,15 +1563,19 @@ function parseJsonPlannerOutput(raw: string): {
 		// Non-JSON output: a weak model emitted prose and/or `<tool_call>` markup
 		// instead of the planner envelope. Recover the call it meant to make and
 		// strip the markup from the user-facing text instead of leaking it.
+		const recovered = extractTurnScopeSignal(recoverEmbeddedToolCalls(trimmed));
 		return {
-			toolCalls: recoverEmbeddedToolCalls(trimmed),
+			toolCalls: recovered.toolCalls,
 			messageToUser: sanitizePlannerMessage(trimmed),
+			completed: recovered.completed,
 			raw: { text: trimmed },
 		};
 	}
-	let messageToUser = sanitizePlannerMessage(
-		parsed.messageToUser ?? parsed.text,
-	);
+	const visibleOutput = sanitizeUserVisibleModelOutput(trimmed);
+	let messageToUser =
+		visibleOutput.kind === "text" && visibleOutput.fieldPath.length > 0
+			? visibleOutput.text
+			: sanitizePlannerMessage(parsed.messageToUser ?? parsed.text);
 	const toolCalls = normalizeToolCalls(parsed.toolCalls);
 	const bareActionCalls =
 		toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
@@ -1470,10 +1596,17 @@ function parseJsonPlannerOutput(raw: string): {
 	if (resolvedCalls.length === 0) {
 		resolvedCalls = recoverEmbeddedToolCalls(trimmed);
 	}
+	const scoped = extractTurnScopeSignal(resolvedCalls);
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
-		toolCalls: resolvedCalls,
+		toolCalls: scoped.toolCalls,
 		messageToUser,
+		// The envelope's explicit top-level `completed` boolean is the JSON
+		// lane's first-class signal and outranks any per-call scope argument.
+		completed:
+			typeof parsed.completed === "boolean"
+				? parsed.completed
+				: scoped.completed,
 		raw: parsed as Record<string, unknown>,
 	};
 }
@@ -1633,7 +1766,11 @@ async function callPlanner(params: {
 		},
 	};
 	if (hasTools) {
-		modelParams.tools = params.tools;
+		// Every native tool schema gains the reserved `eliza_turn_scope`
+		// argument so the planner can declare turn scope where the provider
+		// envelope has no `completed` field (#17034); `parsePlannerOutput`
+		// strips it before dispatch.
+		modelParams.tools = withTurnScopeToolArg(params.tools);
 		// Force a native tool call. With actions exposed directly as tools,
 		// every viable planner outcome —
 		// invoking an action, calling REPLY for a final message, or terminating
@@ -1939,10 +2076,10 @@ function compactText(value: string, maxLength: number): string {
  * Synthesized recorder stage for the gated path. Emits a `kind: "evaluation"`
  * entry so the recorder timeline shows the iteration's outcome on the same
  * slot a model-produced evaluation would have occupied. The stage carries
- * `gated: true`, `llmCallSkipped: true`, and `reason: "explicit_terminal_reply"`
- * so replay/debug tools can distinguish gated decisions from real evaluator
- * calls without a string-match against the thought marker. No `model` block
- * is included — no LLM call happened.
+ * `gated: true`, `llmCallSkipped: true`, and a reason that distinguishes an
+ * explicit planner reply from a terminal action-owned result. Replay/debug
+ * tools can therefore identify both fast paths without string-matching the
+ * thought marker. No `model` block is included because no LLM call happened.
  */
 async function recordGatedEvaluationStage(args: {
 	recorder?: TrajectoryRecorder;
@@ -2594,6 +2731,14 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 	}
 	const calls: PlannerToolCall[] = [];
 	for (const objectText of extractJsonObjects(text)) {
+		const visibleOutput = sanitizeUserVisibleModelOutput(objectText);
+		if (
+			visibleOutput.kind !== "control" ||
+			(visibleOutput.envelope !== "action" &&
+				visibleOutput.envelope !== "planner")
+		) {
+			continue;
+		}
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(objectText);
@@ -2610,6 +2755,16 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 
 function recoverMessageFieldToolCalls(value: unknown): PlannerToolCall[] {
 	if (value == null || value === "") {
+		return [];
+	}
+	const visibleOutput = sanitizeUserVisibleModelOutput(
+		typeof value === "string" ? value : JSON.stringify(value),
+	);
+	if (
+		visibleOutput.kind !== "control" ||
+		(visibleOutput.envelope !== "action" &&
+			visibleOutput.envelope !== "planner")
+	) {
 		return [];
 	}
 	const parsed =
@@ -2678,7 +2833,10 @@ function recoverEmbeddedToolCalls(text: string): PlannerToolCall[] {
 function sanitizePlannerMessage(value: unknown): string | undefined {
 	const text = getNonEmptyString(value);
 	if (!text) return undefined;
-	return getNonEmptyString(stripJsonStructuralJunkReply(text));
+	const cleaned = getNonEmptyString(stripJsonStructuralJunkReply(text));
+	if (!cleaned) return undefined;
+	const output = sanitizeUserVisibleModelOutput(cleaned);
+	return output.kind === "text" ? getNonEmptyString(output.text) : undefined;
 }
 
 /**
@@ -3746,19 +3904,26 @@ function diagnosticFailureReason(
  *   1. The just-completed tool result is `success: true`.
  *   2. The plan queue is drained — no tools remain to evaluate.
  *   3. No failures have accumulated (no recent error to investigate).
- *   4. The most-recent planner output supplied an EXPLICIT `messageToUser`
- *      field in its structured output (NOT a fallback inferred from a stray
- *      `text` on a native tool-call return — that path can carry a pre-tool
- *      thought rather than a final answer, which would be unsafe to surface).
- *   5. That `messageToUser` is not a tool/function-syntax leak (the evaluator's
+ *   4. One side owns a complete user reply:
+ *      - this is the turn's only executed tool and the action returned
+ *        `turnComplete:true`, `verifiedUserFacing:true`, and non-empty
+ *        `userFacingText` after seeing the real tool outcome; or
+ *      - the most-recent planner output supplied an EXPLICIT `messageToUser`
+ *        field (not a fallback inferred from native free text).
+ *      `turnComplete:false` is an explicit action-owned disclaimer and always
+ *      falls through to the evaluator.
+ *   5. The selected reply is not a tool/function-syntax leak (the evaluator's
  *      own prompt rules say leaked syntax should force CONTINUE; we honor the
  *      same constraint by reusing `isUnsafeUserVisibleText`).
- *   6. The planner did NOT explicitly set `completed: false` on this output.
- *      When that flag is present and false, the planner is signaling that
- *      this turn's tool calls do not yet achieve the goal (read-then-act,
- *      multi-step deploy, verification pending) — and `messageToUser` is
- *      a pre-tool intent rather than a final answer. We fall through to
- *      the full evaluator so it can decide CONTINUE vs FINISH from the
+ *   6. The planner did NOT explicitly declare the turn incomplete on this
+ *      output — the JSON lane's top-level `completed: false`, or the native
+ *      lane's reserved `eliza_turn_scope: "more_work_pending"` tool argument
+ *      (#17034), both folded into `parsePlannerOutput().completed`. When
+ *      present and false, the planner is signaling that this turn's tool
+ *      calls do not yet achieve the goal (read-then-act, multi-step deploy,
+ *      verification pending) — and neither a pre-tool `messageToUser` nor an
+ *      action's own `turnComplete` may end the turn early. We fall through
+ *      to the full evaluator so it can decide CONTINUE vs FINISH from the
  *      actual tool result rather than synthesizing a FINISH the planner
  *      explicitly disclaimed. Absent or `true` preserves the gate's
  *      original behavior (backward compat).
@@ -3769,37 +3934,83 @@ function diagnosticFailureReason(
  * the decision in the context event stream, `trajectory.evaluatorOutputs` still
  * gets the entry, and the loop's return value still carries `evaluator` in the
  * shape consumers (`subPlannerResultToPlannerToolResult` in `services/message.ts`)
- * read — `success` and `messageToUser`. Recorder stage entries for "evaluation"
- * are NOT emitted in the gated case; the recorder timeline shows tool stages
- * only for that iteration.
+ * read — `success` and `messageToUser`. The recorder receives a synthesized
+ * evaluation stage whose reason distinguishes planner-owned replies from
+ * action-owned terminal results.
  *
  * Cost win: roughly 50% of LLM calls on "tool-then-explicit-reply" turns where
  * the planner committed a `messageToUser` field at plan-time. Native-mode
- * native-tool-call returns without an explicit `messageToUser` field do NOT
- * trigger the gate — those calls remain on the full evaluator path.
+ * native-tool-call returns without that field remain ambiguous; actions that
+ * truly own a single-operation turn can instead set `turnComplete:true` after
+ * execution, and the native planner retains a veto over that path via
+ * `eliza_turn_scope: "more_work_pending"` (#17034). The gate requires both a
+ * drained queue and exactly one executed tool, so it never replaces the
+ * evaluator on a native parallel-call batch.
  */
+type GatedEvaluatorDecision = {
+	output: EvaluatorOutput;
+	reason: "explicit_terminal_reply" | "action_terminal_result";
+};
+
 function tryGateEvaluator(args: {
 	trajectory: PlannerTrajectory;
 	failures: readonly FailureLike[];
 	lastPlannerExplicitMessageToUser: string | undefined;
 	lastPlannerExplicitCompleted: boolean | undefined;
-}): EvaluatorOutput | null {
+}): GatedEvaluatorDecision | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
 	if (latestResult?.success !== true) return null;
 	if (args.trajectory.plannedQueue.length > 0) return null;
 	if (args.failures.length > 0) return null;
-	const message = args.lastPlannerExplicitMessageToUser?.trim();
-	if (!message) return null;
-	if (isUnsafeUserVisibleText(message)) return null;
 	// Precondition 6: respect the planner's own completion disclaimer.
 	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (
+		latestResult.turnComplete === true &&
+		completedToolStepCount(args.trajectory) !== 1
+	) {
+		return null;
+	}
 
+	return selectGatedEvaluatorReply(latestResult, args);
+}
+
+function completedToolStepCount(trajectory: PlannerTrajectory): number {
+	return [...trajectory.archivedSteps, ...trajectory.steps].filter(
+		(step) => step.toolCall && step.result,
+	).length;
+}
+
+function selectGatedEvaluatorReply(
+	latestResult: PlannerToolResult,
+	args: { lastPlannerExplicitMessageToUser: string | undefined },
+): GatedEvaluatorDecision | null {
+	if (latestResult.turnComplete === true) {
+		const message = latestResult.userFacingText?.trim();
+		if (latestResult.verifiedUserFacing !== true || !message) return null;
+		if (isUnsafeUserVisibleText(message)) return null;
+		return {
+			reason: "action_terminal_result",
+			output: {
+				success: true,
+				decision: "FINISH",
+				thought: ACTION_RESULT_GATED_EVALUATOR_THOUGHT,
+				messageToUser: message,
+			},
+		};
+	}
+	if (latestResult.turnComplete === false) return null;
+
+	const message = args.lastPlannerExplicitMessageToUser?.trim();
+	if (!message || isUnsafeUserVisibleText(message)) return null;
 	return {
-		success: true,
-		decision: "FINISH",
-		thought: GATED_EVALUATOR_THOUGHT,
-		messageToUser: message,
+		reason: "explicit_terminal_reply",
+		output: {
+			success: true,
+			decision: "FINISH",
+			thought: GATED_EVALUATOR_THOUGHT,
+			messageToUser: message,
+		},
 	};
 }
 
@@ -3808,6 +4019,9 @@ function tryGateEvaluator(args: {
  * cheaply. */
 export const GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+
+export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
 
 const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 	"Terminal FINISH: planner ended the loop with a terminal tool call; evaluator LLM call skipped.";
@@ -3854,98 +4068,15 @@ function userSafeFinalMessage(
  */
 export const HANDLED_STEP_FALLBACK_MESSAGE = "I handled the available step.";
 
-// Canonical TASKS/spawn-arg vocabulary. A planner that hallucinates its own
-// tool-call arguments into messageToUser leaks a JSON object like
-// {"task":"…","agentType":"opencode","approvalPreset":"standard","brief":"…"}.
-// Detect it by SHAPE — the reply itself must JSON.parse to an object whose keys
-// are a subset of this vocabulary with at least two discriminators — never by
-// matching the user's words. Real prose cannot JSON.parse to this object, and a
-// genuine user-requested JSON answer carries foreign keys, so this never fires
-// on a real reply.
-const SPAWN_ARG_KEYS = new Set([
-	"task",
-	"agentType",
-	"approvalPreset",
-	"brief",
-	"workdir",
-	"model",
-	"memoryContent",
-	"agents",
-	"repo",
-	"keepAliveAfterComplete",
-	"op",
-	"action",
-]);
-const SPAWN_ARG_DISCRIMINATORS = [
-	"task",
-	"agentType",
-	"approvalPreset",
-	"brief",
-];
-
-export function looksLikeSpawnEnvelopeJson(text: string): boolean {
-	let body = text.trim();
-	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	if (fence?.[1]) body = fence[1].trim();
-	if (!body.startsWith("{") || !body.endsWith("}")) return false;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(body);
-	} catch {
-		return false;
-	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return false;
-	}
-	const keys = Object.keys(parsed as Record<string, unknown>);
-	if (keys.length === 0) return false;
-	if (!keys.every((k) => SPAWN_ARG_KEYS.has(k))) return false;
-	return (
-		SPAWN_ARG_DISCRIMINATORS.filter((k) => k in (parsed as object)).length >= 2
-	);
-}
-
-/**
- * Detects a planner/evaluator CONTROL envelope returned in a user-visible
- * channel — `{"decision":"CONTINUE"|"FINISH"|"NEXT_RECOMMENDED", …}` (or
- * `route`) carrying at least one evaluator discriminator
- * (`success`/`thought`/`nextTool`/`recommendedToolCallId`). Narrow by design:
- * a bare `{"decision":"approve"}` from a real reply does not match.
- */
-export function looksLikeEvaluatorEnvelopeJson(text: string): boolean {
-	let body = text.trim();
-	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	if (fence?.[1]) body = fence[1].trim();
-	if (!body.startsWith("{") || !body.endsWith("}")) return false;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(body);
-	} catch {
-		return false;
-	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return false;
-	}
-	const record = parsed as Record<string, unknown>;
-	const decision = String(record.decision ?? record.route ?? "").toUpperCase();
-	if (!["FINISH", "CONTINUE", "NEXT_RECOMMENDED"].includes(decision)) {
-		return false;
-	}
-	return (
-		typeof record.success === "boolean" ||
-		typeof record.thought === "string" ||
-		typeof record.nextTool === "object" ||
-		typeof record.recommendedToolCallId === "string"
-	);
-}
-
 function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
+	const output = sanitizeUserVisibleModelOutput(text);
 	if (
-		looksLikeSpawnEnvelopeJson(text) ||
-		looksLikeEvaluatorEnvelopeJson(text)
+		output.kind === "control" ||
+		output.kind === "invalid" ||
+		output.fieldPath.length > 0
 	) {
 		return true;
 	}
@@ -4195,6 +4326,7 @@ export function actionResultToPlannerToolResult(
 		verifiedUserFacing: result.verifiedUserFacing,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
+		turnComplete: result.turnComplete,
 		continueChain: result.continueChain,
 	};
 	if (options.summary) {

@@ -33,7 +33,7 @@ bun run voice:matrix
 By default the command probes the current host and writes:
 
 ```text
-.github/issue-evidence/9958-voice-matrix/
+test-results/evidence/9958-voice-matrix/
   voice-matrix.json
   voice-matrix.md
   index.html
@@ -58,7 +58,7 @@ To validate the Stage-B STT benchmark cell, point the matrix at the reviewed
 report:
 
 ```bash
-ELIZA_VOICE_STAGE_B_REPORT=.github/issue-evidence/9958-stage-b/report.json \
+ELIZA_VOICE_STAGE_B_REPORT=test-results/evidence/9958-stage-b/report.json \
   bun run voice:matrix -- --run --platform stt.stage-b.evaluation
 ```
 
@@ -66,7 +66,7 @@ To validate the real openWakeWord head wake-context cell, point the matrix at th
 reviewed report:
 
 ```bash
-ELIZA_VOICE_OPENWAKEWORD_REPORT=.github/issue-evidence/9958-openwakeword/report.json \
+ELIZA_VOICE_OPENWAKEWORD_REPORT=test-results/evidence/9958-openwakeword/report.json \
   bun run voice:matrix -- --run --platform wake.openwakeword.real-head
 ```
 
@@ -88,7 +88,7 @@ ELIZA_VOICE_OPENWAKEWORD_REPORT=.github/issue-evidence/9958-openwakeword/report.
 | `android.talkmode.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-talkmode:testDebugUnitTest` | TalkMode capture lifecycle/transcript/permission/barge-in bridge tests |
 | `android.swabble.native-bridge` | `./gradlew -p ../../../scripts/android-voice-bridge-gradle :elizaos-capacitor-swabble:testDebugUnitTest` | Swabble wake-firing -> JS bridge event tests |
 | `wake.openwakeword.real-head` | `packages/scripts/voice-openwakeword-eval.mjs` validating a reviewed real-head report | idle wake opens the listen window, always-on wake is inert, and mid-transcription wake does not corrupt the transcript |
-| `stt.stage-b.apple-sfspeech` | `node packages/scripts/stage-b-stt-bench.mjs` (macOS) | **measured** on-device `SFSpeechRecognizer` latency/RTF/WER over on-device-synthesised speech (quiet + 10 dB noise), `.github/issue-evidence/9958-stt-stage-b-eval/` |
+| `stt.stage-b.apple-sfspeech` | `node packages/scripts/stage-b-stt-bench.mjs` (macOS) | **measured** on-device `SFSpeechRecognizer` latency/RTF/WER over on-device-synthesised speech (quiet + 10 dB noise), `test-results/evidence/9958-stt-stage-b-eval/` |
 | `stt.stage-b.evaluation` | `packages/scripts/voice-stage-b-eval.mjs` validating a paired device benchmark report | iOS `SFSpeechRecognizer`, Android `SpeechRecognizer`, and fused ASR latency/battery/accept matrix with reviewed artifacts |
 
 ## Hardware Gates

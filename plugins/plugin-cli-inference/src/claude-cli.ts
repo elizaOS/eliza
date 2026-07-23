@@ -203,7 +203,16 @@ export class ClaudeCli {
           "--exclude-dynamic-system-prompt-sections"
         );
       }
-      argv.push("--output-format", "text", "--model", this.model);
+      // Disable EVERY built-in Claude Code tool: eliza uses the CLI strictly
+      // as a text engine (planner routing JSON / reply synthesis), never as an
+      // agent. With tools live, an agentic-looking transcript ("create an app
+      // for me") can nondeterministically flip the model into Claude Code
+      // behavior — really invoking Write/Bash, stalling on permission prompts
+      // that non-interactive --print can never approve, and burning the whole
+      // 120s budget generating the task instead of routing it (observed live
+      // in the #16939 CHOICE runs: "waiting on your file-write approval" from
+      // a planner call). No tools ⇒ the only reachable output is text.
+      argv.push("--tools", "", "--output-format", "text", "--model", this.model);
 
       const result = await spawnImpl(argv, {
         cwd,

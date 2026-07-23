@@ -104,11 +104,15 @@ GATE_PROVIDER = "cerebras"
 TIMEOUT_PRECHECK_S = 30
 TIMEOUT_CEREBRAS_SMOKE_S = 30
 TIMEOUT_AGENT_SMOKE_S = 120
-# A real single-task hermes_tblite leg measures ~316s end to end (hermes venv
-# boot + pinned dataset load + docker terminal sandbox + live agent loop), so
-# the old 240s budget killed healthy runs. 900s bounds a wedged lane while
-# leaving honest headroom for slower agent loops.
-TIMEOUT_BENCHMARK_RUN_S = 900
+# Campaign policy: no artificial task budgets anywhere an agent may still be
+# working — a leg ends when its rollout concludes. Hang detection belongs to
+# the orchestrator's ProcessDeadlinePolicy (adapter wall caps for smoke
+# profiles, observed-progress silent timeouts for campaign profiles), one
+# layer below this guard. This constant only bounds a child that wedges
+# before that machinery arms: 4h is ~16x the slowest observed sanity leg
+# (~890s, openclaw on tblite broken-python) — far above any plausible
+# runtime without letting a dead process hold the gate for a day.
+TIMEOUT_BENCHMARK_RUN_S = 14400
 TIMEOUT_RANDOM_RUN_S = 120
 
 
@@ -586,13 +590,24 @@ def _step_cerebras_smoke() -> GateStepResult:
     prompt = "Reply with the single word: PONG"
 
     request_start = _now_ms()
-    status, parsed, raw = _cerebras_chat(
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        prompt=prompt,
-        timeout_s=TIMEOUT_CEREBRAS_SMOKE_S,
-    )
+    # The cloud proxy's billing-authorization cache goes cold between runs and
+    # answers the first request with a transient 503 "… warming. Retry
+    # shortly."; an immediate retry succeeds. Retrying only that exact shape
+    # keeps the smoke honest — any other failure still fails on attempt one.
+    attempts = 0
+    while True:
+        attempts += 1
+        status, parsed, raw = _cerebras_chat(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            prompt=prompt,
+            timeout_s=TIMEOUT_CEREBRAS_SMOKE_S,
+        )
+        if status == 503 and "warming" in raw.lower() and attempts < 6:
+            time.sleep(5.0 * attempts)
+            continue
+        break
     request_ms = _now_ms() - request_start
 
     details: dict[str, Any] = {

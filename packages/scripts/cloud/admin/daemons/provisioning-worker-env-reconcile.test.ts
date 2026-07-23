@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveGnuSed } from "../../../lib/gnu-shell.mjs";
 
 // Regression guard for #8756 (operator-step bug): the provisioning-worker
 // deploy workflow must reconcile control-plane secrets into the systemd
@@ -34,17 +35,6 @@ const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
 // `brew install gnu-sed` gets coverage via the `gsed` shim injected in
 // runReconcile; otherwise the executed cases skip (the static wiring assertions
 // above still run on every platform).
-function resolveGnuSed(): string | null {
-  for (const candidate of ["sed", "gsed"]) {
-    try {
-      const out = execFileSync(candidate, ["--version"], { encoding: "utf8" });
-      if (out.includes("GNU sed")) return candidate;
-    } catch {
-      // candidate missing or not GNU — keep looking.
-    }
-  }
-  return null;
-}
 const GNU_SED = resolveGnuSed();
 
 describe("deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring", () => {

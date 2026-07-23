@@ -28,6 +28,7 @@ import {
   agentSandboxes,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
+  WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { imageRepo } from "../../db/utils/docker-image-ref";
@@ -104,6 +105,12 @@ import {
   buildWarmClaimCharacterPayload,
   WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS,
 } from "./warm-claim-character-push";
+import {
+  buildWarmClaimKeyPushBody,
+  safeKeyPrefix,
+  WARM_CLAIM_KEY_PUSH_TIMEOUT_MS,
+  warmClaimKeyFingerprint,
+} from "./warm-claim-key-push";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -3201,6 +3208,130 @@ export class ElizaSandboxService {
       throw new Error(`Warm-claim character push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
     }
     return { pushed: true, agentName: String(payload.name) };
+  }
+
+  /**
+   * Post-claim inference-credential re-key (warm pool, F0). A pool container
+   * boots under the sentinel pool org with a managed cloud inference key
+   * scoped to THAT org, so after `claimWarmContainer` transfers the row the
+   * RUNNING container still holds the pool-org key and every inference reply is
+   * the "key isn't authorized" fallback. This:
+   *
+   *   1. mints a NEW `agent-sandbox:<claimed-row-id>` inference key scoped to
+   *      the claiming user's org;
+   *   2. persists that key onto the claimed row's env (`ELIZAOS_CLOUD_API_KEY`)
+   *      so restart recovery is always possible;
+   *   3. revokes the old `agent-sandbox:<pool-row-id>` credential;
+   *   4. pushes the replacement onto the live container via its authenticated
+   *      `POST /api/cloud/login/persist` route with `forceInferenceEnabled`,
+   *      and requires a fingerprint attestation from runtime-resolved state.
+   *
+   * Secret handling: the plaintext key rides only in the authed TLS-internal
+   * (tailnet) PUT body `fetchAgentApi` uses; it is NEVER logged — the return
+   * carries only booleans + a short safe prefix, and the fingerprint exchange
+   * carries a sha-256 prefix, never key material.
+   *
+   * A transport or attestation failure throws. The caller must enqueue restart
+   * recovery and must not report the claimed agent as ready.
+   */
+  async pushClaimedWarmContainerInferenceKey(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "organization_id"
+      | "user_id"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    > & { warm_pool_row_id: string },
+  ): Promise<{ pushed: boolean; keyPrefix?: string }> {
+    // Guard: never re-key a row that is (still) owned by the sentinel pool org.
+    // The caller invokes this ONLY after a successful claim, when the row is
+    // the user's, but a defensive check here means a pool-org row can never be
+    // handed a fresh user-billable key by mistake.
+    if (rec.organization_id === WARM_POOL_ORG_ID) {
+      throw new Error("Refusing warm-claim key push for a sentinel-pool-org row (not claimed)");
+    }
+    if (!rec.warm_pool_row_id) {
+      throw new Error("Warm-claim key push requires the source agent-sandbox pool row id");
+    }
+
+    // The source pool credential is named after the pool row, not the claimed
+    // user row. Its identity must cross the claim transaction so this handoff
+    // can revoke the correct credential.
+    const { plainKey } = await apiKeysService.createForAgent({
+      organizationId: rec.organization_id,
+      userId: rec.user_id,
+      agentSandboxId: rec.id,
+    });
+
+    const body = buildWarmClaimKeyPushBody({
+      apiKey: plainKey,
+      organizationId: rec.organization_id,
+      userId: rec.user_id,
+    });
+    if (!body) {
+      // A blank minted key or missing org is a broken mint pipeline. Reporting
+      // `pushed: false` here would let the caller advertise an un-re-keyed
+      // container as ready — the exact failure class this handoff exists to
+      // prevent — so it fails closed like every other handoff fault.
+      throw new Error("Warm-claim key push has no usable minted key/org for the claimed row");
+    }
+
+    // 2. Persist the new key onto the row env so a restart boots re-credentialed.
+    const currentEnv = (rec.environment_vars as Record<string, string> | null) ?? {};
+    const nextEnv: Record<string, string> = {
+      ...currentEnv,
+      ELIZAOS_CLOUD_API_KEY: plainKey,
+      ELIZAOS_CLOUD_ENABLED: "true",
+    };
+    await agentSandboxesRepository.update(rec.id, {
+      environment_vars: nextEnv,
+    });
+
+    // The replacement is durable before the boot credential is revoked. From
+    // this point any live-push failure is repaired by restarting from row env.
+    await apiKeysService.revokeForAgent(rec.warm_pool_row_id);
+
+    // Push onto the LIVE container. Use a rec whose env already carries the
+    //    NEW ELIZA_API_TOKEN transport auth (unchanged by the re-key) so
+    //    fetchAgentApi authenticates correctly.
+    const res = await this.fetchAgentApi(
+      { ...rec, environment_vars: nextEnv },
+      "/api/cloud/login/persist",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(WARM_CLAIM_KEY_PUSH_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) {
+      // error-policy: bounded body excerpt; a failed body read must not mask
+      // the status. The excerpt cannot contain the pushed key (this route
+      // echoes only `{ ok }` + a fingerprint), but slice defensively regardless.
+      const text = await res.text().catch(() => "");
+      throw new Error(`Warm-claim key push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+    }
+
+    const responseBody = (await res.json()) as {
+      ok?: unknown;
+      appliedKeyFingerprint?: unknown;
+    };
+    const echoedFingerprint =
+      typeof responseBody.appliedKeyFingerprint === "string"
+        ? responseBody.appliedKeyFingerprint
+        : undefined;
+    const expectedFingerprint = await warmClaimKeyFingerprint(plainKey);
+    if (responseBody.ok !== true || echoedFingerprint !== expectedFingerprint) {
+      throw new Error("Warm-claim key push was not attested by the running runtime");
+    }
+
+    return { pushed: true, keyPrefix: safeKeyPrefix(plainKey) };
   }
 
   // Bridge

@@ -475,13 +475,29 @@ def _agent_kwargs(
     }
 
 
+def _capture_stop_enabled(payload: Mapping[str, object]) -> bool:
+    """The turn must end at the first captured tool batch.
+
+    True for action-calling (single scored action by definition) and whenever
+    the caller declares the env-owned tool contract (``capture_stop``): the
+    benchmark env executes captured calls itself and replays real results on
+    the next turn, so letting the native loop iterate on the bridge's
+    placeholder acknowledgements burns iterations until
+    ``max_iterations_reached`` and fails an otherwise-healthy turn.
+    """
+    return (
+        payload.get("benchmark") == "action-calling"
+        or payload.get("capture_stop") is True
+    )
+
+
 def _instantiate_agent(
     agent_class: type[Any],
     payload: Mapping[str, object],
     spec: BridgeSpec,
 ) -> Any:
     holder: dict[str, Any] = {}
-    capture_stop_enabled = payload.get("benchmark") == "action-calling"
+    capture_stop_enabled = _capture_stop_enabled(payload)
 
     def _tool_complete(*_args: object, **_kwargs: object) -> None:
         # ``required`` means at least one action for the outer benchmark turn.
@@ -788,7 +804,7 @@ def run_native_turn(
     failed = result.get("failed")
     interrupted = result.get("interrupted")
     capture_stopped = (
-        payload.get("benchmark") == "action-calling"
+        _capture_stop_enabled(payload)
         and bool(captures)
         and completed is False
         and failed is False
@@ -810,7 +826,7 @@ def run_native_turn(
         module_file=module_file,
         captured_calls=len(captures),
         workspace_path=workspace_path,
-        capture_stop_enabled=payload.get("benchmark") == "action-calling",
+        capture_stop_enabled=_capture_stop_enabled(payload),
     )
     thought = result.get("last_reasoning")
     if not isinstance(thought, str) or not thought.strip():

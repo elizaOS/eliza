@@ -324,6 +324,10 @@ describe("SETTINGS action: list", () => {
 	it("lists writable sections with how each is written", async () => {
 		const { result } = await invoke({ action: "list" });
 		expect(result?.success).toBe(true);
+		expect(result?.userFacingText).toBe(result?.text);
+		expect(result?.verifiedUserFacing).toBe(true);
+		expect(result?.turnComplete).toBe(true);
+		expect(result?.continueChain).toBeUndefined();
 		expect(result).toBeDefined();
 		if (!result) throw new Error("Expected SETTINGS list result");
 		const sections = (
@@ -403,6 +407,10 @@ describe("SETTINGS action: set on an owned route section", () => {
 			},
 		});
 		expect(result?.success).toBe(true);
+		expect(result?.userFacingText).toBe(result?.text);
+		expect(result?.verifiedUserFacing).toBe(true);
+		expect(result?.turnComplete).toBe(true);
+		expect(result?.continueChain).toBeUndefined();
 		expect(result?.values).toMatchObject({
 			section: "appearance",
 			key: "theme",
@@ -2273,6 +2281,10 @@ describe("SETTINGS action: get and validate", () => {
 	it("reports a section's write capability on get", async () => {
 		const { result } = await invoke({ action: "get", section: "permissions" });
 		expect(result?.success).toBe(true);
+		expect(result?.userFacingText).toBeUndefined();
+		expect(result?.verifiedUserFacing).toBeUndefined();
+		expect(result?.turnComplete).toBeUndefined();
+		expect(result?.continueChain).toBeUndefined();
 		expect(result?.data).toMatchObject({
 			section: "permissions",
 			capability: "route",

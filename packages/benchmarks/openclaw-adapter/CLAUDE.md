@@ -70,6 +70,7 @@ pytest openclaw-adapter/tests/ -v
 - Publishable runs require a loopback completion gateway. The generated config rejects remote base URLs and references the bearer token by env var rather than persisting it.
 - `OPENCLAW_DIRECT_OPENAI_COMPAT=1` and `direct_openai_compatible=True` exist only for parser/retry tests. Their telemetry sets `publishable_native=false`, so the orchestrator quarantines those results.
 - Full message history is canonicalized into the isolated turn prompt. Benchmark tools remain structured native plugin tools and only plugin-captured executions become scored tool calls.
+- The bridge never executes tools. Callers whose env executes captured calls itself (e.g. the hermes-native env proxy, one chat-completions step per turn) declare `context["capture_stop"] = True`: the embedded loop then ends after the first captured tool batch instead of iterating on placeholder acknowledgements (one billed completion per fake round). Default off — ack-loop benchmarks (orchestrator lifecycle) score reply text written after the ack.
 - Provenance records identify `openclaw.agent.embedded`, the generated config hash, native plugin bridge, model, provider, and transport on every turn.
 - No results are written by this package — results are the responsibility of the benchmark that consumes it.
 - Full background: [README.md](README.md).

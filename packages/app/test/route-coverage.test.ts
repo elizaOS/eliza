@@ -409,12 +409,14 @@ function sideEffectPluginIds(): string[] {
   // Manifest-driven: the side-effect loader list is generated at build time
   // from each plugin's `elizaos.appRegister` marker (no hardcoded list in
   // plugin-registrations.ts), so the ratchet reads the same scan the renderer
-  // build uses, keyed by canonical package name.
+  // build uses. View-manifest classification is per package, so this uses the
+  // canonical package name, not the role-qualified loader cache key
+  // (`<name>#<mode>`) the renderer's dynamic-import cache is keyed by.
   return sorted(
     discoverSideEffectAppModules([
       path.resolve(REPO_ROOT, "plugins"),
       path.resolve(REPO_ROOT, "packages"),
-    ]).map((module) => module.key),
+    ]).map((module) => module.packageName),
   );
 }
 

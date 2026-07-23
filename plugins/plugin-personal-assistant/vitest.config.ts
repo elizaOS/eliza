@@ -353,6 +353,20 @@ export default defineConfig({
       // precede the broad `@elizaos/ui/(.+)` stub alias so they win the match.
       { find: /^@elizaos\/ui\/spatial\/tui$/, replacement: uiSpatialTuiSrc },
       { find: /^@elizaos\/ui\/spatial$/, replacement: uiSpatialSrc },
+      // React-free renderer-service lifecycle registry: the register-entry
+      // tests exercise the REAL registry (scope gating, disposer retention),
+      // so anchor it to source ahead of the broad ui stub alias.
+      {
+        find: /^@elizaos\/ui\/platform\/renderer-services$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "ui",
+          "src",
+          "platform",
+          "renderer-services.ts",
+        ),
+      },
       // Pure-data settings-section metadata consumed by app-control's settings
       // action (#14804) — React-free by design, so anchor the real module
       // ahead of the broad ui stub alias.

@@ -79,6 +79,7 @@
       "plugins/plugin-polymarket",
       "plugins/plugin-scheduling",
       "plugins/plugin-signal",
+      "plugins/plugin-simple-views",
       "plugins/plugin-telegram",
       "plugins/plugin-training",
       "plugins/plugin-wallet",
@@ -128,6 +129,7 @@
       "plugins/plugin-calendar",
       "plugins/plugin-calendly",
       "plugins/plugin-computeruse",
+      "plugins/plugin-elizacloud",
       "plugins/plugin-form",
       "plugins/plugin-google-genai",
       "plugins/plugin-health",
@@ -145,7 +147,7 @@
       "plugins/plugin-wallet",
       "plugins/plugin-web-search"
     ],
-    "reason": "manifest of credential/opt-in-guarded real/live suites; each entry names the plugin whose tests self-skip without creds"
+    "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
   },
   {
     "file": "packages/scripts/run-cerebras.ts",

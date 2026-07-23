@@ -60,6 +60,7 @@ import {
   finalizeStreamedToolCalls,
   handleResponseHandler,
   handleTextSmall,
+  lowestIndexToolCallArgs,
   parseOpenAiSseStream,
   resolveStreamingEnabled,
   resolveTextTimeoutMs,
@@ -129,6 +130,12 @@ function contentDelta(text: string): unknown {
   return { choices: [{ index: 0, delta: { content: text } }] };
 }
 
+function finishFrame(reason: "stop" | "tool_calls" = "stop"): unknown {
+  return { choices: [{ index: 0, delta: {}, finish_reason: reason }] };
+}
+
+const DONE_FRAME = "data: [DONE]\n\n";
+
 /**
  * One SSE frame carrying a `delta.tool_calls[0]` fragment (index 0). The Stage-1
  * RESPONSE_HANDLER reply forces this shape — Cerebras returns the envelope as
@@ -168,7 +175,7 @@ describe("parseOpenAiSseStream", () => {
   });
 
   it("reassembles a frame split across read() boundaries", async () => {
-    const full = dataFrame(contentDelta("hello"));
+    const full = `${dataFrame(contentDelta("hello"))}${DONE_FRAME}`;
     const mid = Math.floor(full.length / 2);
     const body = sseResponse([full.slice(0, mid), full.slice(mid)])
       .body as ReadableStream<Uint8Array>;
@@ -180,15 +187,38 @@ describe("parseOpenAiSseStream", () => {
     expect(choice.delta.content).toBe("hello");
   });
 
-  it("ignores comment/blank lines and malformed JSON", async () => {
-    const body = sseResponse([
-      ": keep-alive\n\n",
-      "data: not-json\n\n",
-      dataFrame(contentDelta("ok")),
-    ]).body as ReadableStream<Uint8Array>;
+  it("ignores comment and blank framing lines", async () => {
+    const body = sseResponse([": keep-alive\n\n", dataFrame(contentDelta("ok")), DONE_FRAME])
+      .body as ReadableStream<Uint8Array>;
     const frames: unknown[] = [];
     for await (const f of parseOpenAiSseStream(body)) frames.push(f);
     expect(frames).toHaveLength(1);
+  });
+
+  it("rejects malformed or non-object data-frame JSON", async () => {
+    for (const payload of ["not-json", "null", "[]", '"text"']) {
+      const body = sseResponse([`data: ${payload}\n\n`, DONE_FRAME])
+        .body as ReadableStream<Uint8Array>;
+      await expect(
+        (async () => {
+          for await (const _frame of parseOpenAiSseStream(body)) {
+            // The invalid frame must fail before anything can be consumed.
+          }
+        })()
+      ).rejects.toThrow("invalid stream");
+    }
+  });
+
+  it("rejects transport EOF before [DONE]", async () => {
+    const body = sseResponse([dataFrame(contentDelta("partial"))])
+      .body as ReadableStream<Uint8Array>;
+    await expect(
+      (async () => {
+        for await (const _frame of parseOpenAiSseStream(body)) {
+          // Reading the valid prefix is not successful stream completion.
+        }
+      })()
+    ).rejects.toThrow("invalid stream");
   });
 });
 
@@ -210,10 +240,135 @@ describe("streamed tool-call delta assembly", () => {
     ]);
   });
 
-  it("drops a partial call that never received a name", () => {
+  it("rejects a partial call instead of dropping it", () => {
     const acc = new Map();
     accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: "{}" } }]);
-    expect(finalizeStreamedToolCalls(acc)).toEqual([]);
+    expect(() => finalizeStreamedToolCalls(acc)).toThrow("invalid tool call");
+  });
+
+  it("requires both explicit id and function name at finalization", () => {
+    const missingId = new Map();
+    accumulateToolCallDeltas(missingId, [
+      { index: 0, function: { name: "ping", arguments: "{}" } },
+    ]);
+    expect(() => finalizeStreamedToolCalls(missingId)).toThrow("invalid tool call");
+
+    const missingName = new Map();
+    accumulateToolCallDeltas(missingName, [
+      { index: 0, id: "call_0", function: { arguments: "{}" } },
+    ]);
+    expect(() => finalizeStreamedToolCalls(missingName)).toThrow("invalid tool call");
+  });
+
+  it("accepts stable repeated and interleaved indexes, including index 1 before 0", () => {
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 1,
+        id: "call_1",
+        function: { name: "second", arguments: '{"va' },
+      },
+    ]);
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 0,
+        id: "call_0",
+        function: { name: "first", arguments: '{"name":"' },
+      },
+    ]);
+    accumulateToolCallDeltas(acc, [
+      { index: 1, function: { arguments: 'lue":2}' } },
+      { index: 0, function: { arguments: 'zero"}' } },
+    ]);
+
+    expect(finalizeStreamedToolCalls(acc)).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_0",
+        toolName: "first",
+        input: { name: "zero" },
+      },
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "second",
+        input: { value: 2 },
+      },
+    ]);
+  });
+
+  it("rejects conflicting identity on one index", () => {
+    const idConflict = new Map();
+    accumulateToolCallDeltas(idConflict, [
+      { index: 0, id: "call_a", function: { name: "ping", arguments: "{" } },
+    ]);
+    expect(() =>
+      accumulateToolCallDeltas(idConflict, [
+        { index: 0, id: "call_b", function: { arguments: "}" } },
+      ])
+    ).toThrow("invalid tool call");
+
+    const nameConflict = new Map();
+    accumulateToolCallDeltas(nameConflict, [
+      { index: 0, id: "call_a", function: { name: "ping", arguments: "{" } },
+    ]);
+    expect(() =>
+      accumulateToolCallDeltas(nameConflict, [
+        { index: 0, function: { name: "pong", arguments: "}" } },
+      ])
+    ).toThrow("invalid tool call");
+  });
+
+  it("rejects one id mapped to multiple indexes", () => {
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      { index: 1, id: "call_shared", function: { name: "one", arguments: "{}" } },
+    ]);
+    expect(() =>
+      accumulateToolCallDeltas(acc, [
+        { index: 0, id: "call_shared", function: { name: "zero", arguments: "{}" } },
+      ])
+    ).toThrow("invalid tool call");
+  });
+
+  it.each([
+    ["missing", {}],
+    ["negative", { index: -1 }],
+    ["fractional", { index: 0.5 }],
+    ["string", { index: "0" }],
+  ])("rejects a %s streamed tool-call index", (_label, indexShape) => {
+    expect(() =>
+      accumulateToolCallDeltas(new Map(), [
+        {
+          ...indexShape,
+          id: "call_0",
+          function: { name: "ping", arguments: "{}" },
+        },
+      ])
+    ).toThrow("invalid tool call");
+  });
+
+  it.each(["", '{"truncated":', "[]", "null", '"scalar"'])(
+    "rejects invalid terminal arguments %j",
+    (args) => {
+      const acc = new Map();
+      accumulateToolCallDeltas(acc, [
+        { index: 0, id: "call_0", function: { name: "ping", arguments: args } },
+      ]);
+      expect(() => finalizeStreamedToolCalls(acc)).toThrow("invalid tool call");
+    }
+  );
+
+  it("rejects non-string argument fragments", () => {
+    expect(() =>
+      accumulateToolCallDeltas(new Map(), [
+        {
+          index: 0,
+          id: "call_0",
+          function: { name: "ping", arguments: { value: 1 } },
+        },
+      ])
+    ).toThrow("invalid tool call");
   });
 
   it("does NOT double when Cerebras re-sends the complete args in a final aggregated frame", () => {
@@ -244,10 +399,7 @@ describe("streamed tool-call delta assembly", () => {
     ]);
   });
 
-  it("takes the authoritative re-send even when it diverges from the incremental copy", () => {
-    // The cloud character ("lowercase naturally") can make the model emit a
-    // different casing in the aggregated re-send than in the streamed fragments.
-    // The re-send is the authoritative full copy — keep a single, valid object.
+  it("rejects a consolidated re-send that diverges from streamed fragments", () => {
     const acc = new Map();
     accumulateToolCallDeltas(acc, [
       {
@@ -256,21 +408,56 @@ describe("streamed tool-call delta assembly", () => {
         function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"PONG"}' },
       },
     ]);
+    expect(() =>
+      accumulateToolCallDeltas(acc, [
+        {
+          index: 0,
+          id: "call_1",
+          function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"pong"}' },
+        },
+      ])
+    ).toThrow("invalid tool call");
+  });
+
+  it("deduplicates a semantically equal consolidated re-send without rewriting bytes", () => {
+    const acc = new Map();
     accumulateToolCallDeltas(acc, [
       {
         index: 0,
         id: "call_1",
-        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"pong"}' },
+        function: {
+          name: "HANDLE_RESPONSE",
+          arguments: '{"replyText":"PONG","meta":{"ok":true}}',
+        },
       },
     ]);
-    expect(finalizeStreamedToolCalls(acc)).toEqual([
+    accumulateToolCallDeltas(acc, [
       {
-        type: "tool-call",
-        toolCallId: "call_1",
-        toolName: "HANDLE_RESPONSE",
-        input: { replyText: "pong" },
+        index: 0,
+        id: "call_1",
+        function: {
+          name: "HANDLE_RESPONSE",
+          arguments: '{ "meta": { "ok": true }, "replyText": "PONG" }',
+        },
       },
     ]);
+    expect(lowestIndexToolCallArgs(acc)).toBe('{"replyText":"PONG","meta":{"ok":true}}');
+  });
+
+  it("does not treat an identity-less complete object as a consolidated re-send", () => {
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 0,
+        id: "call_1",
+        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"first"}' },
+      },
+    ]);
+    accumulateToolCallDeltas(acc, [
+      { index: 0, function: { arguments: '{"replyText":"second"}' } },
+    ]);
+
+    expect(() => finalizeStreamedToolCalls(acc)).toThrow("invalid tool call");
   });
 
   it("does NOT replace mid-stream when a nested inner object closes early", () => {
@@ -335,6 +522,28 @@ describe("streamNativeChatCompletion", () => {
     expect((await result.usage)?.totalTokens).toBe(5);
   });
 
+  it("accepts null usage on choice frames before the usage-only frame", async () => {
+    nextResponse = sseResponse([
+      dataFrame({ ...contentDelta("hello"), usage: null }),
+      dataFrame({ ...finishFrame(), usage: null }),
+      dataFrame({
+        choices: [],
+        usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+      }),
+      DONE_FRAME,
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "TEXT_SMALL" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    expect((await readStream(result)).join("")).toBe("hello");
+    expect((await result.usage)?.totalTokens).toBe(3);
+  });
+
   it("surfaces streamed tool calls on the result", async () => {
     nextResponse = sseResponse([
       dataFrame({
@@ -362,6 +571,136 @@ describe("streamNativeChatCompletion", () => {
     expect(toolCalls).toEqual([
       { type: "tool-call", toolCallId: "c1", toolName: "ping", input: {} },
     ]);
+  });
+
+  it("reconstructs stable interleaved calls when index 1 arrives before index 0", async () => {
+    nextResponse = sseResponse([
+      dataFrame({
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 1,
+                  id: "call_1",
+                  function: { name: "second", arguments: '{"value":' },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      dataFrame({
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_0",
+                  function: { name: "first", arguments: '{"value":' },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      dataFrame({
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 1, function: { arguments: "2}" } },
+                { index: 0, function: { arguments: "1}" } },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      }),
+      DONE_FRAME,
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "ACTION_PLANNER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+    expect(await readStream(result)).toEqual([]);
+    await expect((result as { toolCalls: Promise<unknown[]> }).toolCalls).resolves.toEqual([
+      { type: "tool-call", toolCallId: "call_0", toolName: "first", input: { value: 1 } },
+      { type: "tool-call", toolCallId: "call_1", toolName: "second", input: { value: 2 } },
+    ]);
+  });
+
+  it.each([
+    {
+      name: "malformed data JSON after a partial call",
+      chunks: [
+        dataFrame(toolCallDelta('{"value":', { id: "call_0", name: "ping" })),
+        "data: not-json\n\n",
+        DONE_FRAME,
+      ],
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    },
+    {
+      name: "conflicting ids for one index",
+      chunks: [
+        dataFrame(toolCallDelta('{"value":', { id: "call_a", name: "ping" })),
+        dataFrame(toolCallDelta("1}", { id: "call_b" })),
+        dataFrame(finishFrame("tool_calls")),
+        DONE_FRAME,
+      ],
+      code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
+    },
+    {
+      name: "truncated terminal arguments",
+      chunks: [
+        dataFrame(toolCallDelta('{"value":', { id: "call_0", name: "ping" })),
+        dataFrame(finishFrame("tool_calls")),
+        DONE_FRAME,
+      ],
+      code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
+    },
+    {
+      name: "[DONE] before a finish frame",
+      chunks: [dataFrame(contentDelta("partial")), DONE_FRAME],
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    },
+    {
+      name: "transport EOF after a finish frame but before [DONE]",
+      chunks: [dataFrame(contentDelta("partial")), dataFrame(finishFrame())],
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    },
+    {
+      name: "provider error before terminal completion",
+      chunks: [
+        dataFrame(contentDelta("partial")),
+        dataFrame({ error: { message: "provider failed" } }),
+        DONE_FRAME,
+      ],
+      code: "ELIZA_CLOUD_STREAM_INVALID",
+    },
+  ])("rejects text and every deferred field on $name", async ({ chunks, code }) => {
+    nextResponse = sseResponse(chunks);
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+    const toolCalls = (result as { toolCalls: Promise<unknown[]> }).toolCalls;
+    const finishReason = (result as { finishReason: Promise<unknown> }).finishReason;
+
+    await expect(readStream(result)).rejects.toMatchObject({ code });
+    await expect(result.text).rejects.toMatchObject({ code });
+    await expect(result.usage).rejects.toMatchObject({ code });
+    await expect(finishReason).rejects.toMatchObject({ code });
+    await expect(toolCalls).rejects.toMatchObject({ code });
   });
 
   it("falls back to a single buffered chunk when the gateway answers non-SSE", async () => {
@@ -400,7 +739,8 @@ describe("streamNativeChatCompletion", () => {
     process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY = "1";
     __resetNativeChatLimiterForTests();
 
-    const makeResponse = () => sseResponse([dataFrame(contentDelta("x")), "data: [DONE]\n\n"]);
+    const makeResponse = () =>
+      sseResponse([dataFrame(contentDelta("x")), dataFrame(finishFrame()), DONE_FRAME]);
 
     // First streaming call acquires the only permit.
     nextResponse = makeResponse();
@@ -441,7 +781,8 @@ describe("streamNativeChatCompletion", () => {
       dataFrame(contentDelta("one")),
       dataFrame(contentDelta("two")),
       dataFrame(contentDelta("three")),
-      "data: [DONE]\n\n",
+      dataFrame(finishFrame()),
+      DONE_FRAME,
     ]);
     const first = await streamNativeChatCompletion(
       fakeRuntime(),
@@ -452,7 +793,11 @@ describe("streamNativeChatCompletion", () => {
     expect(requestRaw).toHaveBeenCalledTimes(1);
 
     // Second call queues behind the only permit.
-    nextResponse = sseResponse([dataFrame(contentDelta("x")), "data: [DONE]\n\n"]);
+    nextResponse = sseResponse([
+      dataFrame(contentDelta("x")),
+      dataFrame(finishFrame()),
+      DONE_FRAME,
+    ]);
     const secondPromise = streamNativeChatCompletion(
       fakeRuntime(),
       "RESPONSE_HANDLER" as never,
@@ -472,6 +817,14 @@ describe("streamNativeChatCompletion", () => {
       break;
     }
     expect(pulled).toBe(1);
+    await expect(first.text).rejects.toMatchObject({ name: "AbortError" });
+    await expect(first.usage).rejects.toMatchObject({ name: "AbortError" });
+    await expect((first as { finishReason: Promise<unknown> }).finishReason).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await expect((first as { toolCalls: Promise<unknown[]> }).toolCalls).rejects.toMatchObject({
+      name: "AbortError",
+    });
 
     const second = await secondPromise;
     expect(requestRaw).toHaveBeenCalledTimes(2);
@@ -597,7 +950,8 @@ describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope",
       dataFrame(toolCallDelta('NG"}')),
       // Aggregated re-send re-carrying id + name + the COMPLETE object.
       dataFrame(toolCallDelta(full, { id: "call_1", name: "HANDLE_RESPONSE" })),
-      "data: [DONE]\n\n",
+      dataFrame(finishFrame("tool_calls")),
+      DONE_FRAME,
     ]);
 
     const result = await streamNativeChatCompletion(
@@ -611,11 +965,43 @@ describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope",
     expect((await readStream(result)).join("")).toBe(full);
   });
 
+  it("fails closed when a consolidated envelope conflicts with streamed bytes", async () => {
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","replyText":"PONG"}')),
+      dataFrame(
+        toolCallDelta('{"shouldRespond":"RESPOND","replyText":"pong"}', {
+          id: "call_1",
+          name: "HANDLE_RESPONSE",
+        })
+      ),
+      dataFrame(finishFrame("tool_calls")),
+      DONE_FRAME,
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    await expect(readStream(result)).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
+    });
+    for (const field of ["text", "usage", "finishReason", "toolCalls"] as const) {
+      await expect(result[field]).rejects.toMatchObject({
+        code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
+      });
+    }
+  });
+
   it("stays buffered (no tool-arg streaming) when streamStructured is absent", async () => {
     nextResponse = sseResponse([
       dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
       dataFrame(toolCallDelta('{"replyText":"hi"}')),
-      "data: [DONE]\n\n",
+      dataFrame(finishFrame("tool_calls")),
+      DONE_FRAME,
     ]);
 
     const result = await streamNativeChatCompletion(
@@ -638,7 +1024,8 @@ describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope",
       dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],')),
       dataFrame(toolCallDelta('"replyText":"On it ')),
       dataFrame(toolCallDelta('now.","facts":[]}')),
-      "data: [DONE]\n\n",
+      dataFrame(finishFrame("tool_calls")),
+      DONE_FRAME,
     ]);
 
     const result = await streamNativeChatCompletion(
@@ -673,7 +1060,8 @@ describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope",
       dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
       dataFrame(toolCallDelta('{"replyText":"hel')),
       dataFrame(toolCallDelta('lo"}')),
-      "data: [DONE]\n\n",
+      dataFrame(finishFrame("tool_calls")),
+      DONE_FRAME,
     ]);
 
     const result = await streamNativeChatCompletion(
@@ -772,7 +1160,12 @@ describe("cloud streaming gate decision (wantsStream)", () => {
   });
 
   it("streams when native + stream + streamStructured===true (streaming enabled)", async () => {
-    nextResponse = sseResponse([dataFrame(contentDelta("hi")), "data: [DONE]\n\n"]);
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"replyText":"hi"}')),
+      dataFrame(finishFrame("tool_calls")),
+      DONE_FRAME,
+    ]);
     const result = (await handleResponseHandler(fakeRuntime(), {
       prompt: "hi",
       providerOptions: { eliza: {} },

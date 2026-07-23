@@ -7,6 +7,7 @@
  */
 
 import { resolveServerOnlyPort } from "@elizaos/core";
+import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
 import type {
 	AppControlErrorPayload,
 	AppLaunchResult,
@@ -68,7 +69,7 @@ async function requestJson<T>(
 	const response = await fetch(url, {
 		...init,
 		headers: {
-			"Content-Type": "application/json",
+			...createViewsRequestHeaders(),
 			...(init.headers ?? {}),
 		},
 		signal: callerSignal

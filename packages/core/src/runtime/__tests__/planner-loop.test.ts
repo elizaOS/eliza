@@ -13,10 +13,15 @@ import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__renderRoutingHintsBlockForTests,
+	actionResultToPlannerToolResult,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
 	runPlannerLoop,
+	TURN_SCOPE_ARG,
+	TURN_SCOPE_FINAL,
+	TURN_SCOPE_MORE_WORK_PENDING,
+	withTurnScopeToolArg,
 } from "../planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
@@ -2742,14 +2747,151 @@ describe("v5 planner loop skeleton", () => {
 	});
 });
 
+describe("planner turn-scope channel (#17034)", () => {
+	it("derives completed=false from a native more_work_pending scope arg and strips it", () => {
+		const output = parsePlannerOutput({
+			text: "",
+			toolCalls: [
+				{
+					id: "call-1",
+					name: "SETTINGS",
+					arguments: {
+						action: "set",
+						key: "shell",
+						[TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING,
+					},
+				},
+			],
+		} as never);
+
+		expect(output.completed).toBe(false);
+		expect(output.toolCalls[0]?.params).toEqual({
+			action: "set",
+			key: "shell",
+		});
+	});
+
+	it("derives completed=true from a native final scope arg", () => {
+		const output = parsePlannerOutput({
+			text: "",
+			toolCalls: [
+				{
+					id: "call-1",
+					name: "SETTINGS",
+					arguments: { action: "set", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+				},
+			],
+		} as never);
+
+		expect(output.completed).toBe(true);
+		expect(output.toolCalls[0]?.params).toEqual({ action: "set" });
+	});
+
+	it("treats an unknown scope value as no opinion but still strips it", () => {
+		const output = parsePlannerOutput({
+			text: "",
+			toolCalls: [
+				{
+					id: "call-1",
+					name: "SETTINGS",
+					arguments: { action: "set", [TURN_SCOPE_ARG]: "maybe" },
+				},
+			],
+		} as never);
+
+		expect(output.completed).toBeUndefined();
+		expect(output.toolCalls[0]?.params).toEqual({ action: "set" });
+	});
+
+	it("lets any pending declaration in a batch outvote a final one", () => {
+		const output = parsePlannerOutput({
+			text: "",
+			toolCalls: [
+				{
+					id: "call-1",
+					name: "SETTINGS",
+					arguments: { [TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING },
+				},
+				{
+					id: "call-2",
+					name: "LOOKUP",
+					arguments: { [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+				},
+			],
+		} as never);
+
+		expect(output.completed).toBe(false);
+	});
+
+	it("keeps the JSON lane's explicit top-level completed over per-call scope args", () => {
+		const output = parsePlannerOutput(
+			JSON.stringify({
+				thought: "two-step",
+				completed: false,
+				toolCalls: [
+					{
+						name: "SETTINGS",
+						args: { action: "set", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+					},
+				],
+			}),
+		);
+
+		expect(output.completed).toBe(false);
+		expect(output.toolCalls[0]?.params).toEqual({ action: "set" });
+	});
+
+	it("injects the reserved scope arg into object tool schemas without mutating the originals", () => {
+		const tools = [
+			{
+				name: "SETTINGS",
+				parameters: {
+					type: "object",
+					properties: { action: { type: "string" } },
+					required: ["action"],
+				},
+			},
+			{ name: "NO_SCHEMA" },
+			{ name: "STRING_SCHEMA", parameters: { type: "string" } },
+		];
+		const injected = withTurnScopeToolArg(tools);
+
+		expect(
+			injected?.[0]?.parameters?.properties?.[TURN_SCOPE_ARG],
+		).toMatchObject({
+			type: "string",
+			enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+		});
+		// Required stays untouched — the scope arg is always optional.
+		expect(injected?.[0]?.parameters?.required).toEqual(["action"]);
+		expect(tools[0]?.parameters?.properties?.[TURN_SCOPE_ARG]).toBeUndefined();
+		expect(injected?.[1]).toBe(tools[1]);
+		expect(injected?.[2]).toBe(tools[2]);
+	});
+
+	it("never overwrites a genuine parameter that already uses the reserved name", () => {
+		const tools = [
+			{
+				name: "WEIRD",
+				parameters: {
+					type: "object",
+					properties: { [TURN_SCOPE_ARG]: { type: "number" } },
+				},
+			},
+		];
+		const injected = withTurnScopeToolArg(tools);
+		expect(injected?.[0]).toBe(tools[0]);
+	});
+});
+
 describe("v5 planner loop — evaluator gate", () => {
 	// Conservative gate: when a successful tool drained the queue and the most
-	// recent planner output supplied an EXPLICIT `messageToUser` field, the
+	// recent planner output supplied an EXPLICIT `messageToUser` field, or the
+	// drained action result explicitly owns a verified terminal reply, the
 	// planner loop synthesizes a FINISH evaluator output and skips the
-	// evaluator's full LLM call. The six tests below pin the fire/withhold
-	// contract — including the discriminator that native-mode tool-call returns
-	// (which fall back to `text`) do NOT trigger the gate, because `text` can
-	// be a pre-tool thought rather than a final answer.
+	// evaluator's full LLM call. The tests below pin both fire paths and every
+	// conservative withhold condition. Native free text remains ambiguous
+	// because it can be a pre-tool thought rather than a final answer.
 
 	function plannerJsonWith(opts: {
 		messageToUser?: string;
@@ -2993,6 +3135,417 @@ describe("v5 planner loop — evaluator gate", () => {
 
 		expect(evaluate).toHaveBeenCalledTimes(1);
 		expect(result.finalMessage).toBe("Status: ok.");
+	});
+
+	it("SKIPS in native-mode when the action owns a terminal canonical result", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				text: "I should change the setting.",
+				toolCalls: [
+					{
+						id: "settings-1",
+						name: "SETTINGS",
+						arguments: {
+							action: "set",
+							section: "permissions",
+							key: "shell",
+							value: "off",
+						},
+					},
+				],
+			}),
+		};
+		const reply = "Shell access is off.";
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: reply,
+			userFacingText: reply,
+			verifiedUserFacing: true,
+			turnComplete: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+		}));
+		const recordedStages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "trj-native-action-owned"),
+			recordStage: vi.fn(
+				async (_trajectoryId: string, stage: RecordedStage) => {
+					recordedStages.push(stage);
+				},
+			),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+			recorder,
+			trajectoryId: "trj-native-action-owned",
+		});
+
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(reply);
+		expect(result.evaluator?.thought).toContain("action-owned");
+		expect(
+			recordedStages.find((stage) => stage.kind === "evaluation")?.evaluation
+				?.reason,
+		).toBe("action_terminal_result");
+	});
+
+	it("WITHHOLDS in native-mode when the call declares more_work_pending scope — and strips the arg", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{
+						id: "settings-1",
+						name: "SETTINGS",
+						arguments: {
+							action: "set",
+							section: "permissions",
+							key: "shell",
+							value: "off",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING,
+						},
+					},
+				],
+			}),
+		};
+		const reply = "Shell access is off.";
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: reply,
+			userFacingText: reply,
+			verifiedUserFacing: true,
+			turnComplete: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The evaluator arbitrates the planner-declared multi-step turn.",
+			messageToUser: "Shell access is off.",
+		}));
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		const dispatched = executeToolCall.mock.calls[0]?.[0] as {
+			params?: Record<string, unknown>;
+		};
+		expect(dispatched.params).toMatchObject({ key: "shell", value: "off" });
+		expect(dispatched.params?.[TURN_SCOPE_ARG]).toBeUndefined();
+	});
+
+	it("SKIPS in native-mode when the call declares final scope alongside a terminal action result", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{
+						id: "settings-1",
+						name: "SETTINGS",
+						arguments: {
+							action: "set",
+							section: "permissions",
+							key: "shell",
+							value: "off",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			}),
+		};
+		const reply = "Shell access is off.";
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: reply,
+			userFacingText: reply,
+			verifiedUserFacing: true,
+			turnComplete: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.finalMessage).toBe(reply);
+		const dispatched = executeToolCall.mock.calls[0]?.[0] as {
+			params?: Record<string, unknown>;
+		};
+		expect(dispatched.params?.[TURN_SCOPE_ARG]).toBeUndefined();
+	});
+
+	it("completes a native sequential multi-op turn instead of truncating after the first terminal result", async () => {
+		// The #17034 canonical regression: the model emits its two operations
+		// one planner round at a time. Round 1 declares more_work_pending, so
+		// the action's turnComplete cannot end the turn; the evaluator
+		// continues, round 2 executes the second op, and the evaluator owns
+		// the combined final reply.
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "settings-1",
+						name: "SETTINGS",
+						arguments: {
+							action: "set",
+							section: "permissions",
+							key: "shell",
+							value: "off",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING,
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "settings-2",
+						name: "SETTINGS",
+						arguments: {
+							action: "set",
+							section: "permissions",
+							key: "telemetry",
+							value: "off",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			});
+		const executeToolCall = vi.fn(
+			async (toolCall: { params?: Record<string, unknown> }) => {
+				const key = toolCall.params?.key;
+				const reply =
+					key === "shell" ? "Shell access is off." : "Telemetry is off.";
+				return {
+					success: true,
+					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
+				};
+			},
+		);
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "The user asked for telemetry off too; keep going.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Both requested operations completed.",
+				messageToUser: "Shell access and telemetry are both off.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"Shell access and telemetry are both off.",
+		);
+	});
+
+	it("preserves action-owned completion through the canonical planner-result mapping", () => {
+		const result = actionResultToPlannerToolResult({
+			success: true,
+			text: "Settings updated.",
+			userFacingText: "Settings updated.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+
+		expect(result).toMatchObject({
+			success: true,
+			userFacingText: "Settings updated.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+	});
+
+	it("WITHHOLDS an action-owned completion while another native tool remains queued", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{ id: "settings-1", name: "SETTINGS", arguments: {} },
+					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
+			toolCall.name === "SETTINGS"
+				? {
+						success: true,
+						text: "Settings updated.",
+						userFacingText: "Settings updated.",
+						verifiedUserFacing: true,
+						turnComplete: true,
+					}
+				: { success: true, text: "Lookup complete." },
+		);
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "NEXT_RECOMMENDED" as const,
+				thought: "The queued lookup still needs to run.",
+				recommendedToolCallId: "lookup-1",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "All queued work is complete.",
+				messageToUser: "Settings updated and lookup complete.",
+			});
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+	});
+
+	it("WITHHOLDS when an action-owned completion follows another executed tool", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
+					{ id: "settings-1", name: "SETTINGS", arguments: {} },
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
+			toolCall.name === "SETTINGS"
+				? {
+						success: true,
+						text: "Settings updated.",
+						userFacingText: "Settings updated.",
+						verifiedUserFacing: true,
+						turnComplete: true,
+					}
+				: { success: true, text: "Lookup complete." },
+		);
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "NEXT_RECOMMENDED" as const,
+				thought: "Run the queued settings action.",
+				recommendedToolCallId: "settings-1",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The evaluator combines both completed operations.",
+				messageToUser: "Lookup complete and settings updated.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Lookup complete and settings updated.");
+		expect(result.evaluator?.thought).toContain("combines both");
+	});
+
+	it("WITHHOLDS an action-owned completion without canonical user-facing text", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [{ id: "settings-1", name: "SETTINGS", arguments: {} }],
+			}),
+		};
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The evaluator supplies the missing reply.",
+			messageToUser: "Settings updated.",
+		}));
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: "internal diagnostic",
+				verifiedUserFacing: true,
+				turnComplete: true,
+			})),
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+	});
+
+	it("WITHHOLDS when the action explicitly marks the turn incomplete", async () => {
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: "This planner reply is premature.",
+				toolCalls: [{ name: "LOOKUP", args: {} }],
+			}),
+		};
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The evaluator respects the action-owned disclaimer.",
+			messageToUser: "Lookup complete.",
+		}));
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: "Lookup partial.",
+				userFacingText: "Lookup partial.",
+				verifiedUserFacing: true,
+				turnComplete: false,
+			})),
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
 	});
 
 	it("WITHHOLDS on tool failure — evaluator IS called", async () => {

@@ -66,6 +66,10 @@ function useModelCalls(runtime: IAgentRuntime): unknown[][] {
 	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls;
 }
 
+function reportErrorCalls(runtime: IAgentRuntime): unknown[][] {
+	return (runtime.reportError as { mock: { calls: unknown[][] } }).mock.calls;
+}
+
 function makeMessage(content: Partial<Memory["content"]> = {}): Memory {
 	return {
 		id: "00000000-0000-0000-0000-000000000001" as UUID,
@@ -200,6 +204,7 @@ function makeRuntime(
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
+		reportError: vi.fn(),
 		useModel: vi.fn(async () => {
 			if (queue.length === 0) {
 				throw new Error("Unexpected useModel call");
@@ -337,6 +342,101 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 		}
+	});
+
+	it("blocks a Stage-1 action envelope before the direct-reply route", async () => {
+		const actionEnvelope =
+			'{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":"retry","toolCallId":"call-1"}';
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: actionEnvelope,
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Open example.com" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I'm not sure how to answer that.",
+			);
+			expect(result.result.responseContent?.text).not.toContain('"action"');
+		}
+		const reported = reportErrorCalls(runtime)[0]?.[1] as {
+			code?: string;
+			context?: Record<string, unknown>;
+		};
+		expect(reported.code).toBe("STAGE1_INVALID_USER_VISIBLE_OUTPUT");
+		expect(reported.context).toMatchObject({
+			stage: "response-handler",
+			classification: "action",
+			fieldPath: [],
+		});
+	});
+
+	it("blocks a Stage-1 array containing a control record", async () => {
+		const actionBatch =
+			'[{"status":"queued"},{"action":"BROWSER","parameters":{"url":"https://example.com"}}]';
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: actionBatch,
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Open example.com" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I'm not sure how to answer that.",
+			);
+			expect(result.result.responseContent?.text).not.toContain("BROWSER");
+		}
+		const reported = reportErrorCalls(runtime)[0]?.[1] as {
+			code?: string;
+			context?: Record<string, unknown>;
+		};
+		expect(reported.code).toBe("STAGE1_INVALID_USER_VISIBLE_OUTPUT");
+		expect(reported.context).toMatchObject({
+			classification: "action",
+			fieldPath: [],
+		});
+	});
+
+	it("preserves genuine lower-case action JSON in a Stage-1 direct reply", async () => {
+		const domainJson =
+			'{"action":"proceed","parameters":{"step":1},"status":"done"}';
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: domainJson,
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Return the workflow record as JSON." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(domainJson);
+		}
+		expect(runtime.reportError).not.toHaveBeenCalled();
 	});
 
 	// #16395: a per-agent maxReplyTokens setting caps Stage-1 with a real

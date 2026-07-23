@@ -1,16 +1,13 @@
-/** Unit test that importing `register-routes` registers the plugin's app route loader (mocked core registry). */
+/** Unit test for the workflow plugin's app-route loader registration boundary. */
 import { describe, expect, it, mock } from 'bun:test';
+import { registerWorkflowRoutePlugin } from '../../src/register-routes';
 
 const registerAppRoutePluginLoader = mock(() => {});
 
-mock.module('@elizaos/core', () => ({
-  registerAppRoutePluginLoader,
-}));
-
-await import('../../src/register-routes.ts');
-
 describe('workflow route registration', () => {
   it('registers its app route plugin loader from the owning plugin', () => {
+    registerWorkflowRoutePlugin(registerAppRoutePluginLoader);
+
     expect(registerAppRoutePluginLoader).toHaveBeenCalledWith(
       '@elizaos/plugin-workflow:routes',
       expect.any(Function)
