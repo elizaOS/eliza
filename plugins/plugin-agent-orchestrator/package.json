@@ -79,6 +79,7 @@
     "coding-agent-adapters": "0.16.3",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.21.1",
+    "universal-user-agent": "^7.0.3",
     "smithers-orchestrator": "0.28.0",
     "@elizaos/auth": "workspace:*"
   },

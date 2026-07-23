@@ -51,6 +51,7 @@ describe("GET /api/pool/status", () => {
         res,
         "GET",
         "/api/pool/status",
+        dependencies,
       ),
     ).resolves.toBe(true);
     expect(res.statusCode).toBe(404);

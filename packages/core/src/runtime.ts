@@ -337,6 +337,28 @@ const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
 const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = 30_000;
+
+export function calculateProviderOverlaps(
+	timings: readonly {
+		providerName: string;
+		providerStartedAt: number;
+		providerEndedAt: number;
+	}[],
+): Array<Array<{ providerName: string; overlapMs: number }>> {
+	return timings.map((timing, index) =>
+		timings.flatMap((sibling, siblingIndex) => {
+			if (siblingIndex === index) return [];
+			const overlapMs = Math.max(
+				0,
+				Math.min(timing.providerEndedAt, sibling.providerEndedAt) -
+					Math.max(timing.providerStartedAt, sibling.providerStartedAt),
+			);
+			return overlapMs > 0
+				? [{ providerName: sibling.providerName, overlapMs }]
+				: [];
+		}),
+	);
+}
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
 	"bio",
@@ -4292,7 +4314,8 @@ export class AgentRuntime implements IAgentRuntime {
 							}, COMPOSE_STATE_PROVIDER_TIMEOUT_MS);
 						}),
 					]);
-					const duration = Date.now() - start;
+					const endedAt = Date.now();
+					const duration = endedAt - start;
 
 					if (!timedOut) {
 						recordInferenceSpan(`provider:${provider.name}`, duration);
@@ -4313,8 +4336,12 @@ export class AgentRuntime implements IAgentRuntime {
 					return {
 						...result,
 						providerName: provider.name,
+						providerStartedAt: start,
+						providerEndedAt: endedAt,
+						providerDurationMs: duration,
 					};
 				} catch (error) {
+					const endedAt = Date.now();
 					this.logger.error(
 						{
 							src: "agent",
@@ -4329,6 +4356,9 @@ export class AgentRuntime implements IAgentRuntime {
 						values: {},
 						data: {},
 						providerName: provider.name,
+						providerStartedAt: start,
+						providerEndedAt: endedAt,
+						providerDurationMs: endedAt - start,
 					};
 				} finally {
 					if (timeoutHandle !== undefined) {
@@ -4337,6 +4367,7 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}),
 		);
+		const providerOverlaps = calculateProviderOverlaps(providerData);
 		recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
 			providers: providersToRun.length,
 			reused: providersToGet.length - providersToRun.length,
@@ -4423,7 +4454,7 @@ export class AgentRuntime implements IAgentRuntime {
 				typeof message.content.text === "string" ? message.content.text : "";
 			const trajCtx = activeTrajectoryContext;
 			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
-			for (const r of providerData) {
+			for (const [providerIndex, r] of providerData.entries()) {
 				try {
 					const redactedText =
 						currentProviderResults[r.providerName]?.text ?? "";
@@ -4431,6 +4462,10 @@ export class AgentRuntime implements IAgentRuntime {
 					trajLogger.logProviderAccess({
 						stepId: trajectoryStepId,
 						providerName: r.providerName,
+						startedAt: r.providerStartedAt,
+						endedAt: r.providerEndedAt,
+						durationMs: r.providerDurationMs,
+						overlapsWith: providerOverlaps[providerIndex] ?? [],
 						data: { textLength: redactedText.length },
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,

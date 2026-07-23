@@ -20,7 +20,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
-| `codeql.yml` | Push/PR to main, Weekly | Static security analysis |
 | `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
 | `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
 | `build-llama-ffi-android.yml` | Native-source push to develop, tag, manual, reusable | Canonical fused Android producer: arm64-v8a Vulkan and x86_64 CPU artifacts |
@@ -142,15 +141,6 @@ in the `changes` job, #13617):
    `develop-pr.yml` lint job runs `format:check`, and the stable aggregate waits
    for that exact job, so formatting is refused before merge even when a busy
    push wave supersedes post-merge quality runs (#15959).
-
-CodeQL is a separate exception: trusted push, scheduled, and manual CodeQL runs
-use `self-hosted, Linux, X64, hetzner-robot` because full JavaScript analysis is
-disk-bound and has exhausted GitHub-hosted runners during the `PolynomialReDoS`
-dataflow query. Pull-request CodeQL remains GitHub-hosted so forked code never
-executes on self-hosted machines. Keep the full CodeQL query surface intact;
-move capacity around rather than weakening security coverage. The CodeQL config
-may ignore deliberately invalid negative-test fixtures, but not real source
-files; those fixtures should stay covered by their owning tests.
 
 GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
 separate purpose-built fleet and are unaffected by this policy.

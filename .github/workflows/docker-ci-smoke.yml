@@ -105,7 +105,7 @@ jobs:
           df -h
           # github-hosted-only disk cleanup; self-hosted runners (#8501) have no
           # passwordless sudo and don't need it, so never fail the job on it.
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
           docker system prune -af --volumes || true
           df -h
 

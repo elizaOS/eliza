@@ -33,6 +33,7 @@ import { runShouldRespondInjectionGate } from "../features/trust/should-respond-
 import {
 	emitInferenceTiming,
 	INFERENCE_MARKS,
+	type InferenceTurnSummary,
 	InferenceTurnTimer,
 	markInference,
 	nextInferenceTurnId,
@@ -8097,6 +8098,72 @@ const latestResponseIds = new Map<string, Map<string, string>>();
 // routing, transcript stripping) that legitimately take >5s; 30s gives them
 // room without indefinitely blocking response finalization.
 const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 30_000;
+const INFERENCE_TIMING_LOG_TYPE = "inference_timing";
+const INFERENCE_TIMING_LOG_RETENTION = 4_096;
+const INFERENCE_TIMING_LOG_SWEEP_INTERVAL = 64;
+const inferenceTimingWritesSinceSweep = new WeakMap<IAgentRuntime, number>();
+
+async function persistInferenceTimingSummary(
+	runtime: IAgentRuntime,
+	message: Memory,
+	summary: InferenceTurnSummary,
+): Promise<void> {
+	await runtime.createLogs([
+		{
+			body: {
+				runId: summary.turnId,
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: runtime.agentId,
+				source: INFERENCE_TIMING_LOG_TYPE,
+				startTime: summary.t0EpochMs,
+				endTime: summary.closedAtEpochMs ?? undefined,
+				duration: summary.totalMs ?? undefined,
+				metadata: {
+					label: summary.label,
+					modelProvider: summary.modelProvider,
+					timeToFirstTokenMs: summary.timeToFirstTokenMs,
+					timeToReplyMs: summary.timeToReplyMs,
+					spans: summary.spans.map((span) => ({
+						name: span.name,
+						startMs: span.startMs,
+						endMs: span.endMs,
+						durationMs: span.durationMs,
+						meta: span.meta ?? {},
+					})),
+					marks: summary.marks.map((mark) => ({
+						name: mark.name,
+						tMs: mark.tMs,
+					})),
+					byName: summary.byName,
+					anomalies: summary.anomalies,
+				},
+			},
+			entityId: runtime.agentId,
+			roomId: message.roomId,
+			type: INFERENCE_TIMING_LOG_TYPE,
+		},
+	]);
+
+	const writesSinceSweep =
+		(inferenceTimingWritesSinceSweep.get(runtime) ?? 0) + 1;
+	if (writesSinceSweep < INFERENCE_TIMING_LOG_SWEEP_INTERVAL) {
+		inferenceTimingWritesSinceSweep.set(runtime, writesSinceSweep);
+		return;
+	}
+	inferenceTimingWritesSinceSweep.set(runtime, 0);
+	const rows = await runtime.getLogs({
+		type: INFERENCE_TIMING_LOG_TYPE,
+		limit: INFERENCE_TIMING_LOG_RETENTION + 1_024,
+	});
+	const expiredIds = rows
+		.slice(INFERENCE_TIMING_LOG_RETENTION)
+		.map((row) => row.id)
+		.filter((id): id is UUID => typeof id === "string");
+	if (expiredIds.length > 0) {
+		await runtime.deleteLogs(expiredIds);
+	}
+}
 
 function clearLatestResponseId(
 	agentId: UUID,
@@ -9763,7 +9830,19 @@ export class DefaultMessageService implements IMessageService {
 					// effects (post-turn evaluators) intentionally run after this and
 					// are NOT counted in turn latency — that is the proof they don't
 					// stall the user-visible reply.
-					emitInferenceTiming(inferenceTimer);
+					const inferenceSummary = emitInferenceTiming(inferenceTimer);
+					if (inferenceSummary) {
+						detachPostDeliverySideEffect(
+							runtime,
+							"persist_inference_timing",
+							() =>
+								persistInferenceTimingSummary(
+									runtime,
+									message,
+									inferenceSummary,
+								),
+						);
+					}
 
 					// Ensure latestResponseIds is cleaned up even if processMessage
 					// threw before reaching its own cleanup at the end of the method.
@@ -10495,7 +10574,6 @@ export class DefaultMessageService implements IMessageService {
 		let responseMessages: Memory[] = [];
 		let actionResults: ActionResult[] | undefined;
 		let mode: StrategyMode = "none";
-		let simpleReplyDelivered = false;
 
 		if (shouldRespondToMessage) {
 			let result: StrategyResult;
@@ -10663,7 +10741,6 @@ export class DefaultMessageService implements IMessageService {
 					if (callback) {
 						if (responseContent) {
 							await callback(responseContent);
-							simpleReplyDelivered = true;
 							markInference(INFERENCE_MARKS.replyDelivered);
 						}
 					}
@@ -10774,22 +10851,12 @@ export class DefaultMessageService implements IMessageService {
 		// that are not part of the unified evaluator service.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
-		if (simpleReplyDelivered) {
-			void (async () => {
-				await runPostDeliverySideEffect(runtime, "post_turn_evaluators", () =>
-					runPostTurnEvaluators(runtime, message, state, {
-						didRespond: didRespondGate,
-						responses: responseMessages,
-					}),
-				);
-				await runPostDeliverySideEffect(runtime, "ALWAYS_AFTER", () =>
-					runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-						didRespond: didRespondGate,
-						responses: responseMessages,
-					}),
-				);
-			})();
-		} else {
+		// Post-turn work is never part of connector completion. Connectors await
+		// handleMessage for generation/delivery bookkeeping, so awaiting an
+		// evaluator here makes every connector wait even though the reply has
+		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
+		// one detached task while keeping both failures observable at the boundary.
+		detachPostDeliverySideEffect(runtime, "post_turn", async () => {
 			await runPostTurnEvaluators(runtime, message, state, {
 				didRespond: didRespondGate,
 				responses: responseMessages,
@@ -10798,7 +10865,7 @@ export class DefaultMessageService implements IMessageService {
 				didRespond: didRespondGate,
 				responses: responseMessages,
 			});
-		}
+		});
 
 		const didRespond =
 			responseMessages.length > 0 && !isStopResponse(responseContent);

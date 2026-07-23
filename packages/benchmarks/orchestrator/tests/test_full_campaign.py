@@ -58,17 +58,17 @@ def test_manifest_exactly_covers_discovery_registry_and_directory_gaps() -> None
     }
 
     adapter_ids = [entry.benchmark_id for entry in manifest.adapters]
-    assert len(adapter_ids) == 59
+    assert len(adapter_ids) == 58
     assert len(adapter_ids) == len(set(adapter_ids))
     assert set(adapter_ids) == set(discovery.adapters)
     assert {
         entry.benchmark_id for entry in manifest.adapters if entry.registered
     } == registry_ids
-    assert len(registry_ids) == 50
+    assert len(registry_ids) == 49
 
     assert Counter(entry.disposition for entry in manifest.adapters) == {
         campaign.CampaignDisposition.COHORT: 25,
-        campaign.CampaignDisposition.MANUAL: 18,
+        campaign.CampaignDisposition.MANUAL: 17,
         campaign.CampaignDisposition.UNSUPPORTED: 5,
         campaign.CampaignDisposition.NON_AGENT: 11,
     }
@@ -520,7 +520,7 @@ def test_full_campaign_dispatches_benchmarks_serially_through_cohorts(
     )
 
 
-def test_manual_and_unsupported_entries_fail_closed_before_dispatch(
+def test_unsupported_entries_fail_closed_before_dispatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -528,10 +528,7 @@ def test_manual_and_unsupported_entries_fail_closed_before_dispatch(
         "validate_full_campaign_manifest",
         lambda _workspace: campaign.FULL_CAMPAIGN_MANIFEST,
     )
-    adapters = {
-        "social_alpha": _adapter("social_alpha"),
-        "experience": _adapter("experience"),
-    }
+    adapters = {"experience": _adapter("experience")}
     monkeypatch.setattr(
         campaign,
         "discover_adapters",
@@ -543,22 +540,6 @@ def test_manual_and_unsupported_entries_fail_closed_before_dispatch(
         lambda **_kwargs: pytest.fail("selection should fail before dispatch"),
     )
 
-    with pytest.raises(campaign.FullCampaignSelectionError, match="social_alpha is manual"):
-        campaign.run_full_campaign(
-            workspace_root=WORKSPACE_ROOT,
-            request=_request(),
-            benchmark_ids=("social_alpha",),
-        )
-    with pytest.raises(
-        campaign.FullCampaignSelectionError,
-        match="requires manual override.*data_dir",
-    ):
-        campaign.run_full_campaign(
-            workspace_root=WORKSPACE_ROOT,
-            request=_request(),
-            benchmark_ids=("social_alpha",),
-            allow_manual=True,
-        )
     with pytest.raises(
         campaign.FullCampaignSelectionError,
         match="cannot publish a three-harness cohort.*unsupported",
