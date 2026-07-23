@@ -479,16 +479,31 @@ def auditCloudReleaseAab = tasks.register('auditCloudReleaseAab') {
         }
     }
     doLast {
-        def auditScript = new File(
-            elizaRepoRoot,
-            'packages/app-core/scripts/run-mobile-build.mjs'
-        )
-        def bundleArtifact = cloudReleaseAab.get().asFile
-        if (!auditScript.isFile()) {
-            throw new GradleException(
-                "[cloud-aab-audit] missing ${auditScript}"
+        // The orchestrator passes its own absolute path so npm-packages /
+        // white-label layouts (where the repo-root walk misses the scripts
+        // tree) still resolve the canonical audit CLI. The relative walk is
+        // the fallback for direct ./gradlew invocations from a source checkout.
+        def auditScriptOverride = System.getenv('ELIZA_MOBILE_AUDIT_SCRIPT')?.trim()
+        def auditScript
+        if (auditScriptOverride) {
+            auditScript = new File(auditScriptOverride)
+            if (!auditScript.isFile()) {
+                throw new GradleException(
+                    "[cloud-aab-audit] ELIZA_MOBILE_AUDIT_SCRIPT does not exist: ${auditScript}"
+                )
+            }
+        } else {
+            auditScript = new File(
+                elizaRepoRoot,
+                'packages/app-core/scripts/run-mobile-build.mjs'
             )
+            if (!auditScript.isFile()) {
+                throw new GradleException(
+                    "[cloud-aab-audit] missing ${auditScript}"
+                )
+            }
         }
+        def bundleArtifact = cloudReleaseAab.get().asFile
         if (!bundleArtifact.isFile()) {
             throw new GradleException(
                 "[cloud-aab-audit] missing final bundle ${bundleArtifact}"

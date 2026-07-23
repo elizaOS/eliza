@@ -265,7 +265,7 @@ function useDataDescriptorLocalPlaceholders(bytes, entryName) {
 
 function writeSyntheticCloudAab(
   temporaryDir,
-  { includeWebPayload = true } = {},
+  { extraEntries = {}, includeWebPayload = true } = {},
 ) {
   const entries = {
     "base/dex/classes.dex": Buffer.from("clean synthetic DEX", "utf8"),
@@ -274,6 +274,7 @@ function writeSyntheticCloudAab(
       "utf8",
     ),
     "base/assets/capacitor.config.json": Buffer.from("{}", "utf8"),
+    ...extraEntries,
   };
   if (includeWebPayload) {
     entries["base/assets/public/index.html"] = Buffer.from(
@@ -344,6 +345,30 @@ describe("Android App Bundle entry discovery", () => {
         "base/manifest/AndroidManifest.xml",
       ]),
     ).toThrow("unsafe module name");
+  });
+
+  it("selects stray packaged .dex entries outside module dex dirs for scanning", () => {
+    expect(
+      listAabDexEntries([
+        "base/dex/classes.dex",
+        "base/assets/classes.dex",
+        "base/assets/plugins/Loader.DEX",
+        "base/assets/notes.txt",
+      ]),
+    ).toEqual([
+      "base/assets/classes.dex",
+      "base/assets/plugins/Loader.DEX",
+      "base/dex/classes.dex",
+    ]);
+  });
+
+  it("rejects traversal-shaped stray .dex entry paths", () => {
+    expect(() =>
+      listAabDexEntries(["base/dex/classes.dex", "../evil.dex"]),
+    ).toThrow("unsafe DEX entry path");
+    expect(() =>
+      listAabDexEntries(["base/dex/classes.dex", "base/assets/../evil.dex"]),
+    ).toThrow("unsafe DEX entry path");
   });
 
   it("bounds manifest-module and DEX workloads before process execution", () => {
@@ -828,6 +853,21 @@ describe("pinned bundletool provisioning", () => {
       "auditOutput.standardError.asText.get()",
     );
     expect(ANDROID_APP_GRADLE).toContain("'android-cloud-audit'");
+    // npm-packages / white-label layouts resolve the audit CLI through the
+    // orchestrator-provided override; the repo-root walk stays as the
+    // source-checkout fallback. Both paths hard-fail on a missing script.
+    expect(ANDROID_APP_GRADLE).toContain(
+      "System.getenv('ELIZA_MOBILE_AUDIT_SCRIPT')?.trim()",
+    );
+    expect(ANDROID_APP_GRADLE).toContain(
+      "ELIZA_MOBILE_AUDIT_SCRIPT does not exist",
+    );
+    expect(ANDROID_APP_GRADLE).toContain(
+      "'packages/app-core/scripts/run-mobile-build.mjs'",
+    );
+    expect(ANDROID_APP_GRADLE).toContain(
+      `[cloud-aab-audit] missing \${auditScript}`,
+    );
   });
 
   it("passes an absolute JavaScript runtime to Gradle for the AAB finalizer", () => {
@@ -843,6 +883,7 @@ describe("pinned bundletool provisioning", () => {
     const overridden = createAndroidBuildEnv(target, {
       androidSdkRoot: "/android-sdk",
       env: {
+        ELIZA_MOBILE_AUDIT_SCRIPT: "  /tools/audit.mjs  ",
         NODE_BINARY: "  /tools/node  ",
         PATH: "/usr/bin",
       },
@@ -852,6 +893,12 @@ describe("pinned bundletool provisioning", () => {
     expect(path.isAbsolute(defaults.NODE_BINARY)).toBe(true);
     expect(defaults.NODE_BINARY).toBe(process.execPath);
     expect(overridden.NODE_BINARY).toBe("/tools/node");
+    expect(path.isAbsolute(defaults.ELIZA_MOBILE_AUDIT_SCRIPT)).toBe(true);
+    expect(defaults.ELIZA_MOBILE_AUDIT_SCRIPT).toBe(
+      fileURLToPath(new URL("./run-mobile-build.mjs", import.meta.url)),
+    );
+    expect(fs.existsSync(defaults.ELIZA_MOBILE_AUDIT_SCRIPT)).toBe(true);
+    expect(overridden.ELIZA_MOBILE_AUDIT_SCRIPT).toBe("/tools/audit.mjs");
   });
 });
 
@@ -879,8 +926,12 @@ describe("Android artifact boundary selection", () => {
   it("rejects every known packaged local-runtime payload family", () => {
     const forbiddenEntries = [
       "base/assets/agent/agent-bundle.js",
+      "base/assets/classes.dex",
+      "base/assets/libllama.so",
       "base/assets/models/model.GGUF",
+      "base/assets/plugins/Loader.DEX",
       "base/assets/runtime/bun",
+      "base/assets/runtime/libelizainference.so",
       "base/assets/runtime/llama-cpp-kernels.json",
       "base/lib/arm64-v8a/libelizainference.so",
       "base/lib/arm64-v8a/libeliza_runtime.so",
@@ -895,6 +946,8 @@ describe("Android artifact boundary selection", () => {
       findAndroidCloudPackagedRuntimeOffenders([
         ...forbiddenEntries,
         "base/assets/public/bun.png",
+        "base/assets/public/dexterity.js",
+        "base/dex/classes.dex",
         "base/lib/arm64-v8a/libc++_shared.so",
       ]),
     ).toEqual(forbiddenEntries);
@@ -1237,6 +1290,40 @@ describe("Android Cloud outer audit boundary", () => {
         /android-cloud AAB attestation .*"sha256":"[a-f0-9]{64}"/,
       );
       expect(log.mock.calls.at(-1)?.[0]).toContain("artifact audit passed");
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects a cloud AAB smuggling a dex under assets before inspection", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-assets-dex-"),
+    );
+    const log = vi.fn();
+    const inspectAndroidAppBundleImpl = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir, {
+        extraEntries: {
+          "base/assets/classes.dex": Buffer.from(
+            "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
+            "utf8",
+          ),
+        },
+      });
+
+      expect(() =>
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          { inspectAndroidAppBundleImpl, log },
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_CLOUD_RUNTIME_PAYLOAD_PRESENT",
+          message: expect.stringContaining("base/assets/classes.dex"),
+        }),
+      );
+      expect(inspectAndroidAppBundleImpl).not.toHaveBeenCalled();
+      expect(log).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(temporaryDir, { force: true, recursive: true });
     }
@@ -1732,6 +1819,31 @@ describe("inspectAndroidAppBundle", () => {
       ),
     ).toThrow(
       "feature/dex/classes2.dex contains forbidden LP3 marker: lp3_color_policy",
+    );
+  });
+
+  it("rejects an LP3 marker in a dex smuggled outside a module dex dir", () => {
+    const harness = successfulToolHarness();
+    const readDexEntries = (dexEntries) =>
+      dexEntries.map((entry) =>
+        Buffer.from(
+          entry === "base/assets/classes.dex"
+            ? "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY"
+            : "clean base dex",
+          "utf8",
+        ),
+      );
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({
+          entries: [...BASE_ENTRIES, "base/assets/classes.dex"],
+          readDexEntries,
+        }),
+        harness.deps,
+      ),
+    ).toThrow(
+      "base/assets/classes.dex contains forbidden LP3 marker: ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
     );
   });
 

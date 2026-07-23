@@ -5626,7 +5626,13 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
     const isNativeLibrary = /(^|\/)lib\//i.test(normalized);
     return (
       /(^|\/)assets\/agent\//i.test(normalized) ||
-      (isAsset && isCloudBannedAsset(baseName)) ||
+      // A local-runtime shared library or a loadable dex under assets/ is the
+      // same contraband as one packaged conventionally — cloud thin clients
+      // must not ship dynamically-loadable native or DEX code at any path.
+      (isAsset &&
+        (isCloudBannedAsset(baseName) ||
+          isCloudBannedNativeLibrary(baseName) ||
+          /\.dex$/i.test(baseName))) ||
       (isNativeLibrary && isCloudBannedNativeLibrary(baseName))
     );
   });
@@ -6817,6 +6823,12 @@ export function createAndroidBuildEnv(
       : {}),
     ANDROID_HOME: androidSdkRoot,
     ANDROID_SDK_ROOT: androidSdkRoot,
+    // The Gradle AAB-audit finalizer resolves this orchestrator by walking up
+    // from the android project dir, which only lands on a source checkout. In
+    // npm-packages / white-label layouts the walk misses, so pass the running
+    // script's own absolute path through for the finalizer to prefer.
+    ELIZA_MOBILE_AUDIT_SCRIPT:
+      env.ELIZA_MOBILE_AUDIT_SCRIPT?.trim() || fileURLToPath(import.meta.url),
     JAVA_HOME: javaHome,
     NODE_BINARY: env.NODE_BINARY?.trim() || process.execPath,
     PATH: prependPath(env, [

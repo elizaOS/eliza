@@ -43,6 +43,7 @@ export const ANDROID_LP3_POLICY_MARKERS = Object.freeze(["lp3_color_policy"]);
 
 const AAB_MANIFEST_ENTRY = /^([^/\\]+)\/manifest\/AndroidManifest\.xml$/;
 const AAB_DEX_ENTRY = /^([^/\\]+)\/dex\/classes\d*\.dex$/;
+const AAB_STRAY_DEX_ENTRY = /\.dex$/i;
 const ANDROID_XML_NAMESPACE = "http://schemas.android.com/apk/res/android";
 const MANIFEST_COMPONENT_ELEMENTS = Object.freeze([
   "activity",
@@ -396,7 +397,11 @@ export function listAabManifestModules(
 
 /**
  * Selects code entries from every module while rejecting extraction paths that
- * could escape the caller's temporary directory.
+ * could escape the caller's temporary directory. Any other packaged `.dex`
+ * (for example one smuggled under `base/assets/` for runtime DexClassLoader
+ * use) is selected too, so the marker policy covers every loadable code path —
+ * the retained APK contract scans `classes*.dex` at any depth for the same
+ * reason.
  */
 export function listAabDexEntries(
   entries,
@@ -407,13 +412,30 @@ export function listAabDexEntries(
   const dexEntries = [];
   for (const entry of entries) {
     const match = entry.match(AAB_DEX_ENTRY);
-    if (!match) continue;
-    if (!isSafeModuleName(match[1])) {
-      throw androidAabAuditError(
-        `[mobile-build] Android App Bundle contains an unsafe DEX module name: ${match[1]}`,
-      );
+    if (match) {
+      if (!isSafeModuleName(match[1])) {
+        throw androidAabAuditError(
+          `[mobile-build] Android App Bundle contains an unsafe DEX module name: ${match[1]}`,
+        );
+      }
+      dexEntries.push(entry);
+      continue;
     }
-    dexEntries.push(entry);
+    if (AAB_STRAY_DEX_ENTRY.test(entry)) {
+      const segments = entry.split("/");
+      if (
+        entry.includes("\\") ||
+        entry.includes("\0") ||
+        segments.some(
+          (segment) => segment === "" || segment === "." || segment === "..",
+        )
+      ) {
+        throw androidAabAuditError(
+          `[mobile-build] Android App Bundle contains an unsafe DEX entry path: ${entry}`,
+        );
+      }
+      dexEntries.push(entry);
+    }
   }
   const sorted = uniqueSorted(dexEntries);
   if (sorted.length > maxEntries) {
@@ -928,7 +950,9 @@ export function inspectAndroidAppBundle(
   const dexEntries = listAabDexEntries(entries, {
     maxEntries: maxDexEntries,
   });
-  if (dexEntries.length === 0) {
+  // Stray .dex entries widen the scan but can never satisfy the positive
+  // must-ship-code assertion: a real app always carries a module classes.dex.
+  if (!dexEntries.some((entry) => AAB_DEX_ENTRY.test(entry))) {
     throw androidAabAuditError(
       `[mobile-build] Android App Bundle has no module dex/classes*.dex entries: ${resolvedArtifact}`,
     );
