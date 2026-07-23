@@ -170,4 +170,45 @@ describe("cloud pair session token adoption", () => {
       { key: "eliza:cloud-pair:api-token", value: "legacy-token" },
     ]);
   });
+
+  // COLD-START CONTRACT (#16900-class relogin, PWA force-close):
+  // Force-closing an installed iOS PWA wipes sessionStorage AND the in-memory
+  // boot config; ONLY durable localStorage survives. On reopen, adoption must
+  // re-establish a token-bearing cloud active-server from that lone durable
+  // channel so startup restore has a bearer to probe /api/auth/me with — the
+  // precondition that keeps the shell OFF the "Open this agent from Eliza
+  // Cloud" interstitial. If this contract breaks, the cold-start restore path
+  // silently 401s into the relogin wall on every launch.
+  it("restores a token-bearing cloud active-server from durable storage alone (force-close cold start)", () => {
+    const calls = runCloudPairSessionTokenHelper({
+      // Simulate force-close: no legacy session token, no in-memory config —
+      // only the durable localStorage mirror is left.
+      durableToken: "durable-agent-key",
+      legacyToken: null,
+    });
+
+    // The lone durable channel is consulted and adopted; the legacy session
+    // channel is NOT needed (it is empty after a force-close anyway).
+    expect(calls.durableReads).toEqual([{ key: "eliza:cloud-pair:api-token" }]);
+    expect(calls.tokens).toEqual(["durable-agent-key"]);
+
+    // Restore's precondition: exactly one cloud active-server, carrying the
+    // adopted bearer. Without the accessToken here, startup restore hands the
+    // client a null token, /api/auth/me 401s, and the interstitial renders.
+    expect(calls.activeServers).toHaveLength(1);
+    expect(calls.activeServers[0]).toMatchObject({
+      kind: "cloud",
+      accessToken: "durable-agent-key",
+    });
+    expect(calls.profiles).toHaveLength(1);
+    expect(calls.profiles[0]).toMatchObject({
+      kind: "cloud",
+      accessToken: "durable-agent-key",
+    });
+
+    // A pure durable read must not re-write durable storage (no churn / no
+    // legacy-migration write when the durable copy already exists).
+    expect(calls.shellWrites).toEqual([]);
+    expect(calls.rawWrites).toEqual([]);
+  });
 });
