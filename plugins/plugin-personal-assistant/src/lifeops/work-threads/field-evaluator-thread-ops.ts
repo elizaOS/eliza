@@ -14,6 +14,15 @@
  *   2. Returns an `ack-and-stop` preempt — the response handler emits a
  *      short acknowledgement reply and does NOT route to the planner.
  *
+ * Abort has one deterministic exception: an inline [CHOICE] widget tap
+ * re-enters as the option's bare `value` sent as an ordinary message, so a
+ * "cancel" pick is textually indistinguishable from a retraction to the
+ * Stage-1 model. When the message text exactly matches an option of a pending
+ * AWAITING_CHOICE task in this room, the pick must reach the owning action
+ * (which honors it — e.g. APP deletes its pending-intent task); aborting the
+ * turn here would strand that task and eat the pick (#16939). The handler
+ * suppresses the abort and stages the task's declared resolver action instead.
+ *
  * For all non-abort ops, the handler stages them as a dispatch payload that
  * the existing `lifeops_thread_control` action handler consumes (no need to
  * duplicate the validation / locking / atomic-merge logic).
@@ -265,6 +274,54 @@ function threadOpsParse(
 // handle — run the ops
 // ---------------------------------------------------------------------------
 
+/**
+ * When the incoming message text is exactly one of the option values of a
+ * pending AWAITING_CHOICE task in this room, it is a widget pick, not a
+ * retraction — return the action name that resolves the pick (the task's
+ * `choiceActionName`, defaulting to the core CHOOSE_OPTION action). Returns
+ * null when the message matches no pending option.
+ */
+async function pendingChoicePickAction(
+  ctx: ResponseHandlerFieldHandleContext<ThreadOp[]>,
+): Promise<string | null> {
+  const text = (ctx.message.content?.text ?? "").trim().toLowerCase();
+  if (!text || text.length > 64) return null;
+  const roomId =
+    typeof ctx.message.roomId === "string" ? ctx.message.roomId : "";
+  if (!roomId) return null;
+  const runtime = ctx.runtime as {
+    getTasks?: (query: {
+      roomId: string;
+      tags: string[];
+    }) => Promise<Array<{ metadata?: Record<string, unknown> }> | null>;
+  };
+  if (typeof runtime.getTasks !== "function") return null;
+  const pending = await runtime.getTasks({
+    roomId,
+    tags: ["AWAITING_CHOICE"],
+  });
+  for (const task of pending ?? []) {
+    const options = task.metadata?.options;
+    if (!Array.isArray(options)) continue;
+    const matched = options.some((option) => {
+      const value =
+        typeof option === "string"
+          ? option
+          : typeof (option as { name?: unknown })?.name === "string"
+            ? (option as { name: string }).name
+            : null;
+      return value !== null && value.trim().toLowerCase() === text;
+    });
+    if (matched) {
+      const resolver = task.metadata?.choiceActionName;
+      return typeof resolver === "string" && resolver.length > 0
+        ? resolver
+        : "CHOOSE_OPTION";
+    }
+  }
+  return null;
+}
+
 async function threadOpsHandle(
   ctx: ResponseHandlerFieldHandleContext<ThreadOp[]>,
 ): Promise<ResponseHandlerFieldEffect | undefined> {
@@ -275,6 +332,32 @@ async function threadOpsHandle(
   // Abort op runs FIRST and preempts the rest of the turn.
   const abortOp = ops.find((op) => op.type === "abort");
   if (abortOp) {
+    // Widget-pick guard: a bare CHOICE option value ("cancel") looks like a
+    // retraction to the Stage-1 model, but the pick belongs to the owning
+    // action. Route it there instead of killing the turn.
+    const pickAction = await pendingChoicePickAction(ctx);
+    if (pickAction) {
+      debug.push(
+        `abort suppressed: message matches a pending AWAITING_CHOICE option (resolver=${pickAction})`,
+      );
+      return {
+        mutateResult: (result) => {
+          result.shouldRespond = "RESPOND";
+          if (!Array.isArray(result.candidateActionNames)) {
+            result.candidateActionNames = [];
+          }
+          if (!result.candidateActionNames.includes(pickAction)) {
+            result.candidateActionNames.push(pickAction);
+          }
+          if (!Array.isArray(result.contexts)) result.contexts = [];
+          // The pick needs the planner (the resolver action does the work);
+          // "simple" would ship the Stage-1 ack as the whole turn.
+          result.contexts = result.contexts.filter((c) => c !== "simple");
+          if (result.contexts.length === 0) result.contexts = ["general"];
+        },
+        debug,
+      };
+    }
     const roomId =
       typeof ctx.message.roomId === "string" ? ctx.message.roomId : "";
     const reason =
