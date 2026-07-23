@@ -3006,7 +3006,11 @@ export function ContinuousChatOverlay({
     const livePilled = liveMode === "pill";
     const liveSheetOpen = liveMode === "half" || liveMode === "full";
     const liveFreeH = freeHRef.current;
-    const liveDetentH = !liveSheetOpen ? 0 : liveMode === "full" ? openH : halfH;
+    const liveDetentH = !liveSheetOpen
+      ? 0
+      : liveMode === "full"
+        ? openH
+        : halfH;
     const liveBaseH =
       liveFreeH != null ? Math.min(liveFreeH, panelMaxH) : liveDetentH;
     const open = livePilled ? 0 : 1;
@@ -3131,12 +3135,11 @@ export function ContinuousChatOverlay({
   // to overshoot below a full-height sheet, so start height carries the
   // intent). Otherwise the INPUT bar (short closes, small free rests).
   const collapseFromRelease = React.useCallback(() => {
-    // A gesture that did NOT start pilled but IS pilled at release already
-    // committed the pill MID-DRAG (the integrator's pill commit fired its
-    // haptic and blur) — the release only settles the springs. Without this,
-    // collapseToPill ran a second time and double-haptic'd every
+    // A gesture whose MID-DRAG pill commit already fired (haptic + blur +
+    // mode flip, possibly not yet flushed by React) only needs its springs
+    // settled — running collapseToPill again double-haptic'd every
     // drag-out-the-bottom.
-    if (pilled && dragStartModeRef.current !== "pill") {
+    if (pillCommittedMidDragRef.current) {
       settleDrag();
       return;
     }
@@ -4475,7 +4478,11 @@ export function ContinuousChatOverlay({
         dragStartHRef.current > 0
           ? -PILL_COMMIT_OVERSHOOT
           : -PILL_OPEN_DISTANCE / 2;
-      if (!pilled && cont <= pillCommitCont && !pillCommittedMidDragRef.current) {
+      if (
+        !pilled &&
+        cont <= pillCommitCont &&
+        !pillCommittedMidDragRef.current
+      ) {
         setFreeH(null);
         setMaximized(false);
         setMode("pill");
@@ -4605,7 +4612,10 @@ export function ContinuousChatOverlay({
     // current detent.
     onPullUp: () => {
       setDragPreviewMounted(false);
-      if (pilled) {
+      // Read the pill state through the mid-drag commit flag too: the commit
+      // can flip mode in the SAME event as this release, before React flushes
+      // the closure's `pilled`.
+      if (pilled || pillCommittedMidDragRef.current) {
         // PILL → open: a flick up opens; a HELD drag released with flick
         // velocity honors how far the finger actually carried the sheet — a
         // long pull from the pill lands FULL (or commits maximize past the 80%
@@ -4655,7 +4665,9 @@ export function ContinuousChatOverlay({
       setDragPreviewMounted(false);
       // Onboarding: a pull-down must not step the pinned-FULL sheet down.
       if (pinnedOpen) return settleDrag();
-      if (pilled) return settleDrag(); // already the lowest detent
+      // Already the lowest detent (incl. a same-event mid-drag pill commit
+      // React hasn't flushed into the closure yet).
+      if (pilled || pillCommittedMidDragRef.current) return settleDrag();
       if (sheetOpen) {
         // Step down from the LIVE height, so a flick and a held-drag-then-flick
         // both land where the finger left the sheet: a plain flick (height
@@ -4704,7 +4716,8 @@ export function ContinuousChatOverlay({
       setDragPreviewMounted(false);
       // Onboarding: a released drag always springs back to the pinned FULL.
       if (pinnedOpen) return settleDrag();
-      if (pilled) {
+      // Include a same-event mid-drag pill commit (see onPullUp).
+      if (pilled || pillCommittedMidDragRef.current) {
         // From the pill: a slow drag under the halfway-open mark (openProgress
         // < 0.5) springs back to the capsule; past it we commit to LEAVING the
         // pill — but we must NOT force the half detent. A short pull only forms
