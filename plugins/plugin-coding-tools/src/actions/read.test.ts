@@ -266,13 +266,20 @@ describe("READ", () => {
     expect(meta).toBeDefined();
   });
 
-  it("rejects relative paths", async () => {
-    const result = await readFileHandler(env.runtime, env.message, undefined, {
-      parameters: { file_path: "relative/path.txt" },
+  it("resolves relative paths against the session cwd", async () => {
+    const cwdRuntime = {
+      ...env.runtime,
+      getService: <T>(serviceType: string): T | null =>
+        serviceType === "CODING_TOOLS_SESSION_CWD"
+          ? ({ getCwd: () => env.tmpDir } as T)
+          : env.runtime.getService<T>(serviceType),
+    } as typeof env.runtime;
+    await fs.writeFile(path.join(env.tmpDir, "rel-note.md"), "hello cwd");
+    const result = await readFileHandler(cwdRuntime, env.message, undefined, {
+      parameters: { file_path: "rel-note.md" },
     });
-
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("invalid_param");
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("hello cwd");
   });
 
   it("rejects paths under the blocklist", async () => {

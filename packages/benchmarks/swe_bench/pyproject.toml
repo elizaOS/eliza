@@ -24,7 +24,7 @@ classifiers = [
 dependencies = [
     "eliza-adapter",
     "datasets==3.6.0",
-    "gitpython==3.1.44",
+    "gitpython==3.1.52",
     "unidiff==0.7.5",
     "docker==7.1.0",
     "swebench==4.1.0",

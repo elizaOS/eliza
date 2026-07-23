@@ -26,6 +26,7 @@ import {
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type { FileStateService } from "../services/file-state-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import {
@@ -171,6 +172,7 @@ export async function readFileHandler(
       message: "file_path is required",
     });
   }
+  const resolvedInput = resolveInputPath(runtime, conversationId, filePath);
 
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService
@@ -185,7 +187,7 @@ export async function readFileHandler(
     });
   }
 
-  const validated = await sandbox.validatePath(conversationId, filePath);
+  const validated = await sandbox.validatePath(conversationId, resolvedInput);
   if (validated.ok === false) {
     const reason =
       validated.reason === "blocked" ? "path_blocked" : "invalid_param";

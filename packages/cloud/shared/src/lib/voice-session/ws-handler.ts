@@ -132,8 +132,8 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
     },
   };
 
-  const fail = (code: string, message: string, closeCode = 1008): void => {
-    safeSend(socket, serializeServerFrame({ t: "error", code, retryable: false }));
+  const fail = (code: string, message: string, closeCode = 1008, retryable = false): void => {
+    safeSend(socket, serializeServerFrame({ t: "error", code, retryable }));
     state = "closed";
     try {
       socket.close(closeCode, message.slice(0, 120));
@@ -280,6 +280,14 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
         error && typeof error === "object" && "code" in error
           ? String((error as { code: unknown }).code)
           : "invalid_token";
+      // A transient revocation-store outage is NOT a terminal token failure
+      // (#16663): the server knows the failure is infrastructural, so tell
+      // the client it may re-mint and retry (1013 = try again later) instead
+      // of flattening it into the same non-retryable shape as `revoked`.
+      if (code === "store_unavailable") {
+        fail(code, "revocation store unavailable", 1013, true);
+        return;
+      }
       fail(code, "token verification failed");
       return;
     }

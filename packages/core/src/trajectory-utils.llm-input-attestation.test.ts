@@ -155,24 +155,27 @@ describe("final LLM input substring attestation", () => {
 	it.each([
 		["missing", "unrelated system context"],
 		["duplicate", "expected instruction expected instruction"],
-	])("rejects a %s instruction before invoking the provider", async (_label, systemPrompt) => {
-		const provider = vi.fn(async () => "unreachable");
-		await expect(
-			runWithLlmInputSubstringAttestation("expected instruction", () =>
-				recordLlmCall(
-					null,
-					details({
-						systemPrompt,
-						messages: [{ role: "user", content: "go" }],
-					}),
-					provider,
+	])(
+		"rejects a %s instruction before invoking the provider",
+		async (_label, systemPrompt) => {
+			const provider = vi.fn(async () => "unreachable");
+			await expect(
+				runWithLlmInputSubstringAttestation("expected instruction", () =>
+					recordLlmCall(
+						null,
+						details({
+							systemPrompt,
+							messages: [{ role: "user", content: "go" }],
+						}),
+						provider,
+					),
 				),
-			),
-		).rejects.toMatchObject({
-			code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISMATCH",
-		});
-		expect(provider).not.toHaveBeenCalled();
-	});
+			).rejects.toMatchObject({
+				code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISMATCH",
+			});
+			expect(provider).not.toHaveBeenCalled();
+		},
+	);
 
 	it("rejects a completed scope that never reached a model boundary", async () => {
 		await expect(
