@@ -9,16 +9,28 @@
  *
  * The service now caches ONE runner per agent that reads through a mutable
  * clock ref rebound on every `getRunner` call.
+ *
+ * Also covers the runner host's dispatcher wrapping: the built-in
+ * coding-agent channel and the contributed dispatch-channel registry
+ * (registry semantics, per-dispatch routing through the REAL runner, typed
+ * failure driving the dispatch policy, and delegation for other channels).
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, isElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
 import {
   buildPrShepherdScheduleInput,
   GITHUB_PR_SHEPHERD_SERVICE_TYPE,
   ORCHESTRATOR_TASK_SERVICE_TYPE,
+  PR_SHEPHERD_DISPATCH_CHANNEL,
 } from "../coding-agent-schedules.js";
+import {
+  getScheduledTaskChannelDispatcher,
+  listScheduledTaskChannelDispatcherKeys,
+  registerScheduledTaskChannelDispatcher,
+} from "./channel-dispatcher-registry.js";
+import type { ScheduledTaskDispatchRecord } from "./runner.js";
 import { ScheduledTaskRunnerService } from "./runner-service.js";
 
 function makeFakeRuntime(): IAgentRuntime {
@@ -168,5 +180,194 @@ describe("ScheduledTaskRunnerService — rebindable tick clock", () => {
     expect(createdTasks).toHaveLength(1);
     expect(createdTasks[0]?.title).toBe("PR shepherd: elizaOS/eliza#16455");
     expect(createdTasks[0]?.metadata?.mergeDisabled).toBe(true);
+  });
+});
+
+describe("contributed dispatch channels — registry semantics + runner routing", () => {
+  it("registers, resolves, and lists per runtime; other runtimes see nothing", () => {
+    const runtimeA = makeFakeRuntime();
+    const runtimeB = makeFakeRuntime();
+    registerScheduledTaskChannelDispatcher(runtimeA, {
+      channelKey: "test_channel",
+      dispatch: async () => ({ ok: true }),
+    });
+    expect(
+      getScheduledTaskChannelDispatcher(runtimeA, "test_channel"),
+    ).not.toBeNull();
+    expect(getScheduledTaskChannelDispatcher(runtimeB, "test_channel")).toBe(
+      null,
+    );
+    expect(listScheduledTaskChannelDispatcherKeys(runtimeA)).toEqual([
+      "test_channel",
+    ]);
+    expect(listScheduledTaskChannelDispatcherKeys(runtimeB)).toEqual([]);
+  });
+
+  it("rejects duplicate channel keys and malformed contributions", () => {
+    const runtime = makeFakeRuntime();
+    registerScheduledTaskChannelDispatcher(runtime, {
+      channelKey: "dup_channel",
+      dispatch: async () => undefined,
+    });
+    expect(() =>
+      registerScheduledTaskChannelDispatcher(runtime, {
+        channelKey: "dup_channel",
+        dispatch: async () => undefined,
+      }),
+    ).toThrow(/duplicate channel "dup_channel"/);
+    expect(() =>
+      registerScheduledTaskChannelDispatcher(runtime, {
+        channelKey: "",
+        dispatch: async () => undefined,
+      }),
+    ).toThrow(/channelKey required/);
+    expect(() =>
+      registerScheduledTaskChannelDispatcher(runtime, {
+        channelKey: "no_dispatch",
+        // @ts-expect-error deliberately malformed
+        dispatch: null,
+      }),
+    ).toThrow(/dispatch function required/);
+  });
+
+  it("rejects reserved/built-in channel keys so a contribution cannot hijack them", () => {
+    // Contributed lookup runs BEFORE the built-in channels at dispatch time,
+    // so without this guard a registration under the pr-shepherd channel or a
+    // host connector kind would silently reroute that channel's dispatches.
+    const runtime = makeFakeRuntime();
+    let thrown: unknown;
+    try {
+      registerScheduledTaskChannelDispatcher(runtime, {
+        channelKey: PR_SHEPHERD_DISPATCH_CHANNEL,
+        dispatch: async () => ({ ok: true }),
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(isElizaError(thrown)).toBe(true);
+    if (!isElizaError(thrown)) throw new Error("expected ElizaError");
+    expect(thrown.code).toBe("SCHEDULED_TASK_CHANNEL_KEY_RESERVED");
+    expect(thrown.message).toContain(PR_SHEPHERD_DISPATCH_CHANNEL);
+    expect(thrown.message).toContain("reserved");
+
+    for (const hostKey of ["imessage", "in_app", "telegram"]) {
+      expect(() =>
+        registerScheduledTaskChannelDispatcher(runtime, {
+          channelKey: hostKey,
+          dispatch: async () => ({ ok: true }),
+        }),
+      ).toThrow(/reserved for a built-in dispatch channel/);
+    }
+
+    // Nothing leaked into the registry — built-in routing stays untouched.
+    expect(
+      getScheduledTaskChannelDispatcher(runtime, PR_SHEPHERD_DISPATCH_CHANNEL),
+    ).toBeNull();
+    expect(listScheduledTaskChannelDispatcherKeys(runtime)).toEqual([]);
+  });
+
+  it("routes fires on a contributed channel to the contribution — including registrations made after the runner was built", async () => {
+    const runtime = makeFakeRuntime();
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const agentId = runtime.agentId;
+    const runner = service.getRunner({ agentId });
+
+    // Register AFTER the cached runner exists — lookup is per-dispatch.
+    const dispatched: ScheduledTaskDispatchRecord[] = [];
+    registerScheduledTaskChannelDispatcher(runtime, {
+      channelKey: "late_contributed_channel",
+      dispatch: async (record) => {
+        dispatched.push(record);
+        return { ok: true, messageId: `contributed:${record.taskId}` };
+      },
+    });
+
+    const task = await runner.schedule({
+      kind: "watcher",
+      promptInstructions:
+        "Structural recipe task; this text is never dispatched.",
+      trigger: { kind: "manual" },
+      priority: "low",
+      escalation: {
+        steps: [{ delayMinutes: 0, channelKey: "late_contributed_channel" }],
+      },
+      respectsGlobalPause: false,
+      source: "plugin",
+      createdBy: agentId,
+      ownerVisible: false,
+    });
+    const fired = await runner.fire(task.taskId);
+    expect(fired.state.status).toBe("fired");
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]?.channelKey).toBe("late_contributed_channel");
+    expect(fired.metadata?.lastDispatchResult).toMatchObject({
+      ok: true,
+      messageId: `contributed:${task.taskId}`,
+    });
+  });
+
+  it("a typed failure from a contributed dispatcher drives the runner's dispatch policy (retry, not fake-fired)", async () => {
+    const runtime = makeFakeRuntime();
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const agentId = runtime.agentId;
+    const runner = service.getRunner({ agentId });
+
+    registerScheduledTaskChannelDispatcher(runtime, {
+      channelKey: "failing_contributed_channel",
+      dispatch: async () => ({
+        ok: false,
+        reason: "transport_error",
+        userActionable: false,
+        retryAfterMinutes: 5,
+        message: "upstream balance source unavailable",
+      }),
+    });
+
+    const task = await runner.schedule({
+      kind: "watcher",
+      promptInstructions: "Structural recipe task.",
+      trigger: { kind: "manual" },
+      priority: "low",
+      escalation: {
+        steps: [{ delayMinutes: 0, channelKey: "failing_contributed_channel" }],
+      },
+      respectsGlobalPause: false,
+      source: "plugin",
+      createdBy: agentId,
+      ownerVisible: false,
+    });
+    const outcome = await runner.fireWithResult(task.taskId);
+    // The dispatch policy parks the row for a same-step retry — the fire is
+    // NOT recorded as a successful send.
+    expect(outcome.kind).toBe("dispatch_deferred");
+  });
+
+  it("leaves non-contributed channels on the default dispatcher path", async () => {
+    const runtime = makeFakeRuntime();
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const agentId = runtime.agentId;
+    const runner = service.getRunner({ agentId });
+
+    registerScheduledTaskChannelDispatcher(runtime, {
+      channelKey: "unused_channel",
+      dispatch: async () => {
+        throw new Error("must not be called for other channels");
+      },
+    });
+
+    const task = await runner.schedule({
+      kind: "reminder",
+      promptInstructions: "Remind the owner to stretch.",
+      trigger: { kind: "manual" },
+      priority: "medium",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      createdBy: agentId,
+      ownerVisible: true,
+    });
+    const fired = await runner.fire(task.taskId);
+    // Default in_app dispatcher (model-render stub) handled it.
+    expect(fired.state.status).toBe("fired");
+    expect(fired.metadata?.lastDispatchResult).toMatchObject({ ok: true });
   });
 });

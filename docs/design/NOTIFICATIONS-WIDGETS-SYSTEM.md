@@ -422,6 +422,20 @@ Items 1–2 are pure wins with no product debate. Items 3–5 change the residen
 set and should land as one reviewable sweep (same shape as #14485). Item 6 is
 runtime + store. Item 7 is mostly ratification.
 
+**Item 3 decision record (wallet-on-home, closed 2026-07-23).** The demotion
+stands. Decided in #14560, landed in #14669 (home declaration removed;
+`run-home-screen-e2e.mjs` asserts the quiet home carries no wallet card), and
+completed in #16943 with both promised compensations: the price surface
+(BTC/SOL/ETH default / top-3 held, price-only #10706) renders on the routed
+wallet section root (`packages/ui/src/components/pages/WalletSectionNav.tsx`),
+and the material-balance-delta notification ships as a structural
+`kind: "watcher"` ScheduledTask on the scheduling spine
+(`packages/agent/src/runtime/wallet-balance-delta.ts`, category `general`,
+groupKey `wallet:balance-delta`, percent-only lock-screen-safe copy). The MVP
+workstream-3 bar (`packages/docs/ongoing-development/mvp/MVP.md`) and the
+launcher audit (`packages/docs/ongoing-development/research/03-launcher-widgets.md`)
+restate their wallet criteria against the routed surface accordingly.
+
 ---
 
 *Spec owner: this document. Amend by PR with rationale; the principles in §A
