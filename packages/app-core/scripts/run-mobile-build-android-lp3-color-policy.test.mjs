@@ -2,6 +2,8 @@
  * Proves that LP3 color persistence is an explicit direct-build delta and that
  * ordinary Cloud/Play transforms remove every component and permission.
  */
+
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +29,7 @@ import {
 } from "./run-mobile-build.mjs";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const mobileBuildScriptPath = path.join(scriptsDir, "run-mobile-build.mjs");
 const androidRoot = path.resolve(scriptsDir, "../platforms/android");
 const manifestPath = path.join(androidRoot, "app/src/main/AndroidManifest.xml");
 const gradlePath = path.join(androidRoot, "app/build.gradle");
@@ -62,6 +65,24 @@ function stripManifest(xml, policy) {
 }
 
 describe("LP3 direct Cloud build flag", () => {
+  it("rejects the LP3 flag at the real process boundary before building", () => {
+    const result = spawnSync("node", [mobileBuildScriptPath, "android-cloud"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
+      },
+      timeout: 15_000,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).toContain(
+      "restricted to the canonical android-cloud-debug",
+    );
+  });
+
   it("accepts only explicit truthy values", () => {
     expect(isAndroidLp3ColorPolicyEnabled({})).toBe(false);
     expect(
