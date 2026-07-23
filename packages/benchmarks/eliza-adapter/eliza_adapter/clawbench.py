@@ -52,6 +52,21 @@ _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
 }
 
 
+# Eliza's built-in conversational response actions carry no side-effecting
+# handler — they ARE the natural-language answer, which the runtime surfaces
+# separately as ``resp.text``. Mirrors ``NON_EXECUTABLE_RESPONSE_ACTION_NAMES``
+# in ``@elizaos/core`` (``packages/core/src/action-names.ts``). ClawBench scores
+# a declared-tool trajectory plus a final answer, exactly as the hermes/openclaw
+# native tool bridges present it: the model's answer is ``text`` and tool_calls
+# hold only real function calls. Surfacing REPLY/NONE/IGNORE as a "tool call"
+# would make the harness reject the eliza leg for an "undeclared tool" that is
+# in fact the answer channel, so they are filtered here — while any genuinely
+# undeclared NON-reply tool still flows through to the runner and fails fast.
+_NON_TOOL_RESPONSE_ACTIONS: Final[frozenset[str]] = frozenset(
+    {"REPLY", "NONE", "IGNORE"}
+)
+
+
 def _compute_cost_usd(
     model: str | None, prompt_tokens: int, completion_tokens: int
 ) -> float | None:
@@ -238,6 +253,10 @@ def build_clawbench_agent_fn(
                 )
                 if not isinstance(name, str) or not name.strip():
                     continue
+                if name.strip() in _NON_TOOL_RESPONSE_ACTIONS:
+                    # Answer channel, not a declared-tool invocation — the text
+                    # is already carried by ``resp.text`` below.
+                    continue
                 args_raw = (
                     entry.get("arguments")
                     if "arguments" in entry
@@ -264,6 +283,10 @@ def build_clawbench_agent_fn(
         if not tool_calls:
             for action in getattr(resp, "actions", []) or []:
                 if not isinstance(action, str) or not action:
+                    continue
+                if action.strip() in _NON_TOOL_RESPONSE_ACTIONS:
+                    # Eliza's built-in REPLY/NONE/IGNORE responses are the
+                    # answer, surfaced as ``resp.text`` — never a benchmark tool.
                     continue
                 params = resp.params if isinstance(resp.params, dict) else {}
                 action_args = params.get(action, {})
