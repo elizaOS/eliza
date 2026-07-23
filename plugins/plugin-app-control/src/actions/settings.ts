@@ -1859,6 +1859,9 @@ async function handleSet(
 	return {
 		success: true,
 		text: reply,
+		userFacingText: reply,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			section: request.sectionId,
 			key: keyName,
@@ -2122,6 +2125,9 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 				return {
 					success: true,
 					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					data: { sections: listing },
 				};
 			}

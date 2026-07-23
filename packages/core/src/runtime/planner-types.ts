@@ -140,6 +140,19 @@ export interface PlannerToolResult {
 	summary?: string;
 	data?: Record<string, unknown>;
 	error?: unknown;
+	/**
+	 * Action-owned completion signal that is honored only for a single executed
+	 * tool after the plan queue drains and the successful result carries verified
+	 * canonical user-facing text. It never discards already-queued calls or
+	 * replaces evaluation of a multi-tool turn. `false` explicitly requires
+	 * evaluation, while omission delegates completion to the planner/evaluator.
+	 */
+	turnComplete?: boolean;
+	/**
+	 * Explicit chain-control override. `false` unconditionally aborts the
+	 * remaining planner queue, including for legacy failure and fire-and-forget
+	 * results. It is distinct from the conservative `turnComplete` fast path.
+	 */
 	continueChain?: boolean;
 }
 

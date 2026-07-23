@@ -873,7 +873,23 @@ export interface ActionResult {
 	/** Error information if the action failed */
 	error?: string | Error;
 
-	/** Whether to continue the action chain (for chained actions) */
+	/**
+	 * Declares that this result fully answers a single-operation turn. The
+	 * planner may skip its in-loop evaluator only when this was the turn's sole
+	 * executed tool, no planned tools remain, the result succeeded, and it
+	 * supplies safe canonical `userFacingText` via `verifiedUserFacing`. Unlike
+	 * `continueChain: false`, this does not discard already-queued tool calls.
+	 * Set `false` to explicitly require evaluation; omit it when the action has
+	 * no opinion about whether the overall turn is complete.
+	 */
+	turnComplete?: boolean;
+
+	/**
+	 * Explicit chain-control override. `false` aborts the remaining planner queue
+	 * and returns immediately, including for legacy failure and fire-and-forget
+	 * actions that do not own a complete user reply. Prefer `turnComplete` for the
+	 * safe single-operation evaluator fast path.
+	 */
 	continueChain?: boolean;
 
 	/** Optional cleanup function to execute after action completion */

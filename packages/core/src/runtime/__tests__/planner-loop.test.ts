@@ -13,6 +13,7 @@ import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__renderRoutingHintsBlockForTests,
+	actionResultToPlannerToolResult,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
@@ -2744,12 +2745,12 @@ describe("v5 planner loop skeleton", () => {
 
 describe("v5 planner loop — evaluator gate", () => {
 	// Conservative gate: when a successful tool drained the queue and the most
-	// recent planner output supplied an EXPLICIT `messageToUser` field, the
+	// recent planner output supplied an EXPLICIT `messageToUser` field, or the
+	// drained action result explicitly owns a verified terminal reply, the
 	// planner loop synthesizes a FINISH evaluator output and skips the
-	// evaluator's full LLM call. The six tests below pin the fire/withhold
-	// contract — including the discriminator that native-mode tool-call returns
-	// (which fall back to `text`) do NOT trigger the gate, because `text` can
-	// be a pre-tool thought rather than a final answer.
+	// evaluator's full LLM call. The tests below pin both fire paths and every
+	// conservative withhold condition. Native free text remains ambiguous
+	// because it can be a pre-tool thought rather than a final answer.
 
 	function plannerJsonWith(opts: {
 		messageToUser?: string;
@@ -2993,6 +2994,239 @@ describe("v5 planner loop — evaluator gate", () => {
 
 		expect(evaluate).toHaveBeenCalledTimes(1);
 		expect(result.finalMessage).toBe("Status: ok.");
+	});
+
+	it("SKIPS in native-mode when the action owns a terminal canonical result", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				text: "I should change the setting.",
+				toolCalls: [
+					{
+						id: "settings-1",
+						name: "SETTINGS",
+						arguments: {
+							action: "set",
+							section: "permissions",
+							key: "shell",
+							value: "off",
+						},
+					},
+				],
+			}),
+		};
+		const reply = "Shell access is off.";
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: reply,
+			userFacingText: reply,
+			verifiedUserFacing: true,
+			turnComplete: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+		}));
+		const recordedStages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "trj-native-action-owned"),
+			recordStage: vi.fn(
+				async (_trajectoryId: string, stage: RecordedStage) => {
+					recordedStages.push(stage);
+				},
+			),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+			recorder,
+			trajectoryId: "trj-native-action-owned",
+		});
+
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(reply);
+		expect(result.evaluator?.thought).toContain("action-owned");
+		expect(
+			recordedStages.find((stage) => stage.kind === "evaluation")?.evaluation
+				?.reason,
+		).toBe("action_terminal_result");
+	});
+
+	it("preserves action-owned completion through the canonical planner-result mapping", () => {
+		const result = actionResultToPlannerToolResult({
+			success: true,
+			text: "Settings updated.",
+			userFacingText: "Settings updated.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+
+		expect(result).toMatchObject({
+			success: true,
+			userFacingText: "Settings updated.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+	});
+
+	it("WITHHOLDS an action-owned completion while another native tool remains queued", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{ id: "settings-1", name: "SETTINGS", arguments: {} },
+					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
+			toolCall.name === "SETTINGS"
+				? {
+						success: true,
+						text: "Settings updated.",
+						userFacingText: "Settings updated.",
+						verifiedUserFacing: true,
+						turnComplete: true,
+					}
+				: { success: true, text: "Lookup complete." },
+		);
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "NEXT_RECOMMENDED" as const,
+				thought: "The queued lookup still needs to run.",
+				recommendedToolCallId: "lookup-1",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "All queued work is complete.",
+				messageToUser: "Settings updated and lookup complete.",
+			});
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+	});
+
+	it("WITHHOLDS when an action-owned completion follows another executed tool", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
+					{ id: "settings-1", name: "SETTINGS", arguments: {} },
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
+			toolCall.name === "SETTINGS"
+				? {
+						success: true,
+						text: "Settings updated.",
+						userFacingText: "Settings updated.",
+						verifiedUserFacing: true,
+						turnComplete: true,
+					}
+				: { success: true, text: "Lookup complete." },
+		);
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "NEXT_RECOMMENDED" as const,
+				thought: "Run the queued settings action.",
+				recommendedToolCallId: "settings-1",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The evaluator combines both completed operations.",
+				messageToUser: "Lookup complete and settings updated.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Lookup complete and settings updated.");
+		expect(result.evaluator?.thought).toContain("combines both");
+	});
+
+	it("WITHHOLDS an action-owned completion without canonical user-facing text", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [{ id: "settings-1", name: "SETTINGS", arguments: {} }],
+			}),
+		};
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The evaluator supplies the missing reply.",
+			messageToUser: "Settings updated.",
+		}));
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: "internal diagnostic",
+				verifiedUserFacing: true,
+				turnComplete: true,
+			})),
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+	});
+
+	it("WITHHOLDS when the action explicitly marks the turn incomplete", async () => {
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: "This planner reply is premature.",
+				toolCalls: [{ name: "LOOKUP", args: {} }],
+			}),
+		};
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The evaluator respects the action-owned disclaimer.",
+			messageToUser: "Lookup complete.",
+		}));
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: "Lookup partial.",
+				userFacingText: "Lookup partial.",
+				verifiedUserFacing: true,
+				turnComplete: false,
+			})),
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
 	});
 
 	it("WITHHOLDS on tool failure — evaluator IS called", async () => {
