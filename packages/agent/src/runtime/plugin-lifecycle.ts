@@ -19,6 +19,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   AgentContext,
   AgentRuntime,
+  IDatabaseAdapter,
   Plugin,
   PluginEventRegistration,
   PluginModelRegistration,
@@ -143,6 +144,11 @@ const pluginRegistrationContext =
 const pluginServiceStartContext =
   new AsyncLocalStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
+const pluginMigrationQueues = new WeakMap<IDatabaseAdapter, Promise<void>>();
+const pluginMigrationsInFlight = new WeakMap<
+  IDatabaseAdapter,
+  Map<string, Promise<void>>
+>();
 
 function getRuntimePrivateState(runtime: AgentRuntime): RuntimePrivateState {
   return runtime as AgentRuntime & RuntimePrivateState;
@@ -609,7 +615,7 @@ async function migratePluginSchemasIfReady(
   runtime: AgentRuntime,
   plugin: Plugin,
 ): Promise<void> {
-  if (!plugin.schema || typeof runtime.runPluginMigrations !== "function") {
+  if (!plugin.schema) {
     return;
   }
 
@@ -617,25 +623,10 @@ async function migratePluginSchemasIfReady(
   if (!adapter || typeof adapter.runPluginMigrations !== "function") {
     return;
   }
+  const runPluginMigrations = adapter.runPluginMigrations.bind(adapter);
 
   if (typeof adapter.isReady === "function") {
-    let ready = false;
-    try {
-      ready = await adapter.isReady();
-    } catch (error) {
-      runtime.logger.debug(
-        {
-          src: "plugin-lifecycle",
-          agentId: runtime.agentId,
-          plugin: plugin.name,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Skipping plugin schema migration because database readiness check failed",
-      );
-      return;
-    }
-
-    if (!ready) {
+    if (!(await adapter.isReady())) {
       runtime.logger.debug(
         {
           src: "plugin-lifecycle",
@@ -648,7 +639,50 @@ async function migratePluginSchemasIfReady(
     }
   }
 
-  await runtime.runPluginMigrations();
+  const isProduction = process.env.NODE_ENV === "production";
+  const activeMigrations = pluginMigrationsInFlight.get(adapter);
+  const existingMigration = activeMigrations?.get(plugin.name);
+  if (existingMigration) {
+    await existingMigration;
+    return;
+  }
+
+  const previous = pluginMigrationQueues.get(adapter);
+  // error-policy:J5 the registration that owns a failed migration observes its
+  // rejection; the next registration only waits for that adapter's queue slot.
+  const readyForTurn = previous
+    ? previous.catch(() => undefined)
+    : Promise.resolve();
+  const turn = readyForTurn.then(() =>
+    runPluginMigrations([{ name: plugin.name, schema: plugin.schema }], {
+      verbose: !isProduction,
+      force: process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true",
+      dryRun: false,
+    }),
+  );
+  pluginMigrationQueues.set(adapter, turn);
+  const migrationsByPlugin =
+    activeMigrations ?? new Map<string, Promise<void>>();
+  if (!activeMigrations) {
+    pluginMigrationsInFlight.set(adapter, migrationsByPlugin);
+  }
+  migrationsByPlugin.set(plugin.name, turn);
+  try {
+    await turn;
+  } finally {
+    if (pluginMigrationQueues.get(adapter) === turn) {
+      pluginMigrationQueues.delete(adapter);
+    }
+    if (migrationsByPlugin.get(plugin.name) === turn) {
+      migrationsByPlugin.delete(plugin.name);
+    }
+    if (
+      migrationsByPlugin.size === 0 &&
+      pluginMigrationsInFlight.get(adapter) === migrationsByPlugin
+    ) {
+      pluginMigrationsInFlight.delete(adapter);
+    }
+  }
 }
 
 /**
@@ -703,7 +737,11 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
   const baseRegisterPlugin = runtime.registerPlugin.bind(runtime);
   const baseUnloadPlugin = runtime.unloadPlugin?.bind(runtime);
   runtime.registerPlugin = (async (plugin: Plugin) => {
-    await baseRegisterPlugin(plugin);
+    if (runtime.plugins.some((registered) => registered.name === plugin.name)) {
+      await baseRegisterPlugin(plugin);
+      return;
+    }
+    let registeredHere = false;
     try {
       // #12087 Item 1: gate this plugin's sensitive providers (SECRETS_STATUS,
       // walletPortfolio, shellHistory, …) at the moment it registers, not via a
@@ -715,12 +753,20 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       // covered by the boot pass are unaffected.
       applyPluginRoleGating([plugin]);
       await migratePluginSchemasIfReady(runtime, plugin);
+      if (
+        runtime.plugins.some((registered) => registered.name === plugin.name)
+      ) {
+        await baseRegisterPlugin(plugin);
+        return;
+      }
+      await baseRegisterPlugin(plugin);
+      registeredHere = runtime.plugins.includes(plugin);
       await registerPluginViews(plugin);
       registerViewScopedActions(runtime, plugin.name, plugin.views ?? []);
     } catch (error) {
       unregisterPluginViews(plugin.name);
       unregisterViewScopedActions(runtime, plugin.name);
-      if (baseUnloadPlugin) {
+      if (baseUnloadPlugin && registeredHere) {
         await baseUnloadPlugin(plugin.name);
       }
       throw error;
@@ -960,6 +1006,10 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
   }
 
   runtime.registerPlugin = (async (plugin: Plugin) => {
+    if (runtime.plugins.some((registered) => registered.name === plugin.name)) {
+      await originalRegisterPlugin(plugin);
+      return;
+    }
     const pluginsBefore = new Set(runtime.plugins);
     const routesBefore = new Set(runtime.routes);
     const capture: RuntimePluginRegistrationCapture = {
@@ -968,6 +1018,13 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     };
 
     try {
+      await migratePluginSchemasIfReady(runtime, plugin);
+      if (
+        runtime.plugins.some((registered) => registered.name === plugin.name)
+      ) {
+        await originalRegisterPlugin(plugin);
+        return;
+      }
       await pluginRegistrationContext.run(capture, async () => {
         await originalRegisterPlugin(plugin);
       });
@@ -977,7 +1034,6 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
         pluginsBefore,
         routesBefore,
       );
-      await migratePluginSchemasIfReady(runtime, plugin);
       if (
         capture.ownership.registeredPlugin ||
         capture.ownership.actions.length > 0 ||

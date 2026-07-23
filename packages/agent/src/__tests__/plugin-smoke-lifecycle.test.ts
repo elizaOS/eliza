@@ -256,10 +256,19 @@ describe("mixed plugins — two plugins coexist, one unloads cleanly", () => {
 });
 
 describe("schema-bearing plugin registration", () => {
-  it("runs plugin migrations after a schema plugin registers against a ready adapter", async () => {
+  it("runs plugin migrations before publishing a schema plugin against a ready adapter", async () => {
     const runtime = createTestRuntime();
     installRuntimePluginLifecycle(runtime);
-    const runPluginMigrations = vi.fn(async () => {});
+    const lifecycle: string[] = [];
+    const runPluginMigrations = vi.fn(async () => {
+      lifecycle.push("migration");
+      expect(
+        runtime.plugins.some((plugin) => plugin.name === "schema-ready-plugin"),
+      ).toBe(false);
+      expect(
+        runtime.actions.some((action) => action.name === "SCHEMA_READY_ACTION"),
+      ).toBe(false);
+    });
 
     runtime.registerDatabaseAdapter({
       isReady: async () => true,
@@ -274,6 +283,9 @@ describe("schema-bearing plugin registration", () => {
           id: "text",
         },
       },
+      init: async () => {
+        lifecycle.push("init");
+      },
       actions: [
         {
           name: "SCHEMA_READY_ACTION",
@@ -286,6 +298,7 @@ describe("schema-bearing plugin registration", () => {
       ],
     });
 
+    expect(lifecycle).toEqual(["migration", "init"]);
     expect(runPluginMigrations).toHaveBeenCalledOnce();
     expect(runPluginMigrations).toHaveBeenCalledWith(
       [
