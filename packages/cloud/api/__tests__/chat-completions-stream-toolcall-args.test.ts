@@ -96,7 +96,10 @@ type ToolCallFragment = {
 
 /** Aggregate fragments per index exactly the way an OpenAI streaming client does. */
 function aggregateToolCalls(jsonFrames: Array<Record<string, unknown>>) {
-  const byIndex = new Map<number, { id?: string; name?: string; args: string }>();
+  const byIndex = new Map<
+    number,
+    { id?: string; name?: string; args: string }
+  >();
   for (const frame of jsonFrames) {
     const choices = frame.choices as
       | Array<{ delta?: { tool_calls?: ToolCallFragment[] } }>
