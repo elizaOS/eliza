@@ -108,8 +108,8 @@ directly.
 
 The heavy post-merge develop **test lanes** in `test.yml` run on the self-hosted
 `self-hosted, hetzner-robot` pool (GitHub-hosted minutes are billing-frozen for
-this org, #13481). Pull requests use the ordinary lint, typecheck, build, and
-security workflows and remain independent of the exhaustive fleet:
+this org, #13481). Everything the pre-merge **Develop PR Gate** depends on is
+the lightweight PR surface and remains independent of the exhaustive fleet:
 
 - **Path classifiers** (`Classify changed paths`) across `test.yml`,
   `scenario-pr.yml`, `dev-smoke.yml`, `docker-ci-smoke.yml`,
@@ -117,9 +117,18 @@ security workflows and remain independent of the exhaustive fleet:
   `windows-desktop-preload-smoke.yml` run on `ubuntu-24.04`. They are git-diff +
   node scripts with no self-hosted needs; pinning them to the fleet (#8501) once
   left every downstream job queued indefinitely and gridlocked develop.
+- **`Develop PR Gate`** runs on `ubuntu-24.04` and only observes check metadata
+  from the nine lightweight component contexts. It never waits for post-merge,
+  scheduled, device, aesthetic, or exhaustive suites.
 - **`ci-ok`**, `plugin-tests-status`, and `merge-quality-gate` remain hosted
   roll-ups inside the post-merge `test.yml` orchestrator. They report branch
   health after a develop push; they are not the pre-merge required context.
+
+The aggregate contract runs directly under Node in
+`packages/scripts/develop-pr-aggregate.self-test.mjs`; the changed-file gate
+loads the same assertions through
+`packages/scripts/develop-pr-aggregate.test.mjs` so the implementation also
+appears in changed-source coverage reporting.
 
 Two SPOF guards, enforced by `packages/scripts/ci-merge-gate-contract.mjs` (run
 in the `changes` job, #13617):
