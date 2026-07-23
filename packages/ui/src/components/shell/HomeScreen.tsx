@@ -1,6 +1,6 @@
 /**
- * Composes the shell home screen as one vertical notification-and-app surface
- * beneath the floating chat.
+ * Composes the shell home dashboard from notifications and ranked widgets;
+ * launcher apps remain on the adjacent swipe page.
  */
 import type * as React from "react";
 import {
@@ -23,14 +23,63 @@ import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 // A gentle staggered fade-up as the home settles in - iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
 // animation-delay (set inline) so the cards/tiles cascade in.
-const HOME_ENTER_CSS = `
+const HOME_SCREEN_CSS = `
 @keyframes home-enter {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
 .home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; }
+
+/* The shade and secondary home content share one settle clock. Pull previews
+   allocate space before the shade commits, while committed closes release that
+   space on the same velocity-aware duration as the notification cards. */
+[data-home-notification-region] {
+  flex-grow: 0;
+  max-height: 40%;
+  transition:
+    flex-grow var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
+    max-height var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1);
+}
+[data-home-below-notifications] {
+  display: grid;
+  flex-grow: 1;
+  grid-template-rows: 1fr;
+  min-height: 0;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    flex-grow var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
+    grid-template-rows var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
+    opacity 220ms ease-out;
+}
+[data-home-below-notifications-inner] {
+  min-height: 0;
+}
+[data-testid="home-content-column"][data-home-has-notifications]:has(
+  [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
+) [data-home-notification-region],
+[data-testid="home-content-column"][data-home-has-notifications]:has(
+  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+) [data-home-notification-region] {
+  flex-grow: 1;
+  max-height: 100%;
+}
+[data-testid="home-content-column"][data-home-has-notifications]:has(
+  [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
+) [data-home-below-notifications],
+[data-testid="home-content-column"][data-home-has-notifications]:has(
+  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+) [data-home-below-notifications] {
+  flex-grow: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
 @media (prefers-reduced-motion: reduce) {
   .home-enter { animation: none; }
+  [data-home-notification-region],
+  [data-home-below-notifications] { transition: none; }
 }
 `;
 
@@ -114,6 +163,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
   const homeScreenRef = useRef<HTMLDivElement>(null);
+  const homeContentColumnRef = useRef<HTMLDivElement>(null);
   const appsRegionRef = useRef<HTMLElement>(null);
   const displacedAppFocusRef = useRef<HTMLElement | null>(null);
   const appsDisplacedRef = useRef(false);
@@ -221,11 +271,13 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+0.5rem)]",
       )}
     >
-      <style>{HOME_ENTER_CSS}</style>
+      <style>{HOME_SCREEN_CSS}</style>
       {/* A definite-height flex column makes the notification shade and app
           scroller share exactly the space above the floating chat. */}
       <div
+        ref={homeContentColumnRef}
         data-testid="home-content-column"
+        data-home-has-notifications={notifications.length > 0 ? "" : undefined}
         className="mx-auto flex h-full w-full max-w-2xl flex-col"
       >
         {/* The always-on base: a naked sized grid with the time + weather as
@@ -239,47 +291,51 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
             the usable remainder. Expansion gives the shade the full remainder
             and pushes the mounted app region out of interaction. */}
         <div
-          className={cn(
-            enterClass,
-            "mt-4 mb-3 flex min-h-0 flex-col",
-            appsDisplaced ? "flex-1" : "max-h-[40%] flex-none",
-          )}
+          data-home-notification-region=""
+          className={cn(enterClass, "mt-4 mb-3 flex min-h-0 flex-col")}
           style={{ animationDelay: "90ms" }}
         >
           <NotificationsHomeCenter
+            emptyGestureTargetRef={homeScreenRef}
+            shadeLayoutTargetRef={homeContentColumnRef}
             onShadeExpandedChange={handleShadeExpandedChange}
           />
         </div>
 
-        <section
-          ref={appsRegionRef}
-          aria-label="Home content"
-          aria-hidden={appsDisplaced || undefined}
-          inert={appsDisplaced || undefined}
-          onBlurCapture={handleAppsBlurCapture}
-          onFocusCapture={handleAppsFocusCapture}
-          data-testid="home-apps-scroll"
-          data-scroll-cert-scroller=""
-          className={cn(
-            "scrollbar-hide relative touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
-            appsDisplaced
-              ? "pointer-events-none h-0 flex-none opacity-0"
-              : "min-h-0 flex-1 opacity-100",
-          )}
+        <div
+          data-home-below-notifications=""
+          data-eliza-layout-shift-intent={enterClass ? "transient" : undefined}
+          className="relative min-h-0 flex-1"
         >
-          {apps}
-          <div
-            className={cn(enterClass, "flex min-h-32 flex-col py-6")}
-            style={{ animationDelay: "110ms" }}
+          <section
+            ref={appsRegionRef}
+            aria-label="Home content"
+            aria-hidden={appsDisplaced || undefined}
+            inert={appsDisplaced || undefined}
+            onBlurCapture={handleAppsBlurCapture}
+            onFocusCapture={handleAppsFocusCapture}
+            data-home-below-notifications-inner=""
+            data-testid="home-apps-scroll"
+            data-scroll-cert-scroller=""
+            className={cn(
+              "scrollbar-hide relative min-h-0 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
+              appsDisplaced && "pointer-events-none",
+            )}
           >
-            <WidgetHost
-              slot="home"
-              layout="grid"
-              events={events}
-              clearEvents={clearEvents}
-            />
-          </div>
-        </section>
+            {apps}
+            <div
+              className={cn(enterClass, "flex min-h-32 flex-col py-6")}
+              style={{ animationDelay: "110ms" }}
+            >
+              <WidgetHost
+                slot="home"
+                layout="grid"
+                events={events}
+                clearEvents={clearEvents}
+              />
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
