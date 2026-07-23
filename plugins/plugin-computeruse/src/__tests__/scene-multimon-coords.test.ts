@@ -35,6 +35,7 @@ import {
 } from "../platform/displays.js";
 import { LinuxAccessibilityProvider } from "../scene/a11y-provider.js";
 import {
+  type BlockGrid,
   blockGrid,
   coalesceDirtyBlocks,
   diffBlocks,
@@ -48,8 +49,8 @@ import type { DisplayDescriptor } from "../types.js";
 
 function crc32(bytes: Buffer): number {
   let crc = 0xffffffff >>> 0;
-  for (let i = 0; i < bytes.length; i += 1) {
-    crc = (crc ^ bytes[i]!) >>> 0;
+  for (const byte of bytes) {
+    crc = (crc ^ byte) >>> 0;
     for (let j = 0; j < 8; j += 1) {
       crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
     }
@@ -244,11 +245,12 @@ describe("coord round-trip — secondary display", () => {
 describe("dHash short-circuit — 10 identical frames", () => {
   it("OCR runs exactly once across 10 identical active-mode ticks", async () => {
     const png = makePng(42);
-    const cap: DisplayCapture[] = [fakeCapture(0, png)];
+    const primaryCapture = fakeCapture(0, png);
+    const cap: DisplayCapture[] = [primaryCapture];
     let ocrCalls = 0;
     const builder = new SceneBuilder({
       captureAll: async () => cap,
-      captureOne: async () => cap[0]!,
+      captureOne: async () => primaryCapture,
       captureRegion: async () => {
         throw new Error(
           "captureRegion should not be invoked for identical frames",
@@ -319,9 +321,11 @@ describe("dirty-block re-OCR — wired to captureRegion", () => {
     let runOcrOnCropsCalls = 0;
     let i = 0;
     const builder = new SceneBuilder({
-      captureAll: async () =>
-        captures[Math.min(i++, captures.length - 1)] ??
-        captures[captures.length - 1]!,
+      captureAll: async () => {
+        const next = captures[Math.min(i++, captures.length - 1)];
+        if (!next) throw new Error("capture fixture list is empty");
+        return next;
+      },
       captureOne: async () => {
         const first = captures[0]?.[0];
         if (!first) throw new Error("capture fixture list is empty");
@@ -430,8 +434,13 @@ describe("multi-display scene-builder", () => {
     const cap = [fakeCapture(0, makePng(1)), fakeCapture(1, makePng(2))];
     const builder = new SceneBuilder({
       captureAll: async () => cap,
-      captureOne: async (displayId) =>
-        cap.find((c) => c.display.id === displayId)!,
+      captureOne: async (displayId) => {
+        const found = cap.find((c) => c.display.id === displayId);
+        if (!found) {
+          throw new Error(`no fixture capture for display ${displayId}`);
+        }
+        return found;
+      },
       listDisplays: () => [
         fakeDisplay(0, 0, 0, 1920, 1080),
         fakeDisplay(1, 2560, 0, 3840, 2160),
@@ -536,7 +545,8 @@ describe("coords — backing-store retina translation", () => {
     expect(parsed[0]?.scaleFactor).toBe(2);
     // Manual mirror of coords.ts translate() with coordSource="backing" on
     // darwin: divide by scaleFactor THEN add display origin.
-    const d = parsed[0]!;
+    const d = parsed[0];
+    if (!d) throw new Error("expected one parsed display");
     const localBacking = { x: 100, y: 200 };
     const lx = localBacking.x / d.scaleFactor;
     const ly = localBacking.y / d.scaleFactor;
@@ -571,9 +581,16 @@ describe("coords — backing-store retina translation", () => {
 
 // ── coalesceDirtyBlocks unit tests (supports dim 3 + dim 7 wiring) ─────────
 
+/** blockGrid on a known-good 256×256 test PNG, narrowed to non-null. */
+function mustGrid(png: Buffer): BlockGrid {
+  const grid = blockGrid(png, 16, 16);
+  if (!grid) throw new Error("expected blockGrid to decode the test PNG");
+  return grid;
+}
+
 describe("coalesceDirtyBlocks", () => {
   it("merges a horizontal strip into one rect", () => {
-    const grid = blockGrid(makePng(0, 256, 256), 16, 16)!;
+    const grid = mustGrid(makePng(0, 256, 256));
     const dirty = [
       {
         col: 3,
@@ -598,7 +615,7 @@ describe("coalesceDirtyBlocks", () => {
   });
 
   it("merges a vertical strip into one rect", () => {
-    const grid = blockGrid(makePng(0, 256, 256), 16, 16)!;
+    const grid = mustGrid(makePng(0, 256, 256));
     const dirty = [
       {
         col: 2,
@@ -622,7 +639,7 @@ describe("coalesceDirtyBlocks", () => {
   });
 
   it("keeps disjoint regions separate", () => {
-    const grid = blockGrid(makePng(0, 256, 256), 16, 16)!;
+    const grid = mustGrid(makePng(0, 256, 256));
     const dirty = [
       {
         col: 1,
@@ -640,7 +657,7 @@ describe("coalesceDirtyBlocks", () => {
   });
 
   it("handles empty dirty list", () => {
-    const grid = blockGrid(makePng(0, 256, 256), 16, 16)!;
+    const grid = mustGrid(makePng(0, 256, 256));
     expect(coalesceDirtyBlocks([], grid, 256, 256)).toEqual([]);
   });
 });
@@ -699,8 +716,8 @@ describe("diffBlocks + coalesce round-trip on a synthetic frame", () => {
   it("a single-block change produces one dirty block and one rect", () => {
     const frame1 = makePng(0, 256, 256);
     const frame2 = makePng(0, 256, 256, { col: 7, row: 8 });
-    const g1 = blockGrid(frame1, 16, 16)!;
-    const g2 = blockGrid(frame2, 16, 16)!;
+    const g1 = mustGrid(frame1);
+    const g2 = mustGrid(frame2);
     const dirty = diffBlocks(g1, g2, 256, 256);
     expect(dirty.length).toBeGreaterThanOrEqual(1);
     expect(dirty.length).toBeLessThanOrEqual(4);
@@ -715,11 +732,12 @@ describe("diffBlocks + coalesce round-trip on a synthetic frame", () => {
 describe("agent-turn cache miss — confirmation", () => {
   it("agent-turn re-runs OCR even when 5 consecutive frames are pixel-identical", async () => {
     const png = makePng(99);
-    const cap: DisplayCapture[] = [fakeCapture(0, png)];
+    const primaryCapture = fakeCapture(0, png);
+    const cap: DisplayCapture[] = [primaryCapture];
     let ocrCalls = 0;
     const builder = new SceneBuilder({
       captureAll: async () => cap,
-      captureOne: async () => cap[0]!,
+      captureOne: async () => primaryCapture,
       listDisplays: () => [fakeDisplay(0, 0, 0)],
       enumerateApps: () => [],
       accessibilityProvider: {
