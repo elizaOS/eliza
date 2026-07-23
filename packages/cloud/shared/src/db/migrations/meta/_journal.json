@@ -1233,6 +1233,13 @@
       "when": 1783726527133,
       "tag": "0176_container_retirement_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1784811600000,
+      "tag": "0177_warm_claim_credential_fence",
+      "breakpoints": true
     }
   ]
 }

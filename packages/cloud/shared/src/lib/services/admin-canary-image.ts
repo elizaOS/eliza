@@ -66,6 +66,12 @@ export interface AdminCanaryImageJobData extends AdminCanaryPlannedTarget {
 
 export interface AdminCanaryImageJobResult {
   success: boolean;
+  /**
+   * A cutover audit can be durable before the replaced container is retired.
+   * The job remains non-terminal while this flag is true.
+   */
+  cleanupPending?: boolean;
+  cutoverAt?: string;
   jobId: string;
   operation: AdminCanaryImageOperation;
   rolloutId: string;
@@ -244,6 +250,7 @@ export function isCompletedAdminCanaryJobResult(
   const result = value as Record<string, unknown>;
   return (
     result.success === true &&
+    result.cleanupPending !== true &&
     typeof result.jobId === "string" &&
     (result.operation === "upgrade" || result.operation === "rollback") &&
     typeof result.rolloutId === "string" &&
@@ -258,5 +265,39 @@ export function isCompletedAdminCanaryJobResult(
     typeof result.targetDigest === "string" &&
     typeof result.startedAt === "string" &&
     typeof result.finishedAt === "string"
+  );
+}
+
+export function isPendingAdminCanaryCutoverAudit(
+  value: unknown,
+): value is AdminCanaryImageJobResult & {
+  success: false;
+  cleanupPending: true;
+  cutoverAt: string;
+} {
+  if (typeof value !== "object" || value === null) return false;
+  const result = value as Record<string, unknown>;
+  return (
+    result.success === false &&
+    result.cleanupPending === true &&
+    typeof result.cutoverAt === "string" &&
+    typeof result.jobId === "string" &&
+    (result.operation === "upgrade" || result.operation === "rollback") &&
+    typeof result.rolloutId === "string" &&
+    typeof result.actorUserId === "string" &&
+    typeof result.decisionAt === "string" &&
+    typeof result.agentId === "string" &&
+    typeof result.organizationId === "string" &&
+    typeof result.targetOwnerUserId === "string" &&
+    typeof result.sourceImage === "string" &&
+    typeof result.sourceDigest === "string" &&
+    typeof result.targetImage === "string" &&
+    typeof result.targetDigest === "string" &&
+    typeof result.startedAt === "string" &&
+    typeof result.finishedAt === "string" &&
+    typeof result.oldNodeId === "string" &&
+    typeof result.oldContainerName === "string" &&
+    typeof result.newNodeId === "string" &&
+    typeof result.newContainerName === "string"
   );
 }

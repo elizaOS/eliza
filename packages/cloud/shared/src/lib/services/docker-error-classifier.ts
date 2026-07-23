@@ -24,6 +24,18 @@ export function isAlreadyGoneMessage(message: string): boolean {
 }
 
 /**
+ * Replacement paths require positive container-absence evidence. Generic
+ * "not found" text can describe an SSH binary, registry record, or identity
+ * lookup failure, so only explicit Docker-container absence shapes qualify.
+ */
+export function isContainerAbsentMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return /(?:^|\[stderr\]\s*)(?:error(?: response from daemon)?: )?no such (?:container|object)(?::|$)/.test(
+    normalized,
+  );
+}
+
+/**
  * Matches network-level error messages that mean "the node hosting the
  * container is UNREACHABLE" — SSH CONNECT-phase failures: refused/unreachable
  * sockets, DNS failure, and the SSH connection-establishment timeout. Used by

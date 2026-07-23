@@ -693,6 +693,20 @@ async function processProvisioningWorkerCycle(
   return provisioningJobService.processPendingJobs(batchSize, { jobTypes });
 }
 
+async function processWarmClaimCredentialReconcileCycle(
+  batchSize = readWorkerConfig().batchSize,
+) {
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.reconcileWarmClaimCredentialFences(batchSize);
+}
+
+async function processReplacementCleanupReconcileCycle(
+  batchSize = readWorkerConfig().batchSize,
+) {
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.reconcileReplacementCleanupFences(batchSize);
+}
+
 async function processHeartbeatCycle(
   concurrency = 5,
 ): Promise<HeartbeatResult> {
@@ -1422,6 +1436,34 @@ async function runWorkCycle(
 ): Promise<void> {
   const { withTimeout } = await loadDeps();
   const work = (async () => {
+    await runBoundedPhase(
+      logger,
+      "replacement cleanup reconcile",
+      () => processReplacementCleanupReconcileCycle(config.batchSize),
+      (result) => {
+        if (result.total > 0) {
+          logger.info(
+            "[provisioning-worker] replacement cleanup reconcile complete",
+            result,
+          );
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "warm-claim credential reconcile",
+      () => processWarmClaimCredentialReconcileCycle(config.batchSize),
+      (result) => {
+        if (result.legacyFound > 0 || result.cleanupFound > 0) {
+          logger.info(
+            "[provisioning-worker] warm-claim credential reconcile complete",
+            result,
+          );
+        }
+      },
+    );
+
     await runBoundedPhase(
       logger,
       "cycle",

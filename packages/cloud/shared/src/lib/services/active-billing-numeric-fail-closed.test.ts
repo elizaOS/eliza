@@ -34,6 +34,7 @@ let containerRows: Array<Record<string, unknown>> = [];
 let agentRows: Array<Record<string, unknown>> = [];
 let ledgerRows: Array<Record<string, unknown>> = [];
 let dbWriteUpdateCalls = 0;
+let dbWriteUpdateRows: Array<Record<string, unknown>> | null = null;
 let containerInfrastructureCalls = 0;
 let agentInfrastructureCalls = 0;
 
@@ -97,7 +98,7 @@ mock.module("../../db/client", () => ({
           return builder;
         },
         returning() {
-          return Promise.resolve([...containerRows, ...agentRows]);
+          return Promise.resolve(dbWriteUpdateRows ?? [...containerRows, ...agentRows]);
         },
       };
       return builder;
@@ -190,6 +191,7 @@ beforeEach(() => {
   agentRows = [];
   ledgerRows = [];
   dbWriteUpdateCalls = 0;
+  dbWriteUpdateRows = null;
   containerInfrastructureCalls = 0;
   agentInfrastructureCalls = 0;
 });
@@ -383,5 +385,35 @@ describe("cancelResource fail-closed before side effects", () => {
 
     expect(agentInfrastructureCalls).toBe(0);
     expect(dbWriteUpdateCalls).toBe(0);
+  });
+
+  test("deletion winning the billing CAS returns an explicit conflict instead of fake suspension", async () => {
+    agentRows = [
+      baseAgent({
+        deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
+        status: "deletion_pending",
+        billing_status: "active",
+      }),
+    ];
+    dbWriteUpdateRows = [];
+
+    try {
+      await activeBillingService.cancelResource({
+        organizationId: ORG,
+        resourceId: "agent-100000",
+        resourceType: "agent_sandbox",
+      });
+      throw new Error("Expected deletion conflict");
+    } catch (error) {
+      expect(error).toMatchObject({
+        status: 409,
+        code: "session_not_ready",
+        message: "Managed agent deletion is in progress",
+      });
+    }
+
+    expect(agentInfrastructureCalls).toBe(1);
+    expect(dbWriteUpdateCalls).toBe(1);
   });
 });
