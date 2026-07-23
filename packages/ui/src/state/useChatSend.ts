@@ -43,6 +43,7 @@ import { getWindowNavigationPath, type Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
   dispatchViewActionHandoff,
+  dispatchViewActionHandoffDirect,
   findViewActionHandoff,
 } from "../view-action-handoff";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
@@ -72,6 +73,26 @@ async function handoffCompletedAction(
   showFailure: (message: string) => void,
 ): Promise<void> {
   if (findViewActionHandoff(actionResults)) {
+    // Shared/limited cloud agents (Tier-0) serve NO `/api/views/current`
+    // endpoint, so the verify-then-dispatch handoff would throw on the missing
+    // route and the navigation would never fire (#F5-ACTIONS). The shared
+    // runtime already resolved the target deterministically and stamped it into
+    // the summary, so trust it and dispatch the navigate event directly — no
+    // server round-trip.
+    if (isLimitedCloudAgentApiBase(client.getBaseUrl())) {
+      try {
+        dispatchViewActionHandoffDirect(actionResults);
+      } catch (err) {
+        logger.warn(
+          { err },
+          "[useChatSend] shared-agent VIEWS handoff could not reach the renderer",
+        );
+        showFailure(
+          "The agent chose a view, but the app couldn't open it. Try opening the view again.",
+        );
+      }
+      return;
+    }
     try {
       await dispatchViewActionHandoff(actionResults);
     } catch (err) {

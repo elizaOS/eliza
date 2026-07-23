@@ -170,18 +170,55 @@ function isCloudManagedActiveServer(): boolean {
  * booting chat.
  *
  * `listConversations()` issues a real `GET /api/conversations` THROUGH that
- * passthrough (it is NOT short-circuited by any shim), so it is the authoritative
- * "is the warmed runtime actually serving?" signal:
+ * passthrough (it is NOT short-circuited by any shim), so it is a strong
+ * "is the warmed runtime actually serving?" signal — BUT it is not the ONLY
+ * one, and a naive boolean over-trusts it (CONVERSATIONS-500-2026-07-22):
  *   - resolves → the passthrough serves → runtime is live → ready.
- *   - rejects  → still warming (404 "Agent not found") or a transient blip →
- *     keep polling. Both are "not ready yet"; the 401/429 auth cases are already
- *     resolved during the polling-backend phase before starting-runtime, so a
- *     rejection here does not need auth disambiguation.
+ *   - 404 "Agent not found" → still WARMING (container binding the runtime) →
+ *     keep polling.
+ *   - persistent 5xx → the runtime is UP but the conversations-list read is
+ *     ERRORING (e.g. a scope-cache/date defect 500ing the list while /status
+ *     stays 200). Treating this identically to a warming 404 strands a
+ *     genuinely-serving agent on the boot screen until the absolute-max
+ *     deadline. It must be classified distinctly so the warmup can (a) confirm
+ *     readiness off /api/status instead, and (b) surface an actionable error
+ *     rather than an infinite spinner if the whole surface stays broken.
+ * The 401/429 auth cases are already resolved during the polling-backend phase
+ * before starting-runtime, so a rejection here does not need auth disambiguation.
  */
-async function isCloudProxyPassthroughServing(): Promise<boolean> {
+type PassthroughProbe =
+  | { kind: "serving" }
+  | { kind: "warming" }
+  | { kind: "errored"; status: number };
+
+async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
   try {
     await client.listConversations();
-    return true;
+    return { kind: "serving" };
+  } catch (err) {
+    const status = asApiLikeError(err)?.status;
+    // A 5xx means the runtime answered but the list read errored — the agent is
+    // likely UP (that is exactly the shared-agent conversations 500 class). Any
+    // other failure (404 "Agent not found", network/timeout, no status) is
+    // "still warming": keep polling as before.
+    if (typeof status === "number" && status >= 500) {
+      return { kind: "errored", status };
+    }
+    return { kind: "warming" };
+  }
+}
+
+/**
+ * Secondary readiness signal for a cloud-managed agent whose /api/conversations
+ * passthrough is 5xx-ing: does /api/status through the SAME passthrough report a
+ * runtime that can actually respond? A broken list endpoint must not strand a
+ * genuinely-serving agent on the boot screen — if status says `canRespond`, the
+ * agent is ready and the user should be let into chat (CONVERSATIONS-500).
+ */
+async function isCloudProxyStatusReady(): Promise<boolean> {
+  try {
+    const status = await client.fetch<AgentStatus>("/api/status");
+    return status?.state === "running" && status?.canRespond === true;
   } catch {
     return false;
   }
@@ -560,6 +597,28 @@ async function runCloudManagedWarmup(
 ): Promise<void> {
   const started = Date.now();
   let deadline = started + getAgentReadyTimeoutMs();
+  // Count CONSECUTIVE 5xx probes of the conversations passthrough. A persistent
+  // 5xx (runtime up, list read broken) is NOT a warming 404 and must not spin
+  // "initializing agent" forever: after a short streak we (a) confirm readiness
+  // off /api/status so a broken list endpoint can't strand a serving agent, and
+  // (b) if status also can't confirm, surface an actionable error with Retry
+  // instead of an infinite spinner (CONVERSATIONS-500-2026-07-22).
+  let consecutive5xx = 0;
+  // ~5 consecutive 5xx at the 500ms poll cadence (~2.5s of deterministic errors)
+  // is well past any single transient blip and safely distinguishes a real
+  // broken-list-endpoint from a one-off flake before we act on it.
+  const PERSISTENT_5XX_THRESHOLD = 5;
+
+  const advanceReady = async (via: string): Promise<void> => {
+    await hydrateReadyAgentStatus(deps);
+    if (cancelled.current || effectRunRef.current !== effectRunId) return;
+    deps.setConnected(true);
+    deps.setFirstRunLoading(false);
+    logger.info(
+      `[eliza][startup:init] cloud-managed agent ready (${via}); advancing to chat`,
+    );
+    dispatch({ type: "AGENT_RUNNING" });
+  };
 
   logger.info(
     "[eliza][startup:init] cloud-managed agent; waiting on proxy passthrough to warm before declaring ready",
@@ -580,27 +639,68 @@ async function runCloudManagedWarmup(
       return;
     }
 
-    const serving = await isCloudProxyPassthroughServing();
+    const probe = await probeCloudProxyPassthrough();
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
 
-    if (serving) {
+    if (probe.kind === "serving") {
       // The passthrough answers → the warmed runtime is genuinely serving.
-      // Hydrate the full status (model/canRespond) then advance exactly once.
-      await hydrateReadyAgentStatus(deps);
-      if (cancelled.current || effectRunRef.current !== effectRunId) return;
-      deps.setConnected(true);
-      deps.setFirstRunLoading(false);
-      logger.info(
-        "[eliza][startup:init] cloud-managed proxy passthrough is serving; agent ready",
-      );
-      dispatch({ type: "AGENT_RUNNING" });
+      await advanceReady("conversations passthrough serving");
       return;
     }
 
-    // Still warming (or a transient failure). Keep polling and — because the
-    // passthrough not-yet-serving IS the agent still starting — slide the
-    // deadline with an effective "starting" state so the warm window can extend
-    // up to the absolute max instead of tripping the initial timeout.
+    if (probe.kind === "errored") {
+      // The runtime answered but the conversations-list read 5xx'd. The agent is
+      // very likely UP (this is the shared-agent conversations 500 class). Do
+      // NOT treat it as a warming 404.
+      consecutive5xx += 1;
+      if (consecutive5xx >= PERSISTENT_5XX_THRESHOLD) {
+        // Confirm readiness off /api/status so a broken LIST endpoint alone
+        // can't strand a genuinely-serving agent on the boot screen.
+        const statusReady = await isCloudProxyStatusReady();
+        if (cancelled.current || effectRunRef.current !== effectRunId) return;
+        if (statusReady) {
+          logger.warn(
+            `[eliza][startup:init] cloud-managed conversations passthrough is persistently ${probe.status}, but /api/status reports canRespond — advancing to chat despite the broken list endpoint`,
+          );
+          await advanceReady(
+            `status canRespond despite conversations ${probe.status}`,
+          );
+          return;
+        }
+        // Runtime is up (5xx, not 404) but neither the list read nor /status
+        // can confirm it can serve. Surface an ACTIONABLE error with Retry
+        // instead of spinning "initializing agent" to the absolute-max deadline.
+        const errorMessage =
+          "The agent is running but its chat service returned an error.";
+        logger.error(
+          `[eliza][startup:init] cloud-managed conversations passthrough persistently ${probe.status} and /api/status could not confirm readiness; surfacing agent error`,
+        );
+        deps.setStartupError({
+          reason: "agent-error",
+          phase: "initializing-agent",
+          message: errorMessage,
+          detail: `The agent's conversations endpoint responded with a server error (HTTP ${probe.status}) and /api/status could not confirm it can respond. This is a server-side issue, not a slow warmup. Press Retry to try again.`,
+          status: probe.status,
+        });
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "AGENT_ERROR", message: errorMessage });
+        return;
+      }
+      // Below the streak threshold: could still be a transient blip. Keep
+      // polling WITHOUT sliding the deadline (a real 5xx is not "more warmup").
+      deps.setConnected(false);
+      await new Promise<void>((r) => {
+        tidRef.current = setTimeout(r, 500);
+      });
+      continue;
+    }
+
+    // probe.kind === "warming": still warming (404 "Agent not found") or a
+    // transient non-5xx failure. Reset the 5xx streak, keep polling, and —
+    // because the passthrough not-yet-serving IS the agent still starting —
+    // slide the deadline with an effective "starting" state so the warm window
+    // can extend up to the absolute max instead of tripping the initial timeout.
+    consecutive5xx = 0;
     deps.setConnected(false);
     deadline = computeAgentDeadlineExtensions({
       agentWaitStartedAt: started,

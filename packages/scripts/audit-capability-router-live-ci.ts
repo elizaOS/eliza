@@ -477,6 +477,13 @@ export const checks: Check[] = [
       "ci-ok must fail when cloud-live-e2e or provider-live-e2e are not successful on workflow_dispatch or schedule.",
   },
   {
+    name: "manual remote capability live observation is explicit",
+    pattern:
+      /workflow_dispatch:\s*\n\s*inputs:\s*\n\s*remote_capability_live:[\s\S]{0,300}default:\s*false[\s\S]{0,100}type:\s*boolean/,
+    message:
+      "manual Tests runs must require an explicit remote_capability_live input before observing external capability providers.",
+  },
+  {
     name: "cloud live smoke is observed only on manual or scheduled runs",
     pattern:
       /Remote capability cloud sandbox live smoke[\s\S]{0,300}steps\.cloud\.outputs\.capability_skip != 'true'[\s\S]{0,300}github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]{0,300}test:remote-capabilities:cloud-live/,
@@ -496,9 +503,9 @@ export const checks: Check[] = [
   {
     name: "cloud capability live smoke is explicitly configured",
     pattern:
-      /ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED[\s\S]{0,500}capability_skip=false[\s\S]{0,500}Remote capability cloud sandbox live smoke skipped because ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED is not configured[\s\S]{0,200}capability_skip=true/,
+      /CAPABILITY_LIVE_REQUIRED:.*github\.event_name == 'schedule'.*inputs\.remote_capability_live[\s\S]{0,2500}CAPABILITY_LIVE_REQUIRED.*!= "true"[\s\S]{0,300}capability_skip=true[\s\S]{0,300}ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED.*= "1"[\s\S]{0,200}capability_skip=false/,
     message:
-      "cloud capability live smoke must be gated by explicit live capability config.",
+      "cloud capability live smoke must be mandatory on schedules or explicit manual requests and skipped on ordinary manual runs.",
   },
   {
     name: "cloud live report validation is strict",
@@ -517,7 +524,7 @@ export const checks: Check[] = [
   {
     name: "cloud live report prune only runs after checkout-backed live runs",
     pattern:
-      /Prune remote capability cloud report\s*\n\s*if: always\(\) && steps\.cloud\.outputs\.capability_skip != 'true' && \(github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\)\s*\n\s*run: node packages\/scripts\/rm-path-recursive\.mjs reports\/remote-capabilities\/cloud/,
+      /Prune remote capability cloud report\s*\n\s*if: always\(\) && steps\.checkout\.outcome == 'success' && steps\.cloud\.outputs\.capability_skip != 'true' && \(github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\)\s*\n\s*run: node packages\/scripts\/rm-path-recursive\.mjs reports\/remote-capabilities\/cloud/,
     message:
       "cloud live report pruning must not run on no-checkout skip paths.",
   },
@@ -529,21 +536,25 @@ export const checks: Check[] = [
       "provider live smoke must require E2B, home-machine, and mobile-companion endpoints for observed runs.",
   },
   {
-    name: "provider live endpoints skip cleanly when absent",
-    // Same `message=` composition as the cloud skip: the "configured" phrase and
-    // the "skipping optional provider live E2E" warning are separated by the
-    // strict-context fail branch.
+    name: "provider live smoke skips when manual observation was not requested",
     pattern:
-      /No remote capability provider endpoints configured[\s\S]{0,400}skipping optional provider live E2E[\s\S]{0,200}skip=true[\s\S]{0,200}exit 0/,
+      /LIVE_REQUIRED:.*github\.event_name == 'schedule'.*inputs\.remote_capability_live[\s\S]{0,500}LIVE_REQUIRED.*!= "true"[\s\S]{0,300}Remote capability provider live smoke was not requested[\s\S]{0,200}skip=true[\s\S]{0,100}exit 0/,
     message:
-      "provider live runs must skip cleanly when all endpoint secrets are absent.",
+      "provider live runs must skip ordinary manual dispatches before endpoint availability is evaluated.",
   },
   {
-    name: "provider live primary endpoint gaps skip cleanly",
+    name: "provider live endpoints fail observed runs when absent",
     pattern:
-      /Missing required remote capability provider endpoint secrets[\s\S]{0,300}Skipping optional provider live E2E[\s\S]{0,200}skip=true/,
+      /No remote capability provider endpoints configured[\s\S]{0,300}strict \$\{EVENT_NAME\} live lanes must fail instead of greening by skip[\s\S]{0,100}exit 1/,
     message:
-      "provider live runs must skip cleanly when any primary endpoint secret is absent.",
+      "observed provider live runs must fail when all endpoint secrets are absent.",
+  },
+  {
+    name: "provider live primary endpoint gaps fail observed runs",
+    pattern:
+      /Missing required remote capability provider endpoint secrets[\s\S]{0,300}strict \$\{EVENT_NAME\} live lanes must fail instead of greening by skip[\s\S]{0,100}exit 1/,
+    message:
+      "observed provider live runs must fail when any primary endpoint secret is absent.",
   },
   {
     name: "provider live smoke is observed only on manual or scheduled runs",
@@ -569,7 +580,7 @@ export const checks: Check[] = [
   {
     name: "provider live report prune only runs after checkout-backed live runs",
     pattern:
-      /Prune remote capability provider reports\s*\n\s*if: always\(\) && steps\.providers\.outputs\.skip != 'true' && \(github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\)\s*\n\s*run: node packages\/scripts\/rm-path-recursive\.mjs reports\/remote-capabilities\/providers/,
+      /Prune remote capability provider reports\s*\n\s*if: always\(\) && steps\.checkout\.outcome == 'success' && steps\.providers\.outputs\.skip != 'true' && \(github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\)\s*\n\s*run: node packages\/scripts\/rm-path-recursive\.mjs reports\/remote-capabilities\/providers/,
     message:
       "provider live report pruning must not run on no-checkout skip paths.",
   },
