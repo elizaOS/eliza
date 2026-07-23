@@ -151,7 +151,7 @@ def _openclaw_factory(model: str | None) -> AgentFactory:
         or os.environ.get("ELIZA_PROVIDER")
         or "cerebras"
     ).strip().lower()
-    model_name = model or os.environ.get("BENCHMARK_MODEL_NAME") or "gpt-oss-120b"
+    model_name = model or os.environ.get("BENCHMARK_MODEL_NAME") or "gemma-4-31b"
     shared_client = OpenClawClient(
         provider=provider,
         model=model_name,
