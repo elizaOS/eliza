@@ -19,6 +19,7 @@ import {
   inspectRegistryChannel,
   inspectReleaseRegistry,
   publishReleaseCandidate,
+  verifyPromotedReleaseCandidate,
 } from "../lib/release-registry.mjs";
 
 const roots: string[] = [];
@@ -45,6 +46,27 @@ function git(repoRoot: string, args: string[]) {
 function writeJson(filePath: string, value: unknown) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function evidencePath(...parts: string[]) {
+  const evidenceRoot = process.env.RELEASE_EVIDENCE_DIR;
+  return evidenceRoot ? path.join(evidenceRoot, "verdaccio", ...parts) : null;
+}
+
+function preserveEvidence(
+  candidateDirectory: string,
+  receipt: Record<string, unknown>,
+  logs: string,
+) {
+  const target = evidencePath();
+  if (!target) return;
+  fs.mkdirSync(target, { recursive: true });
+  fs.cpSync(candidateDirectory, path.join(target, "candidate"), {
+    recursive: true,
+    errorOnExist: true,
+  });
+  writeJson(path.join(target, "registry-receipt.json"), receipt);
+  fs.writeFileSync(path.join(target, "verdaccio.log"), logs);
 }
 
 async function unusedPort() {
@@ -161,8 +183,10 @@ async function startVerdaccio(base: string, port: number) {
   throw new Error(`Verdaccio did not become ready:\n${logs}`);
 }
 
-async function createUser(registryUrl: string) {
-  const username = "release-integration";
+async function createUser(
+  registryUrl: string,
+  username = "release-integration",
+) {
   const response = await fetch(
     new URL(`-/user/org.couchdb.user:${username}`, registryUrl),
     {
@@ -170,8 +194,8 @@ async function createUser(registryUrl: string) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: username,
-        password: "release-password",
-        email: "release@example.test",
+        password: `${username}-password`,
+        email: `${username}@example.test`,
         type: "user",
         roles: [],
       }),
@@ -266,6 +290,13 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "release-verdaccio-"));
   roots.push(base);
   const fixture = makeRepo(base);
+  const port = await unusedPort();
+  const firstServer = await startVerdaccio(base, port);
+  const token = await createUser(firstServer.registryUrl);
+  const wrongPublisherToken = await createUser(
+    firstServer.registryUrl,
+    "other-publisher",
+  );
   const candidateDirectory = path.join(base, "candidate");
   const candidate = buildAndPackReleaseCandidate({
     repoRoot: fixture.repoRoot,
@@ -278,12 +309,37 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
     channel: "beta",
     sourceSha: fixture.sourceSha,
     expectedCommit: fixture.sourceSha,
+    repository: "elizaOS/eliza",
+    sourceRef: "refs/heads/develop",
+    registry: firstServer.registryUrl,
+    publisher: "release-integration",
     build: { command: process.execPath, args: ["build.mjs"] },
   });
-  const port = await unusedPort();
-  const firstServer = await startVerdaccio(base, port);
-  const token = await createUser(firstServer.registryUrl);
   const npmConfigPath = writeNpmConfig(base, firstServer.registryUrl);
+  await expect(
+    publishReleaseCandidate({
+      repoRoot: fixture.repoRoot,
+      candidateDirectory,
+      registryUrl: firstServer.registryUrl,
+      token: wrongPublisherToken,
+      npmCommand: writeAuthenticatedNpm(base, npmConfigPath),
+    }),
+  ).rejects.toThrow(
+    "Registry token identifies other-publisher, expected release-integration",
+  );
+  expect(
+    await inspectReleaseRegistry({
+      registryUrl: firstServer.registryUrl,
+      plan: candidate.plan,
+      token,
+    }),
+  ).toEqual(
+    candidate.plan.packages.map(({ name, version }) => ({
+      name,
+      version,
+      state: "missing",
+    })),
+  );
   const interruptingNpm = writeInterruptingNpm(
     base,
     firstServer.child.pid as number,
@@ -334,30 +390,75 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
   expect(loadReleaseState(candidateDirectory).state.phase).toBe(
     "channel-promoted",
   );
-  expect(
-    await inspectReleaseRegistry({
-      registryUrl: resumedServer.registryUrl,
-      plan: candidate.plan,
-      token,
-    }),
-  ).toEqual(
+  const finalInspection = await inspectReleaseRegistry({
+    registryUrl: resumedServer.registryUrl,
+    plan: candidate.plan,
+    token,
+  });
+  expect(finalInspection).toEqual(
     candidate.plan.packages.map(({ name, version, tarball }) => ({
       name,
       version,
       state: "matched",
       integrity: tarball.integrity,
+      sourceSha: fixture.sourceSha,
+      publisher: "release-integration",
+      provenance: "candidate-integrity+authenticated-publisher",
     })),
   );
+  const channels = [];
+  const metadata: Record<string, unknown> = {};
   for (const packageRecord of candidate.plan.packages) {
-    expect(
-      await inspectRegistryChannel({
-        registryUrl: resumedServer.registryUrl,
-        packageRecord,
-        channel: "beta",
-        token,
-      }),
-    ).toBe("1.0.0");
+    const publicVersion = await inspectRegistryChannel({
+      registryUrl: resumedServer.registryUrl,
+      packageRecord,
+      channel: "beta",
+      token,
+    });
+    const candidateVersion = await inspectRegistryChannel({
+      registryUrl: resumedServer.registryUrl,
+      packageRecord,
+      channel: candidate.plan.candidateTag,
+      token,
+    });
+    expect(publicVersion).toBe("1.0.0");
+    expect(candidateVersion).toBeNull();
+    channels.push({
+      name: packageRecord.name,
+      beta: publicVersion,
+      candidateTag: candidate.plan.candidateTag,
+      candidateVersion,
+    });
+    const response = await fetch(
+      new URL(
+        encodeURIComponent(packageRecord.name),
+        resumedServer.registryUrl,
+      ),
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Verdaccio evidence metadata failed for ${packageRecord.name}: ${response.status}`,
+      );
+    }
+    metadata[packageRecord.name] = await response.json();
   }
+  const promoted = await verifyPromotedReleaseCandidate({
+    repoRoot: fixture.repoRoot,
+    candidateDirectory,
+    registryUrl: resumedServer.registryUrl,
+    token,
+  });
+  expect(promoted).toMatchObject({
+    state: "channel-promoted",
+    channel: "beta",
+    channels: candidate.plan.packages.map(({ name }) => ({
+      name,
+      channel: "beta",
+      version: "1.0.0",
+      candidateTagRemoved: true,
+    })),
+  });
   expect(
     await publishReleaseCandidate({
       repoRoot: fixture.repoRoot,
@@ -376,4 +477,20 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
       npmCommand: writeAuthenticatedNpm(base, npmConfigPath),
     }),
   ).rejects.toThrow("Candidate registry is");
+  preserveEvidence(
+    candidateDirectory,
+    {
+      transport: "ephemeral local Verdaccio",
+      sourceSha: fixture.sourceSha,
+      plan: candidate.plan,
+      interruptedState: "registry-bound",
+      partial,
+      finalInspection,
+      channels,
+      metadata,
+      promoted,
+      finalState: loadReleaseState(candidateDirectory),
+    },
+    resumedServer.logs(),
+  );
 }, 120_000);

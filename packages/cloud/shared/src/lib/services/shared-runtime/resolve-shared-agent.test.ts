@@ -52,7 +52,7 @@ mock.module("../../../db/repositories/agent-sandboxes", () => ({
 // second cold hit skips the DB waves and the not-OK shapes are never cached.
 const cacheStore = new Map<string, unknown>();
 const cacheGet = mock(async (key: string) => (cacheStore.has(key) ? cacheStore.get(key) : null));
-const cacheSet = mock(async (key: string, value: unknown) => {
+const cacheSet = mock(async (key: string, value: unknown, _ttlSeconds?: number) => {
   cacheStore.set(key, value);
 });
 // Single-flight double: an in-process lock so N concurrent misses run the loader
@@ -100,6 +100,7 @@ mock.module("../../utils/logger", () => ({
 }));
 
 const { resolveSharedAgent } = await import("./resolve-shared-agent");
+const { CacheTTL, CacheKeys } = await import("../../cache/keys");
 
 function contextWithAgentId(agentId?: string, headers: Record<string, string> = {}) {
   const lower: Record<string, string> = {};
@@ -294,6 +295,77 @@ describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
   });
 });
 
+describe("resolveSharedAgent sliding TTL (COLDPATH-FIX-2026-07-22)", () => {
+  test("a validated hit re-writes the entry with the full TTL (keeps active convo warm)", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    // Populate (authoritative write #1).
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+    const firstWrittenAtMs = (
+      cacheStore.get(cacheStore.keys().next().value) as { firstWrittenAtMs: number }
+    ).firstWrittenAtMs;
+    expect(typeof firstWrittenAtMs).toBe("number");
+    cacheSet.mockClear();
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+    findByIdAndOrg.mockClear();
+
+    // Second hit within the cap: served from cache AND refreshes the TTL.
+    const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    expect(result).toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    // No cold DB waves on the hit.
+    expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    // The hit re-wrote the entry with the resolve TTL (sliding refresh).
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+    const [, refreshedValue, ttlSeconds] = cacheSet.mock.calls[0];
+    expect(ttlSeconds).toBe(CacheTTL.sharedAgentScope.resolve);
+    // firstWrittenAtMs is PRESERVED across the refresh so the cap still bounds it.
+    expect((refreshedValue as { firstWrittenAtMs: number }).firstWrittenAtMs).toBe(
+      firstWrittenAtMs,
+    );
+  });
+
+  test("a hit past the absolute cap is NOT refreshed (agent row self-heals within the cap)", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+
+    // Simulate a continuously active conversation that has been warm longer than
+    // the cap: back-date the entry's firstWrittenAtMs past resolveMaxAgeMs.
+    const key = cacheStore.keys().next().value as string;
+    const stored = cacheStore.get(key) as { firstWrittenAtMs: number };
+    stored.firstWrittenAtMs = Date.now() - CacheTTL.sharedAgentScope.resolveMaxAgeMs - 1;
+    cacheSet.mockClear();
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    // Still served from cache this turn (credential re-validated), but NOT
+    // refreshed — so the entry expires on schedule and the next miss re-hydrates
+    // the agent row through the authoritative gate.
+    expect(result).toMatchObject({ agentId: "agent-1" });
+    expect(cacheSet).not.toHaveBeenCalled();
+  });
+
+  test("a revoked key on a hit is NOT refreshed (never extends an unauthorized entry)", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    cacheSet.mockClear();
+    // Key revoked between turns.
+    validateBehavior = async () => ({
+      is_active: false,
+      organization_id: "org-1",
+      expires_at: null,
+    });
+
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    // The hit failed revalidation -> fell through to the authoritative gate,
+    // which re-wrote the entry (row still shared) ONCE. The sliding refresh must
+    // NOT have fired on the failed hit (it runs only after revalidate passes),
+    // so the only write is the authoritative populate, not a hit-refresh.
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalled();
+  });
+});
+
 describe("resolveSharedAgent stampede single-flight (CONTENTION-2026-07-22)", () => {
   test("N concurrent cold callers hydrate the scope EXACTLY once", async () => {
     // Repro of the demo-day audience pile-on: N callers hit the SAME shared
@@ -412,5 +484,76 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
     const [cacheKey] = cacheSet.mock.calls[0];
     expect(String(cacheKey)).not.toContain("s:");
     expect(revalidateSessionScope).not.toHaveBeenCalled();
+  });
+
+  // REGRESSION (CONVERSATIONS-500-2026-07-22): the real cache client
+  // JSON-serializes on write and JSON-parses on read, so a cached agent row's
+  // `timestamp` columns (Drizzle `Date`s on a live DB hydration) come back as
+  // ISO STRINGS on a cache HIT. The shared-agent conversations route calls
+  // `agent.created_at.toISOString()`, which throws on a string and 500s the
+  // read on EVERY cache hit (the observed "first call 200, then 20/20 = 500").
+  // The module-level in-memory cache double stores by REFERENCE, which hid this
+  // for a year; these tests seed the cache with a JSON-round-tripped entry
+  // (exactly what prod holds) and assert resolveSharedAgent restores the Date
+  // contract before returning.
+  describe("cache-hit Date rehydration", () => {
+    const CREATED = new Date("2026-06-18T12:34:56.000Z");
+
+    // Reproduce what the real cache stores: the object AFTER a JSON round-trip.
+    function jsonRoundTrip<T>(value: T): T {
+      return JSON.parse(JSON.stringify(value)) as T;
+    }
+
+    function seedCacheHit(agentOverrides: Record<string, unknown> = {}) {
+      const key = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+      const liveEntry = {
+        orgId: "org-1",
+        agent: agent({ created_at: CREATED, updated_at: CREATED, ...agentOverrides }),
+        firstWrittenAtMs: Date.now(),
+      };
+      // Store the DESERIALIZED shape a real cache.get would return.
+      cacheStore.set(key, jsonRoundTrip(liveEntry));
+    }
+
+    test("a JSON-round-tripped cache hit carries created_at as a string (bug precondition)", () => {
+      const key = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+      seedCacheHit();
+      const stored = cacheStore.get(key) as { agent: { created_at: unknown } };
+      // Precondition the fix must survive: the raw cached value is a string,
+      // NOT a Date, so a naive passthrough would 500 the route.
+      expect(typeof stored.agent.created_at).toBe("string");
+      expect(stored.agent.created_at instanceof Date).toBe(false);
+    });
+
+    test("resolveSharedAgent restores created_at to a Date on a cache hit so .toISOString() works", async () => {
+      seedCacheHit();
+
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+      expect("agent" in result).toBe(true);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+
+      // The fix: the agent handed to route consumers has Date timestamps again.
+      expect(result.agent.created_at instanceof Date).toBe(true);
+      // The exact call the conversations route makes must not throw.
+      expect(() => (result.agent.created_at as Date).toISOString()).not.toThrow();
+      expect((result.agent.created_at as Date).toISOString()).toBe(CREATED.toISOString());
+      // Served from cache -> the cold authoritative gate did NOT run.
+      expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    });
+
+    test("updated_at and other timestamp fields are rehydrated too", async () => {
+      seedCacheHit();
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+      expect(result.agent.updated_at instanceof Date).toBe(true);
+    });
+
+    test("a null/absent timestamp field is left untouched (no fabricated Date)", async () => {
+      // deleted_at is nullable; a cache hit must not fabricate a Date for it.
+      seedCacheHit({ deleted_at: null });
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+      expect(result.agent.deleted_at).toBeNull();
+    });
   });
 });

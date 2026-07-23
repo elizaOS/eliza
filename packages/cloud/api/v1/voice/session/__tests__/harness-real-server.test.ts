@@ -48,9 +48,13 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
     issueConsentNonce: async () => ({ nonce: "consent" }),
     consumeConsentNonce: async () => true,
   }));
+  const revokedChecks: string[] = [];
   mock.module("@/lib/voice-session/jwt", () => ({
     claimVoiceSessionToken: async () => true,
-    isVoiceSessionTokenRevoked: async () => false,
+    isVoiceSessionTokenRevoked: async (jti: string) => {
+      revokedChecks.push(jti);
+      return false;
+    },
     mintVoiceSessionToken: async () => ({
       token: "signed-token",
       jti: "jti",
@@ -94,9 +98,15 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       });
     },
   }));
+  let lastSessionOptions: {
+    isRevoked?: (jti: string) => Promise<boolean>;
+    onTeardownRevoke?: unknown;
+  } | null = null;
   mock.module("../lib/session", () => ({
     VoiceSession: class {
       constructor(options: {
+        isRevoked?: (jti: string) => Promise<boolean>;
+        onTeardownRevoke?: unknown;
         deepgramWebSocketFactory(request: {
           url: string;
           headers: Record<string, string>;
@@ -106,6 +116,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
           options: { headers: Record<string, string> },
         ): { addEventListener(type: string, listener: () => void): void };
       }) {
+        lastSessionOptions = options;
         const dg = options.deepgramWebSocketFactory({
           url: "ws://127.0.0.1:1/provider?channels=1",
           headers: { Authorization: "Token test" },
@@ -169,6 +180,19 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
         });
         socket.once("error", reject);
       });
+
+      // Production-parity wiring (#16663/#16667): the harness session carries
+      // NO teardown revoke (production dropped it in #16636) so evidence runs
+      // certify production behavior, and its revocation poll is wired through
+      // the real jwt module.
+      expect(lastSessionOptions).not.toBeNull();
+      expect(
+        lastSessionOptions && "onTeardownRevoke" in lastSessionOptions
+          ? lastSessionOptions.onTeardownRevoke
+          : undefined,
+      ).toBeUndefined();
+      await lastSessionOptions?.isRevoked?.("jti-parity");
+      expect(revokedChecks).toContain("jti-parity");
 
       const minted = await server.mint();
       expect(minted.token).toBe("signed-token");

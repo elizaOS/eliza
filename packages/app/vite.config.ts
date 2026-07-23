@@ -51,6 +51,7 @@ import {
   nativeModuleStubPlugin,
 } from "./vite/native-module-stub-plugin.ts";
 import { rendererBuildManifestPlugin } from "./vite/renderer-build-manifest-plugin.ts";
+import { swBuildRevPlugin } from "./vite/sw-build-rev-plugin.ts";
 import { VENDOR_OPTIMIZED_WALLET_TEST } from "./vite/wallet-chunk-matcher.ts";
 import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
 
@@ -2189,6 +2190,10 @@ export default defineConfig({
     },
     appShellMetadataPlugin(),
     rendererBuildManifestPlugin(),
+    // Stamp a per-deploy build rev into dist/sw.js so the browser detects a new
+    // service worker on every deploy and auto-runs the update flow (kills the
+    // recurring clear-data ritual — CONVERSATIONS-500-2026-07-22 fix #1).
+    swBuildRevPlugin(),
     appDevWsBasePlugin(),
     elizaCoreBrowserEntryFallbackPlugin(),
     nativeModuleStubPlugin({

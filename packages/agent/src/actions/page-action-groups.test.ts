@@ -71,43 +71,43 @@ async function invoke(
 }
 
 describe("PAGE_DELEGATE workflow alias repair", () => {
-  it.each([
-    "WORKFLOW_CREATE",
-    "CREATE_WORKFLOW",
-  ])("canonicalizes %s to WORKFLOW action=create using the user's request", async (alias) => {
-    let calls = 0;
-    let receivedOptions: HandlerOptions | undefined;
-    const handler: Action["handler"] = async (
-      _runtime,
-      _message,
-      _state,
-      options,
-    ): Promise<ActionResult> => {
-      calls += 1;
-      receivedOptions = options;
-      return {
-        success: true,
-        text: "created",
+  it.each(["WORKFLOW_CREATE", "CREATE_WORKFLOW"])(
+    "canonicalizes %s to WORKFLOW action=create using the user's request",
+    async (alias) => {
+      let calls = 0;
+      let receivedOptions: HandlerOptions | undefined;
+      const handler: Action["handler"] = async (
+        _runtime,
+        _message,
+        _state,
+        options,
+      ): Promise<ActionResult> => {
+        calls += 1;
+        receivedOptions = options;
+        return {
+          success: true,
+          text: "created",
+        };
       };
-    };
-    const runtime = makeRuntime(handler);
+      const runtime = makeRuntime(handler);
 
-    const result = await invoke(runtime, alias, {
-      definition: {
-        nodes: [{ type: "invented", parameters: { value: "wrong" } }],
-      },
-      active: false,
-    });
+      const result = await invoke(runtime, alias, {
+        definition: {
+          nodes: [{ type: "invented", parameters: { value: "wrong" } }],
+        },
+        active: false,
+      });
 
-    expect(result.success).toBe(true);
-    expect(calls).toBe(1);
-    expect(receivedOptions?.parameters).toEqual({
-      action: "create",
-      seedPrompt: CREATE_REQUEST,
-      active: false,
-    });
-    expect(receivedOptions?.parameters).not.toHaveProperty("definition");
-  });
+      expect(result.success).toBe(true);
+      expect(calls).toBe(1);
+      expect(receivedOptions?.parameters).toEqual({
+        action: "create",
+        seedPrompt: CREATE_REQUEST,
+        active: false,
+      });
+      expect(receivedOptions?.parameters).not.toHaveProperty("definition");
+    },
+  );
 
   it("preserves an already-canonical WORKFLOW delegation", async () => {
     let receivedOptions: HandlerOptions | undefined;

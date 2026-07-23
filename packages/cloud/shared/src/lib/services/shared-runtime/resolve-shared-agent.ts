@@ -22,6 +22,51 @@ export type ResolvedSharedAgent =
   | { agent: AgentSandbox; agentId: string; orgId: string; agentName: string };
 
 /**
+ * The `AgentSandbox` timestamp columns Drizzle selects as JS `Date`s. These are
+ * the fields that survive a live DB hydration as `Date` but are lost to `string`
+ * when the agent row round-trips through the scope cache (which JSON-serializes
+ * on write and JSON-parses on read).
+ */
+const AGENT_SANDBOX_DATE_FIELDS = [
+  "created_at",
+  "updated_at",
+  "deleted_at",
+  "claimed_at",
+  "pool_ready_at",
+  "last_backup_at",
+  "last_heartbeat_at",
+  "last_billed_at",
+  "shutdown_warning_sent_at",
+  "scheduled_shutdown_at",
+] as const satisfies ReadonlyArray<keyof AgentSandbox>;
+
+/**
+ * Restore the `AgentSandbox` DATE contract after a scope-cache round-trip
+ * (CONVERSATIONS-500-2026-07-22). The cache client JSON-serializes on write and
+ * JSON-parses on read, so every `timestamp` column that Drizzle hands us as a JS
+ * `Date` on a live DB hydration comes back from cache as an ISO **string**.
+ * Downstream consumers rely on the typed contract — e.g. the shared-agent
+ * conversations route calls `agent.created_at.toISOString()`, which throws
+ * (`string.toISOString is not a function`) and 500s the read on EVERY cache hit
+ * (the exact "first call 200, then all 500" defect). Rehydrating the known date
+ * fields at the cache-read boundary keeps a cache hit byte-for-byte equivalent
+ * to a fresh DB hydration for every caller. Best-effort per field: an absent or
+ * already-`Date` value is left untouched; an unparseable value is left as-is so
+ * we never fabricate a bogus `Date`.
+ */
+function rehydrateCachedAgentDates(agent: AgentSandbox): AgentSandbox {
+  const out = agent as unknown as Record<string, unknown>;
+  for (const field of AGENT_SANDBOX_DATE_FIELDS) {
+    const value = out[field];
+    if (typeof value === "string") {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) out[field] = parsed;
+    }
+  }
+  return agent;
+}
+
+/**
  * What the shared-agent SCOPE cache stores (COLDPATH-FIX-2026-07-21): the two
  * facts the cold auth+scope gate produces — the caller's organization id and
  * the org-scoped agent row. Everything else in the success return is derived
@@ -42,6 +87,15 @@ interface CachedSharedAgentScope {
    * entries (those revalidate via the key's org instead).
    */
   stewardUserId?: string;
+  /**
+   * Epoch-ms of the entry's FIRST authoritative write (COLDPATH-FIX-2026-07-22).
+   * Preserved across sliding-TTL refreshes so the refresh can be capped at
+   * `resolveMaxAgeMs` past this instant — a continuously active conversation
+   * still self-heals the cached agent row within the cap. Absent on entries
+   * written before this field existed (treated as "write now", so a legacy
+   * entry simply gets one bounded refresh window before the cap applies).
+   */
+  firstWrittenAtMs?: number;
 }
 
 /**
@@ -129,19 +183,54 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
         (await revalidateSessionScope(c, cached.stewardUserId).catch(() => false))
       : await revalidateCachedScope(c, cached.orgId).catch(() => false);
     if (!stillAuthorized) return null;
+    // Restore the DATE contract lost to the cache's JSON round-trip before
+    // handing the agent to route consumers (e.g. conversations route calls
+    // `agent.created_at.toISOString()`). Without this a cache hit 500s the read
+    // (CONVERSATIONS-500-2026-07-22).
+    const agent = rehydrateCachedAgentDates(cached.agent);
     return {
-      agent: cached.agent,
+      agent,
       agentId,
       orgId: cached.orgId,
-      agentName: cached.agent.agent_name ?? "Eliza",
+      agentName: agent.agent_name ?? "Eliza",
     };
+  };
+
+  // SLIDING-TTL refresh on a VALIDATED hit (COLDPATH-FIX-2026-07-22). The
+  // residual cold stall after #16743/#16763 is TTL expiry between turns: the
+  // 30s absolute TTL is not refreshed on read, so a conversation idled past 30s
+  // (demo Q&A pacing — read the reply, think, ask a follow-up — routinely does)
+  // re-pays the cold Hyperdrive waves on the NEXT turn. Refreshing the TTL when
+  // we serve a still-authorized hit keeps an ACTIVE conversation warm across
+  // human think-time. It is bounded: a hit only re-validates the CREDENTIAL, not
+  // the cached agent row, so we never refresh past `resolveMaxAgeMs` after the
+  // entry's FIRST write — a tier flip / row change still self-heals within the
+  // cap even under a continuously active conversation. Best-effort: a refresh
+  // failure only means the next turn may re-hydrate; it never fails the turn and
+  // never extends an UNAUTHORIZED entry (this runs only after revalidate passed).
+  const slidingRefreshValidatedHit = (cached: CachedSharedAgentScope): void => {
+    if (!scopeCacheKey) return;
+    const now = Date.now();
+    const firstWrittenAtMs = cached.firstWrittenAtMs ?? now;
+    // Do not refresh past the absolute cap; let the entry expire so the agent
+    // row self-heals via the authoritative gate.
+    if (now - firstWrittenAtMs >= CacheTTL.sharedAgentScope.resolveMaxAgeMs) return;
+    const refreshed: CachedSharedAgentScope = { ...cached, firstWrittenAtMs };
+    void cache.set(scopeCacheKey, refreshed, CacheTTL.sharedAgentScope.resolve).catch((error) => {
+      logger.debug("[resolveSharedAgent] scope cache sliding refresh failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   };
 
   if (scopeCacheKey) {
     const cached = await cache.get<CachedSharedAgentScope>(scopeCacheKey).catch(() => null);
     if (cached) {
       const resolved = await revalidateResolvedScope(cached);
-      if (resolved) return resolved;
+      if (resolved) {
+        slidingRefreshValidatedHit(cached);
+        return resolved;
+      }
     }
   }
 
@@ -176,15 +265,21 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
           // cache, and this caller falls through to the authoritative path
           // below to produce the correct 404 / bootstrap handling.
           if (!agent || agent.execution_tier !== "shared") return null;
-          return isSessionScope && typeof user.steward_id === "string"
-            ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
-            : { orgId: user.organization_id, agent };
+          const base =
+            isSessionScope && typeof user.steward_id === "string"
+              ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
+              : { orgId: user.organization_id, agent };
+          return { ...base, firstWrittenAtMs: Date.now() };
         },
         { singleflight: true },
       )
       .catch(() => null);
     if (hydrated) {
       const resolved = await revalidateResolvedScope(hydrated);
+      // No sliding refresh here: this branch either JUST populated the entry
+      // (fresh full TTL) or picked up a scope another cold caller populated
+      // microseconds ago (also fresh). The sliding refresh only exists to keep
+      // a pre-existing, idled entry warm and runs solely on the direct-get hit.
       if (resolved) return resolved;
     }
   }
@@ -205,10 +300,12 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     // JWT maps to the same user without a user/org DB read (#SHADOW-ACCOUNT-DEBUG).
     // Only write it when we actually have it (session path + a steward-linked
     // user); its absence just means the hit safely falls back to the slow gate.
-    const entry: CachedSharedAgentScope =
-      isSessionScope && typeof user.steward_id === "string"
+    const entry: CachedSharedAgentScope = {
+      ...(isSessionScope && typeof user.steward_id === "string"
         ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
-        : { orgId: user.organization_id, agent };
+        : { orgId: user.organization_id, agent }),
+      firstWrittenAtMs: Date.now(),
+    };
     void cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve).catch((error) => {
       logger.debug("[resolveSharedAgent] scope cache write failed", {
         error: error instanceof Error ? error.message : String(error),

@@ -1490,32 +1490,72 @@ describe("normalizeParamAliases", () => {
 		name: "TRIGGER",
 		description: "",
 		parameters: [
-			{ name: "instructions", required: false, aliases: ["description", "message", "prompt"], schema: { type: "string" } },
-			{ name: "scheduledAtIso", required: false, aliases: ["scheduledFor", "when", "at"], schema: { type: "string" } },
-			{ name: "target", required: false, aliases: ["to", "recipient"], schema: { type: "string" } },
-			{ name: "shared", required: false, aliases: ["dup"], schema: { type: "string" } },
-			{ name: "shared2", required: false, aliases: ["dup"], schema: { type: "string" } },
+			{
+				name: "instructions",
+				required: false,
+				aliases: ["description", "message", "prompt"],
+				schema: { type: "string" },
+			},
+			{
+				name: "scheduledAtIso",
+				required: false,
+				aliases: ["scheduledFor", "when", "at"],
+				schema: { type: "string" },
+			},
+			{
+				name: "target",
+				required: false,
+				aliases: ["to", "recipient"],
+				schema: { type: "string" },
+			},
+			{
+				name: "shared",
+				required: false,
+				aliases: ["dup"],
+				schema: { type: "string" },
+			},
+			{
+				name: "shared2",
+				required: false,
+				aliases: ["dup"],
+				schema: { type: "string" },
+			},
 		],
 		validate: async () => true,
 		handler: async () => ({}),
 	} as unknown as import("@elizaos/core").Action;
 
 	it("renames an alias key to its canonical param", () => {
-		expect(normalizeParamAliases(action, { description: "drink water", scheduledFor: "2026-01-01T00:00:00Z" }))
-			.toEqual({ instructions: "drink water", scheduledAtIso: "2026-01-01T00:00:00Z" });
+		expect(
+			normalizeParamAliases(action, {
+				description: "drink water",
+				scheduledFor: "2026-01-01T00:00:00Z",
+			}),
+		).toEqual({
+			instructions: "drink water",
+			scheduledAtIso: "2026-01-01T00:00:00Z",
+		});
 	});
 
 	it("leaves a declared canonical key untouched", () => {
-		expect(normalizeParamAliases(action, { instructions: "x" })).toEqual({ instructions: "x" });
+		expect(normalizeParamAliases(action, { instructions: "x" })).toEqual({
+			instructions: "x",
+		});
 	});
 
 	it("never clobbers an explicitly-provided canonical value", () => {
-		expect(normalizeParamAliases(action, { instructions: "canon", description: "alias" }))
-			.toEqual({ instructions: "canon", description: "alias" });
+		expect(
+			normalizeParamAliases(action, {
+				instructions: "canon",
+				description: "alias",
+			}),
+		).toEqual({ instructions: "canon", description: "alias" });
 	});
 
 	it("leaves an unknown key to reject (not claimed by any alias)", () => {
-		expect(normalizeParamAliases(action, { totally_unknown: "x" })).toEqual({ totally_unknown: "x" });
+		expect(normalizeParamAliases(action, { totally_unknown: "x" })).toEqual({
+			totally_unknown: "x",
+		});
 	});
 
 	it("leaves an ambiguous alias (two params claim it) to reject", () => {
@@ -1523,7 +1563,10 @@ describe("normalizeParamAliases", () => {
 	});
 
 	it("is a no-op when the action declares no aliases", () => {
-		const noAlias = { ...action, parameters: [{ name: "x", required: false, schema: { type: "string" } }] } as unknown as import("@elizaos/core").Action;
+		const noAlias = {
+			...action,
+			parameters: [{ name: "x", required: false, schema: { type: "string" } }],
+		} as unknown as import("@elizaos/core").Action;
 		expect(normalizeParamAliases(noAlias, { y: "1" })).toEqual({ y: "1" });
 	});
 });

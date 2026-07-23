@@ -12,6 +12,7 @@
 
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import type { Metadata } from "sharp";
 import sharp from "sharp";
 import { EvidenceError } from "../errors.ts";
 import type { ImageDimensions } from "./types.ts";
@@ -83,7 +84,7 @@ export async function prepareImage(
   const sourceSha256 = createHash("sha256").update(sourceBytes).digest("hex");
 
   const pipeline = sharp(sourceBytes, { failOn: "error" });
-  let metadata: sharp.Metadata;
+  let metadata: Metadata;
   try {
     metadata = await pipeline.metadata();
   } catch (error) {
