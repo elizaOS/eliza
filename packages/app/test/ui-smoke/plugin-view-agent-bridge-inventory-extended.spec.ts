@@ -192,14 +192,16 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Hyperliquid",
     path: "/hyperliquid",
     viewId: "hyperliquid",
-    ready: { selector: '[aria-label="Hyperliquid controls"]' },
+    // The visible "<Name> controls" toolbars were removed (#14596); each
+    // spatial view stamps its root Card with a stable data-agent-id instead.
+    ready: { selector: '[data-agent-id="hyperliquid-root"]' },
     requiredIds: ["hyperliquid-refresh", "hyperliquid-home"],
   },
   {
     label: "Polymarket",
     path: "/polymarket",
     viewId: "polymarket",
-    ready: { selector: '[aria-label="Polymarket controls"]' },
+    ready: { selector: '[data-agent-id="polymarket-root"]' },
     requiredIds: ["polymarket-refresh"],
   },
   {

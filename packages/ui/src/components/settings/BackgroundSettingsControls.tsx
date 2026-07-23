@@ -332,13 +332,17 @@ export function BackgroundSettingsControls({
         <ImagePlus className="h-4 w-4" aria-hidden />
         Upload
       </Button>
+      {/* aria-hidden: this sr-only input is pure upload machinery — the
+          user/agent-facing control is the wired Upload button above; hiding
+          it from the a11y tree also keeps it out of the chat-drivability
+          audit, which grants aria-hidden machinery a carve-out. */}
       <Input
         ref={fileInputRef}
         type="file"
         accept="image/*"
         onChange={onFileChange}
         className="sr-only border-0 bg-transparent p-0"
-        aria-label="Background image file"
+        aria-hidden="true"
         tabIndex={-1}
       />
     </>
