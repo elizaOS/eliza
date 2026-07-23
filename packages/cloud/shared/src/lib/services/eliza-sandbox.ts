@@ -2741,6 +2741,7 @@ export class ElizaSandboxService {
   private async bridgeSharedMessageStream(
     rec: AgentSandbox,
     rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
   ): Promise<Response> {
     const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
     const text = typeof params.text === "string" ? params.text : "";
@@ -2822,6 +2823,14 @@ export class ElizaSandboxService {
         start: async (controller) => {
           let reply = "";
           let finished = false;
+          // Once the billing tail is registered it owns settlement end-to-end
+          // (success settles at totalCost, failure refunds). The stream catch
+          // below must then leave the reservation alone: a client cancel makes
+          // the `done` enqueue throw AFTER registration, and racing a
+          // settle(0) against the deferred tail's settle(totalCost) would turn
+          // a fully-delivered, persisted reply into an unbilled one depending
+          // on which write lands first.
+          let billingTailOwnsSettlement = false;
           try {
             for await (const part of parts) {
               if (part.type === "text-delta") {
@@ -2854,46 +2863,79 @@ export class ElizaSandboxService {
               if (turn.navIntent) {
                 await settleReservation(0);
               } else if (billingContext) {
-                try {
-                  const billing = await billUsage(
-                    billingContext,
-                    this.sharedRuntimeBillingUsageForReply(
-                      finalReply,
-                      part.usage,
-                      estimatedInputTokens,
-                    ),
-                  );
-                  const settlement = await settleReservation(billing.totalCost);
-                  const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-                    type: "chat",
-                    content: finalReply,
-                    prompt: text,
-                  });
-                  if (usageRecord) {
-                    await aiBillingRecordsService
-                      .record({
-                        context: billingContext,
-                        billing,
-                        usageRecord,
-                        idempotencyKey,
-                        reconciliation: settlement,
-                      })
-                      .catch((error) => {
-                        logger.error("[shared-runtime] AI billing audit record failed", {
-                          error: error instanceof Error ? error.message : String(error),
-                          agentId: rec.id,
+                // The reply is final once the last token arrived and history
+                // persisted, but the billing tail (billUsage → settleReservation
+                // → analytics → audit) is ~4 serial cross-region Worker→DB
+                // round-trips (~1.5-2s) that previously ran INLINE before the
+                // `done` SSE frame — the exact firstText≈1.4s / done≈4s gap
+                // measured on staging. Same deferral the non-stream send got
+                // (#8759 / settleOffResponsePath): on a Worker the tail runs via
+                // executionCtx.waitUntil OFF the `done` path; without an
+                // executionCtx (tests, non-Worker callers) it runs inline,
+                // exactly as before. The deferred task ALWAYS settles the hold:
+                // success settles at billing.totalCost, any failure refunds via
+                // the idempotent settleReservation(0), and a refund throw is
+                // contained and logged (never an unhandled waitUntil rejection)
+                // — the #11169 sweep-credit-reservations cron backstops a hold
+                // stranded by a dropped waitUntil or a failed refund.
+                billingTailOwnsSettlement = true;
+                await settleOffResponsePath(executionCtx, async () => {
+                  try {
+                    const billing = await billUsage(
+                      billingContext,
+                      this.sharedRuntimeBillingUsageForReply(
+                        finalReply,
+                        part.usage,
+                        estimatedInputTokens,
+                      ),
+                    );
+                    const settlement = await settleReservation(billing.totalCost);
+                    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+                      type: "chat",
+                      content: finalReply,
+                      prompt: text,
+                    });
+                    if (usageRecord) {
+                      await aiBillingRecordsService
+                        .record({
+                          context: billingContext,
+                          billing,
+                          usageRecord,
+                          idempotencyKey,
+                          reconciliation: settlement,
+                        })
+                        .catch((error) => {
+                          logger.error("[shared-runtime] AI billing audit record failed", {
+                            error: error instanceof Error ? error.message : String(error),
+                            agentId: rec.id,
+                          });
                         });
-                      });
+                    }
+                  } catch (error) {
+                    // error-policy:J1 deferred-settlement boundary — the `done`
+                    // frame may already be flushed, so the refund is the
+                    // handling: settle(0) is idempotent, and a refund failure is
+                    // logged for the cron sweep.
+                    try {
+                      await settleReservation(0);
+                    } catch (refundError) {
+                      logger.error(
+                        "[shared-runtime] deferred billing refund failed; sweep-credit-reservations will reclaim the hold",
+                        {
+                          error:
+                            refundError instanceof Error
+                              ? refundError.message
+                              : String(refundError),
+                          agentId: rec.id,
+                        },
+                      );
+                    }
+                    logger.error("[shared-runtime] billing failed", {
+                      error: error instanceof Error ? error.message : String(error),
+                      agentId: rec.id,
+                    });
                   }
-                } catch (error) {
-                  // error-policy:J1 billing boundary translation — the user got
-                  // the reply, but a failed meter write must release the hold.
-                  await settleReservation(0);
-                  logger.error("[shared-runtime] billing failed", {
-                    error: error instanceof Error ? error.message : String(error),
-                    agentId: rec.id,
-                  });
-                }
+                });
               }
               // Attach a VIEWS navigation handoff for a deterministic nav turn so
               // the PWA opens the view (findViewActionHandoff → navigate event in
@@ -2920,8 +2962,12 @@ export class ElizaSandboxService {
             }
           } catch (error) {
             // error-policy:J1 stream boundary translation — partial SSE streams
-            // cannot become HTTP errors, so emit a terminal error frame.
-            await settleReservation(0);
+            // cannot become HTTP errors, so emit a terminal error frame. The
+            // refund only runs while the reservation is still this scope's to
+            // settle — once the billing tail is registered it owns the hold.
+            if (!billingTailOwnsSettlement) {
+              await settleReservation(0);
+            }
             logger.warn("[shared-runtime] stream failed", {
               error: error instanceof Error ? error.message : String(error),
               agentId: rec.id,
@@ -4304,7 +4350,12 @@ export class ElizaSandboxService {
     }
   }
 
-  async bridgeStream(agentId: string, orgId: string, rpc: BridgeRequest): Promise<Response | null> {
+  async bridgeStream(
+    agentId: string,
+    orgId: string,
+    rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
+  ): Promise<Response | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
@@ -4319,7 +4370,7 @@ export class ElizaSandboxService {
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     if (rec.execution_tier === "shared") {
-      const response = await this.bridgeSharedMessageStream(rec, rpc);
+      const response = await this.bridgeSharedMessageStream(rec, rpc, executionCtx);
       return response ?? (fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null);
     }
 

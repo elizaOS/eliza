@@ -7,7 +7,7 @@
 
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
-import type { BridgeRequest } from "../eliza-sandbox";
+import type { BridgeExecutionContext, BridgeRequest } from "../eliza-sandbox";
 import { elizaSandboxService } from "../eliza-sandbox";
 import { applyCorsHeaders } from "../proxy/cors";
 
@@ -27,6 +27,12 @@ export interface CanonicalScopedStreamRequest {
   body: unknown;
   origin?: string | null;
   timings?: Record<string, number>;
+  /**
+   * Workers only: lets the shared-tier turn defer its billing tail off the
+   * SSE `done` path via executionCtx.waitUntil (see bridgeSharedMessageStream).
+   * Absent (tests, non-Worker callers) the tail settles inline as before.
+   */
+  executionCtx?: BridgeExecutionContext;
 }
 
 function nowMs(): number {
@@ -90,7 +96,12 @@ export async function handleCanonicalScopedAgentStream(
   let upstream: Response | null;
   const bridgeStartedAt = nowMs();
   try {
-    upstream = await elizaSandboxService.bridgeStream(request.agentId, request.orgId, rpc);
+    upstream = await elizaSandboxService.bridgeStream(
+      request.agentId,
+      request.orgId,
+      rpc,
+      request.executionCtx,
+    );
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {
     timings.bridge = elapsedMs(bridgeStartedAt);
