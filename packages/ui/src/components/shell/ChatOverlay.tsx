@@ -7,8 +7,6 @@ import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   AudioLines,
-  Camera,
-  Captions,
   FileText,
   Film,
   Loader2,
@@ -5480,11 +5478,10 @@ export function ChatOverlay({
                   "mx-auto w-full max-w-3xl",
                 )}
               >
-                {/* The header carries no nav/search buttons — Search, Upload,
-                    Enable camera, and Transcribe all live in the composer "+"
-                    menu now, and Home lives in the launcher. This bar exists
-                    only to reserve the safe-area top inset at full-bleed and to
-                    host the transcription status badge. */}
+                {/* The header carries no nav/search buttons — thread Search and
+                    Upload live in the composer "+" menu, while Home lives in
+                    the launcher. This bar exists only to reserve the safe-area
+                    top inset at full-bleed and host the transcription badge. */}
                 {transcriptionMode ? (
                   <div
                     data-testid="chat-transcribing-badge"
@@ -5886,12 +5883,10 @@ export function ChatOverlay({
                   onPick={pickSlashItem}
                 />
               ) : null}
-              {/* The "+" opens the chat-actions menu. Every item acts on THIS
-                  in-app conversation only — they are surface-local affordances
-                  (search this thread, attach to this turn, point the agent's
-                  camera/transcription at this chat), never connector actions on a
-                  Discord/Telegram room. Search + Transcribe + camera are things
-                  the agent can also drive; Upload is a pure client affordance. */}
+              {/* The "+" opens surface-local Search and Upload actions for this
+                  in-app conversation, never connector actions on a
+                  Discord/Telegram room. Search is agent-driveable; Upload is a
+                  pure client affordance. */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -5939,26 +5934,6 @@ export function ChatOverlay({
                       aria-hidden
                     />
                     Upload file
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    onSelect={() => send("Turn on the camera so you can see.")}
-                  >
-                    <Camera
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    Enable camera
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    onSelect={() => toggleTranscriptionMode()}
-                  >
-                    <Captions
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    {transcriptionMode ? "Stop transcribing" : "Transcribe"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

@@ -1885,6 +1885,29 @@ describe("ChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
+  it("keeps the chat-actions menu focused on search and upload", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const plus = screen.getByTestId("chat-composer-plus");
+    expect(screen.getByLabelText("chat actions")).toBeTruthy();
+
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.getByText("Search chat…")).toBeTruthy();
+    expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(screen.queryByText("Enable camera")).toBeNull();
+    expect(screen.queryByText("Transcribe")).toBeNull();
+    expect(screen.queryByText("Stop transcribing")).toBeNull();
+  });
+
   it("keeps composer controls in one non-wrapping input row inside the constrained panel", () => {
     render(<ChatOverlay controller={makeController()} />);
 
