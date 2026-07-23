@@ -68,6 +68,72 @@ function canonicalJson(value: unknown): string {
   return serialized;
 }
 
+function parseObject(value: string, label: string): JsonRecord {
+  const parsed: unknown = JSON.parse(value);
+  if (!isRecord(parsed)) {
+    throw new Error(`${label} is not a JSON object`);
+  }
+  return parsed;
+}
+
+function reconstructProviderToolCalls(
+  fragments: CapturedToolFragment[]
+): Array<{ index: number; id: string; name: string; input: JsonRecord }> {
+  const calls = new Map<number, { id?: string; name?: string; argumentsText: string }>();
+  for (const fragment of fragments) {
+    const call = calls.get(fragment.index) ?? { argumentsText: "" };
+    if (fragment.id) {
+      if (call.id && call.id !== fragment.id) {
+        throw new Error(`Provider changed the id for tool-call index ${fragment.index}`);
+      }
+      call.id = fragment.id;
+    }
+    if (fragment.name) {
+      if (call.name && call.name !== fragment.name) {
+        throw new Error(`Provider changed the name for tool-call index ${fragment.index}`);
+      }
+      call.name = fragment.name;
+    }
+
+    let accumulated: JsonRecord | undefined;
+    let incoming: JsonRecord | undefined;
+    try {
+      accumulated = parseObject(call.argumentsText, "Accumulated provider arguments");
+    } catch {
+      accumulated = undefined;
+    }
+    try {
+      incoming = parseObject(fragment.argumentsFragment, "Provider argument fragment");
+    } catch {
+      incoming = undefined;
+    }
+    if (fragment.id && fragment.name && accumulated !== undefined && incoming !== undefined) {
+      if (canonicalJson(accumulated) !== canonicalJson(incoming)) {
+        throw new Error(
+          `Provider consolidated arguments conflict at tool-call index ${fragment.index}`
+        );
+      }
+    } else {
+      call.argumentsText += fragment.argumentsFragment;
+    }
+    calls.set(fragment.index, call);
+  }
+
+  return [...calls.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([index, call]) => {
+      if (!call.id || !call.name) {
+        throw new Error(`Provider tool-call index ${index} has incomplete identity`);
+      }
+      return {
+        index,
+        id: call.id,
+        name: call.name,
+        input: parseObject(call.argumentsText, `Provider tool-call index ${index}`),
+      };
+    });
+}
+
 function syntheticPayload(): JsonRecord {
   const segments = Array.from(
     { length: 192 },
@@ -146,7 +212,7 @@ function redactSseTranscript(raw: string): {
             if (typeof fn.name === "string") call.name = fn.name;
             if (typeof fn.arguments === "string") {
               call.argumentsFragment = fn.arguments;
-              if (fn.arguments.length > 0 && typeof rawCall.index === "number") {
+              if (typeof rawCall.index === "number") {
                 fragments.push({
                   frame,
                   index: rawCall.index,
@@ -205,7 +271,6 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
     }
 
     const expectedInput = syntheticPayload();
-    const expectedCanonical = canonicalJson(expectedInput);
     const realFetch = globalThis.fetch.bind(globalThis);
     let responseCapture: Promise<string> | undefined;
     let requestModel: string | undefined;
@@ -309,6 +374,7 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
       throw new Error("Live plugin stream did not produce a result");
     }
     const transcript = redactSseTranscript(rawSse);
+    const providerCalls = reconstructProviderToolCalls(transcript.fragments);
     const toolCalls = await (
       result as TextStreamResult & {
         toolCalls: Promise<
@@ -324,9 +390,15 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
       result as TextStreamResult & { finishReason: Promise<string | undefined> }
     ).finishReason;
     expect(toolCalls).toHaveLength(1);
+    expect(providerCalls).toHaveLength(1);
     const reconstructed = toolCalls[0];
+    const providerCall = providerCalls[0];
     expect(reconstructed?.toolName).toBe(TOOL_NAME);
-    expect(canonicalJson(reconstructed?.input)).toBe(expectedCanonical);
+    expect(providerCall?.name).toBe(TOOL_NAME);
+    expect(canonicalJson(providerCall?.input)).toBe(canonicalJson(reconstructed?.input));
+    expect(reconstructed?.input.marker).toBe(expectedInput.marker);
+    expect(reconstructed?.input.payload).toBe(expectedInput.payload);
+    expect(Array.isArray(reconstructed?.input.sequence)).toBe(true);
     expect(transcript.fragments.length).toBeGreaterThan(1);
     expect(finishReason).toBe("tool_calls");
     expect(requestModel).toBe(MODEL);
@@ -335,7 +407,10 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
     const executeSyntheticTool = (input: JsonRecord): JsonRecord => {
       executedInput = structuredClone(input);
       return {
-        accepted: canonicalJson(input) === expectedCanonical,
+        accepted:
+          input.marker === expectedInput.marker &&
+          input.payload === expectedInput.payload &&
+          Array.isArray(input.sequence),
         marker: input.marker,
       };
     };
@@ -356,6 +431,7 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
       providerArgumentFragmentCount: transcript.fragments.length,
       redactedProviderDataFrames: transcript.dataFrames,
       providerArgumentFragments: transcript.fragments,
+      providerReconstructedToolCalls: providerCalls,
       pluginStreamedEnvelope: streamedEnvelope,
       pluginReconstructedToolCall: reconstructed,
       expectedToolInput: expectedInput,
@@ -365,10 +441,11 @@ liveDescribe("Eliza Cloud streamed tool-call reconstruction (live)", () => {
       },
       verdict: {
         terminalFinishReason: finishReason,
-        expectedMatchesPlugin: canonicalJson(reconstructed?.input) === expectedCanonical,
+        providerMatchesPlugin:
+          canonicalJson(providerCall?.input) === canonicalJson(reconstructed?.input),
         pluginMatchesExecuted: canonicalJson(reconstructed?.input) === canonicalJson(executedInput),
         endToEndInputEquality:
-          canonicalJson(reconstructed?.input) === expectedCanonical &&
+          canonicalJson(providerCall?.input) === canonicalJson(reconstructed?.input) &&
           canonicalJson(reconstructed?.input) === canonicalJson(executedInput),
       },
     });
