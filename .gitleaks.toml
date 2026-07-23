@@ -42,6 +42,26 @@ paths = [
   '''test-results/evidence/10469-live-model/.*''',
 ]
 
+# The warm-pool claim-time inference-key-push unit tests (#17066) MUST embed
+# example `eliza_`-prefixed key SHAPES as fixtures to prove the mint/push/no-leak
+# behavior — none are real credentials (values are self-labeling synthetic
+# placeholders: `...musntleak...`, `eliza_0123456789abcdef...`, `eliza_deadbeef...`).
+# The `generic-api-key` rule trips on the high-entropy `eliza_` literal. Scope
+# BOTH the two exact test files AND the synthetic `eliza_`-literal shape via
+# condition=AND, so every other token in those files stays scanned. No real
+# secret is allowlisted.
+[[allowlists]]
+description = "warm-pool claim key-push test fixtures — synthetic eliza_ key shapes under test (#17066)"
+condition = "AND"
+paths = [
+  '''(^|/)packages/cloud/shared/src/lib/services/warm-claim-key-push\.test\.ts$''',
+  '''(^|/)packages/cloud/shared/src/lib/services/eliza-sandbox-warm-claim-key-push\.test\.ts$''',
+]
+regexTarget = "match"
+regexes = [
+  '''eliza_[A-Za-z0-9]{6,}''',
+]
+
 # The inference-auth controlled-probe test uses a fixed discriminator with a
 # 32-character lowercase-hex suffix so the trusted bypass path is exercised
 # without accepting a production credential. Scope both the file and exact
