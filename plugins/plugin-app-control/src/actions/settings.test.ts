@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createSettingsAction,
 	DEFAULT_VOICE_SETTINGS_PREFS,
+	humanizeSettingsRouteFailure,
 	parseBooleanValue,
 	parseSettingsRequest,
 	resolveSectionId,
@@ -2173,6 +2174,94 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 			expect(result?.success).toBe(false);
 			expect(texts.join(" ")).toContain(cap.reason);
 		}
+	});
+});
+
+describe("humanizeSettingsRouteFailure: user-facing route failure copy", () => {
+	it("maps 401 to a retryable session message with no raw path/status internals", () => {
+		const copy = humanizeSettingsRouteFailure(
+			"/api/views/settings/navigate",
+			401,
+			null,
+		);
+		expect(copy).toContain("isn't authenticated right now");
+		expect(copy).toContain("try that again");
+		expect(copy).not.toContain("/api/views");
+		expect(copy).not.toContain("401");
+	});
+
+	it("maps 403 the same as 401 (auth class)", () => {
+		expect(humanizeSettingsRouteFailure("/api/x", 403, "Forbidden")).toContain(
+			"isn't authenticated",
+		);
+	});
+
+	it("maps 404 to a capability-missing message", () => {
+		expect(humanizeSettingsRouteFailure("/api/x", 404, null)).toContain(
+			"isn't available in this app version",
+		);
+	});
+
+	it("maps 5xx to a transient retry message and keeps a descriptive server detail", () => {
+		const copy = humanizeSettingsRouteFailure(
+			"/api/update/status",
+			503,
+			"registry unreachable while refreshing",
+		);
+		expect(copy).toContain("temporary error");
+		expect(copy).toContain("try that again");
+		expect(copy).toContain("registry unreachable while refreshing");
+	});
+
+	it("drops boilerplate status-text bodies on 5xx (no signal beyond the code)", () => {
+		const copy = humanizeSettingsRouteFailure(
+			"/api/x",
+			500,
+			"Internal Server Error",
+		);
+		expect(copy).toContain("temporary error");
+		expect(copy).not.toContain("Internal Server Error");
+	});
+
+	it("prefers a descriptive server error verbatim for other client errors", () => {
+		expect(
+			humanizeSettingsRouteFailure("/api/x", 422, "choose stable or beta"),
+		).toBe("choose stable or beta");
+	});
+
+	it("falls back to the technical path/status only when nothing better exists", () => {
+		expect(humanizeSettingsRouteFailure("/api/x", 400, null)).toBe(
+			"the request failed (HTTP 400 on /api/x)",
+		);
+	});
+
+	it("default route fetch narrates a 401 as a retryable session hiccup, not raw internals", async () => {
+		// The QA-reported class: settings-open toast reading "Authentication
+		// error: … route … returned 401". The reply must carry the human copy.
+		vi.stubEnv("ELIZA_PORT", "3456");
+		const fetchMock = vi.fn(
+			async () =>
+				({
+					ok: false,
+					status: 401,
+					json: async () => ({ error: "Unauthorized" }),
+				}) as unknown as Response,
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { result, texts } = await invoke({
+			action: "set",
+			section: "appearance",
+			key: "theme",
+			value: "dark",
+		});
+
+		expect(result?.success).toBe(false);
+		const joined = texts.join(" ");
+		expect(joined).toContain("isn't authenticated right now");
+		expect(joined).toContain("try that again");
+		expect(joined).not.toContain("returned 401");
+		expect(joined).not.toContain("/api/views");
 	});
 });
 
