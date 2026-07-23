@@ -46,6 +46,12 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "hyperliquid", viewType: "gui", path: "/hyperliquid" },
   { id: "focus", viewType: "gui", path: "/focus" },
   { id: "calendar", viewType: "gui", path: "/calendar" },
+  { id: "notes", viewType: "gui", path: "/notes" },
+  {
+    id: "simple-calendar",
+    viewType: "gui",
+    path: "/simple-calendar",
+  },
   { id: "documents", viewType: "gui", path: "/documents" },
   { id: "finances", viewType: "gui", path: "/finances" },
   { id: "goals", viewType: "gui", path: "/goals" },
