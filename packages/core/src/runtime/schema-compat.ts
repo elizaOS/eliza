@@ -1,16 +1,17 @@
 /**
  * Schema-compatibility helpers for strict-grammar inference providers.
  *
- * Cerebras (and similar providers that compile JSON-schema constraints into a
- * grammar before sampling) impose two constraints OpenAI does not:
+ * Cerebras and similar providers that compile JSON-schema constraints into a
+ * grammar before sampling impose two tool-parameter constraints:
  *   1. Tool-parameter root must be `type: "object"`; root `oneOf`/`anyOf`/
  *      `enum`/`not` is rejected (error: "schema must have type 'object' and
  *      not have 'oneOf'/'anyOf'/'enum'/'not' at the top level").
- *   2. Empty-properties object schemas are rejected by the grammar compiler.
+ *   2. A zero-argument strict tool remains an explicit closed object:
+ *      `properties: {}`, `required: []`, and `additionalProperties: false`.
  *
  * `normalizeSchemaForCerebras(schema, true)` enforces (1) by wrapping any
- * illegal-root schema under `properties.value`, and enforces (2) by dropping
- * `properties`/`required`/`additionalProperties` when properties is empty.
+ * illegal-root schema under `properties.value`, and enforces (2) by
+ * canonicalizing empty object schemas without weakening strictness.
  * Nested usage of `oneOf`/`anyOf`/`enum`/`not` is fine — only the root is
  * checked.
  *
@@ -39,8 +40,16 @@ export function normalizeSchemaForCerebras(
 	isRoot = false,
 ): unknown {
 	if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-		// Non-object root → empty object schema (tool without arguments).
-		if (isRoot) return { type: "object" };
+		// A missing/non-object root denotes a tool without arguments. Keep the
+		// strict empty-object contract explicit at the provider boundary.
+		if (isRoot) {
+			return {
+				type: "object",
+				properties: {},
+				required: [],
+				additionalProperties: false,
+			};
+		}
 		return schema;
 	}
 	let node = { ...(schema as Record<string, unknown>) };
@@ -64,9 +73,9 @@ export function normalizeSchemaForCerebras(
 		const hasAnyOf = Array.isArray(node.anyOf) && node.anyOf.length > 0;
 		const hasOneOf = Array.isArray(node.oneOf) && node.oneOf.length > 0;
 		if (!hasProps && !hasAnyOf && !hasOneOf) {
-			delete node.properties;
-			delete node.required;
-			delete node.additionalProperties;
+			node.properties = {};
+			node.required = [];
+			node.additionalProperties = false;
 		} else if (hasProps) {
 			const next: Record<string, unknown> = {};
 			for (const [k, v] of Object.entries(props as Record<string, unknown>)) {
@@ -82,8 +91,37 @@ export function normalizeSchemaForCerebras(
 	if (Array.isArray(node.oneOf)) {
 		node.oneOf = node.oneOf.map((v) => normalizeSchemaForCerebras(v));
 	}
-	if (node.items) {
+	if (Array.isArray(node.allOf)) {
+		node.allOf = node.allOf.map((v) => normalizeSchemaForCerebras(v));
+	}
+	if (Array.isArray(node.items)) {
+		node.items = node.items.map((v) => normalizeSchemaForCerebras(v));
+	} else if (node.items !== undefined) {
 		node.items = normalizeSchemaForCerebras(node.items);
+	}
+	for (const key of [
+		"contains",
+		"propertyNames",
+		"not",
+		"if",
+		"then",
+		"else",
+	] as const) {
+		if (node[key] !== undefined) {
+			node[key] = normalizeSchemaForCerebras(node[key]);
+		}
+	}
+	for (const key of ["patternProperties", "$defs", "definitions"] as const) {
+		const value = node[key];
+		if (value && typeof value === "object" && !Array.isArray(value)) {
+			const normalized: Record<string, unknown> = {};
+			for (const [name, schema] of Object.entries(
+				value as Record<string, unknown>,
+			)) {
+				normalized[name] = normalizeSchemaForCerebras(schema);
+			}
+			node[key] = normalized;
+		}
 	}
 	return node;
 }

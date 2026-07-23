@@ -191,6 +191,9 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   sessionRegex("plugins.ui-spec", "GET", /^\/api\/plugins\/[^/]+\/ui-spec$/),
   sessionExact("agents.list", "GET", "/api/agents"),
   sessionExact("config.read", "GET", "/api/config"),
+  sessionExact("config.schema", "GET", "/api/config/schema"),
+  ownerExact("config.write", "PUT", "/api/config"),
+  ownerExact("config.reload", "POST", "/api/config/reload"),
 
   ownerPrefix("secrets", "/api/secrets/"),
   ownerExact("drop.status", "GET", "/api/drop/status"),

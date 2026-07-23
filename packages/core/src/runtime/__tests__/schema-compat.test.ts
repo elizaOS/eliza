@@ -11,25 +11,31 @@ import {
 } from "../schema-compat";
 
 describe("normalizeSchemaForCerebras", () => {
-	it("strips empty-properties + additionalProperties:false on object schemas", () => {
+	it("preserves a closed zero-argument strict object schema", () => {
 		const result = normalizeSchemaForCerebras({
 			type: "object",
 			properties: {},
 			additionalProperties: false,
 			required: [],
-		}) as Record<string, unknown>;
-		expect(result.type).toBe("object");
-		expect(result.properties).toBeUndefined();
-		expect(result.additionalProperties).toBeUndefined();
-		expect(result.required).toBeUndefined();
+		});
+		expect(result).toEqual({
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		});
 	});
 
-	it("strips properties on bare object schema", () => {
+	it("canonicalizes a bare zero-argument object as closed and strict", () => {
 		const result = normalizeSchemaForCerebras({
 			type: "object",
-		}) as Record<string, unknown>;
-		expect(result.type).toBe("object");
-		expect(result.properties).toBeUndefined();
+		});
+		expect(result).toEqual({
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		});
 	});
 
 	it("preserves populated object schemas", () => {
@@ -52,8 +58,12 @@ describe("normalizeSchemaForCerebras", () => {
 		}) as Record<string, unknown>;
 		const inner = (result.properties as Record<string, Record<string, unknown>>)
 			.inner;
-		expect(inner.properties).toBeUndefined();
-		expect(inner.additionalProperties).toBeUndefined();
+		expect(inner).toEqual({
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		});
 	});
 
 	it("recurses into array items", () => {
@@ -62,8 +72,12 @@ describe("normalizeSchemaForCerebras", () => {
 			items: { type: "object", properties: {}, additionalProperties: false },
 		}) as Record<string, unknown>;
 		const items = result.items as Record<string, unknown>;
-		expect(items.properties).toBeUndefined();
-		expect(items.additionalProperties).toBeUndefined();
+		expect(items).toEqual({
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		});
 	});
 
 	it("preserves objects that have anyOf/oneOf even with empty properties", () => {

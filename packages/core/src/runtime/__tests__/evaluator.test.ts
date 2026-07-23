@@ -202,7 +202,7 @@ df -h / /home
 		expect(messageToUser).toHaveBeenCalledWith("Sent.");
 	});
 
-	it("repairs missing success only when FINISH follows a successful tool result", async () => {
+	it("rejects a missing success field even when FINISH follows a successful tool result", async () => {
 		const runtime = {
 			useModel: vi.fn(
 				async () => `{
@@ -246,8 +246,10 @@ df -h / /home
 			},
 		});
 
-		expect(result.decision).toBe("FINISH");
-		expect(result.success).toBe(true);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.protocolFailure).toBe(true);
+		expect(result.messageToUser).toBeUndefined();
 	});
 
 	it("promotes safe final thoughts to messageToUser with requested command echo", async () => {
@@ -771,7 +773,7 @@ describe("envelope-then-prose repair (leading fenced verdict + answer)", () => {
 	it("keeps an explicit messageToUser from the envelope over trailing prose", () => {
 		const raw = [
 			"```json",
-			'{ "success": true, "decision": "FINISH", "messageToUser": "The answer is 42." }',
+			'{ "success": true, "decision": "FINISH", "thought": "Done.", "messageToUser": "The answer is 42." }',
 			"```",
 			"stray trailing text",
 		].join("\n");
@@ -825,7 +827,12 @@ describe("structured evaluator output shape gate", () => {
 
 	it("accepts a structured object that carries a verdict field", () => {
 		const parsed = parseEvaluatorOutput({
-			object: { success: true, decision: "FINISH", messageToUser: "Done." },
+			object: {
+				success: true,
+				decision: "FINISH",
+				thought: "Done.",
+				messageToUser: "Done.",
+			},
 		});
 		expect(parsed.parseError).toBeUndefined();
 		expect(parsed.decision).toBe("FINISH");

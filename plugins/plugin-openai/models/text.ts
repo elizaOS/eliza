@@ -638,6 +638,15 @@ function restoreStrictSafePlannerArgs(value: unknown): unknown {
  * calls are reverse-mapped before the runtime validates against the original
  * schema, so tool authors still receive the object shape they declared.
  */
+function resolveNativeToolStrict(tool: Record<string, unknown>): boolean | undefined {
+  const functionTool = asRecord(tool.function);
+  return typeof tool.strict === "boolean"
+    ? tool.strict
+    : typeof functionTool.strict === "boolean"
+      ? functionTool.strict
+      : undefined;
+}
+
 function normalizeNativeToolsForCall(
   tools: unknown,
   options: { cerebrasMode?: boolean } = {}
@@ -649,13 +658,22 @@ function normalizeNativeToolsForCall(
   }
 
   // Existing AI SDK callers already pass a ToolSet keyed by tool name. Keep it
-  // intact so custom tool instances, execute hooks, and dynamic tool metadata
-  // are preserved.
+  // intact: lowering a strict executable tool to satisfy a mixed sibling could
+  // remove its only argument validator before `execute`. Callers of this
+  // advanced surface must supply provider-compatible uniform flags themselves.
   if (!Array.isArray(tools)) {
     return { tools: tools as ToolSet, recordArgTransformsByTool };
   }
 
   const toolSet: Record<string, unknown> = {};
+  // Cerebras applies strictness to the whole tool array and rejects mixed
+  // values. Only an explicitly all-true set can stay strict: false or omitted
+  // flags are non-strict provider contracts and cannot be promoted because
+  // their schemas may require optional fields or open objects. Each originally
+  // strict schema stays closed below even when the request-wide flag is false.
+  const cerebrasWireStrict = options.cerebrasMode
+    ? tools.every((rawTool) => resolveNativeToolStrict(asRecord(rawTool)) === true)
+    : undefined;
 
   for (const rawTool of tools) {
     const tool = asRecord(rawTool);
@@ -667,19 +685,13 @@ function normalizeNativeToolsForCall(
     }
 
     const description = firstString(tool.description, functionTool.description);
-    // Default to a permissive object schema. The empty-properties shape
-    // (`{ type: "object", properties: {}, additionalProperties: false }`) is
-    // accepted by OpenAI but rejected by strict-grammar providers like
-    // Cerebras with `Object fields require at least one of: 'properties' or
-    // 'anyOf' with a list of possible properties`.
+    // Default to a zero-argument object schema. Strict sanitization closes the
+    // object, and Cerebras normalization makes the empty `properties` /
+    // `required` members explicit for its OpenAI-compatible v2 wire contract.
     const rawSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
-    const strict =
-      typeof tool.strict === "boolean"
-        ? tool.strict
-        : typeof functionTool.strict === "boolean"
-          ? functionTool.strict
-          : undefined;
+    const strict = resolveNativeToolStrict(tool);
+    const wireStrict = cerebrasWireStrict ?? strict;
     const recordArgTransforms: RecordArgTransform[] = [];
     let inputSchema: JSONSchema7;
     if (strict === false) {
@@ -717,7 +729,7 @@ function normalizeNativeToolsForCall(
     toolSet[registeredName] = {
       ...(description ? { description } : {}),
       inputSchema: jsonSchema(inputSchema as JSONSchema7),
-      ...(strict === undefined ? {} : { strict }),
+      ...(wireStrict === undefined ? {} : { strict: wireStrict }),
     };
   }
 
@@ -1205,9 +1217,8 @@ function sanitizeJsonSchema(
   transforms?: RecordArgTransform[]
 ): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    // Permissive fallback: no `properties: {}`/`additionalProperties: false`
-    // pair, which strict-grammar providers reject. See `normalizeSchemaForCerebras`
-    // in @elizaos/core for the rationale.
+    // Provider-neutral fallback. Strict closing happens below; Cerebras mode
+    // subsequently canonicalizes it as an explicit closed empty object.
     return { type: "object" };
   }
 

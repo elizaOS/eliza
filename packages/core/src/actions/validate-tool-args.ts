@@ -255,6 +255,16 @@ export function validateSchema(
 				return value;
 			}
 			validateEnum(schema, value, path, errors);
+			if (schema.minLength !== undefined && value.length < schema.minLength) {
+				errors.push(
+					`Argument '${formatPath(path)}' length ${value.length} is below minimum ${schema.minLength}`,
+				);
+			}
+			if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+				errors.push(
+					`Argument '${formatPath(path)}' length ${value.length} exceeds maximum ${schema.maxLength}`,
+				);
+			}
 			if (schema.pattern !== undefined) {
 				const result = testSchemaPattern(schema.pattern, value);
 				if (!result.ok) {

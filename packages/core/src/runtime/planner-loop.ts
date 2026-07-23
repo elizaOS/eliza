@@ -572,6 +572,22 @@ async function runPlannerLoopIterations(
 						iteration,
 						evaluator,
 					});
+					const protocolFailureRelay =
+						deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
+					if (protocolFailureRelay) {
+						params.runtime.logger?.warn?.(
+							{ iteration, protocolFailure: true },
+							"[planner-loop] evaluator violated its protocol after a successful tool; relaying the completed result without replaying work",
+						);
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								protocolFailureRelay,
+								trajectory,
+							),
+						};
+					}
 
 					if (evaluator.decision === "FINISH") {
 						return {
@@ -774,7 +790,17 @@ async function runPlannerLoopIterations(
 					terminalMessage: finalMessage,
 					terminalOnly: true,
 				});
-				const terminalEvaluator = terminalToolCallFinish(finalMessage);
+				const latestNonTerminalStep =
+					latestUnresolvedFailedNonTerminalToolStep(trajectory);
+				const terminalFollowsFailedTool = latestNonTerminalStep !== undefined;
+				const groundedFailureMessage =
+					terminalFollowsFailedTool && hasReplyCall
+						? groundedFailedToolMessage(latestNonTerminalStep)
+						: undefined;
+				const terminalEvaluator = terminalToolCallFinish(
+					terminalFollowsFailedTool ? groundedFailureMessage : finalMessage,
+					!terminalFollowsFailedTool,
+				);
 				// Only record an evaluation stage when the trajectory already has
 				// prior evaluator outputs. A terminal-only iteration on the very
 				// first planner turn (e.g. REPLY) is purely terminal and should
@@ -798,7 +824,9 @@ async function runPlannerLoopIterations(
 						startedAt: terminalEvalStartedAt,
 						endedAt: Date.now(),
 						output: terminalEvaluator,
-						reason: "terminal_tool_call",
+						reason: terminalFollowsFailedTool
+							? "terminal_after_failed_tool"
+							: "terminal_tool_call",
 						logger: params.runtime.logger,
 					});
 				}
@@ -806,12 +834,19 @@ async function runPlannerLoopIterations(
 					status: "finished",
 					trajectory,
 					evaluator: terminalEvaluator,
-					finalMessage: userSafeFinalMessage(
-						codingDrainQueue
-							? codingFinalMessage(trajectory, finalMessage)
-							: preferredFinalMessageFromToolOrModel(trajectory, finalMessage),
-						trajectory,
-					),
+					finalMessage: terminalFollowsFailedTool
+						? hasReplyCall
+							? userSafeFinalMessage(groundedFailureMessage, trajectory)
+							: undefined
+						: userSafeFinalMessage(
+								codingDrainQueue
+									? codingFinalMessage(trajectory, finalMessage)
+									: preferredFinalMessageFromToolOrModel(
+											trajectory,
+											finalMessage,
+										),
+								trajectory,
+							),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
 					...(hasReplyCall ? {} : { endedWithDeliberateSilence: true }),
@@ -1075,6 +1110,21 @@ async function runPlannerLoopIterations(
 		}
 		trajectory.evaluatorOutputs.push(evaluator);
 		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
+		const protocolFailureRelay = deterministicEvaluatorProtocolFailureRelay(
+			evaluator,
+			trajectory,
+		);
+		if (protocolFailureRelay) {
+			params.runtime.logger?.warn?.(
+				{ iteration, protocolFailure: true },
+				"[planner-loop] evaluator violated its protocol after a successful tool; relaying the completed result without replaying work",
+			);
+			return {
+				status: "finished",
+				trajectory,
+				finalMessage: userSafeFinalMessage(protocolFailureRelay, trajectory),
+			};
+		}
 
 		if (evaluator.decision === "FINISH") {
 			if (
@@ -2347,6 +2397,8 @@ function appendEvaluationEvent(args: {
 			thought: args.evaluator.thought,
 			messageToUser: args.evaluator.messageToUser,
 			recommendedToolCallId: args.evaluator.recommendedToolCallId,
+			protocolFailure: args.evaluator.protocolFailure,
+			parseError: args.evaluator.parseError,
 		},
 	});
 }
@@ -3039,6 +3091,56 @@ function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
 	);
 }
 
+function latestUnresolvedFailedNonTerminalToolStep(
+	trajectory: PlannerTrajectory,
+): PlannerStep | undefined {
+	const unresolvedByOperation = new Map<string, PlannerStep>();
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+		if (
+			step.toolCall === undefined ||
+			isTerminalToolCall(step.toolCall) ||
+			step.result === undefined
+		) {
+			continue;
+		}
+		const operationKey = plannerToolOperationKey(step.toolCall);
+		if (step.result.success === false || step.result.error != null) {
+			unresolvedByOperation.delete(operationKey);
+			unresolvedByOperation.set(operationKey, step);
+		} else if (step.result.success === true) {
+			unresolvedByOperation.delete(operationKey);
+		}
+	}
+	return [...unresolvedByOperation.values()].at(-1);
+}
+
+function plannerToolOperationKey(toolCall: PlannerToolCall): string {
+	const params = toolCall.params ?? {};
+	const readDiscriminator = (...keys: string[]): string | undefined => {
+		for (const key of keys) {
+			const value = params[key];
+			if (typeof value === "string" && value.trim())
+				return value.trim().toLowerCase();
+		}
+		return undefined;
+	};
+	const capability = readDiscriminator("capability");
+	if (capability) {
+		const view = readDiscriminator("view", "viewId");
+		return [toolCall.name.toUpperCase(), view, capability]
+			.filter((entry): entry is string => entry !== undefined)
+			.join("|");
+	}
+	const operation =
+		readDiscriminator("subaction", "subAction") ??
+		readDiscriminator("operation", "op") ??
+		readDiscriminator("action", "mode") ??
+		readDiscriminator("command");
+	return [toolCall.name.toUpperCase(), operation]
+		.filter((entry): entry is string => entry !== undefined)
+		.join("|");
+}
+
 function handleRequiredToolPlannerMiss(params: {
 	trajectory: PlannerTrajectory;
 	iteration: number;
@@ -3357,6 +3459,15 @@ function deterministicSuccessfulToolRelay(
 		if (candidate) return candidate;
 	}
 	return undefined;
+}
+
+function deterministicEvaluatorProtocolFailureRelay(
+	evaluator: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	if (evaluator.protocolFailure !== true) return undefined;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return undefined;
+	return deterministicSuccessfulToolRelay(trajectory);
 }
 
 function deterministicTerminalContinuationLimitRelay(
@@ -4026,13 +4137,32 @@ export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 	"Terminal FINISH: planner ended the loop with a terminal tool call; evaluator LLM call skipped.";
 
+const TERMINAL_AFTER_FAILED_TOOL_THOUGHT =
+	"Terminal FINISH: planner ended the loop after a failed tool; the tool-owned failure remains authoritative.";
+
+function groundedFailedToolMessage(step: PlannerStep): string {
+	const result = step.result;
+	const toolOwnedText =
+		result &&
+		(hasRequiresConfirmationMarker(result) ||
+			hasAwaitingUserInputMarker(result))
+			? (result.userFacingText ?? result.text)
+			: result?.userFacingText;
+	const candidate = sanitizePlannerMessage(toolOwnedText);
+	if (candidate && !isUnsafeUserVisibleText(candidate)) return candidate;
+	return "I tried to complete that, but the available runtime step failed before it produced a usable result.";
+}
+
 function terminalToolCallFinish(
 	finalMessage: string | undefined,
+	success = true,
 ): EvaluatorOutput {
 	const output: EvaluatorOutput = {
-		success: true,
+		success,
 		decision: "FINISH",
-		thought: TERMINAL_TOOL_CALL_FINISH_THOUGHT,
+		thought: success
+			? TERMINAL_TOOL_CALL_FINISH_THOUGHT
+			: TERMINAL_AFTER_FAILED_TOOL_THOUGHT,
 	};
 	if (finalMessage) {
 		output.messageToUser = finalMessage;

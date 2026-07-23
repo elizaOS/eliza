@@ -141,7 +141,7 @@ export interface PlannerToolDefinition {
 		name: string;
 		description: string;
 		parameters: ActionParametersJsonSchema | JsonSchema;
-		strict: true;
+		strict: boolean;
 	};
 }
 
@@ -271,6 +271,7 @@ export type PlannerToolActionShape = Pick<
 	| "routingHint"
 	| "parameters"
 	| "allowAdditionalParameters"
+	| "toolSchemaStrict"
 > & {
 	subActions?: Action["subActions"];
 };
@@ -293,7 +294,7 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 		name: action.name,
 		description,
 		type: "function",
-		strict: true,
+		strict: action.toolSchemaStrict ?? true,
 		parameters,
 	};
 }
@@ -601,7 +602,7 @@ export function actionToTool(action: Action): PlannerToolDefinition {
 				action.compressedDescription ??
 				action.description,
 			parameters: actionToJsonSchema(action),
-			strict: true,
+			strict: action.toolSchemaStrict ?? true,
 		},
 	};
 }
