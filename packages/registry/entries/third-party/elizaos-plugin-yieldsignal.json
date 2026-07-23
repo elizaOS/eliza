@@ -1,9 +1,0 @@
-{
-  "package": "elizaos-plugin-yieldsignal",
-  "repository": "github:Stakemate369/plugin-yieldsignal",
-  "kind": "plugin",
-  "description": "Buyer-side GET_YIELD_SIGNAL action: real-time, risk-weighted USDC/WETH lending APY on Base, paid $0.01/call via x402, EIP-712 signed and EAS-attested by the seller.",
-  "homepage": "https://yieldsignal.vercel.app",
-  "version": "0.1.0",
-  "tags": ["defi", "x402", "yield", "base", "payments"]
-}
