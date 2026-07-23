@@ -856,3 +856,34 @@ def test_bridge_reset_failure_aborts_before_turn_dispatch(tmp_path: Path) -> Non
         RuntimeError, match="reset failed for scenario reset_failure_case"
     ):
         runner.run()
+
+
+def test_reasoning_effort_accepts_none_for_reasoning_off_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """gemma-4-31b and other reasoning-off models pin effort 'none'; the
+    OpenClaw client maps it to thinking 'off' and the proxy accepts it, so the
+    scored runner must not reject it. Regression for the campaign's first
+    cohort failing with 'unsupported reasoning effort none'."""
+    for name in (
+        "BENCHMARK_REASONING_EFFORT",
+        "OPENAI_REASONING_EFFORT",
+        "OPENCLAW_THINKING_LEVEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BENCHMARK_REASONING_EFFORT", "none")
+    assert runner_module._lifecycle_reasoning_effort() == "none"
+
+
+def test_reasoning_effort_still_rejects_garbage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "BENCHMARK_REASONING_EFFORT",
+        "OPENAI_REASONING_EFFORT",
+        "OPENCLAW_THINKING_LEVEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BENCHMARK_REASONING_EFFORT", "turbo")
+    with pytest.raises(RuntimeError, match="unsupported reasoning effort"):
+        runner_module._lifecycle_reasoning_effort()

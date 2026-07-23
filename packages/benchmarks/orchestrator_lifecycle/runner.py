@@ -58,7 +58,14 @@ logger = logging.getLogger(__name__)
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _LIFECYCLE_WORKSPACE_ENV = "ORCHESTRATOR_LIFECYCLE_WORKSPACE_PATH"
 _DEFAULT_REASONING_EFFORT = "medium"
-_ALLOWED_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
+# "none" is a first-class effort for reasoning-off models (Cerebras gemma-4-31b
+# pins it): the OpenClaw client maps it to thinking "off", and the OpenAI-
+# compatible proxy accepts reasoning_effort=none for such models. The scored
+# runner forwards whatever the profile pins; the subscription canary pins
+# "medium" in its own module and is unaffected by this allowlist.
+_ALLOWED_REASONING_EFFORTS = frozenset(
+    {"none", "low", "medium", "high", "xhigh", "max"}
+)
 
 
 def _ensure_eliza_adapter_on_path() -> None:
