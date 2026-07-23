@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   client: {
     abortConversationTurn: vi.fn(),
     createConversation: vi.fn(),
+    getBaseUrl: vi.fn(() => "http://localhost:3000"),
     sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
     stopCodingAgent: vi.fn(),

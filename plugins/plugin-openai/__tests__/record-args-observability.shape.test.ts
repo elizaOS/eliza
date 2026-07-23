@@ -51,11 +51,11 @@ describe("#13111 strict-safe record/map tool args", () => {
       },
     ]) as Record<string, { inputSchema: { jsonSchema: unknown }; strict?: boolean }>;
 
-    expect(toolSet.TASKS?.strict).toBe(false);
-    expect(toolSet.TASKS?.inputSchema.jsonSchema).toEqual(schema);
-    expect((toolSet.TASKS?.inputSchema.jsonSchema as { required?: string[] }).required).toEqual([
-      "action",
-    ]);
+    const tasks = toolSet.TASKS;
+    if (!tasks) throw new Error("expected TASKS tool in normalized set");
+    expect(tasks.strict).toBe(false);
+    expect(tasks.inputSchema.jsonSchema).toEqual(schema);
+    expect((tasks.inputSchema.jsonSchema as { required?: string[] }).required).toEqual(["action"]);
   });
 
   it("turns additionalProperties:true into a strict entries array", () => {

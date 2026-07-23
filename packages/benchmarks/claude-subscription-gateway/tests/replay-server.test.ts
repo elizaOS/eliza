@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   type AuditSink,
-  canonicalizeChatCompletion,
-  DurableAuditStore,
   type ClaudeCompletionResult,
   type CompletionRunner,
+  canonicalizeChatCompletion,
+  DurableAuditStore,
   type GatewayAuditRecord,
   LogicalRequestAllocator,
   ReplayJournal,
@@ -22,17 +22,17 @@ describe("gateway replay", () => {
   it("commits the private success before awaiting public audit and HTTP delivery", async () => {
     const directory = await mkdtemp(join(tmpdir(), "gateway-ordering-"));
     const journalPath = join(directory, "responses.jsonl");
-    let enterAudit: (() => void) | null = null;
+    let enterAudit: () => void = () => {};
     const auditEntered = new Promise<void>((resolve) => {
       enterAudit = resolve;
     });
-    let releaseAudit: (() => void) | null = null;
+    let releaseAudit: () => void = () => {};
     const auditReleased = new Promise<void>((resolve) => {
       releaseAudit = resolve;
     });
     const auditSink: AuditSink = {
       append(_record: GatewayAuditRecord) {
-        enterAudit?.();
+        enterAudit();
         return auditReleased;
       },
     };
@@ -40,7 +40,11 @@ describe("gateway replay", () => {
     try {
       const journal = await ReplayJournal.open(journalPath);
       const gateway = await startClaudeSubscriptionGateway({
-        completionRunner: { async complete() { return completionResult(); } },
+        completionRunner: {
+          async complete() {
+            return completionResult();
+          },
+        },
         replayJournal: journal,
         auditSink,
         benchmarkNamespace: "ordering-test",
@@ -59,12 +63,12 @@ describe("gateway replay", () => {
       expect((await readFile(journalPath, "utf8")).trim()).not.toBe("");
       await Promise.resolve();
       expect(delivered).toBe(false);
-      releaseAudit?.();
+      releaseAudit();
       expect((await pendingResponse).status).toBe(200);
       await gateway.close();
       await journal.close();
     } finally {
-      releaseAudit?.();
+      releaseAudit();
       await rm(directory, { recursive: true, force: true });
     }
   });

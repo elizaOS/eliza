@@ -995,9 +995,10 @@ The GitHub `Tests` workflow now runs `bun run test:remote-capabilities`,
 `bun run test:remote-capabilities:validate-live-reports:self-test`,
 `bun run test:remote-capabilities:github-live-evidence:self-test`, and
 `bun run test:remote-capabilities:docker` in the server job for pull requests
-and pushes. The live Cloud/provider artifact smokes are observed only on
-`workflow_dispatch` and `schedule`, where the final `test-status` gate treats
-the live jobs as strict. Use
+and pushes. The live Cloud/provider artifact smokes are observed on schedules
+and on manual dispatches that explicitly set `remote_capability_live`; ordinary
+manual runs skip those external-infrastructure smokes. The final `test-status`
+gate treats the live jobs as strict whenever they are requested. Use
 `gh run view <run-id> --json databaseId,event,status,conclusion,jobs | bun run
 test:remote-capabilities:github-live-evidence -` to prove a scheduled/manual
 run actually observed Cloud and provider live smoke, validation, and artifact
@@ -1114,11 +1115,12 @@ an explicit notice and step summary saying the remote capability cloud smoke was
 not observed for that run.
 The workflow also has an optional provider-live job for URL-backed E2B,
 home-machine, mobile-companion, and desktop-companion endpoints. It runs
-`bun run --cwd packages/agent test:remote-capabilities:provider-live` on
-manual/nightly workflows. The preflight allows a full no-secret skip only for
-non-observed workflow events; on manual/nightly runs it fails before setup when
-all provider endpoint secrets are absent or when any required E2B, home-machine,
-or mobile-companion URL secret is missing. Each configured provider must expose
+`bun run --cwd packages/agent test:remote-capabilities:provider-live` on nightly
+workflows and manual workflows with `remote_capability_live` enabled. The
+preflight skips unrequested manual runs before inspecting provider availability;
+on scheduled or explicitly requested manual runs it fails before setup when all
+provider endpoint secrets are absent or when any required E2B, home-machine, or
+mobile-companion URL secret is missing. Each configured provider must expose
 at least one remote action, provider, route, JSON model handler, lifecycle hook,
 event handler, service method, app bridge hook, evaluator, response-handler
 evaluator, response-handler field evaluator, and view through the
@@ -1290,8 +1292,8 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   moving Cloud live validation onto the reusable endpoint conformance harness.
 - `bun run test:remote-capabilities:live-ci-audit` passes and statically
   enforces that the workflow keeps the Cloud and provider live jobs wired to
-  strict scheduled/manual observation, and that the final `test-status` gate
-  treats observed live runs (`workflow_dispatch` and `schedule`) as strict,
+  strict scheduled or explicitly requested manual observation, and that the
+  final `test-status` gate treats their job results as strict,
   with required provider endpoints, strict
   live report validation, required artifact upload, and matching live report
   directories between smoke producers, validators, and uploaded artifacts. It
