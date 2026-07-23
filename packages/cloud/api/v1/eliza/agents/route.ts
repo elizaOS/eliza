@@ -544,6 +544,39 @@ app.post("/", async (c) => {
             orgId: user.organization_id,
             poolNodeId: claimed.node_id,
           });
+          // Post-claim character apply: the pool container booted GENERIC (no
+          // ELIZA_AGENT_CHARACTER_JSON), so without this push the running
+          // container answers as the default Eliza even though the DB row now
+          // carries the user's character. The push is bounded (10s) and
+          // NON-FATAL: on failure the claim still succeeds — the row's
+          // agent_config is authoritative, so the character applies on the
+          // next container restart — and the stable
+          // `warm_pool.character_push_failed` event makes a persistently
+          // broken push path observable in aggregate.
+          try {
+            const push =
+              await elizaSandboxService.pushClaimedWarmContainerCharacter(
+                claimed,
+              );
+            if (push.pushed) {
+              logger.info("[agent-api] Warm pool character push applied", {
+                agentId: agent.id,
+                orgId: user.organization_id,
+                agentName: push.agentName,
+              });
+            }
+          } catch (pushErr) {
+            logger.warn(
+              "[agent-api] Warm pool character push failed; claim kept (character applies on next restart)",
+              {
+                event: "warm_pool.character_push_failed",
+                agentId: agent.id,
+                orgId: user.organization_id,
+                error:
+                  pushErr instanceof Error ? pushErr.message : String(pushErr),
+              },
+            );
+          }
           return c.json(
             {
               success: true,
