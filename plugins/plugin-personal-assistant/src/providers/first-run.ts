@@ -68,7 +68,7 @@ function buildOneLine(
   // set up" while no setup had run, and a "customize my setup" ask was read
   // as devtool config knobs — the line forbids claiming completion and names
   // the real questions so the model walks the actual flow.
-  return "First-run setup hasn't run — never claim it's done. Offer defaults or customize (asks name, categories, nudge channel).".slice(
+  return "First-run setup NOT done — never claim it is. Offer defaults or customize (wake time / name, categories, channel).".slice(
     0,
     ONE_LINE_MAX,
   );

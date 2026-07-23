@@ -51,6 +51,7 @@ import {
 } from "../lifeops/defaults.js";
 import {
   dayRange,
+  detailArray,
   detailBoolean,
   detailNumber,
   detailObject,
@@ -2603,11 +2604,19 @@ export function wantsEarlierReminderNudge(text: string): boolean {
   return EARLIER_NUDGE_ASK_RE.test(text);
 }
 
-/** "-1440" -> "a day", "-90" -> "1.5 hours", "-45" -> "45 minutes". */
+/** "-4320" -> "3 days", "-1440" -> "a day", "-90" -> "1.5 hours". */
 export function formatLeadOffsetPhrase(offsetMinutes: number): string {
   const minutes = Math.abs(offsetMinutes);
   if (minutes >= 1380 && minutes <= 1500) {
     return "a day";
+  }
+  if (minutes > 1500) {
+    const days = minutes / 1440;
+    const rendered =
+      days >= 10 || Number.isInteger(days)
+        ? String(Math.round(days))
+        : days.toFixed(1);
+    return `${rendered} days`;
   }
   if (minutes >= 60) {
     const hours = minutes / 60;
@@ -2662,6 +2671,103 @@ export function maybeAddEarlierReminderStep(args: {
       ...args.plan.steps,
     ],
   };
+}
+
+/**
+ * Pulls an enumerated milestone list ("outline, rough draft, and final
+ * proofread") out of a multi-milestone create ask. Prefers the segment after
+ * a colon, else after "for"; the list ends at the "and X" item or at the
+ * first segment that reads like schedule prose rather than a milestone name.
+ */
+export function parseMilestoneListFromIntent(text: string): string[] {
+  const match =
+    text.match(/:\s*([^.!?\n]+)/) ?? text.match(/\bfor\b\s+([^.!?\n]+)/i);
+  if (!match) {
+    return [];
+  }
+  const items: string[] = [];
+  for (const rawPart of match[1].split(/,\s*/)) {
+    const isLast = /^and\s+/i.test(rawPart.trim());
+    const part = rawPart
+      .trim()
+      .replace(/^and\s+/i, "")
+      .trim();
+    if (
+      part.length === 0 ||
+      part.length > 40 ||
+      part.split(/\s+/).length > 5 ||
+      /\b(?:due|deadline|ahead|before|by|remind|reminders?)\b/i.test(part)
+    ) {
+      break;
+    }
+    items.push(part);
+    if (isLast) {
+      break;
+    }
+  }
+  return items.length >= 2 ? items : [];
+}
+
+/**
+ * Builds the stored artifact for a multi-milestone dated ask ("set reminders
+ * for outline, rough draft, and final proofread" before a deadline): one
+ * reminder-plan step per milestone, spread evenly across the runway so every
+ * phase lands before the due-time step. Null when the ask is not a dated
+ * one-off, has fewer than two milestones, or has under two hours of runway —
+ * callers then fall through to the plain default plan.
+ */
+export function buildMilestoneReminderPlan(args: {
+  milestones: string[];
+  cadence: LifeOpsCadence;
+  now?: number;
+}): NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]> | null {
+  if (args.cadence.kind !== "once" || args.milestones.length < 2) {
+    return null;
+  }
+  const dueAtMs = Date.parse(args.cadence.dueAt);
+  if (!Number.isFinite(dueAtMs)) {
+    return null;
+  }
+  const now = args.now ?? Date.now();
+  const runwayMinutes = Math.floor((dueAtMs - now) / 60_000);
+  if (runwayMinutes < 120) {
+    return null;
+  }
+  const count = args.milestones.length;
+  const steps = args.milestones.map((label, index) => ({
+    channel: "in_app" as const,
+    offsetMinutes: -Math.round((runwayMinutes * (count - index)) / (count + 1)),
+    label,
+  }));
+  steps.push({ channel: "in_app", offsetMinutes: 0, label: "Due" });
+  return { steps };
+}
+
+function resolveMilestoneLabels(args: {
+  details: Record<string, unknown> | undefined;
+  intent: string;
+  ownerText: string;
+  multiStep: boolean;
+}): string[] {
+  // Planner-supplied steps are trusted directly; intent parsing only runs
+  // when extraction itself judged the ask multi-milestone, so a plain
+  // comma-separated errand list never becomes a staged plan.
+  const fromDetails = (detailArray(args.details, "steps") ?? [])
+    .filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    )
+    .map((value) => value.trim());
+  if (fromDetails.length >= 2) {
+    return fromDetails;
+  }
+  if (!args.multiStep) {
+    return [];
+  }
+  const fromIntent = parseMilestoneListFromIntent(args.intent);
+  return fromIntent.length >= 2
+    ? fromIntent
+    : parseMilestoneListFromIntent(args.ownerText);
 }
 
 function scoreDefinitionTitleQuality(value: string | null | undefined): number {
@@ -3649,6 +3755,15 @@ export async function runLifeOperationHandler(
               (detailObject(details, "reminderPlan") as
                 | CreateLifeOpsDefinitionRequest["reminderPlan"]
                 | undefined) ??
+              buildMilestoneReminderPlan({
+                milestones: resolveMilestoneLabels({
+                  details,
+                  intent,
+                  ownerText: messageText(message),
+                  multiStep: llmPlan?.multiStep === true,
+                }),
+                cadence,
+              }) ??
               deferredDefinitionDraft?.request.reminderPlan ??
               buildDefaultReminderPlan(`${title} reminder`),
             cadence,
@@ -3684,7 +3799,19 @@ export async function runLifeOperationHandler(
           multiStep: llmPlan?.multiStep === true,
         })
       ) {
-        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}. Confirm and I'll save it, or tell me what to change.`;
+        const draftLeadSteps = (
+          definitionDraft.request.reminderPlan?.steps ?? []
+        ).filter((step) => step.offsetMinutes < 0);
+        const draftLeadPhrase =
+          draftLeadSteps.length > 0
+            ? ` It includes early nudges: ${draftLeadSteps
+                .map(
+                  (step) =>
+                    `"${step.label}" ${formatLeadOffsetPhrase(step.offsetMinutes)} before`,
+                )
+                .join(", ")}.`
+            : "";
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
         const previewText = await renderLifeActionReply({
           runtime,
           message,
@@ -3794,9 +3921,16 @@ export async function runLifeOperationHandler(
         (step) => step.offsetMinutes < 0,
       );
       const leadPhrase =
-        savedLeadSteps.length > 0
+        savedLeadSteps.length === 1
           ? ` with an early nudge ${formatLeadOffsetPhrase(savedLeadSteps[0].offsetMinutes)} before`
-          : "";
+          : savedLeadSteps.length > 1
+            ? ` with early nudges ${savedLeadSteps
+                .map(
+                  (step) =>
+                    `"${step.label}" ${formatLeadOffsetPhrase(step.offsetMinutes)} before`,
+                )
+                .join(", ")}`
+            : "";
       const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}${leadPhrase}.`;
       const savedText = await renderLifeActionReply({
         runtime,

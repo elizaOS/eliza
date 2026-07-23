@@ -35,8 +35,10 @@ import {
 import {
   buildCadenceFromLlmParams,
   buildCadenceFromUpdateFields,
+  buildMilestoneReminderPlan,
   formatLeadOffsetPhrase,
   maybeAddEarlierReminderStep,
+  parseMilestoneListFromIntent,
   resolveDefinitionFromIntent,
   resolveOnceDueAt,
   runLifeConnectedQuery,
@@ -2299,5 +2301,122 @@ describe("buildCadenceFromLlmParams (deadline exclusion + phrase slots, #16941)"
     const slots =
       built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
     expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 900]);
+  });
+});
+
+describe("milestone reminder plans (#16941)", () => {
+  const DUE = "2026-07-27T09:00:00.000Z";
+  const NOW3 = Date.parse("2026-07-23T09:00:00.000Z");
+
+  it("parses an enumerated milestone list from the intent", () => {
+    expect(
+      parseMilestoneListFromIntent(
+        "Set reminders to prepare a history report due Monday at 9am: outline, rough draft, and final proofread",
+      ),
+    ).toEqual(["outline", "rough draft", "final proofread"]);
+    expect(
+      parseMilestoneListFromIntent(
+        "can you set reminders for outline, rough draft, and final proofread?",
+      ),
+    ).toEqual(["outline", "rough draft", "final proofread"]);
+    // Single-item and schedule-prose segments never become milestone lists.
+    expect(
+      parseMilestoneListFromIntent("remind me to pay the electric bill"),
+    ).toEqual([]);
+  });
+
+  it("spreads milestone steps across the runway, all before the due step", () => {
+    const plan = buildMilestoneReminderPlan({
+      milestones: ["Outline", "Rough draft", "Final proofread"],
+      cadence: { kind: "once", dueAt: DUE },
+      now: NOW3,
+    });
+    expect(plan).not.toBeNull();
+    const steps = plan?.steps ?? [];
+    expect(steps).toHaveLength(4);
+    const offsets = steps.map((step) => step.offsetMinutes);
+    // 4 days of runway → milestones at -75%, -50%, -25% of it, then due.
+    expect(offsets).toEqual([-4320, -2880, -1440, 0]);
+    expect(steps.map((step) => step.label)).toEqual([
+      "Outline",
+      "Rough draft",
+      "Final proofread",
+      "Due",
+    ]);
+  });
+
+  it("returns null off-once, under-runway, or with fewer than two milestones", () => {
+    expect(
+      buildMilestoneReminderPlan({
+        milestones: ["Outline", "Draft"],
+        cadence: { kind: "daily", windows: ["morning"] },
+        now: NOW3,
+      }),
+    ).toBeNull();
+    expect(
+      buildMilestoneReminderPlan({
+        milestones: ["Outline", "Draft"],
+        cadence: { kind: "once", dueAt: "2026-07-23T10:00:00.000Z" },
+        now: NOW3,
+      }),
+    ).toBeNull();
+    expect(
+      buildMilestoneReminderPlan({
+        milestones: ["Outline"],
+        cadence: { kind: "once", dueAt: DUE },
+        now: NOW3,
+      }),
+    ).toBeNull();
+  });
+
+  it("persists milestone steps on a confirmed multiStep save and names them", async () => {
+    // Live failure (student-report-two-phase-commit): the confirmed save
+    // stored ONE reminder at the deadline with a bare [0m] plan — "no derived
+    // milestone schedule". Planner-supplied details.steps must become
+    // spread reminder-plan steps.
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "History report milestones",
+          cadenceKind: "once",
+          dueInDays: 4,
+          timeOfDay: "09:00",
+          multiStep: true,
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("yes save it exactly like that."),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent:
+            "Set reminders to prepare a history report due Monday at 9am: outline, rough draft, and final proofread",
+          confirmed: true,
+          details: {
+            steps: ["Outline", "Rough draft", "Final proofread"],
+          },
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    const plan = serviceState.createCalls[0]?.reminderPlan as {
+      steps: Array<{ offsetMinutes: number; label: string }>;
+    };
+    const leads = plan.steps.filter((step) => step.offsetMinutes < 0);
+    expect(leads.length).toBe(3);
+    expect(leads.map((step) => step.label)).toEqual([
+      "Outline",
+      "Rough draft",
+      "Final proofread",
+    ]);
+    expect(result.text ?? "").toContain("early nudges");
   });
 });

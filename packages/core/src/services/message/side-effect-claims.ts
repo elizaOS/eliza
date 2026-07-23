@@ -48,7 +48,7 @@ const NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN =
 // some thoughts". Vocabulary mirrors the scheduled-item nouns the LifeOps
 // surfaces own.
 const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
-	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|check[- ]?ins?|follow[- ]?ups?)\b/i;
+	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|check[- ]?ins?|follow[- ]?ups?|set[- ]?up|setup|onboard(?:ing)?|first[- ]?run|settings|defaults|configur(?:ation|ed))\b/i;
 
 // True when the sentence containing the match (scanning forward from the
 // match) terminates in "?" — the shape of a consent-seeking offer or a
