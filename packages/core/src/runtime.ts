@@ -336,7 +336,21 @@ const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 // recent and in-flight turns while bounding memory.
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
-const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = 30_000;
+// Per-provider composeState budget. The old fixed 30s value only guarded
+// against infinite hangs — a provider doing synchronous network could hold
+// every message turn hostage for tens of seconds and still count as healthy
+// (a registry refetch measured 10.9s on a live turn). The default defends
+// interactive latency; a provider with legitimately slow, turn-blocking work
+// declares its own `timeoutMs`. On expiry the provider degrades to an empty
+// contribution for the turn and composition proceeds.
+const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = (() => {
+	const raw = Number.parseInt(
+		process.env.ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS ?? "",
+		10,
+	);
+	if (Number.isFinite(raw) && raw >= 250) return raw;
+	return 3_000;
+})();
 
 export function calculateProviderOverlaps(
 	timings: readonly {
@@ -4293,6 +4307,10 @@ export class AgentRuntime implements IAgentRuntime {
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
 				const providerRuntime: IAgentRuntime = this;
+				const providerBudgetMs =
+					typeof provider.timeoutMs === "number" && provider.timeoutMs >= 250
+						? provider.timeoutMs
+						: COMPOSE_STATE_PROVIDER_TIMEOUT_MS;
 				try {
 					const result = await Promise.race([
 						withProviderStep(providerRuntime, provider.name, () =>
@@ -4306,12 +4324,12 @@ export class AgentRuntime implements IAgentRuntime {
 										src: "agent",
 										agentId: this.agentId,
 										provider: provider.name,
-										timeoutMs: COMPOSE_STATE_PROVIDER_TIMEOUT_MS,
+										timeoutMs: providerBudgetMs,
 									},
 									"Provider timed out during state composition",
 								);
 								resolve({ text: "", values: {}, data: {} });
-							}, COMPOSE_STATE_PROVIDER_TIMEOUT_MS);
+							}, providerBudgetMs);
 						}),
 					]);
 					const endedAt = Date.now();
