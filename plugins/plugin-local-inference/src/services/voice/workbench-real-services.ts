@@ -1,10 +1,13 @@
 /**
  * Voice Workbench real services adapter (#9147).
  *
- * `voice:workbench --real` must not be an all-skipped honesty stub: the
- * provisioned lane has a fused libelizainference build, ASR/TTS regions,
- * WeSpeaker, pyannote, and ElevenLabs-generated human speech. This adapter
- * drives those real pieces through the existing workbench runner/scorers.
+ * `voice:workbench --real` must not be an all-skipped honesty stub: the lane
+ * has a fused libelizainference build, ASR regions, WeSpeaker, pyannote, and
+ * real generated human speech — distinct fused Kokoro voice packs keylessly
+ * (#9577), upgraded to ElevenLabs voices when ELEVENLABS_API_KEY is set. The
+ * agent turns always come from the fused Kokoro engine (the product's
+ * on-device TTS). This adapter drives those real pieces through the existing
+ * workbench runner/scorers.
  */
 
 import { existsSync } from "node:fs";
@@ -25,7 +28,10 @@ import type {
 	CorpusTtsSynthesizer,
 	GeneratedVoiceCorpus,
 } from "./corpus-generator";
+import { createKokoroTtsBackend } from "./engine-bridge";
 import { type ElizaInferenceFfi, loadElizaInferenceFfi } from "./ffi-bindings";
+import type { KokoroTtsBackend } from "./kokoro/kokoro-backend";
+import { resolveKokoroEngineConfig } from "./kokoro/kokoro-engine-discovery";
 import { FusedDiarizer } from "./speaker/diarizer-fused";
 import { averageEmbeddings } from "./speaker/encoder";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
@@ -73,6 +79,43 @@ const VOICE_ID_ALIASES: Record<string, string> = {
 	aria: "TxGEqnHWrfWFTfGW9XjX",
 };
 
+// Keyless mode (#9577): human turns are synthesized with distinct fused Kokoro
+// voice packs instead of ElevenLabs voices. The agent's pack is reserved — it
+// must never collide with a human speaker, or the self-voice margin the echo
+// scenarios measure would collapse by construction.
+const KOKORO_AGENT_VOICE = "af_nicole";
+const KOKORO_HUMAN_VOICE_IDS = [
+	"af_bella",
+	"am_adam",
+	"am_michael",
+	"af_sarah",
+	"bf_emma",
+	"bm_george",
+	"af_sky",
+	"bf_isabella",
+	"bm_lewis",
+] as const;
+const KOKORO_VOICE_ALIASES: Record<string, string> = {
+	af_bella: "af_bella",
+	af_sarah: "af_sarah",
+	af_sky: "af_sky",
+	am_adam: "am_adam",
+	am_michael: "am_michael",
+	bf_emma: "bf_emma",
+	bf_isabella: "bf_isabella",
+	bm_george: "bm_george",
+	bm_lewis: "bm_lewis",
+	owner: "af_bella",
+	alice: "af_bella",
+	jill: "af_bella",
+	bob: "am_adam",
+	guest: "am_adam",
+	intruder: "am_adam",
+	marcus: "am_michael",
+	priya: "af_sarah",
+	aria: "bf_emma",
+};
+
 interface SpeakerProfile {
 	label: string;
 	entityId: string | null;
@@ -96,7 +139,7 @@ interface RealVoiceWorkbenchOptions {
 	fusedLib: string;
 	speakerGguf: string;
 	diarizGguf: string;
-	elevenLabsApiKey: string;
+	elevenLabsApiKey: string | null;
 	ownerAcceptThreshold?: number;
 	voiceMap?: Record<string, string>;
 }
@@ -270,7 +313,8 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	private readonly ctx: ReturnType<ElizaInferenceFfi["create"]>;
 	private readonly encoder: FusedSpeakerEncoder;
 	private readonly diarizer: FusedDiarizer;
-	private readonly apiKey: string;
+	private readonly kokoroBackend: KokoroTtsBackend;
+	private readonly apiKey: string | null;
 	private readonly ownerThreshold: number;
 	private readonly voiceMap: Record<string, string>;
 	private readonly profiles = new Map<string, SpeakerProfile>();
@@ -284,7 +328,8 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		ctx: ReturnType<ElizaInferenceFfi["create"]>;
 		encoder: FusedSpeakerEncoder;
 		diarizer: FusedDiarizer;
-		apiKey: string;
+		kokoroBackend: KokoroTtsBackend;
+		apiKey: string | null;
 		ownerThreshold: number;
 		voiceMap: Record<string, string>;
 	}) {
@@ -292,6 +337,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		this.ctx = args.ctx;
 		this.encoder = args.encoder;
 		this.diarizer = args.diarizer;
+		this.kokoroBackend = args.kokoroBackend;
 		this.apiKey = args.apiKey;
 		this.ownerThreshold = args.ownerThreshold;
 		this.voiceMap = args.voiceMap;
@@ -330,11 +376,27 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				ctx,
 				ggufPath: options.diarizGguf,
 			});
+			// The agent voice is always the fused Kokoro engine (the product's
+			// on-device TTS); keyless mode synthesizes the human turns through it
+			// too, so the backend is required in both modes.
+			if (typeof ffi.kokoroSupported !== "function" || !ffi.kokoroSupported()) {
+				throw new Error(
+					"[voice:workbench --real] fused library does not link the Kokoro engine (eliza_inference_kokoro_*)",
+				);
+			}
+			const kokoro = resolveKokoroEngineConfig();
+			if (!kokoro) {
+				throw new Error(
+					"[voice:workbench --real] no Kokoro model staged (set ELIZA_KOKORO_MODEL_DIR to a dir with kokoro-82m-v1_0*.gguf + voices/<voice>.bin)",
+				);
+			}
+			const kokoroBackend = createKokoroTtsBackend(kokoro, { ffi });
 			return new RealVoiceWorkbenchAdapter({
 				ffi,
 				ctx,
 				encoder,
 				diarizer,
+				kokoroBackend,
 				apiKey: options.elevenLabsApiKey,
 				ownerThreshold: options.ownerAcceptThreshold ?? DEFAULT_OWNER_THRESHOLD,
 				voiceMap: options.voiceMap ?? {},
@@ -360,15 +422,26 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		// scored scenario turns. Otherwise the DER gate can match a turn against
 		// an embedding extracted from that same turn and false-green.
 		for (const participant of args.corpus.groundTruth.participants) {
-			const enrollment = await elevenLabsPcm({
-				text: SPEAKER_ENROLLMENT_PHRASE,
-				voiceId: this.resolveElevenLabsVoiceId(
-					participant.ttsVoiceId,
-					participant.label,
-				),
-				apiKey: this.apiKey,
-				sampleRate: SAMPLE_RATE,
-			});
+			// The enrollment sample must come from the SAME voice that speaks the
+			// participant's scored turns, so both modes resolve the voice with the
+			// same keys the corpus synthesizer uses.
+			const enrollment = this.apiKey
+				? await elevenLabsPcm({
+						text: SPEAKER_ENROLLMENT_PHRASE,
+						voiceId: this.resolveElevenLabsVoiceId(
+							participant.ttsVoiceId,
+							participant.label,
+						),
+						apiKey: this.apiKey,
+						sampleRate: SAMPLE_RATE,
+					})
+				: await this.synthesizeKokoro(
+						SPEAKER_ENROLLMENT_PHRASE,
+						this.resolveKokoroVoiceId(
+							participant.ttsVoiceId,
+							participant.label,
+						),
+					);
 			const embedding = await this.encoder.encode(
 				ensureMinSpeakerSamples(enrollment),
 			);
@@ -479,21 +552,28 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	}): Promise<Float32Array> {
 		if (args.isAgentEcho) {
 			return ensureSampleRate(
-				this.synthesizeAgent(args.text),
+				await this.synthesizeAgent(args.text),
 				SAMPLE_RATE,
 				args.sampleRate,
 			);
 		}
-		const voiceId = this.resolveElevenLabsVoiceId(
-			args.voiceId,
-			args.speakerLabel,
-		);
-		return elevenLabsPcm({
-			text: args.text,
-			voiceId,
-			apiKey: this.apiKey,
-			sampleRate: args.sampleRate,
-		});
+		if (this.apiKey) {
+			const voiceId = this.resolveElevenLabsVoiceId(
+				args.voiceId,
+				args.speakerLabel,
+			);
+			return elevenLabsPcm({
+				text: args.text,
+				voiceId,
+				apiKey: this.apiKey,
+				sampleRate: args.sampleRate,
+			});
+		}
+		// Keyless (#9577): distinct fused Kokoro packs stand in for the human
+		// voices, resolved deterministically from the same label/voiceId keys.
+		const pack = this.resolveKokoroVoiceId(args.voiceId, args.speakerLabel);
+		const pcm = await this.synthesizeKokoro(args.text, pack);
+		return ensureSampleRate(pcm, SAMPLE_RATE, args.sampleRate);
 	}
 
 	private resolveElevenLabsVoiceId(
@@ -513,29 +593,77 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		];
 	}
 
-	private synthesizeAgent(text: string): Float32Array {
-		this.ffi.mmapAcquire(this.ctx, "tts");
-		try {
-			const out = new Float32Array(SAMPLE_RATE * MAX_AGENT_TTS_SECONDS);
-			const samples = this.ffi.ttsSynthesize({
-				ctx: this.ctx,
-				text,
-				speakerPresetId: null,
-				out,
-			});
-			if (!Number.isFinite(samples) || samples <= 0) {
-				throw new Error(
-					`[voice:workbench --real] agent TTS produced ${samples} samples`,
-				);
-			}
-			return out.slice(0, samples);
-		} finally {
-			this.ffi.mmapEvict(this.ctx, "tts");
+	private resolveKokoroVoiceId(
+		voiceId: string | undefined,
+		speakerLabel: string,
+	): string {
+		const keys = [voiceId, speakerLabel].filter(
+			(value): value is string => typeof value === "string" && value.length > 0,
+		);
+		for (const key of keys) {
+			const mapped = KOKORO_VOICE_ALIASES[key.toLowerCase()];
+			if (mapped) return mapped;
 		}
+		return KOKORO_HUMAN_VOICE_IDS[
+			labelHash(speakerLabel) % KOKORO_HUMAN_VOICE_IDS.length
+		];
+	}
+
+	/**
+	 * Synthesize through the fused Kokoro engine and return 16 kHz PCM. Kokoro
+	 * emits at its native 24 kHz — resampling here (instead of trusting the
+	 * caller's rate label) is what keeps WeSpeaker/pyannote time bases honest.
+	 */
+	private async synthesizeKokoro(
+		text: string,
+		voiceId: string,
+	): Promise<Float32Array> {
+		const chunks: Float32Array[] = [];
+		let sampleRate = 0;
+		await this.kokoroBackend.synthesizeStream({
+			phrase: {
+				id: 1,
+				text,
+				fromIndex: 0,
+				toIndex: text.length,
+				terminator: "punctuation",
+			},
+			preset: {
+				voiceId,
+				embedding: new Float32Array(0),
+				bytes: new Uint8Array(0),
+			},
+			cancelSignal: { cancelled: false },
+			onChunk: (c) => {
+				if (!c.isFinal && c.pcm.length > 0) {
+					chunks.push(c.pcm);
+					sampleRate = c.sampleRate;
+				}
+				return undefined;
+			},
+		});
+		const total = chunks.reduce((n, c) => n + c.length, 0);
+		if (total === 0 || sampleRate === 0) {
+			throw new Error(
+				`[voice:workbench --real] Kokoro produced no audio for "${text}" [${voiceId}]`,
+			);
+		}
+		const pcm = new Float32Array(total);
+		let off = 0;
+		for (const c of chunks) {
+			pcm.set(c, off);
+			off += c.length;
+		}
+		const capped = Math.min(pcm.length, sampleRate * MAX_AGENT_TTS_SECONDS);
+		return resampleLinear(pcm.subarray(0, capped), sampleRate, SAMPLE_RATE);
+	}
+
+	private async synthesizeAgent(text: string): Promise<Float32Array> {
+		return this.synthesizeKokoro(text, KOKORO_AGENT_VOICE);
 	}
 
 	private async observeAgentReply(text: string): Promise<void> {
-		const pcm = this.synthesizeAgent(text);
+		const pcm = await this.synthesizeAgent(text);
 		this.selfVoiceEmbeddings.push(
 			await this.encoder.encode(ensureMinSpeakerSamples(pcm)),
 		);
@@ -570,13 +698,17 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 
 	async dispose(): Promise<void> {
 		try {
-			await this.encoder.dispose();
+			this.kokoroBackend.dispose();
 		} finally {
 			try {
-				await this.diarizer.dispose();
+				await this.encoder.dispose();
 			} finally {
-				this.ffi.destroy(this.ctx);
-				this.ffi.close();
+				try {
+					await this.diarizer.dispose();
+				} finally {
+					this.ffi.destroy(this.ctx);
+					this.ffi.close();
+				}
 			}
 		}
 	}
@@ -628,10 +760,10 @@ export async function createRealVoiceWorkbenchRuntimeFromEnv(
 			path.join(bundle, "voice/diarizer/pyannote-segmentation-3.0.gguf"),
 		),
 	);
-	const apiKey = nonEmpty(env.ELEVENLABS_API_KEY);
-	if (!apiKey) {
-		throw new Error("[voice:workbench --real] ELEVENLABS_API_KEY is required");
-	}
+	// Keyless by design (#9577): without the key the human turns come from
+	// distinct fused Kokoro packs; the key upgrades them to real ElevenLabs
+	// voices. The agent turns are the fused Kokoro engine either way.
+	const apiKey = nonEmpty(env.ELEVENLABS_API_KEY) ?? null;
 
 	return RealVoiceWorkbenchAdapter.create({
 		bundle,

@@ -16,21 +16,40 @@
  *      confirm the pyannote diarizer flags overlap (powerset pair labels), the
  *      basis for "voices interrupting each other".
  *
- * Inputs (env): ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_BUNDLE, ELEVENLABS_API_KEY,
- * ELIZA_SPEAKER_GGUF, ELIZA_DIARIZ_GGUF. Exits 2 (skip) on a missing artifact.
+ * Human speech: two distinct ElevenLabs voices when ELEVENLABS_API_KEY is set,
+ * else a keyless cached corpus from two distinct fused Kokoro voice packs
+ * (#9577). The AGENT voice is always the fused Kokoro engine — Kokoro is the
+ * only on-device TTS engine, so a Kokoro pack IS the agent's product voice, and
+ * unlike the OmniVoice auto-voice path its speaker identity is deterministic
+ * across replies (the property part A exists to prove). Inputs (env):
+ * ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_BUNDLE, ELIZA_SPEAKER_GGUF,
+ * ELIZA_DIARIZ_GGUF, ELIZA_KOKORO_MODEL_DIR, optional ELEVENLABS_API_KEY.
+ * Exits 2 (skip) on a missing artifact.
  */
 
 import { existsSync } from "node:fs";
 import { loadElizaInferenceFfi } from "../src/services/voice/ffi-bindings";
+import { type BenchGates, ensureKokoroCorpus } from "./voice-bench-shared";
 
 const SR = 16_000;
 const VOICE_A = "21m00Tcm4TlvDq8ikWAM";
 const VOICE_B = "pNInz6obpgDQGcFmaJgB";
+// Kokoro packs for the keyless corpus + the agent self-voice. All three are
+// distinct so the self-voice margin and the two-speaker overlap stay meaningful.
+const KEYLESS_USER_A = "af_bella";
+const KEYLESS_USER_B = "am_michael";
+const AGENT_VOICE = "af_nicole";
 
 function skip(m: string): never {
 	console.log(`[agent-voice/overlap] SKIP: ${m}`);
 	process.exit(2);
 }
+function hardFail(m: string): never {
+	console.error(`[agent-voice/overlap] FAIL: ${m}`);
+	process.exit(1);
+}
+const gates: BenchGates = { required: false, skip, fail: hardFail };
+const log = (m: string) => console.log(`[agent-voice/overlap] ${m}`);
 
 const lib = process.env.ELIZA_INFERENCE_LIBRARY?.trim();
 const bundle = process.env.ELIZA_ASR_BUNDLE?.trim();
@@ -39,7 +58,6 @@ const speakerGguf = process.env.ELIZA_SPEAKER_GGUF?.trim() ?? null;
 const diarizGguf = process.env.ELIZA_DIARIZ_GGUF?.trim() ?? null;
 if (!lib || !existsSync(lib)) skip("set ELIZA_INFERENCE_LIBRARY");
 if (!bundle) skip("set ELIZA_ASR_BUNDLE");
-if (!elKey) skip("set ELEVENLABS_API_KEY");
 
 async function tts(text: string, voice: string): Promise<Float32Array> {
 	const r = await fetch(
@@ -71,23 +89,58 @@ function cosine(a: Float32Array, b: Float32Array): number {
 	return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 }
 
-const userA = await tts("Hey Eliza, what is on my calendar this afternoon", VOICE_A);
-const userB = await tts("Could you turn the living room lights down a bit", VOICE_B);
+let userA: Float32Array;
+let userB: Float32Array;
+if (elKey) {
+	userA = await tts("Hey Eliza, what is on my calendar this afternoon", VOICE_A);
+	userB = await tts("Could you turn the living room lights down a bit", VOICE_B);
+} else {
+	log("keyless — synthesizing human turns with fused Kokoro voice packs (#9577)…");
+	const humans = await ensureKokoroCorpus(
+		"agent-overlap-users",
+		[
+			{
+				id: "userA",
+				voiceId: KEYLESS_USER_A,
+				text: "Hey Eliza, what is on my calendar this afternoon",
+			},
+			{
+				id: "userB",
+				voiceId: KEYLESS_USER_B,
+				text: "Could you turn the living room lights down a bit",
+			},
+		],
+		gates,
+		log,
+	);
+	[userA, userB] = humans.map((i) => i.pcm);
+}
+
+// On-device TTS → the AGENT's own voice, two different replies. Synthesized
+// through the fused Kokoro engine (the product on-device voice) with one fixed
+// pack, cached at 16 kHz by the shared corpus helper.
+const agentTurns = await ensureKokoroCorpus(
+	"agent-overlap-agent",
+	[
+		{
+			id: "agent1",
+			voiceId: AGENT_VOICE,
+			text: "Your two o'clock meeting was moved to four.",
+		},
+		{
+			id: "agent2",
+			voiceId: AGENT_VOICE,
+			text: "The kitchen light is now set to thirty percent.",
+		},
+	],
+	gates,
+	log,
+);
+const [agent1, agent2] = agentTurns.map((i) => i.pcm);
 
 const ffi = loadElizaInferenceFfi(lib);
 const ctx = ffi.create(bundle);
 let pass = true;
-
-// On-device TTS → the AGENT's own voice, two different replies.
-ffi.mmapAcquire(ctx, "tts");
-function agentSay(text: string): Float32Array {
-	const out = new Float32Array(SR * 8);
-	const n = ffi.ttsSynthesize({ ctx, text, speakerPresetId: null, out });
-	return out.subarray(0, Math.max(0, n));
-}
-const agent1 = agentSay("Your two o'clock meeting was moved to four.");
-const agent2 = agentSay("The kitchen light is now set to thirty percent.");
-ffi.mmapEvict(ctx, "tts");
 
 // ── A) Agent self-voice: distinct + recognizable ───────────────────────────
 if (ffi.speakerSupported?.() && ffi.speakerOpen && ffi.speakerEmbed) {

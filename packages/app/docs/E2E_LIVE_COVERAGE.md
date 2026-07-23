@@ -160,16 +160,22 @@ Staging: build + stage the fused lib with
 `ELIZA_INFERENCE_LIB_DIR` at it, and set `ELIZA_ASR_BUNDLE` to a bundle dir
 containing `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` (default
 probe: `~/.eliza/local-inference/models/eliza-1-2b.bundle`). The Kokoro GGUF +
-voice pack stage from HF `elizaos/eliza-1` (`bundles/2b/tts/kokoro/…`) — the
-exact curl recipe is in `plugins/plugin-local-inference/README.md`.
+voice packs stage from HF `elizaos/eliza-1` (`bundles/e2b/tts/kokoro/…` after
+the Gemma-4 tier rename) — the sha256-pinned list lives in
+`.github/actions/stage-voice-real-assets/action.yml`.
 
 CI: `.github/workflows/voice-live-e2e.yml` (nightly + dispatch, self-hosted,
-never on PRs) runs `test:asr:real` + `roundtrip:real` against the
-preprovisioned fused bundle, and the acoustic-matrix job runs
-`test:kokoro:real`, `voicestack:real`, `agentvoice:real`, and
-`robustness:real` in require-real mode (missing model/ABI/credential = hard
-failure, not green skip). `.github/workflows/kokoro-real-smoke.yml` is the
-dedicated Kokoro loader↔GGUF drift gate.
+never on PRs) is fully self-provisioning: a GitHub-hosted job builds the fused
+lib from the in-repo fork (cached by fork commit) and each self-hosted job
+stages the pinned bundle regions via
+`.github/actions/stage-voice-real-assets`. The round-trip job runs
+`test:asr:real` (+ `roundtrip:real` when cloud keys are present) and the
+acoustic-matrix job runs `test:kokoro:real`, the attribution smoke,
+`voicestack:real`, `agentvoice:real`, `robustness:real`, `voice:workbench
+--real`, the benchmarks matrix, and the fused FFI suites under `bun test` — in
+require-real mode (missing model/ABI = hard failure, not green skip; keyless
+per #9577). `.github/workflows/kokoro-real-smoke.yml` is the dedicated Kokoro
+loader↔GGUF drift gate.
 
 ## Real LLM through the *shipped UI*, fully local + keyless (Ollama recipe)
 

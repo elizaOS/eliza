@@ -240,11 +240,22 @@ try {
 		}
 	}
 
-	// Perf gate last: mobile-class time-to-first-audio budget.
-	if (firstAudibleMs > KOKORO_MOBILE_TTFA_BUDGET_MS) {
+	// Perf gate last: time-to-first-audio budget. The default is the
+	// mobile-class product budget; KOKORO_SMOKE_TTFA_BUDGET_MS overrides it for
+	// hosts where the perf class under test is different (the desktop-CPU CI
+	// runners prove loadability + intelligibility, not the mobile TTFA contract
+	// — a run there sets a desktop-CPU ceiling that still catches loader hangs).
+	const ttfaBudgetRaw = process.env.KOKORO_SMOKE_TTFA_BUDGET_MS?.trim();
+	const ttfaBudgetMs = ttfaBudgetRaw
+		? Number.parseInt(ttfaBudgetRaw, 10)
+		: KOKORO_MOBILE_TTFA_BUDGET_MS;
+	if (!Number.isFinite(ttfaBudgetMs) || ttfaBudgetMs <= 0) {
 		fail(
-			`TTFA ${ttfa}ms exceeds the mobile budget ${KOKORO_MOBILE_TTFA_BUDGET_MS}ms`,
+			`KOKORO_SMOKE_TTFA_BUDGET_MS must be a positive integer, got "${ttfaBudgetRaw}"`,
 		);
+	}
+	if (firstAudibleMs > ttfaBudgetMs) {
+		fail(`TTFA ${ttfa}ms exceeds the budget ${ttfaBudgetMs}ms`);
 	}
 	console.log("[kokoro-real-smoke] PASS");
 } finally {

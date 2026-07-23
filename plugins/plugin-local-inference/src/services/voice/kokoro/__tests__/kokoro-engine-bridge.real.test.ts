@@ -189,7 +189,7 @@ describe.skipIf(!isBun || !LIB_PATH || !KOKORO_MODEL)(
 			(ffi as unknown as { close?: () => void }).close?.();
 		});
 
-		it("synthesizes real PCM and reaches first audio within the mobile TTFA budget", async () => {
+		it("synthesizes real PCM and reaches first audio within the TTFA budget", async () => {
 			// Non-null inside the skipIf guard.
 			const kokoro = KOKORO_MODEL as KokoroEngineDiscoveryResult;
 			const backend = createKokoroTtsBackend(kokoro, { ffi });
@@ -226,11 +226,20 @@ describe.skipIf(!isBun || !LIB_PATH || !KOKORO_MODEL)(
 			// Real, non-empty 24 kHz PCM — never a silent stub (acceptance criterion 4).
 			expect(totalSamples).toBeGreaterThan(0);
 			expect(sampleRate).toBe(24_000);
-			// First audible chunk within the mobile-class TTFA budget (criterion 7).
+			// First audible chunk within the TTFA budget (criterion 7). The default
+			// is the mobile product budget; KOKORO_SMOKE_TTFA_BUDGET_MS (the same
+			// knob kokoro-real-smoke.ts honors) overrides it on desktop-CPU CI
+			// hosts, where the run proves loadability + real PCM, not mobile
+			// latency, and a generous ceiling still catches loader hangs.
+			const budgetRaw = process.env.KOKORO_SMOKE_TTFA_BUDGET_MS?.trim();
+			const budgetMs = budgetRaw
+				? Number.parseInt(budgetRaw, 10)
+				: KOKORO_MOBILE_TTFA_BUDGET_MS;
+			expect(Number.isFinite(budgetMs) && budgetMs > 0).toBe(true);
 			expect(firstAudibleAtMs).not.toBeNull();
 			expect(firstAudibleAtMs as unknown as number).toBeLessThanOrEqual(
-				KOKORO_MOBILE_TTFA_BUDGET_MS,
+				budgetMs,
 			);
-		});
+		}, 120_000);
 	},
 );
