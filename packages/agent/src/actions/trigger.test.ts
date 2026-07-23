@@ -9,6 +9,7 @@
  */
 
 import type {
+  ActionParameters,
   IAgentRuntime,
   Memory,
   PromptTriggerConfig,
@@ -370,7 +371,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
 
   async function dispatch(
     runtime: IAgentRuntime,
-    parameters: Record<string, unknown>,
+    parameters: ActionParameters,
   ) {
     return triggerAction.handler(
       runtime,
