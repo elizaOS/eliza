@@ -8,6 +8,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+// The LifeOps route dispatcher rate-limits state-changing routes; re-export the
+// real limiter (self-contained, in-memory) so route e2e tests run the genuine
+// dispatch path instead of a bypass.
+export { checkRateLimit } from "../../../../packages/agent/src/api/rate-limiter.ts";
 export {
   createGlobalPauseStore,
   GLOBAL_PAUSE_SERVICE,
@@ -45,10 +49,6 @@ export {
   PendingPromptsService,
   resolvePendingPromptsService,
 } from "../../../../packages/agent/src/services/pending-prompts/index.ts";
-// The LifeOps route dispatcher rate-limits state-changing routes; re-export the
-// real limiter (self-contained, in-memory) so route e2e tests run the genuine
-// dispatch path instead of a bypass.
-export { checkRateLimit } from "../../../../packages/agent/src/api/rate-limiter.ts";
 
 export class DatabaseSync {}
 
