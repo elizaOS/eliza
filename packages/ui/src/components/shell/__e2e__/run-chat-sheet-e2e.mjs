@@ -1964,10 +1964,15 @@ try {
   }
 
   if (!ONLY_AUTOSCROLL) {
-  // ===== Collapsed grabber horizontal flick stays inert, REAL touch (#9943) =====
-  // Home and apps share one surface, so a collapsed grabber has no horizontal
-  // destination. Exercise Chromium's real touch pipeline and a janked/coalesced
-  // delivery to prove neither path opens chat or changes the shell surface.
+  // ===== GRABBER horizontal flick is a consumed NO-OP, REAL touch (#9943) =====
+  // The unified home/apps surface owns horizontal paging (the launcher rail);
+  // the collapsed grabber's horizontal swipe navigates NOWHERE and must not
+  // open/close the sheet — but it must still be classified + consumed so a
+  // coalesced release can't masquerade as a tap (which WOULD open the chat).
+  // Drive it through Chromium's REAL touch pipeline (Input.dispatchTouchEvent,
+  // hit-test + touch-action + implicit capture), ALSO under a janked main
+  // thread (fire-and-forget dispatch → the renderer coalesces the moves), the
+  // failure shape of the Davey!-janked WebView.
   {
     const surfacePage = (p) =>
       p.evaluate(
@@ -2005,9 +2010,14 @@ try {
     await p.waitForTimeout(400);
     assert(
       (await surfacePage(p)) === "home",
-      "[grabber-swipe] REAL-touch left flick on the collapsed grabber stays inert (#9943)",
+      "[grabber-swipe] REAL-touch left flick on the collapsed grabber does NOT navigate (rail owns paging)",
     );
-    await snap(p, "grabber-real-touch-inert");
+    assert(
+      (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+        "closed",
+      "[grabber-swipe] REAL-touch left flick is consumed — the sheet stays closed (no tap-open)",
+    );
+    await snap(p, "grabber-real-touch-noop");
 
     // 2. Real-touch flick with the main thread JANKED: dispatch the whole
     // sequence fire-and-forget so the renderer coalesces the moves (this is
@@ -2054,8 +2064,10 @@ try {
     await busy;
     await p.waitForTimeout(600);
     assert(
-      (await surfacePage(p)) === "home",
-      "[grabber-swipe] real-touch flick stays inert with the main thread janked / moves coalesced (#9943)",
+      (await surfacePage(p)) === "home" &&
+        (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+          "closed",
+      "[grabber-swipe] janked/coalesced real-touch flick is still a consumed no-op (no nav, sheet closed) (#9943)",
     );
     await cdp.detach().catch(() => {});
 
@@ -2085,8 +2097,10 @@ try {
     }, grabberSel);
     await p.waitForTimeout(400);
     assert(
-      (await surfacePage(p)) === "home",
-      "[grabber-swipe] synthetic PointerEvent flick stays inert (parity)",
+      (await surfacePage(p)) === "home" &&
+        (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+          "closed",
+      "[grabber-swipe] synthetic PointerEvent flick is a consumed no-op too (parity)",
     );
     await p.close();
   }

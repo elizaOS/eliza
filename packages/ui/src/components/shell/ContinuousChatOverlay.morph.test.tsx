@@ -31,6 +31,7 @@ import {
   ContinuousChatOverlay,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
+  pillHandleCounterScale,
   pillMorphScale,
 } from "./ContinuousChatOverlay";
 import type { ShellController } from "./useShellController";
@@ -136,6 +137,44 @@ describe("pill collapse hard-shrink scale (pillMorphScale)", () => {
     // Out-of-range progress clamps instead of over/under-scaling.
     expect(pillMorphScale(-1)).toBe(PILL_MORPH_MIN_SCALE);
     expect(pillMorphScale(2)).toBe(1);
+  });
+});
+
+describe("constant-size pill handle (pillHandleCounterScale)", () => {
+  it("cancels the panel scale exactly at every morph progress", () => {
+    // The pill capsule rides the panel's hard-shrink scale; the counter-scale
+    // must invert it at EVERY point of the morph so the visible handle bar
+    // never changes size between the collapsed pill and the input bar.
+    for (const p of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1, -1, 2]) {
+      expect(pillMorphScale(p) * pillHandleCounterScale(p)).toBeCloseTo(1, 10);
+    }
+  });
+
+  it("renders the pill bar and the closed-grabber bar with identical geometry classes", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const pill = pillBar();
+    const closedGrabber = grabberBar();
+    expect(pill).toBeTruthy();
+    expect(closedGrabber).toBeTruthy();
+    // Same bar: h-1.5 w-12 on both while the sheet is closed (the two crossfade
+    // into each other and must be pixel-identical).
+    for (const cls of ["h-1.5", "w-12", "rounded-full"]) {
+      expect(pill?.classList.contains(cls)).toBe(true);
+      expect(closedGrabber?.classList.contains(cls)).toBe(true);
+    }
+  });
+
+  it("shrinks the grabber bar once the sheet is OPEN (quieter handle over the transcript)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    // Open to HALF via a grabber tap.
+    fireEvent.pointerDown(grabber(), { clientY: 420, pointerId: 1 });
+    fireEvent.pointerUp(grabber(), { clientY: 420, pointerId: 1 });
+    expect(sheet().getAttribute("data-detent")).toBe("half");
+    const bar = grabberBar();
+    expect(bar?.classList.contains("h-1")).toBe(true);
+    expect(bar?.classList.contains("w-9")).toBe(true);
+    expect(bar?.classList.contains("h-1.5")).toBe(false);
+    expect(bar?.classList.contains("w-12")).toBe(false);
   });
 });
 
