@@ -23,11 +23,20 @@
  * surfaces these as toggles, never auto-arms them. */
 export const OPT_IN_GATES = [
   { key: "ELIZA_RUN_LIVE_TESTS", label: "Live model tests (core)" },
+  { key: "ELIZA_LIVE_TEST", label: "Live model and trajectory tests" },
   { key: "ELIZA_LIVE_EVM_RPC_TEST", label: "Live EVM RPC tests" },
   { key: "ELIZA_LIVE_APPLE_REMINDERS_TEST", label: "Apple Reminders (macOS)" },
   {
+    key: "ELIZA_VISION_QA_CLI_LIVE",
+    label: "Vision QA through local model CLIs",
+  },
+  {
     key: "ORCHESTRATOR_LIVE_MULTI_ACCOUNT",
     label: "Orchestrator multi-account",
+  },
+  {
+    key: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
+    label: "Smithers Codex subscription tests",
   },
   { key: "RUN_LIVE_NATIVE_ACP", label: "Native ACP smoke" },
   { key: "RUN_LIVE_ACPX", label: "ACPX sub-agent router" },

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * audit-focused-skipped-tests.mjs — anti-larp CI gate (#10718).
+ * Anti-larp gate for focused and untraceably disabled JavaScript tests.
  *
  * AGENTS.md law #2 ("test everything for real — no larp") and #10718's
  * acceptance criteria require a gate that prevents two silent-larp regressions
@@ -36,52 +36,76 @@
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
 
-const TEST_FILE_PATHSPECS = [
-  "*.test.ts",
-  "*.test.tsx",
-  "*.test.mts",
-  "*.test.cts",
-  "*.test.mjs",
-  "*.test.js",
-  "*.test.jsx",
-  "*.spec.ts",
-  "*.spec.tsx",
-  "*.spec.mjs",
-  "*.spec.js",
-  "*.spec.jsx",
-];
+const TEST_SOURCE_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+]);
+const TEST_DIRECTORY_SEGMENTS = new Set([
+  "__e2e__",
+  "__tests__",
+  "e2e",
+  "spec",
+  "specs",
+  "test",
+  "testing",
+  "tests",
+]);
+const TEST_BASENAME_PATTERN =
+  /(?:^|[._-])(?:e2e[._-])?(?:test|spec)(?:[._-]|$)|(?:^|[._-])self-test(?:[._-]|$)/i;
+const RUNNER_ROOTS = new Set([
+  "bench",
+  "context",
+  "ctx",
+  "describe",
+  "it",
+  "suite",
+  "t",
+  "test",
+]);
+const RUNTIME_SKIP_CONTEXTS = new Set(["ctx", "t"]);
+const FOCUSED_ALIASES = new Set(["fdescribe", "fit"]);
+const DISABLED_ALIASES = new Set(["xdescribe", "xit", "xtest"]);
+const DISABLED_MODIFIERS = new Set([
+  "fixme",
+  "skip",
+  "skipIf",
+  "todo",
+  "todoIf",
+]);
+export const TEST_SOURCE_EXCLUSIONS = new Map([
+  [
+    "packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts",
+    "deliberately invalid skill-runner input fixture; excluded by that runner's tsconfig and never executed by a JavaScript test framework",
+  ],
+]);
 
-// Focused-test forms. `it/describe/test/suite/bench/context` are unambiguously
-// test-runner globals inside a test file, so `<runner>.only` is a focused test —
-// but ONLY as a call (`it.only(`) or a parameterized chain (`it.only.each(` /
-// `.for(`). Requiring the `(`/chain (like SKIP_PATTERNS require `(`) is what
-// keeps a `.only` that merely appears inside a STRING or property value from
-// tripping the gate — e.g. `id: "test.only"` (an app-page id) is data, not a
-// focused test. `fdescribe`/`fit` are the jasmine-style focus aliases.
-const FOCUSED_PATTERNS = [
-  /\b(?:describe|it|test|suite|bench|context)\.only\s*(?:\.(?:each|for)\b|\()/,
-  /\bf(?:describe|it)\s*\(/,
-];
+export function testSourceExclusionRecords(
+  exclusions = TEST_SOURCE_EXCLUSIONS,
+) {
+  return [...exclusions].map(([file, reason]) => ({
+    file,
+    reason,
+  }));
+}
 
-// Skip/pending/exclude forms — DIRECT CALLS only. Requiring the `(` after
-// skip and pending-call forms deliberately exclude the sanctioned conditional-runner
-// pattern `cond ? describe : describe.skip` (and `const runner = ok ? it : it.skip`),
-// which is how real/live suites skip CLEANLY when a dependency (postgres, pty,
-// codex, ffmpeg, live keys) is absent — that is not larp. Only a literal
-// `it.skip("name", fn)` — a hardcoded, unconditionally-disabled test — is flagged.
-const SKIP_PATTERNS = [
-  /\b(?:describe|it|test|suite|bench|context)\.(?:skip|todo)\s*\(/,
-  /\bx(?:it|describe)\s*\(/,
-];
-
-// A skip is compliant — traceable, not silently dropped (#10718) — when the
-// nearby window either LINKS a tracking issue OR explains itself with a reason.
+// A skip is compliant — traceable, not silently dropped (#10718) — when its
+// title, arguments, attached comment, or same-line comment carries a tracking
+// reference or explains the unavailable prerequisite.
 // Both are legitimate: `it.skip("a", fn) // #1234` (tracked) and the far more
 // common conditional/env-gate `it.skip("[live] requires OPENAI_API_KEY", fn)` /
 // `test.skip(!process.env.X, "…")` / `it.skip("not on linux", fn)` (self-documenting).
@@ -94,56 +118,313 @@ const TRACKING_REF =
 // Self-documenting-reason markers, incl. Playwright's official `annotation: {
 // type: "skip", description: "…" }` form.
 const REASON_MARKER =
-  /\b(?:requires?|missing|unavailable|disabled|not\s+(?:run|on|available|installed|supported|enabled|configured)|set\b[^\n]*\benabl|skipped|enable\b|only\s+(?:on|runs?)|stub\b|not on PATH|platform|no\s+\w+\s+(?:available|installed|found|backend|store)|process\.(?:platform|env)|os\.platform|isCI|when\b|un-?skip|not yet|pending|once\b[^\n]*\blands?\b|backend|no shared)\b|—|"[^"]*\$\{|`[^`]*\$\{/i;
-// Playwright's structured skip annotation is first-class documentation.
-const PW_ANNOTATION = /annotation\b[\s\S]{0,240}?\bdescription\s*:/i;
+  /\b(?:requires?|missing|unavailable|lacks?\b[^\n]*\baccess|not\s+(?:run|on|available|installed|supported|enabled|configured)|set\b[^\n]*\b(?:enable|run)|enable\b[^\n]*\b(?:test|suite|run)|only\s+(?:on|under|runs?)|not on PATH|process\.(?:platform|env)|os\.platform|isCI|un-?skip|once\b[^\n]*\blands?\b|until\b|blocked\s+(?:by|on)|no\s+[^\n]{1,80}\s+(?:available|installed|found|loaded|backend|store)|no shared)\b/i;
 
-// Look a few lines up (comment/condition) and further down (multi-line call +
-// Playwright annotation object) for the reason/ref.
-const SKIP_WINDOW_UP = 4;
-const SKIP_WINDOW_DOWN = 10;
-
-/** Comment-only lines can't run a test — skip them so prose/docstrings that
- * mention `it.only` (like this file) never trip the gate. */
-function isCommentOnlyLine(line) {
-  const t = line.trimStart();
-  return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
+function normalizeRelativePath(value) {
+  return value.split("\\").join("/").replace(/^\.\//, "");
 }
 
-/**
- * Does the skip CALL starting at `lineIdx` pass a string literal as its FIRST
- * argument? A string first arg (`it.skip("test name", fn)`) is a hardcoded,
- * unconditionally-disabled named test — the case the gate scrutinizes. A
- * non-string first arg (`test.skip(!process.env.X, "reason")`,
- * `describe.skip(shouldRun)`) is a RUNTIME CONDITIONAL skip — Playwright/vitest's
- * supported "skip when this condition holds" API — which is legitimate, so those
- * are always compliant. Scans forward across up to a few lines to the first
- * non-whitespace char after the opening `(`.
- */
-function skipFirstArgIsStringLiteral(lines, lineIdx) {
-  const joined = lines.slice(lineIdx, lineIdx + 4).join("\n");
-  const call = joined.match(
-    /\b(?:describe|it|test|suite|bench|context)\.(?:skip|todo)\s*\(|\bx(?:it|describe)\s*\(/,
-  );
-  if (!call) return true; // be conservative: treat as hardcoded if unsure
-  const afterParen = joined.slice(call.index + call[0].length);
-  const firstChar = afterParen.replace(/^\s+/, "")[0];
-  return firstChar === '"' || firstChar === "'" || firstChar === "`";
+function isTestSourcePath(relativePath) {
+  const normalized = normalizeRelativePath(relativePath);
+  const extension = path.posix.extname(normalized).toLocaleLowerCase("en-US");
+  if (!TEST_SOURCE_EXTENSIONS.has(extension)) return false;
+  const segments = normalized.split("/");
+  const basename = segments.at(-1) ?? "";
+  if (TEST_BASENAME_PATTERN.test(basename)) return true;
+  return segments
+    .slice(0, -1)
+    .some((segment) =>
+      TEST_DIRECTORY_SEGMENTS.has(segment.toLocaleLowerCase("en-US")),
+    );
 }
 
-function listTrackedTestFiles() {
-  const out = execFileSync(
-    "git",
-    ["ls-files", "-z", "--", ...TEST_FILE_PATHSPECS],
-    { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
-  return (
-    out
+function assertNoCaseCollisions(files) {
+  const seen = new Map();
+  for (const file of files) {
+    const identity = normalizeRelativePath(file).toLocaleLowerCase("en-US");
+    const previous = seen.get(identity);
+    if (previous && previous !== file) {
+      throw new Error(
+        `case-colliding test source paths: ${previous} and ${file}`,
+      );
+    }
+    seen.set(identity, file);
+  }
+}
+
+function validateTestSourceExclusions(eligible, exclusions) {
+  const eligibleSet = new Set(eligible);
+  const normalizedExclusions = new Map();
+  for (const [rawFile, rawReason] of exclusions) {
+    const file = normalizeRelativePath(rawFile);
+    const reason = String(rawReason).trim();
+    if (!isTestSourcePath(file)) {
+      throw new Error(
+        `test-source exclusion is not an eligible source: ${file}`,
+      );
+    }
+    if (!eligibleSet.has(file)) {
+      throw new Error(
+        `stale test-source exclusion does not match a repository file: ${file}`,
+      );
+    }
+    if (reason.length < 12) {
+      throw new Error(`test-source exclusion needs a durable reason: ${file}`);
+    }
+    const identity = file.toLocaleLowerCase("en-US");
+    if (normalizedExclusions.has(identity)) {
+      throw new Error(`duplicate test-source exclusion identity: ${file}`);
+    }
+    normalizedExclusions.set(identity, file);
+  }
+  return new Set(normalizedExclusions.values());
+}
+
+/** Discover every tracked or untracked non-ignored JavaScript test source. */
+export function discoverTestSourceFiles(
+  root = REPO_ROOT,
+  candidateFiles,
+  exclusions = candidateFiles === undefined
+    ? TEST_SOURCE_EXCLUSIONS
+    : new Map(),
+) {
+  const files =
+    candidateFiles ??
+    execFileSync(
+      "git",
+      [
+        "-C",
+        root,
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+      ],
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+    )
       .split("\0")
-      .filter(Boolean)
-      // The gate never scans itself or its self-test fixtures.
-      .filter((f) => !f.endsWith("audit-focused-skipped-tests.mjs"))
+      .filter(Boolean);
+  const eligible = files
+    .map(normalizeRelativePath)
+    .filter(isTestSourcePath)
+    .sort((left, right) => {
+      if (left < right) return -1;
+      if (left > right) return 1;
+      return 0;
+    });
+  assertNoCaseCollisions(eligible);
+  const excluded = validateTestSourceExclusions(eligible, exclusions);
+  const discovered = eligible.filter(
+    (relativePath) => !excluded.has(relativePath),
   );
+  if (discovered.length === 0) {
+    throw new Error(
+      "test-file discovery returned zero JavaScript test sources",
+    );
+  }
+  return discovered;
+}
+
+/** Load the complete test inventory or surface discovery/read failure. */
+export function readTestSources(files, root = REPO_ROOT) {
+  if (files.length === 0) {
+    throw new Error(
+      "test-file discovery returned zero JavaScript test sources",
+    );
+  }
+  return files.map((rel) => ({
+    rel,
+    content: fs.readFileSync(path.join(root, rel), "utf8"),
+  }));
+}
+
+function scriptKind(filePath) {
+  const extension = path.extname(filePath).toLocaleLowerCase("en-US");
+  if (extension === ".tsx") return ts.ScriptKind.TSX;
+  if (extension === ".jsx") return ts.ScriptKind.JSX;
+  if ([".js", ".mjs", ".cjs"].includes(extension)) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}
+
+function callChain(expression) {
+  if (
+    ts.isParenthesizedExpression(expression) ||
+    ts.isNonNullExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isSatisfiesExpression(expression)
+  ) {
+    return callChain(expression.expression);
+  }
+  if (ts.isCallExpression(expression)) return callChain(expression.expression);
+  if (ts.isIdentifier(expression)) return [expression.text];
+  if (ts.isPropertyAccessExpression(expression)) {
+    const base = callChain(expression.expression);
+    return base ? [...base, expression.name.text] : null;
+  }
+  if (ts.isElementAccessExpression(expression)) {
+    const base = callChain(expression.expression);
+    const key = expression.argumentExpression;
+    if (!base || !key || !ts.isStringLiteralLike(key)) return null;
+    return [...base, key.text];
+  }
+  return null;
+}
+
+function disabledModifier(chain) {
+  if (!chain) return null;
+  if (chain.length === 1 && DISABLED_ALIASES.has(chain[0])) return "alias";
+  if (!RUNNER_ROOTS.has(chain[0])) return null;
+  return chain.find((part) => DISABLED_MODIFIERS.has(part)) ?? null;
+}
+
+function unwrapExpression(node) {
+  let current = node;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isNonNullExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function isTrueLiteral(node) {
+  return node && unwrapExpression(node).kind === ts.SyntaxKind.TrueKeyword;
+}
+
+function findModifierCall(node, modifier) {
+  let current = node;
+  while (current) {
+    const unwrapped = unwrapExpression(current);
+    if (!ts.isCallExpression(unwrapped)) return null;
+    const chain = callChain(unwrapped.expression);
+    if (
+      !ts.isCallExpression(unwrapExpression(unwrapped.expression)) &&
+      chain?.at(-1) === modifier
+    ) {
+      return unwrapped;
+    }
+    current = unwrapped.expression;
+  }
+  return null;
+}
+
+function hasOuterModifierCall(node, modifier, sourceFile) {
+  const start = node.getStart(sourceFile);
+  let parent = node.parent;
+  while (parent && parent.getStart(sourceFile) === start) {
+    if (
+      ts.isCallExpression(parent) &&
+      disabledModifier(callChain(parent.expression)) === modifier
+    ) {
+      return true;
+    }
+    parent = parent.parent;
+  }
+  return false;
+}
+
+function annotationDescriptions(argument) {
+  if (!ts.isObjectLiteralExpression(unwrapExpression(argument))) return [];
+  const descriptions = [];
+  const visitObject = (object) => {
+    for (const property of object.properties) {
+      if (
+        !ts.isPropertyAssignment(property) ||
+        !(
+          ts.isIdentifier(property.name) ||
+          ts.isStringLiteralLike(property.name)
+        )
+      ) {
+        continue;
+      }
+      if (property.name.text === "description") {
+        const value = unwrapExpression(property.initializer);
+        if (ts.isStringLiteralLike(value) && value.text.trim()) {
+          descriptions.push(value.text);
+        }
+      } else if (property.name.text === "annotation") {
+        const value = unwrapExpression(property.initializer);
+        if (ts.isObjectLiteralExpression(value)) visitObject(value);
+      }
+    }
+  };
+  visitObject(unwrapExpression(argument));
+  return descriptions;
+}
+
+function evidenceText(sourceFile, node) {
+  const source = sourceFile.text;
+  const start = node.getStart(sourceFile);
+  const end = node.getEnd();
+  const lineEnd = source.indexOf("\n", end);
+  const evidence = [
+    source.slice(node.getFullStart(), start),
+    source.slice(end, lineEnd === -1 ? source.length : lineEnd),
+  ];
+  for (const argument of node.arguments) {
+    const value = unwrapExpression(argument);
+    if (
+      ts.isStringLiteralLike(value) ||
+      ts.isTemplateExpression(value) ||
+      ts.isNoSubstitutionTemplateLiteral(value)
+    ) {
+      evidence.push(source.slice(argument.getFullStart(), argument.getEnd()));
+    } else {
+      evidence.push(
+        source.slice(argument.getFullStart(), argument.getStart(sourceFile)),
+      );
+      evidence.push(...annotationDescriptions(value));
+    }
+  }
+  return evidence.join("\n");
+}
+
+function lineText(sourceFile, node) {
+  const start = node.getStart(sourceFile);
+  const lineStart = sourceFile.text.lastIndexOf("\n", start - 1) + 1;
+  const lineEnd = sourceFile.text.indexOf("\n", start);
+  return sourceFile.text
+    .slice(lineStart, lineEnd === -1 ? sourceFile.text.length : lineEnd)
+    .trim()
+    .slice(0, 120);
+}
+
+function isFocusedChain(chain) {
+  if (!chain) return false;
+  if (chain.length === 1) return FOCUSED_ALIASES.has(chain[0]);
+  return RUNNER_ROOTS.has(chain[0]) && chain.slice(1).includes("only");
+}
+
+function hasDocumentedDisable(sourceFile, node) {
+  if (
+    node.arguments.some(
+      (argument) => annotationDescriptions(argument).length > 0,
+    )
+  ) {
+    return true;
+  }
+  const evidence = evidenceText(sourceFile, node);
+  return TRACKING_REF.test(evidence) || REASON_MARKER.test(evidence);
+}
+
+function isConditionalDisableDocumented(sourceFile, node) {
+  const description = node.arguments[1];
+  const unwrapped = description && unwrapExpression(description);
+  if (unwrapped && ts.isStringLiteralLike(unwrapped)) {
+    return unwrapped.text.trim().length >= 8;
+  }
+  if (
+    unwrapped &&
+    unwrapped.kind !== ts.SyntaxKind.NullKeyword &&
+    !(ts.isIdentifier(unwrapped) && unwrapped.text === "undefined")
+  ) {
+    return true;
+  }
+  return hasDocumentedDisable(sourceFile, node);
 }
 
 /**
@@ -152,68 +433,135 @@ function listTrackedTestFiles() {
  * @returns {{file:string,line:number,kind:'focused'|'orphaned-skip',text:string}[]}
  */
 export function findViolations(filePath, content) {
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind(filePath),
+  );
+  if (sourceFile.parseDiagnostics?.length > 0) {
+    const diagnostic = sourceFile.parseDiagnostics[0];
+    const message = ts.flattenDiagnosticMessageText(
+      diagnostic.messageText,
+      "\n",
+    );
+    throw new Error(
+      `${filePath}:${diagnostic.start ?? 0} could not be parsed: ${message}`,
+    );
+  }
+
   const violations = [];
-  const lines = content.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (isCommentOnlyLine(line)) continue;
-
-    if (FOCUSED_PATTERNS.some((re) => re.test(line))) {
-      violations.push({
-        file: filePath,
-        line: i + 1,
-        kind: "focused",
-        text: line.trim().slice(0, 120),
-      });
-      continue;
-    }
-
-    if (SKIP_PATTERNS.some((re) => re.test(line))) {
-      // Runtime conditional skips (non-string first arg) are always legitimate.
-      if (!skipFirstArgIsStringLiteral(lines, i)) continue;
-      const start = Math.max(0, i - SKIP_WINDOW_UP);
-      const end = Math.min(lines.length, i + 1 + SKIP_WINDOW_DOWN);
-      const window = lines.slice(start, end).join("\n");
-      if (
-        !TRACKING_REF.test(window) &&
-        !REASON_MARKER.test(window) &&
-        !PW_ANNOTATION.test(window)
-      ) {
-        violations.push({
-          file: filePath,
-          line: i + 1,
-          kind: "orphaned-skip",
-          text: line.trim().slice(0, 120),
-        });
+  const recorded = new Set();
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const chain = callChain(node.expression);
+      const position = node.getStart(sourceFile);
+      if (isFocusedChain(chain)) {
+        const key = `focused:${position}`;
+        if (!recorded.has(key)) {
+          recorded.add(key);
+          const { line } = sourceFile.getLineAndCharacterOfPosition(position);
+          violations.push({
+            file: filePath,
+            line: line + 1,
+            kind: "focused",
+            text: lineText(sourceFile, node),
+          });
+        }
+      } else {
+        const modifier = disabledModifier(chain);
+        let documented = true;
+        if (modifier && hasOuterModifierCall(node, modifier, sourceFile)) {
+          documented = true;
+        } else if (modifier === "skipIf" || modifier === "todoIf") {
+          const modifierCall = findModifierCall(node, modifier);
+          documented =
+            !modifierCall ||
+            !isTrueLiteral(modifierCall.arguments[0]) ||
+            hasDocumentedDisable(sourceFile, node);
+        } else if (modifier === "skip" || modifier === "fixme") {
+          const firstArgument = node.arguments[0];
+          const firstValue = firstArgument && unwrapExpression(firstArgument);
+          if (
+            chain &&
+            RUNTIME_SKIP_CONTEXTS.has(chain[0]) &&
+            firstValue &&
+            ts.isStringLiteralLike(firstValue)
+          ) {
+            documented = firstValue.text.trim().length >= 8;
+          } else {
+            documented =
+              firstValue && !ts.isStringLiteralLike(firstValue)
+                ? isConditionalDisableDocumented(sourceFile, node)
+                : hasDocumentedDisable(sourceFile, node);
+          }
+        } else if (modifier === "todo" || modifier === "alias") {
+          documented = hasDocumentedDisable(sourceFile, node);
+        }
+        if (modifier && !documented) {
+          const key = `orphaned-skip:${position}`;
+          if (!recorded.has(key)) {
+            recorded.add(key);
+            const { line } = sourceFile.getLineAndCharacterOfPosition(position);
+            violations.push({
+              file: filePath,
+              line: line + 1,
+              kind: "orphaned-skip",
+              text: lineText(sourceFile, node),
+            });
+          }
+        }
       }
     }
-  }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
   return violations;
 }
 
-function runGate({ dryRun }) {
-  const files = listTrackedTestFiles();
+function writeInventoryReport(report) {
+  const output = path.join(REPO_ROOT, "reports/test-source-inventory.json");
+  fs.mkdirSync(path.dirname(output), { recursive: true });
+  const temporary = `${output}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(report, null, 2)}\n`);
+  fs.renameSync(temporary, output);
+}
+
+function runGate({ dryRun, json }) {
+  const files = discoverTestSourceFiles();
   /** @type {ReturnType<typeof findViolations>} */
   const all = [];
-  for (const rel of files) {
-    let content;
-    try {
-      content = fs.readFileSync(path.join(REPO_ROOT, rel), "utf8");
-    } catch {
-      continue;
-    }
+  for (const { rel, content } of readTestSources(files)) {
     all.push(...findViolations(rel, content));
   }
 
   const focused = all.filter((v) => v.kind === "focused");
   const orphaned = all.filter((v) => v.kind === "orphaned-skip");
+  const report = {
+    schemaVersion: 1,
+    discoveredCount: files.length,
+    excludedCount: TEST_SOURCE_EXCLUSIONS.size,
+    focusedCount: focused.length,
+    orphanedSkipCount: orphaned.length,
+    files,
+    excluded: testSourceExclusionRecords(),
+    violations: all,
+  };
+  writeInventoryReport(report);
 
-  console.log(
-    `[anti-larp] scanned ${files.length} test files — ${focused.length} focused, ${orphaned.length} orphaned skip(s)`,
-  );
+  if (json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    console.log(
+      `[anti-larp] scanned ${files.length} test files — ${focused.length} focused, ${orphaned.length} orphaned skip(s)`,
+    );
+  }
 
   if (all.length === 0) {
-    console.log("[anti-larp] clean — no focused tests, no untracked skips.");
+    if (!json) {
+      console.log("[anti-larp] clean — no focused tests, no untracked skips.");
+    }
     return 0;
   }
 
@@ -264,6 +612,16 @@ function selfTest() {
       src: "it.only.each([1])('a', () => {});",
       expect: ["focused"],
     },
+    {
+      name: "flags multiline and bracket focused syntax",
+      src: 'test\n  ["only"]\n  ("a", () => {});',
+      expect: ["focused"],
+    },
+    {
+      name: "flags nested Playwright describe focus",
+      src: 'test.describe.only("a", () => {});',
+      expect: ["focused"],
+    },
     { name: "flags fit(", src: 'fit("a", () => {});', expect: ["focused"] },
     {
       name: "flags fdescribe(",
@@ -278,6 +636,16 @@ function selfTest() {
     {
       name: "flags orphaned xit(",
       src: 'xit("does a thing", () => {});',
+      expect: ["orphaned-skip"],
+    },
+    {
+      name: "flags orphaned xtest(",
+      src: 'xtest("does a thing", () => {});',
+      expect: ["orphaned-skip"],
+    },
+    {
+      name: "flags nested Playwright describe skip",
+      src: 'test.describe.skip("does a thing", () => {});',
       expect: ["orphaned-skip"],
     },
     {
@@ -342,7 +710,7 @@ function selfTest() {
     },
     {
       name: "ignores a runner-name.only inside a string literal (page id, etc.)",
-      src: 'registerAppShellPage({ id: "test.only", label: "Solo" });\nit("a", () => {});',
+      src: 'const sample = "test.only("; registerAppShellPage({ id: "test.only", label: "Solo" });\nit("a", () => {});',
       expect: [],
     },
     {
@@ -376,17 +744,65 @@ function selfTest() {
   return 0;
 }
 
-function main() {
-  const args = new Set(process.argv.slice(2));
-  if (args.has("--self-test")) {
-    process.exit(selfTest());
+export function parseFocusedAuditArgs(args) {
+  const supported = new Set([
+    "--dry-run",
+    "--help",
+    "-h",
+    "--json",
+    "--self-test",
+  ]);
+  for (const arg of args) {
+    if (!supported.has(arg)) {
+      throw new Error(`unknown argument: ${arg}`);
+    }
   }
+  if (new Set(args).size !== args.length) {
+    throw new Error("arguments may be specified only once");
+  }
+  const helpFlags = args.filter((arg) => arg === "--help" || arg === "-h");
+  if (helpFlags.length > 1) {
+    throw new Error("help may be specified only once");
+  }
+  if (helpFlags.length === 1 && args.length !== 1) {
+    throw new Error("help cannot be combined with audit arguments");
+  }
+  if (
+    args.includes("--self-test") &&
+    (args.includes("--dry-run") || args.includes("--json"))
+  ) {
+    throw new Error("--self-test cannot be combined with --dry-run or --json");
+  }
+  return {
+    dryRun: args.includes("--dry-run"),
+    help: args.includes("--help") || args.includes("-h"),
+    json: args.includes("--json"),
+    selfTest: args.includes("--self-test"),
+  };
+}
+
+function printUsage() {
+  process.stdout.write(
+    "Usage: node packages/scripts/audit-focused-skipped-tests.mjs [--dry-run] [--json] | --self-test\n",
+  );
+}
+
+function main(args = process.argv.slice(2)) {
   try {
-    process.exit(runGate({ dryRun: args.has("--dry-run") }));
+    const options = parseFocusedAuditArgs(args);
+    if (options.help) {
+      printUsage();
+      return 0;
+    }
+    return options.selfTest ? selfTest() : runGate(options);
   } catch (err) {
+    // error-policy:J1 the executable boundary turns discovery/parser failure
+    // into a non-zero audit result without fabricating a clean inventory.
     console.error(`[anti-larp] internal error: ${String(err)}`);
-    process.exit(2);
+    return 2;
   }
 }
 
-main();
+if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
+  process.exit(main());
+}

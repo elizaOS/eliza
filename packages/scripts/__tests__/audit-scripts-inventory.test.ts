@@ -13,7 +13,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildInventory } from "../audit-scripts-inventory.mjs";
+import {
+  buildInventory,
+  parseInventoryArgs,
+} from "../audit-scripts-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
@@ -51,6 +54,23 @@ function appScriptNames() {
 
 describe("script inventory: packages/app surface (issue #10200)", () => {
   const inv = buildInventory();
+
+  test("rejects misspelled and positional CLI arguments", () => {
+    expect(parseInventoryArgs(["--json"])).toEqual({
+      help: false,
+      json: true,
+    });
+    expect(() => parseInventoryArgs(["--jsoon"])).toThrow(
+      "unknown argument: --jsoon",
+    );
+    expect(() => parseInventoryArgs(["unexpected"])).toThrow(
+      "unknown argument: unexpected",
+    );
+    expect(() => parseInventoryArgs(["--json", "--json"])).toThrow("only once");
+    expect(() => parseInventoryArgs(["--help", "--json"])).toThrow(
+      "cannot be combined",
+    );
+  });
 
   test("classifies every packages/app script exactly once", () => {
     const names = appScriptNames();
@@ -95,6 +115,9 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(Array.isArray(inv.roots)).toBe(true);
     expect(Array.isArray(inv.files)).toBe(true);
     expect(inv.summary.totalRootScripts).toBe(inv.roots.length);
+    expect(inv.scriptTests.discoveredCount).toBeGreaterThan(100);
+    expect(inv.scriptTests.excluded).toEqual([]);
+    expect(inv.summary.totalScriptTests).toBe(inv.scriptTests.discoveredCount);
   });
 
   test("package-local script callers keep helper files out of the orphan bucket", () => {
@@ -129,10 +152,10 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
       script: "dev:all",
     });
     expect(byRoot("audit:scripts:inventory")?.category).toBe(
-      "reachable-from-operator-script",
+      "reachable-from-verify",
     );
     expect(byFile("audit-scripts-inventory.mjs")?.category).toBe(
-      "reachable-from-operator-script",
+      "reachable-from-verify",
     );
     expect(
       byFile("audit-scripts-inventory.mjs")?.operatorScriptCallers,

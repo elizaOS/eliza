@@ -24,9 +24,13 @@
  */
 
 import { promises as fs } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { discoverViewBundleInventory } from "./lib/view-bundle-inventory.mjs";
 
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
@@ -45,185 +49,340 @@ const HOST_EXTERNAL_REGISTRATION_PATHS = [
   path.join(repoRoot, "packages/app/src/host-externals.ts"),
 ];
 
-/**
- * Extract the keys of the `HOST_EXTERNAL_IMPORTERS` object literal from the
- * loader source. The keys ARE the contract the agent's bundle route rewrites
- * against, so reading them directly keeps this guard from drifting from the
- * loader. Keys are collected only at the top level of the object (depth 1) so
- * nested thunk bodies (e.g. the `react/jsx-dev-runtime` block) are ignored.
- */
-export async function getHostExternalSpecifiers() {
-  const source = await fs.readFile(LOADER_PATH, "utf8");
-  const marker = "const HOST_EXTERNAL_IMPORTERS";
-  const declStart = source.indexOf(marker);
-  if (declStart === -1) {
+function parseSource(source, file, scriptKind) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind,
+  );
+  if (sourceFile.parseDiagnostics?.length > 0) {
+    const diagnostic = sourceFile.parseDiagnostics[0];
     throw new Error(
-      `[view-bundle-guard] could not find HOST_EXTERNAL_IMPORTERS in ${path.relative(repoRoot, LOADER_PATH)}`,
+      `[view-bundle-guard] ${file} is not parseable TypeScript: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
     );
   }
-  const braceStart = source.indexOf("{", declStart);
-  if (braceStart === -1) {
+  return sourceFile;
+}
+
+function unwrapExpression(expression) {
+  let current = expression;
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function staticPropertyName(property, file) {
+  const name = property.name;
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) {
+    return name.text;
+  }
+  if (
+    ts.isComputedPropertyName(name) &&
+    ts.isStringLiteralLike(name.expression)
+  ) {
+    return name.expression.text;
+  }
+  throw new Error(
+    `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${file} contains a non-static property`,
+  );
+}
+
+/**
+ * Extract the exact runtime host-external contract from parsed source.
+ *
+ * Comments and string examples cannot become allowlist entries, and every
+ * extension source must import and call the real registration API with a
+ * literal specifier.
+ */
+export function hostExternalSpecifiersFromSources(
+  loaderSource,
+  registrationSources,
+) {
+  const loaderFile = "<DynamicViewLoader.tsx>";
+  const loader = parseSource(loaderSource, loaderFile, ts.ScriptKind.TSX);
+  const declarations = [];
+  const findDeclarations = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "HOST_EXTERNAL_IMPORTERS"
+    ) {
+      declarations.push(node);
+    }
+    ts.forEachChild(node, findDeclarations);
+  };
+  findDeclarations(loader);
+  if (declarations.length !== 1) {
     throw new Error(
-      "[view-bundle-guard] malformed HOST_EXTERNAL_IMPORTERS literal",
+      `[view-bundle-guard] expected exactly one HOST_EXTERNAL_IMPORTERS declaration in ${loaderFile}, found ${declarations.length}`,
+    );
+  }
+  const initializer = declarations[0].initializer;
+  const objectLiteral = initializer && unwrapExpression(initializer);
+  if (!objectLiteral || !ts.isObjectLiteralExpression(objectLiteral)) {
+    throw new Error(
+      `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${loaderFile} must be an object literal`,
     );
   }
 
   const specifiers = new Set();
-  let depth = 0;
-  let i = braceStart;
-  // Walk the object literal character by character, tracking brace depth and
-  // skipping string/template/comment spans so braces inside them don't shift
-  // the depth. Collect property keys that sit directly at depth 1.
-  let atKeyPosition = true; // true when the next token could be a property key
-  while (i < source.length) {
-    const ch = source[i];
-
-    // Skip line + block comments.
-    if (ch === "/" && source[i + 1] === "/") {
-      i = source.indexOf("\n", i);
-      if (i === -1) break;
-      continue;
+  for (const property of objectLiteral.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      throw new Error(
+        `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${loaderFile} may not use spread properties`,
+      );
     }
-    if (ch === "/" && source[i + 1] === "*") {
-      const end = source.indexOf("*/", i + 2);
-      i = end === -1 ? source.length : end + 2;
-      continue;
+    const specifier = staticPropertyName(property, loaderFile);
+    if (specifiers.has(specifier)) {
+      throw new Error(
+        `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS contains duplicate specifier ${specifier}`,
+      );
     }
-
-    // Skip string / template literals.
-    if (ch === '"' || ch === "'" || ch === "`") {
-      // A quoted property key at depth 1 is what we want to capture.
-      const quote = ch;
-      let j = i + 1;
-      let value = "";
-      while (j < source.length) {
-        if (source[j] === "\\") {
-          value += source[j + 1] ?? "";
-          j += 2;
-          continue;
-        }
-        if (source[j] === quote) break;
-        value += source[j];
-        j += 1;
-      }
-      const after = source.slice(j + 1).match(/^\s*:/);
-      if (depth === 1 && atKeyPosition && after) {
-        specifiers.add(value);
-      }
-      i = j + 1;
-      atKeyPosition = false;
-      continue;
-    }
-
-    if (ch === "{") {
-      depth += 1;
-      atKeyPosition = depth === 1;
-      i += 1;
-      continue;
-    }
-    if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) break; // end of HOST_EXTERNAL_IMPORTERS
-      i += 1;
-      continue;
-    }
-    if (ch === ",") {
-      atKeyPosition = depth === 1;
-      i += 1;
-      continue;
-    }
-
-    // Bare-identifier property key at depth 1 (e.g. `react:`, `three:`).
-    if (depth === 1 && atKeyPosition && /[A-Za-z_$]/.test(ch)) {
-      const rest = source.slice(i);
-      const m = rest.match(/^([A-Za-z_$][\w$]*)\s*:/);
-      if (m) {
-        specifiers.add(m[1]);
-        i += m[0].length;
-        atKeyPosition = false;
-        continue;
-      }
-    }
-
-    if (!/\s/.test(ch)) atKeyPosition = false;
-    i += 1;
+    specifiers.add(specifier);
   }
-
   if (specifiers.size === 0) {
     throw new Error(
-      "[view-bundle-guard] extracted zero host-external specifiers — parser broke",
+      "[view-bundle-guard] extracted zero host-external specifiers",
     );
   }
 
-  // Union the specifiers registered through the extension point. Each
-  // `registerHostExternalImporter("<specifier>", …)` call names a specifier the
-  // shell can rewrite, exactly like a trunk-map key.
-  for (const registrationPath of HOST_EXTERNAL_REGISTRATION_PATHS) {
-    let registrationSource;
-    try {
-      registrationSource = await fs.readFile(registrationPath, "utf8");
-    } catch {
-      continue;
+  for (const { file, source } of registrationSources) {
+    const sourceFile = parseSource(source, file, ts.ScriptKind.TS);
+    const localRegistrationNames = new Set();
+    for (const statement of sourceFile.statements) {
+      if (
+        !ts.isImportDeclaration(statement) ||
+        !ts.isStringLiteralLike(statement.moduleSpecifier) ||
+        statement.moduleSpecifier.text !== "@elizaos/ui/app-shell-registry" ||
+        statement.importClause?.isTypeOnly ||
+        !statement.importClause?.namedBindings ||
+        !ts.isNamedImports(statement.importClause.namedBindings)
+      ) {
+        continue;
+      }
+      for (const element of statement.importClause.namedBindings.elements) {
+        if (
+          !element.isTypeOnly &&
+          (element.propertyName?.text ?? element.name.text) ===
+            "registerHostExternalImporter"
+        ) {
+          localRegistrationNames.add(element.name.text);
+        }
+      }
     }
-    for (const match of registrationSource.matchAll(
-      /registerHostExternalImporter\(\s*["']([^"']+)["']/g,
-    )) {
-      specifiers.add(match[1]);
+    if (localRegistrationNames.size !== 1) {
+      throw new Error(
+        `[view-bundle-guard] ${file} must import registerHostExternalImporter exactly once from @elizaos/ui/app-shell-registry`,
+      );
+    }
+
+    let registrationCount = 0;
+    const visit = (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        localRegistrationNames.has(node.expression.text)
+      ) {
+        const specifier = node.arguments[0];
+        if (!specifier || !ts.isStringLiteralLike(specifier)) {
+          throw new Error(
+            `[view-bundle-guard] ${file} must register host externals with literal specifiers`,
+          );
+        }
+        if (specifiers.has(specifier.text)) {
+          throw new Error(
+            `[view-bundle-guard] ${file} duplicates host-external specifier ${specifier.text}`,
+          );
+        }
+        specifiers.add(specifier.text);
+        registrationCount += 1;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    if (registrationCount === 0) {
+      throw new Error(
+        `[view-bundle-guard] ${file} contains no host-external registrations`,
+      );
     }
   }
-
   return specifiers;
 }
 
-/** Pull the bare (non-relative) module specifiers a built bundle imports. */
-function bareImportSpecifiers(source) {
-  const out = new Set();
-  for (const line of source.split("\n")) {
-    const t = line.trimStart();
-    if (!t.startsWith("import") && !t.startsWith("export")) continue;
-    const m =
-      t.match(/\bfrom\s*["']([^"']+)["']/) ||
-      t.match(/^import\s*["']([^"']+)["']/);
-    if (!m) continue;
-    const spec = m[1];
-    if (spec.startsWith(".") || spec.startsWith("/")) continue;
-    out.add(spec);
+/** Read the host runtime sources and return their exact external specifiers. */
+export async function getHostExternalSpecifiers() {
+  const loaderSource = await fs.readFile(LOADER_PATH, "utf8");
+  const registrationSources = await Promise.all(
+    HOST_EXTERNAL_REGISTRATION_PATHS.map(async (registrationPath) => ({
+      file: path.relative(repoRoot, registrationPath),
+      source: await fs.readFile(registrationPath, "utf8"),
+    })),
+  );
+  return hostExternalSpecifiersFromSources(loaderSource, registrationSources);
+}
+
+/** Pull every static or literal dynamic bare import from an emitted ESM bundle. */
+export function bareImportSpecifiers(source, file = "<view-bundle>") {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  if (sourceFile.parseDiagnostics?.length > 0) {
+    const diagnostic = sourceFile.parseDiagnostics[0];
+    throw new Error(
+      `[view-bundle-guard] ${file} is not parseable JavaScript: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
+    );
   }
+
+  const out = new Set();
+  const add = (specifier) => {
+    if (!specifier || !ts.isStringLiteralLike(specifier)) return;
+    const spec = specifier.text;
+    if (spec.startsWith(".") || spec.startsWith("/")) {
+      throw new Error(
+        `[view-bundle-guard] ${file} contains a relative or absolute-path import (${spec}); view bundles must be self-contained`,
+      );
+    }
+    out.add(spec);
+  };
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      add(node.moduleSpecifier);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword
+    ) {
+      if (!node.arguments[0] || !ts.isStringLiteralLike(node.arguments[0])) {
+        throw new Error(
+          `[view-bundle-guard] ${file} contains a computed dynamic import that the host cannot validate or rewrite`,
+        );
+      }
+      add(node.arguments[0]);
+    } else if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "require"
+    ) {
+      throw new Error(
+        `[view-bundle-guard] ${file} contains CommonJS require(), which is unavailable in a browser ESM bundle`,
+      );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
   return out;
 }
 
-async function listExpectedViewBundles() {
-  const pluginsDir = path.join(repoRoot, "plugins");
-  const names = await fs.readdir(pluginsDir).catch(() => []);
-  const bundles = [];
-  for (const name of names) {
-    const config = path.join(pluginsDir, name, "vite.config.views.ts");
-    try {
-      await fs.access(config);
-    } catch {
-      continue;
-    }
-    const bundle = path.join(pluginsDir, name, "dist/views/bundle.js");
-    const relativeBundle = path.relative(repoRoot, bundle);
-    const relativeConfig = path.relative(repoRoot, config);
-    bundles.push({ name, bundle, relativeBundle, relativeConfig });
-  }
-  return bundles.sort((a, b) => a.name.localeCompare(b.name));
+/**
+ * Resolve every expected bundle through the same workspace inventory as the
+ * producer. Tests may inject inventory options to exercise malformed trees.
+ */
+export function listExpectedViewBundles(options = {}) {
+  const root = path.resolve(options.repoRoot ?? repoRoot);
+  const inventory = discoverViewBundleInventory({
+    ...options,
+    repoRoot: root,
+  });
+  return inventory.targets.map((target) => ({
+    name: target.name,
+    bundle: target.bundleAbsolute,
+    relativeBundle: target.bundle,
+    relativeConfig: target.config,
+  }));
 }
 
-async function listBuiltBundles() {
-  const expected = await listExpectedViewBundles();
+async function listBuiltBundles(options = {}) {
+  const expected = options.expected ?? listExpectedViewBundles(options);
   const bundles = [];
   const missingBundles = [];
   for (const entry of expected) {
     try {
-      await fs.access(entry.bundle);
-      bundles.push(entry);
-    } catch {
-      missingBundles.push(entry);
+      const metadata = await fs.lstat(entry.bundle);
+      if (!metadata.isFile() || metadata.isSymbolicLink()) {
+        throw new Error(
+          `[view-bundle-guard] expected bundle is not a regular file: ${entry.relativeBundle}`,
+        );
+      }
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        missingBundles.push(entry);
+        continue;
+      }
+      throw error;
     }
+    bundles.push(entry);
   }
   return { bundles, missingBundles, expectedBundleCount: expected.length };
+}
+
+async function listOutputFiles(directory) {
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listOutputFiles(absolute)));
+    } else if (entry.isFile() || entry.isSymbolicLink()) {
+      files.push(absolute);
+    }
+  }
+  return files;
+}
+
+async function listUnexpectedOutputs(expected) {
+  const chunks = [];
+  const artifacts = [];
+  for (const entry of expected) {
+    const directory = path.dirname(entry.bundle);
+    let files;
+    try {
+      files = await listOutputFiles(directory);
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      throw error;
+    }
+    for (const file of files) {
+      const metadata = await fs.lstat(file);
+      const isSymlink = metadata.isSymbolicLink();
+      if (!isSymlink && path.resolve(file) === path.resolve(entry.bundle)) {
+        continue;
+      }
+      if (
+        !isSymlink &&
+        path.resolve(file) === path.resolve(`${entry.bundle}.map`)
+      ) {
+        continue;
+      }
+      const record = {
+        name: entry.name,
+        artifact: file,
+        relativeArtifact: path
+          .relative(path.dirname(path.dirname(directory)), file)
+          .split(path.sep)
+          .join("/"),
+      };
+      if (!isSymlink && /\.(?:js|mjs|cjs)$/i.test(file)) {
+        chunks.push({
+          ...record,
+          chunk: record.artifact,
+          relativeChunk: record.relativeArtifact,
+        });
+      } else {
+        artifacts.push(record);
+      }
+    }
+  }
+  return { unexpectedChunks: chunks, unexpectedArtifacts: artifacts };
 }
 
 /**
@@ -231,14 +390,25 @@ async function listBuiltBundles() {
  * import violations `{ plugin, specifier }`; both empty when every bundle is
  * present and loadable.
  */
-export async function validateViewBundles() {
-  const allowed = await getHostExternalSpecifiers();
+export async function validateViewBundles(options = {}) {
+  const allowed =
+    options.allowedSpecifiers === undefined
+      ? await getHostExternalSpecifiers()
+      : new Set(options.allowedSpecifiers);
+  const expected = listExpectedViewBundles(options);
   const { bundles, missingBundles, expectedBundleCount } =
-    await listBuiltBundles();
+    await listBuiltBundles({ ...options, expected });
+  // TypeScript package builds legitimately emit declarations and importable
+  // modules beside bundle.js. Only the dedicated clean Vite producer can prove
+  // that another file is a bundle artifact, so strict output-shape validation
+  // is opt-in there rather than at the post-Turbo import-check boundary.
+  const { unexpectedChunks, unexpectedArtifacts } = options.enforceFreshOutputs
+    ? await listUnexpectedOutputs(expected)
+    : { unexpectedChunks: [], unexpectedArtifacts: [] };
   const violations = [];
   for (const { name, bundle } of bundles) {
     const source = await fs.readFile(bundle, "utf8");
-    for (const spec of bareImportSpecifiers(source)) {
+    for (const spec of bareImportSpecifiers(source, bundle)) {
       if (!allowed.has(spec))
         violations.push({ plugin: name, specifier: spec });
     }
@@ -246,6 +416,8 @@ export async function validateViewBundles() {
   return {
     violations,
     missingBundles,
+    unexpectedChunks,
+    unexpectedArtifacts,
     bundleCount: bundles.length,
     expectedBundleCount,
     allowedCount: allowed.size,
@@ -257,11 +429,18 @@ if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
   const {
     violations,
     missingBundles,
+    unexpectedChunks,
+    unexpectedArtifacts,
     bundleCount,
     expectedBundleCount,
     allowedCount,
   } = await validateViewBundles();
-  if (missingBundles.length === 0 && violations.length === 0) {
+  if (
+    missingBundles.length === 0 &&
+    violations.length === 0 &&
+    unexpectedChunks.length === 0 &&
+    unexpectedArtifacts.length === 0
+  ) {
     console.log(
       `[view-bundle-guard] OK — ${bundleCount}/${expectedBundleCount} bundle(s) present and import only host-external specifiers (${allowedCount} allowed).`,
     );
@@ -291,6 +470,22 @@ if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
     );
     for (const v of violations) {
       console.error(`  ✗ ${v.plugin}: ${v.specifier}`);
+    }
+  }
+  if (unexpectedChunks.length > 0) {
+    console.error(
+      `[view-bundle-guard] ${unexpectedChunks.length} unexpected JavaScript chunk(s) found; each view must emit only bundle.js.\n`,
+    );
+    for (const chunk of unexpectedChunks) {
+      console.error(`  ✗ ${chunk.name}: ${chunk.relativeChunk}`);
+    }
+  }
+  if (unexpectedArtifacts.length > 0) {
+    console.error(
+      `[view-bundle-guard] ${unexpectedArtifacts.length} unexpected sidecar artifact(s) found; only bundle.js and bundle.js.map may be emitted.\n`,
+    );
+    for (const artifact of unexpectedArtifacts) {
+      console.error(`  ✗ ${artifact.name}: ${artifact.relativeArtifact}`);
     }
   }
   process.exit(1);
