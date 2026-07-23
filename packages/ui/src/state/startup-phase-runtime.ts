@@ -183,12 +183,14 @@ function isCloudManagedActiveServer(): boolean {
  *     deadline. It must be classified distinctly so the warmup can (a) confirm
  *     readiness off /api/status instead, and (b) surface an actionable error
  *     rather than an infinite spinner if the whole surface stays broken.
- * The 401/429 auth cases are already resolved during the polling-backend phase
- * before starting-runtime, so a rejection here does not need auth disambiguation.
+ * A bearer can become stale after polling-backend has already advanced, so a
+ * 401/429 with an adopted token must reach the auth gate instead of looking
+ * like an indefinitely warming container.
  */
 type PassthroughProbe =
   | { kind: "serving" }
   | { kind: "warming" }
+  | { kind: "auth-required"; status: 401 | 429 }
   | { kind: "errored"; status: number };
 
 async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
@@ -197,6 +199,9 @@ async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
     return { kind: "serving" };
   } catch (err) {
     const status = asApiLikeError(err)?.status;
+    if ((status === 401 || status === 429) && client.hasToken()) {
+      return { kind: "auth-required", status };
+    }
     // A 5xx means the runtime answered but the list read errored — the agent is
     // likely UP (that is exactly the shared-agent conversations 500 class). Any
     // other failure (404 "Agent not found", network/timeout, no status) is
@@ -645,6 +650,17 @@ async function runCloudManagedWarmup(
     if (probe.kind === "serving") {
       // The passthrough answers → the warmed runtime is genuinely serving.
       await advanceReady("conversations passthrough serving");
+      return;
+    }
+
+    if (probe.kind === "auth-required") {
+      // The passthrough is reachable and rejected the bearer. Advancing mounts
+      // the normal auth gate, where managed Cloud recovery can exchange a
+      // fresh agent credential; treating this as warmup would hide that gate
+      // behind the startup screen until the absolute timeout.
+      deps.setConnected(false);
+      deps.setFirstRunLoading(false);
+      dispatch({ type: "AGENT_RUNNING" });
       return;
     }
 

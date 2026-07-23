@@ -18,6 +18,7 @@
  * owner-password wall.
  */
 
+import { logger } from "@elizaos/logger";
 import { useEffect, useRef, useState } from "react";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { getBootConfig } from "../config/boot-config";
@@ -87,9 +88,32 @@ export function useAgentSessionRecovery(
   // A loading refetch briefly leaves the unauthenticated state, so only a
   // confirmed session (or remount) may rearm recovery for a later genuine 401.
   const attemptedRef = useRef(false);
+  const awaitingCloudTokenRef = useRef(false);
   const attemptedFallbackRef = useRef<ManagedCloudAgentRecoveryStatus>(
     "cloud-retry-required",
   );
+  const [cloudTokenSnapshot, setCloudTokenSnapshot] = useState(() =>
+    getCloudAuthToken(),
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const rearmAfterCloudReauth = () => {
+      const cloudToken = getCloudAuthToken();
+      setCloudTokenSnapshot(cloudToken);
+      if (!awaitingCloudTokenRef.current || !cloudToken?.trim()) {
+        return;
+      }
+      awaitingCloudTokenRef.current = false;
+      attemptedRef.current = false;
+    };
+
+    window.addEventListener("steward-token-sync", rearmAfterCloudReauth);
+    return () => {
+      window.removeEventListener("steward-token-sync", rearmAfterCloudReauth);
+    };
+  }, []);
 
   useEffect(() => {
     const consumeRedirectInProcess = shouldConsumePairRedirectInProcess();
@@ -103,10 +127,13 @@ export function useAgentSessionRecovery(
       managedStatus: ManagedCloudAgentRecoveryStatus = "cloud-retry-required",
     ) => {
       attemptedFallbackRef.current = managedStatus;
+      awaitingCloudTokenRef.current =
+        isManagedNative && managedStatus === "cloud-reauth-required";
       setStatus(fallbackStatus(managedStatus));
     };
 
     if (!active) {
+      awaitingCloudTokenRef.current = false;
       if (isAuthenticated) {
         attemptedRef.current = false;
         attemptedFallbackRef.current = "cloud-retry-required";
@@ -144,6 +171,7 @@ export function useAgentSessionRecovery(
       decision: ReturnType<typeof resolveAgentSessionRecovery>,
       cloudToken: string,
     ) => {
+      awaitingCloudTokenRef.current = false;
       if (decision.action !== "re-pair") {
         showFallback(
           cloudToken.trim() ? "cloud-manage-required" : "cloud-reauth-required",
@@ -172,6 +200,14 @@ export function useAgentSessionRecovery(
           // the bearer in-process and triggers `onRecovered`. Failures retain
           // enough classification for reauth versus non-destructive retry.
           if (!result.ok) {
+            logger.warn(
+              {
+                agentId: decision.agentId,
+                reason: result.reason,
+                message: result.message,
+              },
+              "[AgentSessionRecovery] managed-agent re-pair failed",
+            );
             showFallback(
               result.reason === "unauthorized"
                 ? "cloud-reauth-required"
@@ -179,16 +215,36 @@ export function useAgentSessionRecovery(
                   ? "cloud-manage-required"
                   : "cloud-retry-required",
             );
+          } else {
+            logger.info(
+              {
+                agentId: decision.agentId,
+                mode: result.mode,
+              },
+              "[AgentSessionRecovery] managed-agent re-pair succeeded",
+            );
           }
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           // error-policy:J4 an unclassified repair failure keeps the existing
           // Cloud token and degrades to a non-destructive retry surface.
-          if (!cancelled) showFallback("cloud-retry-required");
+          if (!cancelled) {
+            logger.warn(
+              {
+                agentId: decision.agentId,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown recovery failure",
+              },
+              "[AgentSessionRecovery] managed-agent re-pair threw",
+            );
+            showFallback("cloud-retry-required");
+          }
         });
     };
 
-    const initialInput = resolveInput(getCloudAuthToken());
+    const initialInput = resolveInput(cloudTokenSnapshot);
     const initialDecision = resolveAgentSessionRecovery(initialInput);
     const initialCloudToken = initialInput.cloudToken?.trim();
 
@@ -227,6 +283,16 @@ export function useAgentSessionRecovery(
         if (!token) {
           // No cookie / refresh failed / timed out: the notice is honest now.
           showFallback("cloud-reauth-required");
+          // Native SIWE can finish in the narrow window between the cookie
+          // refresh resolving and the fallback being armed. Its sync event has
+          // already fired, so re-check the canonical token once instead of
+          // waiting forever for a second event.
+          const lateCloudToken = getCloudAuthToken();
+          if (awaitingCloudTokenRef.current && lateCloudToken?.trim()) {
+            awaitingCloudTokenRef.current = false;
+            attemptedRef.current = false;
+            setCloudTokenSnapshot(lateCloudToken);
+          }
           return;
         }
         const decision = resolveAgentSessionRecovery(
@@ -244,7 +310,14 @@ export function useAgentSessionRecovery(
       cancelled = true;
     };
     // setStatus and attemptedRef are stable; all third-party inputs are listed.
-  }, [active, reason, navigate, onRecovered, isAuthenticated]);
+  }, [
+    active,
+    reason,
+    navigate,
+    onRecovered,
+    isAuthenticated,
+    cloudTokenSnapshot,
+  ]);
 
   return status;
 }

@@ -80,14 +80,20 @@ describe("CloudPairRelay", () => {
 
   it("resolves the Cloud pair exchange endpoint from site and API bases", () => {
     expect(resolveCloudPairExchangeUrl("https://elizacloud.ai")).toBe(
-      "https://elizacloud.ai/api/auth/pair",
+      "https://api.elizacloud.ai/api/auth/pair",
     );
     expect(
       resolveCloudPairExchangeUrl("https://api.elizacloud.ai/api/v1"),
     ).toBe("https://api.elizacloud.ai/api/auth/pair");
     expect(resolveCloudPairExchangeUrl("https://www.elizacloud.ai")).toBe(
-      "https://elizacloud.ai/api/auth/pair",
+      "https://api.elizacloud.ai/api/auth/pair",
     );
+    expect(resolveNativeCloudPairExchangeUrl("https://elizacloud.ai")).toBe(
+      "https://api.elizacloud.ai/api/auth/pair/native",
+    );
+    expect(
+      resolveNativeCloudPairExchangeUrl("https://staging.elizacloud.ai"),
+    ).toBe("https://api-staging.elizacloud.ai/api/auth/pair/native");
     expect(
       resolveNativeCloudPairExchangeUrl("https://api.elizacloud.ai/api/v1"),
     ).toBe("https://api.elizacloud.ai/api/auth/pair/native");
