@@ -49,9 +49,19 @@ function collectLogs(page: Page): CapturedLogs {
   const logs: CapturedLogs = { console: [], network: [], failures: [] };
   page.on("console", (message) => {
     logs.console.push(`[${message.type()}] ${message.text()}`);
-    if (message.type() === "error" && !/RenderTelemetry/.test(message.text())) {
-      logs.failures.push(`console.error: ${message.text()}`);
+    if (message.type() !== "error") return;
+    const text = message.text();
+    if (/^\[RenderTelemetry\]/.test(text)) return;
+    // Optional live endpoints 401/404 on a lean stack (same allowance as
+    // live-agent-chat.spec.ts); 5xx and app errors still fail the run.
+    if (
+      /^Failed to load resource: the server responded with a status of (401|404) /i.test(
+        text,
+      )
+    ) {
+      return;
     }
+    logs.failures.push(`console.error: ${text}`);
   });
   page.on("pageerror", (error) => {
     logs.failures.push(`pageerror: ${error.message}`);
@@ -90,26 +100,16 @@ function writeEvidenceLogs(prefix: string, logs: CapturedLogs): void {
   if (networkFile) writeFileSync(networkFile, logs.network.join("\n"));
 }
 
-async function createAndActivateConversation(
-  page: Page,
-  title: string,
-): Promise<void> {
-  const response = await page.request.post("/api/conversations", {
-    data: { title, metadata: { scope: "general" } },
-  });
-  const responseText = await response.text();
-  expect(
-    response.ok(),
-    `live runtime should create an isolated chat (status=${response.status()}, body=${responseText.slice(0, 500)})`,
-  ).toBe(true);
-  const body = JSON.parse(responseText) as {
-    conversation?: { id?: string };
-  };
-  const conversationId = body.conversation?.id?.trim();
-  expect(conversationId, "created live conversation id").toBeTruthy();
-  await seedAppStorage(page, {
-    "eliza:chat:activeConversationId": conversationId,
-  });
+/**
+ * Opens the chat surface and lets the boot flow settle. Deliberately does NOT
+ * pre-seed an active conversation id: on a cold live stack the first-run flow
+ * creates its own greeting conversation and switches to it, so a pre-seeded id
+ * sends the prompt into an invisible thread (observed live: the stream POST
+ * returned 200 into a conversation the overlay never displayed). Sending into
+ * whatever conversation the UI actually has active is what a real user does.
+ */
+async function openChatSurface(page: Page): Promise<void> {
+  await seedAppStorage(page);
   await openAppPath(page, "/chat");
   await expect(page.locator(CHAT_COMPOSER_SELECTOR).first()).toBeVisible({
     timeout: 120_000,
@@ -122,6 +122,13 @@ async function promptForConfigCard(page: Page): Promise<void> {
   await composer.fill(CONFIG_CARD_PROMPT);
   await expect(page.locator(CHAT_SEND_SELECTOR).first()).toBeEnabled();
   await page.locator(CHAT_SEND_SELECTOR).first().click();
+  // The send must land in the VISIBLE conversation before the model turn is
+  // awaited — a green stream POST into a hidden thread must fail here, not as
+  // a widget-render timeout.
+  await expect(
+    page.getByText(/set up the telegram connector/i).last(),
+    "the sent prompt should appear in the visible transcript",
+  ).toBeVisible({ timeout: 30_000 });
   // The live model turn: [CONFIG:telegram] must arrive and the transcript must
   // lift it into the InlinePluginConfig widget shell.
   await expect(
@@ -163,7 +170,7 @@ test.describe("settings-in-chat live round trip", () => {
   }) => {
     test.setTimeout(600_000);
     const logs = collectLogs(page);
-    await createAndActivateConversation(page, "settings-card-live-desktop");
+    await openChatSurface(page);
 
     await promptForConfigCard(page);
     await snap(page, "01-desktop-card-rendered.jpg");
@@ -289,7 +296,7 @@ test.describe("settings-in-chat live round trip (mobile viewport)", () => {
   }) => {
     test.setTimeout(600_000);
     const logs = collectLogs(page);
-    await createAndActivateConversation(page, "settings-card-live-mobile");
+    await openChatSurface(page);
 
     await promptForConfigCard(page);
     await snap(page, "06-mobile-card-rendered.jpg");
