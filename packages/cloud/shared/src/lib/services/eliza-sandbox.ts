@@ -83,6 +83,7 @@ import {
   type SandboxProvider,
 } from "./sandbox-provider";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
+import { navIntentActionResult } from "./shared-runtime/shared-nav-intent";
 import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
@@ -2625,6 +2626,11 @@ export class ElizaSandboxService {
       if (turn.degraded) {
         // A failed/degraded turn isn't persisted or billed — just refund the hold.
         await settleReservation(0);
+      } else if (turn.navIntent) {
+        // A deterministic navigation turn ran NO model: persist the turn but
+        // refund the hold (nothing to meter). See shared-nav-intent.ts.
+        await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
+        await settleReservation(0);
       } else {
         await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
         if (billingContext) {
@@ -2676,6 +2682,12 @@ export class ElizaSandboxService {
           degraded: turn.degraded,
           runtime: "shared",
           transport: "shared-runtime",
+          // A deterministic navigation turn carries a VIEWS handoff so callers
+          // that surface `actionResults` (the PWA) open the view. Omitted for
+          // normal chat turns, so their result shape is unchanged.
+          ...(turn.navIntent
+            ? { actionResults: [navIntentActionResult(turn.navIntent)] }
+            : {}),
         },
       };
     } catch (settleError) {
@@ -2796,7 +2808,11 @@ export class ElizaSandboxService {
                 { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
               ];
               await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
-              if (billingContext) {
+              // A deterministic navigation turn ran NO model, so it must not be
+              // billed — just refund the upfront hold. Only real LLM turns meter.
+              if (turn.navIntent) {
+                await settleReservation(0);
+              } else if (billingContext) {
                 try {
                   const billing = await billUsage(
                     billingContext,
@@ -2838,10 +2854,19 @@ export class ElizaSandboxService {
                   });
                 }
               }
+              // Attach a VIEWS navigation handoff for a deterministic nav turn so
+              // the PWA opens the view (findViewActionHandoff → navigate event in
+              // packages/ui/src/view-action-handoff.ts). Non-nav turns omit it,
+              // so the `done` frame is byte-identical to before for normal chat.
+              const doneData = turn.navIntent
+                ? {
+                    messageId,
+                    text: finalReply,
+                    actionResults: [navIntentActionResult(turn.navIntent)],
+                  }
+                : { messageId, text: finalReply };
               controller.enqueue(
-                encoder.encode(
-                  `event: done\ndata: ${JSON.stringify({ messageId, text: finalReply })}\n\n`,
-                ),
+                encoder.encode(`event: done\ndata: ${JSON.stringify(doneData)}\n\n`),
               );
             }
             if (!finished) {
