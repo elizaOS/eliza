@@ -227,14 +227,39 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   return { mode: "shader", color };
 }
 
-// One-shot boot-default migration flag. The boot default changed from the
-// black ember shader to the Canopy wallpaper, but the previous default was
-// eagerly persisted on first boot — "never chose a background" is stored as
-// exactly {mode:"shader", color:#000000} and is indistinguishable from a
-// deliberate pick of the plain black field. The migration rewrites that one
-// shape to the new default a single time; the flag guarantees a user who
-// deliberately returns to the black shader AFTERWARDS keeps it forever.
-const UI_BACKGROUND_DEFAULT_MIGRATION_KEY = "eliza:ui-background-default-v2";
+// One-shot boot-default migration flag. The boot default has moved twice:
+//   v2: black ember shader → Canopy (green) wallpaper.
+//   v3: Canopy (green) → Ember Night sunset-clouds (orange) wallpaper — the
+//       orange sunset every fresh surface now opens on.
+// The previous default was eagerly persisted on first boot, so "never chose a
+// background" is stored as exactly the-previous-default shape and is
+// indistinguishable from a deliberate pick of that same background. Each
+// migration rewrites ONLY the specific previous-default shape(s) to the new
+// default, exactly once, then stamps its flag — so a user who deliberately
+// re-selects an old default AFTER the migration keeps it forever. Every other
+// (non-default) saved wallpaper is left untouched: deliberate preferences are
+// never stomped.
+const UI_BACKGROUND_DEFAULT_MIGRATION_KEY = "eliza:ui-background-default-v3";
+
+// The prior boot defaults this migration is allowed to rewrite to the current
+// default. A persisted config matching one of these shapes AND not yet migrated
+// is treated as "never chose" and flipped to {@link DEFAULT_BACKGROUND_CONFIG}.
+// Any other saved config is a deliberate pick and is preserved as-is.
+function isPriorBootDefaultConfig(config: BackgroundConfig): boolean {
+  // v1 default: the plain black ember shader field.
+  if (config.mode === "shader" && config.color === DEFAULT_BACKGROUND_COLOR) {
+    return true;
+  }
+  // v2 default: the Canopy (green) photo wallpaper over the black base.
+  if (
+    config.mode === "image" &&
+    config.color === DEFAULT_BACKGROUND_COLOR &&
+    config.imageUrl === "/wallpapers/canopy.webp"
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export function loadBackgroundConfig(): BackgroundConfig {
   return tryLocalStorage(
@@ -245,16 +270,12 @@ export function loadBackgroundConfig(): BackgroundConfig {
       );
       if (!migrated) {
         // Stamp on the first load either way: a fresh install starts on the
-        // new default, so any later shader-black pick is deliberate.
+        // new default, so any later pick of an old default is deliberate.
         shellLocalStorage.setItem(UI_BACKGROUND_DEFAULT_MIGRATION_KEY, "1");
       }
       if (!raw) return { ...DEFAULT_BACKGROUND_CONFIG };
       const config = normalizeBackgroundConfig(JSON.parse(raw));
-      if (
-        !migrated &&
-        config.mode === "shader" &&
-        config.color === DEFAULT_BACKGROUND_COLOR
-      ) {
+      if (!migrated && isPriorBootDefaultConfig(config)) {
         return { ...DEFAULT_BACKGROUND_CONFIG };
       }
       return config;

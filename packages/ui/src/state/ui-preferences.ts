@@ -85,8 +85,8 @@ export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
 /**
  * The shader-mode config for the black ember field: the fallback when an
  * image background is cleared or fails to load, and the base the color
- * swatches and the glsl fallback resolve to. (The boot default is the Canopy
- * wallpaper — see {@link DEFAULT_BACKGROUND_CONFIG}.)
+ * swatches and the glsl fallback resolve to. (The boot default is the Ember
+ * Night sunset-clouds wallpaper — see {@link DEFAULT_BACKGROUND_CONFIG}.)
  */
 export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "shader",
@@ -96,8 +96,9 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
 /**
  * The curated "Ember Night" wallpaper: a warm sunset in the clouds, served as
  * a same-origin static asset from `packages/app/public`. It renders the
- * `ember-night` gallery tile (no longer the boot default — the app boots to
- * the Canopy wallpaper). A served, code-free, same-origin image the apply
+ * `ember-night` gallery tile AND is the boot default (see
+ * {@link DEFAULT_BACKGROUND_CONFIG}) — the orange sunset-clouds field every
+ * fresh surface opens on. A served, code-free, same-origin image the apply
  * channel already trusts (same class as the gradient data URLs and the
  * `/api/media/<hash>` uploads) — it carries no GLSL source or preset id, so the
  * confinement invariants (#11088 / #13523) hold. The bytes live in `public/`
@@ -134,20 +135,26 @@ const PHOTO_WALLPAPER_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The boot default background: the "Canopy" photo wallpaper — a misty jungle
- * river valley in deep, layered greens — over the black base color. The base
- * stays {@link DEFAULT_BACKGROUND_COLOR} so every piece of host chrome that
- * tracks it (launch FOUC guard, PWA theme-color, manifest, native splashes)
- * keeps its black baseline, and canopy's near-black darkest tones make the
- * black→image settle invisible at boot. If the image is cleared or fails to
- * load the shell falls back to the shader ember field
- * ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}); every other curated scene stays
- * a user-selectable gallery option.
+ * The boot default background: the "Ember Night" sunset-clouds wallpaper — a
+ * warm orange sunset breaking through layered clouds ({@link
+ * SUNSET_WALLPAPER_URL}) — over the black base color. This is the single boot
+ * default for EVERY surface (desktop web, installed PWA, native shell) and
+ * every fresh session; it matches {@link SHARED_DEFAULT_BACKGROUND_CATALOG_ID}
+ * (`ember-night`) so the boot config and the catalog's declared default agree,
+ * and the default tile in the gallery is the same wallpaper the app opens on.
+ * The base stays {@link DEFAULT_BACKGROUND_COLOR} so every piece of host chrome
+ * that tracks it (launch FOUC guard, PWA theme-color, manifest, native
+ * splashes) keeps its black baseline and the black→image settle stays quiet at
+ * boot. If the image is cleared or fails to load the shell falls back to the
+ * shader ember field ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}); every other
+ * curated scene (including Canopy) stays a user-selectable gallery option and
+ * any preference a user has already saved is respected — only the DEFAULT for
+ * fresh/never-chosen surfaces flips to the orange sunset clouds.
  */
 export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "image",
   color: DEFAULT_BACKGROUND_COLOR,
-  imageUrl: photoWallpaperUrl("canopy"),
+  imageUrl: SUNSET_WALLPAPER_URL,
 };
 
 /* ── Background catalog (curated + metadata) ──────────────────────────── */

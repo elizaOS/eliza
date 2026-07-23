@@ -84,19 +84,24 @@ describe("background catalog (#13538)", () => {
     }
   });
 
-  it("the boot default is the Canopy jungle wallpaper over the black base", () => {
-    // The app boots to the Canopy photo wallpaper (misty jungle river valley).
-    // The base color stays black so the host-chrome FOUC/manifest baseline is
-    // unchanged and the black→image settle is invisible at boot.
+  it("the boot default is the Ember Night sunset-clouds wallpaper over the black base", () => {
+    // The app boots to the Ember Night photo wallpaper (warm orange sunset in
+    // the clouds) on EVERY surface. The base color stays black so the
+    // host-chrome FOUC/manifest baseline is unchanged and the black→image
+    // settle is invisible at boot.
     expect(DEFAULT_BACKGROUND_CONFIG.mode).toBe("image");
     expect(DEFAULT_BACKGROUND_CONFIG.color).toBe("#000000");
-    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe("/wallpapers/canopy.webp");
-    // The Ember Night gallery tile still resolves to the served sunset asset.
+    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe("/bg-sunset.webp");
+    // The boot default and the catalog's declared default id agree: the Ember
+    // Night gallery tile resolves to the same served sunset asset the app
+    // opens on, so the divergence between the boot config and the catalog
+    // default is closed.
     const def = BACKGROUND_CATALOG.find(
       (e) => e.id === DEFAULT_BACKGROUND_CATALOG_ID,
     );
     expect(def?.kind).toBe("image");
     expect(def?.source).toBe("/bg-sunset.webp");
+    expect(def?.source).toBe(DEFAULT_BACKGROUND_CONFIG.imageUrl);
   });
 
   it("resolveCatalogEntry matches by id, label, and fuzzy name", () => {

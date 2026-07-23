@@ -15,7 +15,7 @@ import {
   DEFAULT_BACKGROUND_CONFIG,
 } from "./ui-preferences";
 
-// The boot default is the Canopy jungle wallpaper, returned for
+// The boot default is the Ember Night sunset-clouds wallpaper, returned for
 // empty/absent/unusable-record input.
 const DEFAULT = DEFAULT_BACKGROUND_CONFIG;
 // A present-but-malformed config still collapses to the plain shader field (a
@@ -153,17 +153,17 @@ describe("background config persistence", () => {
   });
 });
 
-describe("boot-default migration (black shader → Canopy, one-shot)", () => {
-  it("rewrites a persisted old-default black shader to the Canopy default once", () => {
-    // The previous boot default was eagerly persisted on first boot, so an
-    // install that never chose a background stores exactly this shape.
+describe("boot-default migration (prior defaults → Ember Night sunset, one-shot)", () => {
+  it("rewrites a persisted old-default black shader to the sunset default once", () => {
+    // The v1 boot default was eagerly persisted on first boot, so an install
+    // that never chose a background stores exactly this shape.
     localStorage.setItem(
       "eliza:ui-background",
       JSON.stringify({ mode: "shader", color: DEFAULT_BACKGROUND_COLOR }),
     );
     expect(loadBackgroundConfig()).toEqual(DEFAULT);
-    // The migration is one-shot: a deliberate return to the black shader
-    // afterwards sticks on every future load.
+    // One-shot: a deliberate return to the black shader afterwards sticks on
+    // every future load.
     saveBackgroundConfig({ mode: "shader", color: DEFAULT_BACKGROUND_COLOR });
     expect(loadBackgroundConfig()).toEqual({
       mode: "shader",
@@ -171,7 +171,33 @@ describe("boot-default migration (black shader → Canopy, one-shot)", () => {
     });
   });
 
-  it("never touches an explicit non-default background", () => {
+  it("rewrites a persisted old-default Canopy (green) wallpaper to the sunset default once", () => {
+    // The v2 boot default (Canopy green) was likewise eagerly persisted for
+    // installs that never chose, so "never chose" reads as exactly this shape.
+    localStorage.setItem(
+      "eliza:ui-background",
+      JSON.stringify({
+        mode: "image",
+        color: DEFAULT_BACKGROUND_COLOR,
+        imageUrl: "/wallpapers/canopy.webp",
+      }),
+    );
+    expect(loadBackgroundConfig()).toEqual(DEFAULT);
+    expect(DEFAULT.imageUrl).toBe("/bg-sunset.webp");
+    // One-shot: a deliberate re-pick of Canopy afterwards sticks forever.
+    saveBackgroundConfig({
+      mode: "image",
+      color: DEFAULT_BACKGROUND_COLOR,
+      imageUrl: "/wallpapers/canopy.webp",
+    });
+    expect(loadBackgroundConfig()).toEqual({
+      mode: "image",
+      color: DEFAULT_BACKGROUND_COLOR,
+      imageUrl: "/wallpapers/canopy.webp",
+    });
+  });
+
+  it("never touches an explicit non-default background (deliberate picks are respected)", () => {
     localStorage.setItem(
       "eliza:ui-background",
       JSON.stringify({ mode: "shader", color: "#059669" }),
@@ -179,6 +205,22 @@ describe("boot-default migration (black shader → Canopy, one-shot)", () => {
     expect(loadBackgroundConfig()).toEqual({
       mode: "shader",
       color: "#059669",
+    });
+  });
+
+  it("never touches an explicit non-default wallpaper (e.g. Reef)", () => {
+    localStorage.setItem(
+      "eliza:ui-background",
+      JSON.stringify({
+        mode: "image",
+        color: DEFAULT_BACKGROUND_COLOR,
+        imageUrl: "/wallpapers/reef.webp",
+      }),
+    );
+    expect(loadBackgroundConfig()).toEqual({
+      mode: "image",
+      color: DEFAULT_BACKGROUND_COLOR,
+      imageUrl: "/wallpapers/reef.webp",
     });
   });
 
