@@ -583,20 +583,29 @@ async function screenshot(page: Page, name: string): Promise<void> {
 }
 
 // The WidgetSection testIds each widget renders (read from source — not guessed).
-const GOALS_TESTID = "widget-goals-attention";
+// The Today card (todo plugin) absorbed the standalone goals resident
+// (registry.ts §E item 5): an at-risk goal renders as a flagged row inside it
+// and contributes the goals escalation weight, so the Today card IS the urgent
+// home widget.
+const TODAY_TESTID = "chat-widget-todos";
+const GOAL_ROW_TESTID = "todo-goal-attention-row";
 const CALENDAR_TESTID = "chat-widget-calendar-upcoming";
-const HEALTH_TESTID = "widget-health-sleep";
 // The notification inbox renders inline on the home column, outside the ranked
 // WidgetHost (asserted below).
 const NOTIFICATION_CENTER_TESTID = "home-notification-center";
 
-const URGENT_TESTIDS = [GOALS_TESTID];
-const SEEDED_TESTIDS = [GOALS_TESTID, CALENDAR_TESTID, HEALTH_TESTID];
+const URGENT_TESTIDS = [TODAY_TESTID];
+const SEEDED_TESTIDS = [TODAY_TESTID, CALENDAR_TESTID];
 const REMOVED_HOME_TESTIDS = [
   "chat-widget-finances-alerts",
   "chat-widget-relationships",
   "chat-widget-inbox-unread",
   "chat-widget-automations",
+  // The standalone goals and sleep residents were absorbed/removed
+  // (registry.ts "Explicitly NOT residents"); their routed components remain
+  // but must not render as home cards.
+  "widget-goals-attention",
+  "widget-health-sleep",
 ];
 
 /**
@@ -661,10 +670,11 @@ test.describe("home widget priority (#9143)", () => {
       ).toBeVisible({ timeout: 30_000 });
     }
 
-    // Sanity-check the seeded urgent content actually rendered.
-    await expect(host.getByTestId(GOALS_TESTID)).toContainText(
-      "Ship the release",
-    );
+    // Sanity-check the seeded urgent content actually rendered: the at-risk
+    // goal surfaces as the flagged row inside the merged Today card.
+    await expect(
+      host.getByTestId(TODAY_TESTID).getByTestId(GOAL_ROW_TESTID),
+    ).toContainText("Ship the release");
     for (const testId of REMOVED_HOME_TESTIDS) {
       await expect(
         host.getByTestId(testId),
