@@ -2,7 +2,7 @@
  * Decides whether a cloud release may consume build or mutation capacity.
  *
  * Production, previews, and forced rollbacks are always admitted. Automatic
- * staging releases are latest-wins: only the current develop SHA proceeds.
+ * staging releases are latest-wins among runs eligible for this workflow.
  */
 
 export function decideReleaseAdmission({
@@ -10,8 +10,8 @@ export function decideReleaseAdmission({
   targetEnvironment,
   ref,
   force,
-  runSha,
-  currentDevelopSha,
+  runId,
+  latestEligibleRunId,
 }) {
   if (
     eventName === "pull_request" ||
@@ -22,15 +22,15 @@ export function decideReleaseAdmission({
     return { shouldDeploy: true, reason: "non-supersedable-release" };
   }
 
-  if (!runSha || !currentDevelopSha) {
+  if (!runId || !latestEligibleRunId) {
     throw new Error(
-      "Automatic staging admission requires both runSha and currentDevelopSha",
+      "Automatic staging admission requires both runId and latestEligibleRunId",
     );
   }
 
-  if (runSha !== currentDevelopSha) {
-    return { shouldDeploy: false, reason: "superseded-staging-sha" };
+  if (String(runId) !== String(latestEligibleRunId)) {
+    return { shouldDeploy: false, reason: "superseded-staging-run" };
   }
 
-  return { shouldDeploy: true, reason: "current-staging-sha" };
+  return { shouldDeploy: true, reason: "latest-eligible-staging-run" };
 }
