@@ -1687,41 +1687,25 @@ export function parseSettingsRequest(
 	};
 }
 
-/**
- * Turns a failed settings-route response into copy a person can act on. The
- * raw `route <path> returned <status>` internals used to flow verbatim into
- * the chat reply ("I couldn't change …: route /api/views/settings/navigate
- * returned 401"), which reads as a scary internal error even when the failure
- * is a transient auth/session hiccup the user can simply retry (the class
- * behind the "Authentication error: please reopen settings" QA report,
- * 2026-07-22). Auth and transient server failures get retry-first phrasing;
- * a server-provided error message is preferred when it is actually
- * descriptive; the technical path/status fallback only remains for
- * unclassified client errors with no server detail.
- */
-export function humanizeSettingsRouteFailure(
-	path: string,
-	status: number,
-	serverDetail: string | null,
-): string {
-	const detail = serverDetail?.trim() ?? "";
-	// Boilerplate status-text bodies carry no more signal than the code itself.
-	const terse =
-		!detail ||
-		/^(unauthorized|forbidden|not found|bad request|internal server error|bad gateway|service unavailable|gateway timeout)\.?$/i.test(
-			detail,
-		);
-	if (status === 401 || status === 403) {
-		return "the app session isn't authenticated right now — try that again in a moment, and reopen the app if it keeps happening";
+function settingsRouteFailureMessage(status: number): string {
+	switch (status) {
+		case 401:
+			return "the app session isn't authenticated — reopen the app and try again";
+		case 403:
+			return "your session doesn't have permission to change that setting";
+		case 404:
+			return "that setting isn't available here";
+		case 408:
+			return "the app took too long to apply that setting — try again";
+		case 409:
+			return "that setting changed elsewhere — refresh and try again";
+		case 429:
+			return "the app is handling too many requests — wait a moment and try again";
+		default:
+			return status >= 500
+				? "the app hit a temporary error — try again in a moment"
+				: "the app rejected that setting change";
 	}
-	if (status === 404) {
-		return "that settings surface isn't available in this app version";
-	}
-	if (status === 408 || status === 429 || status >= 500) {
-		const base = `the app hit a temporary error (HTTP ${status}) — try that again in a moment`;
-		return terse ? base : `${base} (${detail})`;
-	}
-	return terse ? `the request failed (HTTP ${status} on ${path})` : detail;
 }
 
 async function defaultRouteFetch(
@@ -1736,22 +1720,18 @@ async function defaultRouteFetch(
 		body: request.body === undefined ? undefined : JSON.stringify(request.body),
 		signal: AbortSignal.timeout(30_000),
 	});
+	if (!response.ok) {
+		return {
+			ok: false,
+			detail: settingsRouteFailureMessage(response.status),
+		};
+	}
 	// error-policy:J3 an unparseable body is treated as no detail; the caller
 	// keys success off response.ok, not the parsed shape.
 	const parsed = (await response.json().catch(() => null)) as Record<
 		string,
 		unknown
 	> | null;
-	if (!response.ok) {
-		return {
-			ok: false,
-			detail: humanizeSettingsRouteFailure(
-				request.path,
-				response.status,
-				parsed && typeof parsed.error === "string" ? parsed.error : null,
-			),
-		};
-	}
 	return { ok: true, data: parsed };
 }
 

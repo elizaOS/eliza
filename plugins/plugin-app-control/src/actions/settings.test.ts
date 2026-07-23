@@ -20,7 +20,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createSettingsAction,
 	DEFAULT_VOICE_SETTINGS_PREFS,
-	humanizeSettingsRouteFailure,
 	parseBooleanValue,
 	parseSettingsRequest,
 	resolveSectionId,
@@ -2177,92 +2176,48 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 	});
 });
 
-describe("humanizeSettingsRouteFailure: user-facing route failure copy", () => {
-	it("maps 401 to a retryable session message with no raw path/status internals", () => {
-		const copy = humanizeSettingsRouteFailure(
-			"/api/views/settings/navigate",
-			401,
-			null,
-		);
-		expect(copy).toContain("isn't authenticated right now");
-		expect(copy).toContain("try that again");
-		expect(copy).not.toContain("/api/views");
-		expect(copy).not.toContain("401");
-	});
+describe("SETTINGS action: default route failures", () => {
+	it.each([
+		[401, "the app session isn't authenticated — reopen the app and try again"],
+		[403, "your session doesn't have permission to change that setting"],
+		[404, "that setting isn't available here"],
+		[408, "the app took too long to apply that setting — try again"],
+		[409, "that setting changed elsewhere — refresh and try again"],
+		[
+			429,
+			"the app is handling too many requests — wait a moment and try again",
+		],
+		[422, "the app rejected that setting change"],
+		[503, "the app hit a temporary error — try again in a moment"],
+	])(
+		"maps HTTP %i to actionable copy without exposing route internals",
+		async (status, expectedMessage) => {
+			vi.stubEnv("ELIZA_PORT", "3456");
+			const internalDetail = `database shard failed for status ${status}`;
+			const fetchMock = vi.fn(
+				async () =>
+					new Response(JSON.stringify({ error: internalDetail }), {
+						status,
+						headers: { "Content-Type": "application/json" },
+					}),
+			);
+			vi.stubGlobal("fetch", fetchMock);
 
-	it("maps 403 the same as 401 (auth class)", () => {
-		expect(humanizeSettingsRouteFailure("/api/x", 403, "Forbidden")).toContain(
-			"isn't authenticated",
-		);
-	});
+			const { result, texts } = await invoke({
+				action: "set",
+				section: "appearance",
+				key: "theme",
+				value: "dark",
+			});
 
-	it("maps 404 to a capability-missing message", () => {
-		expect(humanizeSettingsRouteFailure("/api/x", 404, null)).toContain(
-			"isn't available in this app version",
-		);
-	});
-
-	it("maps 5xx to a transient retry message and keeps a descriptive server detail", () => {
-		const copy = humanizeSettingsRouteFailure(
-			"/api/update/status",
-			503,
-			"registry unreachable while refreshing",
-		);
-		expect(copy).toContain("temporary error");
-		expect(copy).toContain("try that again");
-		expect(copy).toContain("registry unreachable while refreshing");
-	});
-
-	it("drops boilerplate status-text bodies on 5xx (no signal beyond the code)", () => {
-		const copy = humanizeSettingsRouteFailure(
-			"/api/x",
-			500,
-			"Internal Server Error",
-		);
-		expect(copy).toContain("temporary error");
-		expect(copy).not.toContain("Internal Server Error");
-	});
-
-	it("prefers a descriptive server error verbatim for other client errors", () => {
-		expect(
-			humanizeSettingsRouteFailure("/api/x", 422, "choose stable or beta"),
-		).toBe("choose stable or beta");
-	});
-
-	it("falls back to the technical path/status only when nothing better exists", () => {
-		expect(humanizeSettingsRouteFailure("/api/x", 400, null)).toBe(
-			"the request failed (HTTP 400 on /api/x)",
-		);
-	});
-
-	it("default route fetch narrates a 401 as a retryable session hiccup, not raw internals", async () => {
-		// The QA-reported class: settings-open toast reading "Authentication
-		// error: … route … returned 401". The reply must carry the human copy.
-		vi.stubEnv("ELIZA_PORT", "3456");
-		const fetchMock = vi.fn(
-			async () =>
-				({
-					ok: false,
-					status: 401,
-					json: async () => ({ error: "Unauthorized" }),
-				}) as unknown as Response,
-		);
-		vi.stubGlobal("fetch", fetchMock);
-
-		const { result, texts } = await invoke({
-			action: "set",
-			section: "appearance",
-			key: "theme",
-			value: "dark",
-		});
-
-		expect(result?.success).toBe(false);
-		const joined = texts.join(" ");
-		expect(joined).toContain("isn't authenticated right now");
-		expect(joined).toContain("try that again");
-		expect(joined).not.toContain("returned 401");
-		expect(joined).not.toContain("/api/views");
-	});
+			expect(result?.success).toBe(false);
+			const joined = texts.join(" ");
+			expect(joined).toContain(expectedMessage);
+			expect(joined).not.toContain(internalDetail);
+			expect(joined).not.toContain("/api/views");
+			expect(joined).not.toContain(String(status));
+		},
+	);
 });
 
 describe("SETTINGS action: get and validate", () => {
