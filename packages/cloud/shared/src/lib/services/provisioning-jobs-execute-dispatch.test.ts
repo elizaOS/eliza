@@ -14,13 +14,45 @@
  * suites in the same `bun test` invocation.
  */
 
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
+import * as realHelpersNs from "../../db/helpers";
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
+
+const realHelpers = { ...realHelpersNs };
+const conflictQueryTx = {
+  execute: async () => ({ rows: [] }),
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        orderBy: () => ({
+          limit: async () => [],
+        }),
+      }),
+    }),
+  }),
+};
+const dispatchDbWrite = {
+  ...(realHelpers.dbWrite as unknown as Record<string, unknown>),
+  transaction: async <T>(fn: (tx: typeof conflictQueryTx) => Promise<T>): Promise<T> =>
+    fn(conflictQueryTx),
+};
+let provisioningJobService: typeof import("./provisioning-jobs").provisioningJobService;
+
+beforeAll(async () => {
+  mock.module("../../db/helpers", () => ({
+    ...realHelpers,
+    dbWrite: dispatchDbWrite,
+  }));
+  ({ provisioningJobService } = await import("./provisioning-jobs.ts?dispatch-harness"));
+});
+
+afterAll(() => {
+  mock.module("../../db/helpers", () => realHelpers);
+});
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -79,9 +111,19 @@ function makeJob(
  * daemon's mid-retry behavior.
  */
 function harness(job: Job) {
-  const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
+  const ordinaryClaimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
     async (f: { type: string }) => (f.type === job.type ? [job] : []),
   );
+  const sharedClaimSpy = spyOn(
+    jobsRepository,
+    "claimPendingJobsWithinSharedRunningLimit",
+  ).mockImplementation(async (f: { type: string }) => (f.type === job.type ? [job] : []));
+  const claimSpy = {
+    mockRestore() {
+      ordinaryClaimSpy.mockRestore();
+      sharedClaimSpy.mockRestore();
+    },
+  };
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
   const updateStatusSpy = spyOn(jobsRepository, "updateStatus").mockResolvedValue(undefined);
   const updateSpy = spyOn(jobsRepository, "update").mockResolvedValue(undefined as never);
@@ -89,7 +131,7 @@ function harness(job: Job) {
   const retryLaterSpy = spyOn(
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
-  ).mockResolvedValue(undefined);
+  ).mockResolvedValue(job);
   return { job, claimSpy, recoverSpy, updateStatusSpy, updateSpy, incrementSpy, retryLaterSpy };
 }
 
@@ -206,6 +248,30 @@ const AGENT_ARMS: Array<{
     },
   },
   {
+    name: "admin canary image",
+    type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+    data: {
+      operation: "upgrade",
+      rolloutId: "55555555-5555-4555-8555-555555555555",
+      actorUserId: USER,
+      targetOwnerUserId: USER,
+      decisionAt: "2026-06-20T00:00:00.000Z",
+      sourceImage: "ghcr.io/elizaos/eliza:production",
+      sourceDigest: `sha256:${"a".repeat(64)}`,
+      targetImage: `ghcr.io/elizaos/eliza-demo@sha256:${"b".repeat(64)}`,
+      targetDigest: `sha256:${"b".repeat(64)}`,
+    },
+    method: "executeAdminCanaryUpgrade",
+    success: {
+      success: true,
+      oldNodeId: "node-a",
+      oldContainerName: "c-old",
+      newNodeId: "node-b",
+      newContainerName: "c-new",
+      newDigest: `sha256:${"b".repeat(64)}`,
+    },
+  },
+  {
     name: "downgrade",
     type: JOB_TYPES.AGENT_DOWNGRADE,
     data: { dockerImage: "eliza/agent", fromDigest: "sha256:cur" },
@@ -262,8 +328,43 @@ describe("executeJob dispatch — success path per job type marks the job comple
   for (const arm of AGENT_ARMS) {
     test(`${arm.name}: transport success → completed with a result record, no attempt burned`, async () => {
       const ctx = harness(makeJob(arm.type, arm.data));
-      stub(arm.method, arm.success);
       const disarmGate = armSnapshotGateFor(arm.type);
+      const atomicAuditWrites: Array<Record<string, unknown>> = [];
+      if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
+        const canarySpy = spyOn(
+          elizaSandboxService,
+          "executeAdminCanaryUpgrade",
+        ).mockImplementation(async (params) => {
+          const tx = {
+            update: () => ({
+              set: (updates: Record<string, unknown>) => {
+                const prior =
+                  atomicAuditWrites.length === 0
+                    ? ctx.job
+                    : { ...ctx.job, ...atomicAuditWrites.at(-1) };
+                atomicAuditWrites.push(updates);
+                return {
+                  where: () => ({
+                    returning: async () => [{ ...prior, ...updates }],
+                  }),
+                };
+              },
+            }),
+          };
+          await params.onCutoverInTx(tx as never, {
+            oldNodeId: "node-a",
+            oldContainerName: "c-old",
+            newNodeId: "node-b",
+            newContainerName: "c-new",
+            newDigest: params.targetDigest,
+          });
+          await params.onConvergedInTx(tx as never);
+          return arm.success as never;
+        });
+        serviceSpies.push(canarySpy);
+      } else {
+        stub(arm.method, arm.success);
+      }
       try {
         const res = await run(arm.type);
         expect(res.claimed).toBe(1);
@@ -271,9 +372,33 @@ describe("executeJob dispatch — success path per job type marks the job comple
         expect(res.failed).toBe(0);
         expect(res.retried).toBe(0);
         const completed = completedCall(ctx);
-        expect(completed).toBeDefined();
-        expect(completed?.[2]?.result).toBeTruthy();
-        expect(completed?.[2]?.completed_at).toBeInstanceOf(Date);
+        if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
+          expect(completed).toBeUndefined();
+          expect(atomicAuditWrites).toHaveLength(2);
+          expect(atomicAuditWrites[0]).toMatchObject({
+            result_storage: "inline",
+            error: null,
+            completed_at: null,
+          });
+          expect(atomicAuditWrites[0]?.result).toMatchObject({
+            success: false,
+            cleanupPending: true,
+          });
+          expect(atomicAuditWrites[0]).not.toHaveProperty("status");
+          expect(atomicAuditWrites[1]).toMatchObject({
+            status: "completed",
+            result_storage: "inline",
+            error: null,
+          });
+          expect(atomicAuditWrites[1]?.result).toMatchObject({
+            success: true,
+            cleanupPending: false,
+          });
+        } else {
+          expect(completed).toBeDefined();
+          expect(completed?.[2]?.result).toBeTruthy();
+          expect(completed?.[2]?.completed_at).toBeInstanceOf(Date);
+        }
         expect(ctx.incrementSpy).not.toHaveBeenCalled();
       } finally {
         disarmGate();
@@ -286,6 +411,125 @@ describe("executeJob dispatch — success path per job type marks the job comple
       }
     });
   }
+
+  test("admin canary remains retryable after cutover until old-placement cleanup converges", async () => {
+    const arm = AGENT_ARMS.find(
+      (candidate) => candidate.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+    );
+    if (!arm) throw new Error("admin canary dispatch arm missing");
+    const first = harness(makeJob(arm.type, arm.data));
+    let pendingAudit: Record<string, unknown> | undefined;
+    let pendingSnapshot: Job | undefined;
+    const findByIdSpy = spyOn(jobsRepository, "findByIdForWrite").mockImplementation(async () => {
+      return pendingSnapshot;
+    });
+    const canarySpy = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
+      async (params) => {
+        const tx = {
+          update: () => ({
+            set: (updates: Record<string, unknown>) => {
+              pendingAudit = updates.result as Record<string, unknown>;
+              pendingSnapshot = { ...first.job, ...updates } as Job;
+              return {
+                where: () => ({
+                  returning: async () => [pendingSnapshot],
+                }),
+              };
+            },
+          }),
+        };
+        await params.onCutoverInTx(tx as never, {
+          oldNodeId: "node-a",
+          oldContainerName: "c-old",
+          newNodeId: "node-b",
+          newContainerName: "c-new",
+          newDigest: params.targetDigest,
+        });
+        return {
+          ...arm.success,
+          cleanupPending: true,
+          error: "old node unreachable",
+        } as never;
+      },
+    );
+    serviceSpies.push(canarySpy);
+    try {
+      const pending = await run(arm.type);
+      expect(pending).toMatchObject({ succeeded: 0, retried: 1, failed: 0 });
+      expect(first.retryLaterSpy).toHaveBeenCalledTimes(1);
+      expect(completedCall(first)).toBeUndefined();
+      expect(pendingAudit).toMatchObject({
+        success: false,
+        cleanupPending: true,
+      });
+    } finally {
+      first.claimSpy.mockRestore();
+      first.recoverSpy.mockRestore();
+      first.updateStatusSpy.mockRestore();
+      first.updateSpy.mockRestore();
+      first.incrementSpy.mockRestore();
+      first.retryLaterSpy.mockRestore();
+      findByIdSpy.mockRestore();
+    }
+
+    if (!pendingAudit) throw new Error("pending cutover audit was not captured");
+    if (typeof pendingAudit.cutoverAt !== "string") {
+      throw new Error("pending cutover audit has no cutover timestamp");
+    }
+    const retryStartedAt = new Date(Date.parse(pendingAudit.cutoverAt) + 1_000);
+    const retry = harness(
+      makeJob(arm.type, arm.data, {
+        result: pendingAudit,
+        status: "in_progress",
+        started_at: retryStartedAt,
+        updated_at: retryStartedAt,
+      }),
+    );
+    let cleanupCompletion: Record<string, unknown> | undefined;
+    const convergeSpy = spyOn(
+      elizaSandboxService,
+      "convergeReplacementCleanupFence",
+    ).mockImplementation(async (_agentId, _organizationId, _expectation, onConvergedInTx) => {
+      await onConvergedInTx?.({
+        update: () => ({
+          set: (updates: Record<string, unknown>) => {
+            cleanupCompletion = updates.result as Record<string, unknown>;
+            return {
+              where: () => ({
+                returning: async () => [{ id: retry.job.id }],
+              }),
+            };
+          },
+        }),
+      } as never);
+    });
+    serviceSpies.push(convergeSpy);
+    try {
+      const converged = await run(arm.type);
+      expect(converged).toMatchObject({ succeeded: 1, retried: 0, failed: 0 });
+      expect(convergeSpy).toHaveBeenCalledWith(
+        AGENT,
+        ORG,
+        expect.objectContaining({
+          targetOwnerUserId: USER,
+          targetDigest: arm.data.targetDigest,
+        }),
+        expect.any(Function),
+      );
+      expect(canarySpy).toHaveBeenCalledTimes(1);
+      expect(cleanupCompletion).toMatchObject({
+        success: true,
+        cleanupPending: false,
+      });
+    } finally {
+      retry.claimSpy.mockRestore();
+      retry.recoverSpy.mockRestore();
+      retry.updateStatusSpy.mockRestore();
+      retry.updateSpy.mockRestore();
+      retry.incrementSpy.mockRestore();
+      retry.retryLaterSpy.mockRestore();
+    }
+  });
 
   test("message: bridge reply is stored on the job result and completes", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_MESSAGE, { text: "hello", nonce: "n-1" }));
@@ -383,6 +627,59 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
       expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("retryable transport lost to another worker is not reported as requeued", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
+    ctx.retryLaterSpy.mockResolvedValue(undefined);
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "readiness probe transport_unresolved",
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION);
+      expect(res).toMatchObject({ claimed: 1, retried: 0, failed: 0 });
+      expect(ctx.retryLaterSpy).toHaveBeenCalledWith(
+        ctx.job,
+        "readiness probe transport_unresolved",
+        expect.any(Number),
+      );
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("warm-claim restart recovery is bounded and installs terminal cleanup writeback", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_RESTART));
+    stub("executeRestart", {
+      success: false,
+      containerStopped: true,
+      containerStarted: true,
+      error: "Warm-claim credential recovery failed: source-key revocation unavailable",
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_RESTART);
+      expect(res.retried).toBe(0);
+      expect(res.failed).toBe(1);
+      expect(ctx.retryLaterSpy).not.toHaveBeenCalled();
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+      expect(typeof ctx.incrementSpy.mock.calls[0]?.[3]).toBe("function");
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();

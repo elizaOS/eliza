@@ -167,4 +167,52 @@ describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
     expect(await billingStatusOf(sandboxId)).toBe("exempt");
     expect(await billableIds()).not.toContain(sandboxId);
   });
+
+  test("billing maintenance cannot rewrite status or locators after deletion owns the row", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const sandboxId = await seedSandbox(organizationId, userId, "suspended");
+    const deletionStartedAt = new Date("2026-07-23T14:00:00.000Z");
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "deletion_pending",
+        deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        deletion_started_at: deletionStartedAt,
+        sandbox_id: "sandbox-owned-by-delete",
+        bridge_url: "https://delete-owned.example",
+        health_url: "https://delete-owned.example/health",
+      })
+      .where(eq(agentSandboxes.id, sandboxId));
+
+    await agentBillingRepository.scheduleShutdownWarning(
+      sandboxId,
+      new Date("2026-07-23T14:01:00.000Z"),
+      new Date("2026-07-23T15:00:00.000Z"),
+    );
+    await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+      sandboxId,
+      new Date("2026-07-23T14:02:00.000Z"),
+    );
+    await agentBillingRepository.suspendSandboxForInsufficientCredits(
+      sandboxId,
+      new Date("2026-07-23T14:03:00.000Z"),
+    );
+
+    const [row] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
+    expect(row).toMatchObject({
+      status: "deletion_pending",
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: deletionStartedAt,
+      sandbox_id: "sandbox-owned-by-delete",
+      bridge_url: "https://delete-owned.example",
+      health_url: "https://delete-owned.example/health",
+      billing_status: "suspended",
+    });
+    expect(row.shutdown_warning_sent_at).toEqual(new Date("2026-06-01T00:00:00.000Z"));
+    expect(row.scheduled_shutdown_at).toEqual(new Date("2026-06-02T00:00:00.000Z"));
+  });
 });

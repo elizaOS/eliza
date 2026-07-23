@@ -693,6 +693,20 @@ async function processProvisioningWorkerCycle(
   return provisioningJobService.processPendingJobs(batchSize, { jobTypes });
 }
 
+async function processWarmClaimCredentialReconcileCycle(
+  batchSize = readWorkerConfig().batchSize,
+) {
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.reconcileWarmClaimCredentialFences(batchSize);
+}
+
+async function processReplacementCleanupReconcileCycle(
+  batchSize = readWorkerConfig().batchSize,
+) {
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.reconcileReplacementCleanupFences(batchSize);
+}
+
 async function processHeartbeatCycle(
   concurrency = 5,
 ): Promise<HeartbeatResult> {
@@ -922,7 +936,7 @@ async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
   }
 }
 
-interface FleetUpgradeSummary {
+export interface FleetUpgradeSummary {
   action: "noop" | "skip_no_digest" | "skip_capacity" | "enqueued";
   configuredImage?: string;
   targetDigest?: string | null;
@@ -951,7 +965,7 @@ const MAX_INFLIGHT_UPGRADES = 3;
  * e.g. the operator pinned a non-ghcr image like `eliza-agent:prod-good`, or
  * the registry is unreachable. The reconciler simply waits for the next tick.
  */
-async function processFleetUpgradeCycle(): Promise<FleetUpgradeSummary> {
+export async function processFleetUpgradeCycle(): Promise<FleetUpgradeSummary> {
   const {
     containersEnv,
     resolveImageDigest,
@@ -971,7 +985,10 @@ async function processFleetUpgradeCycle(): Promise<FleetUpgradeSummary> {
     };
   }
 
-  const inFlight = await jobsRepository.countInFlightByType("agent_upgrade");
+  const inFlight = await jobsRepository.countInFlightByTypes([
+    "agent_upgrade",
+    "agent_admin_canary_image",
+  ]);
   const slack = MAX_INFLIGHT_UPGRADES - inFlight;
   if (slack <= 0) {
     return {
@@ -1421,6 +1438,34 @@ async function runWorkCycle(
   const work = (async () => {
     await runBoundedPhase(
       logger,
+      "replacement cleanup reconcile",
+      () => processReplacementCleanupReconcileCycle(config.batchSize),
+      (result) => {
+        if (result.total > 0) {
+          logger.info(
+            "[provisioning-worker] replacement cleanup reconcile complete",
+            result,
+          );
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
+      "warm-claim credential reconcile",
+      () => processWarmClaimCredentialReconcileCycle(config.batchSize),
+      (result) => {
+        if (result.legacyFound > 0 || result.cleanupFound > 0) {
+          logger.info(
+            "[provisioning-worker] warm-claim credential reconcile complete",
+            result,
+          );
+        }
+      },
+    );
+
+    await runBoundedPhase(
+      logger,
       "cycle",
       () => processProvisioningWorkerCycle(config.batchSize, config.jobTypes),
       (result) => {
@@ -1839,7 +1884,7 @@ async function main(): Promise<void> {
     batchSize: config.batchSize,
     runOnce: config.runOnce,
     nodeHealthIntervalMs: config.nodeHealthIntervalMs,
-    // Surface the claim scope: empty PROVISIONING_JOB_LANES → all 18 types.
+    // Surface the claim scope: empty PROVISIONING_JOB_LANES → every registered type.
     // When a dedicated apps daemon ships, pin this one to `agent`.
     jobLanes: process.env.PROVISIONING_JOB_LANES || "(all)",
     jobTypeCount: config.jobTypes.length,

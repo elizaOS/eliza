@@ -1,9 +1,9 @@
 // Coordinates cloud service eliza managed launch behavior behind route handlers.
-import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
 import { cache } from "../cache/client";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { logger } from "../utils/logger";
+import { decryptAgentEnvVars } from "./agent-env-crypto";
 import { elizaSandboxService } from "./eliza-sandbox";
 import {
   type ManagedElizaEnvironmentResult,
@@ -13,6 +13,7 @@ import {
   resolveElizaAppUrl,
   resolveManagedAllowedOrigins,
 } from "./managed-eliza-config";
+import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
 
 const DEFAULT_SMALL_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 const DEFAULT_LARGE_MODEL = CEREBRAS_DEFAULT_TEXT_LARGE_MODEL;
@@ -188,33 +189,52 @@ export async function launchManagedElizaAgent(params: {
   if (!sandbox) {
     throw new ManagedElizaLaunchError("Agent not found", 404);
   }
+  if (sandbox.claimed_at && !hasReadyWarmClaimCredential(sandbox)) {
+    throw new ManagedElizaLaunchError("Agent credential recovery is still in progress", 409);
+  }
+  let launchEnvironment: Pick<ManagedElizaEnvironmentResult, "apiToken" | "agentApiKey">;
 
-  const managedEnvironment = await prepareManagedElizaEnvironment({
-    existingEnv: sandbox.environment_vars,
-    organizationId: params.organizationId,
-    userId: params.userId,
-    agentSandboxId: sandbox.id,
-  });
-
-  if (managedEnvironment.changed) {
-    await agentSandboxesRepository.update(sandbox.id, {
-      environment_vars: managedEnvironment.environmentVars,
-    });
-    sandbox = {
-      ...sandbox,
-      environment_vars: managedEnvironment.environmentVars,
-    };
-
-    if (sandbox.status === "running") {
-      const shutdownResult = await elizaSandboxService.shutdown(sandbox.id, params.organizationId);
-      if (!shutdownResult.success) {
-        throw new ManagedElizaLaunchError(
-          shutdownResult.error || "Failed to refresh sandbox environment",
-          shutdownResult.error === "Agent not found" ? 404 : 409,
-        );
-      }
-      sandbox = (await elizaSandboxService.getAgent(sandbox.id, params.organizationId)) ?? sandbox;
+  // A ready claimed container already carries the exact live-attested managed
+  // key. Re-running generic environment preparation would revoke that key
+  // before any environment CAS and invalidate the durable claim fence.
+  if (sandbox.claimed_at) {
+    const materialized = await decryptAgentEnvVars(sandbox.environment_vars);
+    const apiToken = materialized.ELIZA_API_TOKEN?.trim();
+    const agentApiKey = materialized.ELIZAOS_CLOUD_API_KEY?.trim();
+    if (!apiToken || !agentApiKey) {
+      throw new ManagedElizaLaunchError(
+        "Ready warm claim is missing its attested managed credentials",
+        409,
+      );
     }
+    launchEnvironment = { apiToken, agentApiKey };
+  } else {
+    const prepared = await elizaSandboxService.prepareManagedLaunchEnvironment({
+      agentId: sandbox.id,
+      organizationId: params.organizationId,
+      userId: params.userId,
+    });
+    if (!prepared) {
+      throw new ManagedElizaLaunchError("Agent lifecycle changed during launch", 409);
+    }
+    sandbox = prepared.sandbox;
+    if (prepared.environment.changed) {
+      if (sandbox.status === "running") {
+        const shutdownResult = await elizaSandboxService.shutdown(
+          sandbox.id,
+          params.organizationId,
+        );
+        if (!shutdownResult.success) {
+          throw new ManagedElizaLaunchError(
+            shutdownResult.error || "Failed to refresh sandbox environment",
+            shutdownResult.error === "Agent not found" ? 404 : 409,
+          );
+        }
+        sandbox =
+          (await elizaSandboxService.getAgent(sandbox.id, params.organizationId)) ?? sandbox;
+      }
+    }
+    launchEnvironment = prepared.environment;
   }
 
   if (sandbox.status !== "running" || !sandbox.health_url) {
@@ -245,13 +265,13 @@ export async function launchManagedElizaAgent(params: {
   await ensureManagedOnboarding(
     sandbox,
     apiBase,
-    managedEnvironment.apiToken,
-    managedEnvironment.agentApiKey,
+    launchEnvironment.apiToken,
+    launchEnvironment.agentApiKey,
   );
 
   const connection: ManagedLaunchConnection = {
     apiBase,
-    token: managedEnvironment.apiToken,
+    token: launchEnvironment.apiToken,
   };
   const payload: ManagedLaunchSessionPayload = {
     agentId: sandbox.id,

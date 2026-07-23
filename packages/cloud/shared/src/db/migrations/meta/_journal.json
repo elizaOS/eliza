@@ -1233,6 +1233,48 @@
       "when": 1783726527133,
       "tag": "0176_container_retirement_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1784803089000,
+      "tag": "0177_organization_balance_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1784803089001,
+      "tag": "0178_app_creator_shadow_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1784803089002,
+      "tag": "0179_affiliate_payout_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1784803089003,
+      "tag": "0180_anonymous_chat_gate_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1784803089004,
+      "tag": "0181_app_usage_projections",
+      "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1784811600000,
+      "tag": "0182_warm_claim_credential_fence",
+      "breakpoints": true
     }
   ]
 }

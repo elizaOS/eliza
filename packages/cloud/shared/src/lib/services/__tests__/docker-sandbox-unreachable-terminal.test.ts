@@ -90,6 +90,36 @@ describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () 
     await expect(provider.stop(SANDBOX_ID)).resolves.toBeUndefined();
   });
 
+  test("replacement stop REJECTS when the node is unreachable", async () => {
+    nextExecError = new Error(
+      "[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms",
+    );
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stopForReplacement(SANDBOX_ID)).rejects.toThrow(
+      /Failed to stop container/,
+    );
+  });
+
+  test("replacement stop REJECTS generic not-found failures without container absence proof", async () => {
+    nextExecError = new Error("ssh helper binary not found");
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stopForReplacement(SANDBOX_ID)).rejects.toThrow(
+      /Failed to stop container/,
+    );
+  });
+
+  test("replacement stop accepts an explicit Docker no-such-container response", async () => {
+    nextExecError = new Error("Error response from daemon: No such container: agent-x");
+    const provider = new DockerSandboxProvider();
+    seedContainer(provider);
+
+    await expect(provider.stopForReplacement(SANDBOX_ID)).resolves.toBeUndefined();
+  });
+
   test("still THROWS when both legs fail for a non-unreachable, non-gone reason", async () => {
     // A genuine daemon error on a REACHABLE node must NOT be abandoned — the
     // container may still be running, so the delete should escalate/retry.

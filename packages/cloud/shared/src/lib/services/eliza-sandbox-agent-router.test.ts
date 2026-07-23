@@ -70,6 +70,39 @@ afterEach(() => {
 });
 
 describe("ElizaSandboxService Worker agent-router fetch", () => {
+  test("keeps a cross-repository canary image behind the canonical production router", async () => {
+    enterWorkerRuntime();
+    const canarySandbox = {
+      ...sandbox,
+      docker_image: `ghcr.io/elizaos/eliza-demo@sha256:${"b".repeat(64)}`,
+      image_digest: `sha256:${"b".repeat(64)}`,
+      previous_docker_image: "ghcr.io/elizaos/eliza:sha-production",
+      previous_image_digest: `sha256:${"a".repeat(64)}`,
+    };
+    const requests: Array<{ url: string; headers: Headers }> = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: typeof input === "string" ? input : input.toString(),
+        headers: new Headers(init?.headers),
+      });
+      return Response.json({ status: "healthy" });
+    });
+
+    const response = await runWithCloudBindings(
+      {
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+        AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+      },
+      () => service().fetchAgentApi(canarySandbox, "/api/health"),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("https://eliza-production-1.elizacloud.ai/api/health");
+    expect(requests[0]?.headers.get("authorization")).toBe("Bearer agent-token");
+    expect(requests[0]?.headers.get("x-forwarded-host")).toBe(`${sandbox.id}.elizacloud.ai`);
+  });
+
   for (const deployment of [
     {
       name: "staging",

@@ -9,8 +9,10 @@
  *      revokes only the claimed row's OWN prior key name — the pool boot key
  *      lives under the deleted pool row's name and is untouchable here);
  *   2. persists it onto the row env (ELIZAOS_CLOUD_API_KEY) for restart safety;
- *   3. revokes the pool-org boot key by the source pool row id;
- *   4. pushes it onto the live container and requires fingerprint attestation.
+ *   3. pushes it onto the live container and durably records fingerprint
+ *      attestation;
+ *   4. revokes the pool-org boot key by source row id and only then finalizes
+ *      the claimed row as ready.
  *
  * These pins:
  *   - the mint is scoped to the CLAIMED row's user org (never the pool org);
@@ -19,10 +21,10 @@
  *     over the authed transport, and the SECRET NEVER appears in a log;
  *   - the row env is updated so a restart boots re-credentialed;
  *   - a matching fingerprint is mandatory; mismatch or absence throws;
- *   - the pool boot key is revoked before live adoption so a failed push
- *     recovers only from the durable claimed-row environment;
- *   - a non-2xx persist response throws (bounded); the caller enqueues restart
- *     recovery and must never report the claimed agent as ready.
+ *   - the pool boot key remains active until live adoption is durably attested,
+ *     then is revoked before the row becomes ready;
+ *   - a non-2xx persist response throws (bounded) so the caller can log the
+ *     stable failure event; the claim itself survives (caller contract).
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -34,6 +36,7 @@ const USER_ID = "33333333-3333-4333-8333-333333333333";
 // Synthetic fixtures assembled by concatenation so no `eliza_`-prefixed
 // token-shaped literal exists for secret scanners to flag.
 const MINTED_KEY = "eliza_" + "mintedsecretmusntleak00000";
+const REMINTED_KEY = "eliza_" + "remintedsecretmusntleak000";
 const POOL_BOOT_KEY = "eliza_" + "poolorgsecretmusntleak0000";
 
 const createForAgent = mock(
@@ -68,29 +71,129 @@ mock.module("../utils/logger", () => ({
   },
 }));
 
-const { ElizaSandboxService } = await import("./eliza-sandbox.ts?warmkeypush");
-const { warmClaimKeyFingerprint } = await import("./warm-claim-key-push");
-
-// The fingerprint an up-to-date container echoes after applying MINTED_KEY.
-const MINTED_KEY_FINGERPRINT = await warmClaimKeyFingerprint(MINTED_KEY);
-
 type KeyPusher = {
   pushClaimedWarmContainerInferenceKey(rec: Record<string, unknown>): Promise<{
     pushed: boolean;
     keyPrefix?: string;
   }>;
+  recoverPendingWarmClaimInferenceKey(
+    agentId: string,
+    organizationId: string,
+  ): Promise<{ pushed: boolean; keyPrefix?: string }>;
 };
 
 const originalFetch = globalThis.fetch;
 const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
 
 let capturedRequests: Array<{ url: string; body: string; headers: Headers }> = [];
+let databaseRow: ReturnType<typeof buildInitialDbRow>;
+let rearmFingerprint: string | null = null;
+let remintedKeyOverride: string | null = null;
+
+const transaction = mock(async (callback: (tx: { execute: () => Promise<unknown> }) => unknown) => {
+  let executeCount = 0;
+  return await callback({
+    execute: async () => {
+      executeCount += 1;
+      if (executeCount === 1) return { rows: [] };
+      if (executeCount === 2) return { rows: [databaseRow] };
+
+      if (
+        databaseRow.warm_claim_credential_state === "pending" &&
+        databaseRow.warm_claim_key_fingerprint === null
+      ) {
+        const persistedKey = remintedKeyOverride ?? MINTED_KEY;
+        const persistedFingerprint = rearmFingerprint ?? MINTED_KEY_FINGERPRINT;
+        databaseRow = {
+          ...databaseRow,
+          environment_revision: databaseRow.environment_revision + 1,
+          warm_claim_key_fingerprint: persistedFingerprint,
+          environment_vars: {
+            ...databaseRow.environment_vars,
+            ELIZAOS_CLOUD_API_KEY: persistedKey,
+            ELIZAOS_CLOUD_ENABLED: "true",
+          },
+        };
+        await update(AGENT_ID, {
+          environment_vars: databaseRow.environment_vars,
+          warm_claim_key_fingerprint: persistedFingerprint,
+        });
+        rearmFingerprint = null;
+        remintedKeyOverride = null;
+        return { rows: [databaseRow] };
+      }
+
+      if (rearmFingerprint) {
+        databaseRow = {
+          ...databaseRow,
+          warm_claim_credential_state: "pending",
+          warm_claim_key_fingerprint: null,
+          warm_claim_attested_at: null,
+          warm_claim_attested_environment_revision: null,
+        };
+        await update(AGENT_ID, {
+          warm_claim_credential_state: "pending",
+          warm_claim_key_fingerprint: null,
+          warm_claim_attested_at: null,
+          warm_claim_attested_environment_revision: null,
+        });
+        return { rows: [databaseRow] };
+      }
+
+      if (databaseRow.warm_claim_credential_state === "pending") {
+        databaseRow = {
+          ...databaseRow,
+          warm_claim_credential_state: "attested",
+          warm_claim_attested_at: new Date("2026-07-23T00:00:01.000Z"),
+          warm_claim_attested_environment_revision: databaseRow.environment_revision,
+        };
+        await update(AGENT_ID, {
+          warm_claim_credential_state: "attested",
+          warm_claim_attested_at: databaseRow.warm_claim_attested_at,
+          warm_claim_attested_environment_revision: databaseRow.environment_revision,
+        });
+        return { rows: [{ environment_revision: databaseRow.environment_revision }] };
+      }
+
+      databaseRow = {
+        ...databaseRow,
+        status: "running",
+        warm_claim_credential_state: "ready",
+        warm_claim_source_pool_id: null,
+      };
+      await update(AGENT_ID, {
+        status: "running",
+        warm_claim_credential_state: "ready",
+        warm_claim_source_pool_id: null,
+      });
+      return { rows: [{ id: AGENT_ID }] };
+    },
+  });
+});
+mock.module("../../db/helpers", () => ({
+  dbWrite: { transaction },
+  dbRead: {},
+}));
+
+const { ElizaSandboxService } = await import("./eliza-sandbox.ts?warmkeypush");
+const { warmClaimKeyFingerprint } = await import("./warm-claim-key-push");
+
+// The fingerprint an up-to-date container echoes after applying MINTED_KEY.
+const MINTED_KEY_FINGERPRINT = await warmClaimKeyFingerprint(MINTED_KEY);
 
 beforeEach(() => {
-  createForAgent.mockClear();
+  createForAgent.mockReset();
+  createForAgent.mockResolvedValue({
+    apiKey: { id: "key-1", key_prefix: MINTED_KEY.slice(0, 12) },
+    plainKey: MINTED_KEY,
+  });
   revokeForAgent.mockReset();
   revokeForAgent.mockResolvedValue(undefined);
   update.mockClear();
+  transaction.mockClear();
+  databaseRow = buildInitialDbRow();
+  rearmFingerprint = null;
+  remintedKeyOverride = null;
   loggerWarn.mockClear();
   loggerInfo.mockClear();
   loggerError.mockClear();
@@ -152,6 +255,20 @@ function claimedRow() {
   };
 }
 
+function buildInitialDbRow() {
+  return {
+    ...claimedRow(),
+    claimed_at: new Date("2026-07-23T00:00:00.000Z"),
+    status: "provisioning",
+    environment_revision: 1,
+    warm_claim_credential_state: "pending" as "pending" | "attested" | "ready",
+    warm_claim_source_pool_id: POOL_ROW_ID as string | null,
+    warm_claim_key_fingerprint: null as string | null,
+    warm_claim_attested_at: null as Date | null,
+    warm_claim_attested_environment_revision: null as number | null,
+  };
+}
+
 function svc(): KeyPusher {
   return new ElizaSandboxService() as unknown as KeyPusher;
 }
@@ -172,7 +289,7 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     expect(mintArg?.agentSandboxId).toBe(AGENT_ID);
 
     // 2. Row env updated so a restart boots re-credentialed with the NEW key.
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(3);
     const [updId, updData] = update.mock.calls[0] ?? [];
     expect(updId).toBe(AGENT_ID);
     const nextEnv = (updData as { environment_vars?: Record<string, string> })?.environment_vars;
@@ -180,6 +297,12 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     expect(nextEnv?.ELIZAOS_CLOUD_ENABLED).toBe("true");
     // Transport token preserved.
     expect(nextEnv?.ELIZA_API_TOKEN).toBe("agent_transport_token");
+    expect(update.mock.calls[1]?.[1]).toMatchObject({
+      warm_claim_credential_state: "attested",
+    });
+    expect(update.mock.calls[2]?.[1]).toMatchObject({
+      warm_claim_credential_state: "ready",
+    });
 
     // 3. The persist push went to the container's login/persist route with the
     //    new key + org + forceInferenceEnabled, authed by the transport token.
@@ -211,6 +334,37 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     expect(logged).not.toContain(POOL_BOOT_KEY);
   });
 
+  test("keeps the durable claim fence pending until live fingerprint attestation", async () => {
+    const fetchEntered = Promise.withResolvers<void>();
+    const releaseFetch = Promise.withResolvers<void>();
+    globalThis.fetch = mock(async () => {
+      fetchEntered.resolve();
+      await releaseFetch.promise;
+      return Response.json({
+        ok: true,
+        appliedKeyFingerprint: MINTED_KEY_FINGERPRINT,
+      });
+    }) as unknown as typeof fetch;
+
+    const inFlight = svc().pushClaimedWarmContainerInferenceKey(claimedRow());
+    await fetchEntered.promise;
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0]?.[1]).toMatchObject({
+      warm_claim_key_fingerprint: MINTED_KEY_FINGERPRINT,
+    });
+
+    releaseFetch.resolve();
+    await expect(inFlight).resolves.toMatchObject({ pushed: true });
+    expect(update).toHaveBeenCalledTimes(3);
+    expect(update.mock.calls[1]?.[1]).toMatchObject({
+      warm_claim_credential_state: "attested",
+    });
+    expect(update.mock.calls[2]?.[1]).toMatchObject({
+      warm_claim_credential_state: "ready",
+    });
+  });
+
   test("REFUSES a row still owned by the sentinel pool org (defensive guard)", async () => {
     const poolRow = { ...claimedRow(), organization_id: WARM_POOL_ORG_ID };
 
@@ -233,13 +387,14 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
       /Warm-claim key push failed: HTTP 503/,
     );
 
-    // The key was still minted + env persisted (idempotent on retry / restart).
+    // The key was still minted + env persisted (idempotent on retry / restart),
+    // but the source credential remains active until the live target attests.
     expect(createForAgent).toHaveBeenCalledTimes(1);
     expect(update).toHaveBeenCalledTimes(1);
-    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
+    expect(revokeForAgent).not.toHaveBeenCalled();
   });
 
-  test("a fingerprint mismatch throws after the pool credential is revoked", async () => {
+  test("a fingerprint mismatch throws without revoking the still-active pool credential", async () => {
     globalThis.fetch = mock(async () =>
       Response.json({ ok: true, appliedKeyFingerprint: "deadbeefdeadbeef" }),
     ) as unknown as typeof fetch;
@@ -247,7 +402,7 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
       /not attested/i,
     );
-    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
+    expect(revokeForAgent).not.toHaveBeenCalled();
   });
 
   test("a legacy response without a fingerprint enters restart recovery", async () => {
@@ -256,16 +411,150 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
       /not attested/i,
     );
-    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
+    expect(revokeForAgent).not.toHaveBeenCalled();
   });
 
-  test("a pool-key revoke failure aborts the live handoff", async () => {
+  test("a pool-key revoke failure remains attested and restart recovery finalizes idempotently", async () => {
     revokeForAgent.mockRejectedValueOnce(new Error("db down"));
 
     await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
       "db down",
     );
-    expect(capturedRequests).toHaveLength(0);
+    expect(databaseRow).toMatchObject({
+      status: "provisioning",
+      warm_claim_credential_state: "attested",
+      warm_claim_source_pool_id: POOL_ROW_ID,
+    });
+    expect(capturedRequests).toHaveLength(1);
+
+    await expect(svc().recoverPendingWarmClaimInferenceKey(AGENT_ID, USER_ORG_ID)).resolves.toEqual(
+      { pushed: false },
+    );
+    expect(revokeForAgent).toHaveBeenCalledTimes(2);
+    expect(capturedRequests).toHaveLength(1);
+    expect(databaseRow).toMatchObject({
+      status: "running",
+      warm_claim_credential_state: "ready",
+      warm_claim_source_pool_id: null,
+    });
+  });
+
+  test("an environment CAS loser re-arms attestation and recovers the current persisted key", async () => {
+    const rotatedKey = "eliza_" + "rotatedtargetsecretmusntleak";
+    const remintedFingerprint = await warmClaimKeyFingerprint(REMINTED_KEY);
+    createForAgent
+      .mockResolvedValueOnce({
+        apiKey: { id: "key-1", key_prefix: MINTED_KEY.slice(0, 12) },
+        plainKey: MINTED_KEY,
+      })
+      .mockResolvedValueOnce({
+        apiKey: { id: "key-2", key_prefix: REMINTED_KEY.slice(0, 12) },
+        plainKey: REMINTED_KEY,
+      });
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const body = typeof init?.body === "string" ? init.body : "";
+      capturedRequests.push({ url, body, headers: new Headers(init?.headers) });
+      const parsed = JSON.parse(body) as { apiKey: string };
+      return Response.json({
+        ok: true,
+        appliedKeyFingerprint: await warmClaimKeyFingerprint(parsed.apiKey),
+      });
+    }) as unknown as typeof fetch;
+    revokeForAgent.mockImplementationOnce(async () => {
+      databaseRow = {
+        ...databaseRow,
+        environment_revision: databaseRow.environment_revision + 1,
+        environment_vars: {
+          ...databaseRow.environment_vars,
+          ELIZAOS_CLOUD_API_KEY: rotatedKey,
+          UNRELATED_FLAG: "preserved",
+        },
+      };
+      rearmFingerprint = remintedFingerprint;
+      remintedKeyOverride = REMINTED_KEY;
+    });
+
+    await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
+      /finalization lost its state CAS/i,
+    );
+    expect(databaseRow).toMatchObject({
+      status: "provisioning",
+      warm_claim_credential_state: "attested",
+      warm_claim_key_fingerprint: MINTED_KEY_FINGERPRINT,
+    });
+
+    await expect(
+      svc().recoverPendingWarmClaimInferenceKey(AGENT_ID, USER_ORG_ID),
+    ).resolves.toMatchObject({ pushed: true });
+    expect(createForAgent).toHaveBeenCalledTimes(2);
+    expect(capturedRequests).toHaveLength(2);
+    expect(revokeForAgent).toHaveBeenCalledTimes(2);
+    expect(databaseRow).toMatchObject({
+      status: "running",
+      warm_claim_credential_state: "ready",
+      warm_claim_key_fingerprint: remintedFingerprint,
+      warm_claim_source_pool_id: null,
+      environment_vars: {
+        ELIZAOS_CLOUD_API_KEY: REMINTED_KEY,
+        UNRELATED_FLAG: "preserved",
+      },
+    });
+  });
+
+  test("a pending fingerprint mismatch remints instead of adopting a stale environment key", async () => {
+    const remintedFingerprint = await warmClaimKeyFingerprint(REMINTED_KEY);
+    const initial = buildInitialDbRow();
+    databaseRow = {
+      ...initial,
+      environment_revision: 4,
+      warm_claim_key_fingerprint: MINTED_KEY_FINGERPRINT,
+      environment_vars: {
+        ...initial.environment_vars,
+        ELIZAOS_CLOUD_API_KEY: POOL_BOOT_KEY,
+        UNRELATED_FLAG: "preserved",
+      },
+    };
+    rearmFingerprint = remintedFingerprint;
+    remintedKeyOverride = REMINTED_KEY;
+    createForAgent.mockResolvedValue({
+      apiKey: { id: "key-2", key_prefix: REMINTED_KEY.slice(0, 12) },
+      plainKey: REMINTED_KEY,
+    });
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      capturedRequests.push({
+        url: typeof input === "string" ? input : input.toString(),
+        body,
+        headers: new Headers(init?.headers),
+      });
+      const parsed = JSON.parse(body) as { apiKey: string };
+      return Response.json({
+        ok: true,
+        appliedKeyFingerprint: await warmClaimKeyFingerprint(parsed.apiKey),
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      svc().recoverPendingWarmClaimInferenceKey(AGENT_ID, USER_ORG_ID),
+    ).resolves.toMatchObject({ pushed: true });
+
+    expect(createForAgent).toHaveBeenCalledTimes(1);
+    expect(capturedRequests).toHaveLength(1);
+    expect(JSON.parse(capturedRequests[0]!.body)).toMatchObject({
+      apiKey: REMINTED_KEY,
+      organizationId: USER_ORG_ID,
+    });
+    expect(databaseRow).toMatchObject({
+      status: "running",
+      warm_claim_credential_state: "ready",
+      warm_claim_key_fingerprint: remintedFingerprint,
+      warm_claim_source_pool_id: null,
+      environment_vars: {
+        ELIZAOS_CLOUD_API_KEY: REMINTED_KEY,
+        UNRELATED_FLAG: "preserved",
+      },
+    });
   });
 
   test("requires the source pool row id", async () => {
@@ -282,7 +571,7 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     });
 
     await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
-      /no usable minted key/i,
+      /target credential is unavailable/i,
     );
     // The broken mint never reaches the live container or the pool revoke.
     expect(capturedRequests).toHaveLength(0);

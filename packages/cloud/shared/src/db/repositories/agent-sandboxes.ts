@@ -9,6 +9,7 @@ import {
   selectPrunableBackupIds,
 } from "../../lib/services/agent-backup-diff";
 import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config";
+import { elizaProvisionAdvisoryLockSql } from "../../lib/services/eliza-provision-lock";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
@@ -353,7 +354,7 @@ export class AgentSandboxesRepository {
             SELECT 1 FROM ${jobs}
             WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
             AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} = 'agent_provision'
+            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
             AND    ${jobs.status} IN ('pending', 'in_progress')
           )`,
         ),
@@ -500,6 +501,22 @@ export class AgentSandboxesRepository {
           // Skip pool-owned rows (warm pool entries) — they get the new
           // image naturally on next claim, no need to disrupt them.
           sql`${agentSandboxes.pool_status} IS NULL`,
+          // A warm-claimed container is not a valid blue/green source until
+          // its user-org inference credential has been attested. Keep this
+          // predicate before LIMIT so pending rows cannot starve later ready
+          // candidates from the bounded reconciler batch.
+          sql`(
+            ${agentSandboxes.claimed_at} IS NULL
+            OR (
+              ${agentSandboxes.warm_claim_credential_state} = 'ready'
+              AND ${agentSandboxes.warm_claim_source_pool_id} IS NULL
+              AND ${agentSandboxes.warm_claim_key_fingerprint} IS NOT NULL
+              AND ${agentSandboxes.warm_claim_attested_at} IS NOT NULL
+              AND ${agentSandboxes.warm_claim_attested_environment_revision} IS NOT NULL
+              AND ${agentSandboxes.warm_claim_attested_environment_revision}
+                = ${agentSandboxes.environment_revision}
+            )
+          )`,
           // Only agents that actually run on a fleet container can be
           // blue/green upgraded. Shared-runtime / web-only agents are "running"
           // through the router origin with no node_id/container_name, so
@@ -511,6 +528,108 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.container_name} IS NOT NULL`,
         ),
       )
+      .limit(limit);
+  }
+
+  /**
+   * Inventory pre-fence warm claims that need one lifecycle-locked restart
+   * before they can participate in image rollout. Running, stopped, and error
+   * rows are all recoverable even when their old container handles are absent:
+   * restart cold-provisions a fresh container, re-attests a newly minted
+   * user-org credential, and records its immutable digest. A missing historic
+   * source-pool id cannot be reconstructed; the existing stranded-agent-key
+   * sweeper owns those already-orphaned legacy credentials.
+   */
+  async listLegacyWarmClaimRecoveryCandidates(limit: number): Promise<
+    Array<{
+      id: string;
+      organization_id: string;
+      user_id: string;
+      image_digest: string | null;
+    }>
+  > {
+    return dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        image_digest: agentSandboxes.image_digest,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          inArray(agentSandboxes.status, ["running", "provisioning", "stopped", "error"]),
+          isNotNull(agentSandboxes.claimed_at),
+          sql`${agentSandboxes.warm_claim_credential_state} IS NULL`,
+          sql`${agentSandboxes.pool_status} IS NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+        ),
+      )
+      .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
+      .limit(limit);
+  }
+
+  /**
+   * Claimed handoffs that durably entered pending/attested state but lost their
+   * restart enqueue (for example, the route process died after committing the
+   * claim). The age fence avoids racing the live claim-time push; the active-job
+   * exclusion and lifecycle-locked enqueue make recovery idempotent after that
+   * ownership window expires.
+   */
+  async listStrandedWarmClaimRecoveryCandidates(
+    cutoff: Date,
+    limit: number,
+  ): Promise<Array<{ id: string; organization_id: string; user_id: string }>> {
+    return dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          inArray(agentSandboxes.status, ["running", "provisioning", "stopped", "error"]),
+          isNotNull(agentSandboxes.claimed_at),
+          sql`${agentSandboxes.warm_claim_credential_state} IN ('pending', 'attested')`,
+          sql`${agentSandboxes.pool_status} IS NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+          lt(agentSandboxes.updated_at, cutoff),
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${jobs}
+            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+            AND    ${jobs.type} = 'agent_restart'
+            AND    ${jobs.status} IN ('pending', 'in_progress')
+          )`,
+        ),
+      )
+      .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
+      .limit(limit);
+  }
+
+  /**
+   * Durable credential cleanup queue for exhausted warm-claim recovery. Rows
+   * retain their source id until both target and source owners are revoked;
+   * a failed cleanup remains selectable on the next daemon pass.
+   */
+  async listFailedWarmClaimCredentialCleanupCandidates(
+    limit: number,
+  ): Promise<Array<{ id: string; organization_id: string }>> {
+    return dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.warm_claim_credential_state, "failed"),
+          sql`${agentSandboxes.warm_claim_cleanup_completed_at} IS NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+        ),
+      )
+      .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(limit);
   }
 
@@ -635,7 +754,7 @@ export class AgentSandboxesRepository {
             SELECT 1 FROM ${jobs}
             WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
             AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} = 'agent_provision'
+            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
             AND    ${jobs.status} IN ('pending', 'in_progress')
           )`,
         ),
@@ -705,12 +824,83 @@ export class AgentSandboxesRepository {
       });
   }
 
-  async update(id: string, data: Partial<NewAgentSandbox>): Promise<AgentSandbox | undefined> {
+  async update(
+    id: string,
+    data: Partial<NewAgentSandbox>,
+    expectedRunningGeneration?: {
+      organizationId: string;
+      environmentRevision: number;
+      sandboxId: string | null;
+      nodeId: string | null;
+      containerName: string | null;
+      updatedAt: Date;
+    },
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
+    const updateData =
+      data.environment_vars === undefined
+        ? { ...data, updated_at: new Date() }
+        : {
+            ...data,
+            environment_revision: sql`${agentSandboxes.environment_revision} + 1`,
+            warm_claim_credential_state: sql`
+              CASE
+                WHEN ${agentSandboxes.claimed_at} IS NOT NULL
+                  AND ${agentSandboxes.warm_claim_credential_state} = 'ready'
+                THEN 'pending'
+                ELSE ${agentSandboxes.warm_claim_credential_state}
+              END
+            `,
+            warm_claim_key_fingerprint: sql`
+              CASE
+                WHEN ${agentSandboxes.claimed_at} IS NOT NULL
+                  AND ${agentSandboxes.warm_claim_credential_state} = 'ready'
+                THEN NULL
+                ELSE ${agentSandboxes.warm_claim_key_fingerprint}
+              END
+            `,
+            warm_claim_attested_at: sql`
+              CASE
+                WHEN ${agentSandboxes.claimed_at} IS NOT NULL
+                  AND ${agentSandboxes.warm_claim_credential_state} = 'ready'
+                THEN NULL
+                ELSE ${agentSandboxes.warm_claim_attested_at}
+              END
+            `,
+            warm_claim_attested_environment_revision: sql`
+              CASE
+                WHEN ${agentSandboxes.claimed_at} IS NOT NULL
+                  AND ${agentSandboxes.warm_claim_credential_state} = 'ready'
+                THEN NULL
+                ELSE ${agentSandboxes.warm_claim_attested_environment_revision}
+              END
+            `,
+            updated_at: new Date(),
+          };
+    const predicates = [
+      eq(agentSandboxes.id, id),
+      sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+    ];
+    if (data.environment_vars !== undefined) {
+      predicates.push(
+        sql`COALESCE(${agentSandboxes.warm_claim_credential_state}, '') NOT IN ('pending', 'attested')`,
+      );
+    }
+    if (expectedRunningGeneration) {
+      predicates.push(
+        eq(agentSandboxes.organization_id, expectedRunningGeneration.organizationId),
+        eq(agentSandboxes.status, "running"),
+        eq(agentSandboxes.environment_revision, expectedRunningGeneration.environmentRevision),
+        sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.sandboxId}`,
+        sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.nodeId}`,
+        sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expectedRunningGeneration.containerName}`,
+        eq(agentSandboxes.updated_at, expectedRunningGeneration.updatedAt),
+      );
+    }
     const [r] = await dbWrite
       .update(agentSandboxes)
-      .set({ ...data, updated_at: new Date() })
-      .where(eq(agentSandboxes.id, id))
+      .set(updateData)
+      .where(and(...predicates))
       .returning();
     return r;
   }
@@ -759,6 +949,7 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.id, id),
+          sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
           sql`(
             ${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'sleeping', 'disconnected', 'error')
             OR (
@@ -816,7 +1007,7 @@ export class AgentSandboxesRepository {
    * Guarded CAS that flips a WEDGED `provisioning` row to `running` after the
    * daemon reconciler re-probed its container and found it healthy (#15310 #6).
    * Only fires when the row is STILL `provisioning` with a live container
-   * (`sandbox_id` plus durable `node_id` set) and NO active `agent_provision`
+   * (`sandbox_id` plus durable `node_id` set) and NO active provision/restart
    * job racing it — so a concurrent job flip, delete, or stop during the
    * multi-second re-probe is never clobbered. Returns undefined when the CAS
    * matched nothing.
@@ -843,7 +1034,7 @@ export class AgentSandboxesRepository {
             SELECT 1 FROM ${jobs}
             WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
             AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} = 'agent_provision'
+            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
             AND    ${jobs.status} IN ('pending', 'in_progress')
           )`,
         ),
@@ -1102,6 +1293,7 @@ export class AgentSandboxesRepository {
   }): Promise<WarmClaimedAgentSandbox | null> {
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.userAgentId));
       // Attribution guard (audit §C1c): NEVER claim a pool row whose node_id is
       // null/empty. createPoolContainer provisions via the same provision() path
       // as dedicated agents and the pool creator explicitly tolerates a null
@@ -1194,9 +1386,21 @@ export class AgentSandboxesRepository {
 
       // Pool claim is for fresh provisions only. If the user's row already
       // has a database, fall through to the existing provision flow which
-      // will reuse it. Likewise if it's already running.
+      // will reuse it. Likewise if it's already running or retains any durable
+      // claim-fence state: a failed cleanup must complete and an explicit retry
+      // must reset that state before another pool container can be attached.
       if (userRow.database_status === "ready" || userRow.database_uri) return null;
       if (userRow.status === "running") return null;
+      if (
+        userRow.deletion_attempt_id !== null ||
+        userRow.status === "deletion_pending" ||
+        userRow.status === "deletion_failed"
+      ) {
+        return null;
+      }
+      if (userRow.claimed_at !== null || userRow.warm_claim_credential_state !== null) {
+        return null;
+      }
 
       if (params.expectedUpdatedAt) {
         const expectedMs = new Date(params.expectedUpdatedAt).getTime();
@@ -1210,7 +1414,7 @@ export class AgentSandboxesRepository {
       const [updated] = await tx
         .update(agentSandboxes)
         .set({
-          status: "running",
+          status: "provisioning",
           // Container-boot-coupled env transfer: the pool container is ALREADY
           // RUNNING with the pool row's ELIZA_API_TOKEN (its inbound API auth
           // boundary), and the pool row is deleted in this same transaction.
@@ -1223,12 +1427,17 @@ export class AgentSandboxesRepository {
             userRow.environment_vars as Record<string, string> | null,
             pool.environment_vars as Record<string, string> | null,
           ),
+          environment_revision: sql`${agentSandboxes.environment_revision} + 1`,
           node_id: pool.node_id,
           container_name: pool.container_name,
           bridge_port: pool.bridge_port,
           web_ui_port: pool.web_ui_port,
           headscale_ip: pool.headscale_ip,
           docker_image: pool.docker_image,
+          // The digest is the authoritative pair with docker_image. Dropping
+          // it makes the freshly claimed row look stale to the reconciler and
+          // impossible to use as an exact-source canary.
+          image_digest: pool.image_digest,
           bridge_url: pool.bridge_url,
           health_url: pool.health_url,
           sandbox_id: pool.sandbox_id,
@@ -1239,19 +1448,33 @@ export class AgentSandboxesRepository {
           agent_config: params.agentConfig ?? userRow.agent_config,
           character_id: params.characterId ?? userRow.character_id,
           claimed_at: claimedAt,
+          warm_claim_credential_state: "pending",
+          warm_claim_source_pool_id: pool.id,
+          warm_claim_key_fingerprint: null,
+          warm_claim_attested_at: null,
+          warm_claim_attested_environment_revision: null,
+          warm_claim_cleanup_completed_at: null,
           updated_at: claimedAt,
           error_message: null,
         })
-        .where(eq(agentSandboxes.id, params.userAgentId))
+        .where(
+          and(
+            eq(agentSandboxes.id, params.userAgentId),
+            eq(agentSandboxes.organization_id, params.organizationId),
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            sql`${agentSandboxes.status} NOT IN ('deletion_pending', 'deletion_failed')`,
+          ),
+        )
         .returning();
 
+      if (!updated) return null;
       await tx.delete(agentSandboxes).where(eq(agentSandboxes.id, pool.id));
 
       // Carry the deleted pool row's id out of the transaction: the container's
       // boot-time inference key is named `agent-sandbox:<pool.id>`, and this is
       // the last moment that id exists anywhere — the post-claim re-key uses it
       // to revoke the pool-org credential (#17066 review).
-      return updated ? { ...updated, warm_pool_row_id: pool.id } : null;
+      return { ...updated, warm_pool_row_id: pool.id };
     });
   }
 
