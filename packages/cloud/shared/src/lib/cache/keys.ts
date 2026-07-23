@@ -13,13 +13,18 @@ export const CacheKeys = {
       `analytics:overview:${orgId}:${timeRange}:v1`,
     breakdown: (orgId: string, dimension: string, range: string) =>
       `analytics:breakdown:${orgId}:${dimension}:${range}:v1`,
-    stats: (orgId: string, dateRange: string) => `analytics:stats:${orgId}:${dateRange}:v1`,
+    stats: (orgId: string, dateRange: string) =>
+      `analytics:stats:${orgId}:${dateRange}:v1`,
     userBreakdown: (orgId: string, params: string) =>
       `analytics:userbreakdown:${orgId}:${params}:v1`,
     projections: (orgId: string, daysAhead: number) =>
       `analytics:projections:${orgId}:${daysAhead}:v1`,
-    timeSeries: (orgId: string, granularity: string, start: string, end: string) =>
-      `analytics:timeseries:${orgId}:${granularity}:${start}:${end}:v1`,
+    timeSeries: (
+      orgId: string,
+      granularity: string,
+      start: string,
+      end: string,
+    ) => `analytics:timeseries:${orgId}:${granularity}:${start}:${end}:v1`,
     providerBreakdown: (orgId: string, start: string, end: string) =>
       `analytics:provider:${orgId}:${start}:${end}:v1`,
     modelBreakdown: (orgId: string, start: string, end: string) =>
@@ -50,6 +55,8 @@ export const CacheKeys = {
   sharedAgentScope: {
     resolve: (keyHashPrefix: string, agentId: string) =>
       `shared-agent-scope:${keyHashPrefix}:${agentId}:v1`,
+    runningSandbox: (agentId: string, orgId: string) =>
+      `shared-agent-scope:running-sandbox:${orgId}:${agentId}:v1`,
   },
   /**
    * Inference hot-path caches (#9899). The IAC entry collapses auth + org +
@@ -99,35 +106,43 @@ export const CacheKeys = {
     byStewardId: (stewardId: string) => `user:steward:${stewardId}:v1`,
     withOrg: (id: string) => `user:with-org:${id}:v1`,
     byEmailWithOrg: (email: string) => `user:email-with-org:${email}:v1`,
-    byStewardIdWithOrg: (stewardId: string) => `user:steward-with-org:${stewardId}:v1`,
+    byStewardIdWithOrg: (stewardId: string) =>
+      `user:steward-with-org:${stewardId}:v1`,
     byWalletAddress: (address: string) => `user:wallet:${address}:v1`,
-    byWalletAddressWithOrg: (address: string) => `user:wallet-with-org:${address}:v1`,
+    byWalletAddressWithOrg: (address: string) =>
+      `user:wallet-with-org:${address}:v1`,
     pattern: () => `user:*`,
   },
   identity: {
-    resolve: (platform: string, platformId: string) => `identity:${platform}:${platformId}`,
+    resolve: (platform: string, platformId: string) =>
+      `identity:${platform}:${platformId}`,
   },
   memory: {
     item: (orgId: string, memoryId: string) => `memory:${orgId}:${memoryId}:v1`,
-    roomRecent: (orgId: string, roomId: string) => `memory:${orgId}:room:${roomId}:recent:v1`,
+    roomRecent: (orgId: string, roomId: string) =>
+      `memory:${orgId}:room:${roomId}:recent:v1`,
     roomContext: (orgId: string, roomId: string, depth: number) =>
       `memory:${orgId}:room:${roomId}:context:${depth}:v1`,
-    search: (orgId: string, queryHash: string) => `memory:${orgId}:search:${queryHash}:v1`,
+    search: (orgId: string, queryHash: string) =>
+      `memory:${orgId}:search:${queryHash}:v1`,
     conversationContext: (orgId: string, convId: string, depth: number) =>
       `memory:${orgId}:conv:${convId}:${depth}:v1`,
     conversationSummary: (orgId: string, convId: string) =>
       `memory:${orgId}:conv:${convId}:summary:v1`,
     patterns: (orgId: string, analysisType: string) =>
       `memory:${orgId}:patterns:${analysisType}:v1`,
-    topics: (orgId: string, timeRange: string) => `memory:${orgId}:topics:${timeRange}:v1`,
+    topics: (orgId: string, timeRange: string) =>
+      `memory:${orgId}:topics:${timeRange}:v1`,
     orgPattern: (orgId: string) => `memory:${orgId}:*`,
-    roomPattern: (orgId: string, roomId: string) => `memory:${orgId}:room:${roomId}:*`,
+    roomPattern: (orgId: string, roomId: string) =>
+      `memory:${orgId}:room:${roomId}:*`,
   },
   agent: {
     roomContext: (roomId: string) => `agent:room:${roomId}:context:v1`,
     characterData: (agentId: string) => `agent:${agentId}:character:v1`,
     userSession: (entityId: string) => `agent:user:${entityId}:session:v1`,
-    agentList: (orgId: string, filterHash: string) => `agent:list:${orgId}:${filterHash}:v1`,
+    agentList: (orgId: string, filterHash: string) =>
+      `agent:list:${orgId}:${filterHash}:v1`,
     agentStats: (agentId: string) => `agent:stats:${agentId}:v1`,
   },
   container: {
@@ -163,7 +178,8 @@ export const CacheKeys = {
   codeAgent: {
     session: (sessionId: string) => `code_agent:session:${sessionId}:v1`,
     list: (orgId: string) => `code_agent:list:${orgId}:v1`,
-    analytics: (orgId: string, range: string) => `code_agent:analytics:${orgId}:${range}:v1`,
+    analytics: (orgId: string, range: string) =>
+      `code_agent:analytics:${orgId}:${range}:v1`,
     pattern: (orgId: string) => `code_agent:*:${orgId}:*`,
   },
   /**
@@ -172,7 +188,8 @@ export const CacheKeys = {
    */
   admin: {
     /** Cache admin status by wallet address (isAdmin + role) */
-    status: (walletAddress: string) => `admin:status:${walletAddress.toLowerCase()}:v1`,
+    status: (walletAddress: string) =>
+      `admin:status:${walletAddress.toLowerCase()}:v1`,
     pattern: () => `admin:*`,
   },
   /**
@@ -184,13 +201,16 @@ export const CacheKeys = {
     items: (orgId: string, userId: string, filterHash: string) =>
       `gallery:items:${orgId}:${userId}:${filterHash}:v1`,
     /** Cache gallery stats by org/user */
-    stats: (orgId: string, userId: string) => `gallery:stats:${orgId}:${userId}:v1`,
+    stats: (orgId: string, userId: string) =>
+      `gallery:stats:${orgId}:${userId}:v1`,
     /** Cache collections by org/user */
-    collections: (orgId: string, userId: string) => `gallery:collections:${orgId}:${userId}:v1`,
+    collections: (orgId: string, userId: string) =>
+      `gallery:collections:${orgId}:${userId}:v1`,
     /** Pattern for invalidating all gallery cache for an org */
     orgPattern: (orgId: string) => `gallery:*:${orgId}:*`,
     /** Pattern for invalidating all gallery cache for a user */
-    userPattern: (orgId: string, userId: string) => `gallery:*:${orgId}:${userId}:*`,
+    userPattern: (orgId: string, userId: string) =>
+      `gallery:*:${orgId}:${userId}:*`,
   },
   /**
    * MCP cache keys
@@ -230,11 +250,15 @@ export const CacheKeys = {
     user: (address: string) => `wallet-auth:user:${address}:v1`,
   },
   userMetrics: {
-    overview: (rangeDays?: number) => `user-metrics:overview:${rangeDays ?? 30}d:v1`,
-    daily: (start: string, end: string) => `user-metrics:daily:${start}:${end}:v1`,
-    retention: (start: string, end: string) => `user-metrics:retention:${start}:${end}:v1`,
+    overview: (rangeDays?: number) =>
+      `user-metrics:overview:${rangeDays ?? 30}d:v1`,
+    daily: (start: string, end: string) =>
+      `user-metrics:daily:${start}:${end}:v1`,
+    retention: (start: string, end: string) =>
+      `user-metrics:retention:${start}:${end}:v1`,
     activeUsers: (range: string) => `user-metrics:active:${range}:v1`,
-    signups: (start: string, end: string) => `user-metrics:signups:${start}:${end}:v1`,
+    signups: (start: string, end: string) =>
+      `user-metrics:signups:${start}:${end}:v1`,
     pattern: () => `user-metrics:*`,
   },
 } as const;
@@ -277,6 +301,7 @@ export const CacheTTL = {
    */
   sharedAgentScope: {
     resolve: 30,
+    runningSandbox: 30,
     /**
      * SLIDING-TTL CAP (COLDPATH-FIX-2026-07-22): a validated scope-cache hit
      * refreshes the entry's TTL back to `resolve` so an ACTIVE conversation

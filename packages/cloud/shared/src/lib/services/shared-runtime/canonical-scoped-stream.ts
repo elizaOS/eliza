@@ -5,6 +5,7 @@
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
 
+import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import type { BridgeExecutionContext, BridgeRequest } from "../eliza-sandbox";
@@ -22,6 +23,7 @@ const STREAM_HEADERS = {
 export interface CanonicalScopedStreamRequest {
   agentId: string;
   orgId: string;
+  agent?: AgentSandbox;
   conversationId: string;
   userId?: string;
   body: unknown;
@@ -43,9 +45,14 @@ function elapsedMs(startedAt: number): number {
   return Math.round((nowMs() - startedAt) * 10) / 10;
 }
 
-function addStreamTimingHeaders(response: Response, timings: Record<string, number>): Response {
+function addStreamTimingHeaders(
+  response: Response,
+  timings: Record<string, number>,
+): Response {
   const headers = new Headers(response.headers);
-  const entries = Object.entries(timings).filter(([, duration]) => Number.isFinite(duration));
+  const entries = Object.entries(timings).filter(([, duration]) =>
+    Number.isFinite(duration),
+  );
   if (entries.length) {
     headers.set(
       "Server-Timing",
@@ -76,7 +83,10 @@ export async function handleCanonicalScopedAgentStream(
   timings.parse = elapsedMs(parseStartedAt);
   if (!text.trim()) {
     return applyCorsHeaders(
-      Response.json({ success: false, error: "text is required" }, { status: 400 }),
+      Response.json(
+        { success: false, error: "text is required" },
+        { status: 400 },
+      ),
       CORS_METHODS,
       request.origin,
     );
@@ -101,6 +111,7 @@ export async function handleCanonicalScopedAgentStream(
       request.orgId,
       rpc,
       request.executionCtx,
+      request.agent,
     );
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {
@@ -108,9 +119,12 @@ export async function handleCanonicalScopedAgentStream(
     // error-policy:J1 boundary translation — bridgeStream rejects insufficient
     // credit before any SSE bytes exist, so callers get the canonical 402 JSON.
     if (error instanceof InsufficientCreditsError) {
-      logger.warn("[shared-runtime REST] stream send rejected: insufficient credits", {
-        agentId: request.agentId,
-      });
+      logger.warn(
+        "[shared-runtime REST] stream send rejected: insufficient credits",
+        {
+          agentId: request.agentId,
+        },
+      );
       return addStreamTimingHeaders(
         applyCorsHeaders(
           Response.json(

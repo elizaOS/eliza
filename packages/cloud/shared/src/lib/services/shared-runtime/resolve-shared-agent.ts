@@ -46,7 +46,10 @@ type CachedAgentSandbox = Omit<AgentSandbox, AgentSandboxDateField> & {
   [Field in AgentSandboxDateField]: unknown;
 };
 
-function invalidCachedAgentTimestamp(field: AgentSandboxDateField, value: unknown): ElizaError {
+function invalidCachedAgentTimestamp(
+  field: AgentSandboxDateField,
+  value: unknown,
+): ElizaError {
   return new ElizaError("Shared-agent cache contains an invalid timestamp", {
     code: "INVALID_CACHED_AGENT_TIMESTAMP",
     context: { field, value },
@@ -54,7 +57,10 @@ function invalidCachedAgentTimestamp(field: AgentSandboxDateField, value: unknow
   });
 }
 
-function rehydrateRequiredCachedDate(value: unknown, field: AgentSandboxDateField): Date {
+function rehydrateRequiredCachedDate(
+  value: unknown,
+  field: AgentSandboxDateField,
+): Date {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value;
   }
@@ -67,7 +73,10 @@ function rehydrateRequiredCachedDate(value: unknown, field: AgentSandboxDateFiel
   throw invalidCachedAgentTimestamp(field, value);
 }
 
-function rehydrateNullableCachedDate(value: unknown, field: AgentSandboxDateField): Date | null {
+function rehydrateNullableCachedDate(
+  value: unknown,
+  field: AgentSandboxDateField,
+): Date | null {
   return value === null ? null : rehydrateRequiredCachedDate(value, field);
 }
 
@@ -85,17 +94,31 @@ function rehydrateNullableCachedDate(value: unknown, field: AgentSandboxDateFiel
  * malformed values fail at this boundary because returning a row that violates
  * `AgentSandbox` would defer the fault into an unrelated route consumer.
  */
-function rehydrateCachedAgentDates(agent: CachedAgentSandbox): AgentSandbox {
+export function rehydrateCachedAgentDates(
+  agent: CachedAgentSandbox,
+): AgentSandbox {
   return {
     ...agent,
     created_at: rehydrateRequiredCachedDate(agent.created_at, "created_at"),
     updated_at: rehydrateRequiredCachedDate(agent.updated_at, "updated_at"),
     deleted_at: rehydrateNullableCachedDate(agent.deleted_at, "deleted_at"),
     claimed_at: rehydrateNullableCachedDate(agent.claimed_at, "claimed_at"),
-    pool_ready_at: rehydrateNullableCachedDate(agent.pool_ready_at, "pool_ready_at"),
-    last_backup_at: rehydrateNullableCachedDate(agent.last_backup_at, "last_backup_at"),
-    last_heartbeat_at: rehydrateNullableCachedDate(agent.last_heartbeat_at, "last_heartbeat_at"),
-    last_billed_at: rehydrateNullableCachedDate(agent.last_billed_at, "last_billed_at"),
+    pool_ready_at: rehydrateNullableCachedDate(
+      agent.pool_ready_at,
+      "pool_ready_at",
+    ),
+    last_backup_at: rehydrateNullableCachedDate(
+      agent.last_backup_at,
+      "last_backup_at",
+    ),
+    last_heartbeat_at: rehydrateNullableCachedDate(
+      agent.last_heartbeat_at,
+      "last_heartbeat_at",
+    ),
+    last_billed_at: rehydrateNullableCachedDate(
+      agent.last_billed_at,
+      "last_billed_at",
+    ),
     shutdown_warning_sent_at: rehydrateNullableCachedDate(
       agent.shutdown_warning_sent_at,
       "shutdown_warning_sent_at",
@@ -117,7 +140,7 @@ function rehydrateCachedAgentDates(agent: CachedAgentSandbox): AgentSandbox {
  * time-sensitive dedicated-bootstrap window, whose eligibility flips as the
  * container boots.
  */
-interface CachedSharedAgentScope {
+export interface CachedSharedAgentScope {
   orgId: string;
   agent: CachedAgentSandbox;
   /**
@@ -148,7 +171,10 @@ interface CachedSharedAgentScope {
  * full authoritative gate — the exact 401/403 taxonomy is preserved, we only
  * fast-path the HAPPY case. Session/JWT requests never reach here (no api key).
  */
-async function revalidateCachedScope(c: Context<AppEnv>, cachedOrgId: string): Promise<boolean> {
+async function revalidateCachedScope(
+  c: Context<AppEnv>,
+  cachedOrgId: string,
+): Promise<boolean> {
   const apiKey =
     c.req.header("X-API-Key") ||
     c.req.header("x-api-key") ||
@@ -160,10 +186,64 @@ async function revalidateCachedScope(c: Context<AppEnv>, cachedOrgId: string): P
   const { apiKeysService } = await import("../../services/api-keys");
   const validated = await apiKeysService.validateApiKey(apiKey);
   if (!validated || !validated.is_active) return false;
-  if (validated.expires_at && new Date(validated.expires_at) < new Date()) return false;
+  if (validated.expires_at && new Date(validated.expires_at) < new Date())
+    return false;
   // The key must still be scoped to the org the cached agent belongs to. A
   // detach/re-scope changes organization_id, so a stale cross-org read fails here.
   return validated.organization_id === cachedOrgId;
+}
+
+export async function cacheSharedAgentRunningSandbox(
+  agentId: string,
+  orgId: string,
+  agent: AgentSandbox,
+): Promise<void> {
+  if (agent.execution_tier !== "shared" || agent.status !== "running") return;
+  await cache
+    .set(
+      CacheKeys.sharedAgentScope.runningSandbox(agentId, orgId),
+      agent,
+      CacheTTL.sharedAgentScope.runningSandbox,
+    )
+    .catch((error) => {
+      logger.debug("[resolveSharedAgent] running sandbox cache write failed", {
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+}
+
+export async function getCachedSharedAgentRunningSandbox(
+  agentId: string,
+  orgId: string,
+): Promise<AgentSandbox | null> {
+  const cached = await cache
+    .get<CachedAgentSandbox>(
+      CacheKeys.sharedAgentScope.runningSandbox(agentId, orgId),
+    )
+    .catch(() => null);
+  if (!cached) return null;
+  const agent = rehydrateCachedAgentDates(cached);
+  return agent.execution_tier === "shared" && agent.status === "running"
+    ? agent
+    : null;
+}
+
+export async function invalidateSharedAgentRunningSandbox(
+  agentId: string,
+  orgId: string,
+): Promise<void> {
+  await cache
+    .del(CacheKeys.sharedAgentScope.runningSandbox(agentId, orgId))
+    .catch((error) => {
+      logger.debug(
+        "[resolveSharedAgent] running sandbox cache invalidation failed",
+        {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    });
 }
 
 /**
@@ -180,7 +260,9 @@ async function revalidateCachedScope(c: Context<AppEnv>, cachedOrgId: string): P
  * its own subdomain REST surface instead. Returns the superset of fields the
  * leaves read; each caller takes what it needs.
  */
-export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSharedAgent> {
+export async function resolveSharedAgent(
+  c: Context<AppEnv>,
+): Promise<ResolvedSharedAgent> {
   const agentId = c.req.param("agentId");
   if (!agentId) return { error: "Missing agent id", status: 400 };
 
@@ -196,9 +278,12 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
   // (#SHADOW-ACCOUNT-DEBUG). Whichever credential the request carries wins;
   // requests carrying neither skip the cache and hit the authoritative gate.
   const apiKeyPrefix = await apiKeyScopeHashPrefix(c).catch(() => null);
-  const sessionPrefix = apiKeyPrefix ? null : await sessionScopeHashPrefix(c).catch(() => null);
+  const sessionPrefix = apiKeyPrefix
+    ? null
+    : await sessionScopeHashPrefix(c).catch(() => null);
   const isSessionScope = apiKeyPrefix == null && sessionPrefix != null;
-  const scopeKeyPrefix = apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
+  const scopeKeyPrefix =
+    apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
   const scopeCacheKey = scopeKeyPrefix
     ? CacheKeys.sharedAgentScope.resolve(scopeKeyPrefix, agentId)
     : null;
@@ -209,7 +294,11 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
   const revalidateResolvedScope = async (
     cached: CachedSharedAgentScope,
   ): Promise<ResolvedSharedAgent | null> => {
-    if (!(cached?.agent && cached.orgId && cached.agent.execution_tier === "shared")) {
+    if (!(
+      cached?.agent &&
+      cached.orgId &&
+      cached.agent.execution_tier === "shared"
+    )) {
       return null;
     }
     // SECURITY: a hit skips the expensive user/org+agent DB hydration, but it
@@ -221,7 +310,9 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     // gate inside the 30s TTL window; we only skip the cold DB waves.
     const stillAuthorized = isSessionScope
       ? cached.stewardUserId != null &&
-        (await revalidateSessionScope(c, cached.stewardUserId).catch(() => false))
+        (await revalidateSessionScope(c, cached.stewardUserId).catch(
+          () => false,
+        ))
       : await revalidateCachedScope(c, cached.orgId).catch(() => false);
     if (!stillAuthorized) return null;
     // Restore the DATE contract lost to the cache's JSON round-trip before
@@ -255,17 +346,25 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     const firstWrittenAtMs = cached.firstWrittenAtMs ?? now;
     // Do not refresh past the absolute cap; let the entry expire so the agent
     // row self-heals via the authoritative gate.
-    if (now - firstWrittenAtMs >= CacheTTL.sharedAgentScope.resolveMaxAgeMs) return;
+    if (now - firstWrittenAtMs >= CacheTTL.sharedAgentScope.resolveMaxAgeMs)
+      return;
     const refreshed: CachedSharedAgentScope = { ...cached, firstWrittenAtMs };
-    void cache.set(scopeCacheKey, refreshed, CacheTTL.sharedAgentScope.resolve).catch((error) => {
-      logger.debug("[resolveSharedAgent] scope cache sliding refresh failed", {
-        error: error instanceof Error ? error.message : String(error),
+    void cache
+      .set(scopeCacheKey, refreshed, CacheTTL.sharedAgentScope.resolve)
+      .catch((error) => {
+        logger.debug(
+          "[resolveSharedAgent] scope cache sliding refresh failed",
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       });
-    });
   };
 
   if (scopeCacheKey) {
-    const cached = await cache.get<CachedSharedAgentScope>(scopeCacheKey).catch(() => null);
+    const cached = await cache
+      .get<CachedSharedAgentScope>(scopeCacheKey)
+      .catch(() => null);
     if (cached) {
       const resolved = await revalidateResolvedScope(cached);
       if (resolved) {
@@ -296,10 +395,10 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
         scopeCacheKey,
         CacheTTL.sharedAgentScope.resolve,
         async () => {
-          const { user, orgLookupResult: agent } = await requireUserOrApiKeyWithOrgLookup(
-            c,
-            (orgId) => agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
-          );
+          const { user, orgLookupResult: agent } =
+            await requireUserOrApiKeyWithOrgLookup(c, (orgId) =>
+              agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
+            );
           // Only a settled shared-tier agent is cacheable (never the
           // time-sensitive dedicated-bootstrap window). A non-cacheable or
           // not-found result returns null so getOrSet does NOT populate the
@@ -308,7 +407,11 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
           if (!agent || agent.execution_tier !== "shared") return null;
           const base =
             isSessionScope && typeof user.steward_id === "string"
-              ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
+              ? {
+                  orgId: user.organization_id,
+                  agent,
+                  stewardUserId: user.steward_id,
+                }
               : { orgId: user.organization_id, agent };
           return { ...base, firstWrittenAtMs: Date.now() };
         },
@@ -325,9 +428,10 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     }
   }
 
-  const { user, orgLookupResult: agent } = await requireUserOrApiKeyWithOrgLookup(c, (orgId) =>
-    agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
-  );
+  const { user, orgLookupResult: agent } =
+    await requireUserOrApiKeyWithOrgLookup(c, (orgId) =>
+      agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
+    );
   if (!agent) return { error: "Agent not found", status: 404 };
   if (agent.execution_tier !== "shared" && !isDedicatedBootstrapWindow(agent)) {
     return { error: "Not a shared-runtime agent", status: 404 };
@@ -347,12 +451,20 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
         : { orgId: user.organization_id, agent }),
       firstWrittenAtMs: Date.now(),
     };
-    void cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve).catch((error) => {
-      logger.debug("[resolveSharedAgent] scope cache write failed", {
-        error: error instanceof Error ? error.message : String(error),
+    void cache
+      .set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve)
+      .catch((error) => {
+        logger.debug("[resolveSharedAgent] scope cache write failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-    });
+    void cacheSharedAgentRunningSandbox(agentId, user.organization_id, agent);
   }
 
-  return { agent, agentId, orgId: user.organization_id, agentName: agent.agent_name ?? "Eliza" };
+  return {
+    agent,
+    agentId,
+    orgId: user.organization_id,
+    agentName: agent.agent_name ?? "Eliza",
+  };
 }

@@ -11,7 +11,14 @@
  * the cent. They fail loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -26,7 +33,9 @@ const ORG_ID = "00000000-0000-0000-0000-0000000000d4";
 const USER_ID = "00000000-0000-0000-0000-0000000000e5";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
-let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
+let closeDb:
+  | typeof import("../../../db/client").closeDatabaseConnectionsForTests
+  | undefined;
 let creditsService: typeof import("../credits").creditsService;
 let pgliteReady = true;
 
@@ -38,7 +47,9 @@ async function getBalance(): Promise<number> {
 }
 
 async function seedOrg(balance: string): Promise<void> {
-  await dbWrite.execute(`DELETE FROM credit_transactions WHERE organization_id = '${ORG_ID}';`);
+  await dbWrite.execute(
+    `DELETE FROM credit_transactions WHERE organization_id = '${ORG_ID}';`,
+  );
   await dbWrite.execute(`DELETE FROM organizations WHERE id = '${ORG_ID}';`);
   await dbWrite.execute(
     `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_ID}', '${balance}');`,
@@ -146,7 +157,13 @@ async function getReservationSettledAt(id: string): Promise<string | null> {
 
 async function settlementRowsForReservation(
   id: string,
-): Promise<Array<{ amount: string; type: string; stripe_payment_intent_id: string | null }>> {
+): Promise<
+  Array<{
+    amount: string;
+    type: string;
+    stripe_payment_intent_id: string | null;
+  }>
+> {
   const res = await dbWrite.execute(
     `SELECT amount, type, stripe_payment_intent_id
      FROM credit_transactions
@@ -160,7 +177,10 @@ async function settlementRowsForReservation(
   }>;
 }
 
-async function insertLegacySettlementForReservation(id: string, amount: number): Promise<string> {
+async function insertLegacySettlementForReservation(
+  id: string,
+  amount: number,
+): Promise<string> {
   const res = await dbWrite.execute(
     `INSERT INTO credit_transactions (
       organization_id,
@@ -187,7 +207,8 @@ async function insertLegacySettlementForReservation(id: string, amount: number):
 
 beforeAll(async () => {
   try {
-    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } =
+      await import("../../../db/client"));
     ({ creditsService } = await import("../credits"));
 
     // organizations carries the full column set that the real reconcile path
@@ -258,7 +279,10 @@ beforeAll(async () => {
     }
   } catch (error) {
     pgliteReady = false;
-    console.warn("[credits-reconcile] PGlite unavailable, skipping DB cases:", error);
+    console.warn(
+      "[credits-reconcile] PGlite unavailable, skipping DB cases:",
+      error,
+    );
   }
 }, PGLITE_TIMEOUT);
 
@@ -298,8 +322,12 @@ describe("CreditsService.reconcile", () => {
       const refundRow = await dbWrite.execute(
         `SELECT id, amount FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'refund';`,
       );
-      expect(Number((refundRow.rows[0] as { amount: string }).amount)).toBeCloseTo(0.6, 6);
-      expect((refundRow.rows[0] as { id: string }).id).toBe(result.settlementTransactionIds[0]);
+      expect(
+        Number((refundRow.rows[0] as { amount: string }).amount),
+      ).toBeCloseTo(0.6, 6);
+      expect((refundRow.rows[0] as { id: string }).id).toBe(
+        result.settlementTransactionIds[0],
+      );
     },
     PGLITE_TIMEOUT,
   );
@@ -329,8 +357,12 @@ describe("CreditsService.reconcile", () => {
       const debitRow = await dbWrite.execute(
         `SELECT id, amount FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'debit';`,
       );
-      expect(Number((debitRow.rows[0] as { amount: string }).amount)).toBeCloseTo(-0.6, 6);
-      expect((debitRow.rows[0] as { id: string }).id).toBe(result.settlementTransactionIds[0]);
+      expect(
+        Number((debitRow.rows[0] as { amount: string }).amount),
+      ).toBeCloseTo(-0.6, 6);
+      expect((debitRow.rows[0] as { id: string }).id).toBe(
+        result.settlementTransactionIds[0],
+      );
     },
     PGLITE_TIMEOUT,
   );
@@ -454,8 +486,12 @@ describe("CreditsService.reconcile", () => {
       const refundRow = await dbWrite.execute(
         `SELECT id, amount FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'refund';`,
       );
-      expect(Number((refundRow.rows[0] as { amount: string }).amount)).toBeCloseTo(1.0, 6);
-      expect((refundRow.rows[0] as { id: string }).id).toBe(result.settlementTransactionIds[0]);
+      expect(
+        Number((refundRow.rows[0] as { amount: string }).amount),
+      ).toBeCloseTo(1.0, 6);
+      expect((refundRow.rows[0] as { id: string }).id).toBe(
+        result.settlementTransactionIds[0],
+      );
     },
     PGLITE_TIMEOUT,
   );
@@ -586,7 +622,9 @@ describe("CreditsService.reconcile idempotency (#10846)", () => {
       expect(await countByType("refund")).toBe(1);
       expect(await countTransactions()).toBe(1);
       // Both invocations report the SAME settlement transaction.
-      expect(second.settlementTransactionIds).toEqual(first.settlementTransactionIds);
+      expect(second.settlementTransactionIds).toEqual(
+        first.settlementTransactionIds,
+      );
     },
     PGLITE_TIMEOUT,
   );
@@ -611,7 +649,9 @@ describe("CreditsService.reconcile idempotency (#10846)", () => {
       expect(await getBalance()).toBeCloseTo(19.4, 6);
       expect(await countByType("debit")).toBe(1);
       expect(await countTransactions()).toBe(1);
-      expect(second.settlementTransactionIds).toEqual(first.settlementTransactionIds);
+      expect(second.settlementTransactionIds).toEqual(
+        first.settlementTransactionIds,
+      );
     },
     PGLITE_TIMEOUT,
   );
@@ -667,7 +707,9 @@ describe("CreditsService.reserve idempotency key (#16425)", () => {
         idempotencyKey: "utt-1",
       });
 
-      expect(replay.reservationTransactionId).toBe(first.reservationTransactionId);
+      expect(replay.reservationTransactionId).toBe(
+        first.reservationTransactionId,
+      );
       // One upfront deduction, not two: balance = 10 - 0.5, one transaction row.
       expect(await getBalance()).toBeCloseTo(9.5, 6);
       expect(await countTransactions()).toBe(1);
@@ -703,7 +745,9 @@ describe("CreditsService.reserve idempotency key (#16425)", () => {
         idempotencyKey: "utt-2",
       });
 
-      expect(replay.reservationTransactionId).toBe(first.reservationTransactionId);
+      expect(replay.reservationTransactionId).toBe(
+        first.reservationTransactionId,
+      );
       expect(replay.reservedAmount).toBeCloseTo(0.4, 6);
       expect(await getBalance()).toBeCloseTo(9.6, 6);
 
@@ -719,7 +763,9 @@ describe("CreditsService.reserve idempotency key (#16425)", () => {
     async () => {
       if (!pgliteReady) return;
       await seedOrg("10");
-      await dbWrite.execute(`DELETE FROM credit_transactions WHERE organization_id = '${ORG_B}';`);
+      await dbWrite.execute(
+        `DELETE FROM credit_transactions WHERE organization_id = '${ORG_B}';`,
+      );
       await dbWrite.execute(`DELETE FROM organizations WHERE id = '${ORG_B}';`);
       await dbWrite.execute(
         `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_B}', '10');`,
@@ -784,14 +830,20 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
         reservedAmount: 1.0,
         actualCost: 0.4,
         description: "chat completion settle",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        metadata: {
+          user_id: USER_ID,
+          reservation_transaction_id: reservationId,
+        },
       });
       const second = await creditsService.reconcile({
         organizationId: ORG_ID,
         reservedAmount: 1.0,
         actualCost: 0,
         description: "late duplicate refund attempt",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        metadata: {
+          user_id: USER_ID,
+          reservation_transaction_id: reservationId,
+        },
       });
 
       expect(first.adjustmentType).toBe("refund");
@@ -826,7 +878,10 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       const res = await dbWrite.execute(
         `SELECT amount, metadata FROM credit_transactions WHERE id = '${reservation.reservationTransactionId}';`,
       );
-      const row = res.rows[0] as { amount: string; metadata: Record<string, unknown> | string };
+      const row = res.rows[0] as {
+        amount: string;
+        metadata: Record<string, unknown> | string;
+      };
       const metadata =
         typeof row.metadata === "string"
           ? (JSON.parse(row.metadata) as Record<string, unknown>)
@@ -853,7 +908,10 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
         reservedAmount: 1.0,
         actualCost: 1.0,
         description: "chat completion exact settle",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        metadata: {
+          user_id: USER_ID,
+          reservation_transaction_id: reservationId,
+        },
       });
 
       expect(result.adjustmentType).toBe("none");
@@ -876,14 +934,20 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
         reservedAmount: 0.4,
         actualCost: 1.0,
         description: "chat completion overage settle",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        metadata: {
+          user_id: USER_ID,
+          reservation_transaction_id: reservationId,
+        },
       });
       const second = await creditsService.reconcile({
         organizationId: ORG_ID,
         reservedAmount: 0.4,
         actualCost: 1.0,
         description: "duplicate overage settle",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        metadata: {
+          user_id: USER_ID,
+          reservation_transaction_id: reservationId,
+        },
       });
 
       expect(first.adjustmentType).toBe("overage");
@@ -895,6 +959,53 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
           amount: "-0.600000",
           type: "debit",
           stripe_payment_intent_id: `recon:${reservationId}:overage`,
+        },
+      ]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "concurrent settle attempts claim exactly one reconciliation row",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0);
+
+      const [first, second] = await Promise.all([
+        creditsService.reconcile({
+          organizationId: ORG_ID,
+          reservedAmount: 1.0,
+          actualCost: 0.4,
+          description: "concurrent chat completion settle a",
+          metadata: {
+            user_id: USER_ID,
+            reservation_transaction_id: reservationId,
+          },
+        }),
+        creditsService.reconcile({
+          organizationId: ORG_ID,
+          reservedAmount: 1.0,
+          actualCost: 0.4,
+          description: "concurrent chat completion settle b",
+          metadata: {
+            user_id: USER_ID,
+            reservation_transaction_id: reservationId,
+          },
+        }),
+      ]);
+
+      expect([first.adjustmentType, second.adjustmentType].sort()).toEqual([
+        "none",
+        "refund",
+      ]);
+      expect(await getBalance()).toBeCloseTo(9.6, 6);
+      expect(await countByType("refund")).toBe(1);
+      expect(await settlementRowsForReservation(reservationId)).toEqual([
+        {
+          amount: "0.600000",
+          type: "refund",
+          stripe_payment_intent_id: `recon:${reservationId}:refund`,
         },
       ]);
     },
@@ -928,7 +1039,10 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       if (!pgliteReady) return;
       await seedOrg("9.6");
       const reservationId = await insertReservation(1.0, 25 * 60 * 1000);
-      const legacySettlementId = await insertLegacySettlementForReservation(reservationId, 0.6);
+      const legacySettlementId = await insertLegacySettlementForReservation(
+        reservationId,
+        0.6,
+      );
 
       const stats = await creditsService.sweepStaleReservations({
         graceMs: 20 * 60 * 1000,
@@ -955,7 +1069,10 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
         reservedAmount: 1.0,
         actualCost: 0.2,
         description: "late waitUntil settle after legacy keyed settle",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        metadata: {
+          user_id: USER_ID,
+          reservation_transaction_id: reservationId,
+        },
       });
 
       expect(late.adjustmentType).toBe("none");
@@ -991,7 +1108,10 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
         reservedAmount: 1.0,
         actualCost: 0.2,
         description: "late waitUntil settle after sweep",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        metadata: {
+          user_id: USER_ID,
+          reservation_transaction_id: reservationId,
+        },
       });
 
       expect(late.adjustmentType).toBe("none");
@@ -1080,7 +1200,9 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       expect(settlements).toHaveLength(1);
       expect(settlements[0]?.type).toBe("refund");
       expect(Number(settlements[0]?.amount)).toBeCloseTo(0.5, 6);
-      expect(settlements[0]?.stripe_payment_intent_id).toBe(`reconcile-refund:${reservationId}`);
+      expect(settlements[0]?.stripe_payment_intent_id).toBe(
+        `reconcile-refund:${reservationId}`,
+      );
       expect(await countByType("refund")).toBe(1);
     },
     PGLITE_TIMEOUT,
@@ -1100,14 +1222,18 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       // real app-credits-lane proof for markup math and late-settle dedup lives
       // in app-chat-sweep-double-refund.test.ts.
       await seedOrg("8.2"); // org had 10, paid the 1.8 hold
-      const reservationId = await insertAppChatReservation(1.8, 25 * 60 * 1000, {
-        estimated_cost: 1.0,
-        reserved_amount: 1.5,
-        totalCost: 1.8,
-        baseCost: 1.5,
-        creatorMarkup: 0.3,
-        markupPercentage: 20,
-      });
+      const reservationId = await insertAppChatReservation(
+        1.8,
+        25 * 60 * 1000,
+        {
+          estimated_cost: 1.0,
+          reserved_amount: 1.5,
+          totalCost: 1.8,
+          baseCost: 1.5,
+          creatorMarkup: 0.3,
+          markupPercentage: 20,
+        },
+      );
 
       const stats = await creditsService.sweepStaleReservations({
         graceMs: 20 * 60 * 1000,
@@ -1131,10 +1257,14 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
     async () => {
       if (!pgliteReady) return;
       await seedOrg("8.2");
-      const reservationId = await insertAppChatReservation(1.8, 25 * 60 * 1000, {
-        estimated_cost: null,
-        reserved_amount: null,
-      });
+      const reservationId = await insertAppChatReservation(
+        1.8,
+        25 * 60 * 1000,
+        {
+          estimated_cost: null,
+          reserved_amount: null,
+        },
+      );
 
       const stats = await creditsService.sweepStaleReservations({
         graceMs: 20 * 60 * 1000,
@@ -1242,8 +1372,12 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
         metadata: { payment_intent_id: "pi_3" },
       });
 
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_3")).toBeCloseTo(50, 6);
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_none")).toBe(0);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_3"),
+      ).toBeCloseTo(50, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_none"),
+      ).toBe(0);
       // Balance clawed the full $50 across the two partials.
       expect(await getBalance()).toBeCloseTo(50, 6);
     },
@@ -1265,14 +1399,17 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
         stripePaymentIntentId: "stripe:dispute:dp_r1",
         metadata: { payment_intent_id: "pi_r1" },
       });
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(10, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_r1"),
+      ).toBeCloseTo(10, 6);
 
       // Platform wins the dispute: funds_reinstated writes a `refund` row
       // (mirrors handleChargeDisputeFundsReinstated in stripe-event.ts).
       await creditsService.refundCredits({
         organizationId: ORG_ID,
         amount: 10,
-        description: "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r1",
+        description:
+          "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r1",
         stripePaymentIntentId: "stripe:dispute:dp_r1:reinstated",
         metadata: {
           payment_intent_id: "pi_r1",
@@ -1282,7 +1419,9 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
 
       // The tally nets to 0 so a later charge.refunded claws the FULL refund
       // delta instead of under-clawing by the reinstated amount.
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(0, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_r1"),
+      ).toBeCloseTo(0, 6);
 
       // An ordinary (non-reinstatement) refund tagged with the same payment
       // intent must NOT reduce the tally.
@@ -1292,7 +1431,9 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
         description: "unrelated refund",
         metadata: { payment_intent_id: "pi_r1" },
       });
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(0, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_r1"),
+      ).toBeCloseTo(0, 6);
 
       // Balance: 100 - 10 (clawback) + 10 (reinstatement) + 5 (refund) = 105.
       expect(await getBalance()).toBeCloseTo(105, 6);
@@ -1317,7 +1458,8 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       const reinstatement = {
         organizationId: ORG_ID,
         amount: 10,
-        description: "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r2",
+        description:
+          "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r2",
         stripePaymentIntentId: "stripe:dispute:dp_r2:reinstated",
         metadata: {
           payment_intent_id: "pi_r2",
@@ -1325,7 +1467,9 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
         },
       };
       const first = await creditsService.refundCredits(reinstatement);
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r2")).toBeCloseTo(0, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_r2"),
+      ).toBeCloseTo(0, 6);
       expect(first.newBalance).toBeCloseTo(100, 6);
 
       // Stripe re-delivers the webhook: the same `:reinstated` idempotency key
@@ -1336,7 +1480,9 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       const second = await creditsService.refundCredits(reinstatement);
       expect(second.transaction.id).toBe(first.transaction.id);
       expect(second.newBalance).toBeCloseTo(100, 6);
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r2")).toBeCloseTo(0, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_r2"),
+      ).toBeCloseTo(0, 6);
       expect(await getBalance()).toBeCloseTo(100, 6);
     },
     PGLITE_TIMEOUT,
@@ -1363,14 +1509,17 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       await creditsService.refundCredits({
         organizationId: ORG_ID,
         amount: 4,
-        description: "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r3",
+        description:
+          "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r3",
         stripePaymentIntentId: "stripe:dispute:dp_r3:reinstated",
         metadata: {
           payment_intent_id: "pi_r3",
           source: "charge.dispute.funds_reinstated",
         },
       });
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r3")).toBeCloseTo(6, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_r3"),
+      ).toBeCloseTo(6, 6);
 
       // Later charge.refunded for the full $10: clawbackForReversal computes
       // toClaw = min(10, grant) - 6 = 4 — exactly the reinstated portion.
@@ -1382,7 +1531,9 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
         stripePaymentIntentId: "stripe:refund:ch_r3:1000",
         metadata: { payment_intent_id: "pi_r3" },
       });
-      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r3")).toBeCloseTo(10, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_r3"),
+      ).toBeCloseTo(10, 6);
 
       // Balance: 100 - 10 + 4 - 4 = 90 — the org holds exactly what the fiat
       // flows imply (grant refunded in full, only $4 was ever reinstated).

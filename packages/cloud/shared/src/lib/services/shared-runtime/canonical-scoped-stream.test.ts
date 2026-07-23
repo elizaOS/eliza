@@ -18,6 +18,7 @@ const bridgeStream = mock(
     _orgId: string,
     _rpc: unknown,
     _executionCtx?: { waitUntil(promise: Promise<unknown>): void },
+    _resolvedAgent?: unknown,
   ): Promise<Response | null> =>
     new Response("event: done\ndata: {}\n\n", {
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
@@ -28,7 +29,8 @@ mock.module("../eliza-sandbox", () => ({
   elizaSandboxService: { bridgeStream },
 }));
 
-const { handleCanonicalScopedAgentStream } = await import("./canonical-scoped-stream");
+const { handleCanonicalScopedAgentStream } =
+  await import("./canonical-scoped-stream");
 
 const BASE = {
   agentId: "00000000-0000-4000-8000-00000000a9e0",
@@ -42,7 +44,10 @@ describe("handleCanonicalScopedAgentStream — executionCtx threading", () => {
     bridgeStream.mockClear();
     const executionCtx = { waitUntil: (_p: Promise<unknown>) => undefined };
 
-    const res = await handleCanonicalScopedAgentStream({ ...BASE, executionCtx });
+    const res = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      executionCtx,
+    });
 
     expect(res.status).toBe(200);
     expect(bridgeStream).toHaveBeenCalledTimes(1);
@@ -52,6 +57,24 @@ describe("handleCanonicalScopedAgentStream — executionCtx threading", () => {
     // The SAME executionCtx object must arrive as the 4th argument — the
     // shared-tier turn hands its billing tail to exactly this waitUntil.
     expect(call?.[3]).toBe(executionCtx);
+  });
+
+  test("threads the resolved agent row to bridgeStream so the stream path skips findRunningSandbox", async () => {
+    bridgeStream.mockClear();
+    const agent = {
+      id: BASE.agentId,
+      organization_id: BASE.orgId,
+      status: "running",
+    };
+
+    const res = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      agent: agent as never,
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridgeStream).toHaveBeenCalledTimes(1);
+    expect(bridgeStream.mock.calls[0]?.[4]).toBe(agent);
   });
 
   test("no executionCtx (tests, non-Worker callers): bridgeStream receives undefined", async () => {

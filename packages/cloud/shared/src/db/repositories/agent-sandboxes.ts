@@ -1,6 +1,18 @@
 // Persists agent sandboxes records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import {
   applyBackupDelta,
   type BackupChainNode,
@@ -11,9 +23,15 @@ import {
 import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
-import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
+import {
+  getObjectText,
+  offloadJsonField,
+} from "../../lib/storage/object-store";
 import { logger } from "../../lib/utils/logger";
-import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../crypto/agent-backups";
+import {
+  decryptAgentBackupStateData,
+  encryptAgentBackupStateData,
+} from "../crypto/agent-backups";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -45,7 +63,10 @@ export type {
   NewAgentSandboxBackup,
 };
 
-export type AgentSandboxBackupMetadata = Omit<StoredAgentSandboxBackup, "state_data">;
+export type AgentSandboxBackupMetadata = Omit<
+  StoredAgentSandboxBackup,
+  "state_data"
+>;
 
 const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   memories: [],
@@ -82,12 +103,16 @@ export async function hydrateAgentSandboxBackup(
   let stateData = backup.state_data;
   if (backup.state_data_storage === "r2") {
     if (!backup.state_data_key) {
-      throw new Error(`Agent sandbox backup ${backup.id} is missing state_data_key`);
+      throw new Error(
+        `Agent sandbox backup ${backup.id} is missing state_data_key`,
+      );
     }
 
     const raw = await getObjectText(backup.state_data_key);
     if (!raw) {
-      throw new Error(`Agent sandbox backup payload not found: ${backup.state_data_key}`);
+      throw new Error(
+        `Agent sandbox backup payload not found: ${backup.state_data_key}`,
+      );
     }
 
     stateData = JSON.parse(raw) as AgentBackupStoredStateData;
@@ -159,22 +184,38 @@ export class AgentSandboxesRepository {
     return r?.organizationId;
   }
 
-  async findByIdAndOrg(id: string, orgId: string): Promise<AgentSandbox | undefined> {
+  async findByIdAndOrg(
+    id: string,
+    orgId: string,
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
       .select()
       .from(agentSandboxes)
-      .where(and(eq(agentSandboxes.id, id), eq(agentSandboxes.organization_id, orgId)))
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.organization_id, orgId),
+        ),
+      )
       .limit(1);
     return r;
   }
 
-  async findByIdAndOrgForWrite(id: string, orgId: string): Promise<AgentSandbox | undefined> {
+  async findByIdAndOrgForWrite(
+    id: string,
+    orgId: string,
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbWrite
       .select()
       .from(agentSandboxes)
-      .where(and(eq(agentSandboxes.id, id), eq(agentSandboxes.organization_id, orgId)))
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.organization_id, orgId),
+        ),
+      )
       .limit(1);
     return r;
   }
@@ -198,7 +239,9 @@ export class AgentSandboxesRepository {
     return r;
   }
 
-  async findLatestByCharacterId(characterId: string): Promise<AgentSandbox | undefined> {
+  async findLatestByCharacterId(
+    characterId: string,
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
       .select()
@@ -239,7 +282,10 @@ export class AgentSandboxesRepository {
       })
       .from(agentSandboxes)
       .where(
-        and(eq(agentSandboxes.status, "running"), ne(agentSandboxes.execution_tier, "shared")),
+        and(
+          eq(agentSandboxes.status, "running"),
+          ne(agentSandboxes.execution_tier, "shared"),
+        ),
       );
   }
 
@@ -553,7 +599,10 @@ export class AgentSandboxesRepository {
       .limit(limit);
   }
 
-  async findRunningSandbox(id: string, orgId: string): Promise<AgentSandbox | undefined> {
+  async findRunningSandbox(
+    id: string,
+    orgId: string,
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     // Use dbWrite (primary) for fresh read-after-write data from the VPS worker.
     const [r] = await dbWrite
@@ -696,13 +745,31 @@ export class AgentSandboxesRepository {
       });
   }
 
-  async update(id: string, data: Partial<NewAgentSandbox>): Promise<AgentSandbox | undefined> {
+  async update(
+    id: string,
+    data: Partial<NewAgentSandbox>,
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbWrite
       .update(agentSandboxes)
       .set({ ...data, updated_at: new Date() })
       .where(eq(agentSandboxes.id, id))
       .returning();
+    if (r && data.status !== undefined) {
+      void import("../../lib/services/shared-runtime/resolve-shared-agent")
+        .then(({ invalidateSharedAgentRunningSandbox }) =>
+          invalidateSharedAgentRunningSandbox(r.id, r.organization_id),
+        )
+        .catch((error) => {
+          logger.debug(
+            "[agent-sandboxes] running sandbox cache invalidation failed",
+            {
+              id,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        });
+    }
     return r;
   }
 
@@ -812,7 +879,9 @@ export class AgentSandboxesRepository {
    * multi-second re-probe is never clobbered. Returns undefined when the CAS
    * matched nothing.
    */
-  async markRunningFromProvisioning(id: string): Promise<AgentSandbox | undefined> {
+  async markRunningFromProvisioning(
+    id: string,
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbWrite
       .update(agentSandboxes)
@@ -847,7 +916,12 @@ export class AgentSandboxesRepository {
     await ensureAgentSandboxSchema();
     const r = await dbWrite
       .delete(agentSandboxes)
-      .where(and(eq(agentSandboxes.id, id), eq(agentSandboxes.organization_id, orgId)))
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.organization_id, orgId),
+        ),
+      )
       .returning({ id: agentSandboxes.id });
     return r.length > 0;
   }
@@ -874,7 +948,8 @@ export class AgentSandboxesRepository {
       isNotNull(agentSandboxes.node_id),
       sql`${agentSandboxes.node_id} <> ''`,
     ];
-    if (filter.image) conditions.push(eq(agentSandboxes.docker_image, filter.image));
+    if (filter.image)
+      conditions.push(eq(agentSandboxes.docker_image, filter.image));
     const [row] = await dbRead
       .select({ count: sql<number>`count(*)::int` })
       .from(agentSandboxes)
@@ -886,7 +961,10 @@ export class AgentSandboxesRepository {
    * Count pool entries by status — including not-yet-ready ones (still
    * provisioning). Used to size in-flight replenish work.
    */
-  async countAllPoolEntries(): Promise<{ ready: number; provisioning: number }> {
+  async countAllPoolEntries(): Promise<{
+    ready: number;
+    provisioning: number;
+  }> {
     await ensureAgentSandboxSchema();
     const [ready] = await dbRead
       .select({ count: sql<number>`count(*)::int` })
@@ -951,7 +1029,9 @@ export class AgentSandboxesRepository {
    * Used by the create path's per-org quota (#11023). Best-effort read; the
    * authoritative check runs under the advisory lock inside createAgent.
    */
-  async countNonTerminalByOrganization(organizationId: string): Promise<number> {
+  async countNonTerminalByOrganization(
+    organizationId: string,
+  ): Promise<number> {
     await ensureAgentSandboxSchema();
     const [row] = await dbRead
       .select({ count: sql<number>`count(*)::int` })
@@ -1043,7 +1123,12 @@ export class AgentSandboxesRepository {
     return dbRead
       .select()
       .from(agentSandboxes)
-      .where(and(eq(agentSandboxes.pool_status, "unclaimed"), eq(agentSandboxes.status, "running")))
+      .where(
+        and(
+          eq(agentSandboxes.pool_status, "unclaimed"),
+          eq(agentSandboxes.status, "running"),
+        ),
+      )
       .orderBy(agentSandboxes.pool_ready_at);
   }
 
@@ -1051,7 +1136,9 @@ export class AgentSandboxesRepository {
    * Pool rows that started provisioning but never became ready. Used to
    * reap stuck containers so the pool replenisher can retry.
    */
-  async findStuckPoolProvisioning(staleThresholdMs: number): Promise<AgentSandbox[]> {
+  async findStuckPoolProvisioning(
+    staleThresholdMs: number,
+  ): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
     const cutoff = new Date(Date.now() - staleThresholdMs);
     return dbRead
@@ -1168,13 +1255,18 @@ export class AgentSandboxesRepository {
       // Pool claim is for fresh provisions only. If the user's row already
       // has a database, fall through to the existing provision flow which
       // will reuse it. Likewise if it's already running.
-      if (userRow.database_status === "ready" || userRow.database_uri) return null;
+      if (userRow.database_status === "ready" || userRow.database_uri)
+        return null;
       if (userRow.status === "running") return null;
 
       if (params.expectedUpdatedAt) {
         const expectedMs = new Date(params.expectedUpdatedAt).getTime();
         const currentMs = userRow.updated_at?.getTime() ?? Number.NaN;
-        if (Number.isFinite(expectedMs) && Number.isFinite(currentMs) && expectedMs !== currentMs) {
+        if (
+          Number.isFinite(expectedMs) &&
+          Number.isFinite(currentMs) &&
+          expectedMs !== currentMs
+        ) {
           return null;
         }
       }
@@ -1247,7 +1339,12 @@ export class AgentSandboxesRepository {
     await ensureAgentSandboxSchema();
     const r = await dbWrite
       .delete(agentSandboxes)
-      .where(and(eq(agentSandboxes.id, id), eq(agentSandboxes.pool_status, "unclaimed")))
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.pool_status, "unclaimed"),
+        ),
+      )
       .returning({ id: agentSandboxes.id });
     return r.length > 0;
   }
@@ -1262,7 +1359,12 @@ export class AgentSandboxesRepository {
         pool_ready_at: new Date(),
         updated_at: new Date(),
       })
-      .where(and(eq(agentSandboxes.id, id), eq(agentSandboxes.pool_status, "unclaimed")))
+      .where(
+        and(
+          eq(agentSandboxes.id, id),
+          eq(agentSandboxes.pool_status, "unclaimed"),
+        ),
+      )
       .returning();
     return r;
   }
@@ -1271,12 +1373,18 @@ export class AgentSandboxesRepository {
 
   async createBackup(data: NewAgentSandboxBackup): Promise<AgentSandboxBackup> {
     const insertData = await prepareAgentBackupInsertData(data);
-    const [r] = await dbWrite.insert(agentSandboxBackups).values(insertData).returning();
+    const [r] = await dbWrite
+      .insert(agentSandboxBackups)
+      .values(insertData)
+      .returning();
     if (!r) throw new Error("Failed to create backup");
     return await hydrateAgentSandboxBackup(r);
   }
 
-  async listBackups(sandboxRecordId: string, limit = 10): Promise<AgentSandboxBackup[]> {
+  async listBackups(
+    sandboxRecordId: string,
+    limit = 10,
+  ): Promise<AgentSandboxBackup[]> {
     const rows = await dbRead
       .select()
       .from(agentSandboxBackups)
@@ -1312,7 +1420,9 @@ export class AgentSandboxesRepository {
       .limit(limit);
   }
 
-  async getLatestBackup(sandboxRecordId: string): Promise<AgentSandboxBackup | undefined> {
+  async getLatestBackup(
+    sandboxRecordId: string,
+  ): Promise<AgentSandboxBackup | undefined> {
     const [r] = await dbRead
       .select()
       .from(agentSandboxBackups)
@@ -1345,7 +1455,9 @@ export class AgentSandboxesRepository {
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
 
-  async getBackupById(backupId: string): Promise<AgentSandboxBackup | undefined> {
+  async getBackupById(
+    backupId: string,
+  ): Promise<AgentSandboxBackup | undefined> {
     const r = await getStoredBackupById(backupId);
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
@@ -1356,7 +1468,9 @@ export class AgentSandboxesRepository {
    * which does its own budgeted download + decrypt — hydrating here would
    * decrypt the payload eagerly and bypass the verifier's byte budget.
    */
-  async getStoredBackupById(backupId: string): Promise<StoredAgentSandboxBackup | undefined> {
+  async getStoredBackupById(
+    backupId: string,
+  ): Promise<StoredAgentSandboxBackup | undefined> {
     return getStoredBackupById(backupId);
   }
 
@@ -1382,7 +1496,11 @@ export class AgentSandboxesRepository {
    */
   async stampBackupVerification(
     backupId: string,
-    outcome: { status: "verified" | "failed"; verifiedAt: Date; error: string | null },
+    outcome: {
+      status: "verified" | "failed";
+      verifiedAt: Date;
+      error: string | null;
+    },
   ): Promise<void> {
     await dbWrite
       .update(agentSandboxBackups)
@@ -1433,7 +1551,9 @@ export class AgentSandboxesRepository {
    * need state to restore (provision auto-restore, `restore()`) MUST go through
    * here so incrementals are transparently materialized.
    */
-  async getReconstructedBackupState(backupId: string): Promise<AgentBackupStateData | undefined> {
+  async getReconstructedBackupState(
+    backupId: string,
+  ): Promise<AgentBackupStateData | undefined> {
     const targetStored = await getStoredBackupById(backupId);
     if (!targetStored) return undefined;
     const chain: AgentSandboxBackup[] = [];
@@ -1441,13 +1561,17 @@ export class AgentSandboxesRepository {
     let chainBytes = 0;
     let cursor: StoredAgentSandboxBackup | undefined = targetStored;
     while (cursor) {
-      if (seen.has(cursor.id)) throw new Error(`Backup chain cycle at ${cursor.id}`);
+      if (seen.has(cursor.id))
+        throw new Error(`Backup chain cycle at ${cursor.id}`);
       seen.add(cursor.id);
       if (cursor.sandbox_record_id !== targetStored.sandbox_record_id) {
-        throw new Error(`Backup chain row ${cursor.id} crosses sandbox boundary`);
+        throw new Error(
+          `Backup chain row ${cursor.id} crosses sandbox boundary`,
+        );
       }
       chainBytes +=
-        cursor.size_bytes ?? Buffer.byteLength(JSON.stringify(cursor.state_data), "utf8");
+        cursor.size_bytes ??
+        Buffer.byteLength(JSON.stringify(cursor.state_data), "utf8");
       if (chainBytes > MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES) {
         throw new Error(
           `Backup chain for ${backupId} exceeds ${MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES} bytes`,
@@ -1465,7 +1589,10 @@ export class AgentSandboxesRepository {
       }
       const parentBackupId = cursor.parent_backup_id;
       cursor = await getStoredBackupById(parentBackupId);
-      if (!cursor) throw new Error(`Backup chain references missing backup ${parentBackupId}`);
+      if (!cursor)
+        throw new Error(
+          `Backup chain references missing backup ${parentBackupId}`,
+        );
     }
     chain.reverse();
     let state: AgentBackupStateData | undefined;
@@ -1473,8 +1600,12 @@ export class AgentSandboxesRepository {
       if (row.backup_kind === "full") {
         state = requireBackupStateData(row.state_data, row.id);
       } else {
-        if (!state) throw new Error(`Incremental ${row.id} reached before a full backup`);
-        state = applyBackupDelta(state, requireBackupDelta(row.state_data, row.id));
+        if (!state)
+          throw new Error(`Incremental ${row.id} reached before a full backup`);
+        state = applyBackupDelta(
+          state,
+          requireBackupDelta(row.state_data, row.id),
+        );
       }
     }
     return state;

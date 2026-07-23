@@ -45,7 +45,10 @@ import {
   incrementalChainDepth,
   planIncrementalBackup,
 } from "./agent-backup-diff";
-import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
+import {
+  decryptAgentEnvVars,
+  encryptAgentEnvVarsForStorage,
+} from "./agent-env-crypto";
 import {
   type AIUsage,
   type BillingContext,
@@ -57,7 +60,10 @@ import {
 } from "./ai-billing";
 import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
-import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
+import {
+  imageRequiresDigestPin,
+  isCodingContainerImageAllowed,
+} from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
@@ -84,6 +90,7 @@ import {
   type SandboxProvider,
 } from "./sandbox-provider";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
+import { getCachedSharedAgentRunningSandbox } from "./shared-runtime/resolve-shared-agent";
 import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
@@ -191,7 +198,9 @@ export class AgentQuotaExceededError extends Error {
  * and column defaults cannot drift between paths. `environmentVars` is expected
  * storage-ready (already passed through `encryptAgentEnvVarsForStorage`).
  */
-export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAgentSandbox {
+export function buildAgentSandboxInsertValues(
+  params: CreateAgentParams,
+): NewAgentSandbox {
   const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
   const agentConfig = params.characterId
     ? withReusedElizaCharacterOwnership(sanitizedConfig)
@@ -281,7 +290,12 @@ export function assertAgentImageAllowed(dockerImage: string | undefined): void {
     });
     throw new AgentImageNotAllowedError(dockerImage, "not_allowlisted");
   }
-  if (imageRequiresDigestPin(dockerImage, containersEnv.requireDigestPinnedImages())) {
+  if (
+    imageRequiresDigestPin(
+      dockerImage,
+      containersEnv.requireDigestPinnedImages(),
+    )
+  ) {
     logger.warn("[agent-sandbox] docker image rejected: digest pin required", {
       image: dockerImage,
     });
@@ -298,7 +312,9 @@ function resolveManagedProvisionDockerImage(
   // reprovision they must follow the operator's current image so recovery does
   // not replay an old broken sha tag forever.
   if (!storedImage) return configuredImage;
-  return imageRepo(storedImage) === imageRepo(configuredImage) ? configuredImage : storedImage;
+  return imageRepo(storedImage) === imageRepo(configuredImage)
+    ? configuredImage
+    : storedImage;
 }
 
 /**
@@ -344,8 +360,7 @@ export type ProvisionResult =
  * default latest-backup auto-restore.
  */
 export type ProvisionRestoreOverride =
-  | { kind: "from-backup"; backupId: string }
-  | { kind: "fresh-boot" };
+  { kind: "from-backup"; backupId: string } | { kind: "fresh-boot" };
 
 export type DeleteAgentResult =
   | { success: true; deletedSandbox: AgentSandbox }
@@ -358,9 +373,7 @@ export type DeleteAgentResult =
  * hard cap and was abandoned (see `runBoundedSandboxStop`).
  */
 export type BoundedSandboxStopResult =
-  | null
-  | { error: unknown }
-  | { error: unknown; timedOut: true };
+  null | { error: unknown } | { error: unknown; timedOut: true };
 
 export interface BridgeRequest {
   jsonrpc: "2.0";
@@ -375,7 +388,9 @@ export interface BridgeRequest {
  * Routes pass `c.executionCtx`; non-Worker callers (tests, Node) omit it and
  * the tail runs inline, preserving fully-synchronous settlement.
  */
-export type BridgeExecutionContext = { waitUntil(promise: Promise<unknown>): void };
+export type BridgeExecutionContext = {
+  waitUntil(promise: Promise<unknown>): void;
+};
 
 /**
  * JSON-RPC error code for a shared-runtime turn rejected by the credit
@@ -429,7 +444,8 @@ export interface SnapshotResult {
  * against such an agent is a no-op, not a failure, so the snapshot job treats
  * this exactly like "Sandbox is not running": skip without burning retries.
  */
-export const SNAPSHOT_ENDPOINT_UNSUPPORTED = "Snapshot endpoint not supported by agent image";
+export const SNAPSHOT_ENDPOINT_UNSUPPORTED =
+  "Snapshot endpoint not supported by agent image";
 
 const MAX_BACKUPS = 10;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
@@ -475,7 +491,12 @@ type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 /** Columns the tailnet-IP reconcile path reads to locate and repair an agent. */
 type ReconcilableSandbox = Pick<
   AgentSandbox,
-  "id" | "node_id" | "container_name" | "environment_vars" | "bridge_url" | "headscale_ip"
+  | "id"
+  | "node_id"
+  | "container_name"
+  | "environment_vars"
+  | "bridge_url"
+  | "headscale_ip"
 >;
 
 /** Outcome of a stale-tailnet-IP reconcile attempt (see reconcileStaleTailnetIp). */
@@ -489,11 +510,14 @@ function digestPinnedImageRef(imageRef: string, digest: string): string {
   if (imageRef.includes("@sha256:")) return imageRef;
   const lastColon = imageRef.lastIndexOf(":");
   const lastSlash = imageRef.lastIndexOf("/");
-  const withoutTag = lastColon > lastSlash ? imageRef.slice(0, lastColon) : imageRef;
+  const withoutTag =
+    lastColon > lastSlash ? imageRef.slice(0, lastColon) : imageRef;
   return `${withoutTag}@${digest}`;
 }
 
-function isDockerSandboxMetadata(value: unknown): value is DockerSandboxMetadata {
+function isDockerSandboxMetadata(
+  value: unknown,
+): value is DockerSandboxMetadata {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -560,17 +584,21 @@ type AgentNetworkTarget = Pick<
   | "sandbox_id"
 >;
 
-type AgentApiTarget = AgentNetworkTarget & Pick<AgentSandbox, "environment_vars">;
+type AgentApiTarget = AgentNetworkTarget &
+  Pick<AgentSandbox, "environment_vars">;
 
 type AgentFetchTarget = {
   url: string;
   forwardedHost?: string;
 };
 
-const AGENT_ID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const AGENT_ID_RE =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 class AgentRouterConfigurationError extends Error {
-  constructor(variable: "AGENT_ROUTER_ORIGIN_HOST" | "ELIZA_CLOUD_AGENT_BASE_DOMAIN") {
+  constructor(
+    variable: "AGENT_ROUTER_ORIGIN_HOST" | "ELIZA_CLOUD_AGENT_BASE_DOMAIN",
+  ) {
     super(`Worker agent routing requires a valid ${variable}`);
     this.name = "AgentRouterConfigurationError";
   }
@@ -608,7 +636,8 @@ export function computeManagedAgentDbEnv(
   dbUri: string,
 ): Record<string, string> {
   const callerSuppliedDatabaseUrl =
-    typeof callerEnv.DATABASE_URL === "string" && callerEnv.DATABASE_URL.trim().length > 0;
+    typeof callerEnv.DATABASE_URL === "string" &&
+    callerEnv.DATABASE_URL.trim().length > 0;
   const wantsLocalState = callerEnv.ELIZA_AGENT_LOCAL_STATE === "1";
   return callerSuppliedDatabaseUrl || wantsLocalState
     ? { ELIZA_MANAGED_DATABASE_URL: dbUri }
@@ -674,9 +703,12 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
  */
 export function isUnrecoverableSnapshotError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
+  if (error.name === "AeadError" || error.name === "KeyNotFoundError")
+    return true;
   const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
-  return match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
+  return (
+    match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]))
+  );
 }
 
 /**
@@ -698,9 +730,13 @@ export function isUnrecoverableSnapshotError(error: unknown): boolean {
  */
 export function isPermanentlyLostSnapshot(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
+  if (error.name === "AeadError" || error.name === "KeyNotFoundError")
+    return true;
   const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
-  return match !== null && PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
+  return (
+    match !== null &&
+    PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]))
+  );
 }
 
 export class ElizaSandboxService {
@@ -724,7 +760,9 @@ export class ElizaSandboxService {
     return this._providerPromise;
   }
 
-  private getAgentApiToken(rec: Pick<AgentSandbox, "id" | "environment_vars">): string | undefined {
+  private getAgentApiToken(
+    rec: Pick<AgentSandbox, "id" | "environment_vars">,
+  ): string | undefined {
     const envVars = rec.environment_vars as Record<string, string> | null;
     const apiToken =
       envVars?.ELIZA_API_TOKEN?.trim() ||
@@ -739,7 +777,9 @@ export class ElizaSandboxService {
     return apiToken;
   }
 
-  private getAgentJsonHeaders(rec: Pick<AgentSandbox, "id" | "environment_vars">) {
+  private getAgentJsonHeaders(
+    rec: Pick<AgentSandbox, "id" | "environment_vars">,
+  ) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -753,9 +793,12 @@ export class ElizaSandboxService {
   }
 
   private getRuntimeAgentsFromBody(body: unknown): RuntimeAgentSummary[] {
-    const root = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const root =
+      body && typeof body === "object" ? (body as Record<string, unknown>) : {};
     const data =
-      root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+      root.data && typeof root.data === "object"
+        ? (root.data as Record<string, unknown>)
+        : {};
     const rawAgents = Array.isArray(root.agents)
       ? root.agents
       : Array.isArray(data.agents)
@@ -777,7 +820,9 @@ export class ElizaSandboxService {
           status: typeof agent.status === "string" ? agent.status : undefined,
         };
       })
-      .filter((agent): agent is RuntimeAgentSummary => Boolean(agent?.id || agent?.name));
+      .filter((agent): agent is RuntimeAgentSummary =>
+        Boolean(agent?.id || agent?.name),
+      );
   }
 
   private isRuntimeAgentReady(agent: RuntimeAgentSummary | undefined): boolean {
@@ -786,7 +831,9 @@ export class ElizaSandboxService {
     return status === "active" || status === "running" || status === "ready";
   }
 
-  private selectRuntimeAgent(agents: RuntimeAgentSummary[]): RuntimeAgentSummary | undefined {
+  private selectRuntimeAgent(
+    agents: RuntimeAgentSummary[],
+  ): RuntimeAgentSummary | undefined {
     return agents.find((agent) => this.isRuntimeAgentReady(agent)) ?? agents[0];
   }
 
@@ -816,16 +863,26 @@ export class ElizaSandboxService {
     }
     return {
       supported: true,
-      agents: this.getRuntimeAgentsFromBody(await agentsRes.json().catch(() => ({}))),
+      agents: this.getRuntimeAgentsFromBody(
+        await agentsRes.json().catch(() => ({})),
+      ),
     };
   }
 
   private buildRuntimeBootstrapAgent(
-    rec: Pick<AgentSandbox, "id" | "agent_name" | "agent_config" | "environment_vars">,
+    rec: Pick<
+      AgentSandbox,
+      "id" | "agent_name" | "agent_config" | "environment_vars"
+    >,
   ) {
     const rawConfig =
-      rec.agent_config && typeof rec.agent_config === "object" && !Array.isArray(rec.agent_config)
-        ? ({ ...(rec.agent_config as Record<string, unknown>) } as Record<string, unknown>)
+      rec.agent_config &&
+      typeof rec.agent_config === "object" &&
+      !Array.isArray(rec.agent_config)
+        ? ({ ...(rec.agent_config as Record<string, unknown>) } as Record<
+            string,
+            unknown
+          >)
         : {};
     const rawName =
       typeof rawConfig.name === "string" && rawConfig.name.trim()
@@ -839,19 +896,28 @@ export class ElizaSandboxService {
       rawConfig.settings &&
       typeof rawConfig.settings === "object" &&
       !Array.isArray(rawConfig.settings)
-        ? ({ ...(rawConfig.settings as Record<string, unknown>) } as Record<string, unknown>)
+        ? ({ ...(rawConfig.settings as Record<string, unknown>) } as Record<
+            string,
+            unknown
+          >)
         : {};
     const rawSecrets =
       rawSettings.secrets &&
       typeof rawSettings.secrets === "object" &&
       !Array.isArray(rawSettings.secrets)
-        ? ({ ...(rawSettings.secrets as Record<string, unknown>) } as Record<string, unknown>)
+        ? ({ ...(rawSettings.secrets as Record<string, unknown>) } as Record<
+            string,
+            unknown
+          >)
         : {};
     const environmentVars =
       rec.environment_vars && typeof rec.environment_vars === "object"
         ? (rec.environment_vars as Record<string, string>)
         : {};
-    const secrets = mergeRuntimeAgentSecretsFromEnv({ rawSecrets, environmentVars });
+    const secrets = mergeRuntimeAgentSecretsFromEnv({
+      rawSecrets,
+      environmentVars,
+    });
     const settings = {
       ...rawSettings,
       secrets,
@@ -881,13 +947,17 @@ export class ElizaSandboxService {
           ? rawConfig.bio
           : [`${rawName} is a helpful Eliza Cloud agent.`],
       topics:
-        Array.isArray(rawConfig.topics) && rawConfig.topics.length > 0 ? rawConfig.topics : [],
+        Array.isArray(rawConfig.topics) && rawConfig.topics.length > 0
+          ? rawConfig.topics
+          : [],
       adjectives:
         Array.isArray(rawConfig.adjectives) && rawConfig.adjectives.length > 0
           ? rawConfig.adjectives
           : [],
       style:
-        rawConfig.style && typeof rawConfig.style === "object" && !Array.isArray(rawConfig.style)
+        rawConfig.style &&
+        typeof rawConfig.style === "object" &&
+        !Array.isArray(rawConfig.style)
           ? rawConfig.style
           : undefined,
       plugins,
@@ -965,7 +1035,10 @@ export class ElizaSandboxService {
     const createRes = await this.fetchAgentApi(rec, "/api/agents", {
       method: "POST",
       body: JSON.stringify({
-        agent: this.buildRuntimeBootstrapAgent({ ...rec, environment_vars: pooledEnv }),
+        agent: this.buildRuntimeBootstrapAgent({
+          ...rec,
+          environment_vars: pooledEnv,
+        }),
       }),
       signal: AbortSignal.timeout(60_000),
     });
@@ -973,9 +1046,14 @@ export class ElizaSandboxService {
       throw new Error(`Runtime agent create returned HTTP ${createRes.status}`);
     }
 
-    const body = (await createRes.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await createRes.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const data =
-      body.data && typeof body.data === "object" ? (body.data as Record<string, unknown>) : {};
+      body.data && typeof body.data === "object"
+        ? (body.data as Record<string, unknown>)
+        : {};
     const runtimeAgentId = typeof data.id === "string" ? data.id : undefined;
     if (!runtimeAgentId) {
       throw new Error("Runtime agent create response was missing data.id");
@@ -1012,7 +1090,8 @@ export class ElizaSandboxService {
 
     const afterStart = await this.listRuntimeAgents(rec);
     const started =
-      afterStart.agents.find((agent) => agent.id === runtimeAgentId) ?? afterStart.agents[0];
+      afterStart.agents.find((agent) => agent.id === runtimeAgentId) ??
+      afterStart.agents[0];
     if (!this.isRuntimeAgentReady(started)) {
       throw new Error("Runtime agent did not become active after start");
     }
@@ -1020,7 +1099,11 @@ export class ElizaSandboxService {
   }
 
   private stableBridgeUuid(raw: string): string {
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        raw,
+      )
+    ) {
       return raw;
     }
     const hash = crypto.createHash("sha256").update(raw).digest("hex");
@@ -1040,7 +1123,10 @@ export class ElizaSandboxService {
     return this.stableBridgeUuid(raw);
   }
 
-  private stableBridgeChannelId(agentId: string, params: Record<string, unknown>): string {
+  private stableBridgeChannelId(
+    agentId: string,
+    params: Record<string, unknown>,
+  ): string {
     const raw =
       typeof params.roomId === "string" && params.roomId.trim()
         ? params.roomId.trim()
@@ -1071,7 +1157,10 @@ export class ElizaSandboxService {
 
     // Caller-supplied env can carry BYO secrets — encrypt them before the row
     // is inserted (#11332), mirroring updateAgentEnvironment.
-    if (params.environmentVars && Object.keys(params.environmentVars).length > 0) {
+    if (
+      params.environmentVars &&
+      Object.keys(params.environmentVars).length > 0
+    ) {
       params = {
         ...params,
         environmentVars: await encryptAgentEnvVarsForStorage(
@@ -1098,7 +1187,9 @@ export class ElizaSandboxService {
       // uses and refuse past the cap.
       const cap = params.maxNonTerminalAgents;
       return dbWrite.transaction(async (tx) => {
-        await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+        await tx.execute(
+          elizaAgentCreateAdvisoryLockSql(params.organizationId),
+        );
         await assertOrgAgentQuota(tx, params.organizationId, cap);
 
         const [created] = await tx
@@ -1143,7 +1234,11 @@ export class ElizaSandboxService {
       // (#11023 residual). Enforce the same per-org ceiling, still under the
       // org advisory lock.
       if (params.maxNonTerminalAgents !== undefined) {
-        await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
+        await assertOrgAgentQuota(
+          tx,
+          params.organizationId,
+          params.maxNonTerminalAgents,
+        );
       }
 
       const [created] = await tx
@@ -1155,7 +1250,9 @@ export class ElizaSandboxService {
     });
   }
 
-  async createCodingContainerAgent(params: CreateAgentParams & { dockerImage: string }): Promise<{
+  async createCodingContainerAgent(
+    params: CreateAgentParams & { dockerImage: string },
+  ): Promise<{
     agent: AgentSandbox;
     idempotent: boolean;
   }> {
@@ -1165,7 +1262,10 @@ export class ElizaSandboxService {
       // Coding-container env carries caller secrets (tokens, provider keys) —
       // encrypt them before the row is inserted (#11332).
       environmentVars: params.environmentVars
-        ? await encryptAgentEnvVarsForStorage(params.organizationId, params.environmentVars)
+        ? await encryptAgentEnvVarsForStorage(
+            params.organizationId,
+            params.environmentVars,
+          )
         : params.environmentVars,
     };
 
@@ -1182,7 +1282,9 @@ export class ElizaSandboxService {
       // quota count below would not be atomic without the org lock. Taking the
       // org lock first everywhere gives a strict org→image lock order, so this
       // path and createAgent (org lock only) can never deadlock. (#11023)
-      await tx.execute(elizaAgentCreateAdvisoryLockSql(createParams.organizationId));
+      await tx.execute(
+        elizaAgentCreateAdvisoryLockSql(createParams.organizationId),
+      );
       await tx.execute(
         elizaCodingContainerImageAdvisoryLockSql(
           createParams.organizationId,
@@ -1228,7 +1330,8 @@ export class ElizaSandboxService {
         .insert(agentSandboxes)
         .values(buildAgentSandboxInsertValues(createParams))
         .returning();
-      if (!created) throw new Error("Failed to create coding-container agent record");
+      if (!created)
+        throw new Error("Failed to create coding-container agent record");
       return { agent: created, idempotent: false };
     });
   }
@@ -1252,7 +1355,10 @@ export class ElizaSandboxService {
     // the materialization paths (provision / fleet upgrade / runtime
     // bootstrap) decrypt, so the running agent still sees real values.
     return agentSandboxesRepository.update(rec.id, {
-      environment_vars: await encryptAgentEnvVarsForStorage(orgId, environmentVars),
+      environment_vars: await encryptAgentEnvVarsForStorage(
+        orgId,
+        environmentVars,
+      ),
     });
   }
 
@@ -1268,14 +1374,22 @@ export class ElizaSandboxService {
     orgId: string,
     input: { agentName?: string; agentConfig?: Record<string, unknown> },
   ): Promise<AgentSandbox | undefined> {
-    const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
+    const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(
+      agentId,
+      orgId,
+    );
     if (!rec) return undefined;
 
-    const updates: { agent_name?: string; agent_config?: Record<string, unknown> } = {};
+    const updates: {
+      agent_name?: string;
+      agent_config?: Record<string, unknown>;
+    } = {};
     if (input.agentName !== undefined) updates.agent_name = input.agentName;
     if (input.agentConfig !== undefined) {
       const existing =
-        rec.agent_config && typeof rec.agent_config === "object" && !Array.isArray(rec.agent_config)
+        rec.agent_config &&
+        typeof rec.agent_config === "object" &&
+        !Array.isArray(rec.agent_config)
           ? (rec.agent_config as Record<string, unknown>)
           : {};
       updates.agent_config = { ...existing, ...input.agentConfig };
@@ -1293,7 +1407,10 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.listByOrganization(orgId);
   }
 
-  async deleteAgent(agentId: string, orgId: string): Promise<DeleteAgentResult> {
+  async deleteAgent(
+    agentId: string,
+    orgId: string,
+  ): Promise<DeleteAgentResult> {
     // Phase 1 — short transaction: take the lifecycle lock, validate
     // preconditions, and capture the fields needed for teardown. We deliberately
     // do NOT run the container teardown inside this transaction: provider.stop()
@@ -1328,7 +1445,8 @@ export class ElizaSandboxService {
       const stop = await this.runBoundedSandboxStop(sandboxId);
 
       if (stop) {
-        const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
+        const errorMessage =
+          stop.error instanceof Error ? stop.error.message : String(stop.error);
         if ("timedOut" in stop) {
           // HONEST LIMITATION: there is currently NO automatic reclaimer — no
           // orphan-sweep / node-reconcile job that lists actual containers on a
@@ -1345,11 +1463,14 @@ export class ElizaSandboxService {
             { sandboxId, status: precheck.status, error: errorMessage },
           );
         } else if (this.isIgnorableSandboxStopError(stop.error)) {
-          logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
-            sandboxId,
-            status: precheck.status,
-            error: errorMessage,
-          });
+          logger.info(
+            "[agent-sandbox] Sandbox already absent during delete cleanup",
+            {
+              sandboxId,
+              status: precheck.status,
+              error: errorMessage,
+            },
+          );
         } else {
           logger.warn("[agent-sandbox] Stop failed during delete", {
             sandboxId,
@@ -1384,18 +1505,25 @@ export class ElizaSandboxService {
       // orphaned forever after the agent is gone. A failure here leaves stale
       // rows but never un-deletes the (already gone) sandbox.
       try {
-        const removed = await sharedRuntimeHistoryRepository.deleteByAgent(agentId);
+        const removed =
+          await sharedRuntimeHistoryRepository.deleteByAgent(agentId);
         if (removed > 0) {
-          logger.info("[agent-sandbox] Cleaned up shared-runtime history after delete", {
-            agentId,
-            channelsRemoved: removed,
-          });
+          logger.info(
+            "[agent-sandbox] Cleaned up shared-runtime history after delete",
+            {
+              agentId,
+              channelsRemoved: removed,
+            },
+          );
         }
       } catch (err) {
-        logger.warn("[agent-sandbox] Failed to clean up shared-runtime history", {
-          agentId,
-          error: err instanceof Error ? err.message : String(err),
-        });
+        logger.warn(
+          "[agent-sandbox] Failed to clean up shared-runtime history",
+          {
+            agentId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        );
       }
     }
 
@@ -1422,12 +1550,23 @@ export class ElizaSandboxService {
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { ok: false as const, error: "Agent not found" };
 
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(
+        tx,
+        agentId,
+        orgId,
+      );
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
-        return { ok: false as const, error: "Agent provisioning is in progress" };
+        return {
+          ok: false as const,
+          error: "Agent provisioning is in progress",
+        };
       }
 
-      return { ok: true as const, sandboxId: rec.sandbox_id, status: rec.status };
+      return {
+        ok: true as const,
+        sandboxId: rec.sandbox_id,
+        status: rec.status,
+      };
     });
   }
 
@@ -1436,14 +1575,21 @@ export class ElizaSandboxService {
    * the lifecycle lock, re-validates (a concurrent provision could have started
    * while the out-of-transaction teardown ran), then deletes the sandbox row.
    */
-  private async commitAgentRowDelete(agentId: string, orgId: string): Promise<DeleteAgentResult> {
+  private async commitAgentRowDelete(
+    agentId: string,
+    orgId: string,
+  ): Promise<DeleteAgentResult> {
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
 
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as const;
 
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(
+        tx,
+        agentId,
+        orgId,
+      );
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
         return {
           success: false,
@@ -1472,7 +1618,9 @@ export class ElizaSandboxService {
    * or `{ error, timedOut: true }` when the teardown hit the hard cap (in which
    * case the container is abandoned and leaks — there is no reclaimer).
    */
-  private async runBoundedSandboxStop(sandboxId: string): Promise<BoundedSandboxStopResult> {
+  private async runBoundedSandboxStop(
+    sandboxId: string,
+  ): Promise<BoundedSandboxStopResult> {
     return withTimeout(
       (async (): Promise<null | { error: unknown }> => {
         try {
@@ -1532,19 +1680,28 @@ export class ElizaSandboxService {
     // HTTP request context. Best-effort: a failure here leaves an orphan
     // row but does not un-delete the (already gone) sandbox.
     const characterId = result.deletedSandbox.character_id;
-    if (characterId && !reusesExistingElizaCharacter(result.deletedSandbox.agent_config)) {
+    if (
+      characterId &&
+      !reusesExistingElizaCharacter(result.deletedSandbox.agent_config)
+    ) {
       try {
         await userCharactersRepository.delete(characterId);
-        logger.info("[agent-sandbox] Cleaned up linked character after delete", {
-          agentId,
-          characterId,
-        });
+        logger.info(
+          "[agent-sandbox] Cleaned up linked character after delete",
+          {
+            agentId,
+            characterId,
+          },
+        );
       } catch (charErr) {
-        logger.warn("[agent-sandbox] Linked character cleanup failed after delete", {
-          agentId,
-          characterId,
-          error: charErr instanceof Error ? charErr.message : String(charErr),
-        });
+        logger.warn(
+          "[agent-sandbox] Linked character cleanup failed after delete",
+          {
+            agentId,
+            characterId,
+            error: charErr instanceof Error ? charErr.message : String(charErr),
+          },
+        );
       }
     }
 
@@ -1576,7 +1733,8 @@ export class ElizaSandboxService {
     restoreOverride?: ProvisionRestoreOverride,
   ): Promise<ProvisionResult> {
     let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+    if (!rec)
+      return { success: false, error: "Agent not found" } as ProvisionResult;
 
     const previousStatus = rec.status;
     const lock = await agentSandboxesRepository.trySetProvisioning(rec.id);
@@ -1610,7 +1768,10 @@ export class ElizaSandboxService {
       }
       dbUri = db.connectionUri!;
       // DB assignment updates the row but doesn't return the full record; re-fetch to avoid stale data
-      const refreshed = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      const refreshed = await agentSandboxesRepository.findByIdAndOrg(
+        agentId,
+        orgId,
+      );
       if (refreshed) {
         rec = refreshed;
       }
@@ -1622,7 +1783,9 @@ export class ElizaSandboxService {
       userId: rec.user_id,
       sandboxId: agentId,
     });
-    const containerLaunch = resolveSandboxContainerLaunchConfig(rec.agent_config);
+    const containerLaunch = resolveSandboxContainerLaunchConfig(
+      rec.agent_config,
+    );
 
     if (managedEnvironment.changed) {
       const updatedEnvRecord = await agentSandboxesRepository.update(rec.id, {
@@ -1645,7 +1808,9 @@ export class ElizaSandboxService {
     // Solution: Retry loop catches unique constraint errors, cleans up ghost container, and retries.
     const MAX_PROVISION_ATTEMPTS = 3;
     let lastError: string = "Unknown error";
-    const provisionDockerImage = resolveManagedProvisionDockerImage(rec.docker_image);
+    const provisionDockerImage = resolveManagedProvisionDockerImage(
+      rec.docker_image,
+    );
 
     // Materialize the stored env for the container: BYO secrets are encrypted
     // at rest (#11332); compatibility plaintext values pass through unchanged. A
@@ -1658,7 +1823,8 @@ export class ElizaSandboxService {
         (rec.environment_vars as Record<string, string>) ?? {},
       );
     } catch (envError) {
-      const message = envError instanceof Error ? envError.message : String(envError);
+      const message =
+        envError instanceof Error ? envError.message : String(envError);
       await this.markError(rec, `Environment decryption failed: ${message}`);
       return {
         success: false,
@@ -1677,10 +1843,13 @@ export class ElizaSandboxService {
             : null;
         if (retryHandle) {
           handle = retryHandle;
-          logger.info("[agent-sandbox] Re-probing persisted provisioning container before create", {
-            agentId: rec.id,
-            sandboxId: handle.sandboxId,
-          });
+          logger.info(
+            "[agent-sandbox] Re-probing persisted provisioning container before create",
+            {
+              agentId: rec.id,
+              sandboxId: handle.sandboxId,
+            },
+          );
         } else {
           // 2. Sandbox (via provider)
           const callerEnv = materializedEnv;
@@ -1693,7 +1862,9 @@ export class ElizaSandboxService {
           // the caller did NOT supply one do we inject the managed URL as
           // DATABASE_URL — the normal managed-agent path, byte-identical to before.
           const dbEnv = computeManagedAgentDbEnv(callerEnv, dbUri);
-          handle = await (await this.getProvider()).create({
+          handle = await (
+            await this.getProvider()
+          ).create({
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
@@ -1746,7 +1917,9 @@ export class ElizaSandboxService {
               verdict: "not_ready" as const,
             };
 
-        const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
+        const dockerMeta = isDockerSandboxMetadata(handle.metadata)
+          ? handle.metadata
+          : undefined;
 
         if (!health.ready) {
           if (health.verdict === "transport_unresolved") {
@@ -1762,7 +1935,11 @@ export class ElizaSandboxService {
             //       collision, and tearing down the very container we preserved.
             // Without this write the leave-and-reconcile path is defeated for
             // exactly the SSH-transport-blip case it exists for.
-            await this.persistContainerHandleForRetry(rec.id, handle, dockerMeta);
+            await this.persistContainerHandleForRetry(
+              rec.id,
+              handle,
+              dockerMeta,
+            );
             throw new SandboxTransportUnresolvedError(
               "Sandbox readiness probe could not reach the container (SSH transport unresolved); " +
                 "leaving the container in place for retry/reconciliation",
@@ -1835,7 +2012,9 @@ export class ElizaSandboxService {
         // failure still flips the row out of 'running' via the catch below
         // (ghost cleanup → retry or markError), so 'running' never sticks on a
         // failed provision.
-        const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
+        const updateData: Parameters<
+          typeof agentSandboxesRepository.update
+        >[1] = {
           status: "running",
           sandbox_id: handle.sandboxId,
           bridge_url: handle.bridgeUrl,
@@ -1846,11 +2025,16 @@ export class ElizaSandboxService {
 
         if (dockerMeta) {
           if (dockerMeta.nodeId) updateData.node_id = dockerMeta.nodeId;
-          if (dockerMeta.containerName) updateData.container_name = dockerMeta.containerName;
-          if (dockerMeta.bridgePort) updateData.bridge_port = dockerMeta.bridgePort;
-          if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
-          if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
-          if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
+          if (dockerMeta.containerName)
+            updateData.container_name = dockerMeta.containerName;
+          if (dockerMeta.bridgePort)
+            updateData.bridge_port = dockerMeta.bridgePort;
+          if (dockerMeta.webUiPort)
+            updateData.web_ui_port = dockerMeta.webUiPort;
+          if (dockerMeta.headscaleIp)
+            updateData.headscale_ip = dockerMeta.headscaleIp;
+          if (dockerMeta.dockerImage)
+            updateData.docker_image = dockerMeta.dockerImage;
           // Always overwrite the digest (including null) so a re-provision
           // onto a different image clears any stale value. The reconciler
           // treats null as "unknown, wait until probe succeeds before
@@ -1858,7 +2042,10 @@ export class ElizaSandboxService {
           updateData.image_digest = dockerMeta.imageDigest;
         }
 
-        const updated = await agentSandboxesRepository.update(rec.id, updateData);
+        const updated = await agentSandboxesRepository.update(
+          rec.id,
+          updateData,
+        );
 
         // Re-enter the billable set on every successful provision. A
         // credit-suspended agent (billing_status='suspended') that a user tops
@@ -1867,7 +2054,10 @@ export class ElizaSandboxService {
         // free dedicated compute forever. The service-key resume/restart routes
         // already reactivate; do it here so ALL provision paths re-enter billing.
         // Idempotent + exempt-guarded (ne billing_status 'exempt').
-        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
+        await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+          rec.id,
+          new Date(),
+        );
 
         // 5. Restore from backup (reconstructs incrementals back to a full).
         //
@@ -1887,9 +2077,13 @@ export class ElizaSandboxService {
         // markError. A transient DB/IO/network/5xx error is rethrown so the
         // provision fails and the resume job retries rather than silently
         // discarding recoverable state.
-        let backup: Awaited<ReturnType<typeof agentSandboxesRepository.getLatestBackup>>;
+        let backup: Awaited<
+          ReturnType<typeof agentSandboxesRepository.getLatestBackup>
+        >;
         let restoreState: Awaited<
-          ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>
+          ReturnType<
+            typeof agentSandboxesRepository.getReconstructedBackupState
+          >
         >;
         if (restoreOverride?.kind === "fresh-boot") {
           // Explicit opt-in (wake forceFreshBoot): the caller accepted the
@@ -1897,14 +2091,19 @@ export class ElizaSandboxService {
           // chain stays intact for a later explicit restore.
           backup = undefined;
           restoreState = undefined;
-          logger.warn("[agent-sandbox] Backup restore skipped: explicit fresh boot requested", {
-            agentId: rec.id,
-          });
+          logger.warn(
+            "[agent-sandbox] Backup restore skipped: explicit fresh boot requested",
+            {
+              agentId: rec.id,
+            },
+          );
         } else {
           try {
             backup =
               restoreOverride?.kind === "from-backup"
-                ? await agentSandboxesRepository.getBackupById(restoreOverride.backupId)
+                ? await agentSandboxesRepository.getBackupById(
+                    restoreOverride.backupId,
+                  )
                 : await agentSandboxesRepository.getLatestBackup(rec.id);
             if (restoreOverride?.kind === "from-backup") {
               // Cross-sandbox ids are rejected here as defense in depth; the
@@ -1916,7 +2115,9 @@ export class ElizaSandboxService {
               }
             }
             restoreState = backup
-              ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
+              ? await agentSandboxesRepository.getReconstructedBackupState(
+                  backup.id,
+                )
               : undefined;
           } catch (error) {
             // An explicitly-requested backup must NEVER silently degrade to a
@@ -1937,7 +2138,8 @@ export class ElizaSandboxService {
               authRec: rec,
             });
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
+            const message =
+              error instanceof Error ? error.message : String(error);
             if (
               rec.execution_tier === "custom" &&
               message.startsWith("State restore failed: HTTP 404")
@@ -1958,16 +2160,23 @@ export class ElizaSandboxService {
               // than degrading (#15603 B6).
               throw error;
             } else if (isUnrecoverableSnapshotError(error)) {
-              await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
+              await this.degradeUnrecoverableSnapshot(
+                rec.id,
+                backup?.id,
+                error,
+              );
             } else {
               throw error;
             }
           }
         } else if (backup) {
-          logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
-            agentId: rec.id,
-            backupId: backup.id,
-          });
+          logger.warn(
+            "[agent-sandbox] Backup restore skipped: reconstructed state was null",
+            {
+              agentId: rec.id,
+              backupId: backup.id,
+            },
+          );
         }
 
         logger.info("[agent-sandbox] Provisioned", {
@@ -2007,19 +2216,27 @@ export class ElizaSandboxService {
           };
         }
 
-        logger.warn("[agent-sandbox] Post-create failure, cleaning up container", {
-          agentId: rec.id,
-          sandboxId: handle.sandboxId,
-          attempt,
-          error: msg,
-        });
-
-        await (await this.getProvider()).stop(handle.sandboxId).catch((stopErr) => {
-          logger.error("[agent-sandbox] Ghost container cleanup failed", {
+        logger.warn(
+          "[agent-sandbox] Post-create failure, cleaning up container",
+          {
+            agentId: rec.id,
             sandboxId: handle.sandboxId,
-            error: stopErr instanceof Error ? stopErr.message : String(stopErr),
+            attempt,
+            error: msg,
+          },
+        );
+
+        await (
+          await this.getProvider()
+        )
+          .stop(handle.sandboxId)
+          .catch((stopErr) => {
+            logger.error("[agent-sandbox] Ghost container cleanup failed", {
+              sandboxId: handle.sandboxId,
+              error:
+                stopErr instanceof Error ? stopErr.message : String(stopErr),
+            });
           });
-        });
 
         // Check if it's a unique constraint error (port collision) -> retry
         const isUniqueConstraintError =
@@ -2054,7 +2271,14 @@ export class ElizaSandboxService {
 
   private async getSafeBridgeEndpoint(
     sandboxOrBridgeUrl:
-      | Pick<AgentSandbox, "bridge_url" | "node_id" | "bridge_port" | "headscale_ip" | "sandbox_id">
+      | Pick<
+          AgentSandbox,
+          | "bridge_url"
+          | "node_id"
+          | "bridge_port"
+          | "headscale_ip"
+          | "sandbox_id"
+        >
       | string,
     path: string,
     options?: { trusted?: boolean },
@@ -2064,14 +2288,22 @@ export class ElizaSandboxService {
         return new URL(path, sandboxOrBridgeUrl).toString();
       }
 
-      return (await assertSafeOutboundUrl(new URL(path, sandboxOrBridgeUrl).toString())).toString();
+      return (
+        await assertSafeOutboundUrl(
+          new URL(path, sandboxOrBridgeUrl).toString(),
+        )
+      ).toString();
     }
 
-    const dockerBridgeBaseUrl = await this.getTrustedDockerBridgeBaseUrl(sandboxOrBridgeUrl);
+    const dockerBridgeBaseUrl =
+      await this.getTrustedDockerBridgeBaseUrl(sandboxOrBridgeUrl);
     if (
       dockerBridgeBaseUrl &&
       sandboxOrBridgeUrl.bridge_url &&
-      this.matchesTrustedDockerBridge(sandboxOrBridgeUrl.bridge_url, dockerBridgeBaseUrl)
+      this.matchesTrustedDockerBridge(
+        sandboxOrBridgeUrl.bridge_url,
+        dockerBridgeBaseUrl,
+      )
     ) {
       return new URL(path, dockerBridgeBaseUrl).toString();
     }
@@ -2085,7 +2317,9 @@ export class ElizaSandboxService {
     }
 
     return (
-      await assertSafeOutboundUrl(new URL(path, sandboxOrBridgeUrl.bridge_url).toString())
+      await assertSafeOutboundUrl(
+        new URL(path, sandboxOrBridgeUrl.bridge_url).toString(),
+      )
     ).toString();
   }
 
@@ -2117,7 +2351,8 @@ export class ElizaSandboxService {
     options: { allowPort: boolean },
   ): string {
     const raw = value?.trim();
-    if (!raw || raw.startsWith("//")) throw new AgentRouterConfigurationError(variable);
+    if (!raw || raw.startsWith("//"))
+      throw new AgentRouterConfigurationError(variable);
 
     let parsed: URL;
     try {
@@ -2318,7 +2553,8 @@ export class ElizaSandboxService {
     }
 
     const host =
-      sandbox.headscale_ip || (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
+      sandbox.headscale_ip ||
+      (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
     if (!host) {
       return null;
     }
@@ -2334,7 +2570,8 @@ export class ElizaSandboxService {
     }
 
     const host =
-      sandbox.headscale_ip || (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
+      sandbox.headscale_ip ||
+      (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
     if (!host) {
       return null;
     }
@@ -2359,7 +2596,10 @@ export class ElizaSandboxService {
       return false;
     }
 
-    if (candidate.protocol !== "http:" || !this.isAgentPrivateBridgeHost(candidate.hostname)) {
+    if (
+      candidate.protocol !== "http:" ||
+      !this.isAgentPrivateBridgeHost(candidate.hostname)
+    ) {
       return false;
     }
 
@@ -2381,8 +2621,12 @@ export class ElizaSandboxService {
     );
   }
 
-  private isLegacyDockerSandboxId(sandboxId: string | null | undefined): boolean {
-    return typeof sandboxId === "string" && /^agent-[0-9a-f-]{36}$/i.test(sandboxId);
+  private isLegacyDockerSandboxId(
+    sandboxId: string | null | undefined,
+  ): boolean {
+    return (
+      typeof sandboxId === "string" && /^agent-[0-9a-f-]{36}$/i.test(sandboxId)
+    );
   }
 
   private isAgentPrivateBridgeHost(hostname: string): boolean {
@@ -2390,7 +2634,9 @@ export class ElizaSandboxService {
       return false;
     }
 
-    const [first, second] = hostname.split(".").map((part) => Number.parseInt(part, 10));
+    const [first, second] = hostname
+      .split(".")
+      .map((part) => Number.parseInt(part, 10));
     // CGNAT (100.64.0.0/10)
     if (first === 100 && second >= 64 && second <= 127) return true;
     // RFC1918: 10.0.0.0/8
@@ -2427,7 +2673,8 @@ export class ElizaSandboxService {
     if (typeof value === "string" && value.trim()) return [value.trim()];
     if (!Array.isArray(value)) return [];
     return value.filter(
-      (item): item is string => typeof item === "string" && item.trim().length > 0,
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
     );
   }
 
@@ -2482,7 +2729,11 @@ export class ElizaSandboxService {
     turn: RunSharedAgentTurnResult,
     estimatedInputTokens: number,
   ): AIUsage {
-    return this.sharedRuntimeBillingUsageForReply(turn.reply, turn.usage, estimatedInputTokens);
+    return this.sharedRuntimeBillingUsageForReply(
+      turn.reply,
+      turn.usage,
+      estimatedInputTokens,
+    );
   }
 
   private sharedRuntimeBillingUsageForReply(
@@ -2502,11 +2753,16 @@ export class ElizaSandboxService {
     };
   }
 
-  private async buildSharedRuntimeCharacter(rec: AgentSandbox): Promise<SharedAgentCharacter> {
+  private async buildSharedRuntimeCharacter(
+    rec: AgentSandbox,
+  ): Promise<SharedAgentCharacter> {
     const config = this.nestedBridgeRecord(rec.agent_config) ?? {};
     const configCharacter = this.nestedBridgeRecord(config.character) ?? config;
     const linkedCharacter = rec.character_id
-      ? await userCharactersRepository.findByIdInOrganization(rec.character_id, rec.organization_id)
+      ? await userCharactersRepository.findByIdInOrganization(
+          rec.character_id,
+          rec.organization_id,
+        )
       : undefined;
     const linkedSettings = this.nestedBridgeRecord(linkedCharacter?.settings);
 
@@ -2541,7 +2797,10 @@ export class ElizaSandboxService {
     };
   }
 
-  private async bridgeSharedStatus(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+  private async bridgeSharedStatus(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
     return {
       jsonrpc: "2.0",
       id: rpc.id,
@@ -2560,7 +2819,8 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     executionCtx?: BridgeExecutionContext,
   ): Promise<BridgeResponse> {
-    const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
+    const params =
+      rpc.params && typeof rpc.params === "object" ? rpc.params : {};
     const text = typeof params.text === "string" ? params.text : "";
     if (!text.trim()) {
       return {
@@ -2577,7 +2837,9 @@ export class ElizaSandboxService {
     ]);
     const billingModel = resolveSharedAgentTurnModel(character.model);
     const estimatedInputTokens = billingModel
-      ? estimateInputTokens(this.sharedRuntimeBillingPrompt(character, history, text))
+      ? estimateInputTokens(
+          this.sharedRuntimeBillingPrompt(character, history, text),
+        )
       : 0;
     const idempotencyKey = `shared-runtime:${rec.id}:${channelId}:${crypto.randomUUID()}`;
     const requestId = `shared-runtime-${crypto.randomUUID()}`;
@@ -2609,7 +2871,11 @@ export class ElizaSandboxService {
     };
     if (billingContext) {
       try {
-        reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+        reservation = await reserveCredits(
+          billingContext,
+          estimatedInputTokens,
+          500,
+        );
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return {
@@ -2669,11 +2935,15 @@ export class ElizaSandboxService {
                 this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
               );
               const settlement = await settleReservation(billing.totalCost);
-              const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-                type: "chat",
-                content: turn.reply,
-                prompt: text,
-              });
+              const usageRecord = await recordUsageAnalytics(
+                billingContext,
+                billing,
+                {
+                  type: "chat",
+                  content: turn.reply,
+                  prompt: text,
+                },
+              );
               if (usageRecord) {
                 await aiBillingRecordsService
                   .record({
@@ -2684,10 +2954,16 @@ export class ElizaSandboxService {
                     reconciliation: settlement,
                   })
                   .catch((error) => {
-                    logger.error("[shared-runtime] AI billing audit record failed", {
-                      error: error instanceof Error ? error.message : String(error),
-                      agentId: rec.id,
-                    });
+                    logger.error(
+                      "[shared-runtime] AI billing audit record failed",
+                      {
+                        error:
+                          error instanceof Error
+                            ? error.message
+                            : String(error),
+                        agentId: rec.id,
+                      },
+                    );
                   });
               }
             } catch (error) {
@@ -2700,7 +2976,10 @@ export class ElizaSandboxService {
                 logger.error(
                   "[shared-runtime] deferred billing refund failed; sweep-credit-reservations will reclaim the hold",
                   {
-                    error: refundError instanceof Error ? refundError.message : String(refundError),
+                    error:
+                      refundError instanceof Error
+                        ? refundError.message
+                        : String(refundError),
                     agentId: rec.id,
                   },
                 );
@@ -2728,7 +3007,9 @@ export class ElizaSandboxService {
           // A deterministic navigation turn carries a VIEWS handoff so callers
           // that surface `actionResults` (the PWA) open the view. Omitted for
           // normal chat turns, so their result shape is unchanged.
-          ...(turn.navIntent ? { actionResults: [navIntentActionResult(turn.navIntent)] } : {}),
+          ...(turn.navIntent
+            ? { actionResults: [navIntentActionResult(turn.navIntent)] }
+            : {}),
         },
       };
     } catch (settleError) {
@@ -2743,10 +3024,13 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     executionCtx?: BridgeExecutionContext,
   ): Promise<Response> {
-    const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
+    const params =
+      rpc.params && typeof rpc.params === "object" ? rpc.params : {};
     const text = typeof params.text === "string" ? params.text : "";
     if (!text.trim()) {
-      return this.createBridgeSseErrorResponse("message.send requires params.text");
+      return this.createBridgeSseErrorResponse(
+        "message.send requires params.text",
+      );
     }
 
     const channelId = this.stableBridgeChannelId(rec.id, params);
@@ -2756,7 +3040,9 @@ export class ElizaSandboxService {
     ]);
     const billingModel = resolveSharedAgentTurnModel(character.model);
     const estimatedInputTokens = billingModel
-      ? estimateInputTokens(this.sharedRuntimeBillingPrompt(character, history, text))
+      ? estimateInputTokens(
+          this.sharedRuntimeBillingPrompt(character, history, text),
+        )
       : 0;
     const idempotencyKey = `shared-runtime:${rec.id}:${channelId}:${crypto.randomUUID()}`;
     const requestId = `shared-runtime-${crypto.randomUUID()}`;
@@ -2788,7 +3074,11 @@ export class ElizaSandboxService {
     };
     if (billingContext) {
       try {
-        reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+        reservation = await reserveCredits(
+          billingContext,
+          estimatedInputTokens,
+          500,
+        );
       } catch (error) {
         // error-policy:J1 boundary translation — no SSE bytes exist before credit
         // reservation, so the HTTP route can still return the canonical 402.
@@ -2814,7 +3104,9 @@ export class ElizaSandboxService {
       const parts = turn.parts;
       if (!parts) {
         await settleReservation(0);
-        return this.createBridgeSseErrorResponse("Shared runtime stream did not start");
+        return this.createBridgeSseErrorResponse(
+          "Shared runtime stream did not start",
+        );
       }
 
       const messageId = crypto.randomUUID();
@@ -2855,9 +3147,17 @@ export class ElizaSandboxService {
               const nextHistory: SharedTurnMessage[] = [
                 ...history,
                 { role: "user", content: text.trim(), createdAt: sentAt },
-                { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
+                {
+                  role: "assistant",
+                  content: finalReply,
+                  createdAt: sentAt + 1,
+                },
               ];
-              await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
+              await this.saveSharedRuntimeHistory(
+                rec.id,
+                channelId,
+                nextHistory,
+              );
               // A deterministic navigation turn ran NO model, so it must not be
               // billed — just refund the upfront hold. Only real LLM turns meter.
               if (turn.navIntent) {
@@ -2889,12 +3189,18 @@ export class ElizaSandboxService {
                         estimatedInputTokens,
                       ),
                     );
-                    const settlement = await settleReservation(billing.totalCost);
-                    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-                      type: "chat",
-                      content: finalReply,
-                      prompt: text,
-                    });
+                    const settlement = await settleReservation(
+                      billing.totalCost,
+                    );
+                    const usageRecord = await recordUsageAnalytics(
+                      billingContext,
+                      billing,
+                      {
+                        type: "chat",
+                        content: finalReply,
+                        prompt: text,
+                      },
+                    );
                     if (usageRecord) {
                       await aiBillingRecordsService
                         .record({
@@ -2905,10 +3211,16 @@ export class ElizaSandboxService {
                           reconciliation: settlement,
                         })
                         .catch((error) => {
-                          logger.error("[shared-runtime] AI billing audit record failed", {
-                            error: error instanceof Error ? error.message : String(error),
-                            agentId: rec.id,
-                          });
+                          logger.error(
+                            "[shared-runtime] AI billing audit record failed",
+                            {
+                              error:
+                                error instanceof Error
+                                  ? error.message
+                                  : String(error),
+                              agentId: rec.id,
+                            },
+                          );
                         });
                     }
                   } catch (error) {
@@ -2931,7 +3243,8 @@ export class ElizaSandboxService {
                       );
                     }
                     logger.error("[shared-runtime] billing failed", {
-                      error: error instanceof Error ? error.message : String(error),
+                      error:
+                        error instanceof Error ? error.message : String(error),
                       agentId: rec.id,
                     });
                   }
@@ -2949,7 +3262,9 @@ export class ElizaSandboxService {
                   }
                 : { messageId, text: finalReply };
               controller.enqueue(
-                encoder.encode(`event: done\ndata: ${JSON.stringify(doneData)}\n\n`),
+                encoder.encode(
+                  `event: done\ndata: ${JSON.stringify(doneData)}\n\n`,
+                ),
               );
             }
             if (!finished) {
@@ -3025,14 +3340,20 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
   ): Promise<SharedAgentCharacter | null> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (rec && rec.execution_tier === "shared") {
       return this.buildSharedRuntimeCharacter(rec);
     }
     // Bootstrap window: a freshly-created dedicated agent (not yet "running", so
     // findRunningSandbox misses it) is served by the in-Worker shared runtime
     // until its container boots — return the same character the shared turn uses.
-    const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    const bootstrap = await agentSandboxesRepository.findByIdAndOrg(
+      agentId,
+      orgId,
+    );
     if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
       return this.buildSharedRuntimeCharacter(bootstrap);
     }
@@ -3071,7 +3392,10 @@ export class ElizaSandboxService {
       | "sandbox_id"
     >,
   ): Promise<{ pushed: boolean; agentName?: string }> {
-    const payload = buildWarmClaimCharacterPayload(rec.agent_config, rec.agent_name);
+    const payload = buildWarmClaimCharacterPayload(
+      rec.agent_config,
+      rec.agent_name,
+    );
     if (!payload) return { pushed: false };
 
     const res = await this.fetchAgentApi(rec, "/api/character", {
@@ -3083,7 +3407,9 @@ export class ElizaSandboxService {
       // error-policy: enrich with a bounded body excerpt; a failed body read
       // must never mask the HTTP status.
       const text = await res.text().catch(() => "");
-      throw new Error(`Warm-claim character push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(
+        `Warm-claim character push failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+      );
     }
     return { pushed: true, agentName: String(payload.name) };
   }
@@ -3096,14 +3422,20 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     executionCtx?: BridgeExecutionContext,
   ): Promise<BridgeResponse> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec) {
       // Bootstrap window: a freshly-created dedicated agent whose container is
       // still provisioning is served by the in-Worker shared runtime so the user
       // can chat immediately; the client hands off to the dedicated subdomain
       // once it reports running. (findRunningSandbox misses it since it is not
       // yet "running", so re-resolve by id+org.)
-      const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      const bootstrap = await agentSandboxesRepository.findByIdAndOrg(
+        agentId,
+        orgId,
+      );
       if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
         return this.bridgeSharedBootstrap(bootstrap, rpc, executionCtx);
       }
@@ -3134,10 +3466,13 @@ export class ElizaSandboxService {
       }
 
       if (!rec.bridge_url) {
-        logger.warn("[agent-sandbox] Bridge call to running sandbox without bridge URL", {
-          agentId,
-          method: rpc.method,
-        });
+        logger.warn(
+          "[agent-sandbox] Bridge call to running sandbox without bridge URL",
+          {
+            agentId,
+            method: rpc.method,
+          },
+        );
         return {
           jsonrpc: "2.0",
           id: rpc.id,
@@ -3209,7 +3544,10 @@ export class ElizaSandboxService {
     }
   }
 
-  private async bridgeStatus(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+  private async bridgeStatus(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
     const runtimeAgents = await this.listRuntimeAgents(rec);
     if (runtimeAgents.supported) {
       const agent = this.selectRuntimeAgent(runtimeAgents.agents);
@@ -3254,9 +3592,14 @@ export class ElizaSandboxService {
     };
   }
 
-  private async bridgeMessageSend(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+  private async bridgeMessageSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
     const params =
-      rpc.params && typeof rpc.params === "object" ? (rpc.params as Record<string, unknown>) : {};
+      rpc.params && typeof rpc.params === "object"
+        ? (rpc.params as Record<string, unknown>)
+        : {};
     const text = typeof params.text === "string" ? params.text : "";
     if (!text.trim()) {
       return {
@@ -3330,7 +3673,10 @@ export class ElizaSandboxService {
   // central-channel polling per failed turn. Strict callers (the e2e chat
   // scripts) reject on the propagated `failureKind` instead (#15616).
   private bridgeResponseHasText(response: BridgeResponse): boolean {
-    return typeof response.result?.text === "string" && response.result.text.trim().length > 0;
+    return (
+      typeof response.result?.text === "string" &&
+      response.result.text.trim().length > 0
+    );
   }
 
   /**
@@ -3339,7 +3685,9 @@ export class ElizaSandboxService {
    * issue, rate limit, credit exhaustion, no provider). Surface it so callers
    * can tell a genuine model reply from a canned failure (#15616).
    */
-  private extractBridgeFailureKind(body: Record<string, unknown>): string | undefined {
+  private extractBridgeFailureKind(
+    body: Record<string, unknown>,
+  ): string | undefined {
     return typeof body.failureKind === "string" && body.failureKind.trim()
       ? body.failureKind.trim()
       : undefined;
@@ -3380,11 +3728,14 @@ export class ElizaSandboxService {
     }
     // Parse envelope; cloud-agent returns valid JSON-RPC on both 200 and 500.
     const body = (await res.json().catch((error) => {
-      logger.warn("[agent-sandbox] Failed to parse native bridge JSON-RPC body", {
-        agentId: rec.id,
-        status: res.status,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[agent-sandbox] Failed to parse native bridge JSON-RPC body",
+        {
+          agentId: rec.id,
+          status: res.status,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return null;
     })) as {
       jsonrpc?: string;
@@ -3436,14 +3787,18 @@ export class ElizaSandboxService {
       };
     }
 
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const failureKind = this.extractBridgeFailureKind(body);
     return {
       jsonrpc: "2.0",
       id: rpc.id,
       result: {
         text: this.extractBridgeMessageText(body) ?? "",
-        agentName: typeof body.agentName === "string" ? body.agentName : undefined,
+        agentName:
+          typeof body.agentName === "string" ? body.agentName : undefined,
         conversationId,
         transport: "conversation-rest",
         ...(failureKind ? { failureKind } : {}),
@@ -3456,7 +3811,8 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     params: Record<string, unknown>,
   ): Promise<BridgeResponse> {
-    const runtimeAgent = (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
+    const runtimeAgent =
+      (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
     if (!runtimeAgent?.id) {
       return {
         jsonrpc: "2.0",
@@ -3465,7 +3821,11 @@ export class ElizaSandboxService {
       };
     }
 
-    const sessionId = await this.createBridgeMessagingSession(rec, runtimeAgent.id, params);
+    const sessionId = await this.createBridgeMessagingSession(
+      rec,
+      runtimeAgent.id,
+      params,
+    );
     const res = await this.fetchAgentApi(
       rec,
       `/api/messaging/sessions/${encodeURIComponent(sessionId)}/messages`,
@@ -3483,8 +3843,15 @@ export class ElizaSandboxService {
       };
     }
 
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const agentText = await this.waitForBridgeSessionAgentReply(rec, sessionId, runtimeAgent.id);
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const agentText = await this.waitForBridgeSessionAgentReply(
+      rec,
+      sessionId,
+      runtimeAgent.id,
+    );
     return {
       jsonrpc: "2.0",
       id: rpc.id,
@@ -3504,7 +3871,8 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     params: Record<string, unknown>,
   ): Promise<BridgeResponse> {
-    const runtimeAgent = (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
+    const runtimeAgent =
+      (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
     if (!runtimeAgent?.id) {
       return {
         jsonrpc: "2.0",
@@ -3519,7 +3887,9 @@ export class ElizaSandboxService {
       `/api/messaging/central-channels/${encodeURIComponent(channelId)}/messages`,
       {
         method: "POST",
-        body: JSON.stringify(this.buildBridgeCentralChannelMessageBody(params, runtimeAgent.id)),
+        body: JSON.stringify(
+          this.buildBridgeCentralChannelMessageBody(params, runtimeAgent.id),
+        ),
         signal: AbortSignal.timeout(60_000),
       },
     );
@@ -3537,7 +3907,10 @@ export class ElizaSandboxService {
       };
     }
 
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const data = this.nestedBridgeRecord(body.data) ?? {};
     const agentText = await this.waitForBridgeCentralChannelAgentReply(
       rec,
@@ -3555,7 +3928,11 @@ export class ElizaSandboxService {
         channelId,
         transport: "central-channel",
         messageId:
-          typeof data.id === "string" ? data.id : typeof body.id === "string" ? body.id : undefined,
+          typeof data.id === "string"
+            ? data.id
+            : typeof body.id === "string"
+              ? body.id
+              : undefined,
       },
     };
   }
@@ -3565,9 +3942,15 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     params: Record<string, unknown>,
   ): Promise<BridgeResponse> {
-    const { body, status } = await this.requestBridgeOpenAiChatCompletion(rec, params);
+    const { body, status } = await this.requestBridgeOpenAiChatCompletion(
+      rec,
+      params,
+    );
     if (status === 404) {
-      throw new BridgeRouteUnavailableError("OpenAI chat compatibility API is unavailable", status);
+      throw new BridgeRouteUnavailableError(
+        "OpenAI chat compatibility API is unavailable",
+        status,
+      );
     }
     if (status < 200 || status >= 300) {
       return {
@@ -3575,7 +3958,9 @@ export class ElizaSandboxService {
         id: rpc.id,
         error: {
           code: -32000,
-          message: this.extractBridgeErrorMessage(body) ?? `Bridge returned HTTP ${status}`,
+          message:
+            this.extractBridgeErrorMessage(body) ??
+            `Bridge returned HTTP ${status}`,
         },
       };
     }
@@ -3601,20 +3986,29 @@ export class ElizaSandboxService {
       body: JSON.stringify(this.buildBridgeOpenAiChatBody(params)),
       signal: AbortSignal.timeout(120_000),
     });
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     return { status: res.status, body };
   }
 
-  private buildBridgeOpenAiChatBody(params: Record<string, unknown>): Record<string, unknown> {
+  private buildBridgeOpenAiChatBody(
+    params: Record<string, unknown>,
+  ): Record<string, unknown> {
     const text = typeof params.text === "string" ? params.text : "";
     const roomId =
-      typeof params.roomId === "string" && params.roomId.trim() ? params.roomId.trim() : "default";
+      typeof params.roomId === "string" && params.roomId.trim()
+        ? params.roomId.trim()
+        : "default";
     const userId =
       typeof params.userId === "string" && params.userId.trim()
         ? params.userId.trim()
         : this.stableBridgeUserId(params);
     const source =
-      typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud";
+      typeof params.source === "string" && params.source.trim()
+        ? params.source.trim()
+        : "cloud";
 
     return {
       model: "eliza",
@@ -3629,7 +4023,9 @@ export class ElizaSandboxService {
     };
   }
 
-  private buildBridgeNoReplyFallbackText(params: Record<string, unknown>): string | null {
+  private buildBridgeNoReplyFallbackText(
+    params: Record<string, unknown>,
+  ): string | null {
     const text = typeof params.text === "string" ? params.text.trim() : "";
     if (!text) return null;
 
@@ -3648,9 +4044,13 @@ export class ElizaSandboxService {
     params: Record<string, unknown>,
   ): Promise<string> {
     const source =
-      typeof params.source === "string" && params.source.trim() ? params.source : "cloud";
+      typeof params.source === "string" && params.source.trim()
+        ? params.source
+        : "cloud";
     const roomId =
-      typeof params.roomId === "string" && params.roomId.trim() ? params.roomId : "default";
+      typeof params.roomId === "string" && params.roomId.trim()
+        ? params.roomId
+        : "default";
     const res = await this.fetchAgentApi(rec, "/api/conversations", {
       method: "POST",
       body: JSON.stringify({
@@ -3661,7 +4061,10 @@ export class ElizaSandboxService {
     });
     if (!res.ok) {
       if (res.status === 404) {
-        throw new BridgeRouteUnavailableError("Conversation API is unavailable", res.status);
+        throw new BridgeRouteUnavailableError(
+          "Conversation API is unavailable",
+          res.status,
+        );
       }
       throw new Error(`Bridge conversation create returned HTTP ${res.status}`);
     }
@@ -3671,7 +4074,9 @@ export class ElizaSandboxService {
     };
     const conversationId = body.conversation?.id;
     if (typeof conversationId !== "string" || !conversationId.trim()) {
-      throw new Error("Bridge conversation create response was missing conversation.id");
+      throw new Error(
+        "Bridge conversation create response was missing conversation.id",
+      );
     }
     return conversationId;
   }
@@ -3693,7 +4098,9 @@ export class ElizaSandboxService {
               : "cloud",
           roomId: typeof params.roomId === "string" ? params.roomId : undefined,
           sender:
-            params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+            params.sender &&
+            typeof params.sender === "object" &&
+            !Array.isArray(params.sender)
               ? params.sender
               : undefined,
         },
@@ -3701,13 +4108,20 @@ export class ElizaSandboxService {
       signal: AbortSignal.timeout(15_000),
     });
     if (res.status === 404) {
-      throw new BridgeRouteUnavailableError("Messaging sessions API is unavailable", res.status);
+      throw new BridgeRouteUnavailableError(
+        "Messaging sessions API is unavailable",
+        res.status,
+      );
     }
     if (!res.ok) {
       throw new Error(`Bridge session create returned HTTP ${res.status}`);
     }
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const sessionId = typeof body.sessionId === "string" ? body.sessionId : undefined;
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const sessionId =
+      typeof body.sessionId === "string" ? body.sessionId : undefined;
     if (!sessionId) {
       throw new Error("Bridge session create response was missing sessionId");
     }
@@ -3720,16 +4134,21 @@ export class ElizaSandboxService {
     const body: Record<string, unknown> = {
       text: typeof params.text === "string" ? params.text : "",
       source:
-        typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud",
+        typeof params.source === "string" && params.source.trim()
+          ? params.source.trim()
+          : "cloud",
       metadata: {
         ...(params.metadata &&
         typeof params.metadata === "object" &&
         !Array.isArray(params.metadata)
           ? (params.metadata as Record<string, unknown>)
           : {}),
-        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+        bridgeRoomId:
+          typeof params.roomId === "string" ? params.roomId : undefined,
         bridgeSender:
-          params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+          params.sender &&
+          typeof params.sender === "object" &&
+          !Array.isArray(params.sender)
             ? params.sender
             : undefined,
       },
@@ -3747,10 +4166,14 @@ export class ElizaSandboxService {
     return body;
   }
 
-  private buildBridgeSessionMessageBody(params: Record<string, unknown>): Record<string, unknown> {
+  private buildBridgeSessionMessageBody(
+    params: Record<string, unknown>,
+  ): Record<string, unknown> {
     return {
       content: typeof params.text === "string" ? params.text : "",
-      attachments: Array.isArray(params.attachments) ? params.attachments : undefined,
+      attachments: Array.isArray(params.attachments)
+        ? params.attachments
+        : undefined,
       metadata: {
         ...(params.metadata &&
         typeof params.metadata === "object" &&
@@ -3761,7 +4184,8 @@ export class ElizaSandboxService {
           typeof params.source === "string" && params.source.trim()
             ? params.source.trim()
             : "cloud",
-        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+        bridgeRoomId:
+          typeof params.roomId === "string" ? params.roomId : undefined,
       },
     };
   }
@@ -3771,11 +4195,15 @@ export class ElizaSandboxService {
     runtimeAgentId: string,
   ): Record<string, unknown> {
     const metadata =
-      params.metadata && typeof params.metadata === "object" && !Array.isArray(params.metadata)
+      params.metadata &&
+      typeof params.metadata === "object" &&
+      !Array.isArray(params.metadata)
         ? { ...(params.metadata as Record<string, unknown>) }
         : {};
     const sender =
-      params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+      params.sender &&
+      typeof params.sender === "object" &&
+      !Array.isArray(params.sender)
         ? (params.sender as Record<string, unknown>)
         : {};
     const displayName =
@@ -3802,10 +4230,13 @@ export class ElizaSandboxService {
         channelType: "DM",
         targetUserId: runtimeAgentId,
         user_display_name: displayName,
-        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+        bridgeRoomId:
+          typeof params.roomId === "string" ? params.roomId : undefined,
       },
       source_type:
-        typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud",
+        typeof params.source === "string" && params.source.trim()
+          ? params.source.trim()
+          : "cloud",
     };
   }
 
@@ -3815,7 +4246,9 @@ export class ElizaSandboxService {
 
     const root = body as Record<string, unknown>;
     const data =
-      root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+      root.data && typeof root.data === "object"
+        ? (root.data as Record<string, unknown>)
+        : {};
     const result =
       root.result && typeof root.result === "object"
         ? (root.result as Record<string, unknown>)
@@ -3866,7 +4299,10 @@ export class ElizaSandboxService {
     );
   }
 
-  private bridgeMessageIdMatches(value: unknown, runtimeAgentId?: string): boolean {
+  private bridgeMessageIdMatches(
+    value: unknown,
+    runtimeAgentId?: string,
+  ): boolean {
     return (
       typeof runtimeAgentId === "string" &&
       runtimeAgentId.length > 0 &&
@@ -3881,19 +4317,39 @@ export class ElizaSandboxService {
       : null;
   }
 
-  private isBridgeAgentMessage(message: Record<string, unknown>, runtimeAgentId?: string): boolean {
-    if (message.isAgent === true || message.fromAgent === true || message.isBot === true) {
+  private isBridgeAgentMessage(
+    message: Record<string, unknown>,
+    runtimeAgentId?: string,
+  ): boolean {
+    if (
+      message.isAgent === true ||
+      message.fromAgent === true ||
+      message.isBot === true
+    ) {
       return true;
     }
-    if (message.isAgent === false || message.fromAgent === false || message.isBot === false) {
+    if (
+      message.isAgent === false ||
+      message.fromAgent === false ||
+      message.isBot === false
+    ) {
       return false;
     }
-    const sourceType = this.normalizeBridgeRole(message.sourceType ?? message.source_type);
+    const sourceType = this.normalizeBridgeRole(
+      message.sourceType ?? message.source_type,
+    );
     if (sourceType === "agent_response") {
       return true;
     }
 
-    for (const key of ["role", "type", "senderType", "senderRole", "authorRole", "messageType"]) {
+    for (const key of [
+      "role",
+      "type",
+      "senderType",
+      "senderRole",
+      "authorRole",
+      "messageType",
+    ]) {
       const value = message[key];
       if (this.bridgeRoleIsAgent(value)) return true;
       if (this.bridgeRoleIsUser(value)) return false;
@@ -3902,9 +4358,17 @@ export class ElizaSandboxService {
     for (const key of ["sender", "author", "from", "entity", "metadata"]) {
       const nested = this.nestedBridgeRecord(message[key]);
       if (!nested) continue;
-      if (nested.isAgent === true || nested.fromAgent === true || nested.isBot === true)
+      if (
+        nested.isAgent === true ||
+        nested.fromAgent === true ||
+        nested.isBot === true
+      )
         return true;
-      if (nested.isAgent === false || nested.fromAgent === false || nested.isBot === false) {
+      if (
+        nested.isAgent === false ||
+        nested.fromAgent === false ||
+        nested.isBot === false
+      ) {
         return false;
       }
       for (const nestedKey of ["role", "type", "senderType", "authorRole"]) {
@@ -3912,13 +4376,27 @@ export class ElizaSandboxService {
         if (this.bridgeRoleIsAgent(nestedValue)) return true;
         if (this.bridgeRoleIsUser(nestedValue)) return false;
       }
-      for (const nestedIdKey of ["id", "entityId", "agentId", "runtimeAgentId", "senderId"]) {
-        if (this.bridgeMessageIdMatches(nested[nestedIdKey], runtimeAgentId)) return true;
+      for (const nestedIdKey of [
+        "id",
+        "entityId",
+        "agentId",
+        "runtimeAgentId",
+        "senderId",
+      ]) {
+        if (this.bridgeMessageIdMatches(nested[nestedIdKey], runtimeAgentId))
+          return true;
       }
     }
 
-    for (const idKey of ["entityId", "agentId", "runtimeAgentId", "senderId", "authorId"]) {
-      if (this.bridgeMessageIdMatches(message[idKey], runtimeAgentId)) return true;
+    for (const idKey of [
+      "entityId",
+      "agentId",
+      "runtimeAgentId",
+      "senderId",
+      "authorId",
+    ]) {
+      if (this.bridgeMessageIdMatches(message[idKey], runtimeAgentId))
+        return true;
     }
 
     return false;
@@ -3962,15 +4440,27 @@ export class ElizaSandboxService {
     return null;
   }
 
-  private extractBridgeMessageText(message: Record<string, unknown>): string | null {
-    for (const key of ["text", "fullText", "content", "message", "body", "reply", "response"]) {
+  private extractBridgeMessageText(
+    message: Record<string, unknown>,
+  ): string | null {
+    for (const key of [
+      "text",
+      "fullText",
+      "content",
+      "message",
+      "body",
+      "reply",
+      "response",
+    ]) {
       const text = this.extractBridgeTextValue(message[key]);
       if (text) return text;
     }
     return null;
   }
 
-  private extractBridgeErrorMessage(body: Record<string, unknown>): string | null {
+  private extractBridgeErrorMessage(
+    body: Record<string, unknown>,
+  ): string | null {
     const error = this.nestedBridgeRecord(body.error);
     if (error) {
       const message = this.extractBridgeTextValue(error.message);
@@ -3978,10 +4468,15 @@ export class ElizaSandboxService {
       const text = this.extractBridgeTextValue(error);
       if (text) return text;
     }
-    return this.extractBridgeTextValue(body.message) ?? this.extractBridgeTextValue(body);
+    return (
+      this.extractBridgeTextValue(body.message) ??
+      this.extractBridgeTextValue(body)
+    );
   }
 
-  private extractOpenAiChatCompletionText(body: Record<string, unknown>): string | null {
+  private extractOpenAiChatCompletionText(
+    body: Record<string, unknown>,
+  ): string | null {
     const choices = Array.isArray(body.choices) ? body.choices : [];
     for (const choice of choices) {
       const choiceRecord = this.nestedBridgeRecord(choice);
@@ -4003,7 +4498,8 @@ export class ElizaSandboxService {
     runtimeAgentId?: string,
   ): Promise<string | null> {
     for (let attempt = 0; attempt < 24; attempt++) {
-      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
+      if (attempt > 0)
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
       const res = await this.fetchAgentApi(
         rec,
         `/api/messaging/sessions/${encodeURIComponent(sessionId)}/messages?limit=20`,
@@ -4017,7 +4513,8 @@ export class ElizaSandboxService {
       const messages = this.getBridgeMessages(body);
       for (const message of messages.toReversed()) {
         const record = this.nestedBridgeRecord(message);
-        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
+        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId))
+          continue;
         const text = this.extractBridgeMessageText(record);
         if (text) return text;
       }
@@ -4032,7 +4529,8 @@ export class ElizaSandboxService {
     runtimeAgentId?: string,
   ): Promise<string | null> {
     for (let attempt = 0; attempt < 20; attempt++) {
-      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
+      if (attempt > 0)
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
       const res = await this.fetchAgentApi(
         rec,
         `/api/messaging/central-channels/${encodeURIComponent(channelId)}/messages?limit=30`,
@@ -4046,7 +4544,8 @@ export class ElizaSandboxService {
       const messages = this.getBridgeMessages(body);
       for (const message of messages.toReversed()) {
         const record = this.nestedBridgeRecord(message);
-        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
+        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId))
+          continue;
         const text = this.extractBridgeMessageText(record);
         if (text) return text;
       }
@@ -4132,15 +4631,22 @@ export class ElizaSandboxService {
     body?: string | null,
     query?: string,
   ): Promise<Response | null> {
-    if (!ElizaSandboxService.ALLOWED_WORKFLOW_PATH_PATTERNS.some((re) => re.test(workflowPath))) {
+    if (
+      !ElizaSandboxService.ALLOWED_WORKFLOW_PATH_PATTERNS.some((re) =>
+        re.test(workflowPath),
+      )
+    ) {
       logger.warn("[agent-sandbox] Rejected workflow proxy: invalid path", {
         agentId,
         workflowPath,
       });
-      return new Response(JSON.stringify({ error: "Invalid workflow endpoint" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Invalid workflow endpoint" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     let sanitizedQuery = "";
@@ -4155,13 +4661,19 @@ export class ElizaSandboxService {
       sanitizedQuery = filtered.toString();
     }
 
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec) {
-      logger.warn("[agent-sandbox] Workflow proxy: sandbox not found or not running", {
-        agentId,
-        orgId,
-        workflowPath,
-      });
+      logger.warn(
+        "[agent-sandbox] Workflow proxy: sandbox not found or not running",
+        {
+          agentId,
+          orgId,
+          workflowPath,
+        },
+      );
       return null;
     }
     if (!rec.bridge_url) {
@@ -4212,10 +4724,13 @@ export class ElizaSandboxService {
         agentId,
         walletPath,
       });
-      return new Response(JSON.stringify({ error: "Invalid wallet endpoint" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Invalid wallet endpoint" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     // Sanitize query parameters
@@ -4231,13 +4746,19 @@ export class ElizaSandboxService {
       sanitizedQuery = filtered.toString();
     }
 
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec) {
-      logger.warn("[agent-sandbox] Wallet proxy: sandbox not found or not running", {
-        agentId,
-        orgId,
-        walletPath,
-      });
+      logger.warn(
+        "[agent-sandbox] Wallet proxy: sandbox not found or not running",
+        {
+          agentId,
+          orgId,
+          walletPath,
+        },
+      );
       return null;
     }
     if (!rec.bridge_url) {
@@ -4287,10 +4808,13 @@ export class ElizaSandboxService {
         agentId,
         schedulePath,
       });
-      return new Response(JSON.stringify({ error: "Invalid schedule endpoint" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Invalid schedule endpoint" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     let sanitizedQuery = "";
@@ -4298,20 +4822,28 @@ export class ElizaSandboxService {
       const params = new URLSearchParams(query);
       const filtered = new URLSearchParams();
       for (const [key, value] of params) {
-        if (ElizaSandboxService.ALLOWED_LIFEOPS_SCHEDULE_QUERY_PARAMS.has(key)) {
+        if (
+          ElizaSandboxService.ALLOWED_LIFEOPS_SCHEDULE_QUERY_PARAMS.has(key)
+        ) {
           filtered.set(key, value);
         }
       }
       sanitizedQuery = filtered.toString();
     }
 
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec) {
-      logger.warn("[agent-sandbox] Schedule proxy: sandbox not found or not running", {
-        agentId,
-        orgId,
-        schedulePath,
-      });
+      logger.warn(
+        "[agent-sandbox] Schedule proxy: sandbox not found or not running",
+        {
+          agentId,
+          orgId,
+          schedulePath,
+        },
+      );
       return null;
     }
     if (!rec.bridge_url) {
@@ -4355,8 +4887,15 @@ export class ElizaSandboxService {
     orgId: string,
     rpc: BridgeRequest,
     executionCtx?: BridgeExecutionContext,
+    resolvedAgent?: AgentSandbox,
   ): Promise<Response | null> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec =
+      resolvedAgent?.id === agentId &&
+      resolvedAgent.organization_id === orgId &&
+      resolvedAgent.status === "running"
+        ? resolvedAgent
+        : ((await getCachedSharedAgentRunningSandbox(agentId, orgId)) ??
+          (await agentSandboxesRepository.findRunningSandbox(agentId, orgId)));
     if (!rec) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
         agentId,
@@ -4366,19 +4905,31 @@ export class ElizaSandboxService {
     }
 
     const params =
-      rpc.params && typeof rpc.params === "object" ? (rpc.params as Record<string, unknown>) : {};
+      rpc.params && typeof rpc.params === "object"
+        ? (rpc.params as Record<string, unknown>)
+        : {};
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     if (rec.execution_tier === "shared") {
-      const response = await this.bridgeSharedMessageStream(rec, rpc, executionCtx);
-      return response ?? (fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null);
+      const response = await this.bridgeSharedMessageStream(
+        rec,
+        rpc,
+        executionCtx,
+      );
+      return (
+        response ??
+        (fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null)
+      );
     }
 
     if (!rec.bridge_url) {
-      logger.warn("[agent-sandbox] Bridge stream to running sandbox without bridge URL", {
-        agentId,
-        method: rpc.method,
-      });
+      logger.warn(
+        "[agent-sandbox] Bridge stream to running sandbox without bridge URL",
+        {
+          agentId,
+          method: rpc.method,
+        },
+      );
       return null;
     }
 
@@ -4395,35 +4946,50 @@ export class ElizaSandboxService {
       );
       if (res.ok) return this.normalizeBridgeSseResponse(res);
       if (res.status !== 404) {
-        logger.warn("[agent-sandbox] Bridge stream conversation request failed", {
-          agentId,
-          status: res.status,
-        });
+        logger.warn(
+          "[agent-sandbox] Bridge stream conversation request failed",
+          {
+            agentId,
+            status: res.status,
+          },
+        );
       }
     } catch (error) {
       if (!(error instanceof BridgeRouteUnavailableError)) {
-        logger.warn("[agent-sandbox] Bridge stream conversation request failed", {
-          agentId,
-          method: rpc.method,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.warn(
+          "[agent-sandbox] Bridge stream conversation request failed",
+          {
+            agentId,
+            method: rpc.method,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
 
     try {
       return await this.bridgeOpenAiChatCompletionSse(rec, params);
     } catch (error) {
-      logger.warn("[agent-sandbox] Bridge stream compatibility request failed", {
-        agentId,
-        method: rpc.method,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[agent-sandbox] Bridge stream compatibility request failed",
+        {
+          agentId,
+          method: rpc.method,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
 
     try {
-      const centralResponse = await this.bridgeCentralChannelMessageSend(rec, rpc, params);
+      const centralResponse = await this.bridgeCentralChannelMessageSend(
+        rec,
+        rpc,
+        params,
+      );
       if (this.bridgeResponseHasText(centralResponse)) {
-        return this.createBridgeSseTextResponse(centralResponse.result!.text as string);
+        return this.createBridgeSseTextResponse(
+          centralResponse.result!.text as string,
+        );
       }
       if (centralResponse.error) {
         return this.createBridgeSseErrorResponse(centralResponse.error.message);
@@ -4432,11 +4998,14 @@ export class ElizaSandboxService {
         return this.createBridgeSseTextResponse(fallbackText);
       }
     } catch (error) {
-      logger.warn("[agent-sandbox] Bridge stream central-channel request failed", {
-        agentId,
-        method: rpc.method,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[agent-sandbox] Bridge stream central-channel request failed",
+        {
+          agentId,
+          method: rpc.method,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
 
     if (fallbackText) {
@@ -4450,11 +5019,15 @@ export class ElizaSandboxService {
     rec: AgentSandbox,
     params: Record<string, unknown>,
   ): Promise<Response | null> {
-    const { body, status } = await this.requestBridgeOpenAiChatCompletion(rec, params);
+    const { body, status } = await this.requestBridgeOpenAiChatCompletion(
+      rec,
+      params,
+    );
     if (status === 404) return null;
     if (status < 200 || status >= 300) {
       return this.createBridgeSseErrorResponse(
-        this.extractBridgeErrorMessage(body) ?? `Bridge returned HTTP ${status}`,
+        this.extractBridgeErrorMessage(body) ??
+          `Bridge returned HTTP ${status}`,
       );
     }
 
@@ -4504,11 +5077,18 @@ export class ElizaSandboxService {
       if (lfBreak === -1 && crlfBreak === -1) return null;
       if (lfBreak === -1) return { index: crlfBreak, length: 4 };
       if (crlfBreak === -1) return { index: lfBreak, length: 2 };
-      return lfBreak < crlfBreak ? { index: lfBreak, length: 2 } : { index: crlfBreak, length: 4 };
+      return lfBreak < crlfBreak
+        ? { index: lfBreak, length: 2 }
+        : { index: crlfBreak, length: 4 };
     };
-    const emitFrame = (frame: string, controller: TransformStreamDefaultController<string>) => {
+    const emitFrame = (
+      frame: string,
+      controller: TransformStreamDefaultController<string>,
+    ) => {
       if (!frame.trim()) return;
-      const dataLine = frame.split(/\r?\n/).find((line) => line.startsWith("data:"));
+      const dataLine = frame
+        .split(/\r?\n/)
+        .find((line) => line.startsWith("data:"));
       if (!dataLine) {
         controller.enqueue(`${frame}\n\n`);
         return;
@@ -4517,7 +5097,10 @@ export class ElizaSandboxService {
         const data = JSON.parse(dataLine.slice(5).trimStart());
         if (data?.type === "token") {
           const delta = typeof data.text === "string" ? data.text : "";
-          accumulated = typeof data.fullText === "string" ? data.fullText : accumulated + delta;
+          accumulated =
+            typeof data.fullText === "string"
+              ? data.fullText
+              : accumulated + delta;
           controller.enqueue(
             `event: chunk\ndata: ${JSON.stringify({
               messageId,
@@ -4533,7 +5116,8 @@ export class ElizaSandboxService {
           controller.enqueue(
             `event: done\ndata: ${JSON.stringify({
               messageId,
-              text: typeof data.fullText === "string" ? data.fullText : accumulated,
+              text:
+                typeof data.fullText === "string" ? data.fullText : accumulated,
             })}\n\n`,
           );
           return;
@@ -4572,13 +5156,16 @@ export class ElizaSandboxService {
   }
 
   private createBridgeSseErrorResponse(message: string): Response {
-    return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
+    return new Response(
+      `event: error\ndata: ${JSON.stringify({ message })}\n\n`,
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+        },
       },
-    });
+    );
   }
 
   // Snapshots
@@ -4588,8 +5175,12 @@ export class ElizaSandboxService {
     orgId: string,
     type: AgentBackupSnapshotType = "manual",
   ): Promise<SnapshotResult> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) return { success: false, error: "Sandbox is not running" };
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
+    if (!rec?.bridge_url)
+      return { success: false, error: "Sandbox is not running" };
 
     let stateData: AgentBackupStateData;
     let sizeBytes: number;
@@ -4646,12 +5237,17 @@ export class ElizaSandboxService {
     sizeBytes: number,
   ): Promise<NewAgentSandboxBackup> {
     const contentHash = computeStateHash(stateData);
-    const latest = await agentSandboxesRepository.getLatestBackup(sandboxRecordId);
+    const latest =
+      await agentSandboxesRepository.getLatestBackup(sandboxRecordId);
     if (latest) {
       try {
-        const baseState = await agentSandboxesRepository.getReconstructedBackupState(latest.id);
+        const baseState =
+          await agentSandboxesRepository.getReconstructedBackupState(latest.id);
         if (baseState) {
-          const all = await agentSandboxesRepository.listBackups(sandboxRecordId, 1000);
+          const all = await agentSandboxesRepository.listBackups(
+            sandboxRecordId,
+            1000,
+          );
           const nodes = all.map((b) => ({
             id: b.id,
             backupKind: b.backup_kind,
@@ -4659,7 +5255,11 @@ export class ElizaSandboxService {
             createdAtMs: b.created_at.getTime(),
           }));
           const chainDepth = incrementalChainDepth(nodes, latest.id);
-          const plan = planIncrementalBackup({ base: baseState, next: stateData, chainDepth });
+          const plan = planIncrementalBackup({
+            base: baseState,
+            next: stateData,
+            chainDepth,
+          });
           if (plan.kind === "incremental") {
             return {
               sandbox_record_id: sandboxRecordId,
@@ -4674,10 +5274,13 @@ export class ElizaSandboxService {
           }
         }
       } catch (error) {
-        logger.warn("[agent-sandbox] Incremental planning failed; storing full backup", {
-          sandboxRecordId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.warn(
+          "[agent-sandbox] Incremental planning failed; storing full backup",
+          {
+            sandboxRecordId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
     return {
@@ -4690,7 +5293,11 @@ export class ElizaSandboxService {
     };
   }
 
-  async restore(agentId: string, orgId: string, backupId?: string): Promise<SnapshotResult> {
+  async restore(
+    agentId: string,
+    orgId: string,
+    backupId?: string,
+  ): Promise<SnapshotResult> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return { success: false, error: "Agent not found" };
 
@@ -4705,7 +5312,9 @@ export class ElizaSandboxService {
     }
 
     if (rec.status !== "running" && backupId) {
-      const latestBackup = await agentSandboxesRepository.getLatestBackup(rec.id);
+      const latestBackup = await agentSandboxesRepository.getLatestBackup(
+        rec.id,
+      );
       if (!latestBackup || backup.id !== latestBackup.id) {
         return {
           success: false,
@@ -4715,7 +5324,8 @@ export class ElizaSandboxService {
     }
 
     if (rec.status === "running" && rec.bridge_url) {
-      const restoreState = await agentSandboxesRepository.getReconstructedBackupState(backup.id);
+      const restoreState =
+        await agentSandboxesRepository.getReconstructedBackupState(backup.id);
       if (!restoreState) {
         return {
           success: false,
@@ -4727,7 +5337,9 @@ export class ElizaSandboxService {
     }
 
     const prov = await this.provision(agentId, orgId);
-    return prov.success ? { success: true, backup } : { success: false, error: prov.error };
+    return prov.success
+      ? { success: true, backup }
+      : { success: false, error: prov.error };
   }
 
   async listBackups(
@@ -4736,13 +5348,18 @@ export class ElizaSandboxService {
     limit?: number,
   ): Promise<AgentSandboxBackupMetadata[]> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    return rec ? agentSandboxesRepository.listBackupMetadata(rec.id, limit) : [];
+    return rec
+      ? agentSandboxesRepository.listBackupMetadata(rec.id, limit)
+      : [];
   }
 
   // Heartbeat
 
   async heartbeat(agentId: string, orgId: string): Promise<boolean> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec?.bridge_url) return false;
 
     const probe = await this.probeBridgeHealthDetailed(rec);
@@ -4763,11 +5380,14 @@ export class ElizaSandboxService {
         : Date.now();
       const downForMs = Date.now() - lastOkMs;
       if (downForMs < HEARTBEAT_DISCONNECT_AFTER_MS) {
-        logger.warn("[agent-sandbox] Heartbeat miss within grace window, keeping running", {
-          agentId,
-          downForMs,
-          reason: probe.reason,
-        });
+        logger.warn(
+          "[agent-sandbox] Heartbeat miss within grace window, keeping running",
+          {
+            agentId,
+            downForMs,
+            reason: probe.reason,
+          },
+        );
         return false;
       }
       // Past-grace miss: before disconnecting (which reprovisions — destroying
@@ -4808,12 +5428,15 @@ export class ElizaSandboxService {
           return false;
         }
       }
-      logger.warn("[agent-sandbox] Heartbeat failed past grace window, marking disconnected", {
-        agentId,
-        downForMs,
-        reason: probe.reason,
-        reconcileOutcome: reconcile.outcome,
-      });
+      logger.warn(
+        "[agent-sandbox] Heartbeat failed past grace window, marking disconnected",
+        {
+          agentId,
+          downForMs,
+          reason: probe.reason,
+          reconcileOutcome: reconcile.outcome,
+        },
+      );
       await agentSandboxesRepository.update(rec.id, {
         status: "disconnected",
       });
@@ -4862,7 +5485,9 @@ export class ElizaSandboxService {
     };
     for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
       if (attempt > 0) {
-        await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_PROBE_RETRY_MS));
+        await new Promise((resolve) =>
+          setTimeout(resolve, HEARTBEAT_PROBE_RETRY_MS),
+        );
       }
       try {
         const res = await fetch(endpoint, {
@@ -4880,17 +5505,22 @@ export class ElizaSandboxService {
           kind: "unreachable",
           reason: error instanceof Error ? error.message : String(error),
         };
-        logger.debug("[agent-sandbox] Bridge health probe attempt failed, retrying", {
-          agentId: rec.id,
-          attempt,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.debug(
+          "[agent-sandbox] Bridge health probe attempt failed, retrying",
+          {
+            agentId: rec.id,
+            attempt,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
     return lastFailure;
   }
 
-  private async classifyBridgeHealthResponse(res: Response): Promise<BridgeHealthProbeResult> {
+  private async classifyBridgeHealthResponse(
+    res: Response,
+  ): Promise<BridgeHealthProbeResult> {
     let payload: AgentRuntimeHealthPayload | null = null;
     try {
       payload = (await res.clone().json()) as AgentRuntimeHealthPayload;
@@ -4914,7 +5544,8 @@ export class ElizaSandboxService {
       };
     }
     const transient =
-      databaseLiveness?.status === "transient_error" || payload?.database === "transient_error";
+      databaseLiveness?.status === "transient_error" ||
+      payload?.database === "transient_error";
     if (transient) {
       return {
         ok: false,
@@ -4961,14 +5592,23 @@ export class ElizaSandboxService {
     // barred from automatic recovery after three failures over its lifetime.
     const markerAge = marker.at === null ? null : now - marker.at;
     const markerActive =
-      markerAge !== null && markerAge >= 0 && markerAge < DB_LIVENESS_RESTART_BUDGET_WINDOW_MS;
+      markerAge !== null &&
+      markerAge >= 0 &&
+      markerAge < DB_LIVENESS_RESTART_BUDGET_WINDOW_MS;
     const count = markerActive ? marker.count : 0;
-    if (markerActive && markerAge !== null && markerAge < DB_LIVENESS_RESTART_COOLDOWN_MS) {
-      logger.warn("[agent-sandbox] Terminal database liveness failure inside restart cooldown", {
-        agentId: rec.id,
-        count,
-        reason,
-      });
+    if (
+      markerActive &&
+      markerAge !== null &&
+      markerAge < DB_LIVENESS_RESTART_COOLDOWN_MS
+    ) {
+      logger.warn(
+        "[agent-sandbox] Terminal database liveness failure inside restart cooldown",
+        {
+          agentId: rec.id,
+          count,
+          reason,
+        },
+      );
       return;
     }
     if (count >= DB_LIVENESS_RESTART_BUDGET) {
@@ -4977,11 +5617,14 @@ export class ElizaSandboxService {
         error_count: count,
         error_message: `${DB_LIVENESS_RESTART_MARKER} budget-exhausted count=${count} at=${new Date(now).toISOString()} reason=${reason}`,
       });
-      logger.error("[agent-sandbox] Terminal database liveness restart budget exhausted", {
-        agentId: rec.id,
-        count,
-        reason,
-      });
+      logger.error(
+        "[agent-sandbox] Terminal database liveness restart budget exhausted",
+        {
+          agentId: rec.id,
+          count,
+          reason,
+        },
+      );
       return;
     }
 
@@ -4996,13 +5639,16 @@ export class ElizaSandboxService {
       organizationId: rec.organization_id,
       userId: rec.user_id,
     });
-    logger.warn("[agent-sandbox] Enqueued restart for terminal database liveness failure", {
-      agentId: rec.id,
-      jobId: result.job.id,
-      created: result.created,
-      count: nextCount,
-      reason,
-    });
+    logger.warn(
+      "[agent-sandbox] Enqueued restart for terminal database liveness failure",
+      {
+        agentId: rec.id,
+        jobId: result.job.id,
+        created: result.created,
+        count: nextCount,
+        reason,
+      },
+    );
   }
 
   /**
@@ -5026,11 +5672,14 @@ export class ElizaSandboxService {
         node.ssh_user,
       );
     } catch (error) {
-      logger.debug("[agent-sandbox] Failed to resolve docker node for reconcile", {
-        agentId: rec.id,
-        nodeId: rec.node_id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.debug(
+        "[agent-sandbox] Failed to resolve docker node for reconcile",
+        {
+          agentId: rec.id,
+          nodeId: rec.node_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return null;
     }
   }
@@ -5041,7 +5690,9 @@ export class ElizaSandboxService {
    * from a live one whose stored tailnet IP went stale (must be repaired, not
    * destroyed).
    */
-  private async isContainerDockerHealthy(rec: ReconcilableSandbox): Promise<boolean> {
+  private async isContainerDockerHealthy(
+    rec: ReconcilableSandbox,
+  ): Promise<boolean> {
     if (!rec.container_name) return false;
     const ssh = await this.getNodeSshForAgent(rec);
     if (!ssh) return false;
@@ -5056,10 +5707,13 @@ export class ElizaSandboxService {
       ).trim();
       return status === "healthy";
     } catch (error) {
-      logger.debug("[agent-sandbox] Docker health inspect failed during reconcile", {
-        agentId: rec.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.debug(
+        "[agent-sandbox] Docker health inspect failed during reconcile",
+        {
+          agentId: rec.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return false;
     }
   }
@@ -5070,7 +5724,9 @@ export class ElizaSandboxService {
    * registered with, so it reflects the post-restart node key/IP — unlike the
    * stored headscale_ip, which is a provision-time snapshot.
    */
-  private async resolveCurrentAgentTailnetIp(rec: ReconcilableSandbox): Promise<string | null> {
+  private async resolveCurrentAgentTailnetIp(
+    rec: ReconcilableSandbox,
+  ): Promise<string | null> {
     if (!rec.container_name) return null;
     const ssh = await this.getNodeSshForAgent(rec);
     if (!ssh) return null;
@@ -5088,10 +5744,13 @@ export class ElizaSandboxService {
         .find((line) => line.startsWith("100."));
       return ip && isIP(ip) === 4 ? ip : null;
     } catch (error) {
-      logger.debug("[agent-sandbox] Current tailnet IP resolve failed during reconcile", {
-        agentId: rec.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.debug(
+        "[agent-sandbox] Current tailnet IP resolve failed during reconcile",
+        {
+          agentId: rec.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return null;
     }
   }
@@ -5111,12 +5770,14 @@ export class ElizaSandboxService {
   private async reconcileStaleTailnetIp(
     rec: ReconcilableSandbox,
   ): Promise<TailnetIpReconcileResult> {
-    if (!(await this.isContainerDockerHealthy(rec))) return { outcome: "container-dead" };
+    if (!(await this.isContainerDockerHealthy(rec)))
+      return { outcome: "container-dead" };
     const currentIp = await this.resolveCurrentAgentTailnetIp(rec);
     if (!currentIp) return { outcome: "ip-unresolvable" };
     // Same IP as stored = nothing to repair: the miss is genuine
     // unreachability at the correct address, so the dead-agent path applies.
-    if (!rec.bridge_url || currentIp === rec.headscale_ip) return { outcome: "unrepairable" };
+    if (!rec.bridge_url || currentIp === rec.headscale_ip)
+      return { outcome: "unrepairable" };
 
     let bridgeUrl: string;
     try {
@@ -5126,16 +5787,22 @@ export class ElizaSandboxService {
     } catch (error) {
       // error-policy:J4 a malformed stored bridge_url cannot be repaired in
       // place; degrade to the existing disconnect → reprovision self-heal.
-      logger.warn("[agent-sandbox] Stored bridge_url unparsable during reconcile", {
-        agentId: rec.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[agent-sandbox] Stored bridge_url unparsable during reconcile",
+        {
+          agentId: rec.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return { outcome: "unrepairable" };
     }
 
     // Only a live answer on the repaired address proves the new IP is the
     // container we think it is — never persist an unverified repair.
-    const reachable = await this.probeBridgeHealth({ ...rec, bridge_url: bridgeUrl });
+    const reachable = await this.probeBridgeHealth({
+      ...rec,
+      bridge_url: bridgeUrl,
+    });
     if (!reachable) return { outcome: "unrepairable" };
     return { outcome: "repaired", headscaleIp: currentIp, bridgeUrl };
   }
@@ -5187,14 +5854,17 @@ export class ElizaSandboxService {
       }
       const rawFailedPlugins = health.plugins?.failed ?? 0;
       const failedPlugins =
-        typeof rawFailedPlugins === "number" ? rawFailedPlugins : Number(rawFailedPlugins);
+        typeof rawFailedPlugins === "number"
+          ? rawFailedPlugins
+          : Number(rawFailedPlugins);
       if (!Number.isFinite(failedPlugins)) {
         failures.push(`plugins.failed=${String(rawFailedPlugins)}`);
       } else if (failedPlugins > 0) {
         failures.push(`plugins.failed=${failedPlugins}`);
       }
       const startupError =
-        typeof health.startup?.lastError === "string" && health.startup.lastError.trim()
+        typeof health.startup?.lastError === "string" &&
+        health.startup.lastError.trim()
           ? health.startup.lastError.trim()
           : null;
       if (startupError) {
@@ -5235,7 +5905,8 @@ export class ElizaSandboxService {
     orgId: string,
   ): Promise<"recovered" | "unreachable" | "gone"> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec || (rec.status !== "disconnected" && rec.status !== "error")) return "gone";
+    if (!rec || (rec.status !== "disconnected" && rec.status !== "error"))
+      return "gone";
     const recoverableStatus = rec.status;
     const reachable = await this.probeBridgeHealth(rec);
     if (!reachable) {
@@ -5250,10 +5921,11 @@ export class ElizaSandboxService {
       // Same guarded CAS as the plain recovery flip below: only revive a row
       // that is STILL in the probed recoverable status, then persist the
       // repaired ingress columns on the now-running row.
-      const revived = await agentSandboxesRepository.markReconnectedFromDisconnected(
-        rec.id,
-        recoverableStatus,
-      );
+      const revived =
+        await agentSandboxesRepository.markReconnectedFromDisconnected(
+          rec.id,
+          recoverableStatus,
+        );
       if (!revived) return "gone";
       await agentSandboxesRepository.update(rec.id, {
         headscale_ip: reconcile.headscaleIp,
@@ -5269,10 +5941,11 @@ export class ElizaSandboxService {
     // bridge_url) / provisioning during the multi-second probe. Only flip it if
     // it is STILL disconnected with a live bridge — otherwise we'd resurrect a
     // being-deleted agent or wedge a stopped one at `running` with a dead bridge.
-    const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(
-      rec.id,
-      recoverableStatus,
-    );
+    const restored =
+      await agentSandboxesRepository.markReconnectedFromDisconnected(
+        rec.id,
+        recoverableStatus,
+      );
     if (!restored) return "gone";
     logger.info("[agent-sandbox] Recovered agent back to running", {
       agentId,
@@ -5310,7 +5983,9 @@ export class ElizaSandboxService {
       sandboxId: rec.sandbox_id,
       bridgeUrl: rec.bridge_url ?? "",
       healthUrl: rec.health_url ?? "",
-      metadata: rec.headscale_ip ? { headscaleIp: rec.headscale_ip } : undefined,
+      metadata: rec.headscale_ip
+        ? { headscaleIp: rec.headscale_ip }
+        : undefined,
     };
 
     let healthy = false;
@@ -5321,10 +5996,13 @@ export class ElizaSandboxService {
     } catch (error) {
       // A probe that throws is "no signal" — leave the row for the next pass,
       // never condemn or resurrect on an errored probe.
-      logger.debug("[agent-sandbox] Stuck-provisioning re-probe threw; leaving row", {
-        agentId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.debug(
+        "[agent-sandbox] Stuck-provisioning re-probe threw; leaving row",
+        {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return "unresolved";
     }
 
@@ -5332,7 +6010,9 @@ export class ElizaSandboxService {
 
     // Guarded CAS: only flip if still `provisioning` with a live container and
     // no active provision job racing it (see markRunningFromProvisioning).
-    const flipped = await agentSandboxesRepository.markRunningFromProvisioning(rec.id);
+    const flipped = await agentSandboxesRepository.markRunningFromProvisioning(
+      rec.id,
+    );
     if (!flipped) return "gone";
     logger.info(
       "[agent-sandbox] Reconciled wedged provisioning row to running (container re-probed healthy)",
@@ -5343,7 +6023,10 @@ export class ElizaSandboxService {
 
   // Shutdown
 
-  async shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }> {
+  async shutdown(
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; error?: string }> {
     let snapshotAgentId: string | null = null;
     let preShutdownSnapshot: {
       stateData: AgentBackupStateData;
@@ -5353,13 +6036,15 @@ export class ElizaSandboxService {
 
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
     if (snapshotSource?.status === "running" && snapshotSource.bridge_url) {
-      preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource).catch((error) => {
-        logger.warn("[agent-sandbox] Pre-shutdown backup fetch failed", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      });
+      preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource).catch(
+        (error) => {
+          logger.warn("[agent-sandbox] Pre-shutdown backup fetch failed", {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        },
+      );
     }
 
     const result = await dbWrite.transaction(async (tx) => {
@@ -5368,7 +6053,11 @@ export class ElizaSandboxService {
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as const;
 
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(
+        tx,
+        agentId,
+        orgId,
+      );
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
         return {
           success: false,
@@ -5417,12 +6106,14 @@ export class ElizaSandboxService {
     });
 
     if (result.success && snapshotAgentId) {
-      await agentSandboxesRepository.pruneBackups(snapshotAgentId, MAX_BACKUPS).catch((error) => {
-        logger.warn("[agent-sandbox] Backup pruning failed after shutdown", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
+      await agentSandboxesRepository
+        .pruneBackups(snapshotAgentId, MAX_BACKUPS)
+        .catch((error) => {
+          logger.warn("[agent-sandbox] Backup pruning failed after shutdown", {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         });
-      });
       logger.info("[agent-sandbox] Shutdown complete", { agentId });
     }
 
@@ -5451,7 +6142,11 @@ export class ElizaSandboxService {
           error: "Agent not found",
         } as const;
 
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(
+        tx,
+        agentId,
+        orgId,
+      );
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
         return {
           success: false,
@@ -5459,7 +6154,8 @@ export class ElizaSandboxService {
           error: "Agent provisioning is in progress",
         } as const;
       }
-      if (rec.status === "stopped") return { success: true, containerStopped: true } as const;
+      if (rec.status === "stopped")
+        return { success: true, containerStopped: true } as const;
 
       let containerStopped = false;
       if (rec.sandbox_id) {
@@ -5469,10 +6165,13 @@ export class ElizaSandboxService {
         } catch (e) {
           if (this.isIgnorableSandboxStopError(e)) {
             containerStopped = true;
-            logger.info("[agent-sandbox] Sandbox already absent during suspend", {
-              sandboxId: rec.sandbox_id,
-              error: e instanceof Error ? e.message : String(e),
-            });
+            logger.info(
+              "[agent-sandbox] Sandbox already absent during suspend",
+              {
+                sandboxId: rec.sandbox_id,
+                error: e instanceof Error ? e.message : String(e),
+              },
+            );
           } else {
             return {
               success: false,
@@ -5585,8 +6284,13 @@ export class ElizaSandboxService {
     // Primary read: replica lag must not turn a real sleep into a no-op.
     const rec = await this.getAgentForWrite(agentId, orgId);
     if (!rec || this.isAwaitingDeletion(rec.status))
-      return { success: false, containerRemoved: false, error: "Agent not found" };
-    if (rec.status === "sleeping") return { success: true, containerRemoved: true };
+      return {
+        success: false,
+        containerRemoved: false,
+        error: "Agent not found",
+      };
+    if (rec.status === "sleeping")
+      return { success: true, containerRemoved: true };
     if (rec.status === "provisioning") {
       return {
         success: false,
@@ -5608,10 +6312,13 @@ export class ElizaSandboxService {
         });
         backupId = backup.id;
       } catch (error) {
-        logger.warn("[agent-sandbox] Sleep snapshot fetch failed; checking latest durable backup", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.warn(
+          "[agent-sandbox] Sleep snapshot fetch failed; checking latest durable backup",
+          {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
     if (!backupId) {
@@ -5619,10 +6326,13 @@ export class ElizaSandboxService {
       if (existing) {
         backupId = existing.id;
       } else {
-        logger.error("[agent-sandbox] Sleep aborted: no durable backup available", {
-          agentId,
-          sandboxRecordId: rec.id,
-        });
+        logger.error(
+          "[agent-sandbox] Sleep aborted: no durable backup available",
+          {
+            agentId,
+            sandboxRecordId: rec.id,
+          },
+        );
         return {
           success: false,
           containerRemoved: false,
@@ -5669,14 +6379,20 @@ export class ElizaSandboxService {
       web_ui_port: null,
       last_backup_at: new Date(),
     });
-    await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS).catch((error) => {
-      logger.warn("[agent-sandbox] Backup pruning failed after sleep", {
-        agentId,
-        error: error instanceof Error ? error.message : String(error),
+    await agentSandboxesRepository
+      .pruneBackups(rec.id, MAX_BACKUPS)
+      .catch((error) => {
+        logger.warn("[agent-sandbox] Backup pruning failed after sleep", {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-    });
 
-    logger.info("[agent-sandbox] Sleep complete", { agentId, backupId, containerRemoved });
+    logger.info("[agent-sandbox] Sleep complete", {
+      agentId,
+      backupId,
+      containerRemoved,
+    });
     return { success: true, containerRemoved, backupId };
   }
 
@@ -5729,14 +6445,25 @@ export class ElizaSandboxService {
     }
 
     if (opts?.forceFreshBoot) {
-      logger.warn("[agent-sandbox] Wake with explicit forceFreshBoot: restore skipped by user", {
+      logger.warn(
+        "[agent-sandbox] Wake with explicit forceFreshBoot: restore skipped by user",
+        {
+          agentId,
+        },
+      );
+      const provisionResult = await this.provision(agentId, orgId, {
+        kind: "fresh-boot",
+      });
+      if (!provisionResult.success) {
+        return {
+          success: false,
+          reprovisioned: true,
+          error: provisionResult.error,
+        };
+      }
+      logger.info("[agent-sandbox] Wake complete (explicit fresh boot)", {
         agentId,
       });
-      const provisionResult = await this.provision(agentId, orgId, { kind: "fresh-boot" });
-      if (!provisionResult.success) {
-        return { success: false, reprovisioned: true, error: provisionResult.error };
-      }
-      logger.info("[agent-sandbox] Wake complete (explicit fresh boot)", { agentId });
       return { success: true, reprovisioned: true, freshBoot: true };
     }
 
@@ -5777,9 +6504,17 @@ export class ElizaSandboxService {
         ? (await agentSandboxesRepository.getLatestStoredBackup(rec.id))?.id
         : (gate.backupId ?? undefined);
 
-    const provisionResult = await this.provision(agentId, orgId, restoreOverride);
+    const provisionResult = await this.provision(
+      agentId,
+      orgId,
+      restoreOverride,
+    );
     if (!provisionResult.success) {
-      return { success: false, reprovisioned: true, error: provisionResult.error };
+      return {
+        success: false,
+        reprovisioned: true,
+        error: provisionResult.error,
+      };
     }
 
     logger.info("[agent-sandbox] Wake complete", {
@@ -5839,10 +6574,13 @@ export class ElizaSandboxService {
           error: "Agent not found",
         };
       }
-      logger.warn("[agent-sandbox] Shutdown during restart returned error, continuing", {
-        agentId,
-        error: shutdownResult.error,
-      });
+      logger.warn(
+        "[agent-sandbox] Shutdown during restart returned error, continuing",
+        {
+          agentId,
+          error: shutdownResult.error,
+        },
+      );
     }
 
     const provisionResult = await this.provision(agentId, orgId);
@@ -5948,7 +6686,10 @@ export class ElizaSandboxService {
     // The reconciler already selects them by digest drift; the blue/green swap
     // re-provisions on the target image+digest, so moving a fleet-managed agent
     // to the current default is safe regardless of its current tag.
-    if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
+    if (
+      agent.docker_image &&
+      imageRepo(agent.docker_image) !== imageRepo(dockerImage)
+    ) {
       // Refusal before any container work: old container is untouched and live.
       return {
         success: false,
@@ -6030,10 +6771,13 @@ export class ElizaSandboxService {
       try {
         await provider.stop(blueHandle.sandboxId);
       } catch (err) {
-        logger.warn("[agent-sandbox] Failed to tear down unhealthy blue during upgrade rollback", {
-          agentId,
-          err: err instanceof Error ? err.message : String(err),
-        });
+        logger.warn(
+          "[agent-sandbox] Failed to tear down unhealthy blue during upgrade rollback",
+          {
+            agentId,
+            err: err instanceof Error ? err.message : String(err),
+          },
+        );
       }
       return {
         success: false,
@@ -6044,7 +6788,9 @@ export class ElizaSandboxService {
       };
     }
 
-    const blueMeta = isDockerSandboxMetadata(blueHandle.metadata) ? blueHandle.metadata : undefined;
+    const blueMeta = isDockerSandboxMetadata(blueHandle.metadata)
+      ? blueHandle.metadata
+      : undefined;
     if (!blueMeta) {
       try {
         await provider.stop(blueHandle.sandboxId);
@@ -6067,10 +6813,13 @@ export class ElizaSandboxService {
     }
     if (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest) {
       await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after digest mismatch", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue after digest mismatch",
+          {
+            agentId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          },
+        ),
       );
       return {
         success: false,
@@ -6087,10 +6836,13 @@ export class ElizaSandboxService {
     });
     if (!runtimeHealth.success) {
       await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after runtime readiness failure", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue after runtime readiness failure",
+          {
+            agentId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          },
+        ),
       );
       return {
         success: false,
@@ -6106,16 +6858,23 @@ export class ElizaSandboxService {
     // back. A missing/partial snapshot blocks the upgrade: swapping images
     // without a verified full-agent restore point is the data-loss class this
     // path is designed to prevent.
-    const preUpgradeSnapshot = await this.snapshot(agentId, orgId, "pre-upgrade").catch((err) => ({
+    const preUpgradeSnapshot = await this.snapshot(
+      agentId,
+      orgId,
+      "pre-upgrade",
+    ).catch((err) => ({
       success: false,
       error: err instanceof Error ? err.message : String(err),
     }));
     if (!preUpgradeSnapshot.success) {
       await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after pre-upgrade snapshot failure", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue after pre-upgrade snapshot failure",
+          {
+            agentId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          },
+        ),
       );
       return {
         success: false,
@@ -6129,7 +6888,11 @@ export class ElizaSandboxService {
     try {
       const swapped = await dbWrite.transaction(async (tx) => {
         await this.lockLifecycle(tx, agentId, orgId);
-        const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+        const current = await this.getAgentForLifecycleMutation(
+          tx,
+          agentId,
+          orgId,
+        );
         if (!current) return false;
         if (
           current.status !== "running" ||
@@ -6149,7 +6912,8 @@ export class ElizaSandboxService {
           // (#15358). Mirror the selection/pre-provision semantics — abandon
           // only on a real repo change; the digest/node/container/sandbox legs
           // above still detect every other concurrent mutation.
-          (current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
+          (current.docker_image &&
+            imageRepo(current.docker_image) !== imageRepo(dockerImage))
         ) {
           return false;
         }
@@ -6182,15 +6946,21 @@ export class ElizaSandboxService {
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      logger.error("[agent-sandbox] Atomic swap UPDATE failed; tearing down orphaned blue", {
-        agentId,
-        err: errMsg,
-      });
-      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after atomic swap UPDATE failure", {
+      logger.error(
+        "[agent-sandbox] Atomic swap UPDATE failed; tearing down orphaned blue",
+        {
           agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+          err: errMsg,
+        },
+      );
+      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue after atomic swap UPDATE failure",
+          {
+            agentId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          },
+        ),
       );
       return {
         success: false,
@@ -6286,7 +7056,10 @@ export class ElizaSandboxService {
     // Same fleet-managed-vs-custom distinction as the upgrade path (#15101):
     // a rollback of a default-family agent must not be refused just because its
     // tag differs from the target.
-    if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
+    if (
+      agent.docker_image &&
+      imageRepo(agent.docker_image) !== imageRepo(dockerImage)
+    ) {
       return {
         success: false,
         error: "Agent uses a custom docker image; refusing fleet rollback",
@@ -6361,10 +7134,13 @@ export class ElizaSandboxService {
 
     if (!(await provider.checkHealth(blueHandle))) {
       await provider.stop(blueHandle.sandboxId).catch((err) =>
-        logger.warn("[agent-sandbox] Failed to tear down unhealthy blue during rollback", {
-          agentId,
-          err: err instanceof Error ? err.message : String(err),
-        }),
+        logger.warn(
+          "[agent-sandbox] Failed to tear down unhealthy blue during rollback",
+          {
+            agentId,
+            err: err instanceof Error ? err.message : String(err),
+          },
+        ),
       );
       return {
         success: false,
@@ -6374,7 +7150,9 @@ export class ElizaSandboxService {
       };
     }
 
-    const blueMeta = isDockerSandboxMetadata(blueHandle.metadata) ? blueHandle.metadata : undefined;
+    const blueMeta = isDockerSandboxMetadata(blueHandle.metadata)
+      ? blueHandle.metadata
+      : undefined;
     if (!blueMeta) {
       await provider.stop(blueHandle.sandboxId).catch((err) =>
         logger.warn(
@@ -6394,10 +7172,13 @@ export class ElizaSandboxService {
     }
     if (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest) {
       await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after rollback digest mismatch", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue after rollback digest mismatch",
+          {
+            agentId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          },
+        ),
       );
       return {
         success: false,
@@ -6410,14 +7191,16 @@ export class ElizaSandboxService {
     // Restore the pre-upgrade state onto blue BEFORE cutover. A rollback that
     // cannot replay the verified restore point is not a rollback, so fail
     // loudly and leave the current image serving traffic.
-    const preUpgradeBackup = await agentSandboxesRepository.getLatestBackupByType(
-      agent.id,
-      "pre-upgrade",
-    );
-    if (preUpgradeBackup) {
-      const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
-        preUpgradeBackup.id,
+    const preUpgradeBackup =
+      await agentSandboxesRepository.getLatestBackupByType(
+        agent.id,
+        "pre-upgrade",
       );
+    if (preUpgradeBackup) {
+      const restoreState =
+        await agentSandboxesRepository.getReconstructedBackupState(
+          preUpgradeBackup.id,
+        );
       if (restoreState) {
         try {
           await this.pushState(blueHandle.bridgeUrl, restoreState, {
@@ -6425,12 +7208,17 @@ export class ElizaSandboxService {
             authRec: agent,
           });
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-            logger.warn("[agent-sandbox] Failed to tear down blue after rollback restore failure", {
-              agentId,
-              err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-            }),
+            logger.warn(
+              "[agent-sandbox] Failed to tear down blue after rollback restore failure",
+              {
+                agentId,
+                err:
+                  stopErr instanceof Error ? stopErr.message : String(stopErr),
+              },
+            ),
           );
           return {
             success: false,
@@ -6441,10 +7229,13 @@ export class ElizaSandboxService {
         }
       } else {
         await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-          logger.warn("[agent-sandbox] Failed to tear down blue after empty rollback restore", {
-            agentId,
-            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-          }),
+          logger.warn(
+            "[agent-sandbox] Failed to tear down blue after empty rollback restore",
+            {
+              agentId,
+              err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+            },
+          ),
         );
         return {
           success: false,
@@ -6455,23 +7246,31 @@ export class ElizaSandboxService {
       }
     } else {
       await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after missing rollback snapshot", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue after missing rollback snapshot",
+          {
+            agentId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          },
+        ),
       );
       return {
         success: false,
         oldNodeId,
         oldContainerName,
-        error: "No pre-upgrade snapshot found; refusing rollback without restore point",
+        error:
+          "No pre-upgrade snapshot found; refusing rollback without restore point",
       };
     }
 
     try {
       const swapped = await dbWrite.transaction(async (tx) => {
         await this.lockLifecycle(tx, agentId, orgId);
-        const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+        const current = await this.getAgentForLifecycleMutation(
+          tx,
+          agentId,
+          orgId,
+        );
         if (!current) return false;
         if (
           current.status !== "running" ||
@@ -6484,7 +7283,8 @@ export class ElizaSandboxService {
           // pin drift within the fleet repo (an empty or tag/digest-pinned
           // docker_image on the same repo is still the fleet image — #15101,
           // #15358). `dockerImage` here is the recorded rollback ref.
-          (current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
+          (current.docker_image &&
+            imageRepo(current.docker_image) !== imageRepo(dockerImage))
         ) {
           return false;
         }
@@ -6524,10 +7324,13 @@ export class ElizaSandboxService {
         },
       );
       await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after rollback swap UPDATE failure", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue after rollback swap UPDATE failure",
+          {
+            agentId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          },
+        ),
       );
       return {
         success: false,
@@ -6598,7 +7401,8 @@ export class ElizaSandboxService {
       return {
         success: true,
         status: rec.status,
-        message: "Logs unavailable: sandbox provider does not implement fetchLogs.",
+        message:
+          "Logs unavailable: sandbox provider does not implement fetchLogs.",
       };
     }
 
@@ -6631,7 +7435,11 @@ export class ElizaSandboxService {
 
   // Private helpers
 
-  private async lockLifecycle(tx: LifecycleTx, agentId: string, orgId: string): Promise<void> {
+  private async lockLifecycle(
+    tx: LifecycleTx,
+    agentId: string,
+    orgId: string,
+  ): Promise<void> {
     await tx.execute(elizaProvisionAdvisoryLockSql(orgId, agentId));
   }
 
@@ -6787,12 +7595,18 @@ export class ElizaSandboxService {
     // error-policy:J6 best-effort — a failed prune only means we warn + degrade
     // again next boot, never that we fail to boot fresh, so it must not throw
     // out of the provision.
-    await agentSandboxesRepository.pruneBackups(agentId, 0).catch((pruneErr) => {
-      logger.warn("[agent-sandbox] Failed to drop orphaned snapshot after degrade", {
-        agentId,
-        error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
+    await agentSandboxesRepository
+      .pruneBackups(agentId, 0)
+      .catch((pruneErr) => {
+        logger.warn(
+          "[agent-sandbox] Failed to drop orphaned snapshot after degrade",
+          {
+            agentId,
+            error:
+              pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
+          },
+        );
       });
-    });
   }
 
   private async markError(rec: AgentSandbox, msg: string) {
@@ -6810,7 +7624,9 @@ export class ElizaSandboxService {
    * exists turns Docker's "already in use" into a cleanup path that removes the
    * very container the retry was meant to save.
    */
-  private buildProvisioningRetryHandle(rec: AgentSandbox): SandboxHandle | null {
+  private buildProvisioningRetryHandle(
+    rec: AgentSandbox,
+  ): SandboxHandle | null {
     if (!rec.sandbox_id || !rec.bridge_url || !rec.health_url) return null;
     const hasDockerFleetColumns = Boolean(
       rec.node_id || rec.container_name || rec.bridge_port || rec.web_ui_port,
@@ -6867,25 +7683,33 @@ export class ElizaSandboxService {
     }
 
     try {
-      const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
-        sandbox_id: handle.sandboxId,
-        bridge_url: handle.bridgeUrl,
-        health_url: handle.healthUrl,
-      };
+      const updateData: Parameters<typeof agentSandboxesRepository.update>[1] =
+        {
+          sandbox_id: handle.sandboxId,
+          bridge_url: handle.bridgeUrl,
+          health_url: handle.healthUrl,
+        };
       if (dockerMeta) {
         if (dockerMeta.nodeId) updateData.node_id = dockerMeta.nodeId;
-        if (dockerMeta.containerName) updateData.container_name = dockerMeta.containerName;
-        if (dockerMeta.bridgePort) updateData.bridge_port = dockerMeta.bridgePort;
+        if (dockerMeta.containerName)
+          updateData.container_name = dockerMeta.containerName;
+        if (dockerMeta.bridgePort)
+          updateData.bridge_port = dockerMeta.bridgePort;
         if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
-        if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
-        if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
+        if (dockerMeta.headscaleIp)
+          updateData.headscale_ip = dockerMeta.headscaleIp;
+        if (dockerMeta.dockerImage)
+          updateData.docker_image = dockerMeta.dockerImage;
         updateData.image_digest = dockerMeta.imageDigest;
       }
       await agentSandboxesRepository.update(agentId, updateData);
     } catch (error) {
       logger.warn(
         "[agent-sandbox] Failed to persist container handle for transport-unresolved retry",
-        { agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
       );
     }
   }
@@ -6960,7 +7784,11 @@ export class ElizaSandboxService {
     const res =
       typeof sandboxOrBridgeUrl === "string"
         ? await fetch(
-            await this.getSafeBridgeEndpoint(sandboxOrBridgeUrl, "/api/restore", options),
+            await this.getSafeBridgeEndpoint(
+              sandboxOrBridgeUrl,
+              "/api/restore",
+              options,
+            ),
             {
               ...requestInit,
               headers: options?.authRec
@@ -6968,7 +7796,11 @@ export class ElizaSandboxService {
                 : { "Content-Type": "application/json" },
             },
           )
-        : await this.fetchAgentApi(sandboxOrBridgeUrl, "/api/restore", requestInit);
+        : await this.fetchAgentApi(
+            sandboxOrBridgeUrl,
+            "/api/restore",
+            requestInit,
+          );
     if (!res.ok) {
       // error-policy:J6 best-effort read of the restore error body to enrich
       // the error we throw next; a failed body read must not mask the status.
@@ -6979,7 +7811,9 @@ export class ElizaSandboxService {
         });
         return "";
       });
-      throw new Error(`State restore failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(
+        `State restore failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+      );
     }
   }
 }
