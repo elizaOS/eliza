@@ -93,6 +93,15 @@ OPENAI_COMPAT_BASE_URL: dict[str, str] = {
     "vllm": "http://127.0.0.1:8001/v1",
     "cerebras": "https://api.cerebras.ai/v1",
 }
+# Provider-native base-URL env var mirrored alongside OPENAI_BASE_URL so both
+# OpenAI-compat clients and provider-native SDKs in the subprocess hit the same
+# endpoint.
+PROVIDER_BASE_URL_ENV: dict[str, str] = {
+    "groq": "GROQ_BASE_URL",
+    "openrouter": "OPENROUTER_BASE_URL",
+    "vllm": "VLLM_BASE_URL",
+    "cerebras": "CEREBRAS_BASE_URL",
+}
 # Providers whose API key has no real secret value (self-hosted endpoints).
 PROVIDER_DUMMY_KEY: dict[str, str] = {
     "vllm": "dummy",
@@ -345,13 +354,50 @@ def _request_for_command_builder(request: RunRequest) -> RunRequest:
     return request
 
 
-def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
-    env = dict(os.environ)
+def _resolve_openai_compat_base_url(
+    provider: str, request: RunRequest, env: dict[str, str]
+) -> str:
+    """Resolve the endpoint an OpenAI-compatible provider lane should hit.
+
+    Precedence: per-run extra_config (``<provider>_base_url``, then the generic
+    ``base_url``), then ambient operator env (the provider-native variable,
+    then ``BENCHMARK_BASE_URL``, then ``OPENAI_BASE_URL``), and only when
+    nothing is set the hardcoded provider default. Campaigns route all traffic
+    through a proxy by exporting these variables once; the runner must never
+    silently clobber them with the public provider endpoint.
+    """
+    for extra_key in (f"{provider}_base_url", "base_url"):
+        candidate = request.extra_config.get(extra_key)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    for env_key in (
+        PROVIDER_BASE_URL_ENV[provider],
+        "BENCHMARK_BASE_URL",
+        "OPENAI_BASE_URL",
+    ):
+        candidate = env.get(env_key, "")
+        if candidate.strip():
+            return candidate.strip()
+    return OPENAI_COMPAT_BASE_URL[provider]
+
+
+def _ambient_env(workspace_root: Path) -> dict[str, str]:
+    """Process env after the workspace dotenv cascade, as workers see it.
+
+    Shared by the subprocess env builder below and the cohort coordinator's
+    provider-forwarder decision so both resolve the same endpoint and key.
+    dotenv values never override variables the operator already exported.
+    """
+
     load_env_file(workspace_root / "eliza" / ".env")
     load_env_file(workspace_root / ".env")
     load_env_file(workspace_root.parent / ".env")
     load_env_file(workspace_root.parent.parent / ".env")
-    env = dict(os.environ)
+    return dict(os.environ)
+
+
+def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
+    env = _ambient_env(workspace_root)
     python_bin = str(Path(sys.executable).parent)
     path_entries = [python_bin]
     for candidate in (
@@ -488,18 +534,15 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
         provider_key = PROVIDER_KEY_ENV.get(provider)
         if provider_key and env.get(provider_key):
             env["OPENAI_API_KEY"] = env[provider_key]
-        base_url_override = (
-            request.extra_config.get("vllm_base_url") if provider == "vllm" else None
-        )
-        if isinstance(base_url_override, str) and base_url_override.strip():
-            env["OPENAI_BASE_URL"] = base_url_override.strip()
-            env["VLLM_BASE_URL"] = base_url_override.strip()
-        elif provider == "vllm" and env.get("VLLM_BASE_URL"):
-            env["OPENAI_BASE_URL"] = env["VLLM_BASE_URL"]
-        else:
-            env["OPENAI_BASE_URL"] = OPENAI_COMPAT_BASE_URL[provider]
-        if provider == "cerebras":
-            env["CEREBRAS_BASE_URL"] = env["OPENAI_BASE_URL"]
+        # Operator-exported proxy endpoints (e.g. the Eliza Cloud
+        # OpenAI-compatible gateway) must survive into every benchmark
+        # subprocess; the hardcoded provider endpoint is only the fallback when
+        # nothing is configured. Both the OpenAI-compat and provider-native
+        # variables are exported so no client library in the subprocess can
+        # bypass the resolved endpoint.
+        resolved_base_url = _resolve_openai_compat_base_url(provider, request, env)
+        env["OPENAI_BASE_URL"] = resolved_base_url
+        env[PROVIDER_BASE_URL_ENV[provider]] = resolved_base_url
     if provider == "claude-subscription":
         gateway_url = request.extra_config.get("claude_subscription_gateway_url")
         if not isinstance(gateway_url, str) or not gateway_url.strip():

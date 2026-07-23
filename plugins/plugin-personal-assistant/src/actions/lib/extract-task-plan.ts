@@ -164,6 +164,7 @@ function buildExtractionPrompt(
     '  - "times_per_day" — happens multiple times on the SAME recurring day, with multiple times or windows (e.g. "morning and night", "three times a day")',
     '  - "interval" — happens every N minutes/hours (e.g. "every 2 hours")',
     '  If the request names a specific calendar date OR a specific wall-clock time without a recurrence word, pick "once".',
+    '  A deadline phrase IS a dated "once" task: "by the 20th" / "before Friday" / "due on the 28th" means cadenceKind="once" with the deadline as its date (dueDate for a named date, dueWeekday for a weekday). Never use mode="respond" to ask for an exact time on a deadline ask — the owner already gave the date that matters.',
     "- windows: list of time windows like [morning, night, afternoon, evening]",
     "- weekdays: list of weekday numbers (0=Sun, 1=Mon, ..., 6=Sat) for weekly tasks",
     '- timeOfDay: specific time in HH:MM 24h format like "15:00" or "08:30" if mentioned',

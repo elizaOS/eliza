@@ -29,7 +29,7 @@ const sampleTabs: DesktopTab[] = [
   },
   {
     viewId: "tasks",
-    label: "Tasks",
+    label: "Projects",
     path: "/tasks",
     icon: "list-checks",
     pinned: true,

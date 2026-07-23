@@ -660,3 +660,56 @@ def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() ->
     assert extraction.metrics["qa_human_pass_count"] == 5
     assert extraction.metrics["parity_pass_count"] == 9
     assert extraction.metrics["parity_skip_count"] == 0
+
+
+def test_taubench_scorer_surfaces_judge_degraded_rollouts() -> None:
+    from registry.scores import _score_from_taubench_json
+
+    report = {
+        "num_tasks": 2,
+        "avg_reward": 0.5,
+        "pass_k": {"1": {"k": 1, "num_tasks": 2, "pass_hat_k": 0.5}},
+        "domain_results": {
+            "retail": [
+                {
+                    "task_id": 0,
+                    "trial": 0,
+                    "reward": 1.0,
+                    "success": True,
+                    "judge_degraded": True,
+                    "judge_mode": "substring",
+                    "error": None,
+                },
+                {
+                    "task_id": 1,
+                    "trial": 0,
+                    "reward": 0.0,
+                    "success": False,
+                    "judge_degraded": False,
+                    "judge_mode": "llm",
+                    "error": None,
+                },
+            ]
+        },
+    }
+
+    extraction = _score_from_taubench_json(report)
+    assert extraction.metrics["judge_degraded_rollouts"] == 1
+
+
+def test_taubench_scorer_reports_zero_degraded_for_legacy_reports() -> None:
+    from registry.scores import _score_from_taubench_json
+
+    report = {
+        "num_tasks": 1,
+        "avg_reward": 1.0,
+        "pass_k": {"1": {"k": 1, "num_tasks": 1, "pass_hat_k": 1.0}},
+        "domain_results": {
+            "retail": [
+                {"task_id": 0, "trial": 0, "reward": 1.0, "success": True, "error": None}
+            ]
+        },
+    }
+
+    extraction = _score_from_taubench_json(report)
+    assert extraction.metrics["judge_degraded_rollouts"] == 0

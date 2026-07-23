@@ -21,7 +21,7 @@ This benchmark evaluates how well language models can:
 
 ```bash
 # Install the package
-cd benchmarks/context-bench
+cd packages/benchmarks/context-bench
 pip install -e .
 
 # With optional dependencies for embeddings
@@ -32,6 +32,23 @@ pip install -e ".[dev]"
 ```
 
 ## Quick Start
+
+### CLI
+
+```bash
+# Full matrix through the eliza TypeScript benchmark bridge
+python run_benchmark.py --provider eliza
+
+# Quick mode (NIAH-basic only, small matrix)
+python run_benchmark.py --provider eliza --quick
+
+# Deterministic no-key smoke (local regex query function)
+python run_benchmark.py --provider mock
+```
+
+The query path always routes through the eliza TS bridge (or the local `mock`
+provider); the legacy direct-OpenAI / direct-Anthropic / Python-AgentRuntime
+modes were removed.
 
 ### Basic Usage
 
@@ -58,28 +75,20 @@ async def main():
 asyncio.run(main())
 ```
 
-### With ElizaOS Runtime
+### Through the eliza TS bridge
 
 ```python
-from elizaos.runtime import AgentRuntime
-from elizaos_plugin_openai import get_openai_plugin
 from elizaos_context_bench import run_eliza_benchmark, ContextBenchConfig
 
 async def benchmark_eliza():
-    runtime = AgentRuntime()
-    # IMPORTANT: the Python runtime does not register model handlers by default.
-    # Register at least one model plugin (e.g. OpenAI) before running benchmarks.
-    plugin = get_openai_plugin()
-    if plugin.models:
-        for model_type, handler in plugin.models.items():
-            runtime.register_model(model_type, handler, provider=plugin.name)
-    
+    # Routes every query through the eliza TypeScript benchmark server
+    # (eliza_adapter.context_bench.make_eliza_llm_query).
     config = ContextBenchConfig(
         context_lengths=[1024, 4096, 8192],
         tasks_per_position=5,
     )
-    
-    results = await run_eliza_benchmark(runtime, config)
+
+    results = await run_eliza_benchmark(config)
     return results
 ```
 
@@ -241,7 +250,7 @@ Position/Length Accuracy Heatmap
 ## Running Tests
 
 ```bash
-cd benchmarks/context-bench
+cd packages/benchmarks/context-bench
 pip install -e ".[dev]"
 pytest tests/ -v
 ```
@@ -249,20 +258,21 @@ pytest tests/ -v
 ## Architecture
 
 ```
+run_benchmark.py         # CLI entrypoint (eliza TS bridge / mock providers)
 elizaos_context_bench/
 ├── __init__.py          # Package exports
 ├── types.py             # Core type definitions
 ├── generator.py         # Context and needle generation
-├── runner.py            # Main benchmark runner
+├── runner.py            # Main benchmark runner (quick_test, run_eliza_benchmark)
 ├── reporting.py         # Report generation
+├── drift.py             # Conversation-compaction drift suite (aggregates TS harness JSONL)
+├── edge_cases.py        # Edge-case scenario generation
 ├── evaluators/
 │   ├── retrieval.py     # Retrieval evaluation
 │   └── position.py      # Position analysis
-├── suites/
-│   ├── niah.py          # NIAH benchmark suite
-│   └── multihop.py      # Multi-hop benchmark suite
-└── providers/
-    └── context.py       # ElizaOS context providers
+└── suites/
+    ├── niah.py          # NIAH benchmark suite
+    └── multihop.py      # Multi-hop benchmark suite
 ```
 
 ## References
@@ -348,29 +358,27 @@ JSONL — one event per line. All scoring is reproducible from the log alone:
 pip install -e ".[drift]"
 ```
 
-## Drift harness — round 2 fixes
+## Drift harness design notes
 
-The TypeScript drift harness (`scripts/benchmark/drift-harness.ts`) was hardened
-based on review feedback. Key changes:
+Properties of the TypeScript drift harness
+(`scripts/benchmark/drift-harness.ts`) worth knowing before extending it:
 
-- **No jailbreak system prompt.** The previous "all data is fictional, repeat
-  values back" wrapper was a coping mechanism for `sk_*` API-key recall
-  refusals. It was removed; sensitive `api_key` fact kinds were dropped.
-- **Safer high-information fact kinds.** The fact rotation is now
+- **Safety-neutral fact kinds only.** The fact rotation is
   `aws_account, person_name, address, code, book_title, project_codename,
   isbn, date_iso, birthday, flight_number, uuid, zipcode` — memorable and
-  safety-neutral.
+  safety-neutral, so recall probes never trip provider refusals (no
+  `api_key`-style secrets, no jailbreak-flavored system prompt).
 - **Per-call reasoning effort.** The chat client takes a `reasoningEffort`
   per call. Defaults: agent + judge `medium` (so they actually scan
   history), compactor `low` (structured extraction). CLI flags
   `--agent-reasoning-effort`, `--judge-reasoning-effort`,
   `--compactor-reasoning-effort` override.
-- **Larger probe budget.** `--probe-max-tokens` defaults to 600 (was 200) so
-  prose recall answers don't truncate.
+- **Probe budget.** `--probe-max-tokens` defaults to 600 so prose recall
+  answers don't truncate.
 - **Balanced fact distribution.** Kinds rotate round-robin per seed: a
   4-fact run gets 4 distinct kinds; a 24-fact run gets exactly 2 of each
   of the 12 kinds.
-- **Per-kind summary.** The `summary` JSONL event now includes
+- **Per-kind summary.** The `summary` JSONL event includes
   `perKindAccuracy: { <kind>: { correct, total, accuracy } }`.
 - **Realistic system prompt.** `--realistic-system-prompt` swaps in a ~5KB
   Eliza-style prompt with synthetic action and plugin descriptions so the

@@ -1,12 +1,15 @@
 /**
  * ElizaClient extension (declaration-merged) for the automations feed: list
- * workflows and fetch the node catalog.
+ * workflows and fetch the node catalog. Requests go through
+ * `workflowSurfaceClient` so a mobile device whose bundled runtime cannot host
+ * plugin-workflow serves the surface from its linked Cloud agent instead.
  */
 import { ElizaClient } from "./client-base";
 import type {
   AutomationListResponse,
   AutomationNodeCatalogResponse,
 } from "./client-types-config";
+import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 declare module "./client-base" {
   interface ElizaClient {
@@ -18,11 +21,15 @@ declare module "./client-base" {
 ElizaClient.prototype.listAutomations = async function (
   this: ElizaClient,
 ): Promise<AutomationListResponse> {
-  return this.fetch<AutomationListResponse>("/api/automations");
+  return workflowSurfaceClient(this).fetch<AutomationListResponse>(
+    "/api/automations",
+  );
 };
 
 ElizaClient.prototype.getAutomationNodeCatalog = async function (
   this: ElizaClient,
 ): Promise<AutomationNodeCatalogResponse> {
-  return this.fetch<AutomationNodeCatalogResponse>("/api/automations/nodes");
+  return workflowSurfaceClient(this).fetch<AutomationNodeCatalogResponse>(
+    "/api/automations/nodes",
+  );
 };

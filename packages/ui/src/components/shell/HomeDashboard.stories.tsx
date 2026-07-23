@@ -49,7 +49,7 @@ const LAUNCHER_TILES: ViewEntry[] = [
   viewEntry("documents", "Documents", "FileText"),
   viewEntry("settings", "Settings", "Settings"),
   viewEntry("browser", "Browser", "Globe"),
-  viewEntry("tasks", "Tasks", "ListTodo"),
+  viewEntry("tasks", "Projects", "ListTodo"),
   viewEntry("knowledge", "Knowledge", "BookOpen"),
   viewEntry("plugins", "Plugins", "Plug"),
   viewEntry("messages", "Messages", "MessageSquare"),

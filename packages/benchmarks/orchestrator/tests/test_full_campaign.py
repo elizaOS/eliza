@@ -637,6 +637,215 @@ def test_full_campaign_pins_medium_reasoning_for_every_phase() -> None:
         )
 
 
+def _patch_single_benchmark_campaign(
+    monkeypatch: pytest.MonkeyPatch,
+    benchmark_id: str = "orchestrator_lifecycle",
+) -> None:
+    monkeypatch.setattr(
+        campaign,
+        "validate_full_campaign_manifest",
+        lambda _workspace: campaign.FULL_CAMPAIGN_MANIFEST,
+    )
+    adapters = {benchmark_id: _adapter(benchmark_id)}
+    monkeypatch.setattr(
+        campaign,
+        "discover_adapters",
+        lambda _workspace: AdapterDiscovery(
+            adapters=adapters,
+            all_directories=tuple(adapters),
+        ),
+    )
+
+
+def _paused_cohort(benchmark_id: str, retry_at: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        benchmark_id=benchmark_id,
+        run_group_id="rgc-paused",
+        unsupported_harnesses=(),
+        outcomes=(),
+        status=campaign.BenchmarkCohortStatus.PAUSED,
+        pause_retry_at=retry_at,
+        pause_reason="rate_limit",
+    )
+
+
+def _succeeded_cohort(benchmark_id: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        benchmark_id=benchmark_id,
+        run_group_id="rgc-done",
+        unsupported_harnesses=(),
+        outcomes=(),
+        status=campaign.BenchmarkCohortStatus.SUCCEEDED,
+        pause_retry_at=None,
+        pause_reason=None,
+    )
+
+
+def test_assume_quota_reset_skips_the_stored_retry_wait_and_resumes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_single_benchmark_campaign(monkeypatch)
+    calls: list[tuple[bool, bool]] = []
+
+    def fake_run_benchmark_cohorts(**kwargs):
+        request = kwargs["request"]
+        calls.append((request.resume, kwargs["assume_quota_reset"]))
+        if len(calls) == 1:
+            return [
+                _paused_cohort(
+                    request.benchmarks[0], "2100-01-01T00:00:00+00:00"
+                )
+            ]
+        return [_succeeded_cohort(request.benchmarks[0])]
+
+    monkeypatch.setattr(campaign, "run_benchmark_cohorts", fake_run_benchmark_cohorts)
+
+    result = campaign.run_full_campaign(
+        workspace_root=WORKSPACE_ROOT,
+        request=_request(),
+        benchmark_ids=("orchestrator_lifecycle",),
+        wait_on_quota=True,
+        assume_quota_reset=True,
+        # The stored retry_at is far beyond this budget: without the override
+        # the campaign would exit paused instead of resuming.
+        max_quota_wait_seconds=60.0,
+        quota_sleep=lambda _delay: pytest.fail(
+            "assume_quota_reset must not sleep on the old account's retry_at"
+        ),
+    )
+
+    assert calls == [(False, True), (True, True)]
+    assert result.paused_cohort is None
+    assert result.completed_phases == ("orchestrator_lifecycle/full",)
+
+
+def test_assume_quota_reset_is_consumed_by_a_resume_that_still_pauses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_single_benchmark_campaign(monkeypatch)
+    calls: list[tuple[bool, bool]] = []
+
+    def fake_run_benchmark_cohorts(**kwargs):
+        request = kwargs["request"]
+        calls.append((request.resume, kwargs["assume_quota_reset"]))
+        return [
+            _paused_cohort(request.benchmarks[0], "2100-01-01T00:00:00+00:00")
+        ]
+
+    monkeypatch.setattr(campaign, "run_benchmark_cohorts", fake_run_benchmark_cohorts)
+
+    result = campaign.run_full_campaign(
+        workspace_root=WORKSPACE_ROOT,
+        request=replace(_request(), resume=True, force=False),
+        benchmark_ids=("orchestrator_lifecycle",),
+        wait_on_quota=True,
+        assume_quota_reset=True,
+        max_quota_wait_seconds=60.0,
+        quota_sleep=lambda _delay: pytest.fail(
+            "a fresh out-of-budget retry_at must not be slept on"
+        ),
+    )
+
+    # The wrong assumption fails closed: one resume attempt, then the fresh
+    # pause is honored instead of spinning against a latched gateway.
+    assert calls == [(True, True)]
+    assert result.paused_cohort is not None
+    assert result.paused_cohort.pause_retry_at == "2100-01-01T00:00:00+00:00"
+
+
+def test_without_assume_quota_reset_a_future_retry_still_pauses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_single_benchmark_campaign(monkeypatch)
+    calls: list[bool] = []
+
+    def fake_run_benchmark_cohorts(**kwargs):
+        calls.append(kwargs["assume_quota_reset"])
+        return [
+            _paused_cohort(
+                kwargs["request"].benchmarks[0], "2100-01-01T00:00:00+00:00"
+            )
+        ]
+
+    monkeypatch.setattr(campaign, "run_benchmark_cohorts", fake_run_benchmark_cohorts)
+
+    result = campaign.run_full_campaign(
+        workspace_root=WORKSPACE_ROOT,
+        request=replace(_request(), resume=True, force=False),
+        benchmark_ids=("orchestrator_lifecycle",),
+        wait_on_quota=True,
+        max_quota_wait_seconds=60.0,
+    )
+
+    assert calls == [False]
+    assert result.paused_cohort is not None
+
+
+def test_assume_quota_reset_requires_a_resume_or_wait_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_single_benchmark_campaign(monkeypatch)
+    monkeypatch.setattr(
+        campaign,
+        "run_benchmark_cohorts",
+        lambda **_kwargs: pytest.fail("selection must fail before dispatch"),
+    )
+
+    with pytest.raises(
+        campaign.FullCampaignSelectionError,
+        match="assume_quota_reset only acts through resume or wait_on_quota",
+    ):
+        campaign.run_full_campaign(
+            workspace_root=WORKSPACE_ROOT,
+            request=_request(),
+            benchmark_ids=("orchestrator_lifecycle",),
+            assume_quota_reset=True,
+        )
+
+
+def test_cli_plumbs_assume_quota_reset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+
+    def fake_run_full_campaign(**kwargs):
+        captured.update(kwargs)
+        return campaign.FullCampaignRun(
+            cohorts=(),
+            completed_phases=(),
+            unscheduled_entries=(),
+        )
+
+    monkeypatch.setattr(campaign, "run_full_campaign", fake_run_full_campaign)
+
+    exit_code = campaign.main(
+        [
+            "--model",
+            "claude-sonnet-4-6",
+            "--benchmarks",
+            "orchestrator_lifecycle",
+            "--resume",
+            "--assume-quota-reset",
+        ]
+    )
+    assert exit_code == 0
+    assert captured["assume_quota_reset"] is True
+    assert captured["request"].resume is True
+
+    captured.clear()
+    exit_code = campaign.main(
+        [
+            "--model",
+            "claude-sonnet-4-6",
+            "--benchmarks",
+            "orchestrator_lifecycle",
+            "--resume",
+        ]
+    )
+    assert exit_code == 0
+    assert captured["assume_quota_reset"] is False
+
+
 def test_cli_selects_a_canary_without_running_live_models(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

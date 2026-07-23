@@ -225,11 +225,11 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "SHARE_TRANSCRIPT",
   // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
   "EVAL_CODE",
-  // App-control agent/model switchers + settings surface; dispatched through
-  // dashboard affordances, no deterministic keyless scenarios yet.
+  // App-control agent/model switchers; dispatched through dashboard
+  // affordances, no deterministic keyless scenarios yet. (SETTINGS left this
+  // baseline with deterministic-settings-voice-actions, #16942.)
   "AGENT_SWITCH",
   "MODEL_SWITCH",
-  "SETTINGS",
   // Local-inference management action; no deterministic keyless scenario yet.
   "LOCAL_INFERENCE",
   // Facewear owns smartglasses connection/runtime actions. The device-facing
@@ -281,6 +281,7 @@ const COVERED_ACTIONS: readonly string[] = [
   "BROWSER_SCREENSHOT",
   "BROWSER_TYPE",
   "BROWSER_WAIT",
+  "DOCUMENT",
   "FILE",
   "GENERATE_MEDIA",
   "GIT_PATHOLOGY",
@@ -308,6 +309,7 @@ const COVERED_ACTIONS: readonly string[] = [
   "SKILL_UNINSTALL",
   "SHELL",
   "SCHEDULED_TASKS",
+  "SETTINGS",
   "STREAM",
   "TODO",
   "USE_SKILL",
@@ -797,6 +799,8 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
     "live-only real-LLM followups-restraint check; asserts the live reply withholds widgets, routing no action. Keyless gating proof: the chat-widget unit + fixture e2e suites in packages/ui.",
   "live-chat-widgets-form-roundtrip":
     "live-only real-LLM chat-widget form roundtrip; widget emission/interaction is judged from the live reply with no deterministic ACTION_PLANNER fixture. Keyless gating proof: the chat-widget unit + fixture e2e suites in packages/ui.",
+  "live-document-delete":
+    "live-only real-LLM counterpart of deterministic-document-actions (#16942); the live model routes DOCUMENT list/delete (owner wall included) with no deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract. The deterministic twin pins the delete payload contract on the keyless lane.",
   "live-experience-delete-by-topic":
     "live-only real-LLM EXPERIENCE deletion flow; the live model routes EXPERIENCE with no deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract. Keyless gating proof: the experience service unit suites.",
   "live-help-knowledge":
@@ -815,7 +819,11 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
  * Covered actions that are not yet strict natural-language routed. This
  * baseline may only shrink as actions move to STRICT_LLM_ROUTED_ACTIONS.
  */
-const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["BACKGROUND"];
+const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = [
+  "BACKGROUND",
+  "DOCUMENT",
+  "SETTINGS",
+];
 
 function collectActionNames(plugin: Plugin): string[] {
   return sorted(
