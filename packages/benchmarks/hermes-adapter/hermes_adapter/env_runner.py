@@ -293,13 +293,15 @@ def run_hermes_env(
     if env_id in {"tblite", "terminalbench_2"}:
         config_env_overrides["agent_temperature"] = 0.0
         config_env_overrides["system_prompt"] = _TERMINAL_ENV_SYSTEM_PROMPT
-        # Campaign policy: no artificial turn budget. The upstream default of
-        # 60 turns truncates hard tasks mid-repair and turns capability
-        # measurements into budget measurements; the per-task wall clock
-        # (task_timeout, also raised here) is the only terminator. Values are
-        # overridable by callers via extra_args (--env.max_agent_turns=…).
-        config_env_overrides.setdefault("max_agent_turns", 1000)
-        config_env_overrides.setdefault("task_timeout", 7200)
+        # Campaign policy: no artificial limits. The upstream defaults
+        # (max_agent_turns=60, task_timeout=1200s) truncate hard tasks
+        # mid-repair and turn capability measurements into budget
+        # measurements. Both are pydantic ints upstream, so "unlimited" is
+        # expressed as values no real rollout can reach; the task ends when
+        # the agent concludes or the surrounding orchestrator deadline (if
+        # any) fires. Caller-overridable via extra_args (--env.<key>=…).
+        config_env_overrides.setdefault("max_agent_turns", 1_000_000_000)
+        config_env_overrides.setdefault("task_timeout", 1_000_000_000)
     forwarded_args: list[str] = list(extra_args or [])
     if not _has_forwarded_arg(forwarded_args, "--env.terminal_backend"):
         forwarded_args.append(f"--env.terminal_backend={terminal_backend}")
