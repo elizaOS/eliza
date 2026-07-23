@@ -59,3 +59,15 @@ def test_load_samples_can_expand_selected_fixture_samples() -> None:
         include_edge_scenarios=True,
     )
     assert len(samples) == 11
+
+
+def test_hf_split_mapping_covers_sd_qa_region_layout() -> None:
+    """sd-qa has only dialect-region splits upstream; every other suite is "test"."""
+    from elizaos_voicebench.dataset import hf_split_for_suite
+    from elizaos_voicebench.types import SUITES
+
+    assert hf_split_for_suite("sd-qa") == "usa"
+    for suite in SUITES:
+        if suite == "sd-qa":
+            continue
+        assert hf_split_for_suite(suite) == "test"

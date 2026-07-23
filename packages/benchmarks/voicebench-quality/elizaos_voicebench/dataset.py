@@ -183,6 +183,18 @@ def _load_fixture(suite: SuiteId, *, limit: int | None) -> list[Sample]:
     return samples
 
 
+# Upstream hlt-lab/voicebench exposes every suite as a "test" split except
+# sd-qa, which is sharded by dialect region (aus/gbr/ind_n/…/usa) with no
+# "test" split at all. Upstream VoiceBench reports sd-qa on the USA subset,
+# so that is the canonical split here too.
+_SUITE_HF_SPLITS: dict[str, str] = {"sd-qa": "usa"}
+
+
+def hf_split_for_suite(suite: SuiteId) -> str:
+    """The Hugging Face split that holds *suite*'s evaluation samples."""
+    return _SUITE_HF_SPLITS.get(suite, "test")
+
+
 def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
     try:
         from datasets import load_dataset  # type: ignore[import-not-found]
@@ -192,8 +204,9 @@ def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
             "Install with: pip install 'elizaos-voicebench[hf]'"
         ) from exc
 
-    log.info("loading %s/%s from Hugging Face", HF_REPO, suite)
-    ds = load_dataset(HF_REPO, suite, split="test")
+    split = hf_split_for_suite(suite)
+    log.info("loading %s/%s (split=%s) from Hugging Face", HF_REPO, suite, split)
+    ds = load_dataset(HF_REPO, suite, split=split)
     try:
         from datasets import Audio  # type: ignore[import-not-found]
 
