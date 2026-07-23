@@ -121,6 +121,7 @@ describe("POST /api/views/:id/activate", () => {
     expect(serverInteract).toHaveBeenCalledWith(
       "click-element",
       expect.objectContaining({ elementId: "send-it" }),
+      { runtime: ctx.runtime },
     );
     // A view-updated event is broadcast.
     expect(broadcastWs).toHaveBeenCalledWith(

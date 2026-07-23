@@ -74,28 +74,26 @@ describe("modelUsesReasoningTokens", () => {
     // exact models reported broken in production (kimi-k2.6, glm-5.1,
     // deepseek-v4-pro): at low max_tokens they spent the whole budget on hidden
     // reasoning and returned null content while billing the tokens.
-    test.each([
-      "moonshotai/kimi-k2.6",
-      "z-ai/glm-5.1",
-      "deepseek/deepseek-v4-pro",
-    ])("%s is NOT caught by name pattern alone", (model) => {
-      expect(modelUsesReasoningTokens(model)).toBe(false);
-    });
+    test.each(["moonshotai/kimi-k2.6", "z-ai/glm-5.1", "deepseek/deepseek-v4-pro"])(
+      "%s is NOT caught by name pattern alone",
+      (model) => {
+        expect(modelUsesReasoningTokens(model)).toBe(false);
+      },
+    );
 
-    test.each([
-      "moonshotai/kimi-k2.6",
-      "z-ai/glm-5.1",
-      "deepseek/deepseek-v4-pro",
-    ])("%s IS caught when the catalog advertises reasoning", (model) => {
-      expect(
-        modelUsesReasoningTokens(model, [
-          "max_tokens",
-          "temperature",
-          "reasoning",
-          "include_reasoning",
-        ]),
-      ).toBe(true);
-    });
+    test.each(["moonshotai/kimi-k2.6", "z-ai/glm-5.1", "deepseek/deepseek-v4-pro"])(
+      "%s IS caught when the catalog advertises reasoning",
+      (model) => {
+        expect(
+          modelUsesReasoningTokens(model, [
+            "max_tokens",
+            "temperature",
+            "reasoning",
+            "include_reasoning",
+          ]),
+        ).toBe(true);
+      },
+    );
 
     test("reasoning_effort alone is enough", () => {
       expect(modelUsesReasoningTokens("some/model", ["max_tokens", "reasoning_effort"])).toBe(true);

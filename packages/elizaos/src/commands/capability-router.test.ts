@@ -188,45 +188,43 @@ describe("runCapabilityRouterConnect", () => {
     ["cloudEndpointToken", { cloudEndpointToken: "endpoint-token" }],
     ["provisionTimeoutMs", { provisionTimeoutMs: "1000" }],
     ["pollIntervalMs", { pollIntervalMs: "100" }],
-  ])("rejects endpoint URL mixed with cloud-only option %s before calling the API", async (_name, cloudOnlyOption) => {
-    const fetchMock = mockFetch({ success: true });
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  ])(
+    "rejects endpoint URL mixed with cloud-only option %s before calling the API",
+    async (_name, cloudOnlyOption) => {
+      const fetchMock = mockFetch({ success: true });
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const code = await runCapabilityRouterConnect({
-      endpointUrl: "https://capability.example.test",
-      ...cloudOnlyOption,
-    });
+      const code = await runCapabilityRouterConnect({
+        endpointUrl: "https://capability.example.test",
+        ...cloudOnlyOption,
+      });
 
-    expect(code).toBe(1);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(error.mock.calls[0]?.[0]).toContain(
-      "Use either --endpoint-url or --cloud-api-base, not both.",
-    );
-  });
+      expect(code).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(error.mock.calls[0]?.[0]).toContain(
+        "Use either --endpoint-url or --cloud-api-base, not both.",
+      );
+    },
+  );
 
-  it.each([
-    "0",
-    "-1",
-    "1.5",
-    "1e3",
-    "0x10",
-    "1_000",
-    "Infinity",
-  ])("rejects non-decimal positive request timeout %s before calling the API", async (requestTimeoutMs) => {
-    const fetchMock = mockFetch({ success: true });
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  it.each(["0", "-1", "1.5", "1e3", "0x10", "1_000", "Infinity"])(
+    "rejects non-decimal positive request timeout %s before calling the API",
+    async (requestTimeoutMs) => {
+      const fetchMock = mockFetch({ success: true });
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const code = await runCapabilityRouterConnect({
-      endpointUrl: "https://capability.example.test",
-      requestTimeoutMs,
-    });
+      const code = await runCapabilityRouterConnect({
+        endpointUrl: "https://capability.example.test",
+        requestTimeoutMs,
+      });
 
-    expect(code).toBe(1);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(error.mock.calls[0]?.[0]).toContain(
-      "request timeout must be a positive integer.",
-    );
-  });
+      expect(code).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(error.mock.calls[0]?.[0]).toContain(
+        "request timeout must be a positive integer.",
+      );
+    },
+  );
 
   it("surfaces API errors without leaking request tokens", async () => {
     mockFetch({ error: "Unauthorized" }, 401);

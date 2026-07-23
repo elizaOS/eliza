@@ -1,6 +1,11 @@
+"""Checks that registry score extraction rejects incomplete publication artifacts."""
+
 from __future__ import annotations
 
+import copy
+import importlib
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -11,9 +16,186 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent))
 
 from registry.scores import (  # noqa: E402
+    _score_from_action_calling_json,
     _score_from_hermes_env_json,
     _score_from_meeting_transcription_proof_json,
 )
+
+
+def test_action_calling_registry_uses_shared_case_scorer() -> None:
+    from benchmarks.action_calling_contract import score_action_calling_case
+    from registry import scores
+
+    assert scores.score_action_calling_case is score_action_calling_case
+
+
+@lru_cache(maxsize=1)
+def _action_calling_full_report_template() -> dict[str, object]:
+    action_cli = importlib.import_module("benchmarks.action-calling.cli")
+    cases = action_cli._expand_cases(
+        action_cli._load_cases(action_cli.DEFAULT_TEST, None)
+    )
+    case_outcomes = [
+        {
+            "case_id": action_cli._case_id(case, index),
+            "messages": case.messages,
+            "tools": case.tools,
+            "expected_tool_calls": case.expected_calls,
+            "predicted_tool_calls": case.expected_calls,
+            "generation_source": "captured_action",
+            "native_tool_calls_ok": True,
+            "tool_name_match": True,
+            "args_parse_ok": True,
+            "required_keys_ok": True,
+            "arguments_match": True,
+        }
+        for index, case in enumerate(cases)
+    ]
+    return {
+        "model": "claude-opus-4-6",
+        "provider": "eliza",
+        "tool_choice": "auto",
+        "generation_source": "captured_action",
+        "n": 693,
+        "dataset_provenance": {
+            "sha256": "78dd3bc0b8cc98e0637231ae96dee7a63dbe1b5ae3e1b4fd7d862733ff5e162b",
+            "row_count": 11_578,
+            "contract_version": "structured-output-tool-v2",
+            "recovered_opaque_tasks_contract_count": 63,
+            "recovered_schema_sources": {
+                "direct_json_schema": 45,
+                "inferred_from_answer_shape": 4,
+                "wrapped_json_schema": 14,
+            },
+            "base_case_manifest_sha256": (
+                "d9eb9ddc74f23838960a81cc78e782ebd3127e849ee7048e748a13dacf58a58b"
+            ),
+            "evaluated_case_manifest_sha256": (
+                "147423d1dfc422cfab96670d1248b890344d56784e8940de05351620517609a9"
+            ),
+            "evaluated_case_id_manifest_sha256": (
+                "51788d8fa8207b067597b845e9c5e83db9ab0de1f4d235d98a146b47a577441f"
+            ),
+            "loaded_base_case_count": 63,
+            "evaluated_case_count": 693,
+            "scenario_expansion": True,
+        },
+        "generation_sources": ["captured_action"],
+        "counts": {
+            "native_tool_calls_ok": 693,
+            "tool_name_match": 693,
+            "args_parse_ok": 693,
+            "required_keys_ok": 693,
+            "arguments_match": 693,
+        },
+        "metrics": {
+            "score": 1.0,
+            "native_tool_calls_ok": 1.0,
+            "tool_name_match": 1.0,
+            "args_parse_ok": 1.0,
+            "required_keys_ok": 1.0,
+            "arguments_match": 1.0,
+        },
+        "case_outcomes": case_outcomes,
+    }
+
+
+def _action_calling_full_report() -> dict[str, object]:
+    return copy.deepcopy(_action_calling_full_report_template())
+
+
+def test_action_calling_full_report_is_publishable() -> None:
+    extraction = _score_from_action_calling_json(_action_calling_full_report())
+
+    assert extraction.score == pytest.approx(1.0)
+    assert extraction.metrics["n"] == 693
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("n", 692),
+        ("tool_choice", "none"),
+        ("provider", "mock"),
+    ],
+)
+def test_action_calling_rejects_noncanonical_workload(
+    field: str, value: object
+) -> None:
+    report = _action_calling_full_report()
+    report[field] = value
+
+    with pytest.raises(ValueError, match="action_calling"):
+        _score_from_action_calling_json(report)
+
+
+def test_action_calling_rejects_tampered_dataset_manifest() -> None:
+    report = _action_calling_full_report()
+    provenance = report["dataset_provenance"]
+    assert isinstance(provenance, dict)
+    provenance["base_case_manifest_sha256"] = "0" * 64
+
+    with pytest.raises(ValueError, match="base_case_manifest_sha256"):
+        _score_from_action_calling_json(report)
+
+
+def test_action_calling_rejects_aggregate_metric_tampering() -> None:
+    report = _action_calling_full_report()
+    counts = report["counts"]
+    metrics = report["metrics"]
+    assert isinstance(counts, dict)
+    assert isinstance(metrics, dict)
+    counts["arguments_match"] = 0
+    metrics["arguments_match"] = 0.0
+    metrics["score"] = 0.0
+
+    with pytest.raises(ValueError, match="case outcomes"):
+        _score_from_action_calling_json(report)
+
+
+def test_action_calling_rejects_duplicate_case_id() -> None:
+    report = _action_calling_full_report()
+    outcomes = report["case_outcomes"]
+    assert isinstance(outcomes, list)
+    assert isinstance(outcomes[0], dict)
+    assert isinstance(outcomes[-1], dict)
+    outcomes[-1]["case_id"] = outcomes[0]["case_id"]
+
+    with pytest.raises(ValueError, match="duplicate case_id"):
+        _score_from_action_calling_json(report)
+
+
+def test_action_calling_rejects_missing_case_outcome_ledger() -> None:
+    report = _action_calling_full_report()
+    del report["case_outcomes"]
+
+    with pytest.raises(ValueError, match="case_outcomes"):
+        _score_from_action_calling_json(report)
+
+
+def test_action_calling_rejects_tampered_case_boolean() -> None:
+    report = _action_calling_full_report()
+    outcomes = report["case_outcomes"]
+    assert isinstance(outcomes, list)
+    assert isinstance(outcomes[0], dict)
+    outcomes[0]["arguments_match"] = False
+
+    with pytest.raises(ValueError, match="arguments_match does not match"):
+        _score_from_action_calling_json(report)
+
+
+def test_action_calling_rejects_tampered_case_contract() -> None:
+    report = _action_calling_full_report()
+    outcomes = report["case_outcomes"]
+    assert isinstance(outcomes, list)
+    assert isinstance(outcomes[0], dict)
+    messages = outcomes[0]["messages"]
+    assert isinstance(messages, list)
+    assert isinstance(messages[-1], dict)
+    messages[-1]["content"] = "tampered prompt"
+
+    with pytest.raises(ValueError, match="case contract manifest"):
+        _score_from_action_calling_json(report)
 
 
 GENERATED_ARTIFACT_SCORE_IDS = (
@@ -32,7 +214,9 @@ def _meeting_generated_artifact_scores() -> list[dict[str, object]]:
     return [
         {
             "id": score_id,
-            "observed_score": 0.0 if score_id in {"hallucination_rate", "omission_rate"} else 1.0,
+            "observed_score": 0.0
+            if score_id in {"hallucination_rate", "omission_rate"}
+            else 1.0,
         }
         for score_id in GENERATED_ARTIFACT_SCORE_IDS
     ]
@@ -40,10 +224,26 @@ def _meeting_generated_artifact_scores() -> list[dict[str, object]]:
 
 def _meeting_baseline_comparisons() -> list[dict[str, object]]:
     return [
-        {"id": "eliza_current_baseline", "comparison_type": "internal_baseline", "run_status": "run"},
-        {"id": "otter_product_baseline", "comparison_type": "external_product", "run_status": "not_run"},
-        {"id": "granola_product_baseline", "comparison_type": "external_product", "run_status": "not_run"},
-        {"id": "zoom_native_notes_baseline", "comparison_type": "external_product", "run_status": "imported"},
+        {
+            "id": "eliza_current_baseline",
+            "comparison_type": "internal_baseline",
+            "run_status": "run",
+        },
+        {
+            "id": "otter_product_baseline",
+            "comparison_type": "external_product",
+            "run_status": "not_run",
+        },
+        {
+            "id": "granola_product_baseline",
+            "comparison_type": "external_product",
+            "run_status": "not_run",
+        },
+        {
+            "id": "zoom_native_notes_baseline",
+            "comparison_type": "external_product",
+            "run_status": "imported",
+        },
         {
             "id": "google_meet_gemini_notes_baseline",
             "comparison_type": "external_product",
@@ -67,7 +267,10 @@ def _meeting_adversarial_cases() -> list[dict[str, object]]:
 
 
 def _meeting_qa_checklist() -> list[dict[str, object]]:
-    return [{"id": f"qa_{index}", "verdict": "pass", "machine_verdict": "pass"} for index in range(5)]
+    return [
+        {"id": f"qa_{index}", "verdict": "pass", "machine_verdict": "pass"}
+        for index in range(5)
+    ]
 
 
 def test_hermes_env_placeholder_only_score_is_not_publishable() -> None:
@@ -360,8 +563,16 @@ def test_meeting_transcription_real_lane_requires_open_source_baseline_run() -> 
 def test_meeting_transcription_real_lane_requires_current_eliza_baseline() -> None:
     report = _meeting_transcription_real_report()
     report["baseline_comparisons"] = [
-        row for row in _meeting_baseline_comparisons() if row["id"] != "eliza_current_baseline"
-    ] + [{"id": "replacement_internal", "comparison_type": "internal_baseline", "run_status": "run"}]
+        row
+        for row in _meeting_baseline_comparisons()
+        if row["id"] != "eliza_current_baseline"
+    ] + [
+        {
+            "id": "replacement_internal",
+            "comparison_type": "internal_baseline",
+            "run_status": "run",
+        }
+    ]
 
     with pytest.raises(ValueError, match="current Eliza baseline"):
         _score_from_meeting_transcription_proof_json(report)
@@ -424,7 +635,9 @@ def test_meeting_transcription_real_lane_rejects_malformed_parity_rows() -> None
 
 
 def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() -> None:
-    extraction = _score_from_meeting_transcription_proof_json(_meeting_transcription_real_report())
+    extraction = _score_from_meeting_transcription_proof_json(
+        _meeting_transcription_real_report()
+    )
 
     assert extraction.score == pytest.approx(0.77)
     assert extraction.metrics["lane"] == "real_product"
@@ -433,7 +646,9 @@ def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() ->
     assert extraction.metrics["speaker_name_provenance_count"] == 8
     assert extraction.metrics["audio_visual_case_count"] == 7
     assert extraction.metrics["active_speaker_f1"] == pytest.approx(0.88)
-    assert extraction.metrics["visual_acoustic_disagreement_rate"] == pytest.approx(0.12)
+    assert extraction.metrics["visual_acoustic_disagreement_rate"] == pytest.approx(
+        0.12
+    )
     assert extraction.metrics["summary_factuality"] == pytest.approx(1.0)
     assert extraction.metrics["hallucination_rate"] == pytest.approx(0.0)
     assert extraction.metrics["baseline_comparison_count"] == 7

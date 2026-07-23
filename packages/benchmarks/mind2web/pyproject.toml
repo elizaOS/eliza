@@ -24,6 +24,8 @@ classifiers = [
 ]
 dependencies = [
     "eliza-adapter",
+    "huggingface-hub>=0.24",
+    "lxml>=4.9",
 ]
 
 [tool.uv.sources]

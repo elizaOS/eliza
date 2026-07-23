@@ -245,6 +245,7 @@ Use \`_meta.assumptions\` to document when you used an alternative integration.
 **When creating nodes:**
 -  **CRITICAL: Use EXACTLY the parameter names from each node's "properties" definitions.** Do NOT guess or use names from your training data. If the definition says \`modelId\`, use \`modelId\` — not \`model\`. If it says \`responses\`, use \`responses\` — not \`prompt\`. The exact \`name\` field in each property definition is what goes into \`parameters\`.
 -  For \`fixedCollection\` type properties, values MUST be nested inside a \`"values"\` array of objects. Example: \`"responses": { "values": [{ "content": "..." }] }\`
+-  For \`workflows-nodes-base.set\` / Edit Fields manual mapping, use \`"assignments": { "assignments": [{ "name": "fieldName", "type": "string", "value": "the requested value" }] }\`. Every assignment MUST contain an explicit \`value\`; a type without a value is invalid. When the user intentionally requests an empty string, emit \`"value": ""\` rather than omitting the property.
 -  For \`options\` type parameters, pick the most common or user-specified value from the property's \`options\` array.
 -  Use unique names for each node.
 -  Connect nodes using the \`connections\` object, with \`"main"\` as the default connection type.

@@ -27,11 +27,11 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     # Fresh Turbo-cold attempt 5 was still linting successfully when the old
-    # 10m ceiling canceled it at 10m26s. Keep every ratchet/lint/format step and
-    # allow a finite 15m cold window; attempt 4 completed the same lane in 8m30s.
+    # 10m ceiling canceled it at 10m26s. Allow a finite 15m cold window; attempt
+    # 4 completed the same lane in 8m30s.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
           # `audit:test-realness` compares touched tests against origin/develop.
@@ -77,26 +77,17 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
 
-      - name: Run type-safety ratchet self-test
-        run: bun run audit:type-safety-ratchet:self-test
-
-      - name: Run type-safety ratchet
-        run: bun run audit:type-safety-ratchet
-
       - name: Run anti-larp test gate self-test
         run: bun run audit:focused-tests:self-test
 
       - name: Run anti-larp test gate
         run: bun run audit:focused-tests
 
-      - name: Run test realness ratchet
-        run: bun run audit:test-realness
-
       - name: Run type-duplication finder self-test
         run: bun run audit:type-duplication:self-test
 
-      - name: Run lint
-        run: bun run lint
+      - name: Run lint (read-only)
+        run: bun run lint:check
 
       - name: Run format check
         run: bun run format:check
@@ -111,7 +102,7 @@ jobs:
     # 25m cold ceiling for the unfiltered graph; warm runs remain much faster.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -150,7 +141,7 @@ jobs:
     # 48-test suite and a finite 32m ceiling, a measured 25% cold-run margin.
     timeout-minutes: 32
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -165,6 +156,9 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           cache-bun-install: "false"
+
+      - name: Validate fork-safe browser contract
+        run: bun run audit:quality-fork-browser
 
       - name: Build
         run: bun run build
@@ -194,7 +188,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 

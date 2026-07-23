@@ -65,6 +65,20 @@ describe('extractKeywords', () => {
     expect(result).toEqual(['gmail', 'stripe', 'send']);
   });
 
+  test('parses JSON-string structured output from subscription-backed providers', async () => {
+    const runtime = createModelRuntime({
+      useModel: mock(() =>
+        Promise.resolve(
+          JSON.stringify({ keywords: ['manual trigger', 'set node', 'json'] }, null, 2)
+        )
+      ),
+    });
+
+    const result = await extractKeywords(runtime, 'Create a manual workflow with a Set node');
+
+    expect(result).toEqual(['manual trigger', 'set node', 'json']);
+  });
+
   test('trims and filters empty keywords', async () => {
     const runtime = createModelRuntime({
       useModel: mock(() => Promise.resolve({ keywords: [' gmail ', '', '  slack  ', ' '] })),
@@ -520,6 +534,32 @@ describe('workflow generation model routing', () => {
 
     assertCerebrasWorkflowCall(useModel.mock.calls[0], 'fixWorkflowErrors');
     assertCerebrasWorkflowCall(useModel.mock.calls[1], 'formatActionResponse');
+  });
+
+  test('keeps the original requested literal in the deterministic repair prompt', async () => {
+    const useModel = mock(() => Promise.resolve(JSON.stringify(workflow)));
+    const runtime = createModelRuntime({ useModel });
+    const instruction =
+      "Create a manual workflow that sets field message to 'smithers-final-20260717'.";
+
+    await fixWorkflowErrors(
+      runtime,
+      workflow,
+      [
+        {
+          kind: 'assignmentValueMissing',
+          node: 'Set',
+          detail: 'assignment for field "message" must include an explicit value',
+        },
+      ],
+      [],
+      instruction
+    );
+
+    const modelParams = useModel.mock.calls[0]?.[1] as { prompt?: string } | undefined;
+    expect(modelParams?.prompt).toContain('## Original user instruction');
+    expect(modelParams?.prompt).toContain('smithers-final-20260717');
+    expect(modelParams?.prompt).toContain('assignmentValueMissing');
   });
 
   test('routes correction fallbacks through Cerebras gpt-oss-120b', async () => {

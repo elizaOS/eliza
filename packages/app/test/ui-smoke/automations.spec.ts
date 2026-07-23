@@ -680,6 +680,83 @@ test("automations overview empty state encourages creating tasks and workflows",
   await expect(page.getByTestId("automations-shell")).toBeVisible();
 });
 
+test("automations empty state remains reachable beside chat in short landscape", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await installAutomationsApi(page, []);
+
+  await openAppPath(page, "/automations");
+
+  const scrollRegion = page.getByTestId("automations-scroll-region");
+  const headline = page.getByText("Nothing scheduled yet");
+  await expect(scrollRegion).toBeVisible();
+  await expect(headline).toBeAttached();
+  await page.waitForFunction(
+    () =>
+      Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--eliza-chat-side-clearance",
+        ),
+      ) > 0,
+  );
+
+  await expect(headline).toBeVisible();
+  await expect(
+    page.getByText("Ask in chat to set up a workflow and it will run here."),
+  ).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const scroll = document.querySelector<HTMLElement>(
+      '[data-testid="automations-scroll-region"]',
+    );
+    const title = Array.from(document.querySelectorAll<HTMLElement>("p")).find(
+      (element) => element.textContent?.trim() === "Nothing scheduled yet",
+    );
+    const empty = document.querySelector<HTMLElement>(
+      '[data-testid="automations-empty-state"]',
+    );
+    const chat = document.querySelector<HTMLElement>(
+      '[data-testid="chat-sheet"]',
+    );
+    if (!scroll || !title || !empty || !chat) return null;
+    const titleRect = title.getBoundingClientRect();
+    const emptyRect = empty.getBoundingClientRect();
+    const chatRect = chat.getBoundingClientRect();
+    const overlapWidth = Math.max(
+      0,
+      Math.min(emptyRect.right, chatRect.right) -
+        Math.max(emptyRect.left, chatRect.left),
+    );
+    const overlapHeight = Math.max(
+      0,
+      Math.min(emptyRect.bottom, chatRect.bottom) -
+        Math.max(emptyRect.top, chatRect.top),
+    );
+    return {
+      scrollTop: scroll.scrollTop,
+      emptyBottom: emptyRect.bottom,
+      titleTop: titleRect.top,
+      titleBottom: titleRect.bottom,
+      viewportHeight: window.innerHeight,
+      overlapArea: overlapWidth * overlapHeight,
+      sidePadding: Number.parseFloat(getComputedStyle(scroll).paddingInlineEnd),
+    };
+  });
+
+  expect(geometry).not.toBeNull();
+  expect(geometry?.scrollTop).toBe(0);
+  expect(geometry?.emptyBottom).toBeLessThanOrEqual(
+    geometry?.viewportHeight ?? 0,
+  );
+  expect(geometry?.titleTop).toBeGreaterThanOrEqual(0);
+  expect(geometry?.titleBottom).toBeLessThanOrEqual(
+    geometry?.viewportHeight ?? 0,
+  );
+  expect(geometry?.overlapArea).toBe(0);
+  expect(geometry?.sidePadding).toBeGreaterThan(0);
+});
+
 test("automations can list tasks, create a task, and inspect workflow JSON", async ({
   page,
 }) => {

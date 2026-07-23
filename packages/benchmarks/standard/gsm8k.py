@@ -18,8 +18,6 @@ Result file: ``<output>/gsm8k-results.json``.
 from __future__ import annotations
 
 import argparse
-import logging
-import os
 import re
 from collections.abc import Iterable, Sequence
 from decimal import Decimal, InvalidOperation
@@ -35,13 +33,13 @@ from ._base import (
 from ._cli import RunnerFactory, cli_dispatch
 from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
 
-log = logging.getLogger("benchmarks.standard.gsm8k")
-
 BENCHMARK_ID = "gsm8k"
-DATASET_VERSION = "openai/gsm8k@main"
-EXPANDED_DATASET_VERSION = "openai/gsm8k@main+edge-v1"
 DATASET_NAME = "openai/gsm8k"
 DATASET_CONFIG = "main"
+DATASET_REVISION = "740312add88f781978c0658806c59bc2815b9866"
+DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
+EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
+EXPECTED_TEST_EXAMPLES = 1_319
 
 SYSTEM_PROMPT = (
     "You are a careful problem solver. For each problem, think through "
@@ -106,25 +104,20 @@ def _gold_from_answer(answer: str) -> int | None:
 
 
 def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
-    if (
-        os.environ.get("BENCHMARK_STANDARD_FULL_DATA", "").strip() != "1"
-        and limit is not None
-        and limit <= len(SMOKE_FIXTURES)
-    ):
-        return list(SMOKE_FIXTURES)[:limit]
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        log.warning("`datasets` not installed — using built-in fixture")
-        items = list(SMOKE_FIXTURES)
-        return items if limit is None else items[:limit]
+    """Load a pinned, complete GSM8K test corpus for non-mock runs."""
+    from datasets import load_dataset
 
-    try:
-        ds = load_dataset(DATASET_NAME, DATASET_CONFIG, split="test")
-    except Exception as exc:  # noqa: BLE001
-        log.warning("failed to load %s: %s — using fixture", DATASET_NAME, exc)
-        items = list(SMOKE_FIXTURES)
-        return items if limit is None else items[:limit]
+    target_count = (
+        EXPECTED_TEST_EXAMPLES if limit is None else min(limit, EXPECTED_TEST_EXAMPLES)
+    )
+    if target_count <= 0:
+        return []
+    ds = load_dataset(
+        DATASET_NAME,
+        DATASET_CONFIG,
+        split="test",
+        revision=DATASET_REVISION,
+    )
 
     examples: list[dict[str, object]] = []
     for row in ds:
@@ -133,9 +126,16 @@ def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
         final = _gold_from_answer(str(answer))
         if final is None:
             continue
-        examples.append({"question": str(question), "answer": str(answer), "final": final})
-        if limit is not None and len(examples) >= limit:
+        examples.append(
+            {"question": str(question), "answer": str(answer), "final": final}
+        )
+        if len(examples) >= target_count:
             break
+    if len(examples) != target_count:
+        raise RuntimeError(
+            f"GSM8K corpus is incomplete: expected {target_count} test examples, "
+            f"loaded {len(examples)} from revision {DATASET_REVISION}"
+        )
     return examples
 
 
@@ -160,11 +160,19 @@ class GSM8KRunner:
         self._max_tokens = max_tokens
         self._include_edge_scenarios = include_edge_scenarios
 
-    def _selected_examples(self, limit: int | None) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-        base = list(self._examples if self._examples is not None else _load_dataset_examples(limit))
+    def _selected_examples(
+        self, limit: int | None
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        base = list(
+            self._examples
+            if self._examples is not None
+            else _load_dataset_examples(limit)
+        )
         if self._examples is not None and limit is not None:
             base = base[:limit]
-        expanded = expand_gsm8k_examples(base) if self._include_edge_scenarios else list(base)
+        expanded = (
+            expand_gsm8k_examples(base) if self._include_edge_scenarios else list(base)
+        )
         validate_gsm8k_examples(expanded)
         return base, expanded
 
@@ -188,7 +196,9 @@ class GSM8KRunner:
         if not examples:
             raise RuntimeError("GSM8K loaded zero examples")
 
-        config = GenerationConfig(model=model, max_tokens=self._max_tokens, temperature=0.0)
+        config = GenerationConfig(
+            model=model, max_tokens=self._max_tokens, temperature=0.0
+        )
 
         correct = 0
         n = 0
@@ -205,8 +215,9 @@ class GSM8KRunner:
             try:
                 gen = client.generate(messages, config)
             except Exception as exc:  # noqa: BLE001
-                log.warning("generation failed (idx=%d): %s", i, exc)
-                continue
+                raise RuntimeError(
+                    f"GSM8K generation failed for example {i + 1}/{len(examples)}"
+                ) from exc
             n += 1
             has_marker = "####" in gen.text
             if has_marker:
@@ -225,14 +236,18 @@ class GSM8KRunner:
                     }
                 )
 
-        if n == 0:
-            raise RuntimeError("GSM8K evaluated zero examples — model returned no output")
+        if n != len(examples):
+            raise RuntimeError(
+                f"GSM8K evaluated {n}/{len(examples)} examples; refusing a partial score"
+            )
         accuracy = correct / n
         return BenchmarkResult(
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=EXPANDED_DATASET_VERSION if self._include_edge_scenarios else DATASET_VERSION,
+            dataset_version=EXPANDED_DATASET_VERSION
+            if self._include_edge_scenarios
+            else DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(accuracy, 4),
@@ -259,7 +274,9 @@ class _GSM8KFactory(RunnerFactory):
             help="Cap on generated tokens per problem (chain-of-thought needs headroom)",
         )
 
-    def build(self, args: argparse.Namespace) -> tuple[GSM8KRunner, Sequence[str] | None]:
+    def build(
+        self, args: argparse.Namespace
+    ) -> tuple[GSM8KRunner, Sequence[str] | None]:
         runner = GSM8KRunner(
             max_tokens=args.max_tokens,
             include_edge_scenarios=args.expand_scenarios,
@@ -287,7 +304,9 @@ def expand_gsm8k_examples(examples: list[dict[str, object]]) -> list[dict[str, o
 
 
 def validate_gsm8k_examples(examples: list[dict[str, object]]) -> None:
-    validate_dict_examples(examples, id_key="scenario_id", required_keys=("question", "answer", "final"))
+    validate_dict_examples(
+        examples, id_key="scenario_id", required_keys=("question", "answer", "final")
+    )
 
 
 def main() -> int:

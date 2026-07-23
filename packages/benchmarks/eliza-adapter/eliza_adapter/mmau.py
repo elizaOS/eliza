@@ -25,6 +25,7 @@ class _BaseMMAUAgent:
         self.config = config
         self._client: Any | None = None
         self._server_manager: Any | None = None
+        self._transcript_cache: dict[str, str] = {}
 
     async def initialize(self) -> None:
         self._client = self._build_client()
@@ -78,7 +79,9 @@ class _BaseMMAUAgent:
     def _build_client(self) -> Any:
         raise NotImplementedError
 
-    def _send_prompt(self, sample: MMAUSample, prompt: str, transcript: str = "") -> str:
+    def _send_prompt(
+        self, sample: MMAUSample, prompt: str, transcript: str = ""
+    ) -> str:
         if self._client is None:
             raise RuntimeError("MMAU adapter was not initialized")
         response = self._client.send_message(
@@ -100,6 +103,22 @@ class _BaseMMAUAgent:
         return str(getattr(response, "text", ""))
 
     async def _transcribe(self, sample: MMAUSample) -> str:
+        metadata = getattr(sample, "metadata", None)
+        base_sample_id = (
+            metadata.get("base_sample_id") if isinstance(metadata, dict) else None
+        )
+        cache_key = (
+            base_sample_id
+            if isinstance(base_sample_id, str) and base_sample_id
+            else sample.id
+        )
+        if cache_key in self._transcript_cache:
+            return self._transcript_cache[cache_key]
+        transcript = await self._transcribe_uncached(sample)
+        self._transcript_cache[cache_key] = transcript
+        return transcript
+
+    async def _transcribe_uncached(self, sample: MMAUSample) -> str:
         transcript = getattr(sample, "transcript", "")
         if isinstance(transcript, str) and transcript.strip():
             return transcript.strip()
@@ -163,8 +182,18 @@ class OpenClawMMAUAgent(_BaseMMAUAgent):
         from openclaw_adapter.client import OpenClawClient
 
         return OpenClawClient(
-            direct_openai_compatible=True,
-            allow_text_tool_calls=True,
+            provider=(
+                os.environ.get("BENCHMARK_MODEL_PROVIDER")
+                or os.environ.get("ELIZA_PROVIDER")
+                or "cerebras"
+            )
+            .strip()
+            .lower(),
+            model=(
+                os.environ.get("BENCHMARK_MODEL_NAME")
+                or self.config.model
+                or "gemma-4-31b"
+            ),
         )
 
 

@@ -31,7 +31,45 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_REPO_PATH = Path.home() / ".eliza" / "agents" / "hermes-agent-src"
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_REPO_PATH = (
+    _WORKSPACE_ROOT / "packages" / "benchmark-data" / "source-audit" / "hermes-agent.git"
+)
+DEFAULT_YC_BENCH_PATH = (
+    _WORKSPACE_ROOT / "packages" / "benchmark-data" / "source-audit" / "yc-bench"
+)
+DEFAULT_HF_HOME = _WORKSPACE_ROOT / "packages" / "benchmark-data" / "huggingface"
+PINNED_HERMES_ENV_REVISION = "d36413211449057c28aaaab52a2be5133bc59ef7"
+PINNED_YC_BENCH_REVISION = "bfb0c88062450f46341bd9a5298903fc2e952a5c"
+
+
+@dataclass(frozen=True)
+class HermesEnvSource:
+    """Pinned source data and full-run cardinality for a native environment."""
+
+    dataset: str
+    revision: str
+    split: str
+    expected_count: int
+    fingerprint: str
+
+
+ENV_SOURCES: dict[str, HermesEnvSource] = {
+    "tblite": HermesEnvSource(
+        dataset="NousResearch/openthoughts-tblite",
+        revision="44c975f590dde88316572d7e2a779ec1112d4a4b",
+        split="train",
+        expected_count=100,
+        fingerprint="3ee6ecf1c25226b1",
+    ),
+    "terminalbench_2": HermesEnvSource(
+        dataset="NousResearch/terminal-bench-2",
+        revision="e837821065825f4df78220cf7aa302abd2708401",
+        split="train",
+        expected_count=89,
+        fingerprint="264cd0c63b10524a",
+    ),
+}
 
 
 _TERMINAL_ENV_SYSTEM_PROMPT = (
@@ -124,6 +162,7 @@ def run_hermes_env(
     extra_args: list[str] | None = None,
     timeout_s: float = 7200.0,
     force: bool = False,
+    validate_source: bool = True,
 ) -> HermesEnvResult:
     """Run one of the four native hermes-agent envs and return a normalized result.
 
@@ -138,32 +177,94 @@ def run_hermes_env(
     ``output_dir/evals/<env_id>/...``. We locate them, parse the summary, and
     return a :class:`HermesEnvResult`.
     """
-    del provider  # accepted for API parity; OpenAI-compatible only for now
     if env_id not in ENV_MODULES:
         raise ValueError(
             f"Unknown env_id {env_id!r}; expected one of {sorted(ENV_MODULES)}"
         )
+    if env_id == "hermes_swe_env":
+        raise RuntimeError(
+            "The pinned upstream HermesSweEnv evaluate() emits only an "
+            "eval/placeholder metric. Use run_humanevalpack_swe_smoke, which "
+            "executes the pinned 164-task HumanEvalPack Python corpus."
+        )
 
-    repo = Path(repo_path) if repo_path else DEFAULT_REPO_PATH
+    configured_repo = os.environ.get("HERMES_BENCH_REPO_PATH", "").strip()
+    repo = (
+        Path(repo_path)
+        if repo_path
+        else Path(configured_repo)
+        if configured_repo
+        else DEFAULT_REPO_PATH
+    )
     venv_python = repo / ".venv" / "bin" / "python"
     if not venv_python.exists():
         raise FileNotFoundError(
             f"hermes-agent venv python not found at {venv_python}. "
             f"Did you run `python -m venv .venv && pip install -e .` in {repo}?"
         )
+    repo_revision = PINNED_HERMES_ENV_REVISION
+    source_provenance: dict[str, Any] = {
+        "hermes_repo": str(repo),
+        "hermes_revision": repo_revision,
+    }
+    if validate_source:
+        repo_revision = _verify_source_checkout(repo, env_id, venv_python)
+        source_provenance["hermes_revision"] = repo_revision
+        dataset_source = ENV_SOURCES.get(env_id)
+        if dataset_source is not None:
+            source_provenance["dataset"] = _verify_pinned_dataset(
+                dataset_source,
+                venv_python=venv_python,
+            )
+        if env_id == "yc_bench":
+            yc_path = _yc_bench_path()
+            yc_revision = _git_revision(yc_path)
+            if yc_revision != PINNED_YC_BENCH_REVISION:
+                raise RuntimeError(
+                    f"YC-Bench checkout at {yc_path} is {yc_revision}; required "
+                    f"{PINNED_YC_BENCH_REVISION}"
+                )
+            source_provenance["yc_bench_repo"] = str(yc_path)
+            source_provenance["yc_bench_revision"] = yc_revision
+            _verify_yc_presets(yc_path)
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Idempotency: if a prior run already wrote a summary under output_dir/evals/<env_id>/...,
-    # skip the subprocess and return the cached result. Pass force=True to override.
     evals_root = output_dir / "evals" / env_id
+    expected_samples = _expected_sample_count(
+        env_id,
+        max_tasks=max_tasks,
+        task_filter=task_filter,
+    )
+    run_provenance = {
+        "env_id": env_id,
+        "provider": provider,
+        "model": model,
+        "repo_revision": repo_revision,
+        "expected_samples": expected_samples,
+        "task_filter": task_filter,
+        "extra_args": list(extra_args or []),
+        "source": source_provenance,
+    }
+    provenance_path = output_dir / f"{env_id}.run-provenance.json"
     if not force:
         cached_summary = _find_first(evals_root, "eval-summary.json") or _find_first(
             evals_root, "summary.json"
         )
         cached_samples = _find_first(evals_root, "samples.jsonl")
         if cached_summary is not None and cached_samples is not None:
+            if not provenance_path.is_file():
+                raise RuntimeError(
+                    f"Cached {env_id} artifacts at {evals_root} have no run provenance. "
+                    "Use a new output directory or pass force=True."
+                )
+            cached_provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+            if cached_provenance != run_provenance:
+                raise RuntimeError(
+                    f"Cached {env_id} artifacts do not match this provider/model/source. "
+                    "Use a new output directory or pass force=True."
+                )
             logger.info(
                 "Reusing cached hermes env result for %s at %s (force=False)",
                 env_id,
@@ -173,6 +274,8 @@ def run_hermes_env(
                 env_id=env_id,
                 evals_root=evals_root,
                 duration_s=0.0,
+                expected_samples=expected_samples,
+                provenance=source_provenance,
             )
 
     resolved_api_key = api_key if api_key is not None else os.environ.get("CEREBRAS_API_KEY", "")
@@ -194,9 +297,6 @@ def run_hermes_env(
     if not _has_forwarded_arg(forwarded_args, "--env.terminal_backend"):
         forwarded_args.append(f"--env.terminal_backend={terminal_backend}")
     if max_tasks is not None:
-        # The hermes-agent env CLIs do not expose a single generic
-        # max_eval_samples flag. Use each env's supported filter knobs for
-        # smoke-sized runs and let callers override with explicit args.
         if env_id == "tblite" and task_filter is None:
             task_filter = "broken-python"
         elif env_id == "terminalbench_2" and task_filter is None:
@@ -232,6 +332,15 @@ def run_hermes_env(
     env["OPENAI_MODEL"] = model
     env["TERMINAL_ENV"] = terminal_backend
     env["PATH"] = f"{venv_python.parent}{os.pathsep}{env.get('PATH', '')}"
+    env["HF_HOME"] = str(DEFAULT_HF_HOME)
+    env["HF_HUB_OFFLINE"] = "1"
+    env["HF_DATASETS_OFFLINE"] = "1"
+    yc_source = _yc_bench_path() / "src"
+    env["PYTHONPATH"] = os.pathsep.join(
+        path
+        for path in (str(repo), str(yc_source), env.get("PYTHONPATH", ""))
+        if path
+    )
     env.setdefault("PYTHONUNBUFFERED", "1")
 
     stdout_path = output_dir / f"{env_id}.stdout.log"
@@ -239,10 +348,10 @@ def run_hermes_env(
 
     logger.info("Running hermes env %s: %s", env_id, " ".join(cmd))
     start = time.monotonic()
-    with open(stdout_path, "w", encoding="utf-8") as stdout_f, open(
-        stderr_path, "w", encoding="utf-8"
-    ) as stderr_f:
-        try:
+    try:
+        with open(stdout_path, "w", encoding="utf-8") as stdout_f, open(
+            stderr_path, "w", encoding="utf-8"
+        ) as stderr_f:
             completed = subprocess.run(  # noqa: S603
                 cmd,
                 cwd=str(repo),
@@ -252,11 +361,13 @@ def run_hermes_env(
                 text=True,
                 timeout=timeout_s,
             )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(
-                f"hermes env {env_id} timed out after {timeout_s}s. "
-                f"stdout={stdout_path}, stderr={stderr_path}"
-            ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"hermes env {env_id} timed out after {timeout_s}s. "
+            f"stdout={stdout_path}, stderr={stderr_path}"
+        ) from exc
+    finally:
+        config_path.unlink(missing_ok=True)
     duration = time.monotonic() - start
 
     if completed.returncode != 0:
@@ -266,19 +377,177 @@ def run_hermes_env(
             f"stderr tail:\n{tail}\n(full: {stderr_path})"
         )
 
-    return parse_hermes_env_result(
+    result = parse_hermes_env_result(
         env_id=env_id,
         evals_root=output_dir / "evals" / env_id,
         duration_s=duration,
+        expected_samples=expected_samples,
+        provenance=source_provenance,
     )
+    provenance_path.write_text(
+        json.dumps(run_provenance, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return result
 
 
 def _select_terminal_backend(env_id: str) -> str:
     override = os.environ.get("HERMES_BENCH_TERMINAL_BACKEND", "").strip().lower()
     if override:
+        if env_id in {"tblite", "terminalbench_2"} and override == "local":
+            raise RuntimeError(
+                f"{env_id} requires an isolated docker or modal backend; local would "
+                "not execute the official task images"
+            )
+        if override == "docker" and not _docker_daemon_available():
+            raise RuntimeError("Docker backend requested but the Docker daemon is unavailable")
         return override
-    _ = env_id
-    return "docker" if _docker_daemon_available() else "local"
+    if env_id in {"tblite", "terminalbench_2"}:
+        if not _docker_daemon_available():
+            raise RuntimeError(
+                f"{env_id} requires Docker; no daemon is available and local fallback "
+                "would invalidate the benchmark"
+            )
+        return "docker"
+    return "local"
+
+
+def _git_revision(repo: Path) -> str:
+    if not (repo / ".git").exists():
+        raise RuntimeError(f"Pinned source checkout has no .git metadata: {repo}")
+    completed = _subprocess_run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
+def _yc_bench_path() -> Path:
+    configured = os.environ.get("HERMES_YC_BENCH_PATH", "").strip()
+    return Path(configured) if configured else DEFAULT_YC_BENCH_PATH
+
+
+def _verify_yc_presets(yc_path: Path) -> None:
+    preset_dir = yc_path / "src" / "yc_bench" / "config" / "presets"
+    required = {"fast_test", "medium", "hard"}
+    present = {path.stem for path in preset_dir.glob("*.toml")}
+    missing = sorted(required - present)
+    if missing:
+        raise RuntimeError(
+            f"Pinned YC-Bench dependency {PINNED_YC_BENCH_REVISION} is incompatible "
+            "with the Hermes env's 9-run matrix: missing presets "
+            f"{missing} under {preset_dir}. Refusing to substitute a different matrix."
+        )
+
+
+def _verify_source_checkout(repo: Path, env_id: str, venv_python: Path) -> str:
+    revision = _git_revision(repo)
+    if revision != PINNED_HERMES_ENV_REVISION:
+        raise RuntimeError(
+            f"Hermes benchmark checkout at {repo} is {revision}; required "
+            f"{PINNED_HERMES_ENV_REVISION}. Current Hermes releases removed these envs."
+        )
+    module_path = repo / ENV_MODULES[env_id]
+    if not module_path.is_file():
+        raise FileNotFoundError(f"Pinned Hermes env module is missing: {module_path}")
+    imports = ["atroposlib", "datasets"]
+    if env_id in {"tblite", "terminalbench_2"}:
+        imports.append("docker")
+    elif env_id == "yc_bench":
+        imports.append("yc_bench")
+    check_env = dict(os.environ)
+    check_env["PYTHONPATH"] = os.pathsep.join(
+        path
+        for path in (str(repo), str(_yc_bench_path() / "src"), check_env.get("PYTHONPATH", ""))
+        if path
+    )
+    completed = _subprocess_run(
+        [venv_python, "-c", "; ".join(f"import {name}" for name in imports)],
+        cwd=str(repo),
+        env=check_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"Hermes benchmark interpreter failed dependency preflight: "
+            f"{completed.stderr[-2000:]}"
+        )
+    return revision
+
+
+def _verify_pinned_dataset(
+    source: HermesEnvSource,
+    *,
+    venv_python: Path,
+) -> dict[str, Any]:
+    script = (
+        "import json; from datasets import load_dataset; "
+        f"d=load_dataset({source.dataset!r}, split={source.split!r}, "
+        f"revision={source.revision!r}); "
+        "print(json.dumps({'count': len(d), 'fingerprint': d._fingerprint}))"
+    )
+    check_env = dict(os.environ)
+    check_env["HF_HOME"] = str(DEFAULT_HF_HOME)
+    check_env["HF_HUB_OFFLINE"] = "1"
+    check_env["HF_DATASETS_OFFLINE"] = "1"
+    completed = _subprocess_run(
+        [venv_python, "-c", script],
+        env=check_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"Failed to provision pinned dataset {source.dataset}@{source.revision}: "
+            f"{completed.stderr[-2000:]}"
+        )
+    payload = json.loads(completed.stdout.strip().splitlines()[-1])
+    if payload.get("count") != source.expected_count:
+        raise RuntimeError(
+            f"Pinned dataset {source.dataset}@{source.revision} has "
+            f"{payload.get('count')} tasks; expected {source.expected_count}"
+        )
+    if payload.get("fingerprint") != source.fingerprint:
+        raise RuntimeError(
+            f"Pinned dataset {source.dataset}@{source.revision} fingerprint is "
+            f"{payload.get('fingerprint')!r}; expected {source.fingerprint!r}"
+        )
+    return {
+        "name": source.dataset,
+        "revision": source.revision,
+        "split": source.split,
+        "expected_count": source.expected_count,
+        "actual_count": payload["count"],
+        "expected_fingerprint": source.fingerprint,
+        "actual_fingerprint": payload.get("fingerprint"),
+    }
+
+
+def _expected_sample_count(
+    env_id: str,
+    *,
+    max_tasks: int | None,
+    task_filter: str | None,
+) -> int:
+    if task_filter:
+        return len({name.strip() for name in task_filter.split(",") if name.strip()})
+    if max_tasks is not None:
+        if max_tasks != 1:
+            raise ValueError(
+                f"{env_id} has no generic max-tasks control; only max_tasks=1 is "
+                "supported for smoke runs. Use --task-filter for explicit terminal tasks."
+            )
+        return 1
+    if env_id in ENV_SOURCES:
+        return ENV_SOURCES[env_id].expected_count
+    if env_id == "yc_bench":
+        return 9
+    raise ValueError(f"No expected sample count for {env_id}")
 
 
 def _docker_daemon_available() -> bool:
@@ -359,6 +628,8 @@ def parse_hermes_env_result(
     *,
     evals_root: Path,
     duration_s: float,
+    expected_samples: int | None = None,
+    provenance: dict[str, Any] | None = None,
 ) -> HermesEnvResult:
     """Parse the samples.jsonl + eval-summary/metrics JSON hermes-agent writes.
 
@@ -376,13 +647,15 @@ def parse_hermes_env_result(
             f"Found summary={summary_path}, samples={samples_path}"
         )
     if samples_path is None:
-        samples_path = evals_root / "samples.jsonl"
-        samples_path.parent.mkdir(parents=True, exist_ok=True)
-        samples_path.write_text("", encoding="utf-8")
+        raise FileNotFoundError(
+            f"hermes env {env_id} produced a summary but no samples.jsonl under {evals_root}"
+        )
 
     summary_raw = json.loads(summary_path.read_text(encoding="utf-8"))
     metrics = _coerce_metrics(summary_raw)
-    _annotate_sample_completion(metrics, samples_path)
+    _annotate_sample_completion(metrics, samples_path, expected_samples=expected_samples)
+    if provenance is not None:
+        metrics["provenance"] = provenance
     score, higher_is_better = _pick_score(metrics)
 
     return HermesEnvResult(
@@ -396,9 +669,12 @@ def parse_hermes_env_result(
     )
 
 
-def _annotate_sample_completion(metrics: dict[str, Any], samples_path: Path) -> None:
-    if not samples_path.exists():
-        return
+def _annotate_sample_completion(
+    metrics: dict[str, Any],
+    samples_path: Path,
+    *,
+    expected_samples: int | None,
+) -> None:
     total = 0
     incomplete = 0
     for line in samples_path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -406,20 +682,28 @@ def _annotate_sample_completion(metrics: dict[str, Any], samples_path: Path) -> 
             continue
         try:
             row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Invalid JSONL sample in {samples_path}: {exc}") from exc
         if not isinstance(row, dict):
-            continue
+            raise RuntimeError(f"Non-object sample in {samples_path} at row {total + 1}")
         total += 1
+        if row.get("error") or str(row.get("terminal_reason", "")).startswith("error:"):
+            raise RuntimeError(
+                f"Hermes env sample {total} contains an execution error: "
+                f"{row.get('error') or row.get('terminal_reason')}"
+            )
         messages = row.get("messages")
         if not isinstance(messages, list) or not messages:
             continue
         last = messages[-1]
         if isinstance(last, dict) and last.get("role") == "tool" and not row.get("passed"):
             incomplete += 1
-    if total:
-        metrics["sample_rows"] = total
-        metrics["incomplete_rollouts"] = incomplete
+    if expected_samples is not None and total != expected_samples:
+        raise RuntimeError(
+            f"Hermes env produced {total} samples; expected {expected_samples}"
+        )
+    metrics["sample_rows"] = total
+    metrics["incomplete_rollouts"] = incomplete
 
 
 def _find_first(root: Path, filename: str) -> Path | None:
@@ -438,7 +722,11 @@ def _coerce_metrics(summary_raw: object) -> dict[str, Any]:
     if isinstance(summary_raw, dict):
         nested = summary_raw.get("metrics")
         if isinstance(nested, dict):
-            return dict(nested)
+            metrics = dict(nested)
+            for key, value in list(metrics.items()):
+                if isinstance(key, str) and "/" in key:
+                    metrics.setdefault(key.rsplit("/", 1)[-1], value)
+            return metrics
         results = summary_raw.get("results")
         if isinstance(results, dict):
             all_metrics = results.get("all")
@@ -453,16 +741,20 @@ def _coerce_metrics(summary_raw: object) -> dict[str, Any]:
                         "total_evaluation_time_seconds"
                     )
                 return metrics
-        return dict(summary_raw)
-    return {}
+        metrics = dict(summary_raw)
+        for key, value in list(metrics.items()):
+            if isinstance(key, str) and "/" in key:
+                metrics.setdefault(key.rsplit("/", 1)[-1], value)
+        return metrics
+    raise RuntimeError("Hermes env summary must be a JSON object")
 
 
 def _pick_score(metrics: dict[str, Any]) -> tuple[float, bool]:
     """Pick the canonical score from a metrics dict.
 
     Preference order: ``accuracy`` > ``pass_rate`` > ``mean_reward`` >
-    ``reward`` > ``score``. Falls back to ``0.0`` when nothing recognisable
-    is present. All recognised scores are higher-is-better.
+    ``reward`` > ``score``. Missing score fields are an invalid result rather
+    than a fabricated zero. All recognised scores are higher-is-better.
     """
     for key in (
         "accuracy",
@@ -476,4 +768,6 @@ def _pick_score(metrics: dict[str, Any]) -> tuple[float, bool]:
         val = metrics.get(key)
         if isinstance(val, (int, float)):
             return float(val), True
-    return 0.0, True
+    raise RuntimeError(
+        "Hermes env summary has no recognized score field; refusing to fabricate 0.0"
+    )

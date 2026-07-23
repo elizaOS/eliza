@@ -59,6 +59,105 @@ Idempotent behavior:
 - `--rerun-failed` reruns only signatures whose latest run failed.
 - `--force` always creates a fresh run.
 
+Multi-harness campaigns use one benchmark cohort at a time. For each selected
+benchmark, all compatible `--harnesses` (or `--all-harnesses`) start together
+under one shared run-group ID; unsupported harnesses are reported without being
+scheduled. SQLite rows and isolated run artifacts may be written concurrently,
+but `latest/`, quarantine, and viewer artifacts are rebuilt once after the full
+cohort stops. A failed cohort stops the campaign before the next benchmark so
+the harness or benchmark can be debugged without spending later-run quota.
+
+## Exhaustive Claude-subscription campaign
+
+The normal `run --all` path keeps adapter smoke defaults. The separate
+`full_campaign` profile replaces those defaults as a unit, rejects caller
+sampling/truncation knobs, and validates its checked-in inventory against live
+adapter discovery before spending quota. Each phase runs Eliza, Hermes, and
+OpenClaw together; phases and benchmarks advance serially, and the default
+stops on the first failed cohort.
+
+The current manifest accounts for all 59 discovered adapters exactly once:
+25 automatic cohort entries (81 full phases, including all 55 ClawBench
+scenarios and all three Mind2Web test splits), 21 externally provisioned manual
+entries, 2 unsupported three-harness paths, and 11 non-agent/replay entries. It
+also records 15 direct
+or supporting workloads that are outside adapter discovery. Unsupported,
+non-agent, infrastructure, and unintegrated work is reported, never converted
+into misleading comparison rows.
+
+Inspect the machine-checked workload and subscription-call ledger without
+launching a benchmark:
+
+```bash
+PYTHONPATH=packages /opt/miniconda3/bin/python \
+  -m benchmarks.orchestrator.campaign_ledger
+```
+
+The report separates authored tasks, expanded scenarios, and scored result
+cells. Exact-known subtotals are accompanied by explicit unknown-entry lists;
+data-dependent rankers and native agent loops are never presented as fixed
+model-call totals. The 25 automatic cohorts currently total 33,981 base tasks,
+213,801 expanded scenarios, and 308,639 result cells per harness (101,943 /
+641,403 / 925,917 respectively across Eliza, Hermes, and OpenClaw).
+Across all 46 intended comparative adapters, the exact-known subtotal is
+67,373 base tasks, 577,403 expanded scenarios, and 672,241 result cells per
+harness (202,119 / 1,732,209 / 2,016,723 across all three harnesses). These are
+known-cardinality subtotals, not campaign totals: four externally selected
+corpora still have unknown cardinality, and their IDs are emitted in every
+report.
+
+Run one full canary phase:
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator.full_campaign \
+  --model claude-sonnet-4-6 \
+  --benchmarks orchestrator_lifecycle \
+  --force
+```
+
+Run every automatic full phase:
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator.full_campaign \
+  --model claude-sonnet-4-6 \
+  --force
+```
+
+The cohort coordinator first requires `claude auth status --json` to confirm a
+logged-in claude.ai subscription, then starts and audits the local
+Claude-subscription gateway for every phase. Authentication output and stderr
+are never retained; failures surface only as fixed error codes before any
+harness worker starts. The gateway is chat-only: Eliza's subscription profile
+omits embedding and media handlers, disables unrelated local embeddings, and
+records `embedding_mode=disabled-text-only` while preserving short dialogue
+through its normal `RECENT_MESSAGES` room history. This avoids both fabricated
+vectors and an asymmetric second model. Startup also requires every retained
+tokenizer, text tier, response-handler, and action-planner slot to contain
+exactly one `openai` registration; ambient provider keys cannot add fallback
+handlers to a subscription run. A manual benchmark must be selected explicitly
+after its real dataset/runtime is staged; only manifest-declared
+provisioning values are accepted. `--extra-json` is restricted to shared
+transport, reasoning, and timeout settings; it cannot alter a benchmark's
+dataset shape:
+
+Every publishable subscription lane must audit exactly one non-null reasoning
+effort. At the three-agent cohort boundary, the Eliza, Hermes, and OpenClaw
+effort union must contain exactly one value; a missing lane or mixed effort
+fails every lane before publication.
+
+The schema-v2 audit is reduced in one binary pass across all three harnesses.
+Each newline-committed record extends a SHA-256 chain and binds a deterministic
+logical request identity; malformed interior records fail publication, while an
+unterminated final fragment is treated as a recoverable torn write. Only
+`logical_completion` events advance each harness's contiguous logical ordinal
+and count against runtime telemetry. Replay deliveries, failures, and quota or
+storage pause controls remain visible as delivery evidence without inflating
+the benchmark call count. Campaign summaries keep incremental hashes, bounded
+dimension sets, and streaming latency statistics rather than per-request
+lists. The ordered full request manifest is retained only for
+`orchestrator_lifecycle`, whose stage grammar requires exact request-by-request
+validation.
+
 Examples:
 
 ```bash

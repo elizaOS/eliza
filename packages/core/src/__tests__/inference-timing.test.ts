@@ -168,4 +168,22 @@ describe("emit + format + registry", () => {
 	it("emitInferenceTiming is no-op-safe for an undefined timer", () => {
 		expect(emitInferenceTiming(undefined)).toBeNull();
 	});
+
+	it("serves durable summaries beyond the 64-turn process cache", () => {
+		const persisted = Array.from({ length: 100 }, (_, index) => {
+			const timer = new InferenceTurnTimer({
+				turnId: `persisted-${index}`,
+				label: "message-turn",
+				t0EpochMs: Date.now() + 100_000 + index,
+			});
+			timer.recordSpan("provider:FACTS", index + 1);
+			return timer.close();
+		});
+
+		const payload = buildInferenceTimingDevPayload(80, persisted);
+
+		expect(payload.turns).toHaveLength(80);
+		expect(payload.turns.at(-1)?.turnId).toBe("persisted-99");
+		expect(payload.spanHistograms["provider:FACTS"]?.count).toBe(100);
+	});
 });

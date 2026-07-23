@@ -349,7 +349,8 @@ describe("coords — translation", () => {
   it("localToGlobal adds display origin (logical coords)", () => {
     // Force fresh enumeration so listDisplays is current.
     const displays = refreshDisplays();
-    const primary = displays.find((d) => d.primary)!;
+    const primary = displays.find((d) => d.primary);
+    if (!primary) throw new Error("expected a primary display");
     const result = localToGlobal({ displayId: primary.id, x: 100, y: 200 });
     expect(result.x).toBe(primary.bounds[0] + 100);
     expect(result.y).toBe(primary.bounds[1] + 200);

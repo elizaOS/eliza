@@ -2,18 +2,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
 
-vi.mock("@elizaos/core", () => ({
-  clearWorkspaceFolderConfig: vi.fn(),
-  formatError: (error: unknown) =>
-    error instanceof Error ? error.message : String(error),
-  writeWorkspaceFolderConfig: vi.fn(),
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    clearWorkspaceFolderConfig: vi.fn(),
+    formatError: (error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    writeWorkspaceFolderConfig: vi.fn(),
+  };
+});
 
 vi.mock("./mac-window-effects", () => ({
+  createSecurityScopedBookmark: vi.fn(() => null),
   enableVibrancy: vi.fn(() => false),
   ensureShadow: vi.fn(() => false),
+  isAppActive: vi.fn(() => false),
+  isKeyWindow: vi.fn(() => false),
+  makeKeyAndOrderFront: vi.fn(),
+  orderOut: vi.fn(),
   setNativeDragRegion: vi.fn(),
   setTrafficLightsPosition: vi.fn(),
+  startAccessingSecurityScopedBookmark: vi.fn(() => false),
+  stopAccessingSecurityScopedBookmarks: vi.fn(),
 }));
 
 const electrobunMock = vi.hoisted(() => {

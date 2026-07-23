@@ -4,10 +4,9 @@ Mirrors :func:`eliza_adapter.context_bench.make_eliza_llm_query` and
 :func:`hermes_adapter.context_bench.make_hermes_llm_query`: returns an
 ``async def query(context: str, question: str) -> str``.
 
-The adapter is intentionally thin — context-bench has no tool use, no
-multi-turn state. We thread the prompt through OpenClawClient and return
-the assistant text. With ``OPENCLAW_DIRECT_OPENAI_COMPAT=1`` the client
-hits Cerebras directly, which is the supported smoke path.
+The adapter is intentionally thin because context-bench has no tool use or
+multi-turn state. The prompt still crosses OpenClaw's embedded runtime and the
+shared model gateway, so its score has the same provenance as tool benchmarks.
 """
 
 from __future__ import annotations
@@ -23,11 +22,8 @@ def make_openclaw_llm_query(
     client: OpenClawClient | None = None,
 ):
     """Return an async LLM query function compatible with context-bench."""
-    _client = client or OpenClawClient(direct_openai_compatible=True)
-    try:
-        _client.wait_until_ready(timeout=120)
-    except Exception as exc:  # pragma: no cover — surface but don't block import
-        logger.debug("openclaw wait_until_ready failed: %s", exc)
+    _client = client or OpenClawClient()
+    _client.wait_until_ready(timeout=120)
 
     async def openclaw_llm_query(context: str, question: str) -> str:
         prompt = (
@@ -50,8 +46,6 @@ def make_openclaw_llm_query(
             logger.exception("[openclaw-context] send_message failed")
             raise RuntimeError("openclaw context-bench send_message failed") from exc
         return (response.text or "").strip()
-
-
     return openclaw_llm_query
 
 

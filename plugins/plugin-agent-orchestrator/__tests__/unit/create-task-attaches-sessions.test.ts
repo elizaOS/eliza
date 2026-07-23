@@ -8,17 +8,16 @@
  * Pinned surfaces:
  *   1. Happy path — one attachSession call per spawned session, with the
  *      minted taskId, matching sessionId/agentType/workdir, the per-part label
- *      the create action assembled, and the session's REAL post-run status.
- *      For a single-turn create, `runPromptAndClose` / `runPromptViaSmithers`
- *      have already stopped the session before the thread is minted, so the
- *      status attach receives is terminal (`stopped`), NOT the stale `ready`
- *      snapshot captured at spawn time.
- *   2. Attach failure is soft — attachSession throwing is logged, but the
- *      action still returns `success: true` with the widget block (same
- *      policy as thread-mint failure).
- *   3. Thread-mint failure path is clean — when createTask throws, the
- *      action does NOT try to attach (there's no taskId), and the widget
- *      block is omitted while the ACP sessions still ran.
+ *      the create action assembled, and the session's pre-prompt status. The
+ *      attach must happen before the prompt so a crash cannot leave unowned
+ *      Smithers work; later lifecycle events transition that same row.
+ *   2. Direct-runner attach failure is soft — attachSession throwing is
+ *      logged, but the action still returns `success: true` with the widget.
+ *   3. Direct-runner thread-mint failure is clean — when createTask throws,
+ *      the action does not try to attach, omits the widget, and still runs ACP.
+ *      Smithers fail-fast coverage lives in the widget-emission suite because
+ *      this file intentionally disables Smithers for deterministic lifecycle
+ *      assertions.
  *   4. Real end-to-end sequence — driving the create action against a stateful
  *      ACP mock (spawn → prompt → stop) and a REAL OrchestratorTaskService,
  *      the minted task is NOT falsely promoted to `active` and its
@@ -86,6 +85,9 @@ function statefulAcp() {
     }
   >();
   let counter = 0;
+  let eventHandler:
+    | ((sessionId: string, event: string, data: unknown) => void)
+    | undefined;
   return {
     defaultApprovalPreset: "standard",
     spawnSession: vi.fn(async (opts: Record<string, unknown>) => {
@@ -127,12 +129,25 @@ function statefulAcp() {
     stopSession: vi.fn(async (sid: string) => {
       const record = sessions.get(sid);
       if (record) record.status = "stopped";
+      eventHandler?.(sid, "stopped", { sessionId: sid });
     }),
     cancelSession: vi.fn(async () => undefined),
     getSession: vi.fn(async (sid: string) => sessions.get(sid)),
+    getChangedPaths: vi.fn(() => []),
     listSessions: vi.fn(async () => [...sessions.values()]),
-    onSessionEvent: vi.fn(() => () => undefined),
-    emitSessionEvent: vi.fn(),
+    onSessionEvent: vi.fn(
+      (handler: (sessionId: string, event: string, data: unknown) => void) => {
+        eventHandler = handler;
+        return () => {
+          eventHandler = undefined;
+        };
+      },
+    ),
+    emitSessionEvent: vi.fn(
+      (sessionId: string, event: string, data: unknown) => {
+        eventHandler?.(sessionId, event, data);
+      },
+    ),
     resolveAgentType: vi.fn(async () => "codex"),
   };
 }
@@ -164,18 +179,12 @@ function runtimeWithServices(opts: {
     }),
     hasService: vi.fn(() => true),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    getSetting: vi.fn(() => undefined),
   } as never;
 }
 
 describe("TASKS:create attaches spawned sessions to the minted task thread", () => {
-  it("attaches each spawned session with its REAL post-run (terminal) status", async () => {
-    // The single-turn create path stops the session (runPromptAndClose's
-    // `finally`) BEFORE the thread is minted, so the SpawnResult.status
-    // captured at spawn time is a stale `ready`. The attach loop must refresh
-    // the true status from the service — passing `ready` would make
-    // attachSession falsely promote the task to `active` and count a dead
-    // session as live. This uses a stateful ACP mock so `getSession` returns
-    // the post-stop status instead of a frozen `ready` snapshot.
+  it("attaches each spawned session before its first prompt", async () => {
     const acp = statefulAcp();
     const createTask = vi.fn(async () => ({
       id: THREAD_ID,
@@ -220,9 +229,10 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     expect((input.sessionId as string).length).toBeGreaterThan(0);
     expect(input.agentType).toBe("codex");
     expect(input.workdir).toBe(workdir);
-    // The session was stopped before mint — the attach status must reflect
-    // that terminal reality, not the stale spawn-time `ready`.
-    expect(input.status).toBe("stopped");
+    expect(input.status).toBe("ready");
+    expect(attachSession.mock.invocationCallOrder[0]).toBeLessThan(
+      acp.sendPrompt.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
     expect(input.model).toBe("gpt-5.5");
     // The per-part label the create action assigned rides through.
     expect(typeof input.label).toBe("string");
@@ -230,8 +240,8 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
   });
 
   it("still returns success (with the widget) when attachSession throws", async () => {
-    // Attach failure must be logged, not demote the action — same soft-fail
-    // policy as thread-mint failure. The ACP sessions are still running.
+    // The explicitly selected direct runner has no durable graph to orphan, so
+    // optional widget bookkeeping may fail without suppressing useful ACP work.
     const acp = serviceMock();
     const createTask = vi.fn(async () => ({
       id: THREAD_ID,
@@ -270,9 +280,8 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
   });
 
   it("does not attempt to attach when thread-mint fails (no taskId)", async () => {
-    // No taskId → no attach call. Sessions are still running; the widget is
-    // just omitted from the callback prose (create-task-emits-widget-block
-    // already pins that surface — here we only guarantee the attach guard).
+    // The direct runner has no durable graph to recover: no taskId means no
+    // attach call, while the ACP work still runs without a widget.
     const acp = serviceMock();
     const createTask = vi.fn(async () => {
       throw new Error("mint failed");
@@ -308,12 +317,10 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
   });
 
   it("does NOT falsely promote the minted task to active for a single-turn create (real service)", async () => {
-    // The regression this whole PR-follow-up fixes: drive the real sequence —
-    // spawn → runPromptAndClose (stops the session) → createTask → attachSession
-    // — against a REAL OrchestratorTaskService. Because the session is already
-    // terminal by attach time, the task must stay `open` with
-    // `activeSessionCount === 0`; a stale `ready` status would have promoted it
-    // to `active` and counted a dead session as live.
+    // Drive the real sequence — task mint → spawn → attach → prompt → stopped
+    // event — against a REAL OrchestratorTaskService. The early attach makes
+    // the work recoverable, while the terminal event still has to clear the
+    // live-session count when the one-shot turn closes.
     const acp = statefulAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const taskService = new OrchestratorTaskService(
@@ -350,13 +357,17 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     expect(typeof taskId).toBe("string");
     expect(taskId.length).toBeGreaterThan(0);
 
+    await vi.waitFor(async () => {
+      expect((await taskService.getTask(taskId))?.status).toBe("validating");
+    });
     const detail = await taskService.getTask(taskId);
     expect(detail?.sessionCount).toBe(1);
     // The finished single-turn session is indexed for history/attribution but
-    // must NOT be counted as live, and must NOT promote the task.
+    // is no longer live. Its task_complete event advances the durable task to
+    // validating, the same state the real ACP terminal event produces.
     expect(detail?.activeSessionCount).toBe(0);
     expect(detail?.status).not.toBe("active");
-    expect(detail?.status).toBe("open");
+    expect(detail?.status).toBe("validating");
     expect(detail?.sessions[0]?.status).toBe("stopped");
     expect(detail?.sessions[0]?.stoppedAt).toBeTypeOf("number");
   });

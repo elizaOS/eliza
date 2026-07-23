@@ -8,6 +8,7 @@
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
+  type BlockGrid,
   blockGrid,
   decodePng,
   diffBlocks,
@@ -17,8 +18,8 @@ import {
 
 function crc32(bytes: Buffer): number {
   let crc = 0xffffffff >>> 0;
-  for (let i = 0; i < bytes.length; i += 1) {
-    crc = (crc ^ bytes[i]!) >>> 0;
+  for (const byte of bytes) {
+    crc = (crc ^ byte) >>> 0;
     for (let j = 0; j < 8; j += 1) {
       const lsb = crc & 1;
       crc = (crc >>> 1) ^ (lsb ? 0xedb88320 : 0);
@@ -73,6 +74,13 @@ function makeTinyPng(seed = 0, solid = false): Buffer {
   ]);
 }
 
+/** blockGrid on a known-good test PNG, narrowed to non-null. */
+function mustBlockGrid(png: Buffer): BlockGrid {
+  const grid = blockGrid(png, 4, 4);
+  if (!grid) throw new Error("expected blockGrid to decode the test PNG");
+  return grid;
+}
+
 describe("dhash — pure functions", () => {
   it("decodes a minimal RGB PNG", () => {
     const png = makeTinyPng();
@@ -98,9 +106,10 @@ describe("dhash — pure functions", () => {
   it("frameDhash differs for visually different frames", () => {
     const a = frameDhash(makeTinyPng(0));
     const b = frameDhash(makeTinyPng(50));
-    expect(a).not.toBeNull();
-    expect(b).not.toBeNull();
-    expect(hamming(a!, b!)).toBeGreaterThan(0);
+    if (a === null || b === null) {
+      throw new Error("expected frameDhash to hash both frames");
+    }
+    expect(hamming(a, b)).toBeGreaterThan(0);
   });
 
   it("hamming(x, x) == 0", () => {
@@ -122,28 +131,28 @@ describe("dhash — block grid", () => {
   });
 
   it("identical frames produce identical block grids and zero dirty blocks", () => {
-    const a = blockGrid(makeTinyPng(11), 4, 4)!;
-    const b = blockGrid(makeTinyPng(11), 4, 4)!;
+    const a = mustBlockGrid(makeTinyPng(11));
+    const b = mustBlockGrid(makeTinyPng(11));
     const dirty = diffBlocks(a, b);
     expect(dirty.length).toBe(0);
   });
 
   it("first frame (prev=null) marks every block dirty", () => {
-    const grid = blockGrid(makeTinyPng(0), 4, 4)!;
+    const grid = mustBlockGrid(makeTinyPng(0));
     const dirty = diffBlocks(null, grid);
     expect(dirty.length).toBe(grid.cols * grid.rows);
   });
 
   it("changed frames produce a non-zero dirty list", () => {
-    const a = blockGrid(makeTinyPng(0), 4, 4)!;
-    const b = blockGrid(makeTinyPng(120), 4, 4)!;
+    const a = mustBlockGrid(makeTinyPng(0));
+    const b = mustBlockGrid(makeTinyPng(120));
     const dirty = diffBlocks(a, b);
     expect(dirty.length).toBeGreaterThan(0);
   });
 
   it("dirty-block bboxes are translated to image pixel space when dims are known", () => {
-    const a = blockGrid(makeTinyPng(0), 4, 4)!;
-    const b = blockGrid(makeTinyPng(120), 4, 4)!;
+    const a = mustBlockGrid(makeTinyPng(0));
+    const b = mustBlockGrid(makeTinyPng(120));
     const dirty = diffBlocks(a, b, 16, 16);
     for (const d of dirty) {
       expect(d.bbox[2]).toBeGreaterThan(0);

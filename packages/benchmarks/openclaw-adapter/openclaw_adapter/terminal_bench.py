@@ -149,7 +149,7 @@ class OpenClawTerminalAgent:
         self._environment = environment
         self._max_iterations = max_iterations
         self._model_name = model_name or "openclaw"
-        self._client = client or OpenClawClient(direct_openai_compatible=True)
+        self._client = client or OpenClawClient()
         self._verbose = verbose
         self._last_session = None
         # OpenClaw is stateless per send_message — every turn embeds the

@@ -1451,6 +1451,7 @@ export class AppManager {
   private sweeperTimer: ReturnType<typeof setInterval> | null = null;
   private sweeperRuntimeFn: (() => IAgentRuntime | null) | null = null;
   private sweeperReapInFlight = false;
+  private registryRefreshInFlight = false;
 
   constructor(options: AppManagerOptions = {}) {
     this.stateDir = options.stateDir;
@@ -2242,17 +2243,26 @@ export class AppManager {
   ): Promise<InstalledAppInfo[]> {
     const installed = await pluginManager.listInstalledPlugins();
     const registry = await getRegistryPlugins();
-    const refreshedRegistry = await withTimeout(
-      pluginManager.refreshRegistry(),
-      resolveRegistryRefreshTimeoutMs(),
-      "app registry refresh",
-    ).catch(() => new Map<string, RegistryPluginInfo>());
-    const mergedRegistry = new Map<string, RegistryPluginInfo>(registry);
-    for (const [name, info] of refreshedRegistry.entries()) {
-      if (!mergedRegistry.has(name)) {
-        mergedRegistry.set(name, info);
-      }
+    // Serve the cached registry and refresh out-of-band. Awaiting
+    // refreshRegistry() here nulled the registry caches and refetched over
+    // the network on every call, so each message turn that rendered the
+    // available_apps provider paid a multi-second cold registry fetch.
+    // POST /api/apps/refresh remains the force-refresh path.
+    if (!this.registryRefreshInFlight) {
+      this.registryRefreshInFlight = true;
+      void withTimeout(
+        pluginManager.refreshRegistry(),
+        resolveRegistryRefreshTimeoutMs(),
+        "app registry refresh",
+      )
+        // error-policy:J6 background registry refresh is best-effort; this
+        // request was already served from the cached registry.
+        .catch(() => undefined)
+        .finally(() => {
+          this.registryRefreshInFlight = false;
+        });
     }
+    const mergedRegistry = new Map<string, RegistryPluginInfo>(registry);
     const installedByName = new Map(
       installed.map((plugin) => [plugin.name, plugin] as const),
     );

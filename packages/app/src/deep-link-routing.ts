@@ -10,7 +10,7 @@
  * (ask / chat / voice / smart-reply / LifeOps briefs and tasks, plus Android
  * feature-open aliases), folding them into a single `#chat?…` hash route that
  * carries the trusted `assistant-entry` source and a stable launch id the
- * always-mounted ContinuousChatOverlay claims. Both return `null` for
+ * always-mounted ChatOverlay claims. Both return `null` for
  * unrecognized paths, so an unknown deep link is non-routable rather than
  * silently opening chat.
  */
@@ -47,7 +47,7 @@ export interface DeepLinkNavigationIntent {
  * the hash) — the target tab never opened. Returning a navigation intent lets
  * the caller dispatch the same `eliza:navigate:view` event the rest of the app
  * uses, which opens the surface on every platform. (Chat-launch deep links stay
- * on the hash: the always-mounted ContinuousChatOverlay claims the launch
+ * on the hash: the always-mounted ChatOverlay claims the launch
  * payload from the hash directly.)
  */
 export function resolveDeepLinkNavigationIntent(

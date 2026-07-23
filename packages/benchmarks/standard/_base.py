@@ -267,8 +267,6 @@ class HarnessClient:
                 or os.environ.get("OPENAI_BASE_URL")
                 or os.environ.get("CEREBRAS_BASE_URL")
                 or None,
-                mode=(os.environ.get("HERMES_MODE") or "in_process").strip()
-                or "in_process",
                 timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "120")),
                 reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
                 or os.environ.get("CEREBRAS_REASONING_EFFORT")
@@ -288,7 +286,6 @@ class HarnessClient:
                 reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
                 or os.environ.get("CEREBRAS_REASONING_EFFORT")
                 or None,
-                direct_openai_compatible=True,
             )
         elif harness == "smithers":
             from smithers_adapter.client import SmithersClient  # noqa: WPS433

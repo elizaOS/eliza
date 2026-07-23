@@ -293,19 +293,17 @@ describe("trajectory export bundle", () => {
       bundle.manifest.paths.viewerHtmlPath,
     );
 
-    const sanitized = await readFile(
-      bundle.manifest.paths.sanitizedJsonlPath!,
-      "utf8",
-    );
+    const sanitizedJsonlPath = bundle.manifest.paths.sanitizedJsonlPath;
+    if (!sanitizedJsonlPath) throw new Error("expected sanitizedJsonlPath");
+    const sanitized = await readFile(sanitizedJsonlPath, "utf8");
     expect(sanitized).not.toContain("sk-1234567890abcdef");
     expect(sanitized).not.toContain("37.7749, -122.4194");
     expect(sanitized).toContain("<REDACTED:openai-key>");
     expect(sanitized).toContain("[REDACTED_GEO]");
 
-    const viewer = await readFile(
-      bundle.manifest.paths.viewerHtmlPath!,
-      "utf8",
-    );
+    const viewerHtmlPath = bundle.manifest.paths.viewerHtmlPath;
+    if (!viewerHtmlPath) throw new Error("expected viewerHtmlPath");
+    const viewer = await readFile(viewerHtmlPath, "utf8");
     expect(viewer).toContain("Eliza Trajectory Export");
     expect(viewer).toContain("Task Datasets");
     expect(viewer).toContain("REDACTED:openai-key");
@@ -322,20 +320,19 @@ describe("trajectory export bundle", () => {
       tasks: ["response"],
     });
 
-    expect(bundle.manifest.paths.rawJsonlPath).toBeTruthy();
-    const raw = await readFile(bundle.manifest.paths.rawJsonlPath!, "utf8");
-    const sanitized = await readFile(
-      bundle.manifest.paths.sanitizedJsonlPath!,
-      "utf8",
-    );
+    const rawJsonlPath = bundle.manifest.paths.rawJsonlPath;
+    if (!rawJsonlPath) throw new Error("expected rawJsonlPath");
+    const raw = await readFile(rawJsonlPath, "utf8");
+    const sanitizedJsonlPath = bundle.manifest.paths.sanitizedJsonlPath;
+    if (!sanitizedJsonlPath) throw new Error("expected sanitizedJsonlPath");
+    const sanitized = await readFile(sanitizedJsonlPath, "utf8");
 
     expect(raw).toContain("sk-1234567890abcdef");
     expect(sanitized).not.toContain("sk-1234567890abcdef");
     expect(bundle.manifest.counts.rawTrajectoryRows).toBe(1);
-    const viewer = await readFile(
-      bundle.manifest.paths.viewerHtmlPath!,
-      "utf8",
-    );
+    const viewerHtmlPath = bundle.manifest.paths.viewerHtmlPath;
+    if (!viewerHtmlPath) throw new Error("expected viewerHtmlPath");
+    const viewer = await readFile(viewerHtmlPath, "utf8");
     expect(viewer).not.toContain("sk-1234567890abcdef");
   });
 
@@ -443,12 +440,13 @@ describe("trajectory export bundle", () => {
       uploadedToHuggingFace: false,
     });
 
-    const raw = await readFile(payload.bundle.paths.rawJsonlPath!, "utf8");
+    const rawJsonlPath = payload.bundle.paths.rawJsonlPath;
+    if (!rawJsonlPath) throw new Error("expected rawJsonlPath");
+    const raw = await readFile(rawJsonlPath, "utf8");
     expect(raw).toContain("sk-1234567890abcdef");
-    const sanitized = await readFile(
-      payload.bundle.paths.sanitizedJsonlPath!,
-      "utf8",
-    );
+    const sanitizedJsonlPath = payload.bundle.paths.sanitizedJsonlPath;
+    if (!sanitizedJsonlPath) throw new Error("expected sanitizedJsonlPath");
+    const sanitized = await readFile(sanitizedJsonlPath, "utf8");
     expect(sanitized).not.toContain("sk-1234567890abcdef");
   });
 

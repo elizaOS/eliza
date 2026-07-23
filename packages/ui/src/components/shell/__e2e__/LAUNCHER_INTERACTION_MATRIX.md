@@ -95,7 +95,7 @@ anchored panel, or pull zone — no gesture opens a notification shell).
 | 40 | [S] | Curation invariants: dedup, AOSP gating, dev/preview toggles, cloud gating (#10725), alias `path` | jsdom (`LauncherSurface.test.tsx`, `launcher-curation.test.ts`) |
 | 41 | [**I**] | Brand: no blue hues sampled; tile hover neutral-white wash, never blue/black | loop-* (`sawBlue` invariant) |
 
-## Chat-overlay interplay (owned by the continuous-chat gesture lane, #12188)
+## Chat-overlay interplay (owned by the chat gesture lane, #12188)
 
 | # | Tags | Interaction | Lanes |
 |---|---|---|---|
@@ -104,7 +104,7 @@ anchored panel, or pull zone — no gesture opens a notification shell).
 
 Rows 42–43 sit at the chat ↔ launcher boundary; the composer swipe is not part
 of this launcher loop's alphabet (the fixture mounts no live composer). They are
-listed here for completeness and are covered by the continuous-chat gesture
+listed here for completeness and are covered by the chat gesture
 coverage (#12188), not by `launcher-loop/`.
 
 ## Loop invariants ([I] rows → `invariants.ts`)

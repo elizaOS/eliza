@@ -35,8 +35,8 @@ vi.mock("@google/genai", () => ({
 }));
 
 import {
-  DEFAULT_GOOGLE_EMBEDDING_MODEL,
   createGoogleGenAI,
+  DEFAULT_GOOGLE_EMBEDDING_MODEL,
   getApiKey,
   getEmbeddingModel,
   getLargeModel,

@@ -145,6 +145,10 @@ export interface TrajectoryProviderAccessRecord {
 	spanEnd?: number;
 	query?: Record<string, unknown>;
 	timestamp?: number;
+	startedAt?: number | null;
+	endedAt?: number | null;
+	durationMs?: number | null;
+	overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 	runId?: string;
 	roomId?: string;
 	messageId?: string;

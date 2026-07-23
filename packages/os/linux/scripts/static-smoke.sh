@@ -285,7 +285,7 @@ grep -q 'text-destructive' \
 # retokenized so the surface follows the active theme). Gate that overlay
 # against the stale dark/gradient/glow styling from the pre-redesign first-run
 # shell (mirrors the #10167 repoint when CompactOnboarding was removed).
-first_run_shell="${REPO_ROOT}/packages/ui/src/components/shell/ContinuousChatOverlay.tsx"
+first_run_shell="${REPO_ROOT}/packages/ui/src/components/shell/ChatOverlay.tsx"
 grep -q 'text-txt' "${first_run_shell}"
 if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
     "${first_run_shell}"

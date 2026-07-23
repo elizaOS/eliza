@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.5/schema.json",
   "root": false,
   "extends": ["../../biome.json"],
   "files": {
@@ -22,23 +22,5 @@
         "noArrayIndexKey": "warn"
       }
     }
-  },
-  "overrides": [
-    {
-      "includes": ["src/styles/styles.css"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noDuplicateProperties": "off"
-          },
-          "style": {
-            "noDescendingSpecificity": "off"
-          },
-          "complexity": {
-            "noImportantStyles": "off"
-          }
-        }
-      }
-    }
-  ]
+  }
 }

@@ -47,10 +47,11 @@
 		"@elizaos/core": "workspace:*",
 		"@larksuiteoapi/node-sdk": "^1.40.0",
 		"@types/node": "^25.0.3",
+		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.4",
+		"@biomejs/biome": "2.5.5",
 		"vitest": "^4.0.0"
 	},
 	"scripts": {
@@ -64,7 +65,7 @@
 		"format:check": "bunx @biomejs/biome format .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"build:ts": "bun run build",
-		"typecheck": "tsgo --noEmit -p tsconfig.json"
+		"typecheck": "tsc --noEmit -p tsconfig.json"
 	},
 	"publishConfig": {
 		"access": "public"

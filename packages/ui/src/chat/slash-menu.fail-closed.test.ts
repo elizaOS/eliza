@@ -11,7 +11,7 @@ import { resolveClientShortcutExecution } from "./slash-menu";
  * Item 20). `resolveClientShortcutExecution` used to default the sender's
  * authority to `true`, so a remote USER/GUEST could trigger `requiresElevated`
  * navigate/client shortcuts by typing the natural phrase. The defaults are now
- * `false`; the caller (`ContinuousChatOverlay`) threads the real tier from the
+ * `false`; the caller (`ChatOverlay`) threads the real tier from the
  * controller (`slash.isAuthorized` / `slash.isElevated`, derived from
  * `useRole()`).
  */

@@ -1,7 +1,7 @@
 /**
  * In-chat tutorial conductor (headless). While the tutorial service is active
  * it seeds one assistant turn per script step into the SAME live transcript
- * the floating `ContinuousChatOverlay` renders, narrates each turn through the
+ * the floating `ChatOverlay` renders, narrates each turn through the
  * app's real voice engine, and auto-advances when the cheap observation for
  * the current step fires (a real user message, a live voice transcript, the
  * Settings tab, a fresh conversation). Nothing is locked or dimmed: the user
@@ -97,7 +97,8 @@ export function useTutorialConductor(): void {
   const textTurnSeqRef = React.useRef(0);
 
   const seedStopped = React.useCallback(() => {
-    const seq = (textTurnSeqRef.current += 1);
+    textTurnSeqRef.current += 1;
+    const seq = textTurnSeqRef.current;
     seedTurn(makeTurn(`tutorial:stopped:${seq}`, STOPPED_TEXT));
   }, [seedTurn]);
 
@@ -130,7 +131,8 @@ export function useTutorialConductor(): void {
       // "stop tutorial" with no tour running is just chat about the tutorial —
       // let it reach the agent.
       if (command === "stop" && current.status !== "active") return false;
-      const seq = (textTurnSeqRef.current += 1);
+      textTurnSeqRef.current += 1;
+      const seq = textTurnSeqRef.current;
       seedTurn({
         id: `tutorial:user:${seq}`,
         role: "user",

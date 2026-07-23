@@ -137,7 +137,7 @@ async function installMessageActionConversationRoutes(
 }
 
 async function openThread(page: Page): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   await page.getByTestId("chat-sheet-grabber").click();
   await expect(overlay).toHaveAttribute("data-open", "true", {
@@ -404,7 +404,7 @@ async function openDeleteThread(
   page: Page,
   waitFor: string = DELETE_KEEP_TEXT,
 ): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   await page.getByTestId("chat-sheet-grabber").click();
   await expect(overlay).toHaveAttribute("data-open", "true", {

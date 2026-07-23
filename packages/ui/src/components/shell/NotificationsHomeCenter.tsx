@@ -386,20 +386,28 @@ export function __setNotificationsHomeCenterRenderObserverForTests(
  * inline on the home column (HomeScreen), directly beneath the time/weather
  * header — the same layer as the widgets.
  */
-export function NotificationsHomeCenter({
-  emptyGestureTargetRef,
-}: {
+export interface NotificationsHomeCenterProps {
   /**
    * Larger background surface that may start the pull only while the inbox is
    * empty. Populated shades continue to own their list gestures directly.
    */
   emptyGestureTargetRef?: RefObject<HTMLElement | null>;
-} = {}): React.JSX.Element | null {
+  /** Reports shade allocation changes to the inline home layout. */
+  onShadeExpandedChange?: (expanded: boolean) => void;
+}
+
+export function NotificationsHomeCenter({
+  emptyGestureTargetRef,
+  onShadeExpandedChange,
+}: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated, hydrationStatus } = useNotifications();
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
+  useEffect(() => {
+    onShadeExpandedChange?.(shadeExpanded);
+  }, [onShadeExpandedChange, shadeExpanded]);
   // Per-producer stack expansion (iOS-shade idiom). Tapping a peek fans that
   // stack and enters the expanded shade; folding the shade resets every stack.
   const [expandedStacks, setExpandedStacks] = useState<ReadonlySet<string>>(
@@ -412,8 +420,41 @@ export function NotificationsHomeCenter({
   const [confirmingClearAll, setConfirmingClearAll] = useState(false);
   const [shadeClosing, setShadeClosing] = useState(false);
   const shadeCloseTimer = useRef<number | null>(null);
+  const centerRef = useRef<HTMLElement | null>(null);
+  const shadeFocusReturnRef = useRef<HTMLElement | null>(null);
+  const shadeWasExpandedRef = useRef(false);
+  const stackFocusReturnRef = useRef(new Map<string, HTMLElement>());
+  const pendingStackFocusRef = useRef<{
+    action: "expand" | "fold";
+    key: string;
+  } | null>(null);
+
+  // Count and stack-peek controls become inert during expansion. Capture a
+  // keyboard opener before that DOM mutation makes the browser blur it.
+  const captureShadeFocusBeforeExpand = useCallback(() => {
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      centerRef.current?.contains(active) &&
+      active.closest(
+        "[data-notification-count-slot], [data-notification-stack-peek]",
+      )
+    ) {
+      shadeFocusReturnRef.current = active;
+    }
+  }, []);
   const expandStack = useCallback(
     (key: string) => {
+      captureShadeFocusBeforeExpand();
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active.dataset.notificationStackKey === key &&
+        active.hasAttribute("data-notification-stack-opener")
+      ) {
+        stackFocusReturnRef.current.set(key, active);
+        pendingStackFocusRef.current = { action: "expand", key };
+      }
       if (!shadeExpanded) setShadeOpenedByStack(true);
       setExpandedStacks((prev) => {
         if (prev.has(key)) return prev;
@@ -425,7 +466,7 @@ export function NotificationsHomeCenter({
       setConfirmingClearAll(false);
       setShadeExpanded(true);
     },
-    [shadeExpanded],
+    [captureShadeFocusBeforeExpand, shadeExpanded],
   );
   const collapseStack = useCallback((key: string) => {
     setExpandedStacks((prev) => {
@@ -451,7 +492,6 @@ export function NotificationsHomeCenter({
   // timestamps live in the `<RelativeTime>` leaf inside each row, which owns the
   // shared visibility-gated ticker. The minute roll re-renders those text nodes
   // only - not this list, not the rows, not the glass surface.
-  const centerRef = useRef<HTMLElement | null>(null);
   const scrollRef = useRef<HTMLUListElement | null>(null);
   const pullVisibleGroupsRef = useRef<HTMLElement[] | undefined>(undefined);
   const pointerPull = useRef<{
@@ -492,6 +532,93 @@ export function NotificationsHomeCenter({
     expanded: shadeExpanded,
     closing: shadeClosing,
   };
+
+  // Expanding can make the total button or a stack peek inert while it still
+  // owns keyboard focus. Move focus to the corresponding visible collapse
+  // control, then restore the opener only while the shade still owns focus;
+  // another surface such as chat must keep an intentional focus move.
+  useLayoutEffect(() => {
+    const center = centerRef.current;
+    if (shadeExpanded) {
+      if (shadeFocusReturnRef.current && center) {
+        const collapseControl = center.querySelector<HTMLElement>(
+          '[data-testid="notifications-collapse"], [data-testid="notification-stack-collapse"]',
+        );
+        (collapseControl ?? center).focus({ preventScroll: true });
+      }
+    } else if (shadeWasExpandedRef.current) {
+      const prior = shadeFocusReturnRef.current;
+      shadeFocusReturnRef.current = null;
+      const active = document.activeElement;
+      const shadeStillOwnsFocus =
+        active === document.body ||
+        active === document.documentElement ||
+        (active instanceof Node && center?.contains(active) === true);
+      if (
+        shadeStillOwnsFocus &&
+        prior?.isConnected &&
+        !prior.closest('[inert], [aria-hidden="true"]')
+      ) {
+        prior.focus({ preventScroll: true });
+      }
+      stackFocusReturnRef.current.clear();
+      pendingStackFocusRef.current = null;
+    }
+    shadeWasExpandedRef.current = shadeExpanded;
+  }, [shadeExpanded]);
+
+  // Fanning a stack can hide its keyboard opener without changing the shade's
+  // expanded state, so the shade-level focus effect above does not run. Hand
+  // focus to the matching local collapse control and return it to the same row
+  // or peek when that stack folds.
+  useLayoutEffect(() => {
+    const pending = pendingStackFocusRef.current;
+    if (!pending) return;
+    const isExpanded = expandedStacks.has(pending.key);
+    if (
+      (pending.action === "expand" && !isExpanded) ||
+      (pending.action === "fold" && isExpanded)
+    ) {
+      return;
+    }
+    pendingStackFocusRef.current = null;
+    const center = centerRef.current;
+    if (!center) return;
+    const matchingControl = (selector: string): HTMLElement | undefined =>
+      Array.from(center.querySelectorAll<HTMLElement>(selector)).find(
+        (element) => element.dataset.notificationStackKey === pending.key,
+      );
+
+    if (pending.action === "expand") {
+      const opener = stackFocusReturnRef.current.get(pending.key);
+      const openerBecameUnavailable =
+        !opener?.isConnected ||
+        opener.tabIndex < 0 ||
+        opener.closest('[inert], [aria-hidden="true"]') !== null;
+      if (openerBecameUnavailable) {
+        matchingControl("[data-notification-stack-collapse]")?.focus({
+          preventScroll: true,
+        });
+      }
+      return;
+    }
+
+    const active = document.activeElement;
+    const stackStillOwnsFocus =
+      active === document.body ||
+      active === document.documentElement ||
+      (active instanceof Node && center.contains(active));
+    const opener = stackFocusReturnRef.current.get(pending.key);
+    stackFocusReturnRef.current.delete(pending.key);
+    if (!stackStillOwnsFocus) return;
+    const target =
+      opener?.isConnected &&
+      opener.tabIndex >= 0 &&
+      !opener.closest('[inert], [aria-hidden="true"]')
+        ? opener
+        : matchingControl("[data-notification-stack-opener]");
+    target?.focus({ preventScroll: true });
+  }, [expandedStacks]);
 
   const armNotificationClickSuppression = useCallback(() => {
     suppressNotificationClick.current = true;
@@ -546,25 +673,29 @@ export function NotificationsHomeCenter({
     setConfirmingGroupKey(null);
   }, []);
 
-  const setShade = useCallback((expanded: boolean) => {
-    if (shadeCloseTimer.current) {
-      window.clearTimeout(shadeCloseTimer.current);
-      shadeCloseTimer.current = null;
-    }
-    setShadeClosing(false);
-    setShadeExpanded(expanded);
-    setConfirmingClearAll(false);
-    setConfirmingGroupKey(null);
-    setShadeOpenedByStack(false);
-    if (!expanded) {
-      // Folding the shade folds every fanned stack with it so the next open
-      // starts from a predictable grouped inbox.
-      setExpandedStacks(new Set());
-    }
-    // Collapse completion is deterministic even when a smooth scroll was
-    // interrupted. Expansion resets after the expanded rows mount below.
-    if (!expanded && scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, []);
+  const setShade = useCallback(
+    (expanded: boolean) => {
+      if (expanded) captureShadeFocusBeforeExpand();
+      if (shadeCloseTimer.current) {
+        window.clearTimeout(shadeCloseTimer.current);
+        shadeCloseTimer.current = null;
+      }
+      setShadeClosing(false);
+      setShadeExpanded(expanded);
+      setConfirmingClearAll(false);
+      setConfirmingGroupKey(null);
+      setShadeOpenedByStack(false);
+      if (!expanded) {
+        // Folding the shade folds every fanned stack with it so the next open
+        // starts from a predictable grouped inbox.
+        setExpandedStacks(new Set());
+      }
+      // Collapse completion is deterministic even when a smooth scroll was
+      // interrupted. Expansion resets after the expanded rows mount below.
+      if (!expanded && scrollRef.current) scrollRef.current.scrollTop = 0;
+    },
+    [captureShadeFocusBeforeExpand],
+  );
 
   // Every expansion path must reveal the shade's first row and clear control.
   // Stack taps call expandStack directly (not setShade), and mounting their
@@ -627,6 +758,14 @@ export function NotificationsHomeCenter({
 
   const foldStack = useCallback(
     (key: string) => {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active.dataset.notificationStackKey === key &&
+        active.hasAttribute("data-notification-stack-collapse")
+      ) {
+        pendingStackFocusRef.current = { action: "fold", key };
+      }
       const restoresRestedShade =
         shadeOpenedByStack &&
         expandedStacks.size === 1 &&
@@ -1401,6 +1540,7 @@ export function NotificationsHomeCenter({
   return (
     <section
       ref={centerRef}
+      tabIndex={-1}
       aria-label="Notifications"
       data-testid="home-notification-center"
       // No card chrome on the CONTAINER: the inbox has no fill and no border of
@@ -1637,6 +1777,8 @@ export function NotificationsHomeCenter({
                       <button
                         type="button"
                         data-testid="notification-stack-collapse"
+                        data-notification-stack-collapse=""
+                        data-notification-stack-key={group.key}
                         data-notif-control=""
                         onClick={() => foldStack(group.key)}
                         className="h-8 px-2 text-xs font-medium text-white/60 transition-colors hover:text-white/90"
@@ -1734,6 +1876,8 @@ export function NotificationsHomeCenter({
                       }
                       data-notif-control=""
                       data-notification-stack-peek=""
+                      data-notification-stack-key={group.key}
+                      data-notification-stack-opener=""
                       data-notification-peek-mode={peekMode}
                       tabIndex={peekCloseVisibility < 1 ? -1 : undefined}
                       aria-hidden={peekCloseVisibility === 0 ? true : undefined}

@@ -265,6 +265,40 @@ describe("resolveSandboxContainerLaunchConfig", () => {
   });
 });
 
+describe("buildAgentSandboxInsertValues", () => {
+  test("derives trusted storage fields while rejecting caller-owned internal config", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+
+    expect(
+      buildAgentSandboxInsertValues({
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+        agentName: "bnancy",
+        characterId: "44444444-4444-4444-8444-444444444444",
+        executionTier: "custom",
+        agentConfig: {
+          bio: "A real caller-owned persona",
+          __agentUpgradedFrom: "forged-source-agent",
+        },
+        environmentVars: { ELIZA_API_TOKEN: "encrypted-token" },
+      }),
+    ).toMatchObject({
+      organization_id: "22222222-2222-4222-8222-222222222222",
+      user_id: "33333333-3333-4333-8333-333333333333",
+      agent_name: "bnancy",
+      character_id: "44444444-4444-4444-8444-444444444444",
+      execution_tier: "custom",
+      status: "pending",
+      database_status: "none",
+      agent_config: {
+        bio: "A real caller-owned persona",
+        __agentCharacterOwnership: "reuse-existing",
+      },
+      environment_vars: { ELIZA_API_TOKEN: "encrypted-token" },
+    });
+  });
+});
+
 describe("ElizaSandboxService state restore auth", () => {
   test("attaches the agent token when restoring to a trusted bridge URL string", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -1103,7 +1137,10 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
         (c) => (c[1] as { status?: string }).status === "error",
       );
       expect(errorUpdate).toBeDefined();
-      expect((errorUpdate?.[1] as { error_message?: string }).error_message).toContain(
+      if (!errorUpdate) {
+        throw new Error("Expected the empty-node attribution error update");
+      }
+      expect((errorUpdate[1] as { error_message?: string }).error_message).toContain(
         "provision attribution guard:",
       );
 
@@ -1134,7 +1171,11 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
       const errorUpdate = updateSpy.mock.calls.find(
         (c) => (c[1] as { status?: string }).status === "error",
       );
-      expect((errorUpdate?.[1] as { error_message?: string }).error_message).toContain(
+      expect(errorUpdate).toBeDefined();
+      if (!errorUpdate) {
+        throw new Error("Expected the incomplete-metadata attribution error update");
+      }
+      expect((errorUpdate[1] as { error_message?: string }).error_message).toContain(
         "provision attribution guard:",
       );
       expect(create).toHaveBeenCalledTimes(1);
@@ -1161,7 +1202,10 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
         (c) => (c[1] as { status?: string }).status === "running",
       );
       expect(runningUpdate).toBeDefined();
-      expect((runningUpdate?.[1] as { node_id?: string }).node_id).toBe("node-1");
+      if (!runningUpdate) {
+        throw new Error("Expected the running sandbox update");
+      }
+      expect((runningUpdate[1] as { node_id?: string }).node_id).toBe("node-1");
     },
   );
 });
@@ -3903,7 +3947,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
         ([, data]) => (data as { status?: string }).status === "error",
       );
       expect(errorWrite).toBeDefined();
-      expect(String((errorWrite?.[1] as { error_message?: string }).error_message)).toContain(
+      if (!errorWrite) {
+        throw new Error("Expected the failed-provision error write");
+      }
+      expect(String((errorWrite[1] as { error_message?: string }).error_message)).toContain(
         "provision attribution guard:",
       );
     } finally {
@@ -3977,7 +4024,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
         ([, data]) => (data as { status?: string }).status === "running",
       );
       expect(runningWrite).toBeDefined();
-      expect((runningWrite?.[1] as { sandbox_id?: string }).sandbox_id).toBe("sandbox-blue-1");
+      if (!runningWrite) {
+        throw new Error("Expected the adopted sandbox running write");
+      }
+      expect((runningWrite[1] as { sandbox_id?: string }).sandbox_id).toBe("sandbox-blue-1");
     } finally {
       findSpy.mockRestore();
       lockSpy.mockRestore();
@@ -4062,7 +4112,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
         ([, data]) => (data as { status?: string }).status === "error",
       );
       expect(errorWrite).toBeDefined();
-      expect(String((errorWrite?.[1] as { error_message?: string }).error_message)).toContain(
+      if (!errorWrite) {
+        throw new Error("Expected the invalid-adoption error write");
+      }
+      expect(String((errorWrite[1] as { error_message?: string }).error_message)).toContain(
         "provision attribution guard:",
       );
     } finally {
@@ -5167,7 +5220,11 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       expect(updateSpy).toHaveBeenCalledWith(existing.id, {
         environment_vars: { MY_FLAG: "on" },
       });
-      expect((result?.environment_vars as Record<string, string>).MY_FLAG).toBe("on");
+      expect(result).toBeDefined();
+      if (!result) {
+        throw new Error("Expected the updated sandbox environment row");
+      }
+      expect((result.environment_vars as Record<string, string>).MY_FLAG).toBe("on");
     } finally {
       findSpy.mockRestore();
       updateSpy.mockRestore();

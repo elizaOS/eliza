@@ -49,6 +49,41 @@ async function fulfillJson(
   });
 }
 
+/**
+ * The embedded agent list only mounts when the Cloud Overview section reads a
+ * CONNECTED cloud (`elizaCloudConnected` ← GET /api/cloud/status);
+ * installDefaultAppRoutes mocks that route as disconnected, which renders the
+ * "Connect Cloud" pitch instead of CloudAgentsSection. Register the connected
+ * status + credits AFTER the defaults (later registrations win).
+ */
+async function installConnectedCloudStatus(page: Page): Promise<void> {
+  await page.route("**/api/cloud/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      connected: true,
+      enabled: true,
+      cloudVoiceProxyAvailable: true,
+      hasApiKey: true,
+      userId: "ui-smoke-lifecycle-user",
+    });
+  });
+  await page.route("**/api/cloud/credits", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      balance: 100,
+      low: false,
+      critical: false,
+      authRejected: false,
+    });
+  });
+}
+
 /** Serialize one agent into the cloud's REST shape (snake_case + aliases). */
 function serializeAgent(
   agent: StoreAgent,
@@ -270,6 +305,7 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
 
   await seedCloudActiveAgent(page, "agent-keep", apiBase);
   await installDefaultAppRoutes(page);
+  await installConnectedCloudStatus(page);
   await installAgentStoreRoutes(page, store, apiBase);
 
   // Cloud agents are embedded in the Cloud Overview settings section.

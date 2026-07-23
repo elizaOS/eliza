@@ -1,6 +1,11 @@
+"""Exercises viewer projections against real temporary SQLite state and snapshots."""
+
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import pytest
 
 from benchmarks.orchestrator.db import (
     connect_database,
@@ -180,6 +185,81 @@ def test_viewer_latest_scores_include_token_and_call_metrics(tmp_path: Path) -> 
     assert latest["llm_call_count"] == 3
     assert latest["call_count"] == 3
     assert latest["token_metrics"]["total_tokens"] == 125
+
+
+def test_viewer_latest_scores_follow_published_snapshots(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_published",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_quarantined_newer",
+        started_at="2026-05-12T00:01:00+00:00",
+        score=0.99,
+    )
+    latest_dir = tmp_path / "latest"
+    latest_dir.mkdir()
+    (latest_dir / "bfcl__eliza.json").write_text(
+        json.dumps(
+            {
+                "benchmark_id": "bfcl",
+                "agent": "eliza",
+                "run_id": "run_published",
+                "status": "succeeded",
+                "score": 0.75,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    data = build_viewer_dataset(conn, latest_dir=latest_dir)
+
+    assert [row["run_id"] for row in data["latest_scores"]] == ["run_published"]
+
+
+def test_viewer_latest_scores_reject_malformed_published_snapshot(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    latest_dir = tmp_path / "latest"
+    latest_dir.mkdir()
+    (latest_dir / "bfcl__eliza.json").write_text("{", encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        build_viewer_dataset(conn, latest_dir=latest_dir)
+
+
+def test_viewer_latest_scores_reject_nonobject_published_snapshot(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    latest_dir = tmp_path / "latest"
+    latest_dir.mkdir()
+    (latest_dir / "bfcl__eliza.json").write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        build_viewer_dataset(conn, latest_dir=latest_dir)
 
 
 def test_viewer_runs_include_flat_token_and_call_metrics(tmp_path: Path) -> None:

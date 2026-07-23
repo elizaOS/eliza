@@ -236,28 +236,37 @@ describe("linkExtractionEvaluator", () => {
 	it.each([
 		["discord", "https://example.com/d"],
 		["twitter", "https://example.com/t"],
-	])("stamps the originating platform %s on the persisted link memory", async (platform, url) => {
-		stubPreviewFetch(
-			makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
-		);
+	])(
+		"stamps the originating platform %s on the persisted link memory",
+		async (platform, url) => {
+			stubPreviewFetch(
+				makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
+			);
 
-		const runtime = makeRuntime(async () => "summary");
-		const message = makeMessage(`shared ${url}`, platform);
-		const context = {
-			...makeContext(runtime, message),
-			state: { values: {}, data: {}, text: "" } as State,
-		};
-		await linkExtractionEvaluator.prepare?.(context);
+			const runtime = makeRuntime(async () => "summary");
+			const message = makeMessage(`shared ${url}`, platform);
+			const context = {
+				...makeContext(runtime, message),
+				state: { values: {}, data: {}, text: "" } as State,
+			};
+			await linkExtractionEvaluator.prepare?.(context);
 
-		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
-		const [memory] = runtime.createMemory.mock.calls[0] as [Memory, string];
-		expect((memory.content as Record<string, unknown>).platform).toBe(platform);
-		const metadata = memory.metadata as Record<string, unknown>;
-		expect(metadata.platform).toBe(platform);
-		expect(metadata.tags).toEqual(
-			expect.arrayContaining(["link", "auto_capture", `platform:${platform}`]),
-		);
-	});
+			expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+			const [memory] = runtime.createMemory.mock.calls[0] as [Memory, string];
+			expect((memory.content as Record<string, unknown>).platform).toBe(
+				platform,
+			);
+			const metadata = memory.metadata as Record<string, unknown>;
+			expect(metadata.platform).toBe(platform);
+			expect(metadata.tags).toEqual(
+				expect.arrayContaining([
+					"link",
+					"auto_capture",
+					`platform:${platform}`,
+				]),
+			);
+		},
+	);
 
 	it("defaults platform to 'unknown' when the message has no source", async () => {
 		stubPreviewFetch(

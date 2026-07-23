@@ -10,8 +10,19 @@
  * summaries and a health snapshot for the API.
  */
 import crypto from "node:crypto";
-import type { IAgentRuntime, Memory, Service, Task, UUID } from "@elizaos/core";
-import { ServiceType, stringToUuid } from "@elizaos/core";
+import type {
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  Service,
+  Task,
+  UUID,
+} from "@elizaos/core";
+import {
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
+  ServiceType,
+  stringToUuid,
+} from "@elizaos/core";
 import {
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
@@ -290,12 +301,19 @@ interface AutonomyRoomService {
  * Dispatch a `prompt`-kind trigger: inject the trigger's `instructions` as an
  * agent turn via the message-service pipeline, so the agent can act on it (the
  * "prompt automation" path). The message is authored by a per-trigger synthetic
- * entity (never the agent's own id — the pipeline skips messages "from self")
- * and lands in the autonomy room when one is available.
+ * entity (never the agent's own id — the pipeline skips messages "from self").
+ *
+ * Delivery: connector rooms (Discord/Telegram/…) post replies ONLY through the
+ * turn's callback or an explicit send — persisting the reply memory alone shows
+ * nothing to the user. When the trigger has an origin room on a connector, the
+ * agent's reply is forwarded there via `runtime.sendMessageToTarget`, so a
+ * fired reminder actually reaches the chat it was created in. Triggers with no
+ * origin room land in the autonomy room as before.
  */
 async function dispatchPrompt(
   runtime: IAgentRuntime,
   trigger: PromptTriggerConfig,
+  originRoomId?: UUID,
 ): Promise<
   { ok: true; executionId?: undefined } | { ok: false; error: string }
 > {
@@ -308,7 +326,11 @@ async function dispatchPrompt(
     return { ok: false, error: "message service not available" };
   }
 
+  // Deliver where the trigger was created (a reminder's originating chat room)
+  // so the user actually receives it; fall back to the autonomy room for
+  // triggers with no origin room (e.g. system-seeded prompt automations).
   const roomId =
+    originRoomId ??
     (
       runtime.getService("AUTONOMY") as AutonomyRoomService | null
     )?.getAutonomousRoomId?.() ??
@@ -321,8 +343,11 @@ async function dispatchPrompt(
     agentId: runtime.agentId,
     roomId,
     content: {
-      text: instructions,
-      source: "trigger-prompt",
+      // Provenance framing: the model only sees text, so the fired trigger
+      // must identify itself — a bare instruction like "drink water" reads as
+      // ambient chatter and gets re-interpreted instead of acted on.
+      text: `Scheduled trigger "${trigger.displayName}" fired. Do this now: ${instructions}`,
+      source: MESSAGE_SOURCE_TRIGGER_PROMPT,
       metadata: {
         type: "prompt-automation",
         triggerId: trigger.triggerId,
@@ -332,7 +357,55 @@ async function dispatchPrompt(
     createdAt: Date.now(),
   };
 
-  await messageService.handleMessage(runtime, message);
+  // error-policy:J1 boundary translation — the trigger dispatch boundary
+  // returns a structured failure so executeTriggerTask records the run,
+  // notifies the rail, and logs the REAL cause; an uncaught throw would be
+  // swallowed into the task service's generic "execution failed" wrapper.
+  try {
+    const room = await runtime.getRoom(roomId);
+
+    // Forward the turn's replies to the origin room's connector. The reply
+    // content is already model-voiced, so it is marked agentVoiced to skip
+    // the outbound voice-gate rephrase.
+    let deliveryCallback: HandlerCallback | undefined;
+    const connectorSource = originRoomId ? room?.source?.trim() : undefined;
+    if (originRoomId && connectorSource) {
+      deliveryCallback = async (content) => {
+        const sent = await runtime.sendMessageToTarget(
+          { source: connectorSource, roomId: originRoomId },
+          { ...content, agentVoiced: true },
+        );
+        return sent ? [sent] : [];
+      };
+    }
+
+    // The synthetic author must exist as an entity + room participant before
+    // the pipeline persists its message — the same contract every connector
+    // honors for real users. Without it the turn dies on the memory write.
+    // `ensureConnection` UPSERTS the room (channelId defaults to roomId, type
+    // to DM), so an existing room's own fields MUST be passed through or the
+    // upsert corrupts a connector room's channel mapping and delivery breaks.
+    await runtime.ensureConnection({
+      entityId,
+      roomId,
+      worldId:
+        room?.worldId ?? stringToUuid(`trigger-world:${runtime.agentId}`),
+      roomName: room?.name,
+      channelId: room?.channelId,
+      messageServerId: room?.messageServerId,
+      type: room?.type,
+      name: `Trigger: ${trigger.displayName}`,
+      userName: "trigger",
+      source: room?.source ?? MESSAGE_SOURCE_TRIGGER_PROMPT,
+    });
+    await messageService.handleMessage(runtime, message, deliveryCallback);
+  } catch (err) {
+    const detail =
+      err instanceof Error
+        ? `${err.name}: ${err.message}${err.stack ? `\n${err.stack.split("\n").slice(1, 4).join("\n")}` : ""}`
+        : String(err);
+    return { ok: false, error: detail };
+  }
   return { ok: true };
 }
 
@@ -416,7 +489,7 @@ export async function executeTriggerTask(
   const result =
     trigger.kind === "workflow"
       ? await dispatchWorkflow(runtime, task, trigger, options.event)
-      : await dispatchPrompt(runtime, trigger);
+      : await dispatchPrompt(runtime, trigger, task.roomId);
   if (result.ok === true) {
     // Only workflow dispatch carries an execution id; prompt dispatch types it
     // as `undefined`, so this reads `string | undefined` without a cast.

@@ -1,9 +1,9 @@
 # Abliteration Robustness — Agent Guide
 
-Over-refusal benchmark for abliterated model variants. Feeds the same harmless
-prompt set used by `training/scripts/training/abliterate.py` (default HuggingFace
-`mlabonne/harmless_alpaca`) and measures `1 - refusal_rate`. Registered in the
-suite as `abliteration-robustness`.
+Over-refusal benchmark for abliterated model variants. Feeds the held-out test
+split of the harmless prompt set used by `training/scripts/training/abliterate.py`
+(commit-pinned HuggingFace `mlabonne/harmless_alpaca`) and measures
+`1 - refusal_rate`. Registered in the suite as `abliteration-robustness`.
 
 ## Run
 
@@ -36,6 +36,10 @@ python -m benchmarks.abliteration-robustness.cli \
 
 The `mock` provider uses three embedded harmless prompts and returns a canned
 helpful reply; no network or GPU required.
+
+Real runs never fall back to those prompts: the full profile requires all 6,265
+test prompts, records dataset revision/provenance, and fails closed on load,
+validation, count, or generation failures.
 
 ## Test the harness
 

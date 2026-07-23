@@ -20,6 +20,7 @@ import {
   readStringParam,
   userFacingSuccessResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import { detectSecrets } from "../lib/secrets.js";
 import type { FileStateService } from "../services/file-state-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
@@ -83,6 +84,8 @@ export async function editFileHandler(
       message: "file_path, old_string, and new_string are required",
     });
   }
+  const inputPath = resolveInputPath(runtime, conversationId, filePath);
+  if (!inputPath.ok) return failureToActionResult(inputPath.failure);
   if (oldStr === newStr) {
     return failureToActionResult({
       reason: "invalid_param",
@@ -103,7 +106,7 @@ export async function editFileHandler(
     });
   }
 
-  const validated = await sandbox.validatePath(conversationId, filePath);
+  const validated = await sandbox.validatePath(conversationId, inputPath.value);
   if (validated.ok === false) {
     const reason =
       validated.reason === "blocked" ? "path_blocked" : "invalid_param";

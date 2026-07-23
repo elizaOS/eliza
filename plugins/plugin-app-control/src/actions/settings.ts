@@ -51,6 +51,7 @@ import {
 	SETTINGS_SECTION_META,
 } from "@elizaos/ui/components/settings/settings-section-meta";
 import { normalizeActionOptions, readStringOption } from "../params.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 /** The three verbs SETTINGS understands. */
 export type SettingsVerb = "get" | "set" | "list";
@@ -1692,7 +1693,9 @@ async function defaultRouteFetch(
 	const port = resolveServerOnlyPort(process.env);
 	const response = await fetch(`http://127.0.0.1:${port}${request.path}`, {
 		method: request.method,
-		headers: { "Content-Type": "application/json" },
+		headers: request.path.startsWith("/api/views")
+			? createViewsRequestHeaders()
+			: { "Content-Type": "application/json" },
 		body: request.body === undefined ? undefined : JSON.stringify(request.body),
 		signal: AbortSignal.timeout(30_000),
 	});

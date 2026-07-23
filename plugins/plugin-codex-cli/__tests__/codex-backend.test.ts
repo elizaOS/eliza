@@ -237,10 +237,13 @@ describe("CodexBackend", () => {
       jitterMaxMs: 0,
       loadAuth: async () => auth,
       fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
-        bodies.push(JSON.parse(String(init?.body)));
-        expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer access");
-        expect((init?.headers as Record<string, string>)["chatgpt-account-id"]).toBe("acct_123");
-        expect((init?.headers as Record<string, string>).originator).toBe("codex_cli_rs");
+        expect(init).toBeDefined();
+        if (!init) throw new Error("Expected Codex request options");
+        bodies.push(JSON.parse(String(init.body)));
+        const headers = init.headers as Record<string, string>;
+        expect(headers.Authorization).toBe("Bearer access");
+        expect(headers["chatgpt-account-id"]).toBe("acct_123");
+        expect(headers.originator).toBe("codex_cli_rs");
         return sseResponse([
           'event: response.output_text.delta\ndata: {"delta":"hi"}\n\n',
           'event: response.output_item.added\ndata: {"item":{"id":"item_1","type":"function_call","call_id":"call_1","name":"lookup"}}\n\n',

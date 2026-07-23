@@ -5,6 +5,7 @@
  *   list          — list deployed workflows for the current user
  *   get           — fetch one deployed workflow definition by id
  *   create        — generate + deploy a new workflow from a seed prompt
+ *   cancel        — discard the pending workflow draft in this conversation
  *   modify        — load a deployed workflow into the draft editor by id
  *   activate      — activate a workflow by id
  *   deactivate    — deactivate a workflow by id
@@ -34,15 +35,31 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  resolveCanonicalOwnerIdForMessage,
   type State,
 } from '@elizaos/core';
+import { invalidateAutomationExecutionCache } from '../lib/automations-builder';
+import {
+  clearPendingWorkflowDraft,
+  getPendingWorkflowDraftScope,
+  persistPendingWorkflowDraft,
+  readPendingWorkflowDraft,
+} from '../lib/pending-workflow-draft';
+import {
+  applyResolutions,
+  coerceClarifications,
+  pruneResolvedClarifications,
+  type WorkflowClarificationResolution,
+} from '../lib/workflow-clarification';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import type {
   WorkflowCreationResult,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
+  WorkflowDraft,
   WorkflowExecution,
 } from '../types/index';
+import { getLocalOwnerEntityId } from '../utils/context';
 import {
   buildWorkflowExecutionDiagnostics,
   getWorkflowExecutionError,
@@ -56,6 +73,7 @@ const WORKFLOW_OPS = [
   'search',
   'get',
   'create',
+  'cancel',
   'modify',
   'activate',
   'deactivate',
@@ -90,6 +108,41 @@ interface WorkflowActionParameters {
   versionId?: unknown;
   query?: unknown;
   q?: unknown;
+  draft?: unknown;
+  resolutions?: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readWorkflowDraft(value: unknown): WorkflowDefinition | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.name !== 'string' ||
+    !Array.isArray(value.nodes) ||
+    !value.nodes.every(isRecord) ||
+    !isRecord(value.connections)
+  ) {
+    return undefined;
+  }
+  return value as unknown as WorkflowDefinition;
+}
+
+function readClarificationResolutions(
+  value: unknown
+): WorkflowClarificationResolution[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const resolutions: WorkflowClarificationResolution[] = [];
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.paramPath !== 'string' || typeof item.value !== 'string') {
+      return undefined;
+    }
+    resolutions.push({ paramPath: item.paramPath, value: item.value });
+  }
+  return resolutions;
 }
 
 function readString(value: unknown): string | undefined {
@@ -126,10 +179,6 @@ function getWorkflowService(runtime: IAgentRuntime): WorkflowService | null {
   return (runtime.getService(WORKFLOW_SERVICE_TYPE) as WorkflowService | null) ?? null;
 }
 
-function resolveAgentId(runtime: IAgentRuntime): string {
-  return runtime.agentId;
-}
-
 function summarizeWorkflow(
   workflow: WorkflowDefinitionResponse | WorkflowDefinition | WorkflowCreationResult
 ): {
@@ -156,12 +205,12 @@ function summarizeWorkflow(
 async function handleListWorkflows(
   service: WorkflowService,
   params: WorkflowActionParameters,
-  message: Memory,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 20), 50);
   try {
-    const workflows = await service.listWorkflows(String(message.entityId));
+    const workflows = await service.listWorkflows(ownerEntityId);
     const summaries = workflows.slice(0, limit).map(summarizeWorkflow);
     const text =
       summaries.length === 0
@@ -190,7 +239,7 @@ async function handleListWorkflows(
 async function handleSearchWorkflows(
   service: WorkflowService,
   params: WorkflowActionParameters,
-  message: Memory,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const query = readString(params.query) ?? readString(params.q);
@@ -202,7 +251,7 @@ async function handleSearchWorkflows(
   }
   const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 20), 50);
   try {
-    const matches = await service.searchWorkflows(query, String(message.entityId));
+    const matches = await service.searchWorkflows(query, ownerEntityId);
     const summaries = matches.slice(0, limit).map(summarizeWorkflow);
     const text =
       summaries.length === 0
@@ -231,6 +280,7 @@ async function handleSearchWorkflows(
 async function handleGetWorkflow(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -238,7 +288,7 @@ async function handleGetWorkflow(
     return { success: false, text: 'workflowId is required to review a workflow.' };
   }
   try {
-    const workflow = await service.getWorkflow(workflowId);
+    const workflow = await service.getWorkflow(workflowId, ownerEntityId);
     const text = `Fetched workflow "${workflow.name}" for review.`;
     if (callback) {
       await callback({
@@ -267,27 +317,128 @@ async function handleGetWorkflow(
 
 async function handleCreate(
   runtime: IAgentRuntime,
+  message: Memory,
   service: WorkflowService,
   params: WorkflowActionParameters,
-  message: Memory,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const seedPrompt = readString(params.seedPrompt);
   const name = readString(params.name);
-  if (!seedPrompt) {
+  const explicitDraft = readWorkflowDraft(params.draft);
+  if (params.draft !== undefined && !explicitDraft) {
     return {
       success: false,
-      text: 'seedPrompt parameter is required to generate a workflow.',
+      text: 'A valid workflow draft is required to continue clarification.',
     };
   }
   try {
-    const draft = await service.generateWorkflowDraft(seedPrompt, {
-      userId: String(message.entityId),
-    });
+    const scope = getPendingWorkflowDraftScope(message, ownerEntityId);
+    const pendingDraft = await readPendingWorkflowDraft(runtime, scope);
+    const cachedContinuation =
+      !explicitDraft && pendingDraft && (params.resolutions !== undefined || !seedPrompt)
+        ? pendingDraft
+        : null;
+    const continuedWorkflow = explicitDraft ?? cachedContinuation?.workflow;
+    if (!seedPrompt && !continuedWorkflow) {
+      return {
+        success: false,
+        text: 'seedPrompt or a pending draft is required to create a workflow.',
+      };
+    }
+    if (params.resolutions !== undefined && !continuedWorkflow) {
+      return {
+        success: false,
+        text: 'No pending workflow draft exists in this conversation for those resolutions.',
+      };
+    }
+
+    // Clarification application mutates the workflow. A detached copy keeps a
+    // rejected answer from corrupting the last valid cache entry.
+    const draft = continuedWorkflow
+      ? structuredClone(continuedWorkflow)
+      : await service.generateWorkflowDraft(seedPrompt as string, {
+          userId: ownerEntityId,
+        });
+    if (continuedWorkflow && params.resolutions !== undefined) {
+      const resolutions = readClarificationResolutions(params.resolutions);
+      if (!resolutions) {
+        return {
+          success: false,
+          text: 'Clarification resolutions must be an array of { paramPath, value } entries.',
+        };
+      }
+      const resolutionResult = applyResolutions(
+        draft as unknown as Record<string, unknown>,
+        resolutions
+      );
+      if (!resolutionResult.ok) {
+        return {
+          success: false,
+          text: resolutionResult.error,
+          data: { status: 'invalid_clarification', paramPath: resolutionResult.paramPath },
+        };
+      }
+      const resolvedPaths = new Set(
+        resolutions.map((resolution) => resolution.paramPath).filter((path) => path.length > 0)
+      );
+      const freeFormCount = resolutions.filter(
+        (resolution) => resolution.paramPath.length === 0
+      ).length;
+      pruneResolvedClarifications(
+        draft as unknown as Record<string, unknown>,
+        resolvedPaths,
+        freeFormCount
+      );
+    }
     if (name) {
       draft.name = name;
     }
-    const deployed = await service.deployWorkflow(draft, resolveAgentId(runtime));
+    const clarifications = coerceClarifications(draft._meta?.requiresClarification);
+    if (clarifications.length > 0) {
+      const storedDraft: WorkflowDraft = {
+        workflow: draft,
+        prompt:
+          cachedContinuation?.prompt ??
+          seedPrompt ??
+          pendingDraft?.prompt ??
+          `Continue workflow "${draft.name}"`,
+        userId: ownerEntityId,
+        createdAt: Date.now(),
+        originMessageId:
+          cachedContinuation?.originMessageId ??
+          pendingDraft?.originMessageId ??
+          (typeof message.id === 'string' ? message.id : undefined),
+      };
+      await persistPendingWorkflowDraft(runtime, scope, storedDraft);
+      const text = `I need ${clarifications.length} clarification${clarifications.length === 1 ? '' : 's'} before I can create this workflow: ${clarifications
+        .map((clarification, index) => `${index + 1}. ${clarification.question}`)
+        .join(' ')}`;
+      const data = { status: 'needs_clarification', draft, clarifications } as const;
+      if (callback) {
+        await callback({
+          text,
+          action: WORKFLOW_ACTION,
+          metadata: {
+            status: data.status,
+            clarificationCount: clarifications.length,
+            clarificationQuestions: clarifications.map((clarification) => clarification.question),
+          },
+        });
+      }
+      return {
+        success: false,
+        text,
+        values: { status: data.status, clarificationCount: clarifications.length },
+        data,
+      };
+    }
+    const deployed = await service.deployWorkflow(draft, ownerEntityId, {
+      activate: readBoolean(params.active),
+    });
+    if (deployed.id) {
+      invalidateAutomationExecutionCache(service, ownerEntityId, deployed.id);
+    }
     if (!deployed.id) {
       const missing = deployed.missingCredentials.map((c) => c.credType).join(', ');
       const text = missing
@@ -295,23 +446,107 @@ async function handleCreate(
         : 'Workflow generation produced no deployable result.';
       return { success: false, text, data: { missingCredentials: deployed.missingCredentials } };
     }
-    const text = `Created workflow "${deployed.name}".`;
+    let pendingDraftWarning: { code: string; message: string } | undefined;
+    if (pendingDraft) {
+      try {
+        await clearPendingWorkflowDraft(runtime, scope);
+      } catch (err) {
+        // error-policy:J6 post-commit cache cleanup cannot roll back a deployed workflow.
+        const detail = err instanceof Error ? err.message : String(err);
+        const code =
+          isRecord(err) && typeof err.code === 'string'
+            ? err.code
+            : 'WORKFLOW_PENDING_DRAFT_CLEAR_FAILED';
+        pendingDraftWarning = {
+          code,
+          message:
+            'The workflow was created, but its pending chat draft could not be cleared. Do not retry creation.',
+        };
+        logger.warn(
+          { src: 'plugin:workflow:action:create', workflowId: deployed.id, detail },
+          pendingDraftWarning.message
+        );
+        runtime.reportError('WorkflowAction.pendingDraftClearAfterDeploy', err, {
+          workflowId: deployed.id,
+          ownerEntityId,
+          roomId: scope.roomId,
+        });
+      }
+    }
+    const deployedText = deployed.active
+      ? `Created and activated workflow "${deployed.name}".`
+      : `Created draft workflow "${deployed.name}".`;
+    const text = pendingDraftWarning
+      ? `${deployedText} ${pendingDraftWarning.message}`
+      : deployedText;
     if (callback) {
       await callback({
         text,
         action: WORKFLOW_ACTION,
-        metadata: { workflowId: deployed.id, workflowName: deployed.name },
+        metadata: {
+          workflowId: deployed.id,
+          workflowName: deployed.name,
+          ...(pendingDraftWarning ? { warningCode: pendingDraftWarning.code } : {}),
+        },
       });
     }
     return {
       success: true,
       text,
-      values: { workflowId: deployed.id, workflowName: deployed.name },
-      data: { workflow: summarizeWorkflow(deployed) },
+      values: {
+        workflowId: deployed.id,
+        workflowName: deployed.name,
+        active: deployed.active,
+        ...(pendingDraftWarning ? { warning: true } : {}),
+      },
+      data: {
+        workflow: summarizeWorkflow(deployed),
+        ...(pendingDraftWarning ? { warning: pendingDraftWarning } : {}),
+      },
     };
   } catch (err) {
+    // error-policy:J1 action-boundary translation returns cache failures as a failed tool result.
     const message = err instanceof Error ? err.message : String(err);
     logger.warn({ src: 'plugin:workflow:action:create' }, message);
+    return { success: false, text: message };
+  }
+}
+
+async function handleCancelPendingDraft(
+  runtime: IAgentRuntime,
+  message: Memory,
+  ownerEntityId: string,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  try {
+    const scope = getPendingWorkflowDraftScope(message, ownerEntityId);
+    const pendingDraft = await readPendingWorkflowDraft(runtime, scope);
+    if (!pendingDraft) {
+      const text = 'No pending workflow draft exists in this conversation.';
+      if (callback) {
+        await callback({ text, action: WORKFLOW_ACTION, metadata: { status: 'no_pending_draft' } });
+      }
+      return { success: true, text, data: { status: 'no_pending_draft' } };
+    }
+
+    await clearPendingWorkflowDraft(runtime, scope);
+    const text = `Canceled pending workflow "${pendingDraft.workflow.name}".`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { status: 'canceled', workflowName: pendingDraft.workflow.name },
+      });
+    }
+    return {
+      success: true,
+      text,
+      data: { status: 'canceled', workflowName: pendingDraft.workflow.name },
+    };
+  } catch (err) {
+    // error-policy:J1 action-boundary translation returns cache failures as a failed tool result.
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:cancel' }, message);
     return { success: false, text: message };
   }
 }
@@ -319,6 +554,7 @@ async function handleCreate(
 async function handleModify(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -326,7 +562,7 @@ async function handleModify(
     return { success: false, text: 'workflowId is required to modify a workflow.' };
   }
   try {
-    const existing = await service.getWorkflow(workflowId);
+    const existing = await service.getWorkflow(workflowId, ownerEntityId);
     const text = `Loaded workflow "${existing.name}" for editing.`;
     if (callback) {
       await callback({
@@ -350,6 +586,7 @@ async function handleToggleActive(
   service: WorkflowService,
   params: WorkflowActionParameters,
   desiredActive: boolean | undefined,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -365,22 +602,22 @@ async function handleToggleActive(
   }
   let existing: WorkflowDefinitionResponse;
   try {
-    existing = await service.getWorkflow(workflowId);
+    existing = await service.getWorkflow(workflowId, ownerEntityId);
   } catch {
     return { success: false, text: `Workflow not found: ${workflowId}` };
   }
   try {
     if (explicitActive) {
-      await service.activateWorkflow(workflowId);
+      await service.activateWorkflow(workflowId, ownerEntityId);
     } else {
-      await service.deactivateWorkflow(workflowId);
+      await service.deactivateWorkflow(workflowId, ownerEntityId);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({ src: 'plugin:workflow:action:toggle_active' }, msg);
     return { success: false, text: msg };
   }
-  const refreshed = await service.getWorkflow(workflowId);
+  const refreshed = await service.getWorkflow(workflowId, ownerEntityId);
   const text = explicitActive
     ? `Activated workflow "${existing.name}".`
     : `Deactivated workflow "${existing.name}".`;
@@ -402,6 +639,7 @@ async function handleToggleActive(
 async function handleDeleteWorkflow(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -410,12 +648,13 @@ async function handleDeleteWorkflow(
   }
   let existing: WorkflowDefinitionResponse;
   try {
-    existing = await service.getWorkflow(workflowId);
+    existing = await service.getWorkflow(workflowId, ownerEntityId);
   } catch {
     return { success: false, text: `Workflow not found: ${workflowId}` };
   }
   try {
-    await service.deleteWorkflow(workflowId);
+    await service.deleteWorkflow(workflowId, ownerEntityId);
+    invalidateAutomationExecutionCache(service, ownerEntityId, workflowId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({ src: 'plugin:workflow:action:delete' }, msg);
@@ -439,6 +678,7 @@ async function handleDeleteWorkflow(
 async function handleExecutions(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -447,7 +687,7 @@ async function handleExecutions(
   }
   const limit = readNumber(params.limit) ?? 10;
   try {
-    const response = await service.listExecutions({ workflowId, limit });
+    const response = await service.listExecutions({ workflowId, limit }, ownerEntityId);
     const executions = response.data;
     const text =
       executions.length === 0
@@ -476,6 +716,7 @@ async function handleExecutions(
 async function handleRunWorkflow(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -483,7 +724,8 @@ async function handleRunWorkflow(
     return { success: false, text: 'workflowId is required to run a workflow.' };
   }
   try {
-    const execution = await service.runWorkflow(workflowId, { throwOnError: false });
+    const execution = await service.runWorkflow(workflowId, { throwOnError: false }, ownerEntityId);
+    invalidateAutomationExecutionCache(service, ownerEntityId, workflowId);
     const text = `Ran workflow ${workflowId}: ${execution.status}.`;
     if (callback) {
       await callback({
@@ -508,6 +750,7 @@ async function handleRunWorkflow(
 async function handleRevisions(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -516,7 +759,7 @@ async function handleRevisions(
   }
   const limit = readNumber(params.limit) ?? 10;
   try {
-    const revisions = await service.listWorkflowRevisions(workflowId, limit);
+    const revisions = await service.listWorkflowRevisions(workflowId, limit, ownerEntityId);
     const text =
       revisions.length === 0
         ? `No revisions found for workflow ${workflowId}.`
@@ -544,6 +787,7 @@ async function handleRevisions(
 async function handleRestoreRevision(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -555,7 +799,7 @@ async function handleRestoreRevision(
     return { success: false, text: 'versionId is required to restore a workflow revision.' };
   }
   try {
-    const workflow = await service.restoreWorkflowRevision(workflowId, versionId);
+    const workflow = await service.restoreWorkflowRevision(workflowId, versionId, ownerEntityId);
     const text = `Restored workflow "${workflow.name}".`;
     if (callback) {
       await callback({
@@ -589,6 +833,7 @@ function isProblemExecution(execution: WorkflowExecution): boolean {
 async function handleDiagnoseExecution(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -604,7 +849,7 @@ async function handleDiagnoseExecution(
   try {
     let execution: WorkflowExecution | undefined;
     if (executionId) {
-      execution = await service.getExecutionDetail(executionId);
+      execution = await service.getExecutionDetail(executionId, ownerEntityId);
       if (workflowId && execution.workflowId !== workflowId) {
         return {
           success: false,
@@ -612,7 +857,7 @@ async function handleDiagnoseExecution(
         };
       }
     } else if (workflowId) {
-      const response = await service.listExecutions({ workflowId, limit });
+      const response = await service.listExecutions({ workflowId, limit }, ownerEntityId);
       execution = response.data.find(isProblemExecution) ?? response.data[0];
       if (!execution) {
         return {
@@ -664,6 +909,7 @@ async function handleDiagnoseExecution(
 async function handleEvaluationSamples(
   service: WorkflowService,
   params: WorkflowActionParameters,
+  ownerEntityId: string,
   callback: HandlerCallback | undefined
 ): Promise<ActionResult> {
   const workflowId = readString(params.workflowId);
@@ -675,7 +921,7 @@ async function handleEvaluationSamples(
   }
   const limit = readNumber(params.limit) ?? 10;
   try {
-    const suite = await service.getWorkflowEvaluationSuite(workflowId, limit);
+    const suite = await service.getWorkflowEvaluationSuite(workflowId, limit, ownerEntityId);
     const text =
       suite.sampleCount === 0
         ? `No executions found for workflow ${workflowId}; run it before generating eval samples.`
@@ -745,6 +991,9 @@ export const workflowAction: Action = {
     'GET_WORKFLOW',
     'REVIEW_WORKFLOW',
     'CREATE_WORKFLOW',
+    'WORKFLOW_CREATE',
+    'CANCEL_WORKFLOW_DRAFT',
+    'DISCARD_WORKFLOW_DRAFT',
     'DELETE_WORKFLOW',
     'RUN_WORKFLOW',
     'RUN_WORKFLOW_NOW',
@@ -785,15 +1034,17 @@ export const workflowAction: Action = {
   ],
   description:
     'Manage workflows (automations). Action-based dispatch - provide an `action` parameter:\n' +
-    '  list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.\n' +
+    '  list, get, create, cancel, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'workflow/automation list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|diagnose|eval_samples',
+    'workflow/automation list|get|create|cancel|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|diagnose|eval_samples',
+  routingHint:
+    'workflow lifecycle create/list/get/modify/activate/deactivate/run/delete/history -> call WORKFLOW directly with action=<operation>. Never wrap WORKFLOW in PAGE_DELEGATE and never invent WORKFLOW_CREATE or CREATE_WORKFLOW.',
   parameters: [
     {
       name: 'action',
       description:
-        'Operation: list, get, search, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.',
+        'Operation: list, get, search, create, cancel, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.',
       required: true,
       schema: { type: 'string' as const, enum: [...WORKFLOW_OPS] },
     },
@@ -823,9 +1074,23 @@ export const workflowAction: Action = {
     },
     {
       name: 'seedPrompt',
-      description: 'Natural-language description for action=create.',
+      description: 'Natural-language description for a new action=create request.',
       required: false,
       schema: { type: 'string' as const },
+    },
+    {
+      name: 'draft',
+      description:
+        'Optional explicit workflow draft for compatibility. Normal chat continuation reloads the pending draft from the current conversation.',
+      required: false,
+      schema: { type: 'object' as const },
+    },
+    {
+      name: 'resolutions',
+      description:
+        'Clarification answers for a pending create draft, as { paramPath, value } entries.',
+      required: false,
+      schema: { type: 'array' as const },
     },
     {
       name: 'name',
@@ -835,7 +1100,8 @@ export const workflowAction: Action = {
     },
     {
       name: 'active',
-      description: 'Target state for action=toggle_active (true to activate).',
+      description:
+        'Target state for action=toggle_active, or true to explicitly activate a newly-created workflow. New workflows otherwise remain drafts.',
       required: false,
       schema: { type: 'boolean' as const },
     },
@@ -874,37 +1140,41 @@ export const workflowAction: Action = {
     if (!service) {
       return { success: false, text: 'Workflow service is not registered.' };
     }
+    const ownerEntityId =
+      (await resolveCanonicalOwnerIdForMessage(runtime, message)) ?? getLocalOwnerEntityId(runtime);
     switch (op) {
       case 'list':
-        return handleListWorkflows(service, params, message, callback);
+        return handleListWorkflows(service, params, ownerEntityId, callback);
       case 'search':
-        return handleSearchWorkflows(service, params, message, callback);
+        return handleSearchWorkflows(service, params, ownerEntityId, callback);
       case 'get':
-        return handleGetWorkflow(service, params, callback);
+        return handleGetWorkflow(service, params, ownerEntityId, callback);
       case 'create':
-        return handleCreate(runtime, service, params, message, callback);
+        return handleCreate(runtime, message, service, params, ownerEntityId, callback);
+      case 'cancel':
+        return handleCancelPendingDraft(runtime, message, ownerEntityId, callback);
       case 'modify':
-        return handleModify(service, params, callback);
+        return handleModify(service, params, ownerEntityId, callback);
       case 'activate':
-        return handleToggleActive(service, params, true, callback);
+        return handleToggleActive(service, params, true, ownerEntityId, callback);
       case 'deactivate':
-        return handleToggleActive(service, params, false, callback);
+        return handleToggleActive(service, params, false, ownerEntityId, callback);
       case 'toggle_active':
-        return handleToggleActive(service, params, undefined, callback);
+        return handleToggleActive(service, params, undefined, ownerEntityId, callback);
       case 'delete':
-        return handleDeleteWorkflow(service, params, callback);
+        return handleDeleteWorkflow(service, params, ownerEntityId, callback);
       case 'run':
-        return handleRunWorkflow(service, params, callback);
+        return handleRunWorkflow(service, params, ownerEntityId, callback);
       case 'executions':
-        return handleExecutions(service, params, callback);
+        return handleExecutions(service, params, ownerEntityId, callback);
       case 'revisions':
-        return handleRevisions(service, params, callback);
+        return handleRevisions(service, params, ownerEntityId, callback);
       case 'restore':
-        return handleRestoreRevision(service, params, callback);
+        return handleRestoreRevision(service, params, ownerEntityId, callback);
       case 'diagnose':
-        return handleDiagnoseExecution(service, params, callback);
+        return handleDiagnoseExecution(service, params, ownerEntityId, callback);
       case 'eval_samples':
-        return handleEvaluationSamples(service, params, callback);
+        return handleEvaluationSamples(service, params, ownerEntityId, callback);
     }
   },
   examples: [

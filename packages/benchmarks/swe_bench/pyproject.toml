@@ -23,11 +23,11 @@ classifiers = [
 ]
 dependencies = [
     "eliza-adapter",
-    "datasets>=2.14.0",
-    "gitpython>=3.1.0",
-    "unidiff>=0.7.0",
-    "docker>=7.0.0",
-    "swebench>=4.1.0",
+    "datasets==3.6.0",
+    "gitpython==3.1.52",
+    "unidiff==0.7.5",
+    "docker==7.1.0",
+    "swebench==4.1.0",
     "python-dotenv>=1.1.0",
     "openai>=1.99.0",
 ]

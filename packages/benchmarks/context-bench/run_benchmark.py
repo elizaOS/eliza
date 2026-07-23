@@ -143,9 +143,8 @@ def get_llm_query_fn(provider: str, client: object | None = None, harness: str =
     """Return the selected benchmark query function.
 
     ``harness`` selects the agent harness: ``eliza`` (default; routes through
-    the elizaOS TS bench server), ``hermes`` (in-process HermesClient against
-    an OpenAI-compatible endpoint), or ``openclaw`` (direct OpenAI-compat with
-    ``OPENCLAW_DIRECT_OPENAI_COMPAT=1``).
+    the elizaOS TS bench server), ``hermes`` (pinned native Hermes AIAgent), or
+    ``openclaw`` (isolated OpenClaw embedded runtime with native tools).
     """
     normalized = provider.strip().lower()
     if normalized == "mock":
@@ -206,7 +205,7 @@ async def run_benchmark(
         )
     else:
         config = ContextBenchConfig(
-            context_lengths=context_lengths or [1024, 2048, 4096, 8192, 16384],
+            context_lengths=context_lengths or [1024, 2048, 4096, 8192, 16384, 32768],
             positions=positions or [
                 NeedlePosition.START,
                 NeedlePosition.EARLY,
@@ -214,11 +213,11 @@ async def run_benchmark(
                 NeedlePosition.LATE,
                 NeedlePosition.END,
             ],
-            tasks_per_position=tasks_per_position or 3,
+            tasks_per_position=tasks_per_position or 5,
             run_niah_basic=True,
             run_niah_semantic=True,
             run_multi_hop=True,
-            multi_hop_depths=[2, 3],
+            multi_hop_depths=[1, 2, 3],
             output_dir=output_dir,
             include_edge_scenarios=expand_scenarios,
         )
@@ -279,6 +278,16 @@ async def run_benchmark(
     print("\nResults saved to:")
     for file_type, path in paths.items():
         print(f"  {file_type}: {path}")
+
+    failed_queries = [result for result in results.results if result.error]
+    if failed_queries:
+        examples = ", ".join(
+            f"{result.task_id}: {result.error}" for result in failed_queries[:3]
+        )
+        raise RuntimeError(
+            "ContextBench query transport failed for "
+            f"{len(failed_queries)}/{len(results.results)} tasks; examples: {examples}"
+        )
 
     return results
 
@@ -369,7 +378,7 @@ def main() -> int:
         )
     else:
         config = ContextBenchConfig(
-            context_lengths=context_lengths or [1024, 2048, 4096, 8192, 16384],
+            context_lengths=context_lengths or [1024, 2048, 4096, 8192, 16384, 32768],
             positions=positions or [
                 NeedlePosition.START,
                 NeedlePosition.EARLY,
@@ -377,11 +386,11 @@ def main() -> int:
                 NeedlePosition.LATE,
                 NeedlePosition.END,
             ],
-            tasks_per_position=args.tasks_per_position or 3,
+            tasks_per_position=args.tasks_per_position or 5,
             run_niah_basic=True,
             run_niah_semantic=True,
             run_multi_hop=True,
-            multi_hop_depths=[2, 3],
+            multi_hop_depths=[1, 2, 3],
             include_edge_scenarios=args.expand_scenarios,
         )
     if args.count_scenarios or args.validate_scenarios:

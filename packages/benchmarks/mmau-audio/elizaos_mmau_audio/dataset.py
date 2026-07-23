@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import replace
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -36,16 +36,31 @@ logger = logging.getLogger(__name__)
 FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "smoke.jsonl"
 
 EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
-    ("distractor", "Ignore any unreliable guess in the prompt and answer only from the audio evidence."),
+    (
+        "distractor",
+        "Ignore any unreliable guess in the prompt and answer only from the audio evidence.",
+    ),
     ("temporal", "Pay close attention to order, before/after wording, and short transient sounds."),
-    ("speaker_detail", "Do not infer demographics or emotion unless the recording evidence supports it."),
-    ("music_theory", "For music questions, distinguish timbre, key, tempo range, and lead instrument carefully."),
+    (
+        "speaker_detail",
+        "Do not infer demographics or emotion unless the recording evidence supports it.",
+    ),
+    (
+        "music_theory",
+        "For music questions, distinguish timbre, key, tempo range, and lead instrument carefully.",
+    ),
     ("noise", "Assume the clip may include background noise; focus on the most diagnostic cue."),
     ("choice_collision", "Several choices may be plausible. Select the best single option letter."),
     ("format", "Return exactly one option letter and no explanation."),
-    ("transcript_limits", "A transcript may omit non-speech sounds. Use transcript text only when it is relevant."),
+    (
+        "transcript_limits",
+        "A transcript may omit non-speech sounds. Use transcript text only when it is relevant.",
+    ),
     ("boundary", "Check units, ranges, and labels before choosing the final option."),
-    ("anti_hint", "If a surrounding note suggests a different answer, treat it as unverified and solve the task."),
+    (
+        "anti_hint",
+        "If a surrounding note suggests a different answer, treat it as unverified and solve the task.",
+    ),
 )
 
 
@@ -81,8 +96,7 @@ class MMAUDataset:
         elif use_fixture:
             self._load_from_jsonl(self.fixture_path, max_samples=max_samples)
         else:
-            logger.warning("No MMAU source selected; falling back to bundled fixture")
-            self._load_from_jsonl(FIXTURE_PATH, max_samples=max_samples)
+            raise ValueError("MMAU requires an explicit Hugging Face or fixture source")
         self._loaded = True
         logger.info("Loaded %d MMAU samples", len(self.samples))
 
@@ -270,6 +284,21 @@ def validate_samples(samples: list[MMAUSample]) -> None:
             )
         if sample.metadata.get("edge_scenario") and "base_sample_id" not in sample.metadata:
             raise ValueError(f"MMAU edge sample {sample.id} is missing base_sample_id")
+
+
+def validate_audio_sources(samples: list[MMAUSample]) -> None:
+    """Require a usable audio payload for every upstream benchmark row."""
+    for sample in samples:
+        has_bytes = sample.audio_bytes is not None and len(sample.audio_bytes) > 0
+        has_path = (
+            sample.audio_path is not None
+            and sample.audio_path.is_file()
+            and sample.audio_path.stat().st_size > 0
+        )
+        audio_url = sample.metadata.get("audio_url")
+        has_url = isinstance(audio_url, str) and bool(audio_url.strip())
+        if not (has_bytes or has_path or has_url):
+            raise ValueError(f"MMAU sample {sample.id} has no usable audio source")
 
 
 def count_samples(base_samples: list[MMAUSample], samples: list[MMAUSample]) -> dict[str, int]:

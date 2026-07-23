@@ -21,7 +21,6 @@ import {
 import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { GroundTruthVerdict } from "./ground-truth-verifier.js";
 import type {
   OrchestratorTaskDocument,
   OrchestratorTaskMessage,
@@ -201,12 +200,39 @@ export function curatedCodingMemoryPath(
   );
 }
 
+interface VerifiedGroundTruthProvenance {
+  status: "verified";
+  pr: {
+    exists: true;
+    url?: string;
+    repo?: string;
+    headSha?: string;
+  };
+}
+
 function readGroundTruthVerdict(
   metadata: Record<string, unknown> | undefined,
-): GroundTruthVerdict | undefined {
+): VerifiedGroundTruthProvenance | undefined {
   const raw = metadata?.groundTruthVerdict;
-  if (!isRecord(raw) || raw.status !== "verified") return undefined;
-  return raw as unknown as GroundTruthVerdict;
+  if (
+    !isRecord(raw) ||
+    raw.status !== "verified" ||
+    !isRecord(raw.pr) ||
+    raw.pr.exists !== true
+  ) {
+    return undefined;
+  }
+  return {
+    status: "verified",
+    pr: {
+      exists: true,
+      ...(typeof raw.pr.url === "string" ? { url: raw.pr.url } : {}),
+      ...(typeof raw.pr.repo === "string" ? { repo: raw.pr.repo } : {}),
+      ...(typeof raw.pr.headSha === "string"
+        ? { headSha: raw.pr.headSha }
+        : {}),
+    },
+  };
 }
 
 function provenanceFor(doc: OrchestratorTaskDocument): string[] {

@@ -106,17 +106,21 @@ describe("xAI provider rejection surfaces", () => {
     [401, "Invalid API key"],
     [429, "rate limited"],
     [500, "internal error"],
-  ])("surfaces a %d as a typed error without a usage event", async (status, message) => {
-    const fetchMock = vi.fn(
-      async () => new Response(JSON.stringify({ error: message }), { status }),
-    );
-    const runtime = createRuntime(fetchMock as unknown as typeof fetch);
+  ])(
+    "surfaces a %d as a typed error without a usage event",
+    async (status, message) => {
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: message }), { status }),
+      );
+      const runtime = createRuntime(fetchMock as unknown as typeof fetch);
 
-    await expect(handleTextSmall(runtime, { prompt: "hi" })).rejects.toThrow(
-      `Grok API error (${status})`,
-    );
-    expect(emitEventOf(runtime)).not.toHaveBeenCalled();
-  });
+      await expect(handleTextSmall(runtime, { prompt: "hi" })).rejects.toThrow(
+        `Grok API error (${status})`,
+      );
+      expect(emitEventOf(runtime)).not.toHaveBeenCalled();
+    },
+  );
 
   it("surfaces a malformed (non-JSON) 200 response as a typed error", async () => {
     const fetchMock = vi.fn(

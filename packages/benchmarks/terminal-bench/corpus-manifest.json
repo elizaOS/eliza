@@ -1,0 +1,42 @@
+{
+  "dataset": "Terminal-Bench original-tasks",
+  "source": "https://github.com/laude-institute/terminal-bench",
+  "revision": "d28711d0da2675d0bb1d56de45ae5df6082438a3",
+  "split": "original-tasks",
+  "expected_task_count": 241,
+  "corpus_file_count": 2061,
+  "corpus_snapshot_sha256": "ef112e2a3cae75109911cc5441e83ebbf0ae93956ef84f9922cde1b1a9171ea6",
+  "source_revision_equivalence": {
+    "exact": false,
+    "content_differences": 34,
+    "vendored_only_files": 2,
+    "note": "The local corpus is a pinned historical/generated snapshot. The revision identifies the source used to restore missing tracked assets, not byte-for-byte equivalence with that upstream tree."
+  },
+  "required_assets": {
+    "ancient-puzzle/artifacts/final_clue.zip": "7a90e71b4c6ff169023782a7b3e4a46d786b520374b22df0b08166239da8eeae",
+    "ancient-puzzle/artifacts/glyph_weights.json": "a35834f0339a09b2d86099f1ee87ada15b0abd57de9cb4a1e00c33412e3e4d1f",
+    "ancient-puzzle/artifacts/symbols.json": "a423938c6f4a86eb613e94b8a919fe224f28e62b6d31a4ba9905c6442343ffb1",
+    "ancient-puzzle/artifacts/tablet.csv": "a2db5ab9bf1d603f6ab37e1f5ebb9694486ec9db6be69779dae5b6e559b6437c",
+    "ancient-puzzle/artifacts/tablet_instructions.txt": "96b40fe901a6bcc070eb07a39d44f013fb8fc2b586841383ba186c2c31b0be2c",
+    "bank-trans-filter/data/bank_transactions.csv": "bbd95ce563a4f053817a61ca6f2b7f9623bdfa093b9fa39463f947f95efb2f9f",
+    "cobol-modernization/data/ACCOUNTS.DAT": "46f63eb29442ebc6716bcd8a0c36f4367910f2783f6b84a307ed9a61ccd1046e",
+    "cobol-modernization/data/BOOKS.DAT": "db04da646207cd87f8e9c5b6f0b57d95953899f3eef22de1a81423f06ef4a9fd",
+    "cobol-modernization/data/TRANSACTIONS.DAT": "1fa4cc5420ded94d585c563e8196b85166ebbae2bb8924b20014717fb2fb9ee3",
+    "db-wal-recovery/main.db": "68cb288eb29e76d814b4e7ee6887b37c415675e644f88173bc191348e290d119",
+    "enemy-grid-escape/run_game.cpython-313.pyc": "955d5f491067bda3ea50fc282f146cef093ebab2346420d2663aa9190d1ce668",
+    "enemy-grid-escape/tests/run_game.cpython-313.pyc": "955d5f491067bda3ea50fc282f146cef093ebab2346420d2663aa9190d1ce668",
+    "hf-train-lora-adapter/data/metadata.json": "307ce470e7c92a583be9b2d10aa73a2746ba5c1812a8ea6f0b894939a01946f4",
+    "hf-train-lora-adapter/data/train.json": "e26bf68897a1ca1724f20d8d61b5f09ba934526916ff4dcff8aa06d3ad107057",
+    "hf-train-lora-adapter/data/val.json": "f96670bd6a6a5cbf62dcac6ef8a5dcfebcaa201ae2bc35a367b99b39a790fec0",
+    "lean4-proof/data/p1.lean": "503b202827ad336ffd34fca2058b33a96bec62d60e865bd825fa896f6bc0e8b0",
+    "lean4-proof/data/p2.lean": "ac67a576d65fc7396548d05e3f058a4364fa0d4c7f13eab3d5f4311679710174",
+    "lean4-proof/data/p3.lean": "ce05fd6078cb46fd50b5a86fe8975f390a84a6165f19402b7088618b9ad232e0",
+    "multi-source-data-merger/data/source_a/users.json": "75e51e2d3ab0bdba2269d7cf3757576f84f3ee2c13407d2db94289a5958a1778",
+    "multi-source-data-merger/data/source_b/users.csv": "8e87d16dc47d166edd8e56165955bad265b630d53d02762367c816affb5fa760",
+    "multi-source-data-merger/data/source_c/users.parquet": "23d1ea51c4170bdba53febb885a0f495e28de525a52667347b2932136b9a72fe",
+    "optimal-transport/data/large_test.json": "65da46e4eedea0a2ad5fdc119b6e4f1b7fd37eb3eec8c8b34d314ffeed16d9a3",
+    "predict-customer-churn/data/training-data.csv": "7c293e65d0733c735e98395b660a4e2cad2e98fa55e3df83bfeb7a72cc9c0c77",
+    "sqlite-db-truncate/trunc.db": "a7f00ee232fe621629dc014eb2619ac793131843ede1fd892f3b8b7e17332a5b",
+    "wasm-pipeline/gen/libcompute.so": "e8b167b40ae262e3ef8da111f0d6b0f20fb3a4dd16056a0bdb7bae3a9eb92b6d"
+  }
+}

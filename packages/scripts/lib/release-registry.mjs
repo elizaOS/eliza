@@ -15,6 +15,8 @@ import {
   RELEASE_PHASES,
   releaseTransitionEvidence,
   stableStringify,
+  validateNpmPublisher,
+  validateRegistryUrl,
 } from "./release-contract.mjs";
 
 export class RegistryInspectionError extends Error {
@@ -27,22 +29,7 @@ export class RegistryInspectionError extends Error {
 }
 
 export function normalizeRegistryUrl(registryUrl) {
-  let parsed;
-  try {
-    parsed = new URL(registryUrl);
-  } catch (error) {
-    // error-policy:J2 the registry boundary needs the rejected input in context
-    throw new Error(`Invalid registry URL ${registryUrl}`, { cause: error });
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`Registry URL must use http or https: ${registryUrl}`);
-  }
-  if (parsed.username || parsed.password)
-    throw new Error("Registry URL must not contain credentials");
-  parsed.hash = "";
-  parsed.search = "";
-  if (!parsed.pathname.endsWith("/")) parsed.pathname += "/";
-  return parsed.toString();
+  return validateRegistryUrl(registryUrl);
 }
 
 function registryHeaders(token) {
@@ -110,7 +97,11 @@ function packageMetadataUrl(registryUrl, packageName) {
 }
 
 /** Classify a registry version response without performing I/O. */
-export function classifyRegistryVersion(packageRecord, metadata) {
+export function classifyRegistryVersion(
+  packageRecord,
+  metadata,
+  { sourceSha, publisher, requireRegistryProvenance = true },
+) {
   if (metadata === null) return { state: "missing" };
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     throw new RegistryInspectionError(
@@ -148,20 +139,72 @@ export function classifyRegistryVersion(packageRecord, metadata) {
       actualIntegrity,
     };
   }
-  return { state: "matched", integrity: actualIntegrity };
+  const actualSourceSha = metadata.gitHead;
+  const actualPublisher = metadata._npmUser?.name;
+  const hasRegistryProvenance =
+    actualSourceSha !== undefined || actualPublisher !== undefined;
+  if (
+    (hasRegistryProvenance &&
+      (actualSourceSha !== sourceSha || actualPublisher !== publisher)) ||
+    (!hasRegistryProvenance && requireRegistryProvenance)
+  ) {
+    throw new RegistryInspectionError(
+      `Registry provenance for ${packageRecord.name}@${packageRecord.version} is ${actualPublisher ?? "missing"}/${actualSourceSha ?? "missing"}, expected ${publisher}/${sourceSha}`,
+      { kind: "provenance-conflict" },
+    );
+  }
+  return {
+    state: "matched",
+    integrity: actualIntegrity,
+    sourceSha,
+    publisher,
+    provenance: hasRegistryProvenance
+      ? "registry-metadata"
+      : "candidate-integrity+authenticated-publisher",
+  };
 }
 
 export async function inspectRegistryVersion({
   registryUrl,
   packageRecord,
   token,
+  sourceSha,
+  publisher,
 }) {
   const registry = normalizeRegistryUrl(registryUrl);
   const metadata = await requestRegistryJson(
     packageVersionUrl(registry, packageRecord.name, packageRecord.version),
     { token, allowMissing: true },
   );
-  return classifyRegistryVersion(packageRecord, metadata);
+  return classifyRegistryVersion(packageRecord, metadata, {
+    sourceSha,
+    publisher,
+    requireRegistryProvenance:
+      new URL(registry).hostname === "registry.npmjs.org",
+  });
+}
+
+/** Resolve the registry account behind a publication token before mutation. */
+export async function inspectRegistryPublisher({ registryUrl, token }) {
+  if (typeof token !== "string" || token.length === 0) {
+    throw new Error("Registry publication requires an explicit token");
+  }
+  const registry = normalizeRegistryUrl(registryUrl);
+  const metadata = await requestRegistryJson(new URL("-/whoami", registry), {
+    token,
+    allowMissing: false,
+  });
+  if (
+    !metadata ||
+    typeof metadata !== "object" ||
+    Array.isArray(metadata) ||
+    typeof metadata.username !== "string"
+  ) {
+    throw new RegistryInspectionError("Registry returned malformed whoami", {
+      kind: "malformed-response",
+    });
+  }
+  return validateNpmPublisher(metadata.username);
 }
 
 export async function inspectRegistryChannel({
@@ -213,7 +256,13 @@ export async function inspectReleaseRegistry({ registryUrl, plan, token }) {
     records.push({
       name: packageRecord.name,
       version: packageRecord.version,
-      ...(await inspectRegistryVersion({ registryUrl, packageRecord, token })),
+      ...(await inspectRegistryVersion({
+        registryUrl,
+        packageRecord,
+        token,
+        sourceSha: plan.sourceSha,
+        publisher: plan.publisher,
+      })),
     });
   }
   return records;
@@ -271,6 +320,8 @@ async function stageMissingPackages({
       registryUrl,
       packageRecord,
       token,
+      sourceSha: plan.sourceSha,
+      publisher: plan.publisher,
     });
     if (current.state === "conflict") {
       assertNoRegistryConflicts([
@@ -314,10 +365,13 @@ async function verifyAllIntegrities({ registryUrl, plan, token }) {
       `Registry is missing planned versions: ${missing.map(({ name }) => name).join(", ")}`,
     );
   }
-  return records.map(({ name, version, integrity }) => ({
+  return records.map(({ name, version, integrity, provenance }) => ({
     name,
     version,
     integrity,
+    sourceSha: plan.sourceSha,
+    publisher: plan.publisher,
+    provenance,
   }));
 }
 
@@ -427,6 +481,87 @@ async function removeCandidateTags({
   return actions;
 }
 
+/**
+ * Re-read every immutable version and public channel after promotion. This is
+ * the credential-free gate consumed by Git/GitHub finalization: a recorded
+ * state is necessary for retry continuity, but live registry evidence remains
+ * authoritative before any public ref advances.
+ */
+export async function verifyPromotedReleaseCandidate({
+  repoRoot,
+  candidateDirectory,
+  registryUrl,
+  token,
+}) {
+  const verified = verifyReleaseCandidate({ repoRoot, candidateDirectory });
+  const phaseIndex = RELEASE_PHASES.indexOf(verified.state.phase);
+  if (phaseIndex < RELEASE_PHASES.indexOf("channel-promoted")) {
+    throw new Error(
+      `Promoted registry verification requires channel-promoted state, received ${verified.state.phase}`,
+    );
+  }
+  const normalizedRegistry = normalizeRegistryUrl(registryUrl);
+  if (verified.plan.registry !== normalizedRegistry) {
+    throw new Error(
+      `Candidate registry is ${verified.plan.registry}, not ${normalizedRegistry}`,
+    );
+  }
+  const recorded = releaseTransitionEvidence(verified.state, "registry-staged");
+  if (
+    recorded?.registry !== normalizedRegistry ||
+    recorded?.publisher !== verified.plan.publisher
+  ) {
+    throw new Error(
+      `Recorded registry identity is ${recorded?.registry}/${recorded?.publisher}, not ${normalizedRegistry}/${verified.plan.publisher}`,
+    );
+  }
+
+  const packages = await verifyAllIntegrities({
+    registryUrl: normalizedRegistry,
+    plan: verified.plan,
+    token,
+  });
+  const channels = [];
+  for (const packageRecord of verified.plan.packages) {
+    const channelVersion = await inspectRegistryChannel({
+      registryUrl: normalizedRegistry,
+      packageRecord,
+      channel: verified.plan.channel,
+      token,
+    });
+    if (channelVersion !== packageRecord.version) {
+      throw new Error(
+        `${packageRecord.name} channel ${verified.plan.channel} points to ${channelVersion}, expected ${packageRecord.version}`,
+      );
+    }
+    const candidateVersion = await inspectRegistryChannel({
+      registryUrl: normalizedRegistry,
+      packageRecord,
+      channel: verified.plan.candidateTag,
+      token,
+    });
+    if (candidateVersion !== null) {
+      throw new Error(
+        `${packageRecord.name} still exposes staging tag ${verified.plan.candidateTag}`,
+      );
+    }
+    channels.push({
+      name: packageRecord.name,
+      channel: verified.plan.channel,
+      version: channelVersion,
+      candidateTagRemoved: true,
+    });
+  }
+  return {
+    state: "channel-promoted",
+    registry: normalizedRegistry,
+    channel: verified.plan.channel,
+    packages,
+    channels,
+    fingerprint: stableStringify({ packages, channels }),
+  };
+}
+
 /** Stage, verify, and promote a candidate, resuming only matching state. */
 export async function publishReleaseCandidate({
   repoRoot,
@@ -443,10 +578,25 @@ export async function publishReleaseCandidate({
   const stagedIndex = RELEASE_PHASES.indexOf("registry-staged");
   const promotedIndex = RELEASE_PHASES.indexOf("channel-promoted");
   const normalizedRegistry = normalizeRegistryUrl(registryUrl);
+  if (plan.registry !== normalizedRegistry) {
+    throw new Error(
+      `Candidate registry is ${plan.registry}, not ${normalizedRegistry}`,
+    );
+  }
+  const authenticatedPublisher = await inspectRegistryPublisher({
+    registryUrl: normalizedRegistry,
+    token,
+  });
+  if (authenticatedPublisher !== plan.publisher) {
+    throw new Error(
+      `Registry token identifies ${authenticatedPublisher}, expected ${plan.publisher}`,
+    );
+  }
   if (phaseIndex < candidateIndex)
     throw new Error(`Candidate is only at ${verified.state.phase}`);
   const bindingEvidence = {
     registry: normalizedRegistry,
+    publisher: authenticatedPublisher,
     candidateTag: plan.candidateTag,
   };
   if (phaseIndex >= boundIndex) {
@@ -454,9 +604,12 @@ export async function publishReleaseCandidate({
       verified.state,
       "registry-bound",
     );
-    if (recorded?.registry !== normalizedRegistry) {
+    if (
+      recorded?.registry !== normalizedRegistry ||
+      recorded?.publisher !== authenticatedPublisher
+    ) {
       throw new Error(
-        `Candidate registry is ${recorded?.registry}, not ${normalizedRegistry}`,
+        `Recorded registry identity is ${recorded?.registry}/${recorded?.publisher}, not ${normalizedRegistry}/${authenticatedPublisher}`,
       );
     }
     if (stableStringify(recorded) !== stableStringify(bindingEvidence))
@@ -498,6 +651,10 @@ export async function publishReleaseCandidate({
   }
 
   if (phaseIndex === RELEASE_PHASES.indexOf("registry-verified")) {
+    // A retry may arrive long after the recorded verification. Re-read the
+    // entire cohort immediately before any remaining public tag moves so state
+    // history never substitutes for current registry integrity.
+    await verifyAllIntegrities({ registryUrl, plan, token });
     const promotions = await promoteChannel({
       repoRoot,
       registryUrl,
@@ -522,25 +679,12 @@ export async function publishReleaseCandidate({
   }
 
   if (phaseIndex >= promotedIndex) {
-    const packages = await verifyAllIntegrities({ registryUrl, plan, token });
-    for (const packageRecord of plan.packages) {
-      const actual = await inspectRegistryChannel({
-        registryUrl,
-        packageRecord,
-        channel: plan.channel,
-        token,
-      });
-      if (actual !== packageRecord.version) {
-        throw new Error(
-          `${packageRecord.name} is no longer promoted on ${plan.channel}`,
-        );
-      }
-    }
-    return {
-      state: "channel-promoted",
-      packages,
-      fingerprint: stableStringify(packages),
-    };
+    return verifyPromotedReleaseCandidate({
+      repoRoot,
+      candidateDirectory,
+      registryUrl,
+      token,
+    });
   }
   throw new Error(
     `Release publication stopped unexpectedly at ${RELEASE_PHASES[phaseIndex]}`,

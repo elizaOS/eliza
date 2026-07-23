@@ -49,6 +49,19 @@ export class TaskService extends Service {
 	private executingTaskPromises = new Set<Promise<void>>();
 	/** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
 	private tasksDirty = true;
+	/**
+	 * Task IDs already self-healed for a missing worker (#SHADOW-ACCOUNT-DEBUG).
+	 * WHY: an orphaned task — one whose worker is not registered in THIS build
+	 * (e.g. a repeat task created by an older build whose worker name changed, or
+	 * a plugin that no longer loads) — otherwise fails validation every 1s tick
+	 * FOREVER: it never reaches executeTask (the only place that deletes/pauses),
+	 * so it re-emits TASK_WORKER_MISSING → TASK_TICK_FAILED every second. That
+	 * loop is what narrated into Shadow's chat 9× via the RECENT_ERRORS provider
+	 * + repeat-failure escalation. Self-heal (pause repeat / delete non-repeat)
+	 * fixes the source; this set makes the ONE diagnostic per orphan idempotent
+	 * so a transient getTasks/update failure can't re-narrate on the next tick.
+	 */
+	private quarantinedOrphans = new Set<string>();
 	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
 	private stopped = false;
 	static serviceType = ServiceType.TASK;
@@ -226,14 +239,18 @@ export class TaskService extends Service {
 
 			const worker = this.runtime.getTaskWorker(task.name);
 			if (!worker) {
-				errors.push(
-					new ElizaError(`No worker registered for task ${task.name}`, {
-						code: "TASK_WORKER_MISSING",
-						context,
-						severity: "fatal",
-					}),
-				);
+				// Orphaned task: no worker registered in THIS build. Self-heal instead
+				// of re-erroring every 1s tick (the TASK_WORKER_MISSING → TASK_TICK_FAILED
+				// loop that narrated into chat 9×). Emit the diagnostic ONCE per orphan.
+				if (!this.quarantinedOrphans.has(task.id)) {
+					await this.quarantineOrphanTask(task, errors);
+				}
 				continue;
+			}
+			// Worker is back (e.g. plugin reloaded / build redeployed): drop the
+			// quarantine mark so a future disappearance re-heals + re-diagnoses once.
+			if (this.quarantinedOrphans.has(task.id)) {
+				this.quarantinedOrphans.delete(task.id);
 			}
 
 			const invalidField = this.invalidScheduleField(task);
@@ -283,6 +300,74 @@ export class TaskService extends Service {
 		}
 
 		return { tasks: validatedTasks, errors };
+	}
+
+	/**
+	 * Self-heal an orphaned task whose worker is not registered in this build.
+	 * Repeat orphans are PAUSED (survive a redeploy that re-registers the worker,
+	 * and can be un-paused/inspected by an operator); non-repeat orphans are
+	 * DELETED (a one-shot with no worker can never run — keeping it would re-fail
+	 * every tick with no backoff). Marks the id quarantined and emits the
+	 * diagnostic ONCE. WHY once: without the mark, every 1s tick re-emitted
+	 * TASK_WORKER_MISSING which the RECENT_ERRORS provider + repeat-escalation
+	 * narrated into the owner's chat repeatedly (the observed 9× slop). A best-
+	 * effort persistence failure is reported (once) but still marks quarantined
+	 * so we don't renarrate on the next tick; the row will simply be re-healed if
+	 * it reappears (idempotent pause/delete).
+	 */
+	private async quarantineOrphanTask(
+		task: Task,
+		errors: ElizaError[],
+	): Promise<void> {
+		if (!task.id) return;
+		const context = { taskId: task.id, taskName: task.name };
+		const isRepeat = task.tags?.includes("repeat") === true;
+		try {
+			if (isRepeat) {
+				if (task.metadata?.paused !== true) {
+					await this.runtime.updateTask(task.id, {
+						metadata: {
+							...task.metadata,
+							paused: true,
+							lastError: `No worker registered for task ${task.name} (orphan auto-paused)`,
+							updatedAt: Date.now(),
+						},
+					});
+				}
+				this.runtime.logger.warn(
+					{
+						src: "plugin:basic-capabilities:service:task",
+						agentId: this.runtime.agentId,
+						...context,
+					},
+					"Orphaned repeat task auto-paused (no worker registered)",
+				);
+			} else {
+				await this.runtime.deleteTask(task.id);
+				this.runtime.logger.warn(
+					{
+						src: "plugin:basic-capabilities:service:task",
+						agentId: this.runtime.agentId,
+						...context,
+					},
+					"Orphaned one-shot task deleted (no worker registered)",
+				);
+			}
+		} catch (cause) {
+			// Persistence failed: still mark quarantined so we don't renarrate every
+			// tick. Surface the heal failure ONCE (severity ephemeral so it can't push
+			// the tick to fatal on its own). Report via the collected errors list so
+			// it flows through the SAME single-diagnostic path, not a per-tick spam.
+			errors.push(
+				new ElizaError(`Failed to quarantine orphaned task ${task.name}`, {
+					code: "TASK_ORPHAN_QUARANTINE_FAILED",
+					context,
+					cause,
+					severity: "ephemeral",
+				}),
+			);
+		}
+		this.quarantinedOrphans.add(task.id);
 	}
 
 	private invalidScheduleField(task: Task): string | undefined {

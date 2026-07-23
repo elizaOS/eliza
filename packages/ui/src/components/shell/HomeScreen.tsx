@@ -1,16 +1,15 @@
 /**
- * Composes the shell home screen from launcher tiles, widgets, topics, and
- * dashboard affordances.
+ * Composes the shell home screen as one vertical notification-and-app surface
+ * beneath the floating chat.
  */
-import {
-  Camera,
-  Contact,
-  type LucideIcon,
-  MessageSquare,
-  Phone,
-} from "lucide-react";
 import type * as React from "react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
@@ -18,10 +17,9 @@ import { cn } from "../../lib/utils";
 import { useNotifications } from "../../state/notifications/notification-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
-import { Button } from "../ui/button";
+import { LauncherSurface } from "../pages/LauncherSurface";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
-import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 // A gentle staggered fade-up as the home settles in - iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -91,82 +89,26 @@ export type HomeTileTarget =
   | { kind: "tab"; tab: string }
   | { kind: "view"; path: string };
 
-interface HomeTile {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  target: HomeTileTarget;
-  /** AOSP/native-OS only (phone, contacts, messages) - hidden on stock installs. */
-  nativeOs?: boolean;
-}
-
-// The home screen carries NO general quick-access tiles: Launcher is the
-// adjacent launcher page, with Settings in its grid, so pinning those actions
-// here too would be redundant clutter. The only tiles left are the AOSP ElizaOS
-// fork's native-OS surfaces (messages, phone, contacts, camera) - real OS apps,
-// `nativeOs` so they stay hidden on every non-AOSP build (where the tile grid
-// renders nothing at all).
-const HOME_TILES: HomeTile[] = [
-  {
-    // The only "messages" surface is the AOSP SMS view (MessagesPageView), which
-    // falls back to the apps catalog off-Android - so gate it like phone/contacts.
-    id: "messages",
-    label: "Messages",
-    icon: MessageSquare,
-    target: { kind: "tab", tab: "messages" },
-    nativeOs: true,
-  },
-  {
-    id: "phone",
-    label: "Phone",
-    icon: Phone,
-    target: { kind: "tab", tab: "phone" },
-    nativeOs: true,
-  },
-  {
-    id: "contacts",
-    label: "Contacts",
-    icon: Contact,
-    target: { kind: "tab", tab: "contacts" },
-    nativeOs: true,
-  },
-  {
-    id: "camera",
-    label: "Camera",
-    icon: Camera,
-    target: { kind: "tab", tab: "camera" },
-    nativeOs: true,
-  },
-];
-
 export interface HomeScreenProps {
-  /** Open a pinned view/tab. Injected by the mount (setTab vs navigate event). */
+  /** Open a pinned view/tab from host-provided home content. */
   onOpenTile: (target: HomeTileTarget) => void;
-  /** Render the AOSP-only phone/contacts tiles (native OS surfaces). */
+  /** Host override hint for AOSP-native surfaces. */
   showNativeOsTiles?: boolean;
+  /** Deterministic launcher content for stories and isolated shell harnesses. */
+  apps?: React.ReactNode;
 }
 
 /**
- * The /chat home: a deliberately minimal dashboard that sits behind the
- * always-present floating chat. Below the time/weather base sit the
- * prioritized home widgets — the unified `home`-slot WidgetHost (#9143):
- * recent messages, orchestrator activity, and the per-plugin attention cards
- * (calendar/goals/finances/health/relationships/inbox), each self-hiding when
- * empty and dynamically ranked so whatever needs attention floats to the top.
- * The notification inbox (NotificationsHomeCenter) sits inline on the SAME
- * layer directly beneath the time/weather header, visually quiet when empty and
- * fading in Apple-style when notifications arrive. Its empty gesture band only
- * reveals a subtle status while pulled, so a quiet home remains the ambient
- * field + clock. The AOSP native-OS tiles render below on Android. The
- * chat overlay floats over the bottom; this scrolls with clearance for it.
+ * The /chat home sits behind the always-present floating chat. Time/weather is
+ * fixed at the top, the notification shade follows inline, and the complete
+ * launcher grid owns the remaining vertical space. Rested notifications stay
+ * compact; expanding the shade takes that remaining space and makes the app
+ * region inert until the shade collapses. The app region keeps its scroll
+ * position, scrolls vertically without visible chrome, and contains the ranked
+ * home widgets after the launcher grid so those signals remain available
+ * without separating apps from notifications.
  */
-export function HomeScreen({
-  onOpenTile,
-  showNativeOsTiles = false,
-}: HomeScreenProps): React.JSX.Element {
-  // Only the AOSP native-OS tiles remain, and they need an AOSP build. On every
-  // other platform `tiles` is empty and the grid renders nothing.
-  const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles);
+export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
   // The entrance fade plays once, on first mount only - never re-triggered by a
@@ -175,102 +117,162 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
   const homeScreenRef = useRef<HTMLDivElement>(null);
-
-  // When the inbox has notifications it becomes the home's primary content and
-  // grows to fill the column down to the chat; the ranked widget host then sits
-  // below it at natural height. With an empty inbox the widget host reclaims the
-  // `flex-1` breathing region (centred), so a quiet home stays calmly centred.
+  const appsRegionRef = useRef<HTMLElement>(null);
+  const displacedAppFocusRef = useRef<HTMLElement | null>(null);
+  const appsDisplacedRef = useRef(false);
+  const wasAppsDisplacedRef = useRef(false);
+  const [notificationShadeExpanded, setNotificationShadeExpanded] =
+    useState(false);
   const { notifications } = useNotifications();
-  const hasNotifications = notifications.length > 0;
+  const appsDisplaced = notificationShadeExpanded && notifications.length > 0;
+  appsDisplacedRef.current = appsDisplaced;
+
+  // Remember the latest launcher control independently of the shade gesture.
+  // A notification can arrive asynchronously while an expanded empty shade
+  // still leaves apps interactive, so no second expansion callback fires.
+  const handleAppsFocusCapture = useCallback(
+    (event: React.FocusEvent<HTMLElement>) => {
+      if (event.target instanceof HTMLElement) {
+        displacedAppFocusRef.current = event.target;
+      }
+    },
+    [],
+  );
+  const handleAppsBlurCapture = useCallback(
+    (event: React.FocusEvent<HTMLElement>) => {
+      // Applying `inert` can blur the focused app during the commit. Preserve
+      // that target only for displacement; ordinary focus departures clear it.
+      if (appsDisplacedRef.current) return;
+      const next = event.relatedTarget;
+      if (!(next instanceof Node) || !appsRegionRef.current?.contains(next)) {
+        displacedAppFocusRef.current = null;
+      }
+    },
+    [],
+  );
+
+  // Capture the focused app before React applies `inert`. Engines differ on
+  // whether an already-focused inert descendant keeps focus or blurs, so a
+  // later effect cannot reliably discover which launcher control owned it.
+  const handleShadeExpandedChange = useCallback((expanded: boolean) => {
+    if (expanded) {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        appsRegionRef.current?.contains(active)
+      ) {
+        displacedAppFocusRef.current = active;
+      }
+    }
+    setNotificationShadeExpanded(expanded);
+  }, []);
+
+  // Explicitly hand focus to the expanded shade across those engine behaviors,
+  // then restore the same launcher control when the shade itself still owns
+  // focus on collapse. Another surface such as chat must keep focus if the user
+  // deliberately moved there while notifications were open.
+  useLayoutEffect(() => {
+    if (appsDisplaced) {
+      if (displacedAppFocusRef.current) {
+        const shadeControl = homeScreenRef.current?.querySelector<HTMLElement>(
+          '[data-testid="notifications-collapse"], [data-testid="notification-stack-collapse"]',
+        );
+        const shade = homeScreenRef.current?.querySelector<HTMLElement>(
+          '[data-testid="home-notification-center"]',
+        );
+        (shadeControl ?? shade)?.focus({ preventScroll: true });
+      }
+    } else if (wasAppsDisplacedRef.current) {
+      const prior = displacedAppFocusRef.current;
+      displacedAppFocusRef.current = null;
+      const active = document.activeElement;
+      const shade = homeScreenRef.current?.querySelector<HTMLElement>(
+        '[data-testid="home-notification-center"]',
+      );
+      const shadeStillOwnsFocus =
+        active === document.body ||
+        active === document.documentElement ||
+        (active instanceof Node && shade?.contains(active) === true);
+      if (shadeStillOwnsFocus && prior?.isConnected) {
+        prior.focus({ preventScroll: true });
+      }
+    }
+    wasAppsDisplacedRef.current = appsDisplaced;
+  }, [appsDisplaced]);
 
   return (
-    <>
+    <div
+      ref={homeScreenRef}
+      data-testid="home-screen"
+      className={cn(
+        // The launcher grid below is the only vertical scroll owner. Keeping
+        // the shell itself clipped avoids nested wheel/touch arbitration with
+        // notification pull gestures.
+        "eliza-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-hidden",
+        // The shell root already reserves the status-bar safe area (its
+        // paddingTop: var(--safe-area-top)); adding it again here double-padded
+        // the content and left a large empty band above the dashboard. Just a
+        // small gutter - the notch is already cleared by the root.
+        "px-4",
+        // Clear the residual tucked band the root deliberately shaves off the
+        // safe area (capped at 1.25rem), plus a small breathing gutter.
+        "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+12px)]",
+        // Clear the floating chat composer at the bottom. Short landscape
+        // screens use compact app icons and a smaller breathing gutter so the
+        // first row keeps both icon and label in view without touching chat;
+        // overflow still belongs to the launcher region below.
+        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+0.5rem)]",
+      )}
+    >
+      <style>{HOME_ENTER_CSS}</style>
+      {/* A definite-height flex column makes the notification shade and app
+          scroller share exactly the space above the floating chat. */}
       <div
-        ref={homeScreenRef}
-        data-testid="home-screen"
-        className={cn(
-          // `touch-pan-y`: this scroller covers the whole home half, and a
-          // scroll container's OWN touch-action governs which pans the browser
-          // consumes at it (`overflow-y-auto` computes to overflow-x auto too,
-          // so with the default `auto` the browser ate horizontal touch drags
-          // as a scroll attempt - pointercancel - and the home → launcher rail
-          // flick never fired on real touch). Keep vertical panning native for
-          // the widget list; hand every horizontal gesture to the rail.
-          // `overscroll-y-contain`: keep the browser's own pull-to-refresh /
-          // scroll-chaining off the top overscroll so a drag past the top never
-          // yanks the whole page.
-          // `overflow-x-hidden`: `overflow-y-auto` alone coerces the cross axis to
-          // `auto`, so an over-wide child (a full-bleed widget, a long code line)
-          // would make the home dashboard pan sideways under a diagonal trackpad
-          // wheel. Pin X closed - this surface scrolls vertically only (issue 14328).
-          "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain",
-          // The shell root already reserves the status-bar safe area (its
-          // paddingTop: var(--safe-area-top)); adding it again here double-padded
-          // the content and left a large empty band above the dashboard. Just a
-          // small gutter - the notch is already cleared by the root.
-          "px-4",
-          // Clear the residual tucked band the root deliberately shaves off the
-          // safe area (capped at 1.25rem), plus a small breathing gutter.
-          "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+12px)]",
-          // Clear the floating chat composer at the bottom.
-          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
-        )}
+        data-testid="home-content-column"
+        className="mx-auto flex h-full w-full max-w-2xl flex-col"
       >
-        <style>{HOME_ENTER_CSS}</style>
-        {/* The content column owns the definite FULL height of the scroller
-          (`h-full`) so flex children such as the notification inbox receive a
-          bounded height and scroll internally instead of growing behind the
-          floating composer. It lays its blocks out as a flex column so the
-          vertical space is
-          distributed on purpose, not left as a void above the composer. The
-          editorial header (greeting/clock + weather) anchors the TOP; the
-          notification inbox sits directly beneath it; the prioritized widget
-          stack sits in a `flex-1` breathing region that grows to absorb the
-          space and centres its content within it, so an empty widget set reads
-          as calm airiness rather than a broken gap; the AOSP tiles settle at
-          the BOTTOM. */}
-        <div
-          data-testid="home-content-column"
-          className="mx-auto flex h-full w-full max-w-2xl flex-col"
-        >
-          {/* The always-on base: a naked sized grid with the time + weather as
+        {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours - no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
-          <div className={enterClass} style={{ animationDelay: "70ms" }}>
-            <DefaultHomeWidgets />
-          </div>
+        <div className={enterClass} style={{ animationDelay: "70ms" }}>
+          <DefaultHomeWidgets />
+        </div>
 
-          {/* Notifications live inline on the SAME layer as the widgets, in the
-            band between the time/weather header above and the chat below. A
-            hydrated empty inbox retains only a transparent pull target. A small
-            `mt-4` sets it apart
-            from the editorial header. When present it grows (`flex-1 min-h-0`)
-            to fill the column down to the chat, its list scrolling internally;
-            it fades in (Apple-style) on first appearance. */}
-          <div
-            className={cn(
-              enterClass,
-              "mt-4",
-              hasNotifications && "flex min-h-0 flex-1 flex-col",
-            )}
-            style={{ animationDelay: "90ms" }}
-          >
-            <NotificationsHomeCenter emptyGestureTargetRef={homeScreenRef} />
-          </div>
+        {/* Rested notifications are content-sized and capped so apps retain
+            the usable remainder. Expansion gives the shade the full remainder
+            and pushes the mounted app region out of interaction. */}
+        <div
+          className={cn(
+            enterClass,
+            "mt-4 mb-3 flex min-h-0 flex-col",
+            appsDisplaced ? "flex-1" : "max-h-[40%] flex-none",
+          )}
+          style={{ animationDelay: "90ms" }}
+        >
+          <NotificationsHomeCenter
+            onShadeExpandedChange={handleShadeExpandedChange}
+          />
+        </div>
 
-          {/* The prioritized data widgets (#9143). With notifications present
-            they keep a modest height beneath the inbox, leaving a clear gesture
-            area above the chat instead of letting notifications consume every
-            remaining pixel. With
-            an EMPTY inbox this reclaims the `flex-1` breathing region and centres
-            its content, so a quiet home reads as calm airiness rather than a
-            broken gap. A little padding sets the stack apart as its own section. */}
+        <section
+          ref={appsRegionRef}
+          aria-label="Apps"
+          aria-hidden={appsDisplaced || undefined}
+          inert={appsDisplaced || undefined}
+          onBlurCapture={handleAppsBlurCapture}
+          onFocusCapture={handleAppsFocusCapture}
+          data-testid="home-apps-scroll"
+          data-scroll-cert-scroller=""
+          className={cn(
+            "scrollbar-hide relative touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
+            appsDisplaced
+              ? "pointer-events-none h-0 flex-none opacity-0"
+              : "min-h-0 flex-1 opacity-100",
+          )}
+        >
+          {apps ?? <LauncherSurface layout="embedded" />}
           <div
-            className={cn(
-              enterClass,
-              "flex min-h-32 flex-col py-6",
-              !hasNotifications && "flex-1 justify-center",
-            )}
+            className={cn(enterClass, "flex min-h-32 flex-col py-6")}
             style={{ animationDelay: "110ms" }}
           >
             <WidgetHost
@@ -280,50 +282,8 @@ export function HomeScreen({
               clearEvents={clearEvents}
             />
           </div>
-
-          {tiles.length > 0 ? (
-            <nav
-              aria-label="Apps"
-              data-testid="home-tiles"
-              className={cn(enterClass, "pt-2")}
-              style={{ animationDelay: "150ms" }}
-            >
-              <div className="grid grid-cols-4 gap-3">
-                {tiles.map((tile) => {
-                  const Icon = tile.icon;
-                  return (
-                    <Button
-                      key={tile.id}
-                      data-testid={`home-tile-${tile.id}`}
-                      onClick={() => onOpenTile(tile.target)}
-                      variant="ghost"
-                      className={cn(
-                        // Naked tile: icon + label sit directly on the ambient
-                        // orange field - no fill, no border.
-                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5",
-                        WALLPAPER_TEXT.base,
-                        WALLPAPER_FLOAT_SHADOW,
-                        // Tactile press: a quick scale-down on tap (stilled for
-                        // reduce-motion users), plus a faint white wash on hover.
-                        "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                        "hover:bg-white/8",
-                      )}
-                    >
-                      <Icon
-                        className="h-[22px] w-[22px] text-white"
-                        aria-hidden
-                      />
-                      <span className="max-w-full truncate text-[11px] font-medium text-white">
-                        {tile.label}
-                      </span>
-                    </Button>
-                  );
-                })}
-              </div>
-            </nav>
-          ) : null}
-        </div>
+        </section>
       </div>
-    </>
+    </div>
   );
 }
