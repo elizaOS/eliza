@@ -7,7 +7,7 @@ captured and the run fails on any page error or error-level log.
 
 ## Verdict: **good**
 
-The harness mounts the real `ContinuousChatOverlay` over the flat orange `/chat`
+The harness mounts the real `ChatOverlay` over the flat orange `/chat`
 backdrop. The chat is ONE connected panel — its base is the always-present input
 and the history grows UP out of it — fully **collapsed** at rest (just the input
 + a grabber handle, no peek/whisper). Three detents: COLLAPSED (thread 0) → HALF

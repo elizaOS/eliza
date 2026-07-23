@@ -83,7 +83,6 @@ import {
   type SandboxProvider,
 } from "./sandbox-provider";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
-import { navIntentActionResult } from "./shared-runtime/shared-nav-intent";
 import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
@@ -93,6 +92,7 @@ import {
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
+import { navIntentActionResult } from "./shared-runtime/shared-nav-intent";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 import {
   formatWakeRestoreIntegrityError,
@@ -2685,9 +2685,7 @@ export class ElizaSandboxService {
           // A deterministic navigation turn carries a VIEWS handoff so callers
           // that surface `actionResults` (the PWA) open the view. Omitted for
           // normal chat turns, so their result shape is unchanged.
-          ...(turn.navIntent
-            ? { actionResults: [navIntentActionResult(turn.navIntent)] }
-            : {}),
+          ...(turn.navIntent ? { actionResults: [navIntentActionResult(turn.navIntent)] } : {}),
         },
       };
     } catch (settleError) {

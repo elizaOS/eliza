@@ -369,7 +369,7 @@ export function PolymarketSpatialView({
   const accountReady = status?.account?.ready ?? false;
   const selectedId = selectedMarket?.id ?? null;
   return (
-    <Card gap={1} padding={1}>
+    <Card agent="polymarket-root" gap={1} padding={1}>
       {/* The header earns its place only on the list surface; detail mode gives
           the question the full card. Inline Refresh renders only when evaluating
           to terminal IR — the GUI agent-surface reaches refresh through the

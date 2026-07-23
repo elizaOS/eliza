@@ -1,13 +1,7 @@
 /**
- * Unit tests for `maybeAugmentChatMessageWithDocuments`: the optional document
- * context must stay off the critical chat path — the lookup and LLM
- * query-recovery calls are time-bounded and aborted, recovery only fires when
- * weak candidates exist, an empty corpus short-circuits before any
- * embed/search, a seed-only corpus (bundled default docs) searches in keyword
- * mode with no embed round-trip and no recovery call, and a rewrite aliases
- * the envelope text onto the clean prompt's per-turn recall embed so in-run
- * recall never re-embeds. Uses a mocked documents service and useModel; no
- * live model.
+ * Exercises chat document augmentation's latency contract: its pre-model
+ * lookup is always lexical, empty corpora short-circuit, cancellation reaches
+ * retrieval, and rewritten prompts reuse one clean-query embedding.
  */
 import type { AgentRuntime, createMessageMemory } from "@elizaos/core";
 import { embedRecallQuery, ModelType } from "@elizaos/core";
@@ -37,6 +31,7 @@ function makeRuntime(
     ),
     getServiceLoadPromise: vi.fn(),
     useModel,
+    reportError: vi.fn(),
     logger: {
       debug: vi.fn(),
       error: vi.fn(),
@@ -67,44 +62,55 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     },
   );
 
-  it("skips optional document context when lookup exceeds its budget", async () => {
+  it("propagates caller cancellation into document retrieval", async () => {
     const message = makeMessage();
+    const controller = new AbortController();
+    let retrievalSignal: AbortSignal | undefined;
+    let signalRetrievalStarted: (() => void) | undefined;
+    const retrievalStarted = new Promise<void>((resolve) => {
+      signalRetrievalStarted = resolve;
+    });
     const documents = {
       searchDocuments: vi.fn(
-        () =>
-          new Promise<never>(() => {
-            // Simulate a wedged retrieval backend.
-          }),
+        (
+          _message,
+          _scope,
+          _mode,
+          _access,
+          options?: { signal?: AbortSignal },
+        ) => {
+          retrievalSignal = options?.signal;
+          signalRetrievalStarted?.();
+          return new Promise<never>((_resolve, reject) => {
+            options?.signal?.addEventListener(
+              "abort",
+              () => reject(options.signal?.reason),
+              { once: true },
+            );
+          });
+        },
       ),
     };
     const runtime = makeRuntime(documents);
 
-    const result = await maybeAugmentChatMessageWithDocuments(
+    const augmentation = maybeAugmentChatMessageWithDocuments(
       runtime,
       message,
       {
-        lookupTimeoutMs: 10,
-        recoveryTimeoutMs: 10,
+        signal: controller.signal,
       },
     );
+    await retrievalStarted;
+    controller.abort(new Error("chat request cancelled"));
 
-    expect(result).toBe(message);
+    await expect(augmentation).rejects.toThrow("chat request cancelled");
+    expect(retrievalSignal).toBe(controller.signal);
     expect(documents.searchDocuments).toHaveBeenCalledTimes(1);
     expect(runtime.useModel).not.toHaveBeenCalled();
-    expect(runtime.logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        src: "api:chat-augmentation",
-        timeoutMs: 10,
-      }),
-      "Document lookup timed out; skipping optional document context",
-    );
   });
 
-  it("bounds and aborts LLM query recovery before the real chat turn", async () => {
+  it("keeps a lexical miss off the serial embedding and recovery-LLM paths", async () => {
     const message = makeMessage();
-    // The corpus returns a candidate that falls BELOW the relevance threshold:
-    // documents exist, so a better recovered query is worth attempting. (This is
-    // the only case the recovery call should fire.)
     const documents = {
       searchDocuments: vi.fn().mockResolvedValue([
         {
@@ -114,60 +120,30 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
         },
       ]),
     };
-    let recoverySignal: AbortSignal | undefined;
-    const useModel = vi.fn((_modelType, params) => {
-      recoverySignal = params.signal;
-      return new Promise<never>(() => {
-        // Simulate a local model request that does not finish on its own.
-      });
-    });
+    const useModel = vi.fn();
     const runtime = makeRuntime(documents, useModel);
 
-    const result = await maybeAugmentChatMessageWithDocuments(
-      runtime,
-      message,
-      {
-        lookupTimeoutMs: 10,
-        recoveryTimeoutMs: 10,
-      },
-    );
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
 
     expect(result).toBe(message);
     expect(documents.searchDocuments).toHaveBeenCalledTimes(1);
-    expect(useModel).toHaveBeenCalledWith(
-      "TEXT_LARGE",
-      expect.objectContaining({
-        maxTokens: 96,
-        responseFormat: { type: "json_object" },
-        signal: expect.any(AbortSignal),
-        temperature: 0,
-      }),
-    );
-    expect(recoverySignal?.aborted).toBe(true);
+    expect(documents.searchDocuments.mock.calls[0]?.[2]).toBe("keyword");
+    expect(useModel).not.toHaveBeenCalled();
   });
 
-  it("skips LLM query recovery when the corpus returns no candidates at all", async () => {
+  it("does not invoke a model when lexical retrieval returns no candidates", async () => {
     const message = makeMessage();
-    // No raw candidates at all (no documents indexed, or embeddings never clear
-    // retrieval). A recovered query would match nothing either, so the recovery
-    // model call is pure per-turn waste — it must NOT fire.
     const documents = {
       searchDocuments: vi.fn().mockResolvedValue([]),
     };
     const useModel = vi.fn();
     const runtime = makeRuntime(documents, useModel);
 
-    const result = await maybeAugmentChatMessageWithDocuments(
-      runtime,
-      message,
-      {
-        lookupTimeoutMs: 10,
-        recoveryTimeoutMs: 10,
-      },
-    );
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
 
     expect(result).toBe(message);
-    expect(useModel).not.toHaveBeenCalled();
+    expect(documents.searchDocuments).toHaveBeenCalledTimes(2);
+    expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
   it("skips the embedding doc search entirely when the corpus has zero fragments", async () => {
@@ -206,7 +182,7 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(documents.searchDocuments).toHaveBeenCalled();
   });
 
-  it("searches a seed-only corpus in keyword mode — no embed round-trip, no LLM recovery, and no injection for a zero-overlap query", async () => {
+  it("searches the corpus in keyword mode without a pre-model embed", async () => {
     const message = makeMessage();
     // Corpus is exactly the bundled seed set: keyword (BM25) search must be
     // requested so the turn never pays the blocking gateway embed, and the
@@ -214,12 +190,6 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     // weak candidates fall below the relevance threshold.
     const documents = {
       countMemories: vi.fn().mockResolvedValue(14),
-      getMemories: vi
-        .fn()
-        .mockResolvedValue([
-          { metadata: { addedFrom: "default-seed" } },
-          { metadata: { addedFrom: "default-seed" } },
-        ]),
       searchDocuments: vi.fn().mockResolvedValue([
         {
           content: { text: "weakly overlapping FAQ fragment" },
@@ -234,22 +204,16 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
 
     expect(result).toBe(message);
-    expect(documents.getMemories).toHaveBeenCalledWith(
-      expect.objectContaining({ tableName: "documents" }),
-    );
     const [, , searchMode] = documents.searchDocuments.mock.calls[0];
     expect(searchMode).toBe("keyword");
     // Neither an embed nor the TEXT_LARGE recovery call may fire.
     expect(useModel).not.toHaveBeenCalled();
   });
 
-  it("still injects seed-FAQ context on a real keyword match — the seed-only gate skips the embed, not the lookup", async () => {
+  it("injects context on a real keyword match", async () => {
     const message = makeMessage();
     const documents = {
       countMemories: vi.fn().mockResolvedValue(14),
-      getMemories: vi
-        .fn()
-        .mockResolvedValue([{ metadata: { addedFrom: "default-seed" } }]),
       searchDocuments: vi.fn().mockResolvedValue([
         {
           content: { text: "Eliza Cloud monetization: set inference markup." },
@@ -269,52 +233,38 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(searchMode).toBe("keyword");
   });
 
-  it("keeps the full hybrid path when any non-seed document exists", async () => {
+  it("keeps uploaded corpora on the lexical pre-model path", async () => {
     const message = makeMessage();
     const documents = {
       countMemories: vi.fn().mockResolvedValue(20),
-      getMemories: vi
-        .fn()
-        .mockResolvedValue([
-          { metadata: { addedFrom: "default-seed" } },
-          { metadata: { addedFrom: "upload" } },
-        ]),
       searchDocuments: vi.fn().mockResolvedValue([]),
     };
     const runtime = makeRuntime(documents);
 
     await maybeAugmentChatMessageWithDocuments(runtime, message);
 
-    const [, , searchMode] = documents.searchDocuments.mock.calls[0];
-    expect(searchMode).toBeUndefined();
+    expect(
+      documents.searchDocuments.mock.calls.every(
+        (call) => call[2] === "keyword",
+      ),
+    ).toBe(true);
   });
 
-  it("fails open to the hybrid path when the seed probe errors or the corpus exceeds the probe cap", async () => {
-    const probeCases = [
-      // Probe rejects → classification unknown → full retrieval path.
-      vi.fn().mockRejectedValue(new Error("documents table unavailable")),
-      // Corpus at the probe cap → cannot be the bundled seed set → hybrid,
-      // even though every probed row carries the seed marker.
-      vi.fn().mockResolvedValue(
-        Array.from({ length: 32 }, () => ({
-          metadata: { addedFrom: "default-seed" },
-        })),
-      ),
-    ];
-    for (const getMemories of probeCases) {
-      const message = makeMessage();
-      const documents = {
-        countMemories: vi.fn().mockResolvedValue(40),
-        getMemories,
-        searchDocuments: vi.fn().mockResolvedValue([]),
-      };
-      const runtime = makeRuntime(documents);
+  it("continues lexical retrieval when the empty-corpus optimization probe fails", async () => {
+    const message = makeMessage();
+    const documents = {
+      countMemories: vi.fn().mockRejectedValue(new Error("count unavailable")),
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const runtime = makeRuntime(documents);
 
-      await maybeAugmentChatMessageWithDocuments(runtime, message);
+    await maybeAugmentChatMessageWithDocuments(runtime, message);
 
-      const [, , searchMode] = documents.searchDocuments.mock.calls[0];
-      expect(searchMode).toBeUndefined();
-    }
+    expect(documents.searchDocuments).toHaveBeenCalled();
+    expect(runtime.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ src: "api:chat-augmentation" }),
+      "Document fragment count failed; continuing with retrieval",
+    );
   });
 
   it("aliases the augmentation envelope onto the clean prompt's recall embed — in-run recall of the rewritten text issues zero new embeds", async () => {

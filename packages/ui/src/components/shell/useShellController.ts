@@ -8,7 +8,7 @@
  * spoken assistant output (through useShellVoiceOutput). Conversation switching
  * and horizontal swipe navigation resolve through conversation-nav.
  *
- * ChatSurface / AssistantOverlay / ContinuousChatOverlay and the home surfaces
+ * ChatSurface / AssistantOverlay / ChatOverlay and the home surfaces
  * are the consumers; they read the controller and render, holding no chat/voice
  * state of their own. ShellControllerContext provides one instance so the pill
  * and the overlay stay in lock-step without double-mounting this hook.

@@ -97,9 +97,7 @@ function navReply(label: string): string {
  * bare matcher would otherwise route to plain settings without the section),
  * then the general rigid matcher.
  */
-export function resolveSharedNavIntent(
-  message: string | undefined,
-): SharedNavIntent | null {
+export function resolveSharedNavIntent(message: string | undefined): SharedNavIntent | null {
   const text = (message ?? "").trim();
   if (!text) return null;
 

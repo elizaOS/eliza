@@ -16,6 +16,7 @@ import type {
 	ActionExample,
 	ActionParameter,
 	ActionParameters,
+	ActionResult,
 	Handler,
 	HandlerCallback,
 	HandlerOptions,
@@ -27,6 +28,7 @@ import type {
 } from "../types";
 import {
 	CANONICAL_SUBACTION_KEY,
+	DEFAULT_SUBACTION_KEYS,
 	LEGACY_SUBACTION_KEYS,
 	normalizeSubaction,
 } from "./subaction-dispatch";
@@ -277,6 +279,48 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	) => {
+		// A virtual must reject a conflicting discriminator before its pinned
+		// value is merged, or a call routed to one operation can silently execute
+		// another. The structured failure lets the planner choose the intended
+		// virtual without invoking the parent handler.
+		const rawParams = (options as HandlerOptions | undefined)?.parameters as
+			| Record<string, unknown>
+			| undefined;
+		if (rawParams) {
+			for (const key of DEFAULT_SUBACTION_KEYS) {
+				// An alias-named parameter can be a second-level selector. Its enum
+				// must include the pinned value before it is treated as a discriminator;
+				// otherwise its independent vocabulary remains untouched.
+				const declared = parent.parameters?.find((p) => p.name === key);
+				if (declared) {
+					const declaredEnum = (
+						declared.schema as { enum?: unknown } | undefined
+					)?.enum;
+					const carriesPin =
+						Array.isArray(declaredEnum) &&
+						declaredEnum.some(
+							(v) =>
+								typeof v === "string" &&
+								normalizeSubaction(v) === normalizeSubaction(subaction),
+						);
+					if (!carriesPin) continue;
+				}
+				const value = rawParams[key];
+				if (
+					typeof value === "string" &&
+					value.trim() !== "" &&
+					normalizeSubaction(value) !== normalizeSubaction(subaction)
+				) {
+					const wanted = `${toUpperSnake(parent.name)}_${toUpperSnake(value.trim())}`;
+					const text = `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${toUpperSnake(parent.name)} with ${key}=${value}) instead.`;
+					return {
+						success: false,
+						text,
+						error: new Error(text),
+					} as ActionResult;
+				}
+			}
+		}
 		const merged = mergeOptionsWithSubaction(parent, options, subaction);
 		return parentHandler(runtime, message, state, merged, callback, responses);
 	};

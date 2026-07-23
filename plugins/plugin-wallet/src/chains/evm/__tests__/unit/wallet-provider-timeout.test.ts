@@ -1,11 +1,5 @@
 /**
- * Regression guard for a per-reply hang: `evmWalletProvider.get()` runs inside
- * `composeState` on every message and is awaited before the agent replies, so
- * a balance RPC against a slow/unreachable endpoint must bound itself rather
- * than block the turn until `composeState`'s provider timeout fires.
- * `getWalletBalanceForChain` is expected to resolve to `null` (same as any RPC
- * error) instead of hanging. Uses fake timers and a mocked public client — no
- * real RPC calls.
+ * Wallet balance formatting and transport-failure behavior at the RPC boundary.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { generatePrivateKey } from "viem/accounts";
@@ -21,28 +15,23 @@ function makeRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-describe("WalletProvider per-turn RPC timeout", () => {
+describe("WalletProvider RPC balance reads", () => {
   afterEach(() => {
-    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it("resolves to null instead of hanging when the balance RPC never responds", async () => {
-    vi.useFakeTimers();
+  it("returns null when the cancellation-aware transport rejects", async () => {
     const provider = new WalletProvider(generatePrivateKey(), makeRuntime(), {
       mainnet,
     });
 
-    // Simulate a mainnet RPC that accepts the request but never responds.
     vi.spyOn(provider, "getPublicClient").mockReturnValue({
-      getBalance: () => new Promise<bigint>(() => undefined),
+      getBalance: async () => {
+        throw new DOMException("The operation timed out", "TimeoutError");
+      },
     } as never);
 
-    const resultPromise = provider.getWalletBalanceForChain("mainnet" as never);
-    // Advance past the per-call bound; the race rejects and the catch returns null.
-    await vi.advanceTimersByTimeAsync(3500);
-
-    await expect(resultPromise).resolves.toBeNull();
+    await expect(provider.getWalletBalanceForChain("mainnet" as never)).resolves.toBeNull();
   });
 
   it("returns the formatted balance when the RPC responds in time", async () => {

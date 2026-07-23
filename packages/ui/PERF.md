@@ -110,7 +110,7 @@ re-renders **zero** historical rows.
 
 ### Streaming perf gate — `run-chat-perf-gate.mjs`
 
-Drives the real `ContinuousChatOverlay` at 420×820, then streams ~120 tokens
+Drives the real `ChatOverlay` at 420×820, then streams ~120 tokens
 into the open chat (tail turn carries a CHOICE widget):
 
 | Metric | Streaming window |

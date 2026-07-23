@@ -18,7 +18,7 @@ const MSG_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const MSG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
 interface RuntimeMockOpts {
-	embed: (params: { text: string }) => Promise<number[]>;
+	embed: (params: { text: string; signal?: AbortSignal }) => Promise<number[]>;
 }
 
 function makeRuntime(opts: RuntimeMockOpts): {
@@ -78,6 +78,34 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 			},
 		});
 		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
+	});
+
+	test("propagates explicit turn cancellation instead of degrading it to a cache miss", async () => {
+		const controller = new AbortController();
+		let receivedSignal: AbortSignal | undefined;
+		let signalHandlerStarted: (() => void) | undefined;
+		const handlerStarted = new Promise<void>((resolve) => {
+			signalHandlerStarted = resolve;
+		});
+		const { runtime } = makeRuntime({
+			embed: ({ signal }) =>
+				new Promise<never>((_resolve, reject) => {
+					receivedSignal = signal;
+					signalHandlerStarted?.();
+					signal?.addEventListener("abort", () => reject(signal.reason), {
+						once: true,
+					});
+				}),
+		});
+
+		const pending = embedRecallQuery(runtime, "cancel me", {
+			signal: controller.signal,
+		});
+		await handlerStarted;
+		controller.abort(new Error("turn cancelled"));
+
+		await expect(pending).rejects.toThrow("turn cancelled");
+		expect(receivedSignal).toBe(controller.signal);
 	});
 
 	test("a SYNCHRONOUSLY-throwing model handler also fails open — fire-and-forget callers never see an unhandled rejection", async () => {

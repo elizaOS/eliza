@@ -71,11 +71,41 @@ export interface AgentSessionRecoveryInput {
 const SHOW_WALL: AgentSessionRecoveryDecision = { action: "show-wall" };
 
 /**
+ * Extract the dedicated agent id from an API base alone: the
+ * `<agentId>.elizacloud.ai` subdomain form first, then the REST adapter base
+ * (`<cloudApiBase>/api/v1/eliza/agents/<agentId>`). Shared by the persisted
+ * active-server resolver below and the credential-scoped purge
+ * (cloud-pair-token), which must match agent profiles that carry only a base.
+ */
+export function dedicatedAgentIdFromApiBase(
+  apiBase: string | null | undefined,
+): string | null {
+  const base = apiBase?.trim();
+  if (!base) return null;
+
+  const subdomainAgentId = dedicatedCloudAgentIdFromBase(base);
+  if (subdomainAgentId) return subdomainAgentId;
+
+  const match = base.match(
+    /\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge)?\/?$/,
+  );
+  if (match?.[1]) {
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      // Malformed encoding, use the raw segment rather than dropping it.
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
+/**
  * Extract the dedicated agent id from a persisted cloud runtime record. Prefers
  * the `cloud:<id>` id form written by `silentlyRepointToDedicated`, then falls
- * back to parsing the REST adapter base
- * (`<cloudApiBase>/api/v1/eliza/agents/<agentId>`), so older persisted records
- * without the id prefix still recover.
+ * back to parsing the API base, so older persisted records without the id
+ * prefix still recover.
  */
 export function resolveDedicatedAgentId(
   server: PersistedActiveServer,
@@ -85,25 +115,7 @@ export function resolveDedicatedAgentId(
     if (id) return id;
   }
 
-  const base = server.apiBase?.trim();
-  if (base) {
-    const subdomainAgentId = dedicatedCloudAgentIdFromBase(base);
-    if (subdomainAgentId) return subdomainAgentId;
-
-    const match = base.match(
-      /\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge)?\/?$/,
-    );
-    if (match?.[1]) {
-      try {
-        return decodeURIComponent(match[1]);
-      } catch {
-        // Malformed encoding, use the raw segment rather than dropping it.
-        return match[1];
-      }
-    }
-  }
-
-  return null;
+  return dedicatedAgentIdFromApiBase(server.apiBase);
 }
 
 /**
@@ -151,4 +163,49 @@ export function resolveAgentSessionRecovery(
   if (!base) return SHOW_WALL;
 
   return { action: "re-pair", agentId, cloudApiBase: base };
+}
+
+/**
+ * True when the unauthenticated state is re-pair-shaped in EVERY dimension
+ * except the presence of an app-origin cloud token: a `remote_auth_required`
+ * 401 on a cloud-managed dedicated agent with a resolvable agent id and cloud
+ * base, but no cloud session token in this origin's mirror.
+ *
+ * This is the exact state a returning PWA user hits on a cold agent-subdomain
+ * relaunch: they ARE signed in to Eliza Cloud (shared HttpOnly cookie) but the
+ * app-origin localStorage mirror is empty, so `resolveAgentSessionRecovery`
+ * reads `show-wall` and the user dead-ends at the "Re-open from Eliza Cloud"
+ * notice. When this predicate holds, the caller should attempt a silent
+ * cookie→session refresh and, if it yields a token, re-run the resolver, which
+ * will then return `re-pair`. When it does NOT hold, no refresh can help and
+ * the wall/notice is honest.
+ *
+ * SECURITY (auth-adjacent): a positive answer authorizes only a cookie-backed
+ * session REFRESH (an existing server-validated session), never a bypass. The
+ * refresh still fails closed when no cookie/valid session exists.
+ */
+export function agentSessionRepairNeedsCloudToken(
+  input: AgentSessionRecoveryInput,
+): boolean {
+  const { reason, activeServer, cloudToken, cloudApiBase, alreadyAttempted } =
+    input;
+
+  if (alreadyAttempted) return false;
+  if (reason !== "remote_auth_required") return false;
+  if (!activeServer) return false;
+
+  const isCloudManaged =
+    activeServer.kind === "cloud" ||
+    isDirectCloudSharedAgentBase(activeServer.apiBase);
+  if (!isCloudManaged) return false;
+
+  // The token is the ONLY missing piece — a present token is already handled by
+  // `resolveAgentSessionRecovery` returning `re-pair`, so this predicate is for
+  // the missing-token case specifically.
+  if (cloudToken?.trim()) return false;
+
+  if (!resolveDedicatedAgentId(activeServer)) return false;
+  if (!cloudApiBase.trim()) return false;
+
+  return true;
 }

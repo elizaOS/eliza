@@ -2412,7 +2412,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto pt-3 pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+1rem)] pe-[var(--eliza-continuous-chat-side-clearance,0px)]">
+          <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto pt-3 pb-[calc(var(--eliza-chat-clearance,5.25rem)+1rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
             <PagePanel.Empty
               variant="inset"
               className="flex-none py-1 sm:py-2"
@@ -2444,7 +2444,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             {workspace.mode === "web" &&
             browserBridgeSupported &&
             !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 [@media(orientation:landscape)_and_(max-height:520px)]:pb-[var(--eliza-continuous-chat-clearance,5.25rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pe-[var(--eliza-continuous-chat-side-clearance,0px)] sm:grid-cols-3">
+              <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 [@media(orientation:landscape)_and_(max-height:520px)]:pb-[var(--eliza-chat-clearance,5.25rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pe-[var(--eliza-chat-side-clearance,0px)] sm:grid-cols-3">
                 <div className="text-center text-[11px] text-muted/70 sm:col-span-3">
                   {browserBridgeConnected
                     ? t("browserworkspace.BrowserBridgeConnected", {

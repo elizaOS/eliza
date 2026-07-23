@@ -273,7 +273,7 @@ async function installConversationStore(
   });
 }
 
-const OVERLAY = "continuous-chat-overlay";
+const OVERLAY = "chat-overlay";
 const COMPOSER =
   'textarea[aria-label="message"], [data-testid="chat-composer-textarea"]';
 

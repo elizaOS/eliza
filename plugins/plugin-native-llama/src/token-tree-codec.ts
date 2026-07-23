@@ -72,15 +72,16 @@ function flattenPreOrder(root: TrieNode): TrieNode[] {
   const out: TrieNode[] = [];
   const stack: TrieNode[] = [root];
   while (stack.length > 0) {
-    const node = stack.pop()!;
+    const node = stack.pop();
+    if (!node) break;
     out.push(node);
-    // Push children in reverse so iteration order is ascending tokenId —
+    // Push children in descending tokenId so pops iterate ascending —
     // gives a stable, replayable byte sequence across runs.
     const sorted = [...node.children.values()].sort(
-      (a, b) => a.tokenId - b.tokenId,
+      (a, b) => b.tokenId - a.tokenId,
     );
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      stack.push(sorted[i]!);
+    for (const child of sorted) {
+      stack.push(child);
     }
   }
   return out;
@@ -99,7 +100,9 @@ export function serializeTokenTree(
   const root = buildTrie(descriptor.leaves);
   const flat = flattenPreOrder(root);
   const indexByNode = new Map<TrieNode, number>();
-  flat.forEach((node, idx) => indexByNode.set(node, idx));
+  for (const [idx, node] of flat.entries()) {
+    indexByNode.set(node, idx);
+  }
 
   // Two-pass size calc so we allocate exactly once.
   let bodySize = 4; // total_nodes
@@ -161,7 +164,8 @@ function collectLeaves(flat: FlatNode[], rootIdx: number): TokenSequence[] {
     { idx: rootIdx, path: [] },
   ];
   while (stack.length > 0) {
-    const frame = stack.pop()!;
+    const frame = stack.pop();
+    if (!frame) break;
     const node = flat[frame.idx];
     if (!node) continue;
     const path =
@@ -173,8 +177,8 @@ function collectLeaves(flat: FlatNode[], rootIdx: number): TokenSequence[] {
     }
     // Push children right-to-left so leaves come out in ascending-token
     // sort order — matches the encoder's traversal.
-    for (let i = node.childPtrs.length - 1; i >= 0; i--) {
-      stack.push({ idx: node.childPtrs[i]!, path });
+    for (const idx of [...node.childPtrs].reverse()) {
+      stack.push({ idx, path });
     }
   }
   return out;

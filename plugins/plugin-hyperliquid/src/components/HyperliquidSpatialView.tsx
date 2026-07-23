@@ -145,7 +145,7 @@ export function HyperliquidSpatialView({
 
 	if (snapshot.unavailable) {
 		return (
-			<Card gap={1} padding={1}>
+			<Card agent="hyperliquid-root" gap={1} padding={1}>
 				<Text tone="muted" align="center">
 					Unavailable
 				</Text>
@@ -204,7 +204,7 @@ export function HyperliquidSpatialView({
 						})
 						.join(" · ")}`;
 		return (
-			<Card gap={1} padding={1}>
+			<Card agent="hyperliquid-root" gap={1} padding={1}>
 				<Text
 					style="caption"
 					tone={status.publicReadReady ? "success" : "danger"}
@@ -256,7 +256,7 @@ export function HyperliquidSpatialView({
 	}
 
 	return (
-		<Card gap={1} padding={1}>
+		<Card agent="hyperliquid-root" gap={1} padding={1}>
 			<HStack gap={1} align="center">
 				<Text
 					style="caption"

@@ -133,7 +133,11 @@ describe("ScreenStateStore (M3)", () => {
     let i = 0;
     let clock = 0;
     const store = new ScreenStateStore({
-      capture: async () => capture(frames[i++] ?? frames[frames.length - 1]!),
+      capture: async () => {
+        const frame = frames[i++] ?? frames[frames.length - 1];
+        if (!frame) throw new Error("frame fixture list is empty");
+        return capture(frame);
+      },
       now: () => clock,
     });
     const changes: number[] = [];

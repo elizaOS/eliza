@@ -364,6 +364,8 @@ function createState(
     getServicesByType: vi.fn(() => []),
     getSetting: vi.fn(() => null),
     drainChatPreHandlers: vi.fn(async () => null),
+    createLogs: vi.fn(async () => undefined),
+    reportError: vi.fn(),
     adapter: {},
   } as unknown as AgentRuntime;
 

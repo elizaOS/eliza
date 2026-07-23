@@ -5,7 +5,7 @@
  * chrome.
  *
  * This page intentionally does NOT mount a chat tree: the full chat
- * experience is the app shell's own continuous-chat surface, so this page only
+ * experience is the app shell's own chat surface, so this page only
  * resolves + presents the shared character and links into the app chat.
  */
 

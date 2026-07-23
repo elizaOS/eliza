@@ -23,9 +23,96 @@ import {
   parseMinimalismBaseline,
   parseNavigationTabPaths,
   parseRgb,
+  readReadableCharsWithNavigationRetry,
   resolveAuditStrictFlags,
   type VerdictFinding,
 } from "../ui-smoke/aesthetic-audit-rules";
+
+describe("readReadableCharsWithNavigationRetry", () => {
+  it("retries a measurement when navigation replaces the execution context", async () => {
+    const samples = [
+      () =>
+        Promise.reject(
+          new Error(
+            "Execution context was destroyed, most likely because of a navigation",
+          ),
+        ),
+      () => Promise.resolve(158),
+    ];
+    const waits: number[] = [];
+
+    await expect(
+      readReadableCharsWithNavigationRetry(
+        () => samples.shift()?.() ?? Promise.resolve(0),
+        async (delayMs) => {
+          waits.push(delayMs);
+        },
+      ),
+    ).resolves.toBe(158);
+    expect(waits).toEqual([100]);
+  });
+
+  it("preserves a successful zero so a genuinely blank page stays broken", async () => {
+    const waits: number[] = [];
+
+    await expect(
+      readReadableCharsWithNavigationRetry(
+        async () => 0,
+        async (delayMs) => {
+          waits.push(delayMs);
+        },
+      ),
+    ).resolves.toBe(0);
+    expect(waits).toEqual([]);
+  });
+
+  it("waits for a transient blank paint to regain the required readability", async () => {
+    const samples = [0, 0, 85];
+    const waits: number[] = [];
+
+    await expect(
+      readReadableCharsWithNavigationRetry(
+        async () => samples.shift() ?? 0,
+        async (delayMs) => {
+          waits.push(delayMs);
+        },
+        { minimumReadableChars: 10 },
+      ),
+    ).resolves.toBe(85);
+    expect(waits).toEqual([100, 100]);
+  });
+
+  it("returns zero after the bounded retry when the page remains blank", async () => {
+    const waits: number[] = [];
+
+    await expect(
+      readReadableCharsWithNavigationRetry(
+        async () => 0,
+        async (delayMs) => {
+          waits.push(delayMs);
+        },
+        { attempts: 3, minimumReadableChars: 10 },
+      ),
+    ).resolves.toBe(0);
+    expect(waits).toEqual([100, 100]);
+  });
+
+  it("surfaces non-navigation evaluation failures without retrying", async () => {
+    let waits = 0;
+
+    await expect(
+      readReadableCharsWithNavigationRetry(
+        async () => {
+          throw new Error("Target page has been closed");
+        },
+        async () => {
+          waits += 1;
+        },
+      ),
+    ).rejects.toThrow("Target page has been closed");
+    expect(waits).toBe(0);
+  });
+});
 
 describe("findRemoteBundleDeclaration", () => {
   it("distinguishes in-process app-shell pages from production bundles", () => {

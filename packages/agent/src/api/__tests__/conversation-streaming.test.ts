@@ -536,9 +536,11 @@ describe("generateChatResponse token streaming", () => {
     // and rewrite the delta. These tokens form clean, non-overlapping
     // boundaries.
     const tokens = ["Once ", "upon ", "a ", "midnight ", "dreary."];
+    const createLogs = vi.fn(async () => undefined);
 
     const runtime = createRuntime({
       messageService: createStreamingMessageService(tokens),
+      createLogs,
     });
 
     const chunks: string[] = [];
@@ -580,6 +582,20 @@ describe("generateChatResponse token streaming", () => {
     // Final text returned to caller equals the concatenation of deltas.
     expect(result.text).toBe(expectedFinal);
     expect(result.agentName).toBe("Streaming Agent");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(createLogs).toHaveBeenCalledWith([
+      expect.objectContaining({
+        type: "inference_timing",
+        body: expect.objectContaining({
+          source: "inference_timing",
+          metadata: expect.objectContaining({
+            label: "chat-request",
+            timeToFirstVisibleMs: expect.any(Number),
+            timeToResponseFinalizedMs: expect.any(Number),
+          }),
+        }),
+      }),
+    ]);
   });
 
   it("preserves responseText state across delayed chunks", async () => {

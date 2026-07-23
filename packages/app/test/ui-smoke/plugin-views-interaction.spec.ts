@@ -4,7 +4,7 @@
  */
 import { expect, type Locator, test } from "@playwright/test";
 import {
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -158,11 +158,11 @@ test.describe("plugin view interaction coverage", () => {
         });
       await seedAppStorage(page);
       // Scope the pass to the plugin view's own controls: suppress the always-on
-      // continuous chat overlay (shell chrome, covered by its own specs). Its
+      // chat overlay (shell chrome, covered by its own specs). Its
       // aria-hidden drag-handle pill sits over the composer textarea and has no
       // click affordance, so the generic click-loop would otherwise fight it —
       // exactly as the sibling all-views-interaction spec already does.
-      await hideContinuousChatOverlay(page);
+      await hideChatOverlay(page);
       await installDefaultAppRoutes(page);
       await openAppPath(page, view.path);
       await page.locator("body").waitFor({ state: "visible", timeout: 60_000 });

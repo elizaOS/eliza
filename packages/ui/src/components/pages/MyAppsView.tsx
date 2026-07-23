@@ -20,7 +20,7 @@ export function MyAppsView() {
           </span>
         }
       />
-      <div className="min-h-0 flex-1 overflow-y-auto eliza-continuous-chat-scroll pb-[var(--eliza-continuous-chat-clearance,5.25rem)]">
+      <div className="min-h-0 flex-1 overflow-y-auto eliza-chat-scroll pb-[var(--eliza-chat-clearance,5.25rem)]">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6">
           <p className="text-sm text-muted">
             Install, create, and run your elizaOS apps.

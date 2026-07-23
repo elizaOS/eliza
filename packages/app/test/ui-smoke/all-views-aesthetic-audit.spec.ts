@@ -418,7 +418,7 @@ async function collectBorderRadiusViolations(page: Page): Promise<string[]> {
     // eliza radius — so 3 is the canonical rendered value (#10710). The rem
     // scale (0.375rem=6 … 1.5rem=24) stays admitted for surfaces that read
     // presets.ts tokens directly rather than the base.css custom properties.
-    // 32 is the floating chat capsule: ContinuousChatOverlay animates the
+    // 32 is the floating chat capsule: ChatOverlay animates the
     // glass-panel radius 32→24 as the sheet opens (collapsed pill endpoint),
     // and the overlay is mounted on every view.
     const allowedPx = [0, 3, 6, 8, 12, 16, 20, 24, 32];
@@ -561,9 +561,7 @@ async function collectAestheticDensityMetrics(
           // copy out of per-view text-density ratchets so a global boot banner
           // does not make unrelated plugin views look more cramped.
           if (
-            parent.closest(
-              "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']",
-            )
+            parent.closest("[data-chat-overlay], [data-testid='chat-overlay']")
           ) {
             return NodeFilter.FILTER_REJECT;
           }
@@ -577,9 +575,7 @@ async function collectAestheticDensityMetrics(
     );
     const isInsideGlobalOverlay = (element: Element): boolean =>
       Boolean(
-        element.closest(
-          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']",
-        ),
+        element.closest("[data-chat-overlay], [data-testid='chat-overlay']"),
       );
 
     for (
@@ -918,7 +914,7 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
     ).slice(0, 4000)) {
       if (
         box.closest(
-          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay'], [data-aesthetic-overlap-ignore='true']",
+          "[data-chat-overlay], [data-testid='chat-overlay'], [data-aesthetic-overlap-ignore='true']",
         )
       ) {
         continue;
@@ -1019,7 +1015,7 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
       }
       if (
         element.closest(
-          ".sr-only, [aria-hidden='true'], [hidden], [data-continuous-chat-overlay], [data-testid='continuous-chat-overlay'], [data-aesthetic-overlap-ignore='true']",
+          ".sr-only, [aria-hidden='true'], [hidden], [data-chat-overlay], [data-testid='chat-overlay'], [data-aesthetic-overlap-ignore='true']",
         )
       ) {
         continue;
@@ -1092,7 +1088,7 @@ async function collectSpatialSizingIssues(page: Page): Promise<string[]> {
       const rootStyle = getComputedStyle(document.documentElement);
       const sideClearance =
         Number.parseFloat(
-          rootStyle.getPropertyValue("--eliza-continuous-chat-side-clearance"),
+          rootStyle.getPropertyValue("--eliza-chat-side-clearance"),
         ) || 0;
       const surfaceStyle = getComputedStyle(surface);
       const duplicatePadding =
@@ -1394,8 +1390,8 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           view.viewType !== "tui" &&
           !OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(view.slug);
         const overlaySelector = [
-          "[data-continuous-chat-overlay]",
-          "[data-testid='continuous-chat-overlay']",
+          "[data-chat-overlay]",
+          "[data-testid='chat-overlay']",
           "[data-testid='chat-sheet']",
           "[data-testid='chat-pill']",
           "[data-testid='chat-composer-textarea']",

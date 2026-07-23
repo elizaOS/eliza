@@ -77,10 +77,15 @@ export function newEventId(): string {
   const rand = new Uint8Array(10);
   // crypto.getRandomValues is available in Node 24
   globalThis.crypto.getRandomValues(rand);
-  bytes[6] = (0x70 | (rand[0]! & 0x0f)) & 0xff; // version 7
-  bytes[7] = rand[1]!;
-  bytes[8] = (0x80 | (rand[2]! & 0x3f)) & 0xff; // variant 10
-  for (let i = 9; i < 16; i++) bytes[i] = rand[i - 6]!;
+  for (const [i, r] of rand.entries()) {
+    if (i === 0) {
+      bytes[6] = (0x70 | (r & 0x0f)) & 0xff; // version 7
+    } else if (i === 2) {
+      bytes[8] = (0x80 | (r & 0x3f)) & 0xff; // variant 10
+    } else {
+      bytes[6 + i] = r;
+    }
+  }
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
     "",
   );

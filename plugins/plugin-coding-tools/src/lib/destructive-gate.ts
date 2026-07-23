@@ -18,6 +18,15 @@ export interface DestructiveVerdict {
 
 const RECURSIVE_RM_FLAG = /^-[a-z]*[rR][a-z]*$/;
 const FORCE_ONLY_FLAG = /^-[a-z]*f[a-z]*$/;
+const POWERSHELL_RECURSE_FLAG = /^-(?:r|re|rec|recu|recur|recurs|recurse)$/i;
+const POWERSHELL_REMOVE_ITEM_BINS = new Set([
+  "remove-item",
+  "del",
+  "erase",
+  "rd",
+  "ri",
+  "rmdir",
+]);
 const DESTRUCTIVE_BINS = new Set(["mkfs", "shred", "wipefs"]);
 const DROP_SQL = /\bdrop\s+(database|table|schema)\s+(\S+)/i;
 
@@ -75,7 +84,7 @@ export function classifyDestructiveCommand(
       /^[A-Za-z_][A-Za-z0-9_]*=/.test(argv[i] as string)
     )
       i += 1;
-    const bin = (argv[i] ?? "").split("/").pop() ?? "";
+    const bin = (argv[i] ?? "").split(/[\\/]/).pop()?.toLowerCase() ?? "";
     const rest = argv.slice(i + 1);
 
     if (bin === "rm") {
@@ -92,6 +101,16 @@ export function classifyDestructiveCommand(
           destructive: true,
           reason: "forced glob delete",
           targets: paths,
+        };
+      }
+    }
+    if (POWERSHELL_REMOVE_ITEM_BINS.has(bin)) {
+      const recursive = rest.some((arg) => POWERSHELL_RECURSE_FLAG.test(arg));
+      if (recursive) {
+        return {
+          destructive: true,
+          reason: "recursive delete",
+          targets: rest.filter((arg) => !arg.startsWith("-")),
         };
       }
     }
