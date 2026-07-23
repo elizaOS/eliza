@@ -10,7 +10,7 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, build, and deterministic lane-integrity checks |
 | `develop-pr-gate.yml` | PR target to develop, manual canaries | Stable fail-closed aggregate over the nine lightweight required contexts |
 | `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
-| `quality.yml` | PR to main, push main/develop, manual | Extended format, type-safety, homepage, secret, UI-determinism, and lint checks |
+| `quality.yml` | PR to main, push main/develop, manual | Extended format, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
 | `release-orchestrator.yml` | Manual on protected `develop` | Sole full-cohort npm/GitHub Release entry; exact-SHA gate before distribution fan-out |

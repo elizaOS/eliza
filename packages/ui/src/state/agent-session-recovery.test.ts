@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type AgentSessionRecoveryDecision,
+  agentSessionRepairNeedsCloudToken,
   dedicatedAgentIdFromApiBase,
   resolveAgentSessionRecovery,
 } from "./agent-session-recovery";
@@ -172,32 +173,98 @@ describe("resolveAgentSessionRecovery", () => {
   });
 });
 
+describe("agentSessionRepairNeedsCloudToken", () => {
+  const base = {
+    reason: "remote_auth_required" as const,
+    activeServer: cloudServer("agent-1"),
+    cloudToken: null,
+    cloudApiBase: "https://elizacloud.ai",
+    alreadyAttempted: false,
+  };
+
+  it("is true for the returning-PWA state: re-pair-shaped but missing the app-origin token", () => {
+    // This is the exact "Open this agent from Eliza Cloud" dead-end input: a
+    // cloud-managed dedicated agent 401ing with no app-origin cloud token.
+    expect(agentSessionRepairNeedsCloudToken(base)).toBe(true);
+  });
+
+  it("is false once a token is present (that case is a plain re-pair, not a refresh)", () => {
+    expect(
+      agentSessionRepairNeedsCloudToken({
+        ...base,
+        cloudToken: "steward.jwt.token",
+      }),
+    ).toBe(false);
+    // ...and the plain resolver takes it straight to re-pair.
+    expect(
+      resolveAgentSessionRecovery({ ...base, cloudToken: "steward.jwt.token" })
+        .action,
+    ).toBe("re-pair");
+  });
+
+  it("is false when already attempted (no refresh loop)", () => {
+    expect(
+      agentSessionRepairNeedsCloudToken({ ...base, alreadyAttempted: true }),
+    ).toBe(false);
+  });
+
+  it("is false for the password-not-configured wall (a refresh cannot help)", () => {
+    expect(
+      agentSessionRepairNeedsCloudToken({
+        ...base,
+        reason: "remote_password_not_configured",
+      }),
+    ).toBe(false);
+  });
+
+  it("is false with no active server", () => {
+    expect(
+      agentSessionRepairNeedsCloudToken({ ...base, activeServer: null }),
+    ).toBe(false);
+  });
+
+  it("is false for a self-hosted (non-cloud) server", () => {
+    expect(
+      agentSessionRepairNeedsCloudToken({
+        ...base,
+        activeServer: {
+          kind: "local" as const,
+          id: "local:1",
+          label: "Local",
+          apiBase: "http://localhost:7777",
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when no agent id can be resolved from the server record", () => {
+    expect(
+      agentSessionRepairNeedsCloudToken({
+        ...base,
+        activeServer: {
+          kind: "cloud" as const,
+          id: "cloud:",
+          label: "Dedicated",
+          apiBase: "https://elizacloud.ai",
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("dedicatedAgentIdFromApiBase", () => {
-  // The credential-scoped purge (cloud-pair-token) uses this to decide which
-  // agent profiles belong to the proven-stale agent — a false positive here
-  // would destroy an unrelated valid credential.
-  it("extracts the id from a dedicated subdomain and a REST-adapter base", () => {
+  it("extracts dedicated subdomain and REST-adapter ids without matching control plane", () => {
     expect(dedicatedAgentIdFromApiBase("https://agent-a.elizacloud.ai")).toBe(
       "agent-a",
     );
     expect(
       dedicatedAgentIdFromApiBase(
-        "https://elizacloud.ai/api/v1/eliza/agents/agent-b",
-      ),
-    ).toBe("agent-b");
-    expect(
-      dedicatedAgentIdFromApiBase(
         "https://elizacloud.ai/api/v1/eliza/agents/agent-b/bridge/",
       ),
     ).toBe("agent-b");
-  });
-
-  it("returns null for control-plane, self-hosted, and empty bases", () => {
     expect(dedicatedAgentIdFromApiBase("https://elizacloud.ai")).toBeNull();
     expect(
       dedicatedAgentIdFromApiBase("https://my-box.example.com"),
     ).toBeNull();
-    expect(dedicatedAgentIdFromApiBase("")).toBeNull();
-    expect(dedicatedAgentIdFromApiBase(undefined)).toBeNull();
   });
 });

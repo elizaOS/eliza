@@ -97,7 +97,7 @@ function makeNotification(
 }
 
 describe("HomeScreen", () => {
-  it("orders notifications, inline apps, then ranked widgets in one bounded column", () => {
+  it("orders notifications, inline apps, then ranked widgets in one scrolling column", () => {
     __setHydratedForTests(true);
     render(<HomeScreen onOpenTile={vi.fn()} />);
     // The clock/date was removed — the home stays simple.
@@ -120,11 +120,17 @@ describe("HomeScreen", () => {
     expect(screen.getByTestId("home-screen").className).toContain(
       "overflow-hidden",
     );
-    expect(apps.className).toContain("overflow-y-auto");
-    expect(apps.className).toContain("scrollbar-hide");
-    expect(apps.className).toContain("[scrollbar-width:none]");
-    expect(apps.className).toContain("[&::-webkit-scrollbar]:hidden");
-    expect(apps.hasAttribute("data-scroll-cert-scroller")).toBe(true);
+    // ONE scroller: the content column owns vertical scroll; the shade and the
+    // app region are content-sized siblings inside it.
+    const column = screen.getByTestId("home-content-column");
+    expect(column.className).toContain("overflow-y-auto");
+    expect(column.className).toContain("scrollbar-hide");
+    expect(column.className).toContain("[scrollbar-width:none]");
+    expect(column.className).toContain("[&::-webkit-scrollbar]:hidden");
+    expect(column.hasAttribute("data-scroll-cert-scroller")).toBe(true);
+    expect(column.contains(apps)).toBe(true);
+    expect(apps.className).not.toContain("overflow-y-auto");
+    expect(apps.className).toContain("flex-none");
   });
 
   it("does not render a second AOSP tile list beside the curated launcher", () => {
@@ -148,7 +154,7 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
-  it("keeps rested notifications compact, then displaces and restores the mounted apps region", () => {
+  it("keeps rested notifications compact and keeps apps mounted, visible, and interactive through expansion", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Priority alert", priority: "urgent" }),
     );
@@ -171,35 +177,36 @@ describe("HomeScreen", () => {
     expect(
       header.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeGreaterThan(0);
+    // The shade wrapper is content-sized in BOTH modes: expansion grows the
+    // inbox inline and pushes apps down the one page scroller — no flex
+    // reallocation, no height cap, no hiding.
     const wrapper = card.parentElement;
     expect(wrapper?.className).toContain("flex-none");
-    expect(wrapper?.className).toContain("max-h-[40%]");
+    expect(wrapper?.className).not.toContain("max-h-[40%]");
     expect(wrapper?.className).toContain("mt-4");
     expect(wrapper?.className).toContain("mb-3");
-    expect(card.className).toContain("flex-1");
     const column = screen.getByTestId("home-content-column");
     expect(column.className).toContain("h-full");
     expect(column.className).not.toContain("min-h-full");
-    expect(apps.className).toContain("flex-1");
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(apps.contains(launcher)).toBe(true);
-    apps.scrollTop = 96;
 
     const calendarButton = screen.getByRole("button", { name: "Calendar" });
     calendarButton.focus();
     fireEvent.wheel(screen.getByTestId("home-notification-list"), {
       deltaY: -(PULL_COMMIT_PX + 10),
     });
-    expect(wrapper?.className).toContain("flex-1");
-    expect(apps.className).toContain("h-0");
-    expect(apps.className).toContain("overflow-y-auto");
-    expect(apps.className).not.toContain("overflow-y-hidden");
-    expect(apps.getAttribute("aria-hidden")).toBe("true");
-    expect(apps.hasAttribute("inert")).toBe(true);
-    expect(apps.contains(launcher)).toBe(true);
-    expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
+    expect(screen.getByTestId("home-notification-list").dataset.shadeMode).toBe(
+      "expanded",
     );
+    // Apps are NOT displaced: still rendered, still interactive, never inert.
+    expect(wrapper?.className).toContain("flex-none");
+    expect(apps.className).not.toContain("h-0");
+    expect(apps.getAttribute("aria-hidden")).toBeNull();
+    expect(apps.hasAttribute("inert")).toBe(false);
+    expect(apps.contains(launcher)).toBe(true);
+    // No focus teleportation either — the launcher control keeps focus.
+    expect(document.activeElement).toBe(calendarButton);
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
 
@@ -210,9 +217,7 @@ describe("HomeScreen", () => {
     );
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(apps.getAttribute("aria-hidden")).toBeNull();
-    expect(apps.className).toContain("overflow-y-auto");
     expect(apps.contains(launcher)).toBe(true);
-    expect(apps.scrollTop).toBe(96);
     expect(document.activeElement).toBe(calendarButton);
   });
 
@@ -228,7 +233,7 @@ describe("HomeScreen", () => {
     expect(empty.getAttribute("aria-hidden")).toBe("true");
     expect(center.parentElement?.className).not.toContain("flex-1");
     const apps = screen.getByTestId("home-apps-scroll");
-    expect(apps.className).toContain("flex-1");
+    expect(apps.className).toContain("flex-none");
     expect(apps.hasAttribute("inert")).toBe(false);
   });
 
@@ -244,10 +249,9 @@ describe("HomeScreen", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(apps.getAttribute("aria-hidden")).toBeNull();
-    expect(apps.className).toContain("overflow-y-auto");
   });
 
-  it("moves and restores app focus when a notification arrives in an expanded empty shade", () => {
+  it("keeps app focus untouched when a notification arrives in an expanded empty shade", () => {
     __setHydratedForTests(true);
     render(
       <HomeScreen
@@ -271,10 +275,10 @@ describe("HomeScreen", () => {
       );
     });
 
-    expect(apps.hasAttribute("inert")).toBe(true);
-    expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
-    );
+    // Apps never leave the interaction tree, so an arrival must not displace
+    // the user's focus — there is nothing to restore later either.
+    expect(apps.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(calendarButton);
 
     fireEvent.click(screen.getByTestId("notifications-collapse"));
     act(() => vi.advanceTimersByTime(300));
@@ -282,7 +286,7 @@ describe("HomeScreen", () => {
     expect(document.activeElement).toBe(calendarButton);
   });
 
-  it("does not steal focus back from chat when the expanded shade collapses", () => {
+  it("leaves focus in chat while the shade expands and collapses", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Priority alert", priority: "urgent" }),
     );
@@ -302,7 +306,8 @@ describe("HomeScreen", () => {
     });
     calendarButton.focus();
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
-    expect(apps.hasAttribute("inert")).toBe(true);
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(apps.hasAttribute("inert")).toBe(false);
 
     const chatComposer = screen.getByRole("textbox", {
       name: "Chat composer",
@@ -312,30 +317,53 @@ describe("HomeScreen", () => {
     fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     act(() => vi.advanceTimersByTime(300));
 
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(document.activeElement).toBe(chatComposer);
   });
 
-  it("does not let app-region wheel or touch gestures change notification mode", () => {
-    __setHydratedForTests(true);
+  it("expands from a quiet-background pull over app space but never from an interactive tile", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "Priority alert", priority: "urgent" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        id: "22222222-2222-4222-8222-222222222222" as AgentNotification["id"],
+        title: "Quiet summary",
+        priority: "normal",
+      }),
+    );
     render(
       <HomeScreen
         onOpenTile={vi.fn()}
         apps={<button type="button">Open Calendar</button>}
       />,
     );
-    const apps = screen.getByTestId("home-apps-scroll");
     const list = screen.getByTestId("home-notification-list");
-    fireEvent.wheel(apps, { deltaY: -(PULL_COMMIT_PX + 10) });
+    const calendarButton = screen.getByRole("button", {
+      name: "Open Calendar",
+    });
+    // A pull that starts on an interactive tile belongs to the tile.
+    fireEvent.touchStart(calendarButton, {
+      touches: [{ clientX: 200, clientY: 300 }],
+    });
+    fireEvent.touchMove(calendarButton, {
+      touches: [{ clientX: 202, clientY: 460 }],
+    });
+    fireEvent.touchEnd(calendarButton, { touches: [] });
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+
+    // Non-interactive app-region space is part of the one home surface: a
+    // pull-down at the page top opens the shade (platform-shade idiom).
+    const apps = screen.getByTestId("home-apps-scroll");
     fireEvent.touchStart(apps, {
       touches: [{ clientX: 200, clientY: 300 }],
     });
     fireEvent.touchMove(apps, {
-      touches: [{ clientX: 202, clientY: 440 }],
+      touches: [{ clientX: 202, clientY: 460 }],
     });
     fireEvent.touchEnd(apps, { touches: [] });
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
   it("tapping an inline row follows its safe deep link directly", () => {

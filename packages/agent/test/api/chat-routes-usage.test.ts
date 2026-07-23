@@ -37,6 +37,7 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
       debug: vi.fn(),
     },
     emitEvent: vi.fn(async () => undefined),
+    reportError: vi.fn(),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     drainChatPreHandlers: vi.fn(async () => null),
@@ -73,6 +74,7 @@ describe("generateChatResponse usage reporting", () => {
               prompt: 42,
               completion: 11,
               total: 53,
+              cached: 32,
             },
           });
           return {
@@ -95,8 +97,69 @@ describe("generateChatResponse usage reporting", () => {
       promptTokens: 42,
       completionTokens: 11,
       totalTokens: 53,
+      cacheReadInputTokens: 32,
+      cachedInputTokens: 32,
       provider: "test-provider",
       isEstimated: false,
+      llmCalls: 1,
+    });
+  });
+
+  it("isolates provider usage across concurrent requests on one runtime", async () => {
+    let runtime: AgentRuntime;
+    let started = 0;
+    let releaseBoth!: () => void;
+    const bothStarted = new Promise<void>((resolve) => {
+      releaseBoth = resolve;
+    });
+    runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, message) => {
+          started += 1;
+          if (started === 2) releaseBoth();
+          await bothStarted;
+          const isFirst = message.content.text === "first";
+          await runtime.emitEvent(EventType.MODEL_USED, {
+            runtime,
+            source: isFirst ? "provider-a" : "provider-b",
+            provider: isFirst ? "provider-a" : "provider-b",
+            type: ModelType.TEXT_LARGE,
+            tokens: {
+              prompt: isFirst ? 101 : 202,
+              completion: isFirst ? 11 : 22,
+              total: isFirst ? 112 : 224,
+            },
+          });
+          return {
+            didRespond: true,
+            responseContent: { text: isFirst ? "one" : "two" },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const [first, second] = await Promise.all([
+      generateChatResponse(runtime, createChatMessage("first"), "Chat Agent", {
+        timeoutDuration: 5_000,
+      }),
+      generateChatResponse(runtime, createChatMessage("second"), "Chat Agent", {
+        timeoutDuration: 5_000,
+      }),
+    ]);
+
+    expect(first.usage).toMatchObject({
+      promptTokens: 101,
+      completionTokens: 11,
+      totalTokens: 112,
+      provider: "provider-a",
+      llmCalls: 1,
+    });
+    expect(second.usage).toMatchObject({
+      promptTokens: 202,
+      completionTokens: 22,
+      totalTokens: 224,
+      provider: "provider-b",
       llmCalls: 1,
     });
   });

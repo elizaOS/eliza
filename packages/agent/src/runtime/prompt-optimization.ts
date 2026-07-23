@@ -5,6 +5,7 @@
  * and optional prompt tracing/capture. Controlled via ELIZA_* env vars.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -91,7 +92,9 @@ let promptCaptureSeq = 0;
 // Track which runtimes have been wrapped to prevent double-installation.
 const installedRuntimes = new WeakSet<AgentRuntime>();
 const usageCaptureInstalledRuntimes = new WeakSet<AgentRuntime>();
-const usageCaptureStacks = new WeakMap<AgentRuntime, ModelUsageAccumulator[]>();
+const usageCaptureContext = new AsyncLocalStorage<
+  ReadonlyMap<AgentRuntime, readonly ModelUsageAccumulator[]>
+>();
 const runtimeModelConfigs = new WeakMap<AgentRuntime, ElizaConfig>();
 const trackedTrajectoryLoggers = new WeakSet<object>();
 const trajectoryLlmLogCounts = new WeakMap<AgentRuntime, Map<string, number>>();
@@ -817,7 +820,8 @@ function normalizeModelUsageRecord(payload: unknown): ModelUsageRecord | null {
     toOptionalNumber(tokens.cache_read_input_tokens) ??
     toOptionalNumber(tokens.cacheReadTokens) ??
     toOptionalNumber(tokens.cachedInputTokens) ??
-    toOptionalNumber(tokens.cached_input_tokens);
+    toOptionalNumber(tokens.cached_input_tokens) ??
+    toOptionalNumber(tokens.cached);
   const cacheCreationInputTokens =
     toOptionalNumber(tokens.cacheCreationInputTokens) ??
     toOptionalNumber(tokens.cache_creation_input_tokens) ??
@@ -826,6 +830,7 @@ function normalizeModelUsageRecord(payload: unknown): ModelUsageRecord | null {
   const cachedInputTokens =
     toOptionalNumber(tokens.cachedInputTokens) ??
     toOptionalNumber(tokens.cached_input_tokens) ??
+    toOptionalNumber(tokens.cached) ??
     cacheReadInputTokens;
   if (
     promptTokens === undefined &&
@@ -937,7 +942,9 @@ function ensureModelUsageEventCapture(runtime: AgentRuntime): void {
     if (isModelUsedEvent(event)) {
       const usageRecord = normalizeModelUsageRecord(params);
       if (usageRecord) {
-        for (const accumulator of usageCaptureStacks.get(runtime) ?? []) {
+        for (const accumulator of usageCaptureContext
+          .getStore()
+          ?.get(runtime) ?? []) {
           accumulator.records.push(usageRecord);
         }
       }
@@ -952,26 +959,18 @@ export async function withModelUsageCapture<T>(
 ): Promise<{ result: T; usage: CapturedModelUsage | null }> {
   ensureModelUsageEventCapture(runtime);
 
-  const stack = usageCaptureStacks.get(runtime) ?? [];
+  const inherited = usageCaptureContext.getStore();
   const accumulator: ModelUsageAccumulator = { records: [] };
-  stack.push(accumulator);
-  usageCaptureStacks.set(runtime, stack);
+  const scoped = new Map(inherited);
+  scoped.set(runtime, [...(inherited?.get(runtime) ?? []), accumulator]);
 
-  try {
+  return usageCaptureContext.run(scoped, async () => {
     const result = await run();
     return {
       result,
       usage: aggregateModelUsage(accumulator.records),
     };
-  } finally {
-    const index = stack.indexOf(accumulator);
-    if (index >= 0) {
-      stack.splice(index, 1);
-    }
-    if (stack.length === 0) {
-      usageCaptureStacks.delete(runtime);
-    }
-  }
+  });
 }
 
 function resolvePayloadModelId(

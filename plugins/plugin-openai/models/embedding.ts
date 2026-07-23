@@ -45,6 +45,10 @@ function extractText(params: TextEmbeddingParams | string | null): string | null
   throw new Error("Invalid embedding params: expected string, { text: string }, or null");
 }
 
+function extractSignal(params: TextEmbeddingParams | string | null): AbortSignal | undefined {
+  return typeof params === "object" && params !== null ? params.signal : undefined;
+}
+
 function hasExplicitEmbeddingEndpoint(runtime: IAgentRuntime): boolean {
   const key = isBrowser() ? "OPENAI_BROWSER_EMBEDDING_URL" : "OPENAI_EMBEDDING_URL";
   const value = getSetting(runtime, key);
@@ -108,6 +112,7 @@ export async function handleTextEmbedding(
 ): Promise<number[]> {
   const embeddingModel = getEmbeddingModel(runtime);
   const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
+  const signal = extractSignal(params);
 
   const text = extractText(params);
   if (text === null) {
@@ -155,6 +160,7 @@ export async function handleTextEmbedding(
       input: trimmedText,
       ...(hasExplicitEmbeddingDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
+    ...(signal ? { signal } : {}),
   });
 
   if (!response.ok) {

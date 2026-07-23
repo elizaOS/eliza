@@ -15,6 +15,7 @@ import {
   type World,
 } from "@elizaos/core";
 import { sql } from "drizzle-orm";
+import { pgTable, text } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -94,6 +95,28 @@ describe("message-search production DDL guard", () => {
 
     await runSqlPluginMigration("pglite");
 
+    expect(await messageSearchColumnExists()).toBe(true);
+  });
+
+  it("defers search objects when an app schema migrates before the core SQL schema", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS;
+
+    const migrationService = new DatabaseMigrationService({
+      databaseBackend: "pglite",
+    });
+    await migrationService.initializeWithDatabase(db);
+    migrationService.registerSchema("early-app-plugin", {
+      earlyAppRecords: pgTable("early_app_records", {
+        id: text("id").primaryKey(),
+      }),
+    });
+
+    await migrationService.runAllPluginMigrations();
+    expect(await messageSearchColumnExists()).toBe(false);
+
+    migrationService.registerSchema(sqlPlugin.name, sqlPlugin.schema ?? {});
+    await migrationService.runAllPluginMigrations();
     expect(await messageSearchColumnExists()).toBe(true);
   });
 

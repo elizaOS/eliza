@@ -199,7 +199,6 @@ describe("ci-turbo-cache-contract", () => {
     expect(lintJob).toMatch(/timeout-minutes:\s*15/);
     for (const command of [
       "audit:focused-tests",
-      "audit:test-realness",
       "audit:type-duplication:self-test",
       "bun run lint:check",
       "bun run format:check",

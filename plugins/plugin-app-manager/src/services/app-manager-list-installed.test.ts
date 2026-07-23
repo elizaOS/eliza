@@ -1,12 +1,9 @@
 /**
- * AppManager.listInstalled non-blocking registry refresh (#16873).
+ * AppManager.listInstalled registry-cache behavior.
  *
- * The message hot path renders available_apps → listInstalled on every turn.
- * Awaiting pluginManager.refreshRegistry() there nulled the registry caches
- * and refetched over the network on each call, so every turn paid a cold
- * multi-second registry fetch. listInstalled must now serve the CACHED
- * registry synchronously and fire the refresh out-of-band (deduped while one
- * is in flight). POST /api/apps/refresh remains the force path.
+ * List reads preserve the registry client's memory/file TTL instead of forcing
+ * invalidation and continuous background network traffic. The explicit
+ * POST /api/apps/refresh route remains the sole forced-refresh boundary.
  *
  * The service pulls several @elizaos/agent host modules at eval time; they are
  * mocked to the minimal surface listInstalled reads so the method runs without
@@ -76,18 +73,11 @@ function appRegistryEntry(name: string) {
 }
 
 /**
- * Minimal PluginManagerLike: reports `name` installed and exposes a
- * refreshRegistry spy that never resolves synchronously so the test can prove
- * listInstalled did not await it.
+ * Minimal PluginManagerLike that reports `name` installed and exposes the
+ * refresh method only so tests can prove ordinary reads never invoke it.
  */
 function makePluginManager(installedName: string) {
-  let resolveRefresh: (() => void) | null = null;
-  const refreshRegistry = vi.fn(
-    () =>
-      new Promise<Map<string, unknown>>((resolve) => {
-        resolveRefresh = () => resolve(new Map());
-      }),
-  );
+  const refreshRegistry = vi.fn(async () => new Map<string, unknown>());
   return {
     pluginManager: {
       listInstalledPlugins: vi.fn(async () => [
@@ -108,7 +98,6 @@ function makePluginManager(installedName: string) {
       reinjectPlugin: vi.fn(),
     },
     refreshRegistry,
-    settleRefresh: () => resolveRefresh?.(),
   };
 }
 
@@ -123,8 +112,8 @@ afterEach(() => {
   rmSync(stateDir, { recursive: true, force: true });
 });
 
-describe("AppManager.listInstalled non-blocking refresh", () => {
-  it("serves the cached registry synchronously without awaiting refreshRegistry", async () => {
+describe("AppManager.listInstalled registry cache", () => {
+  it("serves the cached registry without forcing invalidation", async () => {
     const cached = new Map<string, unknown>([
       ["chess", appRegistryEntry("chess")],
     ]);
@@ -132,18 +121,13 @@ describe("AppManager.listInstalled non-blocking refresh", () => {
     const pm = makePluginManager("chess");
     const manager = new AppManager({ stateDir });
 
-    // refreshRegistry never resolves; if listInstalled awaited it this would
-    // hang. It must resolve from the cached registry instead.
     const installed = await manager.listInstalled(pm.pluginManager);
 
     expect(installed.map((a) => a.name)).toContain("chess");
-    // The refresh was fired (best-effort, out-of-band) but never awaited.
-    expect(pm.refreshRegistry).toHaveBeenCalledTimes(1);
-
-    pm.settleRefresh();
+    expect(pm.refreshRegistry).not.toHaveBeenCalled();
   });
 
-  it("de-dupes overlapping background refreshes across concurrent calls", async () => {
+  it("keeps concurrent list calls on the shared registry cache", async () => {
     const cached = new Map<string, unknown>([
       ["chess", appRegistryEntry("chess")],
     ]);
@@ -151,35 +135,13 @@ describe("AppManager.listInstalled non-blocking refresh", () => {
     const pm = makePluginManager("chess");
     const manager = new AppManager({ stateDir });
 
-    // Two turns fire before the first refresh settles — only one network
-    // refresh should be in flight.
     await Promise.all([
       manager.listInstalled(pm.pluginManager),
       manager.listInstalled(pm.pluginManager),
     ]);
 
-    expect(pm.refreshRegistry).toHaveBeenCalledTimes(1);
-    pm.settleRefresh();
-  });
-
-  it("re-arms the background refresh after the prior one settles", async () => {
-    const cached = new Map<string, unknown>([
-      ["chess", appRegistryEntry("chess")],
-    ]);
-    registry.getRegistryPlugins.mockResolvedValue(cached);
-    const pm = makePluginManager("chess");
-    const manager = new AppManager({ stateDir });
-
-    await manager.listInstalled(pm.pluginManager);
-    expect(pm.refreshRegistry).toHaveBeenCalledTimes(1);
-
-    // Settle the in-flight refresh, then the next turn may arm a new one.
-    pm.settleRefresh();
-    await vi.waitFor(async () => {
-      await manager.listInstalled(pm.pluginManager);
-      expect(pm.refreshRegistry).toHaveBeenCalledTimes(2);
-    });
-    pm.settleRefresh();
+    expect(pm.refreshRegistry).not.toHaveBeenCalled();
+    expect(registry.getRegistryPlugins).toHaveBeenCalledTimes(2);
   });
 });
 
