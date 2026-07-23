@@ -556,7 +556,10 @@ async function runPlannerLoopIterations(
 							status: "finished",
 							trajectory,
 							finalMessage: userSafeFinalMessage(
-								codingFinalMessage(trajectory, plannerOutput.messageToUser),
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									codingFinalMessage(trajectory, plannerOutput.messageToUser),
+								),
 								trajectory,
 							),
 						};
@@ -595,9 +598,12 @@ async function runPlannerLoopIterations(
 							trajectory,
 							evaluator,
 							finalMessage: userSafeFinalMessage(
-								preferredFinalMessageFromToolOrModel(
+								terminalMessageWithFailureAuthority(
 									trajectory,
-									evaluator.messageToUser ?? plannerOutput.messageToUser,
+									preferredFinalMessageFromToolOrModel(
+										trajectory,
+										evaluator.messageToUser ?? plannerOutput.messageToUser,
+									),
 								),
 								trajectory,
 							),
@@ -633,7 +639,10 @@ async function runPlannerLoopIterations(
 							trajectory,
 							evaluator,
 							finalMessage: userSafeFinalMessage(
-								missingInputWidgetRelay,
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									missingInputWidgetRelay,
+								),
 								trajectory,
 							),
 						};
@@ -657,7 +666,10 @@ async function runPlannerLoopIterations(
 								status: "finished",
 								trajectory,
 								evaluator,
-								finalMessage: userSafeFinalMessage(relay, trajectory),
+								finalMessage: userSafeFinalMessage(
+									terminalMessageWithFailureAuthority(trajectory, relay),
+									trajectory,
+								),
 							};
 						}
 					}
@@ -985,15 +997,18 @@ async function runPlannerLoopIterations(
 				finalMessage: suppressReply
 					? ""
 					: userSafeFinalMessage(
-							// Coding mode: drop a junk/empty terminal reply and fall back to
-							// a synthesized "what I did" summary so the sub-agent never
-							// relays garbage or an empty reply after doing real work.
-							codingDrainQueue
-								? codingFinalMessage(trajectory, latestResult.text)
-								: preferredFinalMessageFromToolOrModel(
-										trajectory,
-										latestResult.text,
-									),
+							terminalMessageWithFailureAuthority(
+								trajectory,
+								// Coding mode: drop a junk/empty terminal reply and fall back to
+								// a synthesized "what I did" summary so the sub-agent never
+								// relays garbage or an empty reply after doing real work.
+								codingDrainQueue
+									? codingFinalMessage(trajectory, latestResult.text)
+									: preferredFinalMessageFromToolOrModel(
+											trajectory,
+											latestResult.text,
+										),
+							),
 							trajectory,
 						),
 			};
@@ -1067,7 +1082,13 @@ async function runPlannerLoopIterations(
 				trajectory,
 				evaluator: gated,
 				finalMessage: userSafeFinalMessage(
-					preferredFinalMessageFromToolOrModel(trajectory, gated.messageToUser),
+					terminalMessageWithFailureAuthority(
+						trajectory,
+						preferredFinalMessageFromToolOrModel(
+							trajectory,
+							gated.messageToUser,
+						),
+					),
 					trajectory,
 				),
 			};
@@ -1105,7 +1126,10 @@ async function runPlannerLoopIterations(
 			return {
 				status: "finished",
 				trajectory,
-				finalMessage: userSafeFinalMessage(relay, trajectory),
+				finalMessage: userSafeFinalMessage(
+					terminalMessageWithFailureAuthority(trajectory, relay),
+					trajectory,
+				),
 			};
 		}
 		trajectory.evaluatorOutputs.push(evaluator);
@@ -1122,7 +1146,10 @@ async function runPlannerLoopIterations(
 			return {
 				status: "finished",
 				trajectory,
-				finalMessage: userSafeFinalMessage(protocolFailureRelay, trajectory),
+				finalMessage: userSafeFinalMessage(
+					terminalMessageWithFailureAuthority(trajectory, protocolFailureRelay),
+					trajectory,
+				),
 			};
 		}
 
@@ -1148,12 +1175,15 @@ async function runPlannerLoopIterations(
 				trajectory,
 				evaluator,
 				finalMessage: userSafeFinalMessage(
-					preferredFinalMessageFromToolOrModel(
+					terminalMessageWithFailureAuthority(
 						trajectory,
-						evaluator.messageToUser,
-						evaluator.success === false
-							? failedToolFallbackMessage(trajectory)
-							: undefined,
+						preferredFinalMessageFromToolOrModel(
+							trajectory,
+							evaluator.messageToUser,
+							evaluator.success === false
+								? failedToolFallbackMessage(trajectory)
+								: undefined,
+						),
 					),
 					trajectory,
 				),
@@ -3103,6 +3133,14 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		) {
 			continue;
 		}
+		// Input/confirmation pauses are deliberate partial completions, not failed
+		// operations. Their interaction payload remains the terminal authority.
+		if (
+			hasAwaitingUserInputMarker(step.result) ||
+			hasRequiresConfirmationMarker(step.result)
+		) {
+			continue;
+		}
 		const operationKey = plannerToolOperationKey(step.toolCall);
 		if (step.result.success === false || step.result.error != null) {
 			unresolvedByOperation.delete(operationKey);
@@ -3112,6 +3150,23 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		}
 	}
 	return [...unresolvedByOperation.values()].at(-1);
+}
+
+/**
+ * A terminal reply may summarize successful work only after every earlier
+ * failure has been retried with the same operation and succeeded. This keeps
+ * unrelated VIEWS/SHELL work from laundering an unhandled failure into a
+ * healthy-looking completion.
+ */
+function terminalMessageWithFailureAuthority(
+	trajectory: PlannerTrajectory,
+	candidate: string | undefined,
+): string | undefined {
+	const unresolvedFailure =
+		latestUnresolvedFailedNonTerminalToolStep(trajectory);
+	return unresolvedFailure
+		? groundedFailedToolMessage(unresolvedFailure)
+		: candidate;
 }
 
 function plannerToolOperationKey(toolCall: PlannerToolCall): string {
@@ -3269,7 +3324,10 @@ async function finishWithForcedSynthesis(params: {
 	return {
 		status: "finished",
 		trajectory,
-		finalMessage: userSafeFinalMessage(finalMessage, trajectory),
+		finalMessage: userSafeFinalMessage(
+			terminalMessageWithFailureAuthority(trajectory, finalMessage),
+			trajectory,
+		),
 	};
 }
 
@@ -3292,7 +3350,10 @@ function finishWithCapturedRefusal(params: {
 	return {
 		status: "finished",
 		trajectory: params.trajectory,
-		finalMessage: userSafeFinalMessage(params.refusal, params.trajectory),
+		finalMessage: userSafeFinalMessage(
+			terminalMessageWithFailureAuthority(params.trajectory, params.refusal),
+			params.trajectory,
+		),
 	};
 }
 
@@ -4051,6 +4112,9 @@ function tryGateEvaluator(args: {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
 	if (latestResult?.success !== true) return null;
+	// #16983 allows a verified terminal action to skip the evaluator, but that
+	// success cannot complete an unrelated operation that remains failed.
+	if (latestUnresolvedFailedNonTerminalToolStep(args.trajectory)) return null;
 	if (args.trajectory.plannedQueue.length > 0) return null;
 	if (args.failures.length > 0) return null;
 	// Precondition 6: respect the planner's own completion disclaimer.
