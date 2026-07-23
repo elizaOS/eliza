@@ -13,6 +13,7 @@ import {
   __resetVoiceSessionRevocationClientForTests,
   __setVoiceSessionRevocationStoreForTests,
   isVoiceSessionJwtConfigured,
+  isVoiceSessionTokenRevoked,
   mintVoiceSessionToken,
   revokeVoiceSessionToken,
   VoiceSessionTokenError,
@@ -205,5 +206,42 @@ describe("voice-session jwt", () => {
     } finally {
       __setVoiceSessionRevocationStoreForTests(null);
     }
+  });
+
+  test("isVoiceSessionTokenRevoked consults an explicit request-scoped store (#16663)", async () => {
+    const requestScoped = makeFakeRedis();
+    __setVoiceSessionRevocationStoreForTests(requestScoped as never);
+    const minted = await mintVoiceSessionToken(CLAIMS);
+    await revokeVoiceSessionToken(minted.jti, minted.expSeconds);
+    // Swap the module-level store for an EMPTY one: from here on, only the
+    // explicit param can see the revocation, so a `true` answer proves the
+    // 400ms poll's store actually reaches the read.
+    __setVoiceSessionRevocationStoreForTests(makeFakeRedis() as never);
+    try {
+      expect(await isVoiceSessionTokenRevoked(minted.jti)).toBe(false);
+      expect(await isVoiceSessionTokenRevoked(minted.jti, requestScoped as never)).toBe(true);
+    } finally {
+      __setVoiceSessionRevocationStoreForTests(null);
+    }
+  });
+
+  test("isVoiceSessionTokenRevoked fails closed when the explicit store errors", async () => {
+    const erroring = {
+      async get() {
+        throw new Error("redis down");
+      },
+      async set() {
+        return "OK";
+      },
+      async getdel() {
+        return null;
+      },
+      async del() {
+        return 0;
+      },
+    };
+    // The module-level store (beforeEach) is healthy and empty; the erroring
+    // request-scoped store must still drive the fail-closed answer.
+    expect(await isVoiceSessionTokenRevoked("jti-under-outage", erroring as never)).toBe(true);
   });
 });

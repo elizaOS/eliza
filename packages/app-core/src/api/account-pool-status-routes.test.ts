@@ -2,14 +2,10 @@ import { EventEmitter } from "node:events";
 import type http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getPublicAccountPoolStatus } = vi.hoisted(() => ({
-  getPublicAccountPoolStatus: vi.fn(),
-}));
-vi.mock("../services/account-pool-status.js", () => ({
-  getPublicAccountPoolStatus,
-}));
-
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
+
+const getPublicAccountPoolStatus = vi.fn();
+const dependencies = { getPublicAccountPoolStatus };
 
 function response(): http.ServerResponse & {
   body: string;
@@ -70,6 +66,7 @@ describe("GET /api/pool/status", () => {
         res,
         "GET",
         "/api/pool/status",
+        dependencies,
       ),
     ).resolves.toBe(true);
     expect(res.statusCode).toBe(200);
@@ -83,6 +80,7 @@ describe("GET /api/pool/status", () => {
       methodRes,
       "POST",
       "/api/pool/status",
+      dependencies,
     );
     expect(methodRes.statusCode).toBe(405);
 
@@ -93,6 +91,7 @@ describe("GET /api/pool/status", () => {
       errorRes,
       "GET",
       "/api/pool/status",
+      dependencies,
     );
     expect(errorRes.statusCode).toBe(503);
     expect(errorRes.setHeader).toHaveBeenCalledWith("retry-after", "60");

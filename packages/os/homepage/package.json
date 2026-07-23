@@ -35,13 +35,14 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "@types/node": "^24.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "playwright": "^1.59.1",
     "rollup-plugin-visualizer": "^7.0.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "viem": "^2.48.8"
   }

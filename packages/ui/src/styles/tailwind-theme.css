@@ -47,6 +47,7 @@
   --color-card-foreground: var(--card-foreground);
 
   --color-ok: var(--ok);
+  --color-ok-foreground: var(--ok-foreground);
   --color-ok-muted: var(--ok-muted);
   --color-ok-subtle: var(--ok-subtle);
   --color-warn: var(--warn);

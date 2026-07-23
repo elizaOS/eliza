@@ -58,7 +58,26 @@ async def test_full_dataset_loader_allows_uncapped_instances() -> None:
     counts: dict[RealmProblem, int] = {}
     for t in ds.tasks:
         counts[t.problem] = counts.get(t.problem, 0) + 1
+    assert len(ds.tasks) == 1_110
+    assert sum(counts.values()) == 1_110
     assert any(n > 5 for n in counts.values())
+
+
+@pytest.mark.asyncio
+async def test_full_dataset_edge_expansion_has_pinned_campaign_cardinality() -> None:
+    ds = REALMDataset(
+        data_path=UPSTREAM,
+        max_instances_per_problem=None,
+        include_edge_scenarios=True,
+    )
+    await ds.load()
+
+    assert ds.count_scenarios() == {
+        "base": 1_110,
+        "edge": 11_100,
+        "total": 12_210,
+        "edge_multiplier": 10,
+    }
 
 
 @pytest.mark.asyncio

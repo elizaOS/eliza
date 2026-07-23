@@ -9,6 +9,7 @@ constructed or used.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -27,6 +28,28 @@ logger = logging.getLogger(__name__)
 
 
 _VALID_OPERATIONS = {"CLICK", "TYPE", "SELECT", "HOVER", "ENTER"}
+
+_MIND2WEB_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "MIND2WEB_ACTION",
+        "description": "Predict exactly one action from the listed Mind2Web candidates.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["CLICK", "TYPE", "SELECT", "HOVER", "ENTER"],
+                },
+                "element_id": {"type": "string"},
+                "value": {"type": "string"},
+                "reasoning": {"type": "string"},
+            },
+            "required": ["operation", "element_id"],
+            "additionalProperties": False,
+        },
+    },
+}
 
 
 def _extract_action_json(text: str) -> dict[str, object]:
@@ -97,7 +120,7 @@ def _coerce_action_fields(
             )
 
     if operation and operation not in _VALID_OPERATIONS:
-        operation = "CLICK"
+        operation = "INVALID"
 
     return {"operation": operation, "element_id": element_id, "value": value}
 
@@ -116,6 +139,7 @@ class ElizaMind2WebAgent:
     ) -> None:
         self.config = config
         self._client = client or ElizaClient()
+        self.ranker_recalls: list[float] = []
 
     async def initialize(self) -> None:
         """Verify the eliza server is reachable."""
@@ -123,12 +147,17 @@ class ElizaMind2WebAgent:
 
     async def process_task(self, task: "Mind2WebTask") -> list["Mind2WebAction"]:
         """Process a Mind2Web task and return predicted actions."""
-        from benchmarks.mind2web.types import Mind2WebAction, Mind2WebOperation
+        from benchmarks.mind2web.types import (
+            Mind2WebAction,
+            Mind2WebOperation,
+            Mind2WebRankerMode,
+        )
 
         # Reset session
         self._client.reset(task_id=task.annotation_id, benchmark="mind2web")
 
         executed_actions: list[Mind2WebAction] = []
+        self.ranker_recalls = []
         max_steps = min(self.config.max_steps_per_task, len(task.actions) + 5)
 
         for step_idx in range(max_steps):
@@ -137,47 +166,53 @@ class ElizaMind2WebAgent:
 
             current_step = task.actions[step_idx]
 
-            # Format element candidates for context
-            all_candidates = current_step.pos_candidates + current_step.neg_candidates
-            candidate_lines = []
-            for idx, elem in enumerate(all_candidates[:20], start=1):
-                attrs = " ".join(f"{k}={v!r}" for k, v in list(elem.attributes.items())[:5])
-                text = f" text={elem.text_content[:80]!r}" if elem.text_content else ""
-                candidate_lines.append(
-                    f"{idx}. backend_node_id={elem.backend_node_id!r} tag={elem.tag!r} {attrs}{text}".strip()
+            from benchmarks.mind2web.eliza_agent import select_candidates_for_step
+
+            previous_action_reprs = task.action_reprs[:step_idx] if task.action_reprs else []
+            all_candidates, ranker_recall = await asyncio.to_thread(
+                select_candidates_for_step,
+                current_step,
+                mode=self.config.ranker_mode,
+                task_description=task.confirmed_task,
+                previous_actions=previous_action_reprs,
+                top_k=self.config.ranker_top_k,
+                model_name=self.config.ranker_model,
+                revision=self.config.ranker_revision,
+                device=self.config.ranker_device,
+                task_id=str(task.metadata.get("edge_source_id", task.annotation_id)),
+            )
+            self.ranker_recalls.append(ranker_recall)
+            if (
+                self.config.ranker_mode == Mind2WebRankerMode.REAL
+                and ranker_recall != 1.0
+            ):
+                executed_actions.append(
+                    Mind2WebAction(
+                        operation=Mind2WebOperation.INVALID,
+                        reasoning=(
+                            "No positive element survived the pinned top-K ranker."
+                        ),
+                    )
                 )
-            current_repr = (
-                task.action_reprs[step_idx]
-                if task.action_reprs and step_idx < len(task.action_reprs)
-                else ""
-            )
-            previous = "\n".join(
-                f"- {action.operation.value} element_id={action.element_id} value={action.value!r}"
-                for action in executed_actions
-            )
+                continue
+            from benchmarks.mind2web.eliza_agent import _format_element
+
+            action_surface = _format_element(step_idx, task, all_candidates)
+            previous = "\n".join(f"- {action}" for action in previous_action_reprs)
             message_sections = [
                 "You are completing a Mind2Web browser task one step at a time.",
                 f"Instruction: {task.confirmed_task}",
                 f"Website: {task.website}",
                 f"Domain: {task.domain}",
                 f"Current step: {step_idx + 1} of {len(task.actions)}",
-                "Available elements:\n" + ("\n".join(candidate_lines) if candidate_lines else "No elements listed."),
+                action_surface,
             ]
-            if current_repr:
-                message_sections.append(
-                    "Target micro-action for THIS step. Do not skip or merge steps:\n"
-                    f"- {current_repr}"
-                )
-            if task.action_reprs:
-                message_sections.append(
-                    "Full plan for context only:\n" + "\n".join(f"- {x}" for x in task.action_reprs[:8])
-                )
             if previous:
                 message_sections.append(f"Previous actions:\n{previous}")
             message_sections.append(
                 "Return one JSON object only with keys operation, element_id, value, reasoning. "
                 "operation must be CLICK, TYPE, SELECT, HOVER, or ENTER. element_id must be a listed "
-                "backend_node_id. For TYPE or SELECT, value must be the literal value from the target micro-action."
+                "backend_node_id. For TYPE or SELECT, infer the exact value needed to advance the task."
             )
             message_text = "\n\n".join(message_sections)
             elements_for_context = [
@@ -187,7 +222,7 @@ class ElizaMind2WebAgent:
                     "attributes": dict(list(elem.attributes.items())[:5]),
                     "text_content": elem.text_content[:50] if elem.text_content else "",
                 }
-                for elem in all_candidates[:15]
+                for elem in all_candidates
             ]
 
             # Build context
@@ -195,16 +230,28 @@ class ElizaMind2WebAgent:
                 "benchmark": "mind2web",
                 "task_id": task.annotation_id,
                 "goal": task.confirmed_task,
-                "html": current_step.cleaned_html[:3000] if current_step.cleaned_html else "",
                 "elements": elements_for_context,
+                "system_prompt": (
+                    "Predict the next Mind2Web browser action from the task, previous actions, "
+                    "and ranked candidate elements. Do not assume access to the annotation."
+                ),
+                "tools": [_MIND2WEB_TOOL],
+                "tool_choice": "required",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Predict the next Mind2Web browser action from the task, previous "
+                            "actions, and ranked candidate elements."
+                        ),
+                    },
+                    {"role": "user", "content": message_text},
+                ],
             }
             if task.website:
                 context["website"] = task.website
             if task.domain:
                 context["domain"] = task.domain
-            if task.action_reprs:
-                context["action_plan"] = task.action_reprs
-
             response = self._client.send_message(text=message_text, context=context)
 
             # Try params first, then fall back to text channels. The TS
@@ -221,50 +268,33 @@ class ElizaMind2WebAgent:
             bench_params = params.get("BENCHMARK_ACTION")
             if isinstance(bench_params, dict):
                 params = {**params, **bench_params}
+            mind2web_params = params.get("MIND2WEB_ACTION")
+            if isinstance(mind2web_params, dict):
+                params = {**params, **mind2web_params}
 
             action_fields = _coerce_action_fields(params, response.text or "")
             operation_str = action_fields["operation"]
             element_id = action_fields["element_id"]
             value = action_fields["value"]
 
-            if not operation_str and current_repr:
-                lowered_repr = current_repr.lower()
-                if "type" in lowered_repr:
-                    operation_str = "TYPE"
-                    if not value:
-                        quoted = re.search(r"['\"]([^'\"]+)['\"]", current_repr)
-                        if quoted:
-                            value = quoted.group(1)
-                elif "select" in lowered_repr:
-                    operation_str = "SELECT"
-                    if not value:
-                        quoted = re.search(r"['\"]([^'\"]+)['\"]", current_repr)
-                        if quoted:
-                            value = quoted.group(1)
-                elif "hover" in lowered_repr:
-                    operation_str = "HOVER"
-                elif "enter" in lowered_repr:
-                    operation_str = "ENTER"
-                elif "click" in lowered_repr:
-                    operation_str = "CLICK"
-
             if not operation_str:
-                operation_str = "CLICK"
+                operation_str = "INVALID"
 
             try:
                 operation = Mind2WebOperation(operation_str)
             except ValueError:
-                operation = Mind2WebOperation.CLICK
+                operation = Mind2WebOperation.INVALID
 
             if not element_id:
-                if len(current_step.pos_candidates) == 1:
-                    element_id = current_step.pos_candidates[0].backend_node_id
-                else:
-                    logger.warning(
-                        "Step %d: eliza returned no element_id; marking action invalid",
-                        step_idx,
-                    )
-                    element_id = "unknown"
+                logger.warning(
+                    "Step %d: native harness returned no element_id; marking action invalid",
+                    step_idx,
+                )
+                element_id = "unknown"
+            elif element_id.isdigit():
+                candidate_index = int(element_id) - 1
+                if 0 <= candidate_index < len(all_candidates):
+                    element_id = all_candidates[candidate_index].backend_node_id
 
             action = Mind2WebAction(
                 operation=operation,

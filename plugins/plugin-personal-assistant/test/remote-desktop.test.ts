@@ -109,8 +109,8 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
       [],
     );
     expect(
-      (pending?.values as { requiresConfirmation?: boolean })
-        .requiresConfirmation,
+      (pending?.values as { requiresConfirmation?: boolean } | undefined)
+        ?.requiresConfirmation,
     ).toBe(true);
     // Second turn: the user replies "yes" — confirmation resolves and the
     // action authorizes. In local mode without a data plane, ingressUrl is
@@ -194,8 +194,10 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
       [],
     );
     const sessions = (
-      after?.data as { sessions?: Array<{ id: string; status: string }> }
-    ).sessions;
+      after?.data as
+        | { sessions?: Array<{ id: string; status: string }> }
+        | undefined
+    )?.sessions;
     expect(sessions?.find((s) => s.id === seeded.sessionId)).toBeUndefined();
   });
 
@@ -210,7 +212,7 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
       [],
     );
     expect(result?.success).toBe(false);
-    expect((result?.values as { error?: string }).error).toBe(
+    expect((result?.values as { error?: string } | undefined)?.error).toBe(
       "SESSION_NOT_FOUND",
     );
   });

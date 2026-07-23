@@ -532,6 +532,88 @@ function withRateLimitFailFast(primaryModel: Parameters<typeof wrapLanguageModel
 }
 
 /**
+ * Cerebras interactive-turn 5xx/network fast-failover to OpenRouter — the
+ * COLD-PATH stall-B fix (COLDPATH-FIX-2026-07-21).
+ *
+ * The problem this removes: Cerebras is the shared/interactive default and had
+ * NO cross-provider fallback (`withRateLimitFailFast` only short-circuits 429).
+ * On a transient Cerebras 5xx/network blip the AI SDK's own retry loop SLEEPS
+ * `initialDelayInMs=2000` (then 4s) before retrying the SAME dead provider, so
+ * a single blip cost +2s and two cost +6s of pure backoff BEFORE first token —
+ * the exact bimodal warm-stall on staging. #16713 only *bounded* that sleep by
+ * capping retries; it did not remove it, and it still retried the same upstream.
+ *
+ * This wrapper instead fails over IMMEDIATELY (no sleep) to OpenRouter for the
+ * SAME model on a retryable upstream error (402/429/5xx). Composed OUTSIDE
+ * `withRateLimitFailFast`, so a 429 arrives here already marked non-retryable
+ * by the inner wrap AND is served by the healthy fallback rather than surfaced
+ * as a stall — the interactive turn's job is to answer, not to sleep. Callers
+ * that must surface Cerebras errors verbatim (the graceful rate-limit reply on
+ * non-interactive paths) keep using the bare `withRateLimitFailFast` model via
+ * `getLanguageModel`'s default branch; this failover is opt-in through
+ * `getInteractiveCerebrasLanguageModel`. A no-op when OPENROUTER_API_KEY is
+ * unset, so direct-only deployments are unchanged (they keep the bounded-retry
+ * behavior, now paired with `maxRetries: 0` on the interactive turn).
+ */
+function withCerebrasInteractiveFailover(
+  primaryModel: Parameters<typeof wrapLanguageModel>[0]["model"],
+  model: string,
+) {
+  if (!getOpenRouterApiKey()) {
+    return primaryModel;
+  }
+  const fallbackModel = getOpenRouterLanguageModel(model);
+  const middleware: LanguageModelMiddleware = {
+    specificationVersion: "v3",
+    wrapGenerate: async ({ doGenerate, params }) => {
+      try {
+        return await doGenerate();
+      } catch (error) {
+        if (!isRetryableAiSdkError(error)) throw error;
+        logger.warn(
+          "[Cerebras] Interactive turn failed for %s (%d); failing over to OpenRouter (no backoff)",
+          model,
+          aiSdkErrorStatus(error),
+        );
+        return await fallbackModel.doGenerate(params);
+      }
+    },
+    wrapStream: async ({ doStream, params }) => {
+      try {
+        return await doStream();
+      } catch (error) {
+        if (!isRetryableAiSdkError(error)) throw error;
+        logger.warn(
+          "[Cerebras] Interactive stream failed for %s (%d); failing over to OpenRouter (no backoff)",
+          model,
+          aiSdkErrorStatus(error),
+        );
+        return await fallbackModel.doStream(params);
+      }
+    },
+  };
+  return wrapLanguageModel({ model: primaryModel, middleware });
+}
+
+/**
+ * Resolve the interactive-turn language model for a bare Cerebras id: the same
+ * cerebras-direct client the default branch uses, but wrapped so a transient
+ * 5xx/network fails over to OpenRouter WITHOUT the AI SDK's 2s/6s backoff sleep
+ * (see withCerebrasInteractiveFailover). Non-Cerebras ids fall through to the
+ * normal router. Interactive callers (shared-runtime chat/voice turn) pair this
+ * with `maxRetries: 0` so the only retry is the instant cross-provider failover.
+ */
+export function getInteractiveCerebrasLanguageModel(model: string) {
+  if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
+    return withCerebrasInteractiveFailover(
+      withRateLimitFailFast(getCerebrasClient().chat(normalizeCerebrasModelId(model))),
+      model,
+    );
+  }
+  return getLanguageModel(model);
+}
+
+/**
  * True for OpenRouter-catalog ids that NO native provider can serve directly —
  * routing-suffix variants (`:nitro`/`:floor`), the free tier, and `openai/gpt-oss-120b`
  * (an OpenRouter id, not an OpenAI-API model). These must go to the OpenRouter

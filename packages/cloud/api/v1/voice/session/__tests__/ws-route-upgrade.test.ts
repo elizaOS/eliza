@@ -98,14 +98,29 @@ const usageMeterStub = () => ({
 mock.module("@/lib/services/voice-usage-meter", usageMeterStub);
 mock.module(`${sharedRoot}/lib/services/voice-usage-meter.ts`, usageMeterStub);
 
-mock.module("@/lib/cache/redis-factory", () => ({
+// Each built client gets a sequence id and `get` records which INSTANCE served
+// the read (always answering "1" = revoked). This mock is process-wide, so
+// jwt.ts's module-level fallback client comes from the same factory — only the
+// instance id distinguishes the route's request-scoped client (built during
+// the upgrade request) from any earlier/lazier fallback, which is exactly the
+// #16663 forwarding contract.
+let redisClientSeq = 0;
+const redisGetCalls: Array<{ client: number; key: string }> = [];
+const redisFactoryStub = () => ({
   ...realRedisFactoryExports,
-  buildRedisClient: () => ({ eval: () => undefined }),
-}));
-mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, () => ({
-  ...realRedisFactoryExports,
-  buildRedisClient: () => ({ eval: () => undefined }),
-}));
+  buildRedisClient: () => {
+    const id = ++redisClientSeq;
+    return {
+      eval: () => undefined,
+      get: async (key: string) => {
+        redisGetCalls.push({ client: id, key });
+        return "1";
+      },
+    };
+  },
+});
+mock.module("@/lib/cache/redis-factory", redisFactoryStub);
+mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, redisFactoryStub);
 
 // NOTE: we do NOT mock `../lib/session`. Mocking VoiceSession would clobber it
 // for ws-lifecycle.test.ts (which constructs the REAL VoiceSession and runs
@@ -140,6 +155,7 @@ const originalWebSocketPair = (globalThis as { WebSocketPair?: unknown })
 
 beforeEach(() => {
   attachCalls.length = 0;
+  redisGetCalls.length = 0;
   registrySize = 0;
   durableStoreValue = { kind: "durable" };
   binaryTypeWritable = true;
@@ -258,6 +274,51 @@ describe("voice-session ws upgrade (happy path)", () => {
     const res = await upgrade();
     expect(res.status).toBe(101);
     expect(attachCalls.length).toBe(1);
+  });
+
+  test("the revocation poll consults the route's request-scoped Redis client (#16663)", async () => {
+    const beforeUpgrade = redisClientSeq;
+    const res = await upgrade();
+    const afterUpgrade = redisClientSeq;
+    expect(res.status).toBe(101);
+    expect(afterUpgrade).toBeGreaterThan(beforeUpgrade);
+    const deps = attachCalls[0].deps as unknown as {
+      buildSession: (args: {
+        claims: Record<string, string>;
+        jti: string;
+        tokenExpSeconds: number;
+        downlink: Record<string, unknown>;
+      }) => { config: { isRevoked?: (jti: string) => Promise<boolean> } };
+    };
+    const session = deps.buildSession({
+      claims: {
+        sessionId: "sess-revocation-wire",
+        organizationId: "org-1",
+        userId: "user-1",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+      },
+      jti: "jti-16663-forwarding",
+      tokenExpSeconds: Math.floor(Date.now() / 1000) + 60,
+      downlink: {
+        sendControl: () => undefined,
+        sendAudio: () => undefined,
+        close: () => undefined,
+      },
+    });
+    await expect(
+      session.config.isRevoked?.("jti-16663-forwarding"),
+    ).resolves.toBe(true);
+    // The read must land on the client built DURING the upgrade request (the
+    // route's request-scoped one). An unforwarded check would fall back to
+    // jwt.ts's module client — an instance cached earlier or built lazily
+    // inside the isRevoked call, in either case outside the upgrade window.
+    const read = redisGetCalls.find((r) =>
+      r.key.includes("jti-16663-forwarding"),
+    );
+    expect(read).toBeDefined();
+    expect(read?.client).toBeGreaterThan(beforeUpgrade);
+    expect(read?.client).toBeLessThanOrEqual(afterUpgrade);
   });
 
   test("buildSession wires a prewarm-capable scoped Eliza fetch", async () => {

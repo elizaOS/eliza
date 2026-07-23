@@ -7,10 +7,12 @@
  * model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
+	__renderRoutingHintsBlockForTests,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
@@ -231,7 +233,16 @@ describe("v5 planner loop skeleton", () => {
 			'never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
 		);
 		expect(plannerTemplate).toContain(
-			'return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}',
+			"native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares",
+		);
+		expect(plannerTemplate).toContain(
+			"never nest arguments under `parameters` unless the tool schema itself declares a `parameters` field",
+		);
+		expect(plannerTemplate).toContain(
+			"plain-JSON fallback only (when native tool calls are unavailable)",
+		);
+		expect(plannerTemplate).toContain(
+			"never put that envelope inside a native tool's args",
 		);
 		expect(plannerTemplate).toContain(
 			"owner goal save/create/update/review when OWNER_GOALS is exposed",
@@ -1656,33 +1667,36 @@ describe("v5 planner loop skeleton", () => {
 		"I'm reviewing the conversation history to answer.",
 		"I'll look that up and get back to you.",
 		"Pulling up the info now, one sec.",
-	])("never surfaces native intent-narration as a refusal: %s (#9874)", async (text) => {
-		// Regression: a native pre-tool/intent-narration text carries no leak
-		// markup and no "thinking through" marker, so a denylist would let it
-		// through and the agent would falsely claim it is doing work it never
-		// did. The positive-allowlist gate (must read as an inability) rejects
-		// it → the loop throws → caller emits the generic apology, never the
-		// phantom action claim.
-		const runtime = {
-			useModel: vi.fn(async () => ({ text, toolCalls: [] })),
-			logger: { warn: vi.fn() },
-		};
+	])(
+		"never surfaces native intent-narration as a refusal: %s (#9874)",
+		async (text) => {
+			// Regression: a native pre-tool/intent-narration text carries no leak
+			// markup and no "thinking through" marker, so a denylist would let it
+			// through and the agent would falsely claim it is doing work it never
+			// did. The positive-allowlist gate (must read as an inability) rejects
+			// it → the loop throws → caller emits the generic apology, never the
+			// phantom action claim.
+			const runtime = {
+				useModel: vi.fn(async () => ({ text, toolCalls: [] })),
+				logger: { warn: vi.fn() },
+			};
 
-		await expect(
-			runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
-				requireNonTerminalToolCall: true,
-				config: { maxRequiredToolMisses: 1 },
-				executeToolCall: vi.fn(),
-				evaluate: vi.fn(),
-			}),
-		).rejects.toMatchObject({
-			name: "TrajectoryLimitExceeded",
-			kind: "required_tool_misses",
-		});
-	});
+			await expect(
+				runPlannerLoop({
+					runtime,
+					context: { id: "ctx" },
+					tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+					requireNonTerminalToolCall: true,
+					config: { maxRequiredToolMisses: 1 },
+					executeToolCall: vi.fn(),
+					evaluate: vi.fn(),
+				}),
+			).rejects.toMatchObject({
+				name: "TrajectoryLimitExceeded",
+				kind: "required_tool_misses",
+			});
+		},
+	);
 
 	it("does not surface explicit messageToUser intent-narration at required-tool exhaustion (#9874)", async () => {
 		const runtime = {
@@ -3088,6 +3102,52 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(evaluate).toHaveBeenCalled();
 	});
 
+	it("never publishes a namespaced workflow invocation after the action succeeds", async () => {
+		const leakedInvocation =
+			'call:automation:GET_WORKFLOW{workflowId: "8914e389-8cda-401e-aac0-a501286a8130"}';
+		const createdReply = "Created the workflow draft and opened it for review.";
+		const runtime = {
+			useModel: plannerJsonWith({
+				messageToUser: leakedInvocation,
+				toolCalls: [
+					{
+						name: "WORKFLOW",
+						args: {
+							action: "create",
+							seedPrompt: "Create a daily digest workflow",
+						},
+					},
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: createdReply,
+			userFacingText: createdReply,
+			verifiedUserFacing: true,
+			data: {
+				workflowId: "8914e389-8cda-401e-aac0-a501286a8130",
+			},
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The workflow action completed.",
+			messageToUser: leakedInvocation,
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.finalMessage).toBe(createdReply);
+		expect(result.finalMessage).not.toContain("call:automation:");
+	});
+
 	it("never surfaces scratch prose accompanying a STOP-only terminal", async () => {
 		// Live regression 2026-06-12 (tj-5d0d458b7ad281): after spawning a
 		// sub-agent the planner emitted STOP plus the free text "We should wait
@@ -3191,5 +3251,92 @@ describe("progress-only reply vocabulary single-sourcing", () => {
 		expect(PROGRESS_ONLY_ANSWER_REJECT.source).toContain(
 			PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 		);
+	});
+});
+
+describe("routing hints — promoted-family fallback", () => {
+	// TRIGGER is only ever exposed as promoted TRIGGER_* virtuals, which carry
+	// no routingHint of their own; the block must fall back to the umbrella
+	// parent's hint via the promotion marker and emit ONE line per family.
+	it("renders the parent's hint once for a promoted family", () => {
+		const parent = {
+			name: "TRIGGER",
+			description: "reminders",
+			routingHint: "reminders -> TRIGGER_CREATE; the reminder tool",
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+			parameters: [
+				{
+					name: "action",
+					description: "op",
+					required: true,
+					schema: { type: "string", enum: ["create", "delete"] },
+				},
+			],
+		};
+		const [createVirtual, deleteVirtual] = promoteSubactionsToActions(parent);
+		const ctx = {
+			events: [createVirtual, deleteVirtual].map((action, i) => ({
+				id: `tool-${i}`,
+				type: "tool" as const,
+				tool: { name: action.name, description: action.description, action },
+			})),
+		} as unknown as Parameters<typeof __renderRoutingHintsBlockForTests>[0];
+		const block = __renderRoutingHintsBlockForTests(ctx);
+		expect(block).toContain("# Routing hints");
+		expect(block).toContain("reminders -> TRIGGER_CREATE");
+		// One line for the whole family, not one per virtual.
+		expect((block ?? "").split("reminders -> TRIGGER_CREATE").length - 1).toBe(
+			1,
+		);
+	});
+});
+
+describe("verified widget payloads stay pure in the combine path", () => {
+	// A verified [CHOICE]/[FORM] interaction block is grammar the client
+	// renders; appending evaluator prose would corrupt the block contract, so
+	// the combine path must return the widget alone even when the evaluator
+	// also supplied grounded prose.
+	it("never appends evaluator prose to a verified interaction block", async () => {
+		const widget =
+			"[CHOICE:contact id=pick]\nvalue=Shaw\nvalue=Stan\n[/CHOICE]";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ id: "call-1", name: "MESSAGE", arguments: {} }],
+					usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+				})
+				.mockResolvedValueOnce({
+					text: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Tool asked the user to pick.",
+						messageToUser: "pick whichever contact you meant.",
+					}),
+					usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70 },
+				}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "disambiguation required",
+			userFacingText: widget,
+			verifiedUserFacing: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Tool asked the user to pick.",
+			messageToUser: "pick whichever contact you meant.",
+		}));
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(widget);
 	});
 });

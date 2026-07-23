@@ -6,22 +6,28 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { type Memory, type State, stringToUuid } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
+import { getPendingWorkflowDraftScope } from '../../../src/lib/pending-workflow-draft';
 import { activeWorkflowsProvider } from '../../../src/providers/activeWorkflows';
 import { pendingDraftProvider } from '../../../src/providers/pendingDraft';
 import { workflowStatusProvider } from '../../../src/providers/workflowStatus';
 import { WORKFLOW_SERVICE_TYPE, WorkflowService } from '../../../src/services/workflow-service';
 import type { WorkflowDefinition } from '../../../src/types';
+import { getUserTagName } from '../../../src/utils/context';
 import { type EmbeddedHarness, makeEmbeddedHarness } from '../embedded-harness';
 
 const USER_ID = stringToUuid('workflow-provider-user');
 const OTHER_USER_ID = stringToUuid('workflow-provider-other-user');
 
-function message(text = 'Test message', entityId = USER_ID): Memory {
+function message(
+  text = 'Test message',
+  entityId = USER_ID,
+  roomId = stringToUuid('workflow-provider-room')
+): Memory {
   return {
-    id: stringToUuid(`workflow-provider-message:${text}:${entityId}`),
+    id: stringToUuid(`workflow-provider-message:${text}:${entityId}:${roomId}`),
     entityId,
     agentId: stringToUuid('workflow-provider-agent'),
-    roomId: stringToUuid('workflow-provider-room'),
+    roomId,
     content: { text },
     createdAt: Date.now(),
   };
@@ -79,7 +85,7 @@ async function createOwnedWorkflow(
   integration = 'set'
 ): Promise<string> {
   const workflow = await harness.workflow.createWorkflow(workflowDefinition(name, integration));
-  const tagName = `user_${USER_ID.replace(/-/g, '').slice(0, 8)}`;
+  const tagName = await getUserTagName(harness.runtime, USER_ID);
   const tag = await harness.workflow.getOrCreateTag(tagName);
   await harness.workflow.updateWorkflowTags(workflow.id, [tag.id]);
   return workflow.id;
@@ -91,6 +97,7 @@ describe('workflow providers with real runtime services', () => {
 
   beforeEach(async () => {
     harness = await makeEmbeddedHarness(`provider-${crypto.randomUUID()}`);
+    harness.runtime.setSetting('ELIZA_ADMIN_ENTITY_ID', USER_ID);
     service = await registerWorkflowService(harness);
   });
 
@@ -105,6 +112,9 @@ describe('workflow providers with real runtime services', () => {
     expect(activeWorkflowsProvider.cacheScope).toBe('turn');
     expect(workflowStatusProvider.contextGate).toEqual({
       anyOf: ['automation', 'connectors'],
+    });
+    expect(pendingDraftProvider.contextGate).toEqual({
+      anyOf: ['general', 'automation', 'tasks', 'connectors'],
     });
     expect(pendingDraftProvider.cacheScope).toBe('conversation');
   });
@@ -261,39 +271,67 @@ describe('workflow providers with real runtime services', () => {
   });
 
   test('reads pending drafts through the real runtime cache', async () => {
-    await harness.runtime.setCache(`workflow_draft:${USER_ID}`, {
-      workflow: workflowDefinition('Gmail to Telegram'),
+    const pendingMessage = message('yes');
+    const scope = getPendingWorkflowDraftScope(pendingMessage, USER_ID);
+    await harness.runtime.setCache(scope.cacheKey, {
+      workflow: {
+        ...workflowDefinition('Gmail to Telegram'),
+        _meta: {
+          requiresClarification: [
+            {
+              kind: 'recipient',
+              question: 'Who should receive it?',
+              paramPath: 'nodes["Set"].parameters.recipient',
+            },
+          ],
+        },
+      },
       prompt: 'Send gmail to telegram',
       userId: USER_ID,
       createdAt: Date.now(),
     });
 
-    const result = await pendingDraftProvider.get(harness.runtime, message('yes'), state());
+    const result = await pendingDraftProvider.get(harness.runtime, pendingMessage, state());
 
     expect(result.text).toContain('Gmail to Telegram');
     expect(result.text).toContain('Manual Trigger');
-    expect(result.data).toEqual({ hasPendingDraft: true, truncated: false });
+    expect(result.text).toContain('Who should receive it?');
+    expect(result.text).toContain('nodes["Set"].parameters.recipient');
+    expect(result.data).toEqual({
+      hasPendingDraft: true,
+      workflowName: 'Gmail to Telegram',
+      clarifications: [
+        expect.objectContaining({
+          question: 'Who should receive it?',
+          paramPath: 'nodes["Set"].parameters.recipient',
+        }),
+      ],
+      truncated: false,
+    });
     expect(result.values).toEqual({ hasPendingDraft: true });
   });
 
-  test('distinguishes missing, expired, and other-user drafts', async () => {
+  test('distinguishes missing, expired, and other-conversation drafts', async () => {
     const missing = await pendingDraftProvider.get(harness.runtime, message(), state());
     expect(missing).toEqual({ text: '', data: {}, values: {} });
 
-    await harness.runtime.setCache(`workflow_draft:${USER_ID}`, {
+    const currentMessage = message();
+    const scope = getPendingWorkflowDraftScope(currentMessage, USER_ID);
+    await harness.runtime.setCache(scope.cacheKey, {
       workflow: workflowDefinition('Expired workflow'),
       prompt: 'test',
       userId: USER_ID,
       createdAt: Date.now() - 31 * 60 * 1000,
     });
 
-    const expired = await pendingDraftProvider.get(harness.runtime, message(), state());
-    const otherUser = await pendingDraftProvider.get(
+    const expired = await pendingDraftProvider.get(harness.runtime, currentMessage, state());
+    const otherConversation = await pendingDraftProvider.get(
       harness.runtime,
-      message('yes', OTHER_USER_ID),
+      message('yes', OTHER_USER_ID, stringToUuid('workflow-provider-other-room')),
       state()
     );
     expect(expired).toEqual({ text: '', data: {}, values: {} });
-    expect(otherUser).toEqual({ text: '', data: {}, values: {} });
+    expect(await harness.runtime.getCache(scope.cacheKey)).toBeUndefined();
+    expect(otherConversation).toEqual({ text: '', data: {}, values: {} });
   });
 });

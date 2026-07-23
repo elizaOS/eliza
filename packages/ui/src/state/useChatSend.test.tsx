@@ -699,7 +699,7 @@ describe("useChatSend always streams (#9174)", () => {
   });
 });
 
-describe("useChatSend VIEWS action handoff", () => {
+describe("useChatSend action handoff", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.client.getBaseUrl.mockReturnValue("");
@@ -766,6 +766,103 @@ describe("useChatSend VIEWS action handoff", () => {
       viewType: "gui",
     });
     expect(deps.setActionNotice).not.toHaveBeenCalled();
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
+  it("opens a workflow created by a completed chat action", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: 'Created workflow "Daily digest".',
+      completed: true,
+      actionResults: [
+        {
+          actionName: "WORKFLOW",
+          success: true,
+          values: {
+            workflowId: "workflow-daily-digest",
+            workflowName: "Daily digest",
+          },
+        },
+      ],
+    });
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("create a daily digest workflow", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(navigations[0]?.detail).toEqual({
+      viewId: "automations",
+      viewPath: "/automations#automations/workflow-daily-digest",
+    });
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
+  it("keeps VIEWS navigation authoritative when a turn also returns a workflow id", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Opening Calendar.",
+      completed: true,
+      actionResults: [
+        {
+          actionName: "WORKFLOW",
+          success: true,
+          values: { workflowId: "workflow-secondary" },
+        },
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "calendar" },
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              currentView: {
+                viewId: "calendar",
+                viewPath: "/calendar",
+                viewLabel: "Calendar",
+                viewType: "gui",
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      ),
+    );
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("open the calendar after creating it", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(navigations[0]?.detail).toMatchObject({
+      viewId: "calendar",
+      viewPath: "/calendar",
+    });
     window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
   });
 
@@ -2099,6 +2196,71 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
       ),
     ).toBe(true);
     expect(undeliveredTurns(deps)).toHaveLength(1);
+  });
+});
+
+describe("useChatSend — sendActionMessage cold-open defers the create like the fixed send path (#16665)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Complete the send cleanly so the cold-open create path is the only
+    // thing under test (a resolved stream, no notice, no retry).
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "ok",
+      completed: true,
+    } as never);
+  });
+
+  it("skips the redundant client.createConversation round trip on a shared-agent base", async () => {
+    // Shared base: the server POST handler ignores the body, so
+    // createConversationForFirstSend synthesizes the canonical record locally.
+    mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
+    // Cold open: no active conversation, so sendActionMessage takes the create
+    // branch (`if (!convId)`).
+    const deps = makeDeps({
+      activeConversationId: null,
+      conversations: [],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("run the report");
+    });
+
+    // The bug: sendActionMessage used to call client.createConversation here,
+    // re-introducing the exact cold Worker/Hyperdrive round trip #16619 removed
+    // from the ordinary send path. It must now be zero on a shared base.
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    // The synthesized shared conversation is adopted as active (id === agentId).
+    expect(deps.setActiveConversationId).toHaveBeenCalledWith("agent-123");
+    // No failure notice on the happy path.
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("still creates on a dedicated base and forwards the action title to the REST fallback", async () => {
+    // Dedicated base: no shared-agent id, so the real REST create runs and the
+    // action title must reach it.
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    mocks.client.createConversation.mockResolvedValue({
+      conversation: conversation("conv-new", "room-new"),
+    });
+    const deps = makeDeps({
+      activeConversationId: null,
+      conversations: [],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("run the report");
+    });
+
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    // Title forwarded as the first arg; language options as the second.
+    expect(mocks.client.createConversation).toHaveBeenCalledWith(
+      "run the report",
+      { lang: "en" },
+    );
+    expect(deps.setActiveConversationId).toHaveBeenCalledWith("conv-new");
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
   });
 });
 

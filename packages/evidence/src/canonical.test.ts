@@ -52,15 +52,18 @@ describe("canonicalJson", () => {
     ["Set", new Set([1])],
     ["class instance", new (class Payload {})()],
     ["nested non-plain object", { outer: new Date(0) }],
-  ])("throws CANONICAL_UNSERIALIZABLE for non-plain object %s", (_label, value) => {
-    try {
-      canonicalJson(value);
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(EvidenceError);
-      expect((error as EvidenceError).code).toBe("CANONICAL_UNSERIALIZABLE");
-    }
-  });
+  ])(
+    "throws CANONICAL_UNSERIALIZABLE for non-plain object %s",
+    (_label, value) => {
+      try {
+        canonicalJson(value);
+        expect.unreachable("should have thrown");
+      } catch (error) {
+        expect(error).toBeInstanceOf(EvidenceError);
+        expect((error as EvidenceError).code).toBe("CANONICAL_UNSERIALIZABLE");
+      }
+    },
+  );
 
   it("accepts plain objects and null-prototype objects", () => {
     expect(canonicalJson({ a: 1 })).toBe('{"a":1}');

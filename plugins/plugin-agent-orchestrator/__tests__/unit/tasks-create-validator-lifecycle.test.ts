@@ -224,28 +224,28 @@ describe("TASKS create validator lifecycle", () => {
     });
   });
 
-  it.each([
-    "cancelled",
-    "stopped",
-  ])("reports a %s PromptResult as failed instead of completed", async (stopReason) => {
-    const harness = await createHarness({ stopReason });
-    const result = await harness.invoke({
-      action: "create",
-      task: "Create the proof view",
-      workdir: "/tmp",
-    });
+  it.each(["cancelled", "stopped"])(
+    "reports a %s PromptResult as failed instead of completed",
+    async (stopReason) => {
+      const harness = await createHarness({ stopReason });
+      const result = await harness.invoke({
+        action: "create",
+        task: "Create the proof view",
+        workdir: "/tmp",
+      });
 
-    expect(result?.success).toBe(false);
-    expect(result?.data).toMatchObject({
-      agents: [expect.objectContaining({ status: "failed" })],
-    });
-    expect(
-      harness.emitSessionEvent.mock.calls.filter(
-        ([, event]) => event === "task_complete",
-      ),
-    ).toHaveLength(0);
-    expect(harness.stopSession).toHaveBeenCalledOnce();
-  });
+      expect(result?.success).toBe(false);
+      expect(result?.data).toMatchObject({
+        agents: [expect.objectContaining({ status: "failed" })],
+      });
+      expect(
+        harness.emitSessionEvent.mock.calls.filter(
+          ([, event]) => event === "task_complete",
+        ),
+      ).toHaveLength(0);
+      expect(harness.stopSession).toHaveBeenCalledOnce();
+    },
+  );
 
   it("bridges a legacy PromptResult error into exactly one error event", async () => {
     const harness = await createHarness(

@@ -99,6 +99,24 @@ afterEach(() => {
 });
 
 describe("LauncherSurface", () => {
+  it("supports full-page and embedded layouts without duplicating chat clearance", () => {
+    const { rerender } = render(<LauncherSurface />);
+    const surface = screen.getByTestId("launcher-surface");
+    expect(surface.getAttribute("data-layout")).toBe("page");
+    expect(surface.className).toContain("absolute");
+    expect(surface.className).toContain("--eliza-continuous-chat-clearance");
+
+    rerender(<LauncherSurface layout="embedded" />);
+    expect(surface.getAttribute("data-layout")).toBe("embedded");
+    expect(surface.className).toContain("relative");
+    expect(surface.className).not.toContain(
+      "--eliza-continuous-chat-clearance",
+    );
+    expect(screen.getByTestId("launcher-page-window").className).toContain(
+      "overflow-visible",
+    );
+  });
+
   it("shows curated apps and hides removed/shell/sub-view surfaces", () => {
     render(<LauncherSurface />);
 

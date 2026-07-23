@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Mind2Web Benchmark CLI for ElizaOS.
+Mind2Web benchmark CLI for elizaOS.
 
 Examples:
   # Run with the Eliza TypeScript bridge
@@ -50,40 +50,37 @@ def _maybe_load_dotenv() -> None:
     try:
         from dotenv import find_dotenv, load_dotenv  # type: ignore[import-not-found]
     except ImportError:
+        # error-policy:J4 dotenv support is optional; process env remains explicit.
         return
 
-    try:
-        # Try benchmark-specific env file
-        local_env = Path(__file__).resolve().parent / ".env.mind2web"
-        if local_env.exists():
-            load_dotenv(local_env, override=False)
+    local_env = Path(__file__).resolve().parent / ".env.mind2web"
+    if local_env.exists():
+        load_dotenv(local_env, override=False)
 
-        # Try workspace .env
-        env_path = find_dotenv(usecwd=True)
-        if env_path:
-            load_dotenv(env_path, override=False)
-    except Exception:
-        pass
+    env_path = find_dotenv(usecwd=True)
+    if env_path:
+        load_dotenv(env_path, override=False)
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Mind2Web Benchmark CLI for ElizaOS",
+        description="Mind2Web benchmark CLI for elizaOS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
 
     # Data source
-    parser.add_argument(
+    data_source = parser.add_mutually_exclusive_group()
+    data_source.add_argument(
         "--sample",
         action="store_true",
         help="Use built-in sample tasks (default, no HuggingFace needed)",
     )
-    parser.add_argument(
+    data_source.add_argument(
         "--hf",
         action="store_true",
-        help="Load tasks from HuggingFace (requires datasets package)",
+        help="Load the pinned official encrypted test archive from Hugging Face",
     )
     parser.add_argument(
         "--split",
@@ -126,6 +123,18 @@ def parse_args() -> argparse.Namespace:
         "--validate-scenarios",
         action="store_true",
         help="Validate selected scenarios and exit",
+    )
+    parser.add_argument(
+        "--expected-tasks",
+        type=int,
+        default=None,
+        help="Fail unless the selected official split contains exactly this many base tasks",
+    )
+    parser.add_argument(
+        "--expected-scenarios",
+        type=int,
+        default=None,
+        help="Fail unless expansion produces exactly this many task scenarios",
     )
 
     # Output
@@ -212,8 +221,8 @@ def parse_args() -> argparse.Namespace:
         default="real",
         help=(
             "Stage-1 candidate ranker mode (default: real). "
-            "'real' = DeBERTa-v3 cross-encoder (leaderboard-comparable, "
-            "downloads ~750MB on first run). "
+            "'real' = checksum-pinned released DeBERTa-v3 candidate scores "
+            "(publishable cohort mode). "
             "'oracle' = pass GT positives + negatives straight to the LLM "
             "(upper bound; NOT leaderboard-comparable). "
             "'none' = no filtering, full DOM candidate pool."
@@ -233,6 +242,12 @@ def parse_args() -> argparse.Namespace:
             "Override HF model id / local path of the DeBERTa cross-encoder "
             "(default: osunlp/MindAct_CandidateGeneration_deberta-v3-base)."
         ),
+    )
+    parser.add_argument(
+        "--ranker-revision",
+        type=str,
+        default=None,
+        help="Pinned Hugging Face revision for the candidate ranker",
     )
     parser.add_argument(
         "--ranker-device",
@@ -292,7 +307,12 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
         "oracle": Mind2WebRankerMode.ORACLE,
         "none": Mind2WebRankerMode.NONE,
     }
-    ranker_mode = ranker_mode_map[args.ranker]
+    # Mock mode replays the annotated action and therefore also has oracle
+    # candidate recall. Reporting the requested production ranker here would
+    # make a smoke artifact look as though it exercised MindAct stage 1.
+    ranker_mode = (
+        Mind2WebRankerMode.ORACLE if args.mock else ranker_mode_map[args.ranker]
+    )
 
     return Mind2WebConfig(
         output_dir=output_dir,
@@ -301,6 +321,8 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
         num_trials=max(1, args.trials),
         max_steps_per_task=max(1, args.max_steps),
         include_edge_scenarios=args.expand_scenarios,
+        expected_tasks=args.expected_tasks,
+        expected_scenarios=args.expected_scenarios,
         timeout_ms=max(1000, args.timeout),
         use_mock=bool(args.mock),
         model_provider=provider,
@@ -315,6 +337,7 @@ def create_config(args: argparse.Namespace) -> Mind2WebConfig:
         ranker_mode=ranker_mode,
         ranker_top_k=max(1, args.ranker_top_k),
         ranker_model=args.ranker_model,
+        ranker_revision=args.ranker_revision,
         ranker_device=args.ranker_device,
     )
 
@@ -356,13 +379,11 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Default to sample if neither sample nor hf specified
     use_sample = args.sample
     use_huggingface = args.hf
 
     if not use_sample and not use_huggingface:
-        use_sample = True
-        logger.info("Using sample tasks (use --hf to load from HuggingFace)")
+        raise SystemExit("select --hf for a real run or --sample for an explicit smoke run")
 
     config = create_config(args)
 
@@ -371,8 +392,17 @@ def main() -> int:
         asyncio.run(dataset.load(use_huggingface=use_huggingface, use_sample=use_sample))
         base_tasks = dataset.get_tasks(limit=config.max_tasks)
         tasks = expand_tasks(base_tasks) if config.include_edge_scenarios else base_tasks
-        if args.validate_scenarios:
-            validate_tasks(tasks)
+        validate_tasks(tasks)
+        if config.expected_tasks is not None and len(base_tasks) != config.expected_tasks:
+            raise RuntimeError(
+                f"Mind2Web base task count mismatch: expected {config.expected_tasks}, "
+                f"got {len(base_tasks)}"
+            )
+        if config.expected_scenarios is not None and len(tasks) != config.expected_scenarios:
+            raise RuntimeError(
+                f"Mind2Web scenario count mismatch: expected {config.expected_scenarios}, "
+                f"got {len(tasks)}"
+            )
         print(
             json.dumps(
                 {

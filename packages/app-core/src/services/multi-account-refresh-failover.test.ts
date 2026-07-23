@@ -351,30 +351,35 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
   it.each([
     [401, "needs-reauth"],
     [429, "rate-limited"],
-  ] as const)("classifies an HTTP %i usage rejection as %s", async (status, expectedHealth) => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("rejected", { status })),
-    );
-    writeAccount(
-      "openai-codex",
-      "codex-work",
-      {
-        access: fakeJwt(Date.now() + HOUR_MS),
-        refresh: "rt-valid",
-        expires: Date.now() + HOUR_MS,
-      },
-      { organizationId: "org-work" },
-    );
+  ] as const)(
+    "classifies an HTTP %i usage rejection as %s",
+    async (status, expectedHealth) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("rejected", { status })),
+      );
+      writeAccount(
+        "openai-codex",
+        "codex-work",
+        {
+          access: fakeJwt(Date.now() + HOUR_MS),
+          refresh: "rt-valid",
+          expires: Date.now() + HOUR_MS,
+        },
+        { organizationId: "org-work" },
+      );
 
-    const pool = getDefaultAccountPool();
-    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
-      checked: 1,
-      refreshed: 0,
-      failed: 1,
-    });
-    expect(pool.get("codex-work", "openai-codex")?.health).toBe(expectedHealth);
-  });
+      const pool = getDefaultAccountPool();
+      await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+        checked: 1,
+        refreshed: 0,
+        failed: 1,
+      });
+      expect(pool.get("codex-work", "openai-codex")?.health).toBe(
+        expectedHealth,
+      );
+    },
+  );
 
   it("heals a flagged direct-API account after its stored credential resolves", async () => {
     writeAccount("anthropic-api", "direct-work", {

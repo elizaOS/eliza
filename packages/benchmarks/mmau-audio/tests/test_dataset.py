@@ -13,6 +13,7 @@ from elizaos_mmau_audio.dataset import (
     MMAUDataset,
     count_samples,
     expand_samples,
+    validate_audio_sources,
     validate_samples,
 )
 from elizaos_mmau_audio.types import MMAUCategory
@@ -198,3 +199,16 @@ def test_missing_fixture_raises(tmp_path: Path) -> None:
     ds = MMAUDataset(fixture_path=tmp_path / "missing.jsonl")
     with pytest.raises(FileNotFoundError):
         asyncio.run(ds.load(use_fixture=True))
+
+
+def test_dataset_requires_an_explicit_source() -> None:
+    ds = MMAUDataset()
+    with pytest.raises(ValueError, match="explicit Hugging Face or fixture source"):
+        asyncio.run(ds.load(use_fixture=False, use_huggingface=False))
+
+
+def test_audio_validation_rejects_upstream_rows_without_audio() -> None:
+    ds = MMAUDataset()
+    asyncio.run(ds.load(use_fixture=True, max_samples=1))
+    with pytest.raises(ValueError, match="no usable audio source"):
+        validate_audio_sources(ds.get_samples())

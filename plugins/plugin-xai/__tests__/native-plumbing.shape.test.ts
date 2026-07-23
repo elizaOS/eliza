@@ -242,15 +242,20 @@ describe("xAI native text plumbing", () => {
       { prompt: "hi", stopSequences: ["ok", 1] },
       "stopSequences must be an array of strings",
     ],
-  ])("rejects hostile text generation params before fetch %#", async (params, message) => {
-    const fetchMock = vi.fn();
-    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+  ])(
+    "rejects hostile text generation params before fetch %#",
+    async (params, message) => {
+      const fetchMock = vi.fn();
+      vi.spyOn(globalThis, "fetch").mockImplementation(
+        fetchMock as typeof fetch,
+      );
 
-    await expect(
-      handleTextSmall(createRuntime(), params as never),
-    ).rejects.toThrow(message);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      await expect(
+        handleTextSmall(createRuntime(), params as never),
+      ).rejects.toThrow(message);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("clamps temperature while preserving valid generation options", async () => {
     const fetchMock = vi.fn(
@@ -413,21 +418,22 @@ describe("xAI native text plumbing", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    {},
-    { text: 42 },
-    { text: "\t" },
-  ])("rejects malformed embedding params before fetch %#", async (params) => {
-    const fetchMock = vi.fn();
-    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+  it.each([{}, { text: 42 }, { text: "\t" }])(
+    "rejects malformed embedding params before fetch %#",
+    async (params) => {
+      const fetchMock = vi.fn();
+      vi.spyOn(globalThis, "fetch").mockImplementation(
+        fetchMock as typeof fetch,
+      );
 
-    await expect(
-      handleTextEmbedding(createRuntime(), params as never),
-    ).rejects.toThrow(
-      /Embedding text must be a string|Empty text provided for embedding/,
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+      await expect(
+        handleTextEmbedding(createRuntime(), params as never),
+      ).rejects.toThrow(
+        /Embedding text must be a string|Empty text provided for embedding/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("creates embeddings and emits usage", async () => {
     const fetchMock = vi.fn(

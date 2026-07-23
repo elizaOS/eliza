@@ -11,7 +11,7 @@ import path from "node:path";
 import semver from "semver";
 import { listPackages } from "./workspaces.mjs";
 
-export const RELEASE_PLAN_SCHEMA_VERSION = 1;
+export const RELEASE_PLAN_SCHEMA_VERSION = 2;
 export const RELEASE_STATE_SCHEMA_VERSION = 1;
 
 export const RELEASE_PHASES = Object.freeze([
@@ -117,17 +117,90 @@ export function validateCommitSha(value, fieldName) {
   return value.toLowerCase();
 }
 
+export function validateGitHubRepository(repository) {
+  if (
+    typeof repository !== "string" ||
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)
+  ) {
+    throw new Error(`Invalid GitHub repository ${JSON.stringify(repository)}`);
+  }
+  return repository;
+}
+
+export function validateSourceRef(sourceRef) {
+  if (
+    typeof sourceRef !== "string" ||
+    !sourceRef.startsWith("refs/heads/") ||
+    sourceRef.length > 255 ||
+    sourceRef.endsWith("/") ||
+    sourceRef.endsWith(".") ||
+    sourceRef.includes("..") ||
+    sourceRef.includes("@{") ||
+    [...sourceRef].some(
+      (character) =>
+        character.charCodeAt(0) <= 0x20 || "~^:?*\\[]".includes(character),
+    ) ||
+    sourceRef
+      .slice("refs/heads/".length)
+      .split("/")
+      .some((component) => component.length === 0 || component.startsWith("."))
+  ) {
+    throw new Error(
+      `Release source ref must be a canonical branch ref, received ${JSON.stringify(sourceRef)}`,
+    );
+  }
+  return sourceRef;
+}
+
+export function validateRegistryUrl(registryUrl) {
+  let parsed;
+  try {
+    parsed = new URL(registryUrl);
+  } catch (error) {
+    // error-policy:J2 the release identity retains its malformed registry input
+    throw new Error(`Invalid registry URL ${registryUrl}`, { cause: error });
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Registry URL must use http or https: ${registryUrl}`);
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("Registry URL must not contain credentials");
+  }
+  parsed.hash = "";
+  parsed.search = "";
+  if (!parsed.pathname.endsWith("/")) parsed.pathname += "/";
+  return parsed.toString();
+}
+
+export function validateNpmPublisher(publisher) {
+  if (
+    typeof publisher !== "string" ||
+    !/^[a-z0-9][a-z0-9._-]{0,213}$/.test(publisher)
+  ) {
+    throw new Error(`Invalid npm publisher ${JSON.stringify(publisher)}`);
+  }
+  return publisher;
+}
+
 export function validateReleaseIdentity({
   version,
   channel,
   sourceSha,
   expectedCommit,
+  repository,
+  sourceRef,
+  registry,
+  publisher,
 }) {
   const identity = {
     version: validateExactVersion(version),
     channel: validateReleaseChannel(channel),
     sourceSha: validateCommitSha(sourceSha, "sourceSha"),
     expectedCommit: validateCommitSha(expectedCommit, "expectedCommit"),
+    repository: validateGitHubRepository(repository),
+    sourceRef: validateSourceRef(sourceRef),
+    registry: validateRegistryUrl(registry),
+    publisher: validateNpmPublisher(publisher),
   };
   if (identity.sourceSha !== identity.expectedCommit) {
     throw new Error(
@@ -137,21 +210,62 @@ export function validateReleaseIdentity({
   return identity;
 }
 
-export function deriveReleaseCandidateTag(identity, packageNames) {
+export function deriveReleaseCohortIntegrity(
+  identity,
+  { packages, publishOrder, dependencyGraph },
+) {
   const validatedIdentity = validateReleaseIdentity(identity);
   if (
-    !Array.isArray(packageNames) ||
-    packageNames.length === 0 ||
-    packageNames.some(
-      (name) => typeof name !== "string" || name.length === 0,
-    ) ||
-    new Set(packageNames).size !== packageNames.length
+    !Array.isArray(packages) ||
+    packages.length === 0 ||
+    !Array.isArray(publishOrder) ||
+    !dependencyGraph ||
+    typeof dependencyGraph !== "object" ||
+    Array.isArray(dependencyGraph)
   ) {
-    throw new Error("Candidate tag requires unique package names");
+    throw new Error(
+      "Cohort integrity requires package and dependency metadata",
+    );
+  }
+  const packageSubjects = packages.map((packageRecord) => {
+    if (
+      typeof packageRecord?.name !== "string" ||
+      typeof packageRecord.version !== "string" ||
+      typeof packageRecord.manifest?.integrity !== "string" ||
+      typeof packageRecord.tarball?.integrity !== "string" ||
+      !Number.isSafeInteger(packageRecord.tarball?.size)
+    ) {
+      throw new Error("Cohort integrity requires complete package subjects");
+    }
+    return {
+      name: packageRecord.name,
+      version: packageRecord.version,
+      manifestIntegrity: packageRecord.manifest.integrity,
+      tarballIntegrity: packageRecord.tarball.integrity,
+      tarballSize: packageRecord.tarball.size,
+    };
+  });
+  return sha512Integrity(
+    stableStringify({
+      identity: validatedIdentity,
+      packages: packageSubjects,
+      publishOrder,
+      dependencyGraph,
+    }),
+  );
+}
+
+export function deriveReleaseCandidateTag(identity, cohortIntegrity) {
+  const validatedIdentity = validateReleaseIdentity(identity);
+  if (
+    typeof cohortIntegrity !== "string" ||
+    !/^sha512-[A-Za-z0-9+/]{86}==$/.test(cohortIntegrity)
+  ) {
+    throw new Error("Candidate tag requires the exact cohort integrity");
   }
   const seed = stableStringify({
     identity: validatedIdentity,
-    packageNames,
+    cohortIntegrity,
   });
   return `eliza-candidate-${sha512Hex(seed).slice(0, 16)}`;
 }
@@ -418,7 +532,11 @@ export function validateReleasePlan(plan) {
     plan.version !== identity.version ||
     plan.channel !== identity.channel ||
     plan.sourceSha !== identity.sourceSha ||
-    plan.expectedCommit !== identity.expectedCommit
+    plan.expectedCommit !== identity.expectedCommit ||
+    plan.repository !== identity.repository ||
+    plan.sourceRef !== identity.sourceRef ||
+    plan.registry !== identity.registry ||
+    plan.publisher !== identity.publisher
   ) {
     throw new Error("Release plan identity is not canonical");
   }
@@ -447,11 +565,6 @@ export function validateReleasePlan(plan) {
   ) {
     throw new Error("Release plan package order is malformed");
   }
-  if (plan.candidateTag !== deriveReleaseCandidateTag(identity, packageNames)) {
-    throw new Error("Release plan candidate tag does not match its identity");
-  }
-  validateReleaseChannel(plan.candidateTag);
-
   const cohort = new Set(packageNames);
   const tarballNames = new Set();
   for (const packageRecord of plan.packages) {
@@ -561,6 +674,22 @@ export function validateReleasePlan(plan) {
   ) {
     throw new Error("Release dependency order does not match its graph");
   }
+  const cohortIntegrity = deriveReleaseCohortIntegrity(identity, {
+    packages: plan.packages,
+    publishOrder: plan.publishOrder,
+    dependencyGraph: plan.dependencyGraph,
+  });
+  if (plan.cohortIntegrity !== cohortIntegrity) {
+    throw new Error(
+      "Release plan cohort integrity does not match its subjects",
+    );
+  }
+  if (
+    plan.candidateTag !== deriveReleaseCandidateTag(identity, cohortIntegrity)
+  ) {
+    throw new Error("Release plan candidate tag does not match its identity");
+  }
+  validateReleaseChannel(plan.candidateTag);
   return plan;
 }
 

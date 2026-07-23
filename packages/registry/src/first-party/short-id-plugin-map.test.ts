@@ -33,6 +33,7 @@ const expectedShortIdPluginMap = {
   evm: "@elizaos/plugin-wallet",
   form: "@elizaos/plugin-form",
   polymarket: "@elizaos/plugin-polymarket",
+  selfcontrol: "@elizaos/plugin-personal-assistant",
   solana: "@elizaos/plugin-wallet",
   vision: "@elizaos/plugin-vision",
   wallet: "@elizaos/plugin-wallet",

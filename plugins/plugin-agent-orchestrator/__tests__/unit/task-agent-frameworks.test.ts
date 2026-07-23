@@ -190,6 +190,47 @@ describe("getTaskAgentFrameworkState", () => {
     ).toBe(true);
   });
 
+  it("fails Pi Agent readiness closed when a configured ACP command is missing", async () => {
+    writeExecutable(path.join(tempHome, "pi-agent"));
+    setEnv({
+      ELIZA_PI_AGENT_ACP_COMMAND: "missing-pi-agent-acp --stdio",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "pi-agent")?.installed,
+    ).toBe(false);
+  });
+
+  it("rejects a configured Pi Agent ACP command when the file is not executable", async () => {
+    const commandPath = path.join(tempHome, "pi-agent-acp");
+    fs.writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");
+    fs.chmodSync(commandPath, 0o644);
+    setEnv({
+      ELIZA_PI_AGENT_ACP_COMMAND: "pi-agent-acp --stdio",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "pi-agent")?.installed,
+    ).toBe(false);
+  });
+
+  it("accepts a configured Pi Agent ACP shell command when the leading executable exists", async () => {
+    writeExecutable(path.join(tempHome, "pi-agent-acp"));
+    setEnv({
+      ELIZA_PI_AGENT_ACP_COMMAND: "pi-agent-acp --stdio --flag value",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "pi-agent")?.installed,
+    ).toBe(true);
+  });
+
   it("does not treat a Cerebras-mirrored OpenAI key as Codex auth", async () => {
     setEnv({
       BENCHMARK_MODEL_PROVIDER: "cerebras",

@@ -57,15 +57,14 @@ describe("resume-context: buildResumeContext", () => {
     });
   });
 
-  it.each([
-    "rate-limited",
-    "needs-reauth",
-    "capacity",
-  ] as const)("carries the %s reason through", (reason) => {
-    const ctx = buildResumeContext({ reason, ...BASE });
-    expect(ctx.reason).toBe(reason);
-    expect(resumeEventFields(ctx).resumeReason).toBe(reason);
-  });
+  it.each(["rate-limited", "needs-reauth", "capacity"] as const)(
+    "carries the %s reason through",
+    (reason) => {
+      const ctx = buildResumeContext({ reason, ...BASE });
+      expect(ctx.reason).toBe(reason);
+      expect(resumeEventFields(ctx).resumeReason).toBe(reason);
+    },
+  );
 
   it("dedupes and caps changedFiles, trimming blanks", () => {
     const many = Array.from(

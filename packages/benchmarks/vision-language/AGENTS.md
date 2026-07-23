@@ -17,7 +17,7 @@ TEXTVQA_DATA_DIR=/data/textvqa      bun run start -- --tier eliza-1-9b --benchma
 DOCVQA_DATA_DIR=/data/docvqa        bun run start -- --tier eliza-1-9b --benchmark docvqa     --samples 5349
 CHARTQA_DATA_DIR=/data/chartqa      bun run start -- --tier eliza-1-9b --benchmark chartqa    --samples 2500
 SCREENSPOT_DATA_DIR=/data/screenspot bun run start -- --tier eliza-1-9b --benchmark screenspot --samples 1272
-OSWORLD_DATA_DIR=/data/osworld      bun run start -- --tier eliza-1-9b --benchmark osworld    --samples 369
+# Full OSWorld runs through packages/benchmarks/OSWorld, not this smoke adapter.
 
 # Through the suite orchestrator
 python -m benchmarks.orchestrator run --benchmarks vision_language --provider <p> --model <m>
@@ -58,7 +58,9 @@ bun run test      # vitest run
 
 - Results write to `results/<tier>-<benchmark>-<date>.json` (gitignored).
 - Scored by `_score_from_vision_language_json` in `registry/scores.py`.
-- OSWorld full runs require the OSWorld VM image; see `plugins/plugin-computeruse/src/osworld/`.
+- The OSWorld adapter here is smoke-only. Full runs use `packages/benchmarks/OSWorld` with a real VM provider and final-state evaluator.
+- Full dataset runs require exactly the requested rows and images and abort on any prediction error; partial reports are not emitted.
+- OpenClaw vision rows are N/A until its isolated embedded runtime preserves native image input.
 - `baseline_score` is sourced from `baselines.json`; `delta = score - baseline_score`.
 - Full background: [README.md](README.md).
 

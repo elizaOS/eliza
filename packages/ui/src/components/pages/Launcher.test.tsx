@@ -82,6 +82,28 @@ describe("Launcher", () => {
     expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
   });
 
+  it("scrolls vertically without visible scrollbar chrome and adapts narrow grids", () => {
+    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    const page = screen.getByTestId("launcher-page-window");
+    expect(page.className).toContain("overflow-y-auto");
+    expect(page.className).toContain("overscroll-y-contain");
+    expect(page.className).toContain("scrollbar-hide");
+    expect(page.className).toContain("[scrollbar-width:none]");
+    expect(page.className).toContain("[&::-webkit-scrollbar]:hidden");
+    const grid = page.querySelector(".grid");
+    expect(grid?.className).toContain("grid-cols-3");
+    expect(grid?.className).toContain("min-[360px]:grid-cols-4");
+    expect(grid?.className).toContain("sm:grid-cols-5");
+  });
+
+  it("renders at natural height when embedded in Home's app scroller", () => {
+    render(<Launcher entries={FEW} onLaunch={() => {}} embedded />);
+    const page = screen.getByTestId("launcher-page-window");
+    expect(page.className).toContain("overflow-visible");
+    expect(page.className).not.toContain("overflow-y-auto");
+    expect(screen.getByTestId("launcher").className).not.toContain("flex-1");
+  });
+
   it("marks preview and developer tiles without changing release tiles", () => {
     const entries = [
       entry("settings", "Settings"),
@@ -97,10 +119,12 @@ describe("Launcher", () => {
     expect(screen.getByTestId("launcher-kind-trace").textContent).toBe("Dev");
   });
 
-  it("launches a view on tap and emits a single launch telemetry event", () => {
+  it("launches from the visible label and emits a single launch telemetry event", () => {
     const onLaunch = vi.fn();
     render(<Launcher entries={FEW} onLaunch={onLaunch} />);
-    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    // The name and icon are one coherent button, so the visible label is part
+    // of the same tap target instead of dead space beneath the icon.
+    fireEvent.click(screen.getByText("Chat"));
     expect(onLaunch).toHaveBeenCalledTimes(1);
     expect(onLaunch.mock.calls[0][0].id).toBe("chat");
 
@@ -113,6 +137,9 @@ describe("Launcher", () => {
 
   it("renders the loading skeleton while the catalog is empty", () => {
     render(<Launcher entries={[]} loading onLaunch={() => {}} />);
+    expect(screen.getByTestId("launcher").getAttribute("aria-busy")).toBe(
+      "true",
+    );
     // No real tiles while loading with an empty catalog.
     expect(
       screen

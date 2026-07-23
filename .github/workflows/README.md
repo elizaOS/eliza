@@ -13,8 +13,9 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `quality.yml` | PR to main, push main/develop, manual | Extended format, type-safety, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
-| `release.yaml` | Beta tag, release created, manual | NPM publishing; transactional repair is tracked in [#16277](https://github.com/elizaOS/eliza/issues/16277) |
-| `release-orchestrator.yml` | Release published, reusable, manual | Cross-platform distribution; sole-coordinator repair is tracked in [#16279](https://github.com/elizaOS/eliza/issues/16279) |
+| `release-orchestrator.yml` | Manual on protected `develop` | Sole full-cohort npm/GitHub Release entry; exact-SHA gate before distribution fan-out |
+| `release.yaml` | Reusable call only | Exact-SHA transactional npm, tag, and GitHub release |
+| `release-candidate-pr.yml` | PRs changing release authority | Credential-free candidate plus real local transport receipts |
 | `elizaos-os-full-release.yml` | Release created, manual | Configured automatic OS artifact/manifest path; currently startup-invalid |
 | `update-os-release-manifest.yml` | Manual only | SHA- and exact-asset-bound OS manifest recovery through a draft pull request |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
@@ -34,45 +35,50 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 ## Release Workflows
 
 The retained automated graph has three distinct responsibilities:
-`release.yaml` owns npm publishing, `release-orchestrator.yml` coordinates
-post-release distribution, and `elizaos-os-full-release.yml` is the only
-configured automatic OS artifact/manifest path. The manual
+`release-orchestrator.yml` is the sole full-cohort entry point,
+`release.yaml` performs the transactional npm/tag/GitHub Release operation,
+and `elizaos-os-full-release.yml` is the only configured automatic OS
+artifact/manifest path. The manual
 `update-os-release-manifest.yml` recovery workflow is intentionally outside
 that graph: it can only propose a SHA-bound checksum repair through a pull
 request. Do not add another automatic aggregate or direct protected-branch
 manifest writer.
 
-These workflows remain under active hardening. The immutable planning and tag
-primitives from [#16276](https://github.com/elizaOS/eliza/issues/16276) are
-available, but `release.yaml` does not consume them atomically yet.
-Transactional npm publication is tracked in
-[#16277](https://github.com/elizaOS/eliza/issues/16277), and the sole audited
-coordinator gate in [#16279](https://github.com/elizaOS/eliza/issues/16279).
-Their presence in this catalog is not evidence that a release path is healthy.
+The orchestrator waits for complete npm registry, annotated tag, and GitHub
+Release readback before passing those exact outputs to enabled downstream
+distributions. A tag push, an existing GitHub Release, or the retired automatic
+develop beta watcher never starts npm publication.
 
 ### Alpha Tags
 
 Alpha version tags are tags only. They do not publish NPM packages, run packaging
 CI, or create GitHub Release entries.
 
-### NPM Beta/Production Packages (`release.yaml`)
+### Public Release Orchestration (`release-orchestrator.yml` and `release.yaml`)
 
-Publishes TypeScript/JavaScript packages to NPM.
+Publishes one explicitly prepared, immutable TypeScript/JavaScript cohort to
+npm, verifies the entire cohort, then creates the exact Git tag and GitHub
+Release.
 
 **Triggers:**
 
-- Push of a `v*-beta.*` tag → Beta release (`@beta` tag)
-- GitHub Release created → Production release (`@latest` tag)
-- Manual dispatch → Beta release testing only
+- Manual `release-orchestrator.yml` dispatch from protected `develop` with
+  `source_sha`, canonical `source_ref`, `version`, `channel`, and the
+  expected npm publisher username
+- One relative reusable-workflow call into `release.yaml`; a real-tree
+  contract rejects every other call or shell dispatch
+- Optional `candidate_run_id` resumes a prior immutable candidate without
+  rebuilding or repacking it
 
-**Packages:** All `@elizaos/*` packages in the monorepo
+**Packages:** The reviewed allowlist in
+`packages/scripts/release-cohort.json`, including its complete runtime
+workspace dependency closure.
 
 ### Cross-platform distribution (`release-orchestrator.yml`)
 
-Coordinates package, Android, Apple, desktop, Homebrew, and homepage release
-jobs after a GitHub Release is published. It also exposes reusable and manual
-entry points. The coordinator's fail-closed completion and npm-routing contract
-is tracked in #16279.
+Coordinates npm, Android, Apple, desktop, Homebrew, and homepage release jobs.
+Every enabled distribution requires the transactional npm result; homepage
+publication additionally waits for every enabled distribution to succeed.
 
 ### OS artifact manifest (`elizaos-os-full-release.yml`)
 
@@ -136,7 +142,7 @@ in the `changes` job, #13617):
    the whole workflow falls back to hosted — one flip unblocks the entire queue
    instead of per-PR admin-bypass. Keep the runner-agnostic step hardening (no
    `sudo`-only install/cleanup) so lanes run on either runner type.
-2. **Post-merge quality parity.** `merge-quality-gate` runs the same lint /
+2. **Post-merge quality parity.** `merge-quality-gate` runs the same read-only lint /
    `format:check` / repo-wide `typecheck` / gitleaks secret scan that guard
    `main`, and `ci-ok` needs it on develop `push`. The pre-merge
    `develop-pr.yml` lint job runs `format:check`, and the stable aggregate waits
@@ -311,15 +317,26 @@ Automatically creates PRs with fixes when issues are found.
 
 Manual workflow for generating JSDoc documentation.
 
-## Release operation gate
+## Manual Release Process
 
-Release failures are fail-closed. A failed or incomplete retained workflow is
-not authorization to publish directly with Lerna, recreate a tag, or introduce
-a parallel coordinator. Before cutting a release, confirm the immutable
-candidate matches the #16276 contract and that the npm transaction gate in
-#16277 and coordinator completion gate in #16279 are satisfied with current run
-evidence. Manifest recovery may only use the manual PR boundary documented
-above.
+1. Prepare a clean protected-`develop` commit whose allowlisted manifests
+   contain the exact release version, public access metadata, and published
+   internal semver ranges.
+2. Dispatch `release-orchestrator.yml` at that exact full SHA with
+   `source_ref=refs/heads/develop`, the same semver, either `beta` or
+   `latest`, and the npm username represented by the protected environment
+   token.
+3. If interrupted after candidate creation and the protected `develop` tip has
+   not moved, retry with the identical release identity and original
+   `candidate_run_id`. The called workflow verifies the recorded tarballs
+   instead of rebuilding or repacking them. A moved tip requires a new candidate.
+4. Review the finalized artifact and public readback. Its state must show npm
+   staging, full integrity verification, channel promotion, exact annotated tag
+   publication, and GitHub Release readback in order.
+
+Release failures are fail-closed. Do not create the tag or GitHub Release first,
+publish directly with Lerna, or add a parallel coordinator. Manifest recovery
+may only use the manual PR boundary documented above.
 
 ## Setting Up Secrets
 
@@ -343,27 +360,38 @@ Turbo caching is GitHub-native (`.github/actions/turbo-cache-github` via
 `TURBO_TEAM` are no longer used and are banned by
 `ci-workflow-dedup-contract.mjs` (#12341).
 
+`NPM_TOKEN` is a least-privilege granular token stored in the
+`npm-public-release` environment, not a repository secret. That environment
+requires an independent reviewer, forbids admin bypass, and accepts only the
+selected `develop` branch. The credentialed jobs independently require the
+caller workflow/ref/SHA, requested source ref/SHA, and
+`github.workflow_sha` to equal the live protected tip before checking out
+trusted tooling by that immutable SHA.
+
 ## Package dependencies
 
-The legacy `release.yaml` path delegates its implicit package set to Lerna. The
-immutable candidate contract below instead requires an explicit cohort and
-records its dependency order before any registry mutation.
+`release.yaml` never discovers its publish set from Lerna. The allowlist in
+`packages/scripts/release-cohort.json` is explicit and source-reviewed; the
+candidate resolver proves every runtime workspace dependency is present and
+orders the cohort before any registry mutation.
 
 ### Immutable npm candidate primitives
 
 `packages/scripts/release-candidate.mjs` is the fail-closed boundary for the
 transactional release workflow. Candidate creation requires an explicit JSON
-allowlist (`{"schemaVersion":1,"packages":[...]}`), a clean source SHA, the
-same expected commit, exact semver/channel values, and one explicit build
-command. It then runs that build once and invokes `npm pack --ignore-scripts`
-once per package. An existing output directory is never overwritten or
-repacked.
+allowlist (`{"schemaVersion":1,"packages":[...]}`), canonical repository,
+branch, registry, and publisher identities, a clean source SHA, exact
+semver/channel values, and one explicit build command. It proves the remote
+branch resolves to the checked-out SHA immediately before and after packing,
+runs that build once, and invokes `npm pack --ignore-scripts` once per package.
+An existing output directory is never overwritten or repacked.
 
 Each candidate directory contains `release-plan.json`, `release-state.json`,
 and the immutable `tarballs/*.tgz` cohort. The plan records package directories,
 hard-dependency ordering and ranges, entrypoint metadata, manifest integrity,
-and both hexadecimal SHA-512 and npm SRI integrity for every tarball. The state
-can advance only through this sequence:
+and both hexadecimal SHA-512 and npm SRI integrity for every tarball. Cohort and
+plan digests bind the complete release identity, and every mutation command must
+present that plan digest. The state can advance only through this sequence:
 
 ```
 planned -> built-packed -> candidate-recorded -> registry-bound
@@ -371,25 +399,23 @@ planned -> built-packed -> candidate-recorded -> registry-bound
         -> git-bound -> git-tagged -> release-published -> version-sync-pr
 ```
 
-Registry publication stages missing versions under a candidate-specific tag,
-accepts a retry only when an existing version's `dist.integrity` exactly matches
-the plan, verifies the full cohort, promotes the requested channel, and removes
-the staging tags. The normalized registry and resolved Git push destination are
-recorded before their first external mutation, so an interrupted run cannot be
-resumed against a different target. Only HTTP 404 is absence; auth, throttling,
-transport, server, redirect, and parse failures abort. Git publication uses an
-atomic push of the explicit branch and tag refs, never `--follow-tags`, and
-requires the inspected remote branch SHA. Candidate state writes use an
-exclusive owner lock; a dead local owner or an expired cross-runner lease is
-recoverable without treating a live writer as stale. `v2.0.3-beta.8`, `.9`, and
-`.10` are permanently reserved.
+Registry publication first proves `/-/whoami` equals the planned publisher,
+then stages only missing versions under a cohort-derived candidate tag. A retry
+accepts an existing version only when its `dist.integrity`, `_npmUser`, and
+`gitHead` match the plan. The workflow verifies the full cohort, promotes the
+requested channel, removes staging tags, and performs a credential-free final
+read before Git advances. Only HTTP 404 is absence; auth, throttling, transport,
+server, redirect, provenance, and parse failures abort.
 
-The current `release.yaml` cannot consume this candidate atomically until its
-implicit Lerna package set is replaced by a maintainer-approved allowlist and
-its uncommitted manifest rewrites become a clean candidate commit. Keep that
-orchestration change together with the release state-machine refactor; a
-preflight-only insertion would validate different bytes than the ones Lerna
-publishes.
+Finalization pushes only the canonical annotated `refs/tags/v<version>`; it
+never pushes a branch, rebases, or uses `--follow-tags`. The fixed tagger,
+source timestamp, repository, source, cohort digest, and plan digest determine
+the tag object. A same-commit lightweight or differently annotated tag is a
+conflict. The GitHub Release must then read back with the exact repository, tag,
+target commit, and prerelease identity. Candidate state writes use an exclusive
+owner lock; a dead local owner or expired cross-runner lease is recoverable
+without treating a live writer as stale. `v2.0.3-beta.8`, `.9`, and `.10`
+are permanently reserved.
 
 ## Troubleshooting
 
@@ -397,7 +423,7 @@ publishes.
 
 1. Check if tests pass locally: `bun run test`
 2. Check formatting: `bun run format:check`
-3. Check linting: `bun run lint`
+3. Check linting without rewriting the checkout: `bun run lint:check`
 
 ### Release Failures
 

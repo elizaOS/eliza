@@ -6,19 +6,24 @@
  * exact argv each real leg is spawned with. Runs in the packages/app vitest
  * suite (`bun run --cwd packages/app test`), i.e. the root test:client lane.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import {
+  applyIosSimulatorSchemeApproval,
   assertNonVacuousPlan,
   buildAuthSmokeCommand,
   buildCloudProvisioningCommand,
   buildIosSimBuildCommand,
   buildLocalChatSmokeCommand,
+  classifyIosSimulatorSchemeDispatch,
   classifyStepExit,
   DEFAULT_IOS_SIMULATOR,
   extractAppId,
+  extractAppIdentity,
   IOS_E2E_STEP_IDS,
   IOS_E2E_VERIFICATION_STEP_IDS,
+  iosSimulatorSchemeApproval,
   isAppInstalled,
+  parseAuthSmokeResult,
   parseIosE2eArgs,
   planIosE2eSteps,
   resolveTargetDevice,
@@ -86,14 +91,14 @@ describe("planIosE2eSteps", () => {
     noWait: false,
   };
 
-  it("runs build → auth → local-chat by default (no cloud)", () => {
+  it("runs build → install → auth → local-chat by default (no cloud)", () => {
     const ids = planIosE2eSteps(full).map((s) => s.id);
-    expect(ids).toEqual(["build", "auth", "local-chat"]);
+    expect(ids).toEqual(["build", "install", "auth", "local-chat"]);
   });
 
   it("appends cloud last only when requested", () => {
     const ids = planIosE2eSteps({ ...full, cloud: true }).map((s) => s.id);
-    expect(ids).toEqual(["build", "auth", "local-chat", "cloud"]);
+    expect(ids).toEqual(["build", "install", "auth", "local-chat", "cloud"]);
   });
 
   it("preserves the fixed run order under any flag subset", () => {
@@ -111,9 +116,16 @@ describe("planIosE2eSteps", () => {
     const ids = planIosE2eSteps({ ...full, [flag]: true }).map((s) => s.id);
     expect(ids).not.toContain(removedId);
     // Everything else that would have run still runs.
-    for (const id of ["build", "auth", "local-chat"]) {
+    for (const id of ["build", "install", "auth", "local-chat"]) {
       if (id !== removedId) expect(ids).toContain(id);
     }
+  });
+
+  it("keeps install explicit when --skip-build reuses a supplied app", () => {
+    const ids = planIosE2eSteps({ ...full, skipBuild: true }).map(
+      (step) => step.id,
+    );
+    expect(ids).toEqual(["install", "auth", "local-chat"]);
   });
 
   it("marks only auth/local-chat as simulator-app verification legs", () => {
@@ -121,6 +133,7 @@ describe("planIosE2eSteps", () => {
     const verifying = steps.filter((s) => s.verification).map((s) => s.id);
     expect(verifying).toEqual(IOS_E2E_VERIFICATION_STEP_IDS);
     expect(steps.find((s) => s.id === "build").verification).toBe(false);
+    expect(steps.find((s) => s.id === "install").verification).toBe(false);
     expect(steps.find((s) => s.id === "cloud").verification).toBe(false);
   });
 });
@@ -144,7 +157,7 @@ describe("assertNonVacuousPlan", () => {
       skipLocalChat: true,
       cloud: false,
     });
-    expect(steps.map((s) => s.id)).toEqual(["build"]);
+    expect(steps.map((s) => s.id)).toEqual(["build", "install"]);
     expect(() => assertNonVacuousPlan(steps)).toThrow(/refusing to run/i);
   });
 
@@ -159,7 +172,7 @@ describe("assertNonVacuousPlan", () => {
       skipLocalChat: true,
       cloud: true,
     });
-    expect(steps.map((s) => s.id)).toEqual(["cloud"]);
+    expect(steps.map((s) => s.id)).toEqual(["install", "cloud"]);
     expect(() => assertNonVacuousPlan(steps)).toThrow(
       /cloud alone is not enough/i,
     );
@@ -172,7 +185,7 @@ describe("assertNonVacuousPlan", () => {
       skipLocalChat: true,
       cloud: true,
     });
-    expect(steps.map((s) => s.id)).toEqual(["build", "cloud"]);
+    expect(steps.map((s) => s.id)).toEqual(["build", "install", "cloud"]);
     expect(() => assertNonVacuousPlan(steps)).toThrow(/auth \/ local-chat/i);
   });
 });
@@ -235,6 +248,116 @@ describe("extractAppId", () => {
   });
 });
 
+describe("iOS app identity and custom-scheme approval", () => {
+  it("extracts the configured scheme independently from the bundle id", () => {
+    expect(
+      extractAppIdentity(
+        'export default { appId: "ai.elizaos.app", urlScheme: "elizaos" }',
+      ),
+    ).toEqual({ appId: "ai.elizaos.app", urlScheme: "elizaos" });
+  });
+
+  it("uses the bundle id when a config omits urlScheme", () => {
+    expect(
+      extractAppIdentity('export default { appId: "dev.example" }'),
+    ).toEqual({ appId: "dev.example", urlScheme: "dev.example" });
+  });
+
+  it("pins the CoreSimulatorBridge LaunchServices approval record", () => {
+    expect(
+      iosSimulatorSchemeApproval({
+        homeDir: "/Users/runner",
+        udid: UDID,
+        urlScheme: "elizaos",
+        appId: "ai.elizaos.app",
+      }),
+    ).toEqual({
+      plistPath: `/Users/runner/Library/Developer/CoreSimulator/Devices/${UDID}/data/Library/Preferences/com.apple.launchservices.schemeapproval.plist`,
+      key: "com.apple.CoreSimulator.CoreSimulatorBridge-->elizaos",
+      appId: "ai.elizaos.app",
+    });
+  });
+
+  it("rejects an incomplete approval identity", () => {
+    expect(() =>
+      iosSimulatorSchemeApproval({
+        homeDir: "/Users/runner",
+        udid: "",
+        urlScheme: "elizaos",
+        appId: "ai.elizaos.app",
+      }),
+    ).toThrow(/requires homeDir, udid, urlScheme, and appId/);
+  });
+
+  it("keeps an unapproved callback blocked and lets the approved path reach the app", () => {
+    const approval = iosSimulatorSchemeApproval({
+      homeDir: "/Users/runner",
+      udid: UDID,
+      urlScheme: "elizaos",
+      appId: "ai.elizaos.app",
+    });
+    const unrelatedApproval = {
+      "com.apple.CoreSimulator.CoreSimulatorBridge-->other": "dev.other",
+    };
+
+    expect(
+      classifyIosSimulatorSchemeDispatch(unrelatedApproval, approval),
+    ).toBe("confirmation-blocked");
+
+    const mutation = applyIosSimulatorSchemeApproval(
+      unrelatedApproval,
+      approval,
+    );
+    expect(mutation).toEqual({
+      entries: {
+        ...unrelatedApproval,
+        "com.apple.CoreSimulator.CoreSimulatorBridge-->elizaos":
+          "ai.elizaos.app",
+      },
+      previousAppId: null,
+      changed: true,
+    });
+    expect(classifyIosSimulatorSchemeDispatch(mutation.entries, approval)).toBe(
+      "deliver-to-app",
+    );
+  });
+
+  it("repairs a scheme mapped to the wrong bundle and is idempotent once approved", () => {
+    const approval = iosSimulatorSchemeApproval({
+      homeDir: "/Users/runner",
+      udid: UDID,
+      urlScheme: "elizaos",
+      appId: "ai.elizaos.app",
+    });
+    const wrong = { [approval.key]: "dev.impostor" };
+    const repaired = applyIosSimulatorSchemeApproval(wrong, approval);
+    expect(repaired.previousAppId).toBe("dev.impostor");
+    expect(repaired.changed).toBe(true);
+    expect(classifyIosSimulatorSchemeDispatch(repaired.entries, approval)).toBe(
+      "deliver-to-app",
+    );
+
+    const unchanged = applyIosSimulatorSchemeApproval(
+      repaired.entries,
+      approval,
+    );
+    expect(unchanged.changed).toBe(false);
+    expect(unchanged.entries).toBe(repaired.entries);
+  });
+
+  it("rejects a malformed approval dictionary", () => {
+    const approval = iosSimulatorSchemeApproval({
+      homeDir: "/Users/runner",
+      udid: UDID,
+      urlScheme: "elizaos",
+      appId: "ai.elizaos.app",
+    });
+    expect(() => applyIosSimulatorSchemeApproval([], approval)).toThrow(
+      /must be an object/,
+    );
+  });
+});
+
 describe("leg command builders", () => {
   it("builds the sim build command", () => {
     expect(buildIosSimBuildCommand()).toEqual({
@@ -277,6 +400,25 @@ describe("leg command builders", () => {
       cmd: "node",
       args: ["scripts/cloud-provisioning-e2e.mjs"],
     });
+  });
+});
+
+describe("parseAuthSmokeResult", () => {
+  it("extracts the final JSON receipt after human-readable logs", () => {
+    expect(
+      parseAuthSmokeResult(
+        '[mobile-auth-smoke] opening callback\n{\n  "lane": "callback",\n  "simulators": [{"platform":"ios"}]\n}\n',
+      ),
+    ).toEqual({
+      lane: "callback",
+      simulators: [{ platform: "ios" }],
+    });
+  });
+
+  it("rejects output without a complete trailing object", () => {
+    expect(() =>
+      parseAuthSmokeResult("[mobile-auth-smoke] no receipt"),
+    ).toThrow(/did not end with a JSON object/);
   });
 });
 

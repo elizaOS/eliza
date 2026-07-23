@@ -9,6 +9,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { promotedParentRoutingHint } from "../actions/promote-subactions";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
@@ -1248,9 +1249,18 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
-		const hint = tool.action?.routingHint?.trim();
+		// A promoted virtual (TRIGGER_CREATE, MESSAGE_SEND, …) carries no hint
+		// of its own; fall back to its umbrella parent's hint, deduped by the
+		// parent so a whole promoted family contributes one line.
+		const own = tool.action?.routingHint?.trim();
+		const promoted = tool.action
+			? promotedParentRoutingHint(tool.action)
+			: undefined;
+		const hint = own || promoted?.hint;
 		if (!hint) continue;
-		const key = normalizePlannerToolName(tool.name);
+		const key = normalizePlannerToolName(
+			own ? tool.name : (promoted?.parent ?? tool.name),
+		);
 		if (seen.has(key)) continue;
 		seen.add(key);
 		lines.push(`- ${hint}`);
@@ -3388,7 +3398,10 @@ function preferredFinalMessageFromToolOrModel(
 	//   1. A single successful tool whose result was explicitly marked
 	//      `verifiedUserFacing: true` — used for structured outputs
 	//      (paths, ids, counts) where evaluator paraphrase risks
-	//      hallucinating a value.
+	//      hallucinating a value. When the evaluator ALSO supplied grounded
+	//      prose, the two are combined (verbatim output first, prose after)
+	//      instead of discarding the evaluator's answer — see
+	//      `combinedVerifiedToolTextAndProse`.
 	//   2. A grammar-valid widget emitted for a structurally-marked missing-input
 	//      result. The widget preserves the planner's field types and supersedes
 	//      the tool's prose question, but never a lifeDraft confirmation preview.
@@ -3405,17 +3418,72 @@ function preferredFinalMessageFromToolOrModel(
 	//   - `planner-loop-user-facing-text.test.ts` → "does not regress
 	//     evaluator's explicit messageToUser path" — evaluator wins when
 	//     no tool sets `verifiedUserFacing`.
-	//   - `planner-happy-path.test.ts` → "prefers a single tool's verified
-	//     user-facing text over evaluator paraphrase" — tool wins when it
-	//     opts in via `verifiedUserFacing: true`.
+	//   - `planner-happy-path.test.ts` → "falls back to a single tool's
+	//     user-facing text when the evaluator omits messageToUser" — the
+	//     verified verbatim text stands alone when there is no prose.
+	//   - `planner-loop-user-facing-text.test.ts` → "delivers verified tool
+	//     output AND the evaluator's grounded prose" — both survive when both
+	//     exist and neither contains the other.
+	const verifiedToolText = singleVerifiedUserFacingToolResultText(trajectory);
 	return (
-		singleVerifiedUserFacingToolResultText(trajectory) ??
+		combinedVerifiedToolTextAndProse(
+			trajectory,
+			verifiedToolText,
+			modelTextWithoutUnlicensedNoopWidget,
+		) ??
+		verifiedToolText ??
 		(widgetCollectsLatestMissingInput ? widgetReply : undefined) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
 		modelTextWithoutUnlicensedNoopWidget ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);
+}
+
+/**
+ * A verified tool result and a grounded evaluator reply are complementary, not
+ * competing: the verified text is the verbatim output (#7960 — never dropped,
+ * never paraphrased) and the evaluator's `messageToUser` answers what the user
+ * actually asked. Returning only the verified text silently discarded grounded
+ * evaluator prose (observed live: `df -h` via the terminal action posted a bare
+ * mount table and dropped the evaluator's "still 95%, 22G free" answer).
+ * Deliver both — the verbatim output, fenced when it is multiline command
+ * output, followed by the prose. Containment collapses the pair when one side
+ * already carries the other, and confirmation previews stay pure (action-owned
+ * copy is never decorated with extra prose).
+ */
+function combinedVerifiedToolTextAndProse(
+	trajectory: PlannerTrajectory,
+	verifiedToolText: string | undefined,
+	modelText: string | undefined,
+): string | undefined {
+	if (!verifiedToolText || !modelText) return undefined;
+	const hasVerifiedConfirmationPreview = trajectory.steps.some(
+		(step) =>
+			step.result?.verifiedUserFacing === true &&
+			hasRequiresConfirmationMarker(step.result),
+	);
+	if (hasVerifiedConfirmationPreview) return undefined;
+	const verified = verifiedToolText.trim();
+	// Widget payloads ([CHOICE]/[FORM] interaction blocks) are grammar the
+	// client renders; appended prose would corrupt the block contract.
+	if (parseInteractionBlocks(verified).blocks.length > 0) return undefined;
+	const prose = modelText.trim();
+	// Combining must preserve the same user-safety boundary as selecting model
+	// text directly; evaluator channels can contain serialized tool invocations.
+	if (isUnsafeUserVisibleText(prose)) return undefined;
+	// Prose that already embeds the verbatim output IS the combined message.
+	if (prose.includes(verified)) return prose;
+	const normalize = (text: string) =>
+		text.toLowerCase().replace(/\s+/g, " ").trim();
+	// Prose that adds nothing over the verified output (a restatement or
+	// fragment of it) keeps the verbatim-echo behavior unchanged.
+	if (normalize(verified).includes(normalize(prose))) return undefined;
+	const fenced =
+		verified.includes("\n") && !verified.includes("```")
+			? `\`\`\`\n${verified}\n\`\`\``
+			: verified;
+	return `${fenced}\n\n${prose}`;
 }
 
 function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
@@ -3776,6 +3844,10 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		return true;
 	}
 	return [
+		// Models sometimes serialize a namespaced client action as
+		// `call:automation:GET_WORKFLOW{...}`. It is still an invocation, not a
+		// user reply, even when its loose argument object is not valid JSON.
+		/^\s*(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/i,
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,
 		/"action"\s*:\s*"functions\.[A-Z0-9_]+"/i,

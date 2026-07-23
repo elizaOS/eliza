@@ -29,6 +29,7 @@ const clientMock = vi.hoisted(() => ({
   hasToken: vi.fn(),
   startAgent: vi.fn(),
   listConversations: vi.fn(),
+  fetch: vi.fn(),
 }));
 
 const persistenceMock = vi.hoisted(() => ({
@@ -199,6 +200,134 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     );
     expect(runningDispatches).toHaveLength(1);
     expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_TIMEOUT" });
+  });
+
+  // ── CONVERSATIONS-500 HARDENING (persistent 5xx must not spin forever) ──
+
+  it("persistent /api/conversations 500 + /api/status canRespond → advances to chat despite the broken list endpoint", async () => {
+    // The exact staging defect: the runtime is UP (/api/status 200 canRespond),
+    // but GET /api/conversations deterministically 500s. The old boolean gate
+    // treated the 500 like a warming 404 and spun forever. Now: after a short
+    // 5xx streak we confirm off /api/status and let the user INTO chat.
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+
+    clientMock.listConversations.mockRejectedValue({
+      status: 500,
+      message: "internal_error",
+    });
+    // /api/status through the same passthrough reports a serving runtime.
+    clientMock.fetch.mockResolvedValue({ state: "running", canRespond: true });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+
+    // We fell back to /api/status once the 5xx streak crossed threshold.
+    expect(clientMock.fetch).toHaveBeenCalledWith("/api/status");
+    // And advanced to chat exactly once instead of stranding on the boot screen.
+    const runningDispatches = dispatch.mock.calls.filter(
+      ([e]) => e.type === "AGENT_RUNNING",
+    );
+    expect(runningDispatches).toHaveLength(1);
+    expect(deps.setConnected).toHaveBeenCalledWith(true);
+    // No infinite spinner and no hard error, because status confirmed readiness.
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+  });
+
+  it("persistent /api/conversations 500 AND /api/status can't confirm → surfaces an actionable AGENT_ERROR with retry (no infinite spinner)", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+
+    clientMock.listConversations.mockRejectedValue({
+      status: 500,
+      message: "internal_error",
+    });
+    // /api/status also fails to confirm (e.g. also 500 / cannot respond).
+    clientMock.fetch.mockRejectedValue({
+      status: 500,
+      message: "internal_error",
+    });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+
+    // Surfaced a distinct, actionable agent error (not a warming timeout).
+    expect(deps.setStartupError).toHaveBeenCalledTimes(1);
+    const [errState] = deps.setStartupError.mock.calls[0];
+    expect(errState.reason).toBe("agent-error");
+    expect(errState.status).toBe(500);
+    expect(errState.message).toMatch(/chat service returned an error/i);
+    // Dispatched AGENT_ERROR (lands on the error phase → retry UI), never spun
+    // AGENT_RUNNING, and did not keep the user on an infinite "initializing".
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "AGENT_ERROR" }),
+    );
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+  });
+
+  it("a SINGLE transient 500 that then recovers to serving still advances (no premature error on one blip)", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+
+    let call = 0;
+    clientMock.listConversations.mockImplementation(async () => {
+      call += 1;
+      // One 5xx blip (below the persistent threshold), then it serves.
+      if (call === 1) throw { status: 503, message: "temporarily unavailable" };
+      return { conversations: [] };
+    });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+
+    // A single blip never crossed the streak threshold, so /api/status was not
+    // consulted and no error was surfaced — it simply advanced when serving.
+    expect(clientMock.fetch).not.toHaveBeenCalled();
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+    const runningDispatches = dispatch.mock.calls.filter(
+      ([e]) => e.type === "AGENT_RUNNING",
+    );
+    expect(runningDispatches).toHaveLength(1);
   });
 
   // ── REGRESSION GUARDS (shared-code constraint) ─────────────────────────

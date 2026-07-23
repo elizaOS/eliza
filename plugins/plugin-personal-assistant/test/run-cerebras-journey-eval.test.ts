@@ -8,6 +8,7 @@ import {
   chmodSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -117,7 +118,9 @@ describe("Cerebras journey eval runner", () => {
       "eliza/packages/test/vitest/live-e2e.config.ts",
       "eliza/plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts",
     ]);
-    expect(readFileSync(cwdFile, "utf8").trim()).toBe(directory);
+    expect(realpathSync(readFileSync(cwdFile, "utf8").trim())).toBe(
+      realpathSync(directory),
+    );
   });
 
   it("propagates a real child process failure", async () => {

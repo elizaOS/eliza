@@ -27,6 +27,9 @@ mock.module("../../providers/language-model", () => ({
   // The returned handle is opaque here — generateText is stubbed, so it is never
   // actually invoked against a provider.
   getLanguageModel: () => ({ __sentinel: "model" }),
+  // COLDPATH-FIX-2026-07-21: the shared turn now resolves its model through the
+  // interactive-Cerebras failover wrapper; stub it the same opaque way.
+  getInteractiveCerebrasLanguageModel: () => ({ __sentinel: "interactive-model" }),
   hasLanguageModelProviderConfigured: () => providerConfigured,
 }));
 

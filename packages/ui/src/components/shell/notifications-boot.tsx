@@ -16,7 +16,6 @@ import {
   seedDevNotificationsIfEmpty,
 } from "../../state/notifications/notification-store";
 import { initPushRegistration } from "../../state/notifications/push-registration";
-import { goHome } from "../../state/shell-surface-store";
 
 /**
  * Boots data ingress independently of the paintable app shell. Startup, auth,
@@ -48,12 +47,11 @@ export function NotificationsShellBoot(): null {
     }
   }, []);
 
-  // Route every "open notifications" entry point to the dashboard: the combined
-  // Home/Launcher route on its Home half, where the notification widget lives.
+  // Route every "open notifications" entry point to the combined home/apps
+  // dashboard, where the notification widget is always inline.
   useEffect(() => {
     const onOpen = () => {
       setTab("chat");
-      goHome();
     };
     window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
     return () =>

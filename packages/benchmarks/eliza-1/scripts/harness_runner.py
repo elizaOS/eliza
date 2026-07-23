@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -39,12 +38,58 @@ SYSTEM_PROMPT = "\n".join(
 )
 
 
-def _load_fixtures(limit: int | None) -> list[dict[str, Any]]:
-    fixture_path = BENCH_DIR / "src" / "fixtures" / "should-respond.json"
+def _load_fixture_bundle(
+    limit: int | None,
+    fixture_set: str = "derived",
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    fixture_names = {
+        "derived": "should-respond.derived.json",
+        "manual": "should-respond.json",
+    }
+    fixture_path = BENCH_DIR / "src" / "fixtures" / fixture_names[fixture_set]
     data = json.loads(fixture_path.read_text(encoding="utf-8"))
     cases = [case for case in data.get("cases", []) if isinstance(case, dict)]
+    if not cases:
+        raise RuntimeError(f"eliza-1 fixture corpus is empty: {fixture_path}")
+    ids = [str(case.get("id") or "").strip() for case in cases]
+    if any(not case_id for case_id in ids) or len(set(ids)) != len(ids):
+        raise RuntimeError(f"eliza-1 fixture IDs are missing or duplicated: {fixture_path}")
+
+    derived_from = data.get("derivedFrom")
+    source_count = None
+    if fixture_set == "derived":
+        if data.get("origin") != "dataset" or not isinstance(derived_from, str):
+            raise RuntimeError("eliza-1 derived fixtures lack dataset provenance")
+        source_path = ROOT.parents[1] / derived_from
+        if not source_path.is_file():
+            raise FileNotFoundError(f"eliza-1 source dataset not found: {source_path}")
+        source_count = sum(
+            1 for line in source_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        )
+        if source_count != len(cases):
+            raise RuntimeError(
+                "eliza-1 derived fixture count does not match its source split: "
+                f"fixtures={len(cases)}, source={source_count}"
+            )
+
+    provenance = {
+        "fixture_set": fixture_set,
+        "fixture_path": str(fixture_path.relative_to(ROOT.parents[1])),
+        "origin": data.get("origin"),
+        "derived_from": derived_from,
+        "source_count": source_count,
+        "full_case_count": len(cases),
+    }
     if limit is not None and limit > 0:
-        return cases[:limit]
+        cases = cases[:limit]
+    return cases, provenance
+
+
+def _load_fixtures(
+    limit: int | None,
+    fixture_set: str = "derived",
+) -> list[dict[str, Any]]:
+    cases, _provenance = _load_fixture_bundle(limit, fixture_set)
     return cases
 
 
@@ -69,7 +114,6 @@ def _build_client(harness: str, model: str):
                 provider=provider,
                 model=model,
                 timeout_s=timeout_s,
-                direct_openai_compatible=True,
                 reasoning_effort=os.environ.get("ELIZA_1_OPENCLAW_THINKING", "low"),
             ),
             None,
@@ -91,12 +135,18 @@ def _build_client(harness: str, model: str):
     raise ValueError(f"unsupported harness: {harness}")
 
 
-def _send(client: Any, harness: str, model: str, case: dict[str, Any]) -> tuple[str, float, int]:
+def _send(
+    client: Any,
+    harness: str,
+    model: str,
+    case: dict[str, Any],
+    task_id: str,
+) -> tuple[str, float, int]:
     user_prompt = _build_user_prompt(case)
     started = time.perf_counter()
     context = {
         "benchmark": "eliza_1",
-        "task_id": "should_respond",
+        "task_id": task_id,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -211,36 +261,7 @@ def _canonical_output(response: Any) -> str:
                 if decision is not None:
                     return decision
 
-    actions = getattr(response, "actions", [])
-    if isinstance(actions, list):
-        normalized = {str(action).upper() for action in actions}
-        if "STOP" in normalized:
-            return json.dumps({"shouldRespond": "STOP"})
-        if normalized & {"REPLY", "RESPOND", "BENCHMARK_ACTION"}:
-            return json.dumps({"shouldRespond": "RESPOND"})
-        if normalized & {"IGNORE", "NONE", "NO_RESPONSE"}:
-            return json.dumps({"shouldRespond": "IGNORE"})
-
-    textual = _decision_from_text(text)
-    if textual is not None:
-        return textual
-
     return text
-
-
-def _decision_from_text(text: str) -> str | None:
-    labels = re.findall(r"\b(RESPOND|IGNORE|STOP)\b", text.upper())
-    if len(set(labels)) == 1 and labels:
-        return json.dumps({"shouldRespond": labels[0]})
-    for pattern in (
-        r"shouldRespond['\"\s:]+(RESPOND|IGNORE|STOP)\b",
-        r"output\s+json\s+(RESPOND|IGNORE|STOP)\b",
-        r"so\s+(respond|ignore|stop)\b",
-    ):
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if match:
-            return json.dumps({"shouldRespond": match.group(1).upper()})
-    return None
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
@@ -335,17 +356,35 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--n", type=int, default=1)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument(
+        "--fixture-set",
+        choices=["derived", "manual"],
+        default="derived",
+        help="Fixture corpus (default: canonical dataset-derived regression split)",
+    )
     args = parser.parse_args(argv)
 
     client, manager = _build_client(args.harness, args.model)
+    fixtures, corpus = _load_fixture_bundle(
+        args.limit if args.limit > 0 else None,
+        args.fixture_set,
+    )
     cases: list[dict[str, Any]] = []
     try:
-        if hasattr(client, "reset"):
-            client.reset("eliza-1-should-respond", "eliza_1")
-        for fixture in _load_fixtures(args.limit if args.limit > 0 else None):
+        for fixture in fixtures:
             for index in range(max(1, args.n)):
+                case_id = str(fixture.get("id") or "case")
+                task_id = f"eliza-1-should-respond-{case_id}-{index}"
                 try:
-                    text, latency_ms, tokens = _send(client, args.harness, args.model, fixture)
+                    if hasattr(client, "reset"):
+                        client.reset(task_id, "eliza_1")
+                    text, latency_ms, tokens = _send(
+                        client,
+                        args.harness,
+                        args.model,
+                        fixture,
+                        task_id,
+                    )
                     cases.append(
                         _case_metric(
                             harness=args.harness,
@@ -356,6 +395,8 @@ def main(argv: list[str] | None = None) -> int:
                             tokens=tokens,
                         )
                     )
+                # error-policy:J1 Preserve every attempted cell in the report,
+                # then make the process fail after the artifact is written.
                 except Exception as exc:  # noqa: BLE001
                     cases.append(
                         _case_metric(
@@ -377,6 +418,12 @@ def main(argv: list[str] | None = None) -> int:
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "tasks": ["should_respond"],
         "modes": [args.harness],
+        "corpus": {
+            **corpus,
+            "selected_case_count": len(fixtures),
+            "repetitions": max(1, args.n),
+            "expected_result_count": len(fixtures) * max(1, args.n),
+        },
         "skipped": [],
         "cases": cases,
         "summaries": [_summarize(args.harness, cases)],
@@ -385,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(str(out))
-    return 0
+    return 1 if any("error" in case for case in cases) else 0
 
 
 if __name__ == "__main__":
