@@ -37,10 +37,24 @@ function pythonExecutable(): string {
   return process.env.PYTHON || process.env.PYTHON_BIN || "python3";
 }
 
+/**
+ * Strip a single surrounding Markdown code fence (```json … ``` or ``` … ```)
+ * if present. Reasoning-off chat models routinely wrap structured output in a
+ * fenced block for display; the fenced content is still exactly one JSON
+ * object. Only a clean surrounding fence is unwrapped — free prose around or
+ * instead of the object is left intact so it still fails the JSON parse below
+ * (error-policy:J3: a non-decision must not be salvaged into a fake-valid one).
+ */
+function stripCodeFence(raw: string): string {
+  const trimmed = raw.trim();
+  const fence = trimmed.match(/^```(?:[a-zA-Z0-9_-]+)?\s*\n([\s\S]*?)\n?```$/);
+  return fence ? fence[1].trim() : trimmed;
+}
+
 function extractJsonObject(raw: string): Record<string, unknown> {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.trim());
+    parsed = JSON.parse(stripCodeFence(raw));
   } catch (error) {
     // error-policy:J3 Model output is untrusted; prose and partial JSON are invalid decisions.
     throw new Error(

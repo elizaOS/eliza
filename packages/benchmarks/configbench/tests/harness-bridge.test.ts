@@ -58,6 +58,38 @@ describe("harness bridge helpers", () => {
     expect(decision.replyText).not.toContain("OPENAI_API_KEY");
   });
 
+  it("unwraps a Markdown-fenced JSON decision (reasoning-off chat models)", () => {
+    const object = {
+      replyText: "I've stored your GROQ_API_KEY.",
+      setSecrets: { GROQ_API_KEY: "gsk_test" },
+      deleteSecrets: [],
+      activatePlugin: null,
+      deactivatePlugin: null,
+      refusedInPublic: false,
+    };
+    const fenced = "```json\n" + JSON.stringify(object, null, 1) + "\n```";
+    const decision = decodeHarnessDecision({ text: fenced }, "Set my GROQ key");
+    expect(decision.replyText).toBe("I've stored your GROQ_API_KEY.");
+    expect(decision.setSecrets.GROQ_API_KEY).toBe("gsk_test");
+  });
+
+  it("still rejects prose that surrounds a fenced JSON decision", () => {
+    const object = JSON.stringify({
+      replyText: "stored",
+      setSecrets: { OPENAI_API_KEY: "sk-test" },
+      deleteSecrets: [],
+      activatePlugin: null,
+      deactivatePlugin: null,
+      refusedInPublic: false,
+    });
+    expect(() =>
+      decodeHarnessDecision(
+        { text: "Sure, here:\n```json\n" + object + "\n```\nAnything else?" },
+        "request",
+      ),
+    ).toThrow("was not exactly one JSON object");
+  });
+
   it("does not infer a successful secret action from plain prose", () => {
     expect(() =>
       decodeHarnessDecision(
