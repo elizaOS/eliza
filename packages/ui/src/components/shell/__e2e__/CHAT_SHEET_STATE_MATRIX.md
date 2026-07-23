@@ -37,7 +37,7 @@ Continuous motion values: `threadHeight` (px, finger-tracked), `openProgress`
 | Held drag up, released anywhere | One continuum: first 120px morphs pill→input (`openProgress`), excess flows into the thread height. Release: < 64px of thread → INPUT; ≥ half+64 → FULL; between → HALF or free rest; a long haul (≥ 80% of the screen) → **MAXIMIZED**. |
 | Slow drag up < half the pill morph (`openProgress` < 0.5) | springs back to PILL. |
 | Flick/drag down | stays PILL (lowest state). |
-| Horizontal swipe | pages home ↔ launcher (sheet closed only). |
+| Horizontal swipe | no-op (no navigation — the home/launcher rail owns paging; the gesture is classified + consumed so it can't misread as a tap). |
 
 ### From INPUT
 | Gesture | Result |
@@ -59,6 +59,7 @@ Continuous motion values: `threadHeight` (px, finger-tracked), `openProgress`
 | Held over-pull past FULL | tracks the finger 1:1: the panel grows from the inset FULL height to the full-bleed ceiling across the REAL pixel gap (`fullPanelMaxH − insetPanelMaxH`), the shape morph (corners/insets/height cap) a pure function of that height; the grabber bar fades OUT with the same morph (`grabberBarOpacity`), fully dissolved by edge-to-edge. Travel past the ceiling is CONSUMED (offset rebased), so a reversal moves the sheet with the very first downward pixel. Release with the morph ≥ half complete — or a long haul from ≤ HALF sweeping ≥ 80% of the screen — commits MAXIMIZED; short of it, springs back to FULL. A pull that entered the over-pull zone but reversed back below the inset FULL height ABANDONS the maximize (its peak is voided) — the release rests where the finger left it, never re-maximizing. |
 | Held drag past the bottom ≥ 40px overshoot | PILL (chat → input → pill in one motion). |
 | Tap scrim/outside | keyboard up → dismiss keyboard; else collapse to INPUT. |
+| Horizontal swipe on the grabber | dismisses the open chat to the PILL (put-the-chat-away), never navigates. |
 | Escape | collapse to INPUT. |
 
 ### From FULL

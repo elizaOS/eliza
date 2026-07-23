@@ -430,6 +430,19 @@ export function pillMorphScale(progress: number): number {
 }
 
 /**
+ * Inverse of {@link pillMorphScale}, applied to the pill-capsule wrapper so the
+ * handle bar keeps a CONSTANT on-screen size through the whole pill↔input
+ * morph: the fieldset scales about bottom-center and the pill wrapper is
+ * bottom-anchored, so `panelScale × pillHandleCounterScale ≡ 1` cancels the
+ * shrink exactly. (The "handle gets smaller when collapsed" regression was the
+ * pill bar riding the 0.45 panel scale while the input-mode grabber rendered
+ * outside the fieldset, unscaled.)
+ */
+export function pillHandleCounterScale(progress: number): number {
+  return 1 / pillMorphScale(progress);
+}
+
+/**
  * Grabber-bar opacity from the two morphs that own it. It fades IN only after
  * the pill capsule has fully faded out (strict anti-phase over [0.55, 0.95] of
  * the pill→input open — the "two pills" guard), and back OUT as the over-pull
@@ -667,7 +680,12 @@ function SheetGrabber({
           // strictly anti-phase with the pill bar so the two are never on screen
           // together. The bar paints at full opacity — a prior regression pinned
           // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
-          "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
+          "rounded-full opacity-100 transition-all duration-300",
+          // CLOSED (input mode): same h-1.5 w-12 bar as the pill capsule — the
+          // two crossfade and must be pixel-identical. OPEN sheet: a quieter,
+          // smaller bar (the full-size handle over the transcript read as
+          // oversized chrome).
+          open ? "h-1 w-9" : "h-1.5 w-12",
           // A dedicated opacity/scale breath marks live agent work without
           // repurposing shadcn's text-only shimmer utility.
           breathing && "eliza-chat-handle-breathe",
@@ -2851,6 +2869,9 @@ export function ContinuousChatOverlay({
   // pillMorphScale lerp (down to PILL_MORPH_MIN_SCALE) so collapsing to the
   // pill reads as the chat HARD-shrinking into the capsule, not a 10% nudge.
   const panelScale = useTransform(openProgress, pillMorphScale);
+  // Constant-size pill handle: cancel the panel's pill-morph scale on the
+  // capsule wrapper (see pillHandleCounterScale).
+  const pillCounterScale = useTransform(openProgress, pillHandleCounterScale);
   // Glass surface + its content crossfade IN as the input forms (one wrapper, so
   // sheen/glow/thread/composer resolve together with the glass).
   const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
@@ -5950,6 +5971,10 @@ export function ContinuousChatOverlay({
             style={{
               opacity: pillOpacity,
               pointerEvents: pilled ? "auto" : "none",
+              // Cancel the panel's pill-morph scale so the handle bar keeps a
+              // constant on-screen size across pill ↔ input (see pillCounterScale).
+              scale: pillCounterScale,
+              transformOrigin: "bottom center",
             }}
           >
             <PillHandle
