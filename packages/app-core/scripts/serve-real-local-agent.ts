@@ -7,6 +7,7 @@
  * WebView tests reach it through adb reverse as a "remote" first-run target.
  */
 
+import { ModelType } from "@elizaos/core";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { createDeterministicLlmProxyPlugin } from "../../test/mocks/helpers/llm-proxy-plugin.ts";
 import { startApiServer } from "../src/api/server.ts";
@@ -18,6 +19,10 @@ const deviceE2eUploadImageRoute = {
   path: "/api/device-e2e/upload-image",
   name: "device-e2e-upload-image",
 };
+
+const STREAM_E2E_REPLY =
+  "STREAM_E2E_OK The dashboard receives this reply through the real model callback, runtime message loop, HTTP SSE route, browser parser, and React transcript. " +
+  "Each chunk is intentionally small and evenly paced so the browser lane can measure token-to-paint latency, frame cadence, layout stability, and DOM identity while the visible answer grows.";
 
 function resolvePort(): number {
   const raw = process.env.ELIZA_API_PORT ?? process.env.ELIZA_PORT ?? "31337";
@@ -31,12 +36,49 @@ function resolvePort(): number {
 async function main(): Promise<void> {
   const t0 = Date.now();
   const port = resolvePort();
+  const streamIntervalMs = Number.parseInt(
+    process.env.ELIZA_E2E_MODEL_STREAM_INTERVAL_MS ?? "",
+    10,
+  );
+  const streamChunkSize = Number.parseInt(
+    process.env.ELIZA_E2E_MODEL_STREAM_CHUNK_SIZE ?? "4",
+    10,
+  );
+  const deterministicStream =
+    Number.isSafeInteger(streamIntervalMs) && streamIntervalMs >= 0
+      ? {
+          chunkSize: streamChunkSize,
+          intervalMs: streamIntervalMs,
+          modelTypes: [ModelType.RESPONSE_HANDLER],
+        }
+      : undefined;
 
   process.env.ELIZA_PAIRING_DISABLED ??= "1";
 
   const configEnv = useIsolatedConfigEnv("eliza-device-e2e-host-agent-");
   const proxy = createDeterministicLlmProxyPlugin({
     failOnUnhandledAction: false,
+    ...(deterministicStream ? { stream: deterministicStream } : {}),
+    resolve(call) {
+      if (
+        !deterministicStream ||
+        call.modelType !== ModelType.RESPONSE_HANDLER
+      ) {
+        return null;
+      }
+      const args = {
+        shouldRespond: "RESPOND",
+        contexts: ["simple"],
+        intents: ["chat"],
+        replyText: STREAM_E2E_REPLY,
+        candidateActionNames: [],
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+        emotion: "none",
+      };
+      return JSON.stringify(args);
+    },
   });
   const mediaRoutesPlugin = {
     name: "device-e2e-media-routes",

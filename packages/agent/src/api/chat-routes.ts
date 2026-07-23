@@ -2907,7 +2907,11 @@ async function generateChatResponseWithTiming(
                     abortSignal: generationAbortController.signal,
                     keepExistingResponses: true,
                     onStreamChunk: opts?.onChunk
-                      ? async (chunk: string) => {
+                      ? async (
+                          chunk: string,
+                          _messageId?: string,
+                          accumulated?: string,
+                        ) => {
                           if (generationTimedOut || opts?.isAborted?.()) {
                             throw createChatGenerationTimeoutError(
                               generationTimeoutMs,
@@ -2927,7 +2931,11 @@ async function generateChatResponseWithTiming(
                             return;
                           }
                           if (!claimStreamSource("onStreamChunk")) return;
-                          appendIncomingText(chunk);
+                          // Structured extractors provide authoritative cumulative text.
+                          // Using it avoids mistaking repeated characters at adjacent chunk
+                          // boundaries for transport overlap; raw delta handlers still fall
+                          // back to the route's compatibility reconciler.
+                          appendIncomingText(accumulated ?? chunk);
                         }
                       : undefined,
                   },
