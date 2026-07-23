@@ -46,6 +46,13 @@ _RELAY_CHUNK_BYTES = 65536
 # credential headers are replaced with the coordinator-held upstream key.
 # Accept-Encoding is pinned to identity so the relay stays a transparent byte
 # pipe with no Content-Encoding to decode (SSE streams are never compressed).
+# User-Agent is likewise per-hop: the forwarder is the HTTP client on the
+# upstream leg and presents its own product token. Passing through harness SDK
+# identifiers breaks lanes behind edge bot-management — Cloudflare's AI-crawler
+# rules 403 ("Your request was blocked") any User-Agent starting with
+# ``OpenAI/`` (the openai js/python SDK default), which blocked OpenClaw's
+# native runtime at elizacloud.ai while identical bodies under other agents
+# passed.
 _REQUEST_HEADER_STRIP = frozenset(
     {
         "accept-encoding",
@@ -61,8 +68,10 @@ _REQUEST_HEADER_STRIP = frozenset(
         "trailer",
         "transfer-encoding",
         "upgrade",
+        "user-agent",
     }
 )
+_FORWARDER_USER_AGENT = "eliza-benchmark-provider-forwarder/1"
 _RESPONSE_HEADER_STRIP = frozenset(
     {
         "connection",
@@ -322,6 +331,7 @@ class _ForwarderHandler(BaseHTTPRequestHandler):
                 continue
             headers[name] = value
         headers["Accept-Encoding"] = "identity"
+        headers["User-Agent"] = _FORWARDER_USER_AGENT
         return headers
 
     def _relay_response(self, upstream_response: HTTPResponse) -> None:

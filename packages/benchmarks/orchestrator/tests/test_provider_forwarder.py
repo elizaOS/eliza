@@ -56,6 +56,7 @@ class _UpstreamHandler(BaseHTTPRequestHandler):
                 "path": self.path,
                 "authorization": self.headers.get("Authorization"),
                 "accept_encoding": self.headers.get("Accept-Encoding"),
+                "user_agent": self.headers.get("User-Agent"),
                 "payload": payload,
             }
         )
@@ -151,11 +152,12 @@ def _request(
     *,
     token: str | None = None,
     payload: dict[str, object] | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[int, bytes, dict[str, str]]:
     parsed_port = int(base_url.rsplit(":", 1)[1].split("/", 1)[0])
     connection = HTTPConnection("127.0.0.1", parsed_port, timeout=10)
     try:
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = dict(extra_headers or {})
         if token is not None:
             headers["Authorization"] = f"Bearer {token}"
         body = None
@@ -240,6 +242,7 @@ def test_chat_completion_passthrough_swaps_credentials(
             "/v1/chat/completions",
             token=lane_token,
             payload=request_payload,
+            extra_headers={"User-Agent": "OpenAI/JS 6.45.0"},
         )
         assert status == 200
         assert headers["content-type"] == "application/json"
@@ -252,6 +255,10 @@ def test_chat_completion_passthrough_swaps_credentials(
         # identity encoding keeps the relay a transparent byte pipe.
         assert seen["authorization"] == f"Bearer {UPSTREAM_KEY}"
         assert seen["accept_encoding"] == "identity"
+        # The forwarder is the client on the upstream hop: harness SDK product
+        # tokens (``OpenAI/...``) never reach upstream, where edge bot rules
+        # 403 them (Cloudflare AI-crawler blocking at elizacloud.ai).
+        assert seen["user_agent"] == "eliza-benchmark-provider-forwarder/1"
     finally:
         forwarder.close()
 

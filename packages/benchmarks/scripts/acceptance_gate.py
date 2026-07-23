@@ -5,9 +5,20 @@ exits ``0`` only if all required steps pass. Calls the real orchestrator
 via subprocess so the gate exercises the full integration path, not
 just module imports.
 
-Stdlib only -- ``urllib`` for the Cerebras smoke call, ``subprocess``
-for orchestrator dispatch, ``sqlite3`` for score readback. Mirrors the
-existing ``lib/`` module style.
+When the campaign env points the resolved provider endpoint at a remote
+proxy (e.g. ``CEREBRAS_BASE_URL=https://elizacloud.ai/api/v1``), the gate
+starts the same loopback provider forwarder cohorts use
+(``benchmarks.orchestrator.provider_forwarder``) and routes every harness
+lane through it -- the hermes and openclaw native runtimes fail closed on
+non-loopback endpoints, and a gate pass must certify the exact campaign
+topology, not a diagnostic bypass of it. Loopback endpoints keep the
+direct path with the operator env untouched.
+
+Mostly stdlib -- ``urllib`` for the provider smoke call, ``subprocess``
+for orchestrator dispatch, ``sqlite3`` for score readback; the forwarder
+and its endpoint-resolution helpers are imported from
+``benchmarks.orchestrator`` so the gate can never disagree with the
+cohort coordinator about when the forwarder is required.
 """
 
 from __future__ import annotations
@@ -21,15 +32,21 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator, Mapping
 
 
 _THIS_FILE = Path(__file__).resolve()
 PACKAGE_ROOT = _THIS_FILE.parent.parent
-WORKSPACE_ROOT = PACKAGE_ROOT.parent.parent  # eliza/ root used by orchestrator
+# packages/ -- the import root that makes ``benchmarks`` importable as a
+# package, both for orchestrator subprocesses (their cwd) and for the gate's
+# own in-process imports of the provider forwarder. It is also the
+# ``workspace_root`` the orchestrator CLI derives for itself, so ambient-env
+# resolution here matches what the spawned runs will resolve.
+PACKAGES_ROOT = PACKAGE_ROOT.parent
 DB_PATH = PACKAGE_ROOT / "benchmark_results" / "orchestrator.sqlite"
 
 CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
@@ -64,14 +81,34 @@ def _resolve_api_key() -> tuple[str, str | None]:
 DEFAULT_BENCHMARK_FALLBACK = "bfcl"
 DEFAULT_BENCHMARK_PRIMARY = "hermes_tblite"
 DEFAULT_SCORE_FLOOR = 0.1
+# The hermes env harnesses (hermes-adapter/run_env_cli.py) enforce
+# full-dataset-or-single-task semantics: any max_tasks other than 1 is
+# rejected outright ("no generic max-tasks control"), so the gate's sanity
+# run must size itself to the largest smoke slice each harness supports —
+# otherwise the default gate invocation can never pass on its own default
+# benchmark. The cap applies to the sanity/random steps only; full-dataset
+# campaign runs go through full_campaign.py, not this gate.
+SANITY_MAX_TASKS_CAP = {
+    "hermes_tblite": 1,
+    "hermes_terminalbench_2": 1,
+    "hermes_yc_bench": 1,
+    "hermes_swe_env": 1,
+}
 AGENTS = ("eliza", "openclaw", "hermes")
+# The provider label every gate-dispatched orchestrator run uses; the
+# forwarder decision must resolve the same provider's endpoint.
+GATE_PROVIDER = "cerebras"
 
 # Per-step timeouts. Each step asserts its own deadline and surfaces
 # the timeout in the report rather than hanging the whole gate.
 TIMEOUT_PRECHECK_S = 30
 TIMEOUT_CEREBRAS_SMOKE_S = 30
 TIMEOUT_AGENT_SMOKE_S = 120
-TIMEOUT_BENCHMARK_RUN_S = 240
+# A real single-task hermes_tblite leg measures ~316s end to end (hermes venv
+# boot + pinned dataset load + docker terminal sandbox + live agent loop), so
+# the old 240s budget killed healthy runs. 900s bounds a wedged lane while
+# leaving honest headroom for slower agent loops.
+TIMEOUT_BENCHMARK_RUN_S = 900
 TIMEOUT_RANDOM_RUN_S = 120
 
 
@@ -201,6 +238,168 @@ def _extract_cerebras_text(payload: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Provider forwarder (remote-proxy campaigns)
+# ---------------------------------------------------------------------------
+
+
+_PROVIDER_FORWARDER: Any | None = None
+_TEARDOWN_ERRORS: list[str] = []
+
+
+def _resolve_forwarder_upstream() -> tuple[str, str] | None:
+    """Decide whether the gate needs the loopback provider forwarder.
+
+    Returns ``(upstream_base_url, upstream_api_key)`` when the resolved
+    provider endpoint is non-loopback, ``None`` when it is loopback (direct
+    path, env untouched). Uses the same resolution helpers and ambient
+    dotenv cascade as ``cohort._forwarder_upstream`` so the gate's decision
+    can never disagree with the campaign coordinator's.
+    """
+
+    sys.path.insert(0, str(PACKAGES_ROOT))
+    from benchmarks.orchestrator.provider_forwarder import is_loopback_url
+    from benchmarks.orchestrator.runner import (
+        PROVIDER_DUMMY_KEY,
+        PROVIDER_KEY_ENV,
+        _ambient_env,
+        _resolve_openai_compat_base_url,
+    )
+    from benchmarks.orchestrator.types import RunRequest
+
+    # The gate never pins endpoints through extra_config, so an empty
+    # request carries only the provider the dispatched runs will use.
+    request = RunRequest(
+        benchmarks=(),
+        agent="",
+        provider=GATE_PROVIDER,
+        model=CEREBRAS_DEFAULT_MODEL,
+        extra_config={},
+    )
+    ambient_env = _ambient_env(PACKAGES_ROOT)
+    resolved_base_url = _resolve_openai_compat_base_url(
+        GATE_PROVIDER, request, ambient_env
+    )
+    if is_loopback_url(resolved_base_url):
+        return None
+    upstream_api_key = (
+        ambient_env.get(PROVIDER_KEY_ENV[GATE_PROVIDER], "").strip()
+        or ambient_env.get("OPENAI_API_KEY", "").strip()
+        or PROVIDER_DUMMY_KEY.get(GATE_PROVIDER, "")
+    )
+    if not upstream_api_key:
+        raise RuntimeError(
+            f"Provider {GATE_PROVIDER} resolves to non-loopback "
+            f"{resolved_base_url} but neither {PROVIDER_KEY_ENV[GATE_PROVIDER]} "
+            "nor OPENAI_API_KEY is set; the loopback provider forwarder "
+            "cannot authenticate upstream"
+        )
+    return resolved_base_url, upstream_api_key
+
+
+def _step_provider_forwarder() -> GateStepResult:
+    """Start one forwarder for the gate's lifetime when the endpoint is remote.
+
+    The forwarder is the same component cohort runs use, so every
+    downstream step (agent smoke, sanity benchmark) exercises the exact
+    campaign topology: harness lanes hold only worthless bearer tokens and
+    reach the model over genuine loopback.
+    """
+
+    global _PROVIDER_FORWARDER
+    start = _now_ms()
+    details: dict[str, Any] = {}
+    try:
+        target = _resolve_forwarder_upstream()
+        if target is None:
+            details["mode"] = "direct"
+            details["reason"] = "resolved provider endpoint is loopback"
+            return GateStepResult(
+                step_id="PROVIDER_FORWARDER",
+                passed=True,
+                duration_ms=_now_ms() - start,
+                details=details,
+                error=None,
+            )
+        from benchmarks.orchestrator.provider_forwarder import (
+            start_provider_forwarder,
+        )
+
+        run_group_id = (
+            f"acceptance_gate_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        )
+        forwarder = start_provider_forwarder(
+            run_group_id=run_group_id,
+            provider=GATE_PROVIDER,
+            harnesses=AGENTS,
+            upstream_base_url=target[0],
+            upstream_api_key=target[1],
+            evidence_dir=(
+                PACKAGE_ROOT
+                / "benchmark_results"
+                / run_group_id
+                / "provider-forwarder"
+            ),
+        )
+        _PROVIDER_FORWARDER = forwarder
+        details = {
+            "mode": "forwarder",
+            "listen_base_url": forwarder.base_url,
+            "upstream_host": forwarder.upstream_host,
+            "harness_lanes": list(AGENTS),
+            "evidence_file": str(forwarder.evidence_file),
+        }
+        return GateStepResult(
+            step_id="PROVIDER_FORWARDER",
+            passed=True,
+            duration_ms=_now_ms() - start,
+            details=details,
+            error=None,
+        )
+    except Exception as exc:
+        # error-policy:J1 the gate is the process boundary: a forwarder
+        # startup failure becomes a failed, skip-cascading step in the report.
+        return GateStepResult(
+            step_id="PROVIDER_FORWARDER",
+            passed=False,
+            duration_ms=_now_ms() - start,
+            details=details,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _agent_env_overrides(agent: str) -> dict[str, str]:
+    """Per-harness forwarder lane env; empty when the direct path is active."""
+
+    if _PROVIDER_FORWARDER is None:
+        return {}
+    return dict(_PROVIDER_FORWARDER.env_for_harness(agent))
+
+
+@contextmanager
+def _applied_env(overrides: Mapping[str, str]) -> Iterator[None]:
+    """Temporarily apply env overrides for in-process adapter construction.
+
+    The adapters resolve their endpoint and key from ``os.environ`` (hermes
+    at construction, openclaw at send, the eliza server at spawn), so the
+    lane env must be live for the whole construct-and-send window.
+    """
+
+    if not overrides:
+        yield
+        return
+    saved = {name: os.environ.get(name) for name in overrides}
+    os.environ.update(overrides)
+    try:
+        yield
+    finally:
+        for name, previous in saved.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator dispatch (Steps 3 + 4)
 # ---------------------------------------------------------------------------
 
@@ -214,10 +413,13 @@ def _orchestrator_run(
     extra: dict[str, Any],
     timeout_s: int,
     verbose: bool,
+    env_overrides: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
     """Spawn ``python -m benchmarks.orchestrator run ...`` and return
     ``(returncode, stdout, stderr)``. The subprocess inherits the parent
-    env so ``CEREBRAS_API_KEY`` and friends are visible."""
+    env so ``CEREBRAS_API_KEY`` and friends are visible; ``env_overrides``
+    layers a forwarder harness lane on top so remote-proxy campaigns route
+    the run through loopback exactly like a cohort worker."""
     cmd = [
         sys.executable,
         "-m",
@@ -240,10 +442,11 @@ def _orchestrator_run(
     try:
         result = subprocess.run(
             cmd,
-            cwd=str(WORKSPACE_ROOT.parent),  # so ``benchmarks`` is importable as pkg
+            cwd=str(PACKAGES_ROOT),  # so ``benchmarks`` is importable as pkg
             capture_output=True,
             text=True,
             timeout=timeout_s,
+            env={**os.environ, **env_overrides} if env_overrides else None,
         )
     except subprocess.TimeoutExpired as exc:
         return -1, (exc.stdout or ""), (
@@ -292,7 +495,7 @@ def _benchmark_registered(benchmark_id: str) -> bool:
     try:
         result = subprocess.run(
             [sys.executable, "-m", "benchmarks.orchestrator", "list-benchmarks"],
-            cwd=str(WORKSPACE_ROOT.parent),
+            cwd=str(PACKAGES_ROOT),
             capture_output=True,
             text=True,
             timeout=30,
@@ -458,14 +661,32 @@ def _make_adapter_client(agent: str):
 
 
 def _teardown() -> None:
-    """Release any resources owned by the gate (the Eliza server)."""
-    global _ELIZA_SERVER_MANAGER
+    """Release resources owned by the gate (Eliza server, provider forwarder).
+
+    A forwarder whose serving loop died mid-gate is a broken-lifecycle
+    signal, not a cleanup detail: the error is recorded so ``_finalize``
+    can fail the report instead of certifying a run whose model route
+    silently collapsed.
+    """
+    global _ELIZA_SERVER_MANAGER, _PROVIDER_FORWARDER
     if _ELIZA_SERVER_MANAGER is not None:
         try:
             _ELIZA_SERVER_MANAGER.stop()
         except Exception:  # noqa: BLE001 - never raise from teardown
             pass
         _ELIZA_SERVER_MANAGER = None
+    if _PROVIDER_FORWARDER is not None:
+        forwarder = _PROVIDER_FORWARDER
+        _PROVIDER_FORWARDER = None
+        try:
+            forwarder.close()
+        except Exception as exc:
+            # error-policy:J1 teardown is the gate's boundary for forwarder
+            # lifecycle failures; recorded and surfaced as a failed step in
+            # _finalize rather than raised past report generation.
+            _TEARDOWN_ERRORS.append(
+                f"provider forwarder close failed: {type(exc).__name__}: {exc}"
+            )
 
 
 def _step_agent_smoke() -> GateStepResult:
@@ -476,11 +697,20 @@ def _step_agent_smoke() -> GateStepResult:
 
     for agent in AGENTS:
         agent_start = _now_ms()
-        entry: dict[str, Any] = {}
+        overrides = _agent_env_overrides(agent)
+        entry: dict[str, Any] = {
+            "provider_route": "forwarder" if overrides else "direct",
+        }
         try:
-            client = _make_adapter_client(agent)
-            client.reset(task_id="acceptance_gate_smoke", benchmark="acceptance_gate")
-            response = client.send_message(prompt)
+            # The lane env stays applied across construction AND the send:
+            # hermes captures its base URL at construction, openclaw resolves
+            # it per send, and the eliza server inherits env at spawn.
+            with _applied_env(overrides):
+                client = _make_adapter_client(agent)
+                client.reset(
+                    task_id="acceptance_gate_smoke", benchmark="acceptance_gate"
+                )
+                response = client.send_message(prompt)
             duration_ms = _now_ms() - agent_start
             text = response.text or ""
             entry["duration_ms"] = round(duration_ms, 2)
@@ -523,11 +753,12 @@ def _step_sanity_benchmark(
         rc, stdout, stderr = _orchestrator_run(
             benchmark_id=benchmark_id,
             agent=agent,
-            provider="cerebras",
+            provider=GATE_PROVIDER,
             model=CEREBRAS_DEFAULT_MODEL,
             extra={"max_tasks": max_tasks},
             timeout_s=TIMEOUT_BENCHMARK_RUN_S,
             verbose=verbose,
+            env_overrides=_agent_env_overrides(agent) or None,
         )
         run = _latest_run_for(benchmark_id=benchmark_id, agent=agent)
         entry: dict[str, Any] = {
@@ -564,10 +795,12 @@ def _step_random_baseline(
     verbose: bool,
 ) -> GateStepResult:
     start = _now_ms()
+    # random_v1 is a synthetic baseline with no model traffic, so it has no
+    # forwarder lane and keeps the untouched parent env.
     rc, stdout, stderr = _orchestrator_run(
         benchmark_id=benchmark_id,
         agent="random_v1",
-        provider="cerebras",
+        provider=GATE_PROVIDER,
         model=CEREBRAS_DEFAULT_MODEL,
         extra={"max_tasks": max_tasks},
         timeout_s=TIMEOUT_RANDOM_RUN_S,
@@ -590,6 +823,20 @@ def _step_random_baseline(
             duration_ms=_now_ms() - start,
             details=details,
             error=f"orchestrator rc={rc}",
+        )
+    if run is not None and run.get("status") == "incompatible":
+        # Designed outcome, not a failure: the strategy registry declares
+        # chance behavior uninterpretable for this benchmark (freeform /
+        # is_meaningful=False), so random_v1 reports "incompatible" with no
+        # score. LIFT_OVER_RANDOM then applies the absolute score floor,
+        # which is the designed compensating check — the bar stays intact.
+        details["incompatible"] = True
+        return GateStepResult(
+            step_id="RANDOM_BASELINE",
+            passed=True,
+            duration_ms=_now_ms() - start,
+            details=details,
+            error=None,
         )
     if run is None or run.get("score") is None:
         return GateStepResult(
@@ -789,9 +1036,12 @@ def run_acceptance_gate(
 
     started_at = _iso_now()
     resolved_bench = _resolve_benchmark(benchmark_id)
+    max_tasks_requested = max_tasks
+    max_tasks = min(max_tasks, SANITY_MAX_TASKS_CAP.get(resolved_bench, max_tasks))
     config: dict[str, Any] = {
         "benchmark_id_requested": benchmark_id,
         "benchmark_id_resolved": resolved_bench,
+        "max_tasks_requested": max_tasks_requested,
         "max_tasks": max_tasks,
         "min_lift": min_lift,
         "skip_random": skip_random,
@@ -819,6 +1069,7 @@ def run_acceptance_gate(
     if not step.passed:
         for sid in (
             "CEREBRAS_SMOKE",
+            "PROVIDER_FORWARDER",
             "AGENT_SMOKE",
             "SANITY_BENCHMARK",
             "RANDOM_BASELINE",
@@ -834,6 +1085,7 @@ def run_acceptance_gate(
     _print(step)
     if not step.passed:
         for sid in (
+            "PROVIDER_FORWARDER",
             "AGENT_SMOKE",
             "SANITY_BENCHMARK",
             "RANDOM_BASELINE",
@@ -841,6 +1093,22 @@ def run_acceptance_gate(
             "TRAJECTORY_NORMALIZATION",
         ):
             steps.append(_skipped(sid, "CEREBRAS_SMOKE failed"))
+        return _finalize(steps, started_at, config, output_dir)
+
+    # Step 1.5 -- one forwarder for the gate's remaining lifetime when the
+    # resolved provider endpoint is remote; closed in _teardown.
+    step = _step_provider_forwarder()
+    steps.append(step)
+    _print(step)
+    if not step.passed:
+        for sid in (
+            "AGENT_SMOKE",
+            "SANITY_BENCHMARK",
+            "RANDOM_BASELINE",
+            "LIFT_OVER_RANDOM",
+            "TRAJECTORY_NORMALIZATION",
+        ):
+            steps.append(_skipped(sid, "PROVIDER_FORWARDER failed"))
         return _finalize(steps, started_at, config, output_dir)
 
     # Step 2
@@ -932,9 +1200,22 @@ def _finalize(
     config: dict[str, Any],
     output_dir: Path | None,
 ) -> GateReport:
-    # Always release resources owned by the gate (Eliza server, etc.)
+    # Always release resources owned by the gate (Eliza server, forwarder)
     # before producing the final report. Idempotent and exception-safe.
     _teardown()
+    if _TEARDOWN_ERRORS:
+        # A broken forwarder lifecycle (serving loop died mid-gate) must fail
+        # the report: the smokes may have raced ahead of the collapse.
+        steps.append(
+            GateStepResult(
+                step_id="FORWARDER_TEARDOWN",
+                passed=False,
+                duration_ms=0.0,
+                details={},
+                error="; ".join(_TEARDOWN_ERRORS),
+            )
+        )
+        _TEARDOWN_ERRORS.clear()
     overall_passed = all(step.passed for step in steps)
     finished_at = _iso_now()
     report = GateReport(

@@ -561,6 +561,22 @@ export function extractBenchmarkName(
   return "unknown";
 }
 
+/** Context keys normalizeBenchmarkContext synthesizes from the session itself. */
+const SESSION_IDENTITY_CONTEXT_KEYS = new Set([
+  "benchmark",
+  "taskId",
+  "task_id",
+]);
+
+function isIdentityOnlyContext(
+  context: Record<string, unknown> | undefined,
+): boolean {
+  if (!context) return true;
+  return Object.keys(context).every((key) =>
+    SESSION_IDENTITY_CONTEXT_KEYS.has(key),
+  );
+}
+
 export function composeBenchmarkPrompt(params: {
   text: string;
   context?: Record<string, unknown>;
@@ -584,6 +600,19 @@ export function composeBenchmarkPrompt(params: {
   // neutral hint. Keep the persisted user message byte-for-byte clean so
   // native room history matches the canonical history supplied externally.
   if (isOrchestratorLifecycle) {
+    return params.text.trim();
+  }
+
+  // normalizeBenchmarkContext always stamps session identity (benchmark /
+  // taskId / task_id) into the context, so key-count alone cannot tell "the
+  // client sent task context" from "the client sent nothing". When identity is
+  // all there is, the message must stay byte-for-byte clean: decorating it
+  // with an authoritative-context JSON block and an action-output trailer
+  // corrupts the user's actual ask, defeating core heuristics anchored to the
+  // whole message (observed live: the acceptance-gate smoke "Reply with the
+  // single word: PONG" dead-ended in the unusable-reply deferral because the
+  // say-literal recognizer saw the scaffold, not the request).
+  if (isIdentityOnlyContext(params.context) && params.image === undefined) {
     return params.text.trim();
   }
 

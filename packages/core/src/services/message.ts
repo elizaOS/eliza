@@ -3316,11 +3316,16 @@ function isRequestedTerseLiteralReply(args: {
 /**
  * Recognize a simple imperative to emit ONE specific literal token, e.g.
  * "Say PONG", "say pong", "please say PONG", "can you say PONG", "reply with OK",
- * "respond with the word HELLO", "output PONG!". The lightweight sibling of
+ * "respond with the word HELLO", "output PONG!", and the quantified forms
+ * "Reply with the single word: PONG" / "reply with one word: PONG" (the
+ * acceptance-gate smoke phrasing). The lightweight sibling of
  * {@link parseExactWordsInstruction} (which requires the explicit
  * "...with exactly N words: ..." form). Anchored to the whole message and a
  * single word, so it only fires on a clear "say <token>" request — not
- * "say something nice about cats". Returns the requested literal or null.
+ * "say something nice about cats". Between the verb and the literal only
+ * complete connector units may appear ("with", "the word", "the single word",
+ * "one word", …) — never bare determiners, so "write a poem" cannot parse as
+ * a request to say "poem". Returns the requested literal or null.
  */
 function parseSayLiteralInstruction(
 	text: string | null | undefined,
@@ -3335,7 +3340,7 @@ function parseSayLiteralInstruction(
 		.replace(/^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u, "")
 		.trim();
 	const match = body.match(
-		/^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|the\s+word|the\s+phrase)){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?\s*[.!?]*$/iu,
+		/^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|(?:(?:the|a|an)\s+)?(?:single|one)\s+(?:word|phrase|token)|the\s+(?:word|phrase|token))){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?\s*[.!?]*$/iu,
 	);
 	return match ? match[1] : null;
 }

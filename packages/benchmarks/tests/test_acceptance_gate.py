@@ -1,9 +1,12 @@
 """Tests for ``scripts/acceptance_gate.py``.
 
-The acceptance gate spawns the orchestrator and calls Cerebras over
-HTTP. These tests mock both so we never make a real network call or
-launch a real benchmark process. The module is loaded by path so the
-tests don't depend on ``scripts/`` being a package.
+The acceptance gate spawns the orchestrator and calls the provider over
+HTTP. These tests mock both so we never spend real quota or launch a
+real benchmark process; the provider-forwarder tests instead run the
+REAL forwarder against a local upstream stub that stands in for the
+remote cloud proxy, so the loopback relay, per-lane bearer swap, and
+teardown are exercised over genuine sockets. The module is loaded by
+path so the tests don't depend on ``scripts/`` being a package.
 """
 
 from __future__ import annotations
@@ -11,6 +14,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import threading
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -361,8 +368,433 @@ def test_resolve_benchmark_falls_back_to_bfcl(monkeypatch: pytest.MonkeyPatch) -
     assert gate._resolve_benchmark("no_such_bench") == "no_such_bench"
 
 
+def test_sanity_max_tasks_clamped_to_harness_smoke_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The hermes env harnesses reject any max_tasks other than 1, so the
+    gate's default sanity size (2) must clamp to 1 for them — otherwise the
+    default invocation can never pass on its own default benchmark."""
+    monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test")
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "http://127.0.0.1:9/v1")
+    monkeypatch.setattr(gate, "_benchmark_registered", lambda b: True)
+    monkeypatch.setattr(
+        gate, "_cerebras_chat", lambda **k: (200, {"choices": [{"message": {"content": "PONG"}}]}, "")
+    )
+
+    class _FakeClient:
+        def reset(self, **kwargs: object) -> dict[str, object]:
+            return {"status": "ready"}
+
+        def send_message(self, text: str) -> Any:
+            class _Response:
+                text = "PONG"
+                params: dict[str, object] = {}
+
+            return _Response()
+
+    monkeypatch.setattr(gate, "_make_adapter_client", lambda agent: _FakeClient())
+    calls: list[dict[str, Any]] = []
+
+    def _fake_orchestrator_run(**kwargs: Any) -> tuple[int, str, str]:
+        calls.append(kwargs)
+        return 0, "", ""
+
+    monkeypatch.setattr(gate, "_orchestrator_run", _fake_orchestrator_run)
+    monkeypatch.setattr(
+        gate,
+        "_latest_run_for",
+        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
+    )
+    report = gate.run_acceptance_gate(
+        benchmark_id="hermes_tblite",
+        skip_install_check=True,
+        skip_random=True,
+    )
+    assert report.config["max_tasks_requested"] == 2
+    assert report.config["max_tasks"] == 1
+    assert calls, "sanity benchmark step never dispatched"
+    assert all(c["extra"] == {"max_tasks": 1} for c in calls)
+
+
+def test_random_baseline_accepts_designed_incompatible_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """random_v1 reports status="incompatible" (score None, rc 0) for
+    benchmarks whose chance behavior is uninterpretable (freeform strategy,
+    e.g. hermes_tblite). That designed outcome passes the step; the absolute
+    score floor in LIFT_OVER_RANDOM is the compensating check."""
+    monkeypatch.setattr(gate, "_orchestrator_run", lambda **k: (0, "", ""))
+    monkeypatch.setattr(
+        gate,
+        "_latest_run_for",
+        lambda **k: {
+            "run_id": "rid_random",
+            "status": "incompatible",
+            "score": None,
+            "error": "random baseline uninterpretable for this benchmark",
+        },
+    )
+    step = gate._step_random_baseline(
+        benchmark_id="hermes_tblite", max_tasks=1, verbose=False
+    )
+    assert step.passed
+    assert step.details["incompatible"] is True
+    assert step.details["score"] is None
+    # A genuinely scoreless (non-incompatible) run still fails the step.
+    monkeypatch.setattr(
+        gate,
+        "_latest_run_for",
+        lambda **k: {"run_id": "rid_random", "status": "succeeded", "score": None},
+    )
+    step = gate._step_random_baseline(
+        benchmark_id="hermes_tblite", max_tasks=1, verbose=False
+    )
+    assert not step.passed
+    assert step.error == "random_v1 produced no score"
+
+
 def test_extract_cerebras_text_handles_malformed_payloads() -> None:
     assert gate._extract_cerebras_text({}) == ""
     assert gate._extract_cerebras_text({"choices": []}) == ""
     assert gate._extract_cerebras_text({"choices": [{"message": {}}]}) == ""
     assert gate._extract_cerebras_text({"choices": [{"message": {"content": "hi"}}]}) == "hi"
+
+
+# ---------------------------------------------------------------------------
+# Step 1.5: PROVIDER_FORWARDER (remote-proxy campaign topology)
+# ---------------------------------------------------------------------------
+
+
+REAL_UPSTREAM_KEY = "csk-real-upstream-key"
+
+
+class _UpstreamStub:
+    """Local OpenAI-compatible upstream standing in for the remote cloud proxy.
+
+    Advertised as ``http://0.0.0.0:<port>/v1``: syntactically NON-loopback for
+    every loopback predicate in play (``ipaddress.ip_address("0.0.0.0")`` is
+    not loopback), yet routable to this local socket on Linux -- so the gate's
+    real forwarder decision, relay, and credential swap run over genuine
+    sockets without any network egress.
+    """
+
+    def __init__(self) -> None:
+        self.requests: list[dict[str, str]] = []
+        stub = self
+
+        class _Handler(BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+                return
+
+            def do_POST(self) -> None:  # noqa: N802
+                length = int(self.headers.get("Content-Length", "0"))
+                self.rfile.read(length)
+                stub.requests.append(
+                    {
+                        "path": self.path,
+                        "authorization": self.headers.get("Authorization", ""),
+                    }
+                )
+                body = json.dumps(
+                    {"choices": [{"message": {"content": "PONG"}}]}
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        self.port = int(self._server.server_address[1])
+        self.remote_base_url = f"http://0.0.0.0:{self.port}/v1"
+        self.loopback_base_url = f"http://127.0.0.1:{self.port}/v1"
+        self._thread = threading.Thread(
+            target=self._server.serve_forever, daemon=True
+        )
+        self._thread.start()
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+        self._thread.join(timeout=10)
+
+
+@pytest.fixture()
+def upstream_stub() -> Any:
+    stub = _UpstreamStub()
+    yield stub
+    stub.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_gate_state() -> Any:
+    yield
+    gate._teardown()
+    gate._TEARDOWN_ERRORS.clear()
+
+
+def _post_chat(base_url: str, token: str) -> tuple[int, dict[str, Any] | None]:
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/chat/completions",
+        data=json.dumps({"model": "m", "messages": []}).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode("utf-8"))
+
+
+def _remote_campaign_env(
+    monkeypatch: pytest.MonkeyPatch, upstream_stub: _UpstreamStub
+) -> None:
+    _clear_credential_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_API_KEY", REAL_UPSTREAM_KEY)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", upstream_stub.remote_base_url)
+
+
+class _EnvDrivenFakeClient:
+    """Adapter stand-in that resolves env exactly like the real harnesses.
+
+    Reads ``CEREBRAS_BASE_URL`` / ``CEREBRAS_API_KEY`` from ``os.environ`` at
+    send time and performs a REAL HTTP completion against them, so the smoke
+    traffic genuinely traverses whatever route the gate injected.
+    """
+
+    def __init__(self, seen: list[dict[str, str]]) -> None:
+        self._seen = seen
+
+    def reset(self, **kwargs: object) -> dict[str, object]:
+        return {"status": "ready"}
+
+    def send_message(self, text: str) -> Any:
+        import os
+
+        base_url = os.environ.get("CEREBRAS_BASE_URL", "")
+        token = os.environ.get("CEREBRAS_API_KEY", "")
+        self._seen.append({"base_url": base_url, "token": token})
+        status, payload = _post_chat(base_url, token)
+        assert status == 200, f"smoke completion failed with {status}: {payload}"
+        content = payload["choices"][0]["message"]["content"]
+
+        class _Response:
+            pass
+
+        response = _Response()
+        response.text = content
+        response.params = {}
+        return response
+
+
+def test_forwarder_started_for_remote_env_and_closed_on_teardown(
+    monkeypatch: pytest.MonkeyPatch, upstream_stub: _UpstreamStub
+) -> None:
+    _remote_campaign_env(monkeypatch, upstream_stub)
+    step = gate._step_provider_forwarder()
+    assert step.passed is True
+    assert step.details["mode"] == "forwarder"
+    assert step.details["upstream_host"] == "0.0.0.0"
+    assert gate._PROVIDER_FORWARDER is not None
+    listen_base_url = step.details["listen_base_url"]
+    assert listen_base_url.startswith("http://127.0.0.1:")
+
+    # Every harness gets its own lane: loopback base URLs on all env names the
+    # adapters resolve, and distinct worthless tokens instead of the real key.
+    lanes = {agent: gate._agent_env_overrides(agent) for agent in gate.AGENTS}
+    tokens = {lane["CEREBRAS_API_KEY"] for lane in lanes.values()}
+    assert len(tokens) == len(gate.AGENTS)
+    for lane in lanes.values():
+        for env_name in ("CEREBRAS_BASE_URL", "OPENAI_BASE_URL", "BENCHMARK_BASE_URL"):
+            assert lane[env_name] == listen_base_url
+        assert lane["CEREBRAS_API_KEY"] == lane["OPENAI_API_KEY"]
+        assert lane["CEREBRAS_API_KEY"] != REAL_UPSTREAM_KEY
+
+    # A real request with a lane token relays through to the upstream stub,
+    # which must see ONLY the real upstream key.
+    status, payload = _post_chat(listen_base_url, lanes["openclaw"]["CEREBRAS_API_KEY"])
+    assert status == 200
+    assert payload["choices"][0]["message"]["content"] == "PONG"
+    assert upstream_stub.requests[-1]["path"] == "/v1/chat/completions"
+    assert upstream_stub.requests[-1]["authorization"] == f"Bearer {REAL_UPSTREAM_KEY}"
+
+    # An unknown bearer is rejected at the forwarder, never reaching upstream.
+    upstream_before = len(upstream_stub.requests)
+    status, payload = _post_chat(listen_base_url, "not-a-lane-token")
+    assert status == 401
+    assert len(upstream_stub.requests) == upstream_before
+
+    gate._teardown()
+    assert gate._PROVIDER_FORWARDER is None
+    assert gate._TEARDOWN_ERRORS == []
+    with pytest.raises(urllib.error.URLError):
+        _post_chat(listen_base_url, "any")
+
+
+def test_forwarder_not_started_for_loopback_env(
+    monkeypatch: pytest.MonkeyPatch, upstream_stub: _UpstreamStub
+) -> None:
+    _clear_credential_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_API_KEY", REAL_UPSTREAM_KEY)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", upstream_stub.loopback_base_url)
+    step = gate._step_provider_forwarder()
+    assert step.passed is True
+    assert step.details["mode"] == "direct"
+    assert gate._PROVIDER_FORWARDER is None
+    for agent in gate.AGENTS:
+        assert gate._agent_env_overrides(agent) == {}
+
+
+def test_forwarder_step_fails_without_upstream_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_credential_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "http://0.0.0.0:9/v1")
+    # Pin ambient resolution to the process env so a developer machine's
+    # dotenv files cannot smuggle a key into this negative case.
+    import benchmarks.orchestrator.runner as runner_module
+    import os
+
+    monkeypatch.setattr(runner_module, "_ambient_env", lambda root: dict(os.environ))
+    step = gate._step_provider_forwarder()
+    assert step.passed is False
+    assert gate._PROVIDER_FORWARDER is None
+    assert "CEREBRAS_API_KEY" in (step.error or "")
+
+
+def test_agent_smoke_routes_every_harness_through_forwarder(
+    monkeypatch: pytest.MonkeyPatch, upstream_stub: _UpstreamStub
+) -> None:
+    _remote_campaign_env(monkeypatch, upstream_stub)
+    step = gate._step_provider_forwarder()
+    assert step.passed is True
+    listen_base_url = step.details["listen_base_url"]
+
+    seen: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        gate, "_make_adapter_client", lambda agent: _EnvDrivenFakeClient(seen)
+    )
+    result = gate._step_agent_smoke()
+    assert result.passed is True, result.error
+    for agent in gate.AGENTS:
+        assert result.details["agents"][agent]["provider_route"] == "forwarder"
+
+    # Each harness resolved the forwarder's loopback URL and its own token.
+    assert [entry["base_url"] for entry in seen] == [listen_base_url] * 3
+    assert len({entry["token"] for entry in seen}) == 3
+    assert all(entry["token"] != REAL_UPSTREAM_KEY for entry in seen)
+    # All three completions really traversed the relay into the upstream stub,
+    # which only ever saw the real credential.
+    chat_hits = [r for r in upstream_stub.requests if r["path"] == "/v1/chat/completions"]
+    assert len(chat_hits) == 3
+    assert all(r["authorization"] == f"Bearer {REAL_UPSTREAM_KEY}" for r in chat_hits)
+    # The gate's own env is restored after each lane -- no leakage.
+    import os
+
+    assert os.environ["CEREBRAS_BASE_URL"] == upstream_stub.remote_base_url
+    assert os.environ["CEREBRAS_API_KEY"] == REAL_UPSTREAM_KEY
+
+
+def test_agent_smoke_keeps_direct_path_for_loopback_env(
+    monkeypatch: pytest.MonkeyPatch, upstream_stub: _UpstreamStub
+) -> None:
+    _clear_credential_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_API_KEY", REAL_UPSTREAM_KEY)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", upstream_stub.loopback_base_url)
+    step = gate._step_provider_forwarder()
+    assert step.passed is True and gate._PROVIDER_FORWARDER is None
+
+    seen: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        gate, "_make_adapter_client", lambda agent: _EnvDrivenFakeClient(seen)
+    )
+    result = gate._step_agent_smoke()
+    assert result.passed is True, result.error
+    for agent in gate.AGENTS:
+        assert result.details["agents"][agent]["provider_route"] == "direct"
+    # Direct path: operator env untouched, harnesses hit the endpoint as-is.
+    assert [entry["base_url"] for entry in seen] == [upstream_stub.loopback_base_url] * 3
+    assert [entry["token"] for entry in seen] == [REAL_UPSTREAM_KEY] * 3
+
+
+def test_sanity_benchmark_injects_lane_env_into_orchestrator_runs(
+    monkeypatch: pytest.MonkeyPatch, upstream_stub: _UpstreamStub
+) -> None:
+    _remote_campaign_env(monkeypatch, upstream_stub)
+    step = gate._step_provider_forwarder()
+    assert step.passed is True
+    listen_base_url = step.details["listen_base_url"]
+    lanes = {agent: gate._agent_env_overrides(agent) for agent in gate.AGENTS}
+
+    dispatched: list[dict[str, Any]] = []
+
+    def _fake_orchestrator_run(**kwargs: Any) -> tuple[int, str, str]:
+        dispatched.append(kwargs)
+        return 0, "", ""
+
+    monkeypatch.setattr(gate, "_orchestrator_run", _fake_orchestrator_run)
+    monkeypatch.setattr(
+        gate,
+        "_latest_run_for",
+        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
+    )
+    result = gate._step_sanity_benchmark(benchmark_id="bfcl", max_tasks=1, verbose=False)
+    assert result.passed is True, result.error
+    assert [d["agent"] for d in dispatched] == list(gate.AGENTS)
+    for call in dispatched:
+        overrides = call["env_overrides"]
+        assert overrides == lanes[call["agent"]]
+        assert overrides["OPENAI_BASE_URL"] == listen_base_url
+
+    # random_v1 is synthetic (no model traffic): no lane, untouched parent env.
+    dispatched.clear()
+    random_result = gate._step_random_baseline(
+        benchmark_id="bfcl", max_tasks=1, verbose=False
+    )
+    assert random_result.passed is True, random_result.error
+    assert dispatched[0]["agent"] == "random_v1"
+    assert "env_overrides" not in dispatched[0]
+
+
+def test_full_gate_passes_through_forwarder_and_closes_it(
+    monkeypatch: pytest.MonkeyPatch, upstream_stub: _UpstreamStub
+) -> None:
+    """End-to-end CLI run against the remote-looking stub: the provider smoke
+    hits the proxy directly with the real key, every agent smoke rides the
+    forwarder with a lane token, and the forwarder is closed by the gate's
+    own teardown before the CLI returns."""
+
+    _remote_campaign_env(monkeypatch, upstream_stub)
+    seen: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        gate, "_make_adapter_client", lambda agent: _EnvDrivenFakeClient(seen)
+    )
+    monkeypatch.setattr(gate, "_benchmark_registered", lambda b: True)
+    monkeypatch.setattr(gate, "_orchestrator_run", lambda **k: (0, "", ""))
+    monkeypatch.setattr(
+        gate,
+        "_latest_run_for",
+        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
+    )
+    rc = gate.cli(["--skip-install-check", "--skip-random", "--benchmark", "bfcl"])
+    assert rc == 0
+
+    # The gate closed its forwarder; its port no longer accepts connections.
+    assert gate._PROVIDER_FORWARDER is None
+    assert len(seen) == 3
+    forwarder_base_url = seen[0]["base_url"]
+    assert forwarder_base_url.startswith("http://127.0.0.1:")
+    assert forwarder_base_url != upstream_stub.loopback_base_url
+    with pytest.raises(urllib.error.URLError):
+        _post_chat(forwarder_base_url, "any")
+    # Upstream only ever saw the real key: the direct provider smoke plus
+    # three relayed harness smokes.
+    assert all(
+        r["authorization"] == f"Bearer {REAL_UPSTREAM_KEY}"
+        for r in upstream_stub.requests
+    )
+    assert len(upstream_stub.requests) == 4
