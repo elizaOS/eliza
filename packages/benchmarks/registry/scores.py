@@ -377,6 +377,7 @@ def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="tau_bench:root")
     domain_results = root.get("domain_results")
+    judge_degraded_rollouts = 0
     if isinstance(domain_results, dict):
         errors: list[str] = []
         for domain, rows in domain_results.items():
@@ -385,6 +386,11 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
             for row in rows:
                 if not isinstance(row, dict):
                     continue
+                # Trials whose LLM judge failed and was (opt-in) replaced by
+                # the substring heuristic must stay visible in the normalized
+                # score, not blend into healthy verdicts.
+                if row.get("judge_degraded"):
+                    judge_degraded_rollouts += 1
                 error = row.get("error")
                 if isinstance(error, str) and error.strip():
                     task_id = row.get("task_id", "?")
@@ -426,6 +432,7 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
             "overall_policy_compliance": root.get("overall_policy_compliance") or 0,
             "avg_reward": root.get("avg_reward") or 0,
             "num_tasks": num_tasks,
+            "judge_degraded_rollouts": judge_degraded_rollouts,
         },
     )
 

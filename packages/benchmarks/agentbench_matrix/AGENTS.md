@@ -1,86 +1,77 @@
-# InterruptBench — Agent Guide
+# AgentBench matrix adapter — Agent Guide
 
-TypeScript benchmark for **interruption handling** in the elizaOS agent runtime.
-Exercises the Stage-1 response-handler field evaluators (`ResponseHandlerFieldRegistry`,
-`TurnControllerRegistry`, `RoomHandlerQueue` — local mirrors in `src/core-lite.ts`)
-against 10 authored scenarios (expanded to 110 with edge variants) covering
-fragmentation, cancellation, steering, cross-channel leaks, pivots, merges,
-and accumulation. Runnable directly or through the orchestrator's `interrupt_bench`
-adapter (`orchestrator/adapters.py`).
+Code-agent comparison adapter that wraps the `elizaos_agentbench` runner so the
+suite's matrix driver (`orchestrator/code_agent_matrix.py`) can run AgentBench
+across multiple task agents (elizaos, opencode, …) and models, then normalize
+each run into the common matrix result schema. It is **not a standalone
+benchmark** and has no entry in `registry/commands.py` — the AgentBench
+benchmark itself lives in `../agentbench/`; this package only adapts it for
+head-to-head agent comparisons.
 
 ## Run
 
+Normally the orchestrator imports `run_agentbench_matrix()` directly
+(dynamic import as `benchmarks.agentbench_matrix.code_agent_matrix`) — you do
+not invoke this package to run the matrix. For local debugging, the module has
+a thin CLI:
+
 ```bash
-# From this directory. Default: live Cerebras mode (requires CEREBRAS_API_KEY).
-bun run bench
+# Direct — from the repo root (agentbench must be importable alongside benchmarks)
+PYTHONPATH=packages:packages/benchmarks/agentbench \
+    python3 -m benchmarks.agentbench_matrix.code_agent_matrix \
+    --task-agent elizaos --model-provider cerebras --model gemma-4-31b \
+    --output ./packages/benchmarks/benchmark_results/agentbench-matrix --json
 
-# Scripted mode — deterministic, no LLM calls.
-bun run bench -- --mode=scripted
+# Restrict the environment slice (default: os,webshop,web_browsing,database,knowledge_graph)
+... --envs os,database
 
-# Harness mode — Stage-1 calls via the Eliza/Hermes/OpenClaw bridge.
-bun run bench -- --mode=harness
-
-# With LLM-judge bonus.
-bun run bench -- --mode=cerebras --judge
-
-# Single scenario.
-bun run bench -- --scenario=B1-pure-cancellation
-
-# Write report.md + report.json to a directory.
-bun run bench -- --out=./results
-
-# Via the orchestrator (adapter id: interrupt_bench).
-python -m benchmarks.orchestrator run --benchmarks interrupt_bench --provider cerebras --model gemma-4-31b
+# Cap tasks / capture trajectories / include edge-case fixtures
+... --max-tasks 2 --trajectory-dir ./benchmark_results/traj --expand-scenarios
 ```
+
+`--no-docker` is accepted only for CLI parity with the other matrix adapters;
+it changes nothing here.
 
 ## Smoke test (no API keys)
 
-Scripted mode is the no-key path — `bun run bench -- --mode=scripted` runs all
-110 scenarios against a deterministic scripted provider without any LLM calls.
-The default mode is `cerebras` (live model) and needs `CEREBRAS_API_KEY`.
-
-For a one-shot Cerebras round-trip that validates the network wiring (requires
-`CEREBRAS_API_KEY`):
-
 ```bash
-bun run bench:smoke
+# Mock runtime — no eliza server, no model calls; prints normalized JSON (repo root)
+PYTHONPATH=packages:packages/benchmarks/agentbench \
+    python3 -m benchmarks.agentbench_matrix.code_agent_matrix \
+    --task-agent opencode --output /tmp/abm-smoke --max-tasks 1 --mock --json
 ```
 
-## Test the harness
+## Test the adapter
 
 ```bash
-bun install
-bun run test          # vitest run — scenarios, scoring, judge, harness bridge
-bun run test:watch    # watch mode
-bun run typecheck     # tsc --noEmit
+pytest packages/benchmarks/agentbench_matrix/tests/ -v
 ```
+
+The test drives the real CLI subprocess with `--mock --max-tasks 1` and asserts
+the normalized JSON shape (`benchmark`, `adapter`, `summary.resolve_rate`, …).
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
-| `src/runner.ts` | CLI entrypoint — parses flags, runs scenarios, prints report |
-| `src/evaluator.ts` | Per-scenario orchestrator (clock, channels, state, trace) |
-| `src/scorer.ts` | 6-axis scoring (state, intent, routing, trace, boundary, latency) |
-| `src/judge.ts` | LLM-as-judge bonus tier |
-| `src/llm-scripted.ts` | Deterministic provider (no LLM calls) |
-| `src/llm-cerebras.ts` | Live Cerebras client (gemma-4-31b) |
-| `src/llm-harness.ts` | Stage-1 client backed by the Eliza/Hermes/OpenClaw bridge |
-| `src/core-lite.ts` | Local mirrors of the core Wave 0 primitives |
-| `src/registry.ts` | `ResponseHandlerFieldRegistry` seeded for the bench |
-| `scenarios/` | 10 authored JSON scenarios across categories A/B/C/D/F/G/H/K (each expanded 10× at load) |
-| `tests/` | vitest suites: scenarios, aggregate/honest scoring, judge, harness bridge |
-| `scripts/cerebras-smoke.ts` | One-shot Cerebras round-trip for wiring validation |
-| `scripts/harness_stage1_turn.py` | Per-turn bridge invoked by `--mode=harness` |
+| `code_agent_matrix.py` | `run_agentbench_matrix()` public API + debug CLI (`main()`) |
+| `__init__.py` | Package marker |
+| `tests/test_code_agent_matrix.py` | CLI-subprocess integration smoke over the mock runtime |
 
 ## Notes
 
-- Pass tiers: 70 / 82 / 90 / 95 (aggregate score out of 100).
-- Boundary violations deduct 5 points each from the aggregate.
-- Report files write to `--out=<dir>` when specified; nothing is written by default.
-- Orchestrator integration is via the `interrupt_bench` adapter in
-  `orchestrator/adapters.py` (there is no `registry/commands.py` entry).
-- Full scenario format and scoring details: [README.md](README.md).
+- Before starting the `ElizaServerManager`, `_configure_agent_env()` injects
+  `BENCHMARK_TASK_AGENT`, `BENCHMARK_MODEL_PROVIDER`, `BENCHMARK_MODEL_NAME`,
+  `ELIZA_AGENT_ORCHESTRATOR`, and per-provider model overrides
+  (`OPENAI_LARGE_MODEL`, `GROQ_LARGE_MODEL`, `CEREBRAS_MODEL`, …) so every
+  agent/model cell of the matrix runs against the requested model.
+- Results are normalized to the matrix schema (`summary.total_instances` /
+  `resolved` / `resolve_rate` / `score`) with the raw AgentBench
+  `environment_reports` and `overall_metrics` carried alongside.
+- Dataset versions are pinned (`agentbench-five-env-fixture-v1`, edge variant
+  with `--expand-scenarios`) so matrix runs across agents stay comparable.
+- Full background: [README.md](README.md); operator runbook:
+  [`../docs/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](../docs/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md).
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests

@@ -77,7 +77,7 @@ TypeScript/Bun benchmarks (`eliza-1`, `vision-language`, `configbench`,
 3. Verify with `python -m benchmarks.orchestrator list-benchmarks`.
 
 Operator runbook (remote GPU, calibration/readiness gates, code-agent matrix):
-[`ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md),
+[`docs/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](docs/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md),
 [`orchestrator/README.md`](orchestrator/README.md).
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

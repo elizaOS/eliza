@@ -1,86 +1,72 @@
-# InterruptBench — Agent Guide
+# lib — Agent Guide
 
-TypeScript benchmark for **interruption handling** in the elizaOS agent runtime.
-Exercises the Stage-1 response-handler field evaluators (`ResponseHandlerFieldRegistry`,
-`TurnControllerRegistry`, `RoomHandlerQueue` — local mirrors in `src/core-lite.ts`)
-against 10 authored scenarios (expanded to 110 with edge variants) covering
-fragmentation, cancellation, steering, cross-channel leaks, pivots, merges,
-and accumulation. Runnable directly or through the orchestrator's `interrupt_bench`
-adapter (`orchestrator/adapters.py`).
+Shared infrastructure imported by every harness and the orchestrator in the
+LifeOpsBench suite — not a runnable benchmark and not registered in the suite
+registry. Two parallel layers live here because the harnesses are polyglot:
+TypeScript under `src/` (imported as `@elizaos-benchmarks/lib`) and Python at
+the top level (imported as `lib` with `packages/benchmarks` on `PYTHONPATH`).
 
 ## Run
 
-```bash
-# From this directory. Default: live Cerebras mode (requires CEREBRAS_API_KEY).
-bun run bench
+There is nothing to run directly. Consumers import this package:
 
-# Scripted mode — deterministic, no LLM calls.
-bun run bench -- --mode=scripted
-
-# Harness mode — Stage-1 calls via the Eliza/Hermes/OpenClaw bridge.
-bun run bench -- --mode=harness
-
-# With LLM-judge bonus.
-bun run bench -- --mode=cerebras --judge
-
-# Single scenario.
-bun run bench -- --scenario=B1-pure-cancellation
-
-# Write report.md + report.json to a directory.
-bun run bench -- --out=./results
-
-# Via the orchestrator (adapter id: interrupt_bench).
-python -m benchmarks.orchestrator run --benchmarks interrupt_bench --provider cerebras --model gemma-4-31b
+```ts
+import { parseReport, resolveTier } from "@elizaos-benchmarks/lib";
 ```
 
-## Smoke test (no API keys)
-
-Scripted mode is the no-key path — `bun run bench -- --mode=scripted` runs all
-110 scenarios against a deterministic scripted provider without any LLM calls.
-The default mode is `cerebras` (live model) and needs `CEREBRAS_API_KEY`.
-
-For a one-shot Cerebras round-trip that validates the network wiring (requires
-`CEREBRAS_API_KEY`):
-
-```bash
-bun run bench:smoke
+```python
+from lib import BaseBenchmarkClient, ResultsStore
+from lib.pricing import compute_cost_usd
 ```
 
-## Test the harness
+## Test
 
 ```bash
-bun install
-bun run test          # vitest run — scenarios, scoring, judge, harness bridge
-bun run test:watch    # watch mode
-bun run typecheck     # tsc --noEmit
+# TypeScript layer (vitest: metrics schema, model tiers, bundle reader,
+# local-llama-cpp adapter, retrieval defaults)
+cd packages/benchmarks/lib
+bun run test
+
+# Typecheck + lint + format check
+bun run check
+
+# Python layer (pytest, from the suite root so `lib` resolves)
+cd packages/benchmarks
+pytest lib/ -v
 ```
+
+No API keys, models, or network access required — every test here is
+deterministic and CI-safe.
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
-| `src/runner.ts` | CLI entrypoint — parses flags, runs scenarios, prints report |
-| `src/evaluator.ts` | Per-scenario orchestrator (clock, channels, state, trace) |
-| `src/scorer.ts` | 6-axis scoring (state, intent, routing, trace, boundary, latency) |
-| `src/judge.ts` | LLM-as-judge bonus tier |
-| `src/llm-scripted.ts` | Deterministic provider (no LLM calls) |
-| `src/llm-cerebras.ts` | Live Cerebras client (gemma-4-31b) |
-| `src/llm-harness.ts` | Stage-1 client backed by the Eliza/Hermes/OpenClaw bridge |
-| `src/core-lite.ts` | Local mirrors of the core Wave 0 primitives |
-| `src/registry.ts` | `ResponseHandlerFieldRegistry` seeded for the bench |
-| `scenarios/` | 10 authored JSON scenarios across categories A/B/C/D/F/G/H/K (each expanded 10× at load) |
-| `tests/` | vitest suites: scenarios, aggregate/honest scoring, judge, harness bridge |
-| `scripts/cerebras-smoke.ts` | One-shot Cerebras round-trip for wiring validation |
-| `scripts/harness_stage1_turn.py` | Per-turn bridge invoked by `--mode=harness` |
+| `src/index.ts` | Public TS entry; re-exports everything under `src/` |
+| `src/metrics-schema.ts` | Zod schemas for `report.json` / `delta.json` artifacts |
+| `src/model-tiers.ts` | `DEFAULT_TIERS` registry + `resolveTier()` (`MODEL_TIER` + override env vars) |
+| `src/local-llama-cpp.ts` | Spawn/probe adapter for the mtp llama-cpp fork |
+| `src/eliza-1-bundle.ts` | eliza-1 GGUF bundle-directory reader |
+| `src/retrieval-defaults.ts` | Per-tier `topK` / stage-weight retrieval profiles |
+| `src/__tests__/` | vitest suite for the TS layer |
+| `base_benchmark_client.py` | Abstract benchmark client (retry, auth, cost, telemetry) |
+| `results_store.py` | SQLite trending store for the promotion gate/dashboard |
+| `pricing.py` | Per-million-token pricing tables (Cerebras, Anthropic) |
+| `trajectory_normalizer.py` | Native trajectory formats → canonical `eliza_native_v1` JSONL |
+| `agent_install.py` | Installs/verifies OpenClaw + Hermes agents under `$ELIZA_AGENTS_ROOT` |
+| `random_baseline.py` | Seedable random-choice floor agent (`agent_id=random_v1`) |
+| `test_*.py` | pytest suite for the Python layer |
 
 ## Notes
 
-- Pass tiers: 70 / 82 / 90 / 95 (aggregate score out of 100).
-- Boundary violations deduct 5 points each from the aggregate.
-- Report files write to `--out=<dir>` when specified; nothing is written by default.
-- Orchestrator integration is via the `interrupt_bench` adapter in
-  `orchestrator/adapters.py` (there is no `registry/commands.py` entry).
-- Full scenario format and scoring details: [README.md](README.md).
+- Model-tier facts (tier → provider/model/context-window) live in
+  `src/model-tiers.ts` `DEFAULT_TIERS`; keep the README table in sync with it.
+- `metrics-schema.ts` is the single source of truth for harness report
+  artifacts — schema changes ripple into every harness that writes
+  `report.json` / `delta.json`.
+- Pricing changes go in `pricing.py` only, so cross-harness cost figures stay
+  consistent.
+- Full per-file overview: [README.md](README.md).
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
