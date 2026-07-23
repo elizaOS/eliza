@@ -97,4 +97,56 @@ describe("shouldBlockUser memo (#9899 Tier-3)", () => {
     expect(await contentModerationService.shouldBlockUser(user)).toBe(false);
     expect(dbReads).toBe(2);
   });
+
+  test("cache-only cold state returns warming and hydrates under waitUntil", async () => {
+    const user = uid();
+    blockedUsers.add(user);
+    const background: Promise<unknown>[] = [];
+
+    expect(
+      await contentModerationService.shouldBlockUserCacheOnly(user, {
+        executionCtx: { waitUntil: (promise) => background.push(promise) },
+      }),
+    ).toEqual({ kind: "warming" });
+    expect(background).toHaveLength(1);
+
+    await background[0];
+    expect(dbReads).toBe(1);
+    expect(await contentModerationService.shouldBlockUserCacheOnly(user)).toEqual({
+      kind: "ready",
+      blocked: true,
+    });
+    expect(dbReads).toBe(1);
+  });
+
+  test("cache-only reads never start an authoritative read without waitUntil", async () => {
+    const user = uid();
+    expect(await contentModerationService.shouldBlockUserCacheOnly(user)).toEqual({
+      kind: "warming",
+    });
+    expect(dbReads).toBe(0);
+  });
+
+  test("concurrent cold reads share one authoritative hydration", async () => {
+    const user = uid();
+    const background: Promise<unknown>[] = [];
+    const executionCtx = {
+      waitUntil: (promise: Promise<unknown>) => background.push(promise),
+    };
+
+    expect(
+      await Promise.all([
+        contentModerationService.shouldBlockUserCacheOnly(user, {
+          executionCtx,
+        }),
+        contentModerationService.shouldBlockUserCacheOnly(user, {
+          executionCtx,
+        }),
+      ]),
+    ).toEqual([{ kind: "warming" }, { kind: "warming" }]);
+    expect(background).toHaveLength(2);
+    expect(background[0]).toBe(background[1]);
+    await background[0];
+    expect(dbReads).toBe(1);
+  });
 });

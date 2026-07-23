@@ -52,6 +52,8 @@ export interface RunSharedAgentTurnInput {
   history: SharedTurnMessage[];
   /** The incoming user message or event text. */
   message: string;
+  /** Durable accounting transition invoked at the final provider handoff. */
+  onProviderDispatch?: () => Promise<void>;
 }
 
 export interface RunSharedAgentTurnResult {
@@ -62,7 +64,8 @@ export interface RunSharedAgentTurnResult {
   /**
    * True only for the designed no-model-configured "unavailable" state (the sole
    * degrade path). An inference/provider failure THROWS instead — so a broken
-   * turn never reads as this benign flag, and the caller refunds the credit hold.
+   * turn never reads as this benign flag. The caller classifies the preserved
+   * provider cause before deciding whether zero cost is actually proven.
    */
   degraded: boolean;
   usage?: SharedAgentTurnUsage;
@@ -192,8 +195,9 @@ function appendTurn(
 /**
  * Run one shared (container-free) turn for a simple agent. Returns a degraded
  * result only when NO shared model is configured (a designed-unavailable state);
- * an inference/provider failure is thrown so the caller can refund the credit
- * hold and surface the failure rather than mistaking it for a delivered reply.
+ * an inference/provider failure is thrown with its cause so the caller can make
+ * a conservative settlement decision and surface the failure rather than
+ * mistaking it for a delivered reply.
  */
 export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
@@ -228,17 +232,21 @@ export async function runSharedAgentTurn(
   }
 
   try {
+    const model = getInteractiveCerebrasLanguageModel(modelId);
+    const system = buildSystemPrompt(input.character);
+    const messages = [
+      ...input.history.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user" as const, content: message },
+    ];
+    await input.onProviderDispatch?.();
     const { text, usage } = await generateText({
-      model: getInteractiveCerebrasLanguageModel(modelId),
+      model,
       // Zero SDK backoff on the interactive turn (see SHARED_TURN_MAX_RETRIES):
       // the model wrapper fails over to a healthy provider INSTANTLY on a 5xx,
       // so the SDK's 2-6s sleeping retry is redundant and only adds latency.
       maxRetries: SHARED_TURN_MAX_RETRIES,
-      system: buildSystemPrompt(input.character),
-      messages: [
-        ...input.history.map((m) => ({ role: m.role, content: m.content })),
-        { role: "user" as const, content: message },
-      ],
+      system,
+      messages,
     });
     const reply = text.trim() || "…";
     return {
@@ -254,7 +262,8 @@ export async function runSharedAgentTurn(
     // `degraded: true` reply made a broken turn indistinguishable from the
     // no-model-configured unavailable state above and let it read as a delivered
     // (if apologetic) chat message. Rethrow with `cause` so it surfaces and the
-    // caller (bridgeSharedMessageSend) refunds the credit hold instead of billing.
+    // caller can distinguish explicit rejection from an ambiguous provider
+    // outcome before choosing zero-cost versus estimate settlement.
     throw new Error(
       `[shared-runtime] agent turn failed (agent=${input.character.name}, model=${modelId})`,
       { cause: error },
@@ -307,17 +316,21 @@ export async function runSharedAgentTurnStream(
   }
 
   try {
+    const model = getInteractiveCerebrasLanguageModel(modelId);
+    const system = buildSystemPrompt(input.character);
+    const messages = [
+      ...input.history.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user" as const, content: message },
+    ];
+    await input.onProviderDispatch?.();
     const result = streamText({
-      model: getInteractiveCerebrasLanguageModel(modelId),
+      model,
       // Zero SDK backoff on the interactive turn (see SHARED_TURN_MAX_RETRIES):
       // the model wrapper fails over to a healthy provider INSTANTLY on a 5xx,
       // so the SDK's 2-6s sleeping retry is redundant and only adds latency.
       maxRetries: SHARED_TURN_MAX_RETRIES,
-      system: buildSystemPrompt(input.character),
-      messages: [
-        ...input.history.map((m) => ({ role: m.role, content: m.content })),
-        { role: "user" as const, content: message },
-      ],
+      system,
+      messages,
     });
 
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
@@ -339,7 +352,7 @@ export async function runSharedAgentTurnStream(
       } catch (error) {
         // error-policy:J2 context-adding rethrow. Stream failures happen after
         // the HTTP response may have started, so callers need this failure to
-        // settle the reservation instead of treating a partial answer as billable.
+        // classify the preserved provider outcome before settling the reservation.
         throw new Error(
           `[shared-runtime] streaming agent turn failed (agent=${input.character.name}, model=${modelId})`,
           { cause: error },
@@ -353,8 +366,8 @@ export async function runSharedAgentTurnStream(
       parts,
     };
   } catch (error) {
-    // error-policy:J2 context-adding rethrow. A provider setup failure occurs
-    // before any stream bytes exist and must refund the upfront reservation.
+    // error-policy:J2 context-adding rethrow. Preserve the setup/provider cause
+    // so the caller refunds only a provably unaccepted invocation.
     throw new Error(
       `[shared-runtime] streaming agent turn failed (agent=${input.character.name}, model=${modelId})`,
       { cause: error },

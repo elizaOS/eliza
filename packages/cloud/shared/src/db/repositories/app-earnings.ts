@@ -1,4 +1,6 @@
 // Persists app earnings records for cloud services through the shared DB boundary.
+
+import Decimal from "decimal.js";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -9,6 +11,8 @@ import {
   type NewAppEarnings,
   type NewAppEarningsTransaction,
 } from "../schemas/app-earnings";
+import { apps } from "../schemas/apps";
+import { redeemableEarningsLedger } from "../schemas/redeemable-earnings";
 import { parseEarningsNumber } from "./app-earnings-numeric";
 
 export type { AppEarnings, AppEarningsTransaction, NewAppEarnings, NewAppEarningsTransaction };
@@ -22,6 +26,35 @@ type WithdrawalResult = {
 type IdempotentWithdrawalResult = WithdrawalResult & {
   transaction?: AppEarningsTransaction;
 };
+
+export interface ApplyCreatorMovementParams {
+  appId: string;
+  userId: string;
+  type: "inference_markup" | "purchase_share";
+  creatorAmount: number;
+  platformRevenueAmount: number;
+  description: string;
+  metadata: Record<string, unknown>;
+  redeemableLedgerEntryId: string;
+  redeemableDeduplicated: boolean;
+}
+
+export interface ApplyCreatorMovementResult {
+  deduplicated: boolean;
+  transaction: AppEarningsTransaction | null;
+}
+
+export class CreatorMovementReplayMismatchError extends Error {
+  constructor(
+    readonly redeemableLedgerEntryId: string,
+    readonly mismatch: string = "committed projection differs from replay",
+  ) {
+    super(
+      `Creator movement replay mismatch for redeemable ledger ${redeemableLedgerEntryId}: ${mismatch}`,
+    );
+    this.name = "CreatorMovementReplayMismatchError";
+  }
+}
 
 class WithdrawalRollback extends Error {
   constructor(readonly result: WithdrawalResult) {
@@ -290,6 +323,198 @@ export class AppEarningsRepository {
   }
 
   /**
+   * Projects one immutable redeemable-ledger movement into all app reporting
+   * balances in a single transaction. The global ledger UUID is the claim key,
+   * so a retry either heals a missing projection or validates the committed one.
+   */
+  async applyCreatorMovement(
+    params: ApplyCreatorMovementParams,
+  ): Promise<ApplyCreatorMovementResult> {
+    const expectedCreatorAmount = new Decimal(params.creatorAmount);
+    const platformRevenueAmount = new Decimal(params.platformRevenueAmount);
+    if (
+      !expectedCreatorAmount.isFinite() ||
+      expectedCreatorAmount.isZero() ||
+      !platformRevenueAmount.isFinite() ||
+      (!platformRevenueAmount.isZero() &&
+        expectedCreatorAmount.isPositive() !== platformRevenueAmount.isPositive())
+    ) {
+      throw new Error(
+        "Creator movement amounts must be finite and creator amount must be non-zero",
+      );
+    }
+
+    const expectedCreatorAmountRounded = expectedCreatorAmount
+      .toDecimalPlaces(6)
+      .toDecimalPlaces(4, Decimal.ROUND_DOWN);
+    if (expectedCreatorAmountRounded.isZero()) {
+      throw new Error("Creator movement amount is below the minimum ledger precision of 0.0001");
+    }
+    const platformRevenueDelta = platformRevenueAmount.toFixed(6);
+
+    return dbWrite.transaction(async (tx) => {
+      const [redeemableLedger] = await tx
+        .select({
+          amount: redeemableEarningsLedger.amount,
+          entryType: redeemableEarningsLedger.entry_type,
+          earningsSource: redeemableEarningsLedger.earnings_source,
+          metadata: redeemableEarningsLedger.metadata,
+        })
+        .from(redeemableEarningsLedger)
+        .where(eq(redeemableEarningsLedger.id, params.redeemableLedgerEntryId))
+        .limit(1);
+
+      const ledgerMetadata =
+        redeemableLedger?.metadata && typeof redeemableLedger.metadata === "object"
+          ? redeemableLedger.metadata
+          : {};
+      const creatorDelta = new Decimal(redeemableLedger?.amount ?? Number.NaN);
+      const expectedEntryType = expectedCreatorAmount.isPositive() ? "earning" : "adjustment";
+      const ledgerMismatch = !redeemableLedger
+        ? "redeemable ledger row is missing"
+        : !creatorDelta.isFinite()
+          ? "redeemable amount is non-finite"
+          : !creatorDelta.equals(expectedCreatorAmountRounded)
+            ? `redeemable amount ${creatorDelta.toFixed()} differs from requested creator movement ${expectedCreatorAmountRounded.toFixed()}`
+            : redeemableLedger.entryType !== expectedEntryType
+              ? "redeemable entry type differs from creator movement direction"
+              : redeemableLedger.earningsSource !== "miniapp"
+                ? "redeemable source is not miniapp"
+                : ledgerMetadata.appPlatformRevenueDelta !== platformRevenueDelta
+                  ? "redeemable platform revenue differs"
+                  : ledgerMetadata.app_id !== params.appId
+                    ? "redeemable app identity differs"
+                    : ledgerMetadata.earnings_type !== params.type
+                      ? "redeemable earnings type differs"
+                      : ledgerMetadata.transaction_user_id !== params.userId
+                        ? "redeemable transaction user differs"
+                        : null;
+      if (ledgerMismatch) {
+        throw new CreatorMovementReplayMismatchError(
+          params.redeemableLedgerEntryId,
+          ledgerMismatch,
+        );
+      }
+
+      // Ledger rows predating the atomic projection have no version marker.
+      // Treat their dedupe as already projected: replaying them cannot safely
+      // distinguish a historical committed shadow write from a missing one.
+      if (params.redeemableDeduplicated && ledgerMetadata.appCreatorShadowVersion !== 1) {
+        return { deduplicated: true, transaction: null };
+      }
+
+      const creatorDeltaValue = creatorDelta.toFixed(6);
+      const movementMetadata = {
+        ...params.metadata,
+        redeemableLedgerEntryId: params.redeemableLedgerEntryId,
+        platformRevenueDelta,
+        creatorShadowVersion: 1,
+      };
+      const [inserted] = await tx
+        .insert(appEarningsTransactions)
+        .values({
+          app_id: params.appId,
+          user_id: params.userId,
+          type: params.type,
+          amount: creatorDeltaValue,
+          description: params.description,
+          metadata: movementMetadata,
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (!inserted) {
+        const [existing] = await tx
+          .select()
+          .from(appEarningsTransactions)
+          .where(
+            sql`${appEarningsTransactions.metadata} ->> 'redeemableLedgerEntryId' = ${params.redeemableLedgerEntryId}`,
+          )
+          .limit(1);
+        const existingMetadata =
+          existing?.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
+        if (
+          !existing ||
+          existing.app_id !== params.appId ||
+          existing.user_id !== params.userId ||
+          existing.type !== params.type ||
+          !new Decimal(existing.amount).equals(creatorDelta) ||
+          existingMetadata.platformRevenueDelta !== platformRevenueDelta
+        ) {
+          throw new CreatorMovementReplayMismatchError(params.redeemableLedgerEntryId);
+        }
+        return { deduplicated: true, transaction: existing };
+      }
+
+      await tx.insert(appEarnings).values({ app_id: params.appId }).onConflictDoNothing();
+
+      const appEarningsPredicate = expectedCreatorAmountRounded.isNegative()
+        ? and(
+            eq(appEarnings.app_id, params.appId),
+            gte(appEarnings.total_lifetime_earnings, creatorDelta.abs().toFixed(6)),
+            gte(
+              params.type === "inference_markup"
+                ? appEarnings.total_inference_earnings
+                : appEarnings.total_purchase_earnings,
+              creatorDelta.abs().toFixed(6),
+            ),
+            gte(appEarnings.withdrawable_balance, creatorDelta.abs().toFixed(6)),
+          )
+        : eq(appEarnings.app_id, params.appId);
+      const typeColumn =
+        params.type === "inference_markup"
+          ? appEarnings.total_inference_earnings
+          : appEarnings.total_purchase_earnings;
+      const [updatedEarnings] = await tx
+        .update(appEarnings)
+        .set({
+          total_lifetime_earnings: sql`${appEarnings.total_lifetime_earnings} + ${creatorDeltaValue}`,
+          [typeColumn.name]: sql`${typeColumn} + ${creatorDeltaValue}`,
+          withdrawable_balance: sql`${appEarnings.withdrawable_balance} + ${creatorDeltaValue}`,
+          updated_at: new Date(),
+        })
+        .where(appEarningsPredicate)
+        .returning({ id: appEarnings.id });
+      if (!updatedEarnings) {
+        throw new Error(
+          `Insufficient app earnings balance for creator movement on ${params.appId}`,
+        );
+      }
+
+      const appPredicate =
+        expectedCreatorAmountRounded.isNegative() || platformRevenueAmount.isNegative()
+          ? and(
+              eq(apps.id, params.appId),
+              sql`${apps.total_creator_earnings} IS NOT NULL`,
+              sql`${apps.total_platform_revenue} IS NOT NULL`,
+              gte(apps.total_creator_earnings, creatorDelta.abs().toFixed(6)),
+              gte(apps.total_platform_revenue, platformRevenueAmount.abs().toFixed(6)),
+            )
+          : and(
+              eq(apps.id, params.appId),
+              sql`${apps.total_creator_earnings} IS NOT NULL`,
+              sql`${apps.total_platform_revenue} IS NOT NULL`,
+            );
+      const [updatedApp] = await tx
+        .update(apps)
+        .set({
+          total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorDeltaValue}`,
+          total_platform_revenue: sql`${apps.total_platform_revenue} + ${platformRevenueDelta}`,
+          updated_at: new Date(),
+        })
+        .where(appPredicate)
+        .returning({ id: apps.id });
+      if (!updatedApp) {
+        throw new Error(
+          `Insufficient app aggregate balance for creator movement on ${params.appId}`,
+        );
+      }
+
+      return { deduplicated: false, transaction: inserted };
+    });
+  }
+
+  /**
    * Atomically adds inference earnings to app earnings.
    *
    * Earnings go directly to withdrawable_balance for immediate availability.
@@ -495,6 +720,8 @@ export class AppEarningsRepository {
         };
       });
     } catch (error) {
+      // error-policy:J1 translate the transaction rollback sentinel into the
+      // repository's explicit insufficient-balance result.
       if (error instanceof WithdrawalRollback) {
         return error.result;
       }

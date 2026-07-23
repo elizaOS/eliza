@@ -1,6 +1,15 @@
 // Defines the anonymous sessions Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { users } from "./users";
 
 /**
@@ -37,6 +46,9 @@ export const anonymousSessions = pgTable(
     last_message_at: timestamp("last_message_at"),
     hourly_message_count: integer("hourly_message_count").notNull().default(0),
     hourly_reset_at: timestamp("hourly_reset_at"),
+    // Orders asynchronous Durable Object counter mirrors so a delayed lease
+    // write cannot overwrite a newer refund or hourly-window rotation.
+    gate_revision: bigint("gate_revision", { mode: "number" }).notNull().default(0),
 
     // Abuse prevention
     ip_address: text("ip_address"),

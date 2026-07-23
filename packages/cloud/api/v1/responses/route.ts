@@ -1,10 +1,8 @@
-/** Handles the OpenAI-compatible Responses API with route-local authentication. */
+/** Adapts OpenAI Responses requests to the canonical chat auth and admission pipeline. */
 import { type Context, Hono } from "hono";
 
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { createPreflightResponse } from "@/lib/middleware/cors-apps";
-import { enforceOrgRateLimit } from "@/lib/middleware/rate-limit";
 import { copyHttpTelemetryHeaders } from "@/lib/observability/http-telemetry";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { handleChatCompletionsPOST } from "../chat/completions/route";
@@ -202,15 +200,6 @@ app.options("/", (c) =>
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
-    if (user.organization_id) {
-      const rateLimited = await enforceOrgRateLimit(
-        user.organization_id,
-        "completions",
-      );
-      if (rateLimited) return rateLimited;
-    }
-
     const body = await parseResponsesRequest(c);
     if (!body) {
       return jsonError("Request body must be valid JSON");
@@ -241,7 +230,6 @@ app.post("/", async (c) => {
 
     const chatRequest = buildChatRequest(c.req.raw, body, messages);
     const chatResponse = await handleChatCompletionsPOST(chatRequest, {
-      skipOrgRateLimit: true,
       executionCtx: c.executionCtx,
       traceId: c.get("traceId"),
     });

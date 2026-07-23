@@ -1,18 +1,28 @@
 /**
- * Keeps realtime voice turns inside a fresh Worker bindings/DB context even
- * though the WebSocket message arrives after the upgrade request has returned.
+ * Routes authenticated realtime voice turns through cache-authorized shared
+ * runtime Durable Objects after the WebSocket upgrade request has returned.
+ *
+ * The response-facing module never imports a repository. A cache miss registers
+ * the authoritative scope hydrator with waitUntil and returns a retryable 503;
+ * warm turns pass the cached agent into the canonical handler so its type-level
+ * contract cannot select the legacy database-backed bridge.
  */
 
-import { hasDbCacheContext, runWithDbCacheAsync } from "@/db/client";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
+import { cache } from "@/lib/cache/client";
+import { CacheKeys } from "@/lib/cache/keys";
 import {
   hasCloudBindingsContext,
   runWithCloudBindingsAsync,
 } from "@/lib/runtime/cloud-bindings";
 import { handleCanonicalScopedAgentStream } from "@/lib/services/shared-runtime/canonical-scoped-stream";
+import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
-import type { Bindings } from "@/types/cloud-worker-env";
+import type {
+  Bindings,
+  RuntimeDurableObjectNamespace,
+} from "@/types/cloud-worker-env";
 
 export interface InternalElizaConversationFetchClaims {
   agentId: string;
@@ -22,7 +32,7 @@ export interface InternalElizaConversationFetchClaims {
 }
 
 export type InternalElizaConversationFetch = typeof fetch & {
-  /** Warm and cache the immutable voice-token tenancy lookup before first turn. */
+  /** Read the immutable tenancy cache and schedule cold hydration before first turn. */
   prewarm: () => Promise<void>;
 };
 
@@ -30,90 +40,141 @@ export type InternalElizaConversationFetchFactory = (
   claims: InternalElizaConversationFetchClaims,
 ) => InternalElizaConversationFetch;
 
+interface InternalVoiceSharedRuntime {
+  executionCtx?: BridgeExecutionContext;
+  namespace?: RuntimeDurableObjectNamespace;
+  readCachedAgent(): Promise<AgentSandbox | null>;
+  scheduleHydration(): boolean;
+}
+
+function isCachedVoiceAgent(
+  agent: AgentSandbox | null,
+  claims: InternalElizaConversationFetchClaims,
+): agent is AgentSandbox {
+  return Boolean(
+    agent &&
+      agent.id === claims.agentId &&
+      agent.organization_id === claims.organizationId &&
+      agent.user_id === claims.userId &&
+      agent.execution_tier === "shared",
+  );
+}
+
+function unavailableResponse(
+  code: "agent_cache_warming" | "shared_runtime_unavailable",
+  error: string,
+): Response {
+  return Response.json(
+    {
+      success: false,
+      error,
+      code,
+      retryable: true,
+    },
+    { status: 503 },
+  );
+}
+
 /**
- * Capture durable Worker bindings while the upgrade request is live. Each late
- * WebSocket turn restores those bindings plus a fresh per-turn DB cache before
- * repository/service access. A DB cache from the upgrade request must not be
- * reused because Workers prohibit I/O across request/event lifetimes.
+ * Capture durable Worker bindings and the execution context while the upgrade
+ * request is live. Late WebSocket events restore the bindings for cache access;
+ * only a registered background hydration task creates a fresh DB context.
  */
 export function createInternalElizaConversationFetchFactory(
   env: Bindings,
+  executionCtx?: BridgeExecutionContext,
 ): InternalElizaConversationFetchFactory {
   logger.info("[voice-sse-context] route construction", {
     cloudBindingsContext: hasCloudBindingsContext(),
-    dbCacheContext: hasDbCacheContext(),
+    conversationCoordinator: Boolean(env.SHARED_RUNTIME_CONVERSATIONS),
+    executionContext: Boolean(executionCtx),
   });
 
   return (claims) => {
-    let scopePreverified = false;
-    let prewarmPromise: Promise<void> | null = null;
+    const cacheKey = CacheKeys.sharedAgentScope.voice(
+      claims.organizationId,
+      claims.userId,
+      claims.agentId,
+    );
+    let hydrationPromise: Promise<void> | null = null;
 
-    const prewarm = (): Promise<void> => {
-      if (scopePreverified) return Promise.resolve();
-      if (prewarmPromise) return prewarmPromise;
-      prewarmPromise = runWithCloudBindingsAsync(
+    const readCachedAgent = async (): Promise<AgentSandbox | null> => {
+      const cached = await cache.get<AgentSandbox>(cacheKey);
+      return isCachedVoiceAgent(cached, claims) ? cached : null;
+    };
+
+    const scheduleHydration = (): boolean => {
+      if (!executionCtx) return false;
+      if (hydrationPromise) return true;
+
+      const hydration = Promise.resolve()
+        .then(() => import("./voice-agent-scope-hydration"))
+        .then(({ hydrateVoiceSharedAgentScope }) =>
+          hydrateVoiceSharedAgentScope(env, claims),
+        )
+        .catch((error) => {
+          // error-policy:J7 the cache miss remains an explicit retryable 503;
+          // diagnostics record why the background fill did not make progress.
+          logger.warn("[voice-sse-context] background scope hydration failed", {
+            agentId: claims.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => {
+          if (hydrationPromise === hydration) hydrationPromise = null;
+        });
+      hydrationPromise = hydration;
+      executionCtx.waitUntil(hydration);
+      return true;
+    };
+
+    const prewarm = async (): Promise<void> => {
+      if (!env.SHARED_RUNTIME_CONVERSATIONS || !executionCtx) return;
+      await runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
-        () =>
-          runWithDbCacheAsync(async () => {
-            const agent = await agentSandboxesRepository.findByIdAndOrg(
-              claims.agentId,
-              claims.organizationId,
-            );
-            scopePreverified = Boolean(
-              agent && agent.user_id === claims.userId,
-            );
-          }),
-      ).finally(() => {
-        prewarmPromise = null;
-      });
-      return prewarmPromise;
+        async () => {
+          if (!(await readCachedAgent())) scheduleHydration();
+        },
+      );
     };
 
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       logger.info("[voice-sse-context] adapter entry", {
         cloudBindingsContext: hasCloudBindingsContext(),
-        dbCacheContext: hasDbCacheContext(),
       });
-
-      // If session-start warming is still in flight, reuse its result rather
-      // than issuing the same tenancy query concurrently on the first turn.
-      // Warmup is best-effort: a transient failure must fall through to the
-      // normal per-turn validation, never fail the user's turn by itself.
-      if (prewarmPromise) await prewarmPromise.catch(() => undefined);
 
       return runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
-        () =>
-          runWithDbCacheAsync(async () => {
-            try {
-              const response = await dispatchInternalElizaConversationFetch(
-                env,
-                claims,
-                input,
-                init,
-                scopePreverified,
-              );
-              logger.info("[voice-sse-context] before response", {
-                cloudBindingsContext: hasCloudBindingsContext(),
-                dbCacheContext: hasDbCacheContext(),
-                status: response.status,
-              });
-              return response;
-            } catch (error) {
-              // error-policy:J2 preserve the original failure after recording
-              // bounded context-lifetime diagnostics at the adapter boundary.
-              logger.error(
-                "[voice-sse-context] adapter failed before response",
-                {
-                  errorClass:
-                    error instanceof Error ? error.name : typeof error,
-                  errorMessage:
-                    error instanceof Error ? error.message : String(error),
-                },
-              );
-              throw error;
-            }
-          }),
+        async () => {
+          try {
+            const response = await dispatchInternalElizaConversationFetch(
+              env,
+              claims,
+              input,
+              init,
+              {
+                executionCtx,
+                namespace: env.SHARED_RUNTIME_CONVERSATIONS,
+                readCachedAgent,
+                scheduleHydration,
+              },
+            );
+            logger.info("[voice-sse-context] before response", {
+              cloudBindingsContext: hasCloudBindingsContext(),
+              status: response.status,
+            });
+            return response;
+          } catch (error) {
+            // error-policy:J2 preserve the original failure after recording
+            // bounded context-lifetime diagnostics at the adapter boundary.
+            logger.error("[voice-sse-context] adapter failed before response", {
+              errorClass: error instanceof Error ? error.name : typeof error,
+              errorMessage:
+                error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+          }
+        },
       );
     }) as InternalElizaConversationFetch;
     fetchImpl.prewarm = prewarm;
@@ -125,8 +186,9 @@ export function createInternalElizaConversationFetchFactory(
 export function createInternalElizaConversationFetch(
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
-): typeof fetch {
-  return createInternalElizaConversationFetchFactory(env)(claims);
+  executionCtx?: BridgeExecutionContext,
+): InternalElizaConversationFetch {
+  return createInternalElizaConversationFetchFactory(env, executionCtx)(claims);
 }
 
 async function dispatchInternalElizaConversationFetch(
@@ -134,7 +196,7 @@ async function dispatchInternalElizaConversationFetch(
   claims: InternalElizaConversationFetchClaims,
   input: RequestInfo | URL,
   init?: RequestInit,
-  scopePreverified = false,
+  runtime?: InternalVoiceSharedRuntime,
 ): Promise<Response> {
   const request = new Request(input, init);
   const url = new URL(request.url);
@@ -170,17 +232,22 @@ async function dispatchInternalElizaConversationFetch(
     );
   }
 
-  if (!scopePreverified) {
-    const agent = await agentSandboxesRepository.findByIdAndOrg(
-      claims.agentId,
-      claims.organizationId,
+  if (!runtime?.namespace || !runtime.executionCtx) {
+    return unavailableResponse(
+      "shared_runtime_unavailable",
+      "Shared runtime conversation coordinator is unavailable.",
     );
-    if (!agent || agent.user_id !== claims.userId) {
-      return Response.json(
-        { success: false, error: "Agent not found", code: "agent_not_found" },
-        { status: 404 },
-      );
-    }
+  }
+
+  const agent = await runtime.readCachedAgent();
+  if (!agent) {
+    const scheduled = runtime.scheduleHydration();
+    return unavailableResponse(
+      scheduled ? "agent_cache_warming" : "shared_runtime_unavailable",
+      scheduled
+        ? "Agent authorization cache is warming. Retry shortly."
+        : "Agent authorization cache is unavailable.",
+    );
   }
 
   const rawText = await request.text();
@@ -193,12 +260,15 @@ async function dispatchInternalElizaConversationFetch(
   }
 
   return handleCanonicalScopedAgentStream({
+    agent,
     agentId: claims.agentId,
     orgId: claims.organizationId,
     conversationId: claims.conversationId,
     userId: claims.userId,
     body,
     origin: headers.get("origin"),
+    namespace: runtime.namespace,
+    executionCtx: runtime.executionCtx,
   });
 }
 

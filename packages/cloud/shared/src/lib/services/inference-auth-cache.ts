@@ -6,14 +6,13 @@
  * that must invalidate the cache (api-keys, admin) can import it without
  * creating an import cycle with the resolver in `inference-auth-context.ts`.
  *
- * The `InferenceAuthContext` (IAC) entry collapses auth + org + moderation into
- * a single KV read for API-key dedicated-agent inference. Two hard rules make it
- * safe (see `packages/cloud/api/docs/inference-hot-path.md`):
+ * Inference auth-context entries collapse auth + org + moderation into a
+ * single cache read for API-key or Steward-session inference. Two hard rules
+ * make them safe (see `packages/cloud/api/docs/inference-hot-path.md`):
  *   1. A positive entry is ONLY ever written for a FULLY-authorized credential
- *      (active user + active org + not suspended + org present). There are no
- *      `active`/`suspended` booleans in the shape - anything not-OK is simply
- *      not cached, so the route falls back to the authoritative chain and the
- *      exact 401/403/402 taxonomy is preserved.
+ *      (active user + active org + not suspended + org present). Explicit
+ *      negative entries contain only a bounded 401/403 decision, never identity
+ *      fields, so cold Worker retries converge without a database fallback.
  *   2. Entries are keyed by the FULL sha256(key) (== the stored `key_hash`), so
  *      revoke/ban invalidation by `key_hash` is exact.
  */
@@ -45,9 +44,51 @@ export interface InferenceAuthContext {
   keyHash: string;
 }
 
+export interface InferenceApiKeyAuthRejection {
+  v: typeof INFERENCE_AUTH_CONTEXT_VERSION;
+  cachedAt: number;
+  keyHash: string;
+  decision: "rejected" | "suspended";
+  status: 401 | 403;
+}
+
+/**
+ * A cached, fully-authorized Steward session identity. The JWT is still
+ * signature/expiry/tenant verified on every request; this entry replaces only
+ * the cloud user/org/moderation database wave.
+ */
+export interface InferenceSessionAuthContext {
+  v: typeof INFERENCE_AUTH_CONTEXT_VERSION;
+  cachedAt: number;
+  userId: string;
+  orgId: string;
+  apiKeyId: null;
+  stewardUserId: string;
+}
+
+export interface InferenceSessionAuthRejection {
+  v: typeof INFERENCE_AUTH_CONTEXT_VERSION;
+  cachedAt: number;
+  stewardUserId: string;
+  decision: "rejected" | "suspended";
+  status: 401 | 403;
+}
+
+export type InferenceSessionAuthDecision =
+  | InferenceSessionAuthContext
+  | InferenceSessionAuthRejection;
+
+export type ResolvedInferenceAuthContext = InferenceAuthContext | InferenceSessionAuthContext;
+
 /** Cache lookup states retained by the auth trace instead of collapsed to null. */
 export type InferenceAuthCacheReadOutcome =
   | { kind: "hit"; ctx: InferenceAuthContext; backend: CacheBackendKind }
+  | {
+      kind: "rejected";
+      decision: "rejected" | "suspended";
+      status: 401 | 403;
+      backend: CacheBackendKind;
+    }
   | {
       kind: "miss" | "invalid" | "unavailable" | "error";
       backend: CacheBackendKind;
@@ -59,11 +100,17 @@ export interface OrgBalanceHint {
   orgId: string;
   balanceUsd: number;
   balanceAt: number;
+  balanceRevision: string;
 }
 
 /** Full sha256 of a presented API key - matches how `api_keys.key_hash` is stored. */
 export function hashApiKey(rawKey: string): string {
   return createHash("sha256").update(rawKey).digest("hex");
+}
+
+/** One-way cache-key material for a verified Steward subject. */
+export function hashStewardUserId(stewardUserId: string): string {
+  return createHash("sha256").update(stewardUserId).digest("hex");
 }
 
 /**
@@ -89,6 +136,57 @@ export function isInferenceAuthContext(value: unknown): value is InferenceAuthCo
   );
 }
 
+function isInferenceApiKeyAuthRejection(value: unknown): value is InferenceApiKeyAuthRejection {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
+    typeof v.cachedAt === "number" &&
+    Number.isFinite(v.cachedAt) &&
+    v.cachedAt > 0 &&
+    typeof v.keyHash === "string" &&
+    /^[0-9a-f]{64}$/.test(v.keyHash) &&
+    (v.decision === "rejected" || v.decision === "suspended") &&
+    (v.status === 401 || v.status === 403)
+  );
+}
+
+/** Reject malformed session identities before they can authorize inference. */
+export function isInferenceSessionAuthContext(
+  value: unknown,
+): value is InferenceSessionAuthContext {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
+    typeof v.cachedAt === "number" &&
+    Number.isFinite(v.cachedAt) &&
+    v.cachedAt > 0 &&
+    typeof v.userId === "string" &&
+    v.userId.length > 0 &&
+    typeof v.orgId === "string" &&
+    v.orgId.length > 0 &&
+    v.apiKeyId === null &&
+    typeof v.stewardUserId === "string" &&
+    v.stewardUserId.length > 0
+  );
+}
+
+function isInferenceSessionAuthRejection(value: unknown): value is InferenceSessionAuthRejection {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
+    typeof v.cachedAt === "number" &&
+    Number.isFinite(v.cachedAt) &&
+    v.cachedAt > 0 &&
+    typeof v.stewardUserId === "string" &&
+    v.stewardUserId.length > 0 &&
+    (v.decision === "rejected" || v.decision === "suspended") &&
+    (v.status === 401 || v.status === 403)
+  );
+}
+
 function mapCacheReadOutcome(
   outcome: Exclude<CacheReadOutcome<unknown>, { kind: "hit" }>,
 ): InferenceAuthCacheReadOutcome {
@@ -104,14 +202,15 @@ export function isOrgBalanceHint(value: unknown): value is OrgBalanceHint {
     v.orgId.length > 0 &&
     typeof v.balanceUsd === "number" &&
     Number.isFinite(v.balanceUsd) &&
-    typeof v.balanceAt === "number"
+    typeof v.balanceAt === "number" &&
+    typeof v.balanceRevision === "string" &&
+    /^(0|[1-9]\d*)$/.test(v.balanceRevision)
   );
 }
 
 /**
- * Read the cached IAC for a presented key hash. Returns null on miss, on a
- * shape-invalid entry (which is then dropped), or when the cache is unavailable.
- * Never throws and never fabricates a context.
+ * Read only a positive cached IAC for a presented key hash. Returns null for a
+ * negative decision, miss, malformed entry, or unavailable cache.
  */
 export async function readInferenceAuthContext(
   keyHash: string,
@@ -134,6 +233,14 @@ export async function readInferenceAuthContextWithOutcome(
     keyClass: "inference_auth",
   });
   if (outcome.kind !== "hit") return mapCacheReadOutcome(outcome);
+  if (isInferenceApiKeyAuthRejection(outcome.value) && outcome.value.keyHash === keyHash) {
+    return {
+      kind: "rejected",
+      decision: outcome.value.decision,
+      status: outcome.value.status,
+      backend: outcome.backend,
+    };
+  }
   if (!isInferenceAuthContext(outcome.value) || outcome.value.keyHash !== keyHash) {
     logger.warn("[InferenceAuthCache] Dropping malformed IAC entry");
     await cache.del(key, { keyClass: "inference_auth" });
@@ -152,6 +259,99 @@ export async function writeInferenceAuthContext(
     CacheTTL.inference.authContext,
     { keyClass: "inference_auth" },
   );
+}
+
+/** Cache a bounded fail-closed API-key decision without storing identity data. */
+export async function writeInferenceApiKeyAuthRejection(
+  keyHash: string,
+  decision: "rejected" | "suspended",
+  status: 401 | 403,
+): Promise<CacheWriteOutcome> {
+  return await cache.setWithOutcome(
+    CacheKeys.inference.authContext(keyHash),
+    {
+      v: INFERENCE_AUTH_CONTEXT_VERSION,
+      cachedAt: Date.now(),
+      keyHash,
+      decision,
+      status,
+    } satisfies InferenceApiKeyAuthRejection,
+    CacheTTL.inference.authContext,
+    { keyClass: "inference_auth" },
+  );
+}
+
+/** Read a session IAC without consulting any authoritative store. */
+export async function readInferenceSessionAuthContext(
+  stewardUserId: string,
+): Promise<InferenceSessionAuthContext | null> {
+  const decision = await readInferenceSessionAuthDecision(stewardUserId);
+  return decision && "apiKeyId" in decision ? decision : null;
+}
+
+/** Read the cached positive or fail-closed session decision. */
+export async function readInferenceSessionAuthDecision(
+  stewardUserId: string,
+): Promise<InferenceSessionAuthDecision | null> {
+  const key = CacheKeys.inference.sessionAuthContext(hashStewardUserId(stewardUserId));
+  const cached = await cache.get<unknown>(key);
+  if (cached === null) return null;
+  if (
+    (!isInferenceSessionAuthContext(cached) && !isInferenceSessionAuthRejection(cached)) ||
+    cached.stewardUserId !== stewardUserId
+  ) {
+    logger.warn("[InferenceAuthCache] Dropping malformed session IAC entry");
+    await cache.del(key, { keyClass: "inference_auth" });
+    return null;
+  }
+  return cached;
+}
+
+/** Write a fully-authorized session IAC after user/org/moderation hydration. */
+export async function writeInferenceSessionAuthContext(
+  ctx: InferenceSessionAuthContext,
+): Promise<CacheWriteOutcome> {
+  return await writeInferenceSessionAuthDecision(ctx);
+}
+
+/** Persist a session authorization decision for bounded retry behavior. */
+export async function writeInferenceSessionAuthDecision(
+  decision: InferenceSessionAuthDecision,
+): Promise<CacheWriteOutcome> {
+  return await cache.setWithOutcome(
+    CacheKeys.inference.sessionAuthContext(hashStewardUserId(decision.stewardUserId)),
+    decision,
+    CacheTTL.inference.authContext,
+    { keyClass: "inference_auth" },
+  );
+}
+
+/** Exact lifecycle invalidation for every active token belonging to a user. */
+export async function invalidateInferenceSessionAuthContext(
+  stewardUserId: string,
+): Promise<boolean> {
+  return await cache.delConfirmed(
+    CacheKeys.inference.sessionAuthContext(hashStewardUserId(stewardUserId)),
+    { keyClass: "inference_auth" },
+  );
+}
+
+/**
+ * Fail closed when any user in a lifecycle mutation cannot be evicted. The
+ * authoritative mutation caller decides whether cache failure may abort or is
+ * an explicitly logged teardown-style best effort.
+ */
+export async function invalidateInferenceSessionAuthContexts(
+  stewardUserIds: readonly string[],
+): Promise<void> {
+  const unique = [...new Set(stewardUserIds.filter((id) => id.length > 0))];
+  const results = await Promise.all(unique.map((id) => invalidateInferenceSessionAuthContext(id)));
+  const unconfirmed = unique.filter((_id, index) => !results[index]);
+  if (unconfirmed.length > 0) {
+    throw new Error(
+      `Inference session auth-context invalidation not confirmed for ${unconfirmed.length}/${unique.length} user(s)`,
+    );
+  }
 }
 
 /**
@@ -227,24 +427,36 @@ export async function writeOrgBalanceHint(
   orgId: string,
   balanceUsd: number,
   balanceAt: number,
+  balanceRevision: string,
 ): Promise<void> {
   const hint: OrgBalanceHint = {
     v: INFERENCE_AUTH_CONTEXT_VERSION,
     orgId,
     balanceUsd,
     balanceAt,
+    balanceRevision,
   };
   // Physical lifetime is orgBalanceStale (5m): the hint must survive past the
   // orgBalance freshness window so getGateBalanceUsd can serve it stale-while-
   // revalidate. `balanceAt` is the freshness clock the reader checks; the debit
   // settler (lowerOrgBalanceHint) and top-ups (invalidateOrgBalanceHint) still
   // keep the served value correct on writes.
-  await cache.set(CacheKeys.inference.orgBalance(orgId), hint, CacheTTL.inference.orgBalanceStale);
+  const outcome = await cache.setWithOutcome(
+    CacheKeys.inference.orgBalance(orgId),
+    hint,
+    CacheTTL.inference.orgBalanceStale,
+  );
+  if (outcome.kind !== "written") {
+    throw new Error(`Organization balance hint write was not confirmed: ${outcome.kind}`);
+  }
 }
 
 /** Drop the org-balance gate hint so the next request re-reads it fresh. */
 export async function invalidateOrgBalanceHint(orgId: string): Promise<void> {
-  await cache.del(CacheKeys.inference.orgBalance(orgId));
+  const confirmed = await cache.delConfirmed(CacheKeys.inference.orgBalance(orgId));
+  if (!confirmed) {
+    throw new Error("Organization balance hint invalidation was not confirmed");
+  }
 }
 
 /**
@@ -260,6 +472,7 @@ export async function lowerOrgBalanceHint(
   balanceAt: number,
 ): Promise<void> {
   const existing = await readOrgBalanceHint(orgId);
-  if (existing && existing.balanceUsd <= balanceUsd) return;
-  await writeOrgBalanceHint(orgId, balanceUsd, balanceAt);
+  if (!existing) return;
+  if (existing.balanceUsd <= balanceUsd) return;
+  await writeOrgBalanceHint(orgId, balanceUsd, balanceAt, existing.balanceRevision);
 }

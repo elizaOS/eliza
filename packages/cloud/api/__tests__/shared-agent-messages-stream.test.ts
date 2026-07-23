@@ -1,22 +1,7 @@
 /**
- * Shared-runtime agent SSE chat route:
- *   POST /api/v1/eliza/agents/:agentId/api/conversations/:conversationId/messages/stream
- *
- * A shared agent runs in-Worker (no agent server), so this route runs the same
- * billed turn the non-stream send uses (elizaSandboxService.bridgeStream → shared
- * branch) and returns its SSE reply body as-is — the route never awaits/buffers
- * res.body. NOTE: a shared-tier reply is a SINGLE pre-built SSE frame (the reply
- * string is fully materialized before bridgeStream wraps it), not token-by-token;
- * only DEDICATED (container) agents stream incrementally. The route forwarding is
- * a true pass-through regardless, which the multi-chunk test below proves. The
- * load-bearing invariants:
- *   - the route forwards message.send (text + roomId = conversationId) to bridgeStream;
- *   - the SSE body is returned as-is with text/event-stream headers;
- *   - chunks are forwarded incrementally — the route does not read the body to
- *     completion before responding;
- *   - it reflects the Eliza app WebView origin (https://localhost) + credentials so
- *     the native browser fetch can read the stream cross-origin;
- *   - a missing/empty stream degrades to an SSE `error` frame (200), not a 404.
+ * Exercises shared-agent SSE routing across HTTP, Worker Durable Object, and
+ * in-process realtime voice callers. The voice cases tripwire legacy bridge and
+ * repository access while preserving streaming, CORS, and error contracts.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -24,6 +9,8 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import * as realAgentSandboxes from "@/db/repositories/agent-sandboxes";
 import { InsufficientCreditsError } from "@/lib/api/errors";
+import { cache } from "@/lib/cache/client";
+import { CacheKeys } from "@/lib/cache/keys";
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global, so a blanket `mock.restore()` here would strand sibling test
 // files that import the full eliza-sandbox / resolve-shared-agent surface.
@@ -31,7 +18,11 @@ import * as realElizaSandbox from "@/lib/services/eliza-sandbox";
 import * as realResolveSharedAgent from "@/lib/services/shared-runtime/resolve-shared-agent";
 
 const resolveSharedAgent = mock();
-const bridgeStream = mock();
+const bridgeStream = mock(() => {
+  throw new Error("legacy bridgeStream must not run");
+});
+const coordinatorFetch =
+  mock<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 const findByIdAndOrg = mock();
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
@@ -65,7 +56,7 @@ const {
   createInternalElizaConversationFetch,
   createInternalElizaConversationFetchFactory,
 } = await import("../v1/voice/session/lib/internal-eliza-conversation-fetch");
-const { hasDbCacheContext, runWithDbCacheAsync } = await import("@/db/client");
+const { hasDbCacheContext } = await import("@/db/client");
 const { getCloudAwareEnv, hasCloudBindingsContext, runWithCloudBindingsAsync } =
   await import("@/lib/runtime/cloud-bindings");
 
@@ -80,8 +71,11 @@ afterAll(() => {
   );
 });
 
+process.env.MOCK_REDIS = "1";
+
 const AGENT = "de42b5ff-72d3-4a1a-8a16-19aee293bfea";
 const ORG = "org-1";
+const VOICE_USER = "user-voice";
 const VOICE_CONVERSATION = "conv-voice-service";
 const voiceServiceApp = new Hono();
 voiceServiceApp.route(
@@ -100,11 +94,24 @@ function postStream(body: unknown, origin?: string) {
     "Content-Type": "application/json",
   };
   if (origin) headers.Origin = origin;
-  return streamRoute.request("/", {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  return streamRoute.request(
+    "/",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    },
+    {
+      SHARED_RUNTIME_CONVERSATIONS: {
+        getByName: () => ({ fetch: coordinatorFetch }),
+      },
+    } as never,
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as never,
+  );
 }
 
 function postWorkerStream(body: unknown, namespace: object) {
@@ -128,29 +135,48 @@ function postWorkerStream(body: unknown, namespace: object) {
 }
 
 function postVoiceServiceStream(body: unknown) {
+  return requestVoiceServiceRoute({
+    method: "POST",
+    headers: {
+      Authorization: "Bearer voice-service",
+      "Content-Type": "application/json",
+      "X-Eliza-Agent-Id": AGENT,
+      "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
+      "X-Eliza-Organization-Id": ORG,
+      "X-Eliza-User-Id": "user-voice",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function requestVoiceServiceRoute(init: RequestInit) {
   return voiceServiceApp.request(
     `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+    init,
     {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer voice-service",
-        "Content-Type": "application/json",
-        "X-Eliza-Agent-Id": AGENT,
-        "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
-        "X-Eliza-Organization-Id": ORG,
-        "X-Eliza-User-Id": "user-voice",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+      SHARED_RUNTIME_CONVERSATIONS: {
+        getByName: () => ({ fetch: coordinatorFetch }),
       },
-      body: JSON.stringify(body),
     },
-    { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service" },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    },
   );
 }
 
 describe("shared agent messages/stream", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resolveSharedAgent.mockReset();
     bridgeStream.mockReset();
+    bridgeStream.mockImplementation(() => {
+      throw new Error("legacy bridgeStream must not run");
+    });
+    coordinatorFetch.mockReset();
     findByIdAndOrg.mockReset();
+    await cache.del(CacheKeys.sharedAgentScope.voice(ORG, VOICE_USER, AGENT));
     resolveSharedAgent.mockResolvedValue({
       agent: {
         id: AGENT,
@@ -163,8 +189,69 @@ describe("shared agent messages/stream", () => {
     });
   });
 
-  test("forwards message.send to bridgeStream and streams the SSE body through", async () => {
-    bridgeStream.mockResolvedValue(
+  function cachedVoiceAgent() {
+    return {
+      id: AGENT,
+      organization_id: ORG,
+      user_id: VOICE_USER,
+      execution_tier: "shared",
+      agent_name: "Voice Agent",
+      created_at: "2026-07-23T00:00:00.000Z",
+      updated_at: "2026-07-23T00:00:00.000Z",
+      deleted_at: null,
+      claimed_at: null,
+      pool_ready_at: null,
+      last_backup_at: null,
+      last_heartbeat_at: null,
+      last_billed_at: null,
+      shutdown_warning_sent_at: null,
+      scheduled_shutdown_at: null,
+    };
+  }
+
+  async function seedVoiceScope() {
+    await cache.set(
+      CacheKeys.sharedAgentScope.voice(ORG, VOICE_USER, AGENT),
+      cachedVoiceAgent(),
+      60,
+    );
+  }
+
+  function voiceRequest(text: string) {
+    return {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer voice-service",
+        "Content-Type": "application/json",
+        "X-Eliza-Agent-Id": AGENT,
+        "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
+        "X-Eliza-Organization-Id": ORG,
+        "X-Eliza-User-Id": VOICE_USER,
+      },
+      body: JSON.stringify({ text }),
+    } satisfies RequestInit;
+  }
+
+  function voiceWorkerRuntime(sseText = "adapter ok") {
+    const fetch = mock(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          `event: chunk\ndata: ${JSON.stringify({ chunk: sseText })}\n\nevent: done\ndata: {}\n\n`,
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+    );
+    const namespace = {
+      getByName: mock(() => ({ fetch })),
+    };
+    const background: Promise<unknown>[] = [];
+    const executionCtx = {
+      waitUntil: (promise: Promise<unknown>) => background.push(promise),
+    };
+    return { background, executionCtx, fetch, namespace };
+  }
+
+  test("forwards message.send only through the conversation coordinator", async () => {
+    coordinatorFetch.mockResolvedValue(
       new Response(
         'event: chunk\ndata: {"text":"hi"}\n\nevent: done\ndata: {"text":"hi"}\n\n',
         { headers: { "Content-Type": "text/event-stream" } },
@@ -177,11 +264,19 @@ describe("shared agent messages/stream", () => {
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     await expect(res.text()).resolves.toContain("event: done");
 
-    const call = bridgeStream.mock.calls[0];
-    expect(call[0]).toBe(AGENT);
-    expect(call[1]).toBe(ORG);
-    expect(call[2].method).toBe("message.send");
-    expect(call[2].params).toMatchObject({ text: "say hi", roomId: AGENT });
+    const envelope = JSON.parse(
+      String(coordinatorFetch.mock.calls[0]?.[1]?.body),
+    ) as {
+      operation: string;
+      rpc: { method: string; params: Record<string, unknown> };
+    };
+    expect(envelope.operation).toBe("stream");
+    expect(envelope.rpc.method).toBe("message.send");
+    expect(envelope.rpc.params).toMatchObject({
+      text: "say hi",
+      roomId: AGENT,
+    });
+    expect(bridgeStream).not.toHaveBeenCalled();
   });
 
   test("Worker production path uses the conversation Durable Object without the legacy bridge", async () => {
@@ -207,14 +302,39 @@ describe("shared agent messages/stream", () => {
     expect(bridgeStream).not.toHaveBeenCalled();
   });
 
-  test("voice service credential resolves the scoped agent and persists to the requested conversation", async () => {
-    findByIdAndOrg.mockResolvedValue({
-      id: AGENT,
-      organization_id: ORG,
-      user_id: "user-voice",
-      agent_name: "Voice Agent",
+  test("missing Durable Object binding fails closed before auth or repository work", async () => {
+    const res = await streamRoute.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer user-api-key",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: "must not dispatch" }),
+      },
+      {} as never,
+      {
+        waitUntil() {},
+        passThroughOnException() {},
+        props: {},
+      } as never,
+    );
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "shared_runtime_context_unavailable",
+      retryable: true,
     });
-    bridgeStream.mockResolvedValue(
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(coordinatorFetch).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+  });
+
+  test("voice service credential uses cached identity and the requested conversation", async () => {
+    await seedVoiceScope();
+    coordinatorFetch.mockResolvedValue(
       new Response('event: chunk\ndata: {"chunk":"voice ok"}\n\n', {
         headers: { "Content-Type": "text/event-stream" },
       }),
@@ -225,218 +345,199 @@ describe("shared agent messages/stream", () => {
     expect(res.status).toBe(200);
     await expect(res.text()).resolves.toContain("voice ok");
     expect(resolveSharedAgent).not.toHaveBeenCalled();
-    expect(findByIdAndOrg).toHaveBeenCalledWith(AGENT, ORG);
-    const call = bridgeStream.mock.calls[0];
-    expect(call[0]).toBe(AGENT);
-    expect(call[1]).toBe(ORG);
-    expect(call[2]).toMatchObject({
-      jsonrpc: "2.0",
-      method: "message.send",
-      params: {
-        text: "voice transcript",
-        roomId: "conv-voice-service",
-        userId: "user-voice",
-        source: "voice",
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+    const envelope = JSON.parse(
+      String(coordinatorFetch.mock.calls[0]?.[1]?.body),
+    ) as Record<string, unknown>;
+    expect(envelope).toMatchObject({
+      operation: "stream",
+      rpc: {
+        jsonrpc: "2.0",
+        method: "message.send",
+        params: {
+          text: "voice transcript",
+          roomId: "conv-voice-service",
+          userId: "user-voice",
+          source: "voice",
+        },
       },
     });
   });
 
-  test("internal voice fetch adapter dispatches the canonical root path in-process", async () => {
-    findByIdAndOrg.mockResolvedValue({
-      id: AGENT,
-      organization_id: ORG,
-      user_id: "user-voice",
-      agent_name: "Voice Agent",
-    });
-    bridgeStream.mockResolvedValue(
-      new Response(
-        'event: chunk\ndata: {"chunk":"adapter ok"}\n\nevent: done\ndata: {}\n\n',
-        { headers: { "Content-Type": "text/event-stream" } },
-      ),
-    );
+  test("internal voice fetch adapter dispatches cached scope through the conversation Durable Object", async () => {
+    await seedVoiceScope();
+    const runtime = voiceWorkerRuntime();
 
     const fetchImpl = createInternalElizaConversationFetch(
       {
         VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
-      } as Parameters<typeof createInternalElizaConversationFetch>[0],
+        SHARED_RUNTIME_CONVERSATIONS: runtime.namespace,
+      } as unknown as Parameters<
+        typeof createInternalElizaConversationFetch
+      >[0],
       {
         agentId: AGENT,
         conversationId: VOICE_CONVERSATION,
         organizationId: ORG,
-        userId: "user-voice",
+        userId: VOICE_USER,
       },
+      runtime.executionCtx,
     );
 
     const res = await fetchImpl(
       `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer voice-service",
-          "Content-Type": "application/json",
-          "X-Service-Key": "Bearer voice-service",
-          "X-Eliza-Agent-Id": AGENT,
-          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
-          "X-Eliza-Organization-Id": ORG,
-          "X-Eliza-User-Id": "user-voice",
-        },
-        body: JSON.stringify({ text: "adapter transcript" }),
-      },
+      voiceRequest("adapter transcript"),
     );
 
     expect(res.status).toBe(200);
     await expect(res.text()).resolves.toContain("adapter ok");
     expect(resolveSharedAgent).not.toHaveBeenCalled();
-    expect(findByIdAndOrg).toHaveBeenCalledWith(AGENT, ORG);
-    expect(bridgeStream.mock.calls[0][2]).toMatchObject({
-      method: "message.send",
-      params: {
-        text: "adapter transcript",
-        roomId: VOICE_CONVERSATION,
-        userId: "user-voice",
-        source: "voice",
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+    expect(runtime.namespace.getByName).toHaveBeenCalledWith(
+      `${AGENT}:${VOICE_CONVERSATION}`,
+    );
+    const operation = JSON.parse(
+      String(runtime.fetch.mock.calls[0]?.[1]?.body),
+    ) as Record<string, unknown>;
+    expect(operation).toMatchObject({
+      operation: "stream",
+      agent: cachedVoiceAgent(),
+      rpc: {
+        method: "message.send",
+        params: {
+          text: "adapter transcript",
+          roomId: VOICE_CONVERSATION,
+          userId: VOICE_USER,
+          source: "voice",
+        },
       },
     });
   });
 
-  test("late voice callback restores captured Worker bindings and a fresh DB cache", async () => {
+  test("late voice callback restores captured Worker bindings without creating a DB context", async () => {
+    await seedVoiceScope();
+    const runtime = voiceWorkerRuntime("late callback ok");
     const env = {
       DATABASE_URL: "postgresql://captured.example/eliza",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
-    } as Parameters<typeof createInternalElizaConversationFetchFactory>[0];
+      SHARED_RUNTIME_CONVERSATIONS: runtime.namespace,
+    } as unknown as Parameters<
+      typeof createInternalElizaConversationFetchFactory
+    >[0];
     let createLateFetch!: ReturnType<
       typeof createInternalElizaConversationFetchFactory
     >;
 
-    await runWithCloudBindingsAsync(env, () =>
-      runWithDbCacheAsync(async () => {
-        expect(hasCloudBindingsContext()).toBe(true);
-        expect(hasDbCacheContext()).toBe(true);
-        createLateFetch = createInternalElizaConversationFetchFactory(env);
-      }),
-    );
+    await runWithCloudBindingsAsync(env, async () => {
+      expect(hasCloudBindingsContext()).toBe(true);
+      expect(hasDbCacheContext()).toBe(false);
+      createLateFetch = createInternalElizaConversationFetchFactory(
+        env,
+        runtime.executionCtx,
+      );
+    });
 
     // Route setup has returned. This models the later WebSocket message event,
     // whose async chain no longer owns the upgrade request's ALS stores.
     expect(hasCloudBindingsContext()).toBe(false);
     expect(hasDbCacheContext()).toBe(false);
 
-    findByIdAndOrg.mockImplementation(async () => {
+    runtime.fetch.mockImplementation(async () => {
       expect(hasCloudBindingsContext()).toBe(true);
-      expect(hasDbCacheContext()).toBe(true);
+      expect(hasDbCacheContext()).toBe(false);
       expect(getCloudAwareEnv().DATABASE_URL).toBe(env.DATABASE_URL);
-      return {
-        id: AGENT,
-        organization_id: ORG,
-        user_id: "user-voice",
-        agent_name: "Voice Agent",
-      };
-    });
-    bridgeStream.mockImplementation(async () => {
-      expect(hasCloudBindingsContext()).toBe(true);
-      expect(hasDbCacheContext()).toBe(true);
-      return new Response("event: done\ndata: {}\n\n", {
-        headers: { "Content-Type": "text/event-stream" },
-      });
+      return new Response(
+        'event: chunk\ndata: {"chunk":"late callback ok"}\n\nevent: done\ndata: {}\n\n',
+        {
+          headers: { "Content-Type": "text/event-stream" },
+        },
+      );
     });
 
     const fetchImpl = createLateFetch({
       agentId: AGENT,
       conversationId: VOICE_CONVERSATION,
       organizationId: ORG,
-      userId: "user-voice",
+      userId: VOICE_USER,
     });
     await fetchImpl.prewarm();
-    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
     expect(bridgeStream).not.toHaveBeenCalled();
 
-    // A failed warmup must not fail the turn: the fetch falls through to the
-    // regular per-turn lookup (best-effort semantics, codex P2).
     const res = await fetchImpl(
       `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer voice-service",
-          "Content-Type": "application/json",
-          "X-Eliza-Agent-Id": AGENT,
-          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
-          "X-Eliza-Organization-Id": ORG,
-          "X-Eliza-User-Id": "user-voice",
-        },
-        body: JSON.stringify({ text: "late callback transcript" }),
-      },
+      voiceRequest("late callback transcript"),
     );
 
     expect(res.status).toBe(200);
-    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
-    expect(bridgeStream).toHaveBeenCalledTimes(1);
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+    expect(runtime.fetch).toHaveBeenCalledTimes(1);
   });
 
-  test("failed in-flight prewarm falls through to per-turn validation", async () => {
+  test("cache miss returns warming without joining in-flight DB hydration", async () => {
+    const runtime = voiceWorkerRuntime("hydrated ok");
     const env = {
       DATABASE_URL: "postgresql://captured.example/eliza",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
-    } as Parameters<typeof createInternalElizaConversationFetchFactory>[0];
-    let createLateFetch!: ReturnType<
+      SHARED_RUNTIME_CONVERSATIONS: runtime.namespace,
+    } as unknown as Parameters<
       typeof createInternalElizaConversationFetchFactory
-    >;
-    await runWithCloudBindingsAsync(env, () =>
-      runWithDbCacheAsync(async () => {
-        createLateFetch = createInternalElizaConversationFetchFactory(env);
-      }),
-    );
+    >[0];
 
-    // Prewarm rejects while still in flight; the fetch must swallow that and
-    // run the regular tenancy lookup instead of failing the user's turn.
-    let releasePrewarm!: (err: Error) => void;
-    findByIdAndOrg.mockImplementationOnce(
+    let releaseHydration!: (agent: ReturnType<typeof cachedVoiceAgent>) => void;
+    let markHydrationStarted!: () => void;
+    const hydrationStarted = new Promise<void>((resolve) => {
+      markHydrationStarted = resolve;
+    });
+    findByIdAndOrg.mockImplementation(
       () =>
-        new Promise((_resolve, reject) => {
-          releasePrewarm = reject;
+        new Promise((resolve) => {
+          releaseHydration = resolve;
+          markHydrationStarted();
         }),
     );
-    findByIdAndOrg.mockResolvedValueOnce({
-      id: AGENT,
-      organization_id: ORG,
-      user_id: "user-voice",
-      agent_name: "Voice Agent",
-    });
-    bridgeStream.mockResolvedValue(
-      new Response("event: done\ndata: {}\n\n", {
-        headers: { "Content-Type": "text/event-stream" },
-      }),
-    );
 
-    const fetchImpl = createLateFetch({
+    const fetchImpl = createInternalElizaConversationFetchFactory(
+      env,
+      runtime.executionCtx,
+    )({
       agentId: AGENT,
       conversationId: VOICE_CONVERSATION,
       organizationId: ORG,
-      userId: "user-voice",
+      userId: VOICE_USER,
     });
-    const prewarm = fetchImpl.prewarm();
-    const resPromise = fetchImpl(
-      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer voice-service",
-          "Content-Type": "application/json",
-          "X-Eliza-Agent-Id": AGENT,
-          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
-          "X-Eliza-Organization-Id": ORG,
-          "X-Eliza-User-Id": "user-voice",
-        },
-        body: JSON.stringify({ text: "prewarm failure transcript" }),
-      },
-    );
-    releasePrewarm(new Error("transient db failure"));
-    await prewarm.catch(() => undefined);
+    await fetchImpl.prewarm();
+    expect(runtime.background).toHaveLength(1);
+    await hydrationStarted;
 
-    const res = await resPromise;
-    expect(res.status).toBe(200);
-    expect(findByIdAndOrg).toHaveBeenCalledTimes(2);
-    expect(bridgeStream).toHaveBeenCalledTimes(1);
+    const res = await fetchImpl(
+      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      voiceRequest("warming transcript"),
+    );
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "agent_cache_warming",
+      retryable: true,
+    });
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    expect(runtime.fetch).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+
+    releaseHydration(cachedVoiceAgent());
+    await runtime.background[0];
+
+    const retry = await fetchImpl(
+      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      voiceRequest("hydrated transcript"),
+    );
+    expect(retry.status).toBe(200);
+    await expect(retry.text()).resolves.toContain("hydrated ok");
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    expect(runtime.fetch).toHaveBeenCalledTimes(1);
+    expect(bridgeStream).not.toHaveBeenCalled();
   });
 
   test("internal voice fetch adapter rejects mismatched verified scope before persistence", async () => {
@@ -493,20 +594,16 @@ describe("shared agent messages/stream", () => {
       agent_name: "Voice Agent",
     });
 
-    const res = await voiceServiceApp.request(
-      `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer voice-service",
-          "Content-Type": "application/json",
-          "X-Eliza-Organization-Id": ORG,
-          "X-Eliza-User-Id": "user-voice",
-        },
-        body: JSON.stringify({ text: "do not persist" }),
+    const res = await requestVoiceServiceRoute({
+      method: "POST",
+      headers: {
+        Authorization: "Bearer voice-service",
+        "Content-Type": "application/json",
+        "X-Eliza-Organization-Id": ORG,
+        "X-Eliza-User-Id": "user-voice",
       },
-      { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service" },
-    );
+      body: JSON.stringify({ text: "do not persist" }),
+    });
 
     expect(res.status).toBe(404);
     expect(resolveSharedAgent).not.toHaveBeenCalled();
@@ -522,22 +619,18 @@ describe("shared agent messages/stream", () => {
       agent_name: "Voice Agent",
     });
 
-    const res = await voiceServiceApp.request(
-      `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer voice-service",
-          "Content-Type": "application/json",
-          "X-Eliza-Agent-Id": AGENT,
-          "X-Eliza-Conversation-Id": "wrong-conversation",
-          "X-Eliza-Organization-Id": ORG,
-          "X-Eliza-User-Id": "user-voice",
-        },
-        body: JSON.stringify({ text: "do not persist" }),
+    const res = await requestVoiceServiceRoute({
+      method: "POST",
+      headers: {
+        Authorization: "Bearer voice-service",
+        "Content-Type": "application/json",
+        "X-Eliza-Agent-Id": AGENT,
+        "X-Eliza-Conversation-Id": "wrong-conversation",
+        "X-Eliza-Organization-Id": ORG,
+        "X-Eliza-User-Id": "user-voice",
       },
-      { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service" },
-    );
+      body: JSON.stringify({ text: "do not persist" }),
+    });
 
     expect(res.status).toBe(404);
     expect(resolveSharedAgent).not.toHaveBeenCalled();
@@ -553,22 +646,18 @@ describe("shared agent messages/stream", () => {
       agent_name: "Voice Agent",
     });
 
-    const res = await voiceServiceApp.request(
-      `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer voice-service",
-          "Content-Type": "application/json",
-          "X-Eliza-Agent-Id": "wrong-agent",
-          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
-          "X-Eliza-Organization-Id": ORG,
-          "X-Eliza-User-Id": "user-voice",
-        },
-        body: JSON.stringify({ text: "do not persist" }),
+    const res = await requestVoiceServiceRoute({
+      method: "POST",
+      headers: {
+        Authorization: "Bearer voice-service",
+        "Content-Type": "application/json",
+        "X-Eliza-Agent-Id": "wrong-agent",
+        "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
+        "X-Eliza-Organization-Id": ORG,
+        "X-Eliza-User-Id": "user-voice",
       },
-      { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service" },
-    );
+      body: JSON.stringify({ text: "do not persist" }),
+    });
 
     expect(res.status).toBe(404);
     expect(resolveSharedAgent).not.toHaveBeenCalled();
@@ -577,17 +666,22 @@ describe("shared agent messages/stream", () => {
   });
 
   test("voice service credential rejects an agent outside the scoped user or org before persistence", async () => {
-    findByIdAndOrg.mockResolvedValue({
-      id: AGENT,
-      organization_id: ORG,
-      user_id: "different-user",
-      agent_name: "Wrong Agent",
-    });
+    await cache.set(
+      CacheKeys.sharedAgentScope.voice(ORG, VOICE_USER, AGENT),
+      {
+        ...cachedVoiceAgent(),
+        user_id: "different-user",
+        agent_name: "Wrong Agent",
+      },
+      60,
+    );
 
     const res = await postVoiceServiceStream({ text: "do not persist" });
 
     expect(res.status).toBe(404);
     expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(coordinatorFetch).not.toHaveBeenCalled();
     expect(bridgeStream).not.toHaveBeenCalled();
     await expect(res.json()).resolves.toMatchObject({
       success: false,
@@ -611,7 +705,7 @@ describe("shared agent messages/stream", () => {
         closeStream = () => controller.close();
       },
     });
-    bridgeStream.mockResolvedValue(
+    coordinatorFetch.mockResolvedValue(
       new Response(upstreamBody, {
         headers: { "Content-Type": "text/event-stream" },
       }),
@@ -642,7 +736,7 @@ describe("shared agent messages/stream", () => {
   });
 
   test("reflects the app WebView origin + credentials for a credentialed SSE read", async () => {
-    bridgeStream.mockResolvedValue(
+    coordinatorFetch.mockResolvedValue(
       new Response('event: done\ndata: {"text":"ok"}\n\n', {
         headers: { "Content-Type": "text/event-stream" },
       }),
@@ -656,7 +750,7 @@ describe("shared agent messages/stream", () => {
   });
 
   test("exposes pre-header phase timing on successful streams", async () => {
-    bridgeStream.mockResolvedValue(
+    coordinatorFetch.mockResolvedValue(
       new Response('event: done\ndata: {"text":"ok"}\n\n', {
         headers: { "Content-Type": "text/event-stream" },
       }),
@@ -682,7 +776,7 @@ describe("shared agent messages/stream", () => {
   });
 
   test("no stream body → SSE error frame (200), never a 404", async () => {
-    bridgeStream.mockResolvedValue(null);
+    coordinatorFetch.mockResolvedValue(new Response(null));
     const res = await postStream({ text: "hi" });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
@@ -694,7 +788,7 @@ describe("shared agent messages/stream", () => {
   // canonical 402 JSON as the non-stream send — not an error frame buried in a
   // 200 stream the app would read as a transient turn failure.
   test("insufficient credits → non-retryable 402 JSON, not an SSE frame", async () => {
-    bridgeStream.mockRejectedValue(
+    coordinatorFetch.mockRejectedValue(
       new InsufficientCreditsError(
         "Insufficient credits. Required: $0.0500, Available: $0.0000",
       ),
@@ -723,6 +817,25 @@ describe("shared agent messages/stream", () => {
     });
     const res = await postStream({ text: "hi" });
     expect(res.status).toBe(404);
+    expect(bridgeStream).not.toHaveBeenCalled();
+  });
+
+  test("scope warming is explicitly retryable and never reaches the coordinator", async () => {
+    resolveSharedAgent.mockResolvedValue({
+      error: "Agent authorization cache is warming. Retry shortly.",
+      status: 503,
+    });
+
+    const res = await postStream({ text: "must not dispatch" });
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: "Agent authorization cache is warming. Retry shortly.",
+      retryable: true,
+    });
+    expect(coordinatorFetch).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
     expect(bridgeStream).not.toHaveBeenCalled();
   });
 

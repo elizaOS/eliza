@@ -27,7 +27,9 @@ import * as rateLimitActual from "@/lib/middleware/rate-limit";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as apiKeysActual from "@/lib/services/api-keys";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
+import * as admissionActual from "@/lib/services/organization-inference-admission";
 import * as usageActual from "@/lib/services/usage";
+import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -82,6 +84,29 @@ mock.module("@/lib/services/ai-billing", () => ({
   billUsage,
 }));
 
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...admissionActual,
+  admitOrganizationInference: async (params: {
+    context: Record<string, unknown>;
+    estimatedInputTokens: number;
+    estimatedOutputTokens: number;
+    affiliateCode?: string | null;
+  }) => {
+    const reservation = await reserveCredits(
+      { ...params.context, affiliateCode: params.affiliateCode ?? undefined },
+      params.estimatedInputTokens,
+      params.estimatedOutputTokens,
+    );
+    const settle = createCreditReservationSettler(reservation);
+    return {
+      mode: "synchronous_reservation",
+      settle,
+      settleUnknown: () => settle(reservation.reservedAmount),
+      reservation,
+    };
+  },
+}));
+
 const usageCreate = mock();
 mock.module("@/lib/services/usage", () => ({
   ...usageActual,
@@ -109,6 +134,10 @@ afterAll(() => {
   );
   mock.module("@/lib/middleware/rate-limit", () => rateLimitActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module(
+    "@/lib/services/organization-inference-admission",
+    () => admissionActual,
+  );
   mock.module("@/lib/services/usage", () => usageActual);
 });
 
@@ -165,8 +194,13 @@ beforeEach(() => {
     };
   });
   resolveInferenceAuthContext.mockResolvedValue({
-    kind: "slow_path",
-    reason: "non_api_key",
+    kind: "authorized",
+    source: "cache",
+    ctx: {
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+    },
   });
   enforceOrgRateLimit.mockResolvedValue(null);
   reserveCredits.mockResolvedValue({
@@ -238,6 +272,9 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
     releaseBilling();
     await Promise.all(scheduled);
     expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(billUsage.mock.calls[0][2]).toBe(
+      await reserveCredits.mock.results[0].value,
+    );
     expect(usageCreate).toHaveBeenCalledTimes(1);
   });
 

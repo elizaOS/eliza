@@ -11,7 +11,10 @@ import {
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
-import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
+import {
+  invalidateInferenceAuthContextsByKeyHashes,
+  invalidateInferenceSessionAuthContexts,
+} from "./inference-auth-cache";
 
 /**
  * Service for organization operations with caching support.
@@ -80,8 +83,16 @@ export class OrganizationsService {
    */
   private async invalidateInferenceAuthForOrganization(organizationId: string): Promise<void> {
     try {
-      const keys = await apiKeysRepository.listByOrganization(organizationId);
-      await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
+      const [keys, organization] = await Promise.all([
+        apiKeysRepository.listByOrganization(organizationId),
+        organizationsRepository.findWithUsers(organizationId),
+      ]);
+      await Promise.all([
+        invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash)),
+        invalidateInferenceSessionAuthContexts(
+          organization?.users.map((user) => user.steward_user_id) ?? [],
+        ),
+      ]);
     } catch (error) {
       logger.warn("[OrganizationsService] Failed to invalidate inference auth cache for org", {
         organizationId,

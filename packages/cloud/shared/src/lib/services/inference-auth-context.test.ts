@@ -65,9 +65,8 @@ mock.module("./api-keys", () => ({
   },
 }));
 
-const { resolveInferenceAuthContext, extractApiKeyCredential } = await import(
-  "./inference-auth-context"
-);
+const { __clearInferenceApiKeyHydrations, resolveInferenceAuthContext, extractApiKeyCredential } =
+  await import("./inference-auth-context");
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
 const {
@@ -95,6 +94,7 @@ beforeEach(async () => {
   incrementUsageCalls.length = 0;
   bypassCacheCalls.length = 0;
   moderationBypassCacheCalls.length = 0;
+  __clearInferenceApiKeyHydrations();
   // Clear any cached entry from a prior test.
   await invalidateInferenceAuthContextByKeyHash(hashApiKey(KEY));
 });
@@ -202,6 +202,93 @@ describe("resolveInferenceAuthContext", () => {
     });
     expect(retry.kind).toBe("authorized");
     if (retry.kind === "authorized") expect(retry.source).toBe("cache");
+  });
+
+  test("concurrent cache-only misses share one authoritative hydration", async () => {
+    const gate = Promise.withResolvers<void>();
+    let chainCalls = 0;
+    authImpl = async () => {
+      chainCalls++;
+      await gate.promise;
+      return {
+        user: { id: "user-1", organization_id: "org-1" },
+        apiKey: { id: "key-1" },
+      };
+    };
+    const waited: Promise<unknown>[] = [];
+    const executionCtx = {
+      waitUntil: (promise: Promise<unknown>) => waited.push(promise),
+    };
+
+    const [first, second] = await Promise.all([
+      resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx,
+      }),
+      resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx,
+      }),
+    ]);
+
+    expect(first).toEqual({ kind: "warming" });
+    expect(second).toEqual({ kind: "warming" });
+    expect(waited).toHaveLength(2);
+    expect(waited[0]).toBe(waited[1]);
+
+    gate.resolve();
+    await Promise.all(waited);
+    expect(chainCalls).toBe(1);
+    expect(await readInferenceAuthContext(hashApiKey(KEY))).not.toBeNull();
+  });
+
+  test("definitive API-key rejection converges to cached 401 without another database lookup", async () => {
+    let chainCalls = 0;
+    authImpl = async () => {
+      chainCalls++;
+      const error = new Error("Invalid or expired API key");
+      error.name = "AuthenticationError";
+      throw error;
+    };
+    const waited: Promise<unknown>[] = [];
+
+    const cold = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    expect(cold).toEqual({ kind: "warming" });
+    await Promise.all(waited);
+    expect(chainCalls).toBe(1);
+
+    const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    expect(retry).toEqual({ kind: "rejected", status: 401 });
+    expect(chainCalls).toBe(1);
+  });
+
+  test("authoritative suspension converges to a cached fail-closed decision", async () => {
+    let moderationCalls = 0;
+    shouldBlock = async () => {
+      moderationCalls++;
+      return true;
+    };
+    const waited: Promise<unknown>[] = [];
+
+    const cold = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    expect(cold).toEqual({ kind: "warming" });
+    await Promise.all(waited);
+    expect(moderationCalls).toBe(1);
+
+    const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+    });
+    expect(retry).toEqual({ kind: "suspended" });
+    expect(moderationCalls).toBe(1);
   });
 
   test("Worker execution context defers positive cache population and observes its outcome", async () => {
@@ -316,7 +403,7 @@ describe("resolveInferenceAuthContext", () => {
     }
   });
 
-  test("cache outage stays observable and authorizes only through the database path", async () => {
+  test("non-Worker cache outage stays observable and uses authoritative authorization", async () => {
     const availabilitySpy = spyOn(cache, "isAvailable").mockReturnValue(false);
     const writeSpy = spyOn(cache, "setWithOutcome").mockResolvedValue({
       kind: "unavailable",
@@ -341,6 +428,31 @@ describe("resolveInferenceAuthContext", () => {
     } finally {
       availabilitySpy.mockRestore();
       writeSpy.mockRestore();
+    }
+  });
+
+  test("Worker cache outage fails closed without starting database authorization", async () => {
+    const availabilitySpy = spyOn(cache, "isAvailable").mockReturnValue(false);
+    let chainCalls = 0;
+    authImpl = async () => {
+      chainCalls++;
+      return {
+        user: { id: "user-1", organization_id: "org-1" },
+        apiKey: { id: "key-1" },
+      };
+    };
+    const waited: Promise<unknown>[] = [];
+    try {
+      const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      });
+
+      expect(result).toEqual({ kind: "warming" });
+      expect(chainCalls).toBe(0);
+      expect(waited).toHaveLength(0);
+    } finally {
+      availabilitySpy.mockRestore();
     }
   });
 

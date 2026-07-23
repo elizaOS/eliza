@@ -1,22 +1,32 @@
 /**
- * Unit tests for the Tier-3 in-isolate decision lease in `enforceOrgRateLimit`
- * (#9899), gated behind INFERENCE_HOT_PATH_CACHES. The Redis check and the
- * org-tier read are mocked at the module boundary so the tests can count
- * authoritative round-trips and observe the carried-count flush; the lease
- * logic under test is real. The convergence test simulates the real sliding
- * window (including carried members) to prove a hot isolate cannot exceed the
- * org limit by more than one in-flight lease budget.
+ * Exercises both organization limit backends: exact Worker-side Durable Object
+ * windows for cache-only inference and the non-Worker Redis decision lease.
+ * Backends are mocked only at their transport boundaries so routing,
+ * convergence, carried-count flushing, and fail-closed responses remain real.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
+import * as inferenceAdmissionActual from "../services/inference-admission-gate";
 import * as orgRateLimitsActual from "../services/org-rate-limits";
 import * as rateLimitRedisActual from "./rate-limit-redis";
 
 let redisChecks = 0;
 let redisResult: rateLimitRedisActual.RateLimitResult;
+let admissionChecks = 0;
+let admissionError: Error | undefined;
+let admissionResult: inferenceAdmissionActual.InferenceRateLimitDecision;
+let admissionRequests: Array<
+  Parameters<typeof inferenceAdmissionActual.consumeInferenceRateLimit>[0]
+> = [];
 let tierReads = 0;
 let tierConfig = { windowMs: 60_000, maxRequests: 120 };
+let tierCacheResolution:
+  | { kind: "ready"; config: { windowMs: number; maxRequests: number } }
+  | {
+      kind: "warming" | "unavailable";
+      cacheRead: "miss" | "invalid" | "unavailable" | "error";
+    } = { kind: "ready", config: tierConfig };
 /** carriedCount received per authoritative check, in order. */
 let carriedCounts: number[] = [];
 /**
@@ -67,11 +77,27 @@ mock.module("./rate-limit-redis", () => ({
   },
 }));
 
+mock.module("../services/inference-admission-gate", () => ({
+  ...inferenceAdmissionActual,
+  consumeInferenceRateLimit: async (
+    params: Parameters<typeof inferenceAdmissionActual.consumeInferenceRateLimit>[0],
+  ) => {
+    admissionChecks++;
+    admissionRequests.push(params);
+    if (admissionError) throw admissionError;
+    return admissionResult;
+  },
+}));
+
 mock.module("../services/org-rate-limits", () => ({
   ...orgRateLimitsActual,
   getOrgRpmForEndpoint: async () => {
     tierReads++;
     return tierConfig;
+  },
+  getOrgRpmForEndpointCacheOnly: async () => {
+    tierReads++;
+    return tierCacheResolution;
   },
 }));
 
@@ -84,6 +110,7 @@ const {
   mcpOrgRateLimitRedisKey,
   rateLimitExceededPayload,
   rateLimitExceededResponse,
+  OrgRateLimitCacheNotReadyError,
   withRateLimit,
 } = await import("./rate-limit");
 
@@ -92,6 +119,7 @@ const originalHotPathCaches = process.env.INFERENCE_HOT_PATH_CACHES;
 
 afterAll(() => {
   mock.module("./rate-limit-redis", () => rateLimitRedisActual);
+  mock.module("../services/inference-admission-gate", () => inferenceAdmissionActual);
   mock.module("../services/org-rate-limits", () => orgRateLimitsActual);
   for (const [name, value] of [
     ["REDIS_RATE_LIMITING", originalRedisRateLimiting],
@@ -112,6 +140,14 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     __clearOrgRateLimitLeases();
     redisChecks = 0;
     redisKeys = [];
+    admissionChecks = 0;
+    admissionError = undefined;
+    admissionRequests = [];
+    admissionResult = {
+      allowed: true,
+      remaining: 100,
+      resetAt: Date.now() + 60_000,
+    };
     tierReads = 0;
     carriedCounts = [];
     pauseRedisChecks = false;
@@ -119,6 +155,7 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     simulateWindow = false;
     windowCount = 0;
     tierConfig = { windowMs: 60_000, maxRequests: 120 };
+    tierCacheResolution = { kind: "ready", config: tierConfig };
     redisResult = {
       allowed: true,
       remaining: 100,
@@ -155,6 +192,83 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     // 120 rpm × 5s/60s window → local budget 10; 5 repeats fit in it.
     expect(redisChecks).toBe(1);
     expect(tierReads).toBe(1);
+  });
+
+  test("cache-only mode uses the cached tier and Durable Object without Redis", async () => {
+    process.env.REDIS_RATE_LIMITING = "false";
+    const org = uid();
+    expect(
+      await enforceOrgRateLimit(org, "completions", {
+        cacheOnly: true,
+        executionCtx: { waitUntil: () => undefined },
+      }),
+    ).toBeNull();
+    expect(tierReads).toBe(1);
+    expect(admissionChecks).toBe(1);
+    expect(admissionRequests).toEqual([
+      {
+        organizationId: org,
+        endpointType: "completions",
+        windowMs: 60_000,
+        maxRequests: 120,
+      },
+    ]);
+    expect(redisChecks).toBe(0);
+  });
+
+  test("cache-only mode surfaces warming without contacting Redis", async () => {
+    tierCacheResolution = { kind: "warming", cacheRead: "miss" };
+    const result = enforceOrgRateLimit(uid(), "completions", {
+      cacheOnly: true,
+      executionCtx: { waitUntil: () => undefined },
+    });
+    await expect(result).rejects.toBeInstanceOf(OrgRateLimitCacheNotReadyError);
+    await expect(result).rejects.toMatchObject({
+      state: "warming",
+      cacheRead: "miss",
+    });
+    expect(admissionChecks).toBe(0);
+    expect(redisChecks).toBe(0);
+  });
+
+  test("cache-only mode returns Durable Object denials as 429", async () => {
+    admissionResult = {
+      allowed: false,
+      remaining: 0,
+      resetAt: Date.now() + 30_000,
+      retryAfter: 30,
+    };
+    const response = await enforceOrgRateLimit(uid(), "embeddings", {
+      cacheOnly: true,
+      executionCtx: { waitUntil: () => undefined },
+    });
+
+    expect(response?.status).toBe(429);
+    expect(response?.headers.get("X-RateLimit-Policy")).toBe("durable-object");
+    expect(await response?.json()).toMatchObject({
+      code: "rate_limit_exceeded",
+      retryAfter: 30,
+    });
+    expect(admissionChecks).toBe(1);
+    expect(redisChecks).toBe(0);
+  });
+
+  test("cache-only mode fails closed when the Durable Object is unavailable", async () => {
+    admissionError = new inferenceAdmissionActual.InferenceAdmissionGateUnavailableError(
+      "binding unavailable",
+    );
+    const response = await enforceOrgRateLimit(uid(), "completions", {
+      cacheOnly: true,
+      executionCtx: { waitUntil: () => undefined },
+    });
+
+    expect(response?.status).toBe(503);
+    expect(response?.headers.get("X-RateLimit-Policy")).toBe("durable-object");
+    expect(await response?.json()).toMatchObject({
+      code: "rate_limit_unavailable",
+    });
+    expect(admissionChecks).toBe(1);
+    expect(redisChecks).toBe(0);
   });
 
   test("leases are keyed per (org, endpoint) — a different org or endpoint is authoritative", async () => {

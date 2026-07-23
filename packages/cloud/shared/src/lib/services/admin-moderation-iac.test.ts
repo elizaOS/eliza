@@ -23,7 +23,12 @@ let existingStatus: ModStatusRow | undefined;
 
 mock.module("../../db/client", () => ({
   dbRead: {
-    query: { userModerationStatus: { findFirst: async () => existingStatus } },
+    query: {
+      userModerationStatus: { findFirst: async () => existingStatus },
+      users: {
+        findFirst: async () => ({ steward_user_id: "steward-user-1" }),
+      },
+    },
   },
   dbWrite: {
     insert: () => ({ values: () => ({ returning: async () => [{ id: "violation-1" }] }) }),
@@ -35,11 +40,15 @@ mock.module("../../db/repositories", () => ({
   apiKeysRepository: {
     listByUser: async () => [{ key_hash: "hash-1" }, { key_hash: "hash-2" }],
   },
+  organizationsRepository: {},
+  usersRepository: {},
 }));
 
 const invalidateSpy = mock(async (_hashes: readonly string[]) => undefined);
+const invalidateSessionSpy = mock(async (_ids: readonly string[]) => undefined);
 mock.module("./inference-auth-cache", () => ({
   invalidateInferenceAuthContextsByKeyHashes: invalidateSpy,
+  invalidateInferenceSessionAuthContexts: invalidateSessionSpy,
 }));
 
 const { adminService } = await import("./admin");
@@ -56,6 +65,7 @@ async function recordRefusal(userId = "user-1") {
 
 beforeEach(() => {
   invalidateSpy.mockClear();
+  invalidateSessionSpy.mockClear();
 });
 
 describe("moderation auto-suspension invalidates IAC", () => {
@@ -70,6 +80,7 @@ describe("moderation auto-suspension invalidates IAC", () => {
     await recordRefusal();
     expect(invalidateSpy).toHaveBeenCalledTimes(1);
     expect(invalidateSpy).toHaveBeenCalledWith(["hash-1", "hash-2"]);
+    expect(invalidateSessionSpy).toHaveBeenCalledWith(["steward-user-1"]);
   });
 
   test("an already-blocking user does not re-invalidate (transition-only)", async () => {

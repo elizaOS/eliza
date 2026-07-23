@@ -95,6 +95,70 @@ beforeEach(() => {
 });
 
 describe("CacheClient in Worker envs", () => {
+  test("auto prefers a CACHE_KV binding over a Railway REDIS_URL", async () => {
+    const previousWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
+    const previousMockRedis = process.env.MOCK_REDIS;
+    const kvStore = new Map<string, string>();
+    const kv = {
+      get: async (key: string) => kvStore.get(key) ?? null,
+      put: async (key: string, value: string) => {
+        kvStore.set(key, value);
+      },
+      delete: async (key: string) => {
+        kvStore.delete(key);
+      },
+      list: async ({ prefix = "" }: { prefix?: string } = {}) => ({
+        keys: Array.from(kvStore.keys())
+          .filter((key) => key.startsWith(prefix))
+          .map((name) => ({ name })),
+        list_complete: true,
+      }),
+    };
+
+    Object.defineProperty(globalThis, "WebSocketPair", {
+      configurable: true,
+      value: class TestWebSocketPair {},
+    });
+    process.env.MOCK_REDIS = "0";
+    try {
+      await runWithCloudBindings(
+        {
+          CACHE_ENABLED: "true",
+          CACHE_BACKEND: "auto",
+          CACHE_KV: kv,
+          ENVIRONMENT: "staging",
+          NODE_ENV: "production",
+          REDIS_URL: "redis://default:test@railway.example.test:6379",
+        },
+        async () => {
+          const cache = new CacheClient();
+          const key = "inference:auth:worker-kv-precedence";
+
+          expect(cache.getBackendKind()).toBe("cloudflare_kv");
+          expect(cache.supportsAtomicOperations()).toBe(false);
+          expect(await cache.setWithOutcome(key, { authorized: true }, 60)).toEqual({
+            kind: "written",
+            backend: "cloudflare_kv",
+          });
+          expect(await cache.getWithOutcome(key)).toEqual({
+            kind: "hit",
+            value: { authorized: true },
+            backend: "cloudflare_kv",
+          });
+          expect(constructedClients).toHaveLength(0);
+        },
+      );
+    } finally {
+      if (previousWebSocketPair) {
+        Object.defineProperty(globalThis, "WebSocketPair", previousWebSocketPair);
+      } else {
+        Reflect.deleteProperty(globalThis, "WebSocketPair");
+      }
+      if (previousMockRedis === undefined) delete process.env.MOCK_REDIS;
+      else process.env.MOCK_REDIS = previousMockRedis;
+    }
+  });
+
   test("uses Upstash REST bindings for durable shared-runtime history", async () => {
     await runWithCloudBindings(
       {

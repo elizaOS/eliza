@@ -16,9 +16,27 @@ interface DeductCall {
   organizationId: string;
   amount: number;
   source: unknown;
+  idempotencyKey: string | undefined;
 }
 let deductCalls: DeductCall[] = [];
-let deductResult: { success: true; newBalance: number } | { success: false; reason: string };
+let deductResult:
+  | {
+      success: true;
+      newBalance: number;
+      transaction: {
+        id: string;
+        organization_id?: string;
+        amount?: string;
+        metadata?: Record<string, unknown>;
+      };
+    }
+  | {
+      success: false;
+      newBalance: number;
+      transaction: null;
+      reason: "insufficient_balance";
+    };
+let deductError: Error | null = null;
 let freshBalanceUsd: number;
 let freshBalanceCalls = 0;
 const invalidateUserCalls: string[] = [];
@@ -29,18 +47,32 @@ mock.module("./credits", () => ({
     deductCredits: async (args: {
       organizationId: string;
       amount: number;
-      metadata?: { source?: unknown };
+      metadata?: { source?: unknown; requestId?: string };
+      stripePaymentIntentId?: string;
     }) => {
       deductCalls.push({
         organizationId: args.organizationId,
         amount: args.amount,
         source: args.metadata?.source,
+        idempotencyKey: args.stripePaymentIntentId,
       });
+      if (deductError) throw deductError;
+      if (deductResult.success) {
+        return {
+          ...deductResult,
+          transaction: {
+            organization_id: args.organizationId,
+            amount: String(-args.amount),
+            metadata: { requestId: args.metadata?.requestId },
+            ...deductResult.transaction,
+          },
+        };
+      }
       return deductResult;
     },
-    getOrganizationBalanceUsd: async () => {
+    getOrganizationBalanceSnapshot: async () => {
       freshBalanceCalls++;
-      return freshBalanceUsd;
+      return { balanceUsd: freshBalanceUsd, revision: "2" };
     },
   },
 }));
@@ -71,7 +103,12 @@ const {
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
 const { logger } = await import("../utils/logger");
-const { readOrgBalanceHint, writeOrgBalanceHint } = await import("./inference-auth-cache");
+const { invalidateOrgBalanceHint, readOrgBalanceHint, writeOrgBalanceHint } = await import(
+  "./inference-auth-cache"
+);
+const { isOrgAdmissionRefused, markOrgAdmissionRefused } = await import(
+  "./inference-billing-deferred"
+);
 
 // Mirror of the module-private sweep-lock key (kept as a literal so a rename is
 // caught loudly by the lock test below).
@@ -105,7 +142,8 @@ function chargeInput(over: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(async () => {
   deductCalls = [];
-  deductResult = { success: true, newBalance: 100 };
+  deductResult = { success: true, newBalance: 100, transaction: { id: "debit-1" } };
+  deductError = null;
   freshBalanceUsd = 50;
   freshBalanceCalls = 0;
   invalidateUserCalls.length = 0;
@@ -206,7 +244,7 @@ describe("isPendingInferenceCharge shape guard", () => {
 describe("getGateBalanceUsd", () => {
   test("hint hit returns hint, no fresh DB read", async () => {
     const org = uid("org");
-    await writeOrgBalanceHint(org, 42, Date.now());
+    await writeOrgBalanceHint(org, 42, Date.now(), "1");
     const bal = await getGateBalanceUsd(org);
     expect(bal).toBe(42);
     expect(freshBalanceCalls).toBe(0);
@@ -226,7 +264,7 @@ describe("getGateBalanceUsd", () => {
     const org = uid("org");
     freshBalanceUsd = 77;
     // A hint older than the orgBalance freshness window (15s).
-    await writeOrgBalanceHint(org, 42, Date.now() - 20_000);
+    await writeOrgBalanceHint(org, 42, Date.now() - 20_000, "1");
     const bal = await getGateBalanceUsd(org);
     expect(bal).toBe(42); // served the STALE value without blocking on a DB read
     // Revalidation runs off the hot path; let the background task settle.
@@ -237,7 +275,7 @@ describe("getGateBalanceUsd", () => {
   test("concurrent stale reads dedupe to a single revalidation", async () => {
     const org = uid("org");
     freshBalanceUsd = 88;
-    await writeOrgBalanceHint(org, 42, Date.now() - 20_000);
+    await writeOrgBalanceHint(org, 42, Date.now() - 20_000, "1");
     const results = await Promise.all([
       getGateBalanceUsd(org),
       getGateBalanceUsd(org),
@@ -251,6 +289,7 @@ describe("getGateBalanceUsd", () => {
   test("cache-only miss fails closed and hydrates under waitUntil", async () => {
     const org = uid("org");
     freshBalanceUsd = 27;
+    markOrgAdmissionRefused(org);
     const background: Promise<unknown>[] = [];
     await expect(
       getGateBalanceUsd(org, {
@@ -262,12 +301,13 @@ describe("getGateBalanceUsd", () => {
     await background[0];
     expect(freshBalanceCalls).toBe(1);
     expect((await readOrgBalanceHint(org))?.balanceUsd).toBe(27);
+    expect(isOrgAdmissionRefused(org)).toBe(false);
   });
 
   test("stale hint returns immediately and revalidates off path", async () => {
     const org = uid("org");
     freshBalanceUsd = 19;
-    await writeOrgBalanceHint(org, 31, Date.now() - 61_000);
+    await writeOrgBalanceHint(org, 31, Date.now() - 61_000, "1");
     const background: Promise<unknown>[] = [];
     expect(
       await getGateBalanceUsd(org, {
@@ -277,6 +317,33 @@ describe("getGateBalanceUsd", () => {
     expect(background).toHaveLength(1);
     await background[0];
     expect((await readOrgBalanceHint(org))?.balanceUsd).toBe(19);
+  });
+});
+
+describe("org balance cache confirmation", () => {
+  test("an unconfirmed balance write rejects", async () => {
+    const write = spyOn(cache, "setWithOutcome").mockResolvedValue({
+      kind: "unavailable",
+      backend: "memory",
+    });
+    try {
+      await expect(writeOrgBalanceHint(uid("org"), 10, Date.now(), "1")).rejects.toThrow(
+        "write was not confirmed",
+      );
+    } finally {
+      write.mockRestore();
+    }
+  });
+
+  test("an unconfirmed balance invalidation rejects", async () => {
+    const del = spyOn(cache, "delConfirmed").mockResolvedValue(false);
+    try {
+      await expect(invalidateOrgBalanceHint(uid("org"))).rejects.toThrow(
+        "invalidation was not confirmed",
+      );
+    } finally {
+      del.mockRestore();
+    }
   });
 });
 
@@ -296,17 +363,26 @@ describe("createOptimisticDebitSettler", () => {
     await writePendingInferenceCharge(input, Date.now());
     const settle = createOptimisticDebitSettler(input);
     const res = await settle(0.02);
-    expect(res).toBeNull();
+    expect(res).toEqual({
+      reservedAmount: 0.02,
+      actualCost: 0.02,
+      settlementTransactionIds: ["debit-1"],
+      adjustmentType: "none",
+    });
     expect(deductCalls).toHaveLength(1);
     expect(deductCalls[0].amount).toBe(0.02);
     expect(deductCalls[0].source).toBe("inline");
+    expect(deductCalls[0].idempotencyKey).toBe(
+      `inference-debit:${input.organizationId}:${input.requestId}`,
+    );
     // Entry was claimed (deleted), so the sweep can never double-charge it.
     expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).toBeNull();
   });
 
-  test("on debit success refreshes the org-balance hint", async () => {
+  test("on debit success lowers an existing org-balance hint", async () => {
     const input = chargeInput();
-    deductResult = { success: true, newBalance: 7.5 };
+    deductResult = { success: true, newBalance: 7.5, transaction: { id: "debit-2" } };
+    await writeOrgBalanceHint(input.organizationId, 10, Date.now(), "1");
     await writePendingInferenceCharge(input, Date.now());
     await createOptimisticDebitSettler(input)(0.02);
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(7.5);
@@ -314,8 +390,13 @@ describe("createOptimisticDebitSettler", () => {
 
   test("on FAILED debit (insufficient) forces org off the fast path", async () => {
     const input = chargeInput();
-    deductResult = { success: false, reason: "insufficient_balance" };
-    await writeOrgBalanceHint(input.organizationId, 999, Date.now());
+    deductResult = {
+      success: false,
+      newBalance: 0,
+      transaction: null,
+      reason: "insufficient_balance",
+    };
+    await writeOrgBalanceHint(input.organizationId, 999, Date.now(), "1");
     await writePendingInferenceCharge(input, Date.now());
     await createOptimisticDebitSettler(input)(0.02);
     // Org-balance hint invalidated + user IAC invalidated → next request slow-paths.
@@ -325,12 +406,19 @@ describe("createOptimisticDebitSettler", () => {
 
   test("on FAILED debit contains a user IAC invalidation failure", async () => {
     const input = chargeInput();
-    deductResult = { success: false, reason: "insufficient_balance" };
+    deductResult = {
+      success: false,
+      newBalance: 0,
+      transaction: null,
+      reason: "insufficient_balance",
+    };
     invalidateUserShouldReject = true;
-    await writeOrgBalanceHint(input.organizationId, 999, Date.now());
+    await writeOrgBalanceHint(input.organizationId, 999, Date.now(), "1");
     await writePendingInferenceCharge(input, Date.now());
 
-    await expect(createOptimisticDebitSettler(input)(0.02)).resolves.toBeNull();
+    await expect(createOptimisticDebitSettler(input)(0.02)).resolves.toMatchObject({
+      adjustmentType: "uncollected_overage",
+    });
 
     expect(await readOrgBalanceHint(input.organizationId)).toBeNull();
     expect(invalidateUserCalls).toContain(input.userId);
@@ -340,20 +428,77 @@ describe("createOptimisticDebitSettler", () => {
     const input = chargeInput();
     await writePendingInferenceCharge(input, Date.now());
     const res = await createOptimisticDebitSettler(input)(0);
-    expect(res).toBeNull();
+    expect(res).toEqual({
+      reservedAmount: 0,
+      actualCost: 0,
+      settlementTransactionIds: [],
+      adjustmentType: "none",
+    });
     expect(deductCalls).toHaveLength(0);
     expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).toBeNull();
   });
 
-  test("second settle of an already-claimed request is a no-op (no double charge)", async () => {
+  test("second settle reuses the first result without a second charge", async () => {
     const input = chargeInput();
     await writePendingInferenceCharge(input, Date.now());
     const settle = createOptimisticDebitSettler(input);
     await settle(0.02);
     deductCalls = [];
     const res = await settle(0.02);
-    expect(res).toBeNull();
+    expect(res).toMatchObject({
+      reservedAmount: 0.02,
+      actualCost: 0.02,
+      adjustmentType: "none",
+    });
     expect(deductCalls).toHaveLength(0);
+  });
+
+  test("a rejected debit is durably requeued and retries the first actual cost", async () => {
+    const input = chargeInput({ estimatedCostUsd: 0.01 });
+    await writePendingInferenceCharge(input, Date.now());
+    deductError = new Error("debit acknowledgement lost");
+    const settle = createOptimisticDebitSettler(input);
+
+    await expect(settle(0.02)).rejects.toMatchObject({
+      name: "InferenceDebitInfrastructureError",
+      cause: deductError,
+    });
+    expect(
+      (
+        await cache.get<{ estimatedCostUsd: number }>(
+          CacheKeys.inference.pendingCharge(input.requestId),
+        )
+      )?.estimatedCostUsd,
+    ).toBe(0.02);
+
+    deductError = null;
+    await expect(settle(99)).resolves.toMatchObject({
+      reservedAmount: 0.02,
+      actualCost: 0.02,
+      adjustmentType: "none",
+    });
+    expect(deductCalls.map((call) => call.amount)).toEqual([0.02, 0.02]);
+  });
+
+  test("a persisted debit from another organization is rejected and requeued", async () => {
+    const input = chargeInput();
+    await writePendingInferenceCharge(input, Date.now());
+    deductResult = {
+      success: true,
+      newBalance: 7,
+      transaction: {
+        id: "foreign-debit",
+        organization_id: "other-org",
+        amount: "-0.02",
+        metadata: { requestId: input.requestId },
+      },
+    };
+
+    await expect(createOptimisticDebitSettler(input)(0.02)).rejects.toMatchObject({
+      name: "InferenceDebitReplayMismatchError",
+      organizationId: input.organizationId,
+    });
+    expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).not.toBeNull();
   });
 });
 
@@ -453,16 +598,16 @@ describe("#9899 hardening: backstop durability, lower-only hint, claim atomicity
 
   test("debit hint write is lower-only: a stale-high concurrent debit never raises the gate", async () => {
     const input = chargeInput();
-    await writeOrgBalanceHint(input.organizationId, 10, Date.now());
+    await writeOrgBalanceHint(input.organizationId, 10, Date.now(), "1");
     // A debit that reports a HIGHER balance (out-of-order) must NOT raise the hint.
-    deductResult = { success: true, newBalance: 20 };
+    deductResult = { success: true, newBalance: 20, transaction: { id: "debit-high" } };
     await writePendingInferenceCharge(input, Date.now());
     await createOptimisticDebitSettler(input)(0.01);
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(10);
 
     // A debit that reports a LOWER balance DOES lower the hint.
     const input2 = chargeInput({ organizationId: input.organizationId });
-    deductResult = { success: true, newBalance: 4 };
+    deductResult = { success: true, newBalance: 4, transaction: { id: "debit-low" } };
     await writePendingInferenceCharge(input2, Date.now());
     await createOptimisticDebitSettler(input2)(0.01);
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(4);

@@ -45,6 +45,12 @@ export interface TokenCostBreakdown {
   platformMarkup: number;
 }
 
+/** Canonical base token rates cached independently from request token counts. */
+export interface TokenPricingRates {
+  inputUnitPrice: number | null;
+  outputUnitPrice: number | null;
+}
+
 export interface FlatOperationCost {
   totalCost: number;
   baseTotalCost: number;

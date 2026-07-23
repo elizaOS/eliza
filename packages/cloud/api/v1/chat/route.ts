@@ -1,9 +1,9 @@
 /**
- * POST /api/v1/chat
+ * Streams the dashboard chat protocol for organization and anonymous callers.
  *
- * Streaming chat endpoint (Pattern A: AI SDK `toUIMessageStreamResponse()`).
- * Supports authenticated and anonymous users. Returns a `ReadableStream`
- * Response — Hono passes it through unchanged.
+ * Worker requests authorize, moderate, and admit exclusively from cache-backed
+ * state before provider dispatch. Billing, analytics, conversation writes, and
+ * anonymous counter mirrors run under `waitUntil`.
  */
 
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
@@ -15,6 +15,10 @@ import {
   getAnonymousUser,
   reserveAnonymousMessageSlot,
 } from "@/lib/auth-anonymous";
+import {
+  enforceOrgRateLimit,
+  OrgRateLimitCacheNotReadyError,
+} from "@/lib/middleware/rate-limit";
 import {
   RateLimitPresets,
   rateLimit,
@@ -29,8 +33,24 @@ import {
   getAiProviderConfigurationError,
   getLanguageModel,
   hasLanguageModelProviderConfigured,
+  isProviderConfigurationError,
+  resolveAiProviderSource,
 } from "@/lib/providers/language-model";
 import { billUsage } from "@/lib/services/ai-billing";
+import {
+  AiPricingCacheUnavailableError,
+  AiPricingCacheWarmingError,
+} from "@/lib/services/ai-pricing/cache";
+import {
+  type AnonymousChatGateCredential,
+  type AnonymousChatGateLease,
+  commitAnonymousChatSlot,
+  markAnonymousChatSlotDispatched,
+  refreshAnonymousChatModeration,
+  refundAnonymousChatSlot,
+  reserveAnonymousChatSlot,
+  resolveAnonymousChatContext,
+} from "@/lib/services/anonymous-chat-admission";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { contentModerationService } from "@/lib/services/content-moderation";
 import { conversationsService } from "@/lib/services/conversations";
@@ -38,23 +58,33 @@ import {
   type CreditReconciliationResult,
   type CreditReservation,
   creditsService,
+  DEFAULT_OUTPUT_TOKENS,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
+import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
+import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
+import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { usageService } from "@/lib/services/usage";
-import type { ApiKey } from "@/lib/types";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
+import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const ROUTE_MAX_DURATION = 800;
-
+const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
 const VALID_MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
+
 type ValidRole = (typeof VALID_MESSAGE_ROLES)[number];
 type ChatBillingUser = {
   id: string;
   organization_id?: string | null;
+};
+type ApiKeyIdentity = { id: string };
+type ExecutionContextLike = {
+  waitUntil(promise: Promise<unknown>): void;
 };
 
 function isValidRole(role: string): role is ValidRole {
@@ -68,23 +98,23 @@ function normalizeMessages(
     parts?: Array<{ type: string; text?: string }>;
   }>,
 ): UIMessage[] {
-  return messages.map((msg, index) => {
-    if (!isValidRole(msg.role)) {
+  return messages.map((message, index) => {
+    if (!isValidRole(message.role)) {
       throw new Error(
-        `Invalid message role "${msg.role}" at index ${index}. Valid roles: ${VALID_MESSAGE_ROLES.join(", ")}`,
+        `Invalid message role "${message.role}" at index ${index}. Valid roles: ${VALID_MESSAGE_ROLES.join(", ")}`,
       );
     }
-    if (msg.parts && Array.isArray(msg.parts)) {
-      return msg as UIMessage;
+    if (message.parts && Array.isArray(message.parts)) {
+      return message as UIMessage;
     }
-    let content = "";
-    if (typeof msg.content === "string") {
-      content = msg.content;
-    } else if (Array.isArray(msg.content)) {
-      content = msg.content.join("");
-    }
+    const content =
+      typeof message.content === "string"
+        ? message.content
+        : Array.isArray(message.content)
+          ? message.content.join("")
+          : "";
     return {
-      role: msg.role,
+      role: message.role,
       parts: [{ type: "text" as const, text: content }],
     } as UIMessage;
   });
@@ -93,90 +123,241 @@ function normalizeMessages(
 function extractTextFromParts(
   parts: Array<{ type: string; text?: string }>,
 ): string {
-  return parts.map((p) => (p.type === "text" ? p.text : "")).join("");
+  return parts.map((part) => (part.type === "text" ? part.text : "")).join("");
 }
 
-function getMessageText(msg: UIMessage | { content?: string }): string {
-  if ("parts" in msg && Array.isArray(msg.parts)) {
-    return extractTextFromParts(msg.parts);
+function getMessageText(message: UIMessage | { content?: string }): string {
+  if ("parts" in message && Array.isArray(message.parts)) {
+    return extractTextFromParts(message.parts);
   }
-  if ("content" in msg && typeof msg.content === "string") {
-    return msg.content;
+  if ("content" in message && typeof message.content === "string") {
+    return message.content;
   }
   return "";
 }
 
-/**
- * Look up the validated apiKey row for the current request, if the caller
- * authenticated via X-API-Key / Bearer eliza_*. The Workers auth shim
- * validates the key but does not surface the row to handlers, so we repeat
- * the lookup here to preserve the Next-era billing attribution.
- */
-async function getRequestApiKey(c: AppContext): Promise<ApiKey | undefined> {
+async function getRequestApiKey(
+  c: AppContext,
+): Promise<ApiKeyIdentity | undefined> {
   const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
-  const auth = c.req.header("authorization");
-  const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
+  const authorization = c.req.header("authorization");
+  const bearer = authorization?.startsWith("Bearer ")
+    ? authorization.slice(7).trim()
+    : null;
   const elizaBearer = bearer?.startsWith("eliza_") ? bearer : null;
   const apiKey = apiKeyHeader || elizaBearer;
   if (!apiKey) return undefined;
   const { apiKeysService } = await import("@/lib/services/api-keys");
   const validated = await apiKeysService.validateApiKey(apiKey);
-  return validated ?? undefined;
+  return validated ? { id: validated.id } : undefined;
+}
+
+function retryableWarmingResponse(c: AppContext, area: string): Response {
+  return c.json(
+    { error: `${area} authorization is warming. Retry shortly.` },
+    503,
+  );
 }
 
 const app = new Hono<AppEnv>();
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
+app.use(
+  "*",
+  rateLimit(RateLimitPresets.STANDARD, {
+    bindingName: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER",
+  }),
+);
 
 app.post("/", async (c) => {
+  let executionCtx: ExecutionContextLike | undefined;
+  try {
+    const candidate = c.executionCtx;
+    executionCtx =
+      typeof candidate?.waitUntil === "function" ? candidate : undefined;
+  } catch {
+    // error-policy:J4 Hono intentionally throws outside Workers; local tools
+    // retain compatibility, while enabled Worker admission fails closed below.
+    executionCtx = undefined;
+  }
+  if (!executionCtx && c.env?.INFERENCE_DEFERRED_ADMISSION === "true") {
+    logger.error(
+      "chat-api",
+      "Worker execution context is unavailable for cache-only inference",
+    );
+    return retryableWarmingResponse(c, "Inference");
+  }
+
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
     | null = null;
+  let settleUnknownReservation:
+    | (() => Promise<CreditReconciliationResult | null>)
+    | null = null;
+  let markProviderDispatched: (() => Promise<void>) | undefined;
+  let billingReservation: CreditReservation | undefined;
   let refundAnonymousMessageSlot: (() => Promise<void>) | null = null;
+  let commitAnonymousMessageSlot: (() => Promise<void>) | null = null;
+  let markAnonymousMessageSlotDispatched: (() => Promise<void>) | null = null;
+  let providerDispatchStarted = false;
 
   try {
     let user: ChatBillingUser;
-    let apiKey: ApiKey | undefined;
+    let apiKey: ApiKeyIdentity | undefined;
     let isAnonymous = false;
-    let anonymousSession: AnonymousSession | null = null;
+    let anonymousSession: Pick<
+      AnonymousSession,
+      "id" | "session_token" | "message_count" | "messages_limit"
+    > | null = null;
+    let anonymousCredential: AnonymousChatGateCredential | null = null;
+    let moderationAlreadyChecked = false;
 
-    const authedUser = await getCurrentUser(c);
-    if (authedUser) {
-      user = authedUser;
-      apiKey = await getRequestApiKey(c);
-      // SECURITY: a NON-anonymous authed user must belong to an org. Without this
-      // guard an org-less authed user from compatibility or edge data would fall through to the
-      // no-op anonymous reservation (createAnonymousReservation) and be billed to
-      // org "anonymous" = free inference on any model, exempt from the anon
-      // free-tier cap. Every sibling inference route enforces org via
-      // requireUserOrApiKeyWithOrg; reject here too rather than serve free.
-      if (!user.organization_id) {
+    if (executionCtx) {
+      const authResolution = await resolveInferenceAuthContext(c.req.raw, {
+        executionCtx,
+        cacheOnly: true,
+      });
+      if (authResolution.kind === "warming") {
+        return retryableWarmingResponse(c, "Authentication");
+      }
+      if (authResolution.kind === "suspended") {
         return c.json(
-          { error: "No organization associated with this account" },
+          {
+            error:
+              "Your account has been suspended due to policy violations. Please contact support.",
+          },
           403,
         );
       }
-    } else {
-      const anonData = await getAnonymousUser(c.req.raw);
-      if (!anonData) {
-        return c.json({ error: "Authentication required" }, 401);
+      if (authResolution.kind === "rejected") {
+        return c.json(
+          {
+            error:
+              authResolution.status === 403
+                ? "Account or organization access is disabled."
+                : "Authentication required",
+          },
+          authResolution.status,
+        );
       }
-      user = anonData.user;
-      anonymousSession = anonData.session;
-      isAnonymous = true;
-      logger.info("chat-api", "Anonymous user request", {
-        userId: user.id,
-        sessionId: anonymousSession?.id,
-        messageCount: anonymousSession?.message_count,
-      });
+      if (authResolution.kind === "authorized") {
+        user = {
+          id: authResolution.ctx.userId,
+          organization_id: authResolution.ctx.orgId,
+        };
+        apiKey = authResolution.ctx.apiKeyId
+          ? { id: authResolution.ctx.apiKeyId }
+          : undefined;
+        moderationAlreadyChecked = true;
+      } else {
+        const anonymousResolution = await resolveAnonymousChatContext(
+          c.req.raw,
+          executionCtx,
+        );
+        if (anonymousResolution.kind === "missing") {
+          return c.json({ error: "Authentication required" }, 401);
+        }
+        if (anonymousResolution.kind === "warming") {
+          return retryableWarmingResponse(c, "Anonymous session");
+        }
+        if (anonymousResolution.kind === "rejected") {
+          return c.json(
+            { error: "Anonymous session is no longer active" },
+            401,
+          );
+        }
+        if (anonymousResolution.kind === "unavailable") {
+          return retryableWarmingResponse(c, "Anonymous session");
+        }
+        if (anonymousResolution.blocked) {
+          return c.json(
+            {
+              error:
+                "Your account has been suspended due to policy violations. Please contact support.",
+            },
+            403,
+          );
+        }
+        anonymousCredential = anonymousResolution.credential;
+        user = {
+          id: anonymousCredential.context.userId,
+          organization_id: null,
+        };
+        anonymousSession = {
+          id: anonymousCredential.context.sessionId,
+          session_token: "",
+          message_count: anonymousCredential.context.messageCount,
+          messages_limit: anonymousCredential.context.messagesLimit,
+        };
+        isAnonymous = true;
+        moderationAlreadyChecked = true;
+      }
+    } else {
+      const authedUser = await getCurrentUser(c);
+      if (authedUser) {
+        user = authedUser;
+        apiKey = await getRequestApiKey(c);
+        if (!user.organization_id) {
+          return c.json(
+            { error: "No organization associated with this account" },
+            403,
+          );
+        }
+      } else {
+        const anonymousData = await getAnonymousUser(c.req.raw);
+        if (!anonymousData) {
+          return c.json({ error: "Authentication required" }, 401);
+        }
+        user = anonymousData.user;
+        anonymousSession = anonymousData.session;
+        isAnonymous = true;
+      }
     }
 
-    const body = await c.req.json();
+    if (user.organization_id) {
+      let orgRateLimited: Response | null;
+      try {
+        orgRateLimited = await enforceOrgRateLimit(
+          user.organization_id,
+          "completions",
+          {
+            cacheOnly: Boolean(executionCtx),
+            executionCtx,
+          },
+        );
+      } catch (error) {
+        // error-policy:J1 the dashboard protocol exposes a cold policy cache as
+        // retryable unavailability and never falls through to database policy.
+        if (error instanceof OrgRateLimitCacheNotReadyError) {
+          return c.json(
+            {
+              error:
+                "Rate-limit authorization cache is warming. Retry shortly.",
+              retryable: true,
+            },
+            503,
+            { "Retry-After": "1" },
+          );
+        }
+        throw error;
+      }
+      if (orgRateLimited) return orgRateLimited;
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
     const {
       messages: rawMessages,
       id,
       tier,
-    }: {
-      messages: Array<{
+    } = body as {
+      messages?: Array<{
         role: string;
         content?: string;
         parts?: Array<{ type: string; text?: string }>;
@@ -184,9 +365,8 @@ app.post("/", async (c) => {
       }>;
       id?: string;
       tier?: string;
-    } = body;
-
-    if (!rawMessages || rawMessages.length === 0) {
+    };
+    if (!rawMessages?.length) {
       return c.json({ error: "Messages array cannot be empty" }, 400);
     }
 
@@ -211,12 +391,9 @@ app.post("/", async (c) => {
     const provider = modelConfig.provider;
     const lastMessage = messages[messages.length - 1];
     const lastRawMessage = rawMessages[rawMessages.length - 1];
-    interface MessageMetadata {
-      conversationId?: string;
-    }
     const metadata =
       lastRawMessage?.metadata && typeof lastRawMessage.metadata === "object"
-        ? (lastRawMessage.metadata as MessageMetadata)
+        ? (lastRawMessage.metadata as { conversationId?: string })
         : null;
     const conversationId = metadata?.conversationId;
 
@@ -224,22 +401,25 @@ app.post("/", async (c) => {
       return c.json({ error: getAiProviderConfigurationError() }, 503);
     }
 
-    if (await contentModerationService.shouldBlockUser(user.id)) {
-      logger.warn("chat-api", "User blocked due to moderation violations", {
-        userId: user.id,
-      });
-      return c.json(
-        {
-          error:
-            "Your account has been suspended due to policy violations. Please contact support.",
-        },
-        403,
-      );
+    if (!moderationAlreadyChecked) {
+      const blocked = await contentModerationService.shouldBlockUser(user.id);
+      if (blocked) {
+        logger.warn("chat-api", "User blocked due to moderation violations", {
+          userId: user.id,
+        });
+        return c.json(
+          {
+            error:
+              "Your account has been suspended due to policy violations. Please contact support.",
+          },
+          403,
+        );
+      }
     }
 
     const lastMessageText = getMessageText(lastMessage);
     if (lastMessageText) {
-      contentModerationService.moderateInBackground(
+      const moderationTask = contentModerationService.moderateInBackground(
         lastMessageText,
         user.id,
         conversationId,
@@ -249,58 +429,121 @@ app.post("/", async (c) => {
             categories: result.flaggedCategories,
             action: result.action,
           });
+          if (executionCtx && anonymousCredential) {
+            executionCtx.waitUntil(
+              refreshAnonymousChatModeration(anonymousCredential).catch(
+                (error) => {
+                  // error-policy:J7 the violation is durable in Postgres; this
+                  // cache refresh failure is separately observable.
+                  logger.error(
+                    "chat-api",
+                    "Anonymous moderation cache refresh failed",
+                    {
+                      userId: user.id,
+                      error:
+                        error instanceof Error ? error.message : String(error),
+                    },
+                  );
+                },
+              ),
+            );
+          }
         },
       );
+      executionCtx?.waitUntil(moderationTask);
     }
 
+    const requestId = crypto.randomUUID();
     if (isAnonymous && anonymousSession) {
-      const limitCheck = await reserveAnonymousMessageSlot(
-        anonymousSession.session_token,
-      );
-      if (!limitCheck.allowed) {
-        const errorMessage =
-          limitCheck.reason === "message_limit"
-            ? `You've reached your free message limit (${limitCheck.limit} messages). Sign up to continue chatting!`
-            : `You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.`;
-        logger.warn("chat-api", "Anonymous user limit reached", {
-          userId: user.id,
-          sessionId: anonymousSession.id,
-          reason: limitCheck.reason,
-          limit: limitCheck.limit,
-        });
-        return c.json(
-          {
-            error: errorMessage,
-            requiresSignup: true,
-            reason: limitCheck.reason,
-            limit: limitCheck.limit,
-            remaining: limitCheck.remaining,
-          },
-          429,
+      if (executionCtx && anonymousCredential) {
+        const leaseResolution = await reserveAnonymousChatSlot(
+          anonymousCredential,
+          requestId,
+          executionCtx,
         );
+        if (
+          leaseResolution.kind === "warming" ||
+          leaseResolution.kind === "unavailable"
+        ) {
+          return retryableWarmingResponse(c, "Anonymous quota");
+        }
+        if (leaseResolution.kind === "rejected") {
+          return c.json(
+            { error: "Anonymous session is no longer active" },
+            401,
+          );
+        }
+        if (leaseResolution.kind === "limited") {
+          const error =
+            leaseResolution.reason === "message_limit"
+              ? `You've reached your free message limit (${leaseResolution.limit} messages). Sign up to continue chatting!`
+              : "You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.";
+          return c.json(
+            {
+              error,
+              requiresSignup: true,
+              reason: leaseResolution.reason,
+              limit: leaseResolution.limit,
+              remaining: leaseResolution.remaining,
+            },
+            429,
+          );
+        }
+
+        const lease: AnonymousChatGateLease = leaseResolution.lease;
+        let terminal:
+          | { outcome: "commit" | "refund"; promise: Promise<void> }
+          | undefined;
+        const finalize = (outcome: "commit" | "refund"): Promise<void> => {
+          terminal ??= {
+            outcome,
+            promise:
+              outcome === "commit"
+                ? commitAnonymousChatSlot(lease)
+                : refundAnonymousChatSlot(lease, executionCtx),
+          };
+          return terminal.promise;
+        };
+        refundAnonymousMessageSlot = () => finalize("refund");
+        commitAnonymousMessageSlot = () => finalize("commit");
+        markAnonymousMessageSlotDispatched = () =>
+          markAnonymousChatSlotDispatched(lease);
+        anonymousSession.message_count += 1;
+        logger.info("chat-api", "Anonymous user message allowed", {
+          userId: user.id,
+          remaining: leaseResolution.remaining,
+          limit: leaseResolution.limit,
+        });
+      } else {
+        const limitCheck = await reserveAnonymousMessageSlot(
+          anonymousSession.session_token,
+        );
+        if (!limitCheck.allowed) {
+          const error =
+            limitCheck.reason === "message_limit"
+              ? `You've reached your free message limit (${limitCheck.limit} messages). Sign up to continue chatting!`
+              : "You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.";
+          return c.json(
+            {
+              error,
+              requiresSignup: true,
+              reason: limitCheck.reason,
+              limit: limitCheck.limit,
+              remaining: limitCheck.remaining,
+            },
+            429,
+          );
+        }
+        let refunded = false;
+        refundAnonymousMessageSlot = async () => {
+          if (refunded || !anonymousSession) return;
+          refunded = true;
+          await anonymousSessionsService.refundMessageSlot(anonymousSession.id);
+        };
+        commitAnonymousMessageSlot = async () => undefined;
       }
-      let anonymousMessageSlotRefunded = false;
-      refundAnonymousMessageSlot = async () => {
-        if (anonymousMessageSlotRefunded || !anonymousSession) return;
-        anonymousMessageSlotRefunded = true;
-        await anonymousSessionsService.refundMessageSlot(anonymousSession.id);
-      };
-      logger.info("chat-api", "Anonymous user message allowed", {
-        userId: user.id,
-        remaining: limitCheck.remaining,
-        limit: limitCheck.limit,
-      });
     }
 
-    let reservation: CreditReservation =
-      creditsService.createAnonymousReservation();
-    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
-
-    // Compute the output-token ceiling BEFORE reserving so the upfront hold
-    // covers the REAL cap, not the 500-token default (#11169 part 2). CoT models
-    // grant maxOutputTokens = cotBudget + 4096; reserving for DEFAULT_OUTPUT_TOKENS
-    // (500) let a near-floor org repeatedly consume far more than it held.
-    const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
     const cotBudget = resolveAnthropicThinkingBudgetTokens(
       selectedModel,
       process.env,
@@ -312,26 +555,39 @@ app.post("/", async (c) => {
             cotBudget + DEFAULT_MIN_OUTPUT_TOKENS,
           )
         : undefined;
+    const estimatedInputTokens = estimateTokens(
+      messages.map((message) => extractTextFromParts(message.parts)).join(" "),
+    );
+    const estimatedOutputTokens =
+      effectiveMaxOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
+    const billingSource = resolveAiProviderSource(selectedModel) ?? "gateway";
+    const affiliateCode = isAnonymous
+      ? null
+      : (c.req.header("X-Affiliate-Code") ?? null);
 
-    if (!isAnonymous && user.organization_id) {
-      const messageText = messages
-        .map((m) => extractTextFromParts(m.parts))
-        .join(" ");
-      const estimatedInputTokens = estimateTokens(messageText);
+    if (user.organization_id) {
       try {
-        reservation = await creditsService.reserve({
-          organizationId: user.organization_id,
-          model: selectedModel,
-          provider,
+        const admission = await admitOrganizationInference({
+          context: {
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId: apiKey?.id,
+            model: selectedModel,
+            provider,
+            billingSource,
+            affiliateCode,
+            requestId,
+          },
           estimatedInputTokens,
-          // Size the hold for the actual output ceiling, not the 500 default, so
-          // a CoT completion can't consume more than was reserved (#11169).
-          ...(effectiveMaxOutputTokens != null
-            ? { estimatedOutputTokens: effectiveMaxOutputTokens }
-            : {}),
-          userId: user.id,
-          description: `Chat: ${selectedModel}`,
+          estimatedOutputTokens,
+          apiKeyId: apiKey?.id,
+          affiliateCode,
+          executionCtx,
         });
+        settleReservation = admission.settle;
+        settleUnknownReservation = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+        billingReservation = admission.reservation;
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return c.json(
@@ -339,17 +595,38 @@ app.post("/", async (c) => {
             402,
           );
         }
+        if (
+          error instanceof InferenceBalanceCacheWarmingError ||
+          error instanceof AiPricingCacheWarmingError ||
+          error instanceof AiPricingCacheUnavailableError
+        ) {
+          return retryableWarmingResponse(c, "Billing");
+        }
         throw error;
       }
+    } else {
+      const reservation = creditsService.createAnonymousReservation();
+      const settle = createCreditReservationSettler(reservation);
+      settleReservation = settle;
+      settleUnknownReservation = () => settle(reservation.reservedAmount);
+      billingReservation = reservation;
     }
 
-    settleReservation = createCreditReservationSettler(reservation);
-    const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
+    if (!settleReservation || !settleUnknownReservation) {
+      throw new Error("Chat inference admission did not return settlers");
+    }
 
+    const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
+    const languageModel = getLanguageModel(selectedModel);
+    const modelMessages = await convertToModelMessages(messages);
+    await markProviderDispatched?.();
+    await markAnonymousMessageSlotDispatched?.();
+    providerDispatchStarted = true;
     const result = streamText({
-      model: getLanguageModel(selectedModel),
-      system: `Powered by elizaOS. Provide clear, accurate, and helpful responses about AI agents, development, and technology.`,
-      messages: await convertToModelMessages(messages),
+      model: languageModel,
+      system:
+        "Powered by elizaOS. Provide clear, accurate, and helpful responses about AI agents, development, and technology.",
+      messages: modelMessages,
       abortSignal: c.req.raw.signal,
       timeout: routeTimeoutMs,
       ...(effectiveMaxOutputTokens != null
@@ -361,204 +638,187 @@ app.post("/", async (c) => {
         cotBudget ?? undefined,
       ),
       onFinish: async ({ text, usage }) => {
-        try {
+        await settleOffResponsePath(executionCtx, async () => {
           if (!usage) {
-            await settleReservation?.(0);
+            await settleUnknownReservation?.();
+            await commitAnonymousMessageSlot?.();
+            logger.error("chat-api", "Provider finished without usage", {
+              requestId,
+              userId: user.id,
+              model: selectedModel,
+            });
             return;
           }
 
-          const userMessage = messages[messages.length - 1];
-          const billing = await billUsage(
-            {
-              organizationId: user.organization_id || "anonymous",
-              userId: user.id,
-              apiKeyId: apiKey?.id,
-              model: selectedModel,
-              provider,
-              affiliateCode,
-            },
-            usage,
-          );
-          await settleReservation?.(billing.totalCost);
-
-          const totalCostBilled = billing.totalCost;
-          const inputCostBilled = billing.inputCost;
-          const outputCostBilled = billing.outputCost;
-
-          if (isAnonymous && anonymousSession) {
-            await anonymousSessionsService.addTokenUsage(
-              anonymousSession.id,
-              (usage.inputTokens || 0) + (usage.outputTokens || 0),
-            );
-            logger.info("chat-api", "Anonymous user token usage tracked", {
-              userId: user.id,
-              tokens: (usage.inputTokens || 0) + (usage.outputTokens || 0),
-              model: selectedModel,
-            });
-          }
-
-          if (conversationId) {
-            await conversationsService.addMessageWithSequence(conversationId, {
-              role: "user",
-              content: extractTextFromParts(userMessage.parts),
-              model: selectedModel,
-              tokens: usage.inputTokens,
-              cost: String(inputCostBilled),
-            });
-            await conversationsService.addMessageWithSequence(conversationId, {
-              role: "assistant",
-              content: text,
-              model: selectedModel,
-              tokens: usage.outputTokens,
-              cost: String(outputCostBilled),
-            });
-          }
-
-          if (user.organization_id) {
-            const usageRecord = await usageService.create({
-              organization_id: user.organization_id,
-              user_id: user.id,
-              api_key_id: apiKey?.id || null,
-              type: "chat",
-              model: selectedModel,
-              provider: provider,
-              input_tokens: usage.inputTokens,
-              output_tokens: usage.outputTokens,
-              input_cost: String(inputCostBilled),
-              output_cost: String(outputCostBilled),
-              is_successful: true,
-            });
-
-            if (apiKey) {
-              const lastMessageParts = messages[messages.length - 1]?.parts;
-              const userPrompt = lastMessageParts
-                ? extractTextFromParts(lastMessageParts)
-                : "";
-              await generationsService.create({
-                organization_id: user.organization_id,
-                user_id: user.id,
-                api_key_id: apiKey.id,
-                type: "chat",
+          try {
+            const billing = await billUsage(
+              {
+                organizationId: user.organization_id || "anonymous",
+                userId: user.id,
+                apiKeyId: apiKey?.id,
                 model: selectedModel,
-                provider: provider,
-                prompt: userPrompt,
-                status: "completed",
-                content: text,
-                tokens: (usage.inputTokens || 0) + (usage.outputTokens || 0),
-                cost: String(totalCostBilled),
-                credits: String(totalCostBilled),
-                usage_record_id: usageRecord.id,
-                completed_at: new Date(),
-                result: {
-                  text: text,
-                  inputTokens: usage.inputTokens,
-                  outputTokens: usage.outputTokens,
-                  totalTokens:
-                    (usage.inputTokens || 0) + (usage.outputTokens || 0),
-                },
-              });
+                provider,
+                billingSource,
+                affiliateCode,
+                requestId,
+              },
+              usage,
+              billingReservation,
+            );
+            await settleReservation?.(billing.totalCost);
+            await commitAnonymousMessageSlot?.();
+
+            if (isAnonymous && anonymousSession) {
+              await anonymousSessionsService.addTokenUsage(
+                anonymousSession.id,
+                (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+              );
             }
-          }
 
-          logger.info("chat-api", "Cost charged", {
-            totalCost: totalCostBilled,
-            inputCost: inputCostBilled,
-            outputCost: outputCostBilled,
-          });
-        } catch (error) {
-          await settleReservation?.(0);
-          logger.error(
-            "chat-api",
-            "Error persisting messages or deducting credits",
-            {
-              error: error instanceof Error ? error.message : "Unknown error",
-            },
-          );
+            const userMessage = messages[messages.length - 1];
+            if (conversationId) {
+              await conversationsService.addMessageWithSequence(
+                conversationId,
+                {
+                  role: "user",
+                  content: extractTextFromParts(userMessage.parts),
+                  model: selectedModel,
+                  tokens: usage.inputTokens,
+                  cost: String(billing.inputCost),
+                },
+              );
+              await conversationsService.addMessageWithSequence(
+                conversationId,
+                {
+                  role: "assistant",
+                  content: text,
+                  model: selectedModel,
+                  tokens: usage.outputTokens,
+                  cost: String(billing.outputCost),
+                },
+              );
+            }
 
-          if (usage && user.organization_id) {
-            try {
-              const errorUsageRecord = await usageService.create({
+            if (user.organization_id) {
+              const usageRecord = await usageService.create({
                 organization_id: user.organization_id,
                 user_id: user.id,
                 api_key_id: apiKey?.id || null,
                 type: "chat",
                 model: selectedModel,
-                provider: provider,
-                input_tokens: usage.inputTokens || 0,
-                output_tokens: usage.outputTokens || 0,
-                input_cost: String(0),
-                output_cost: String(0),
-                is_successful: false,
-                error_message:
-                  error instanceof Error ? error.message : "Unknown error",
+                provider,
+                input_tokens: usage.inputTokens,
+                output_tokens: usage.outputTokens,
+                input_cost: String(billing.inputCost),
+                output_cost: String(billing.outputCost),
+                is_successful: true,
               });
-
               if (apiKey) {
-                const lastMessageParts = messages[messages.length - 1]?.parts;
-                const userPrompt = lastMessageParts
-                  ? extractTextFromParts(lastMessageParts)
-                  : "";
                 await generationsService.create({
                   organization_id: user.organization_id,
                   user_id: user.id,
                   api_key_id: apiKey.id,
                   type: "chat",
                   model: selectedModel,
-                  provider: provider,
-                  prompt: userPrompt,
-                  status: "failed",
-                  error:
-                    error instanceof Error ? error.message : "Unknown error",
-                  usage_record_id: errorUsageRecord.id,
+                  provider,
+                  prompt: extractTextFromParts(userMessage.parts),
+                  status: "completed",
+                  content: text,
+                  tokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+                  cost: String(billing.totalCost),
+                  credits: String(billing.totalCost),
+                  usage_record_id: usageRecord.id,
                   completed_at: new Date(),
+                  result: {
+                    text,
+                    inputTokens: usage.inputTokens,
+                    outputTokens: usage.outputTokens,
+                    totalTokens:
+                      (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+                  },
                 });
               }
-            } catch (usageError) {
-              logger.error("chat-api", "Error creating usage record", {
-                error:
-                  usageError instanceof Error
-                    ? usageError.message
-                    : "Unknown error",
-              });
             }
+
+            logger.info("chat-api", "Cost charged", {
+              requestId,
+              totalCost: billing.totalCost,
+              inputCost: billing.inputCost,
+              outputCost: billing.outputCost,
+            });
+          } catch (error) {
+            try {
+              await settleUnknownReservation?.();
+              await commitAnonymousMessageSlot?.();
+            } catch (settlementError) {
+              logger.error(
+                "chat-api",
+                "Unknown-cost settlement failed after provider completion",
+                {
+                  requestId,
+                  error:
+                    settlementError instanceof Error
+                      ? settlementError.message
+                      : String(settlementError),
+                },
+              );
+            }
+            // error-policy:J7 this response has already streamed; the provider
+            // usage and conservative settlement remain observable in logs.
+            logger.error("chat-api", "Deferred chat persistence failed", {
+              requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
-        }
+        });
       },
       onAbort: async () => {
-        await refundAnonymousMessageSlot?.();
-        await settleReservation?.(0);
-        logger.info("chat-api", "Aborted chat stream before completion", {
+        await settleOffResponsePath(executionCtx, async () => {
+          await commitAnonymousMessageSlot?.();
+          await settleUnknownReservation?.();
+        });
+        logger.info("chat-api", "Aborted chat stream", {
+          requestId,
           userId: user.id,
           model: selectedModel,
         });
       },
-      // A provider error during streaming (e.g. cerebras 429/5xx) fires onError
-      // — NOT onFinish or onAbort — so without this the upfront credit
-      // reservation is never reconciled and the paying user is billed ~1.5x the
-      // estimate for zero output. Refund the anonymous free-message slot here
-      // too (provider errors take the onError path, not onAbort/catch). onError
-      // is exclusive of onFinish/onAbort, so there is no double-refund.
       onError: async ({ error }: { error: unknown }) => {
-        await refundAnonymousMessageSlot?.();
-        await settleReservation?.(0);
-        logger.error(
-          "chat-api",
-          "Stream provider error — reservation refunded",
-          {
-            userId: user.id,
-            model: selectedModel,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
+        await settleOffResponsePath(executionCtx, async () => {
+          if (isKnownUnacceptedProviderError(error)) {
+            await refundAnonymousMessageSlot?.();
+            await settleReservation?.(0);
+          } else {
+            await commitAnonymousMessageSlot?.();
+            await settleUnknownReservation?.();
+          }
+        });
+        logger.error("chat-api", "Stream provider error", {
+          requestId,
+          userId: user.id,
+          model: selectedModel,
+          error: error instanceof Error ? error.message : String(error),
+        });
       },
     });
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
-    await refundAnonymousMessageSlot?.();
-    await settleReservation?.(0);
+    await settleOffResponsePath(executionCtx, async () => {
+      if (
+        !providerDispatchStarted ||
+        isProviderConfigurationError(error) ||
+        isKnownUnacceptedProviderError(error)
+      ) {
+        await refundAnonymousMessageSlot?.();
+        await settleReservation?.(0);
+      } else {
+        await commitAnonymousMessageSlot?.();
+        await settleUnknownReservation?.();
+      }
+    });
     logger.error("chat-api", "Error processing chat", {
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: error instanceof Error ? error.message : String(error),
     });
     return failureResponse(c, error);
   }

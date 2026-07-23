@@ -350,7 +350,25 @@ export class SharedRuntimeConversation {
           { status: 503, headers: { "Retry-After": "1" } },
         );
       }
-      const { InsufficientCreditsError } = await import("@/lib/api/errors");
+      const { InsufficientCreditsError, RateLimitError } = await import(
+        "@/lib/api/errors"
+      );
+      if (error instanceof RateLimitError) {
+        return Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "rate_limit_exceeded",
+            retryable: true,
+          },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(error.retryAfter ?? 60),
+            },
+          },
+        );
+      }
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
           {

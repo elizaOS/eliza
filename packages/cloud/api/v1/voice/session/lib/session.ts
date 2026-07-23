@@ -259,10 +259,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }, msUntilExp);
 
     this.state = "listening";
-    // Warm immutable tenancy/DB context while the user is beginning to speak,
-    // instead of serializing the first Hyperdrive lookup after stt_final. This
-    // is read-only and best-effort; the turn still performs normal validation
-    // if warmup fails or does not finish in time.
+    // Read immutable tenancy from cache while the user is beginning to speak.
+    // A miss only schedules authoritative hydration under the Worker lifetime;
+    // the first turn never joins that database work and reports retryable
+    // warming until a later cache read observes the completed fill.
     if (this.config.prewarmElizaContext) {
       void this.config.prewarmElizaContext().catch(() => undefined);
     }

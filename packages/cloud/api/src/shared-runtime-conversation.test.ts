@@ -7,6 +7,7 @@
  */
 
 import { expect, mock, test } from "bun:test";
+import { RateLimitError } from "@/lib/api/errors";
 import { SharedRuntimeConversation } from "./shared-runtime-conversation";
 
 let repositoryReads = 0;
@@ -55,6 +56,9 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         };
       },
     ) => {
+      if (rpc.id === "rate-limited") {
+        throw new RateLimitError("Organization rate limit exceeded.", 29);
+      }
       const channelId = rpc.params?.roomId ?? agent.id;
       const history = await options.historyStore.load(agent.id, channelId);
       await options.historyStore.save(agent.id, channelId, [
@@ -199,4 +203,51 @@ test("the Postgres mirror merges externally written turns instead of erasing the
   expect(contents).toContain("gateway-turn");
   expect(contents).toContain("turn-one");
   expect(contents).toContain("migrated");
+});
+
+test("rate denial crosses the Durable Object boundary as a typed retryable 429", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "bridge",
+        agent: AGENT_FIXTURE,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "rate-limited",
+          method: "message.send",
+          params: { text: "hi", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(429);
+  expect(response.headers.get("Retry-After")).toBe("29");
+  await expect(response.json()).resolves.toMatchObject({
+    code: "rate_limit_exceeded",
+    retryable: true,
+  });
+  expect(repositoryReads).toBe(0);
+  expect(repositoryWrites).toBe(0);
 });

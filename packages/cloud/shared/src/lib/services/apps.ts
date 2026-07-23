@@ -17,6 +17,36 @@ import { apiKeysService } from "./api-keys";
 import { managedDomainsService } from "./managed-domains";
 
 const DEFAULT_MAX_APPS_PER_ORG = 25;
+const appByIdHydrations = new Map<string, Promise<void>>();
+const appByIdHydrationGeneration = new Map<string, number>();
+
+export interface AppCacheExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+export type InferenceAppCacheResolution =
+  | { kind: "ready"; app: App | null }
+  | {
+      kind: "warming" | "unavailable";
+      cacheRead: "miss" | "invalid" | "unavailable" | "error";
+    };
+
+function isCachedApp(value: unknown, expectedId: string): value is App {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<App>;
+  return (
+    candidate.id === expectedId &&
+    typeof candidate.organization_id === "string" &&
+    typeof candidate.created_by_user_id === "string" &&
+    typeof candidate.monetization_enabled === "boolean"
+  );
+}
+
+function isNoneMarker(value: unknown): value is { __none: true } {
+  return (
+    typeof value === "object" && value !== null && (value as { __none?: unknown }).__none === true
+  );
+}
 
 function resolveMaxAppsPerOrg(): number {
   const raw = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
@@ -113,23 +143,78 @@ export class AppsService {
   async getById(id: string): Promise<App | undefined> {
     const cacheKey = CacheKeys.app.byId(id);
 
-    const cached = await cache.get<App | { __none: true }>(cacheKey);
+    const cached = await cache.get<unknown>(cacheKey);
     if (cached) {
-      if ((cached as { __none?: boolean }).__none) {
+      if (isNoneMarker(cached)) {
         return undefined;
       }
-      return cached as App;
+      if (isCachedApp(cached, id)) return cached;
     }
 
-    const app = await appsRepository.findById(id);
+    return await this.loadAndCacheAppById(id);
+  }
 
+  private async loadAndCacheAppById(id: string): Promise<App | undefined> {
+    const cacheKey = CacheKeys.app.byId(id);
+    const generation = appByIdHydrationGeneration.get(id) ?? 0;
+    const app = await appsRepository.findById(id);
+    if ((appByIdHydrationGeneration.get(id) ?? 0) !== generation) {
+      return app;
+    }
     if (app) {
       await cache.set(cacheKey, app, CacheTTL.app.byId);
     } else {
       await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
     }
-
     return app;
+  }
+
+  private scheduleAppByIdHydration(id: string, executionCtx: AppCacheExecutionContext): void {
+    let hydration = appByIdHydrations.get(id);
+    if (!hydration) {
+      hydration = this.loadAndCacheAppById(id)
+        .then(() => undefined)
+        .catch((error) => {
+          // error-policy:J7 the retry observes warming until authoritative app
+          // state reaches cache; the detached DB/cache failure remains logged.
+          logger.warn("[Apps] Background inference app hydration failed", {
+            appId: id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => {
+          appByIdHydrations.delete(id);
+        });
+      appByIdHydrations.set(id, hydration);
+    }
+    executionCtx.waitUntil(hydration);
+  }
+
+  /**
+   * Cache-only app lookup for inference. A missing or malformed cache entry
+   * never falls through to Postgres on the request promise; Worker callers
+   * retain one coalesced authoritative fill under `waitUntil`.
+   */
+  async getByIdCacheOnly(
+    id: string,
+    options: { executionCtx?: AppCacheExecutionContext } = {},
+  ): Promise<InferenceAppCacheResolution> {
+    const outcome = await cache.getWithOutcome<unknown>(CacheKeys.app.byId(id));
+    if (outcome.kind === "hit") {
+      if (isNoneMarker(outcome.value)) return { kind: "ready", app: null };
+      if (isCachedApp(outcome.value, id)) {
+        return { kind: "ready", app: outcome.value };
+      }
+    }
+
+    const cacheRead = outcome.kind === "hit" ? ("invalid" as const) : outcome.kind;
+    if (options.executionCtx) {
+      this.scheduleAppByIdHydration(id, options.executionCtx);
+    }
+    return {
+      kind: cacheRead === "unavailable" || cacheRead === "error" ? "unavailable" : "warming",
+      cacheRead,
+    };
   }
 
   /**
@@ -186,6 +271,20 @@ export class AppsService {
     return app;
   }
 
+  /** Cache-only inference variant of {@link getAuthorizedMonetizedAppForUser}. */
+  async getAuthorizedMonetizedAppForUserCacheOnly(
+    appId: string,
+    _user: { id: string; organization_id: string },
+    options: { executionCtx?: AppCacheExecutionContext } = {},
+  ): Promise<InferenceAppCacheResolution> {
+    const resolution = await this.getByIdCacheOnly(appId, options);
+    if (resolution.kind !== "ready") return resolution;
+    return {
+      kind: "ready",
+      app: resolution.app?.monetization_enabled ? resolution.app : null,
+    };
+  }
+
   /**
    * Get app by its associated API key ID with Redis caching.
    * This is the primary method for app auth - avoids fetching all org apps.
@@ -227,6 +326,7 @@ export class AppsService {
    * would leave stale data; we look up the existing row's slug to evict it too.
    */
   async invalidateCache(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
+    appByIdHydrationGeneration.set(appId, (appByIdHydrationGeneration.get(appId) ?? 0) + 1);
     const promises: Promise<void>[] = [
       cache.del(CacheKeys.app.byId(appId)),
       cache.del(CacheKeys.app.costMarkup(appId)),

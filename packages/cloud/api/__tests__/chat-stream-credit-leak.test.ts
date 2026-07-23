@@ -4,10 +4,12 @@
  * The route reserves credits before forwarding to the model provider. AI SDK
  * provider failures during streaming call streamText.onError, not onFinish or
  * onAbort. This drives the real Hono route with mocked auth/provider seams and
- * a real credit-reservation settler, proving onError releases the upfront hold.
+ * a ledger-backed settler, proving explicit rejections release the hold while
+ * ambiguous provider outcomes retain it.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { APICallError } from "ai";
 
 const aiActual = require("ai") as Record<string, unknown>;
 const languageModelActual = await import("@/lib/providers/language-model");
@@ -114,19 +116,36 @@ function makeLedgerReservation(startBalance: number, hold: number) {
 }
 
 let ledger = makeLedgerReservation(100, 0.015);
-const reserveCalls: Array<Record<string, unknown>> = [];
+const admissionCalls: Array<Record<string, unknown>> = [];
 
 mock.module("@/lib/services/credits", () => ({
   creditsService: {
     createAnonymousReservation: mock(
       () => makeLedgerReservation(0, 0).reservation,
     ),
-    reserve: mock(async (params: Record<string, unknown>) => {
-      reserveCalls.push(params);
-      return ledger.reservation;
-    }),
   },
+  DEFAULT_OUTPUT_TOKENS: 500,
   InsufficientCreditsError: TestInsufficientCreditsError,
+}));
+
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  admitOrganizationInference: mock(async (params: Record<string, unknown>) => {
+    admissionCalls.push(params);
+    let settlement: Promise<unknown> | undefined;
+    const settle = (actualCost: number) => {
+      settlement ??= ledger.reservation.reconcile(actualCost);
+      return settlement;
+    };
+    return {
+      mode: "synchronous_reservation",
+      settle,
+      settleUnknown: () => settle(ledger.reservation.reservedAmount),
+      reservation: {
+        ...ledger.reservation,
+        reconcile: settle,
+      },
+    };
+  }),
 }));
 
 // #11169 part 2: control the CoT thinking budget so a test can assert the
@@ -153,7 +172,7 @@ beforeEach(() => {
 });
 
 describe("/v1/chat streaming credit reservation", () => {
-  test("provider onError releases the hold and a later abort cannot double-refund", async () => {
+  test("ambiguous provider onError keeps the hold and a later abort cannot override it", async () => {
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
 
     let onErrorPromise: Promise<unknown> | undefined;
@@ -183,12 +202,47 @@ describe("/v1/chat streaming credit reservation", () => {
     await onErrorPromise;
 
     expect(ledger.reconcileCalls).toBe(1);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
 
     const onAbort = capturedConfig?.onAbort as
       | (() => Promise<unknown>)
       | undefined;
     await onAbort?.();
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
+  });
+
+  test("explicit provider 429 releases the hold", async () => {
+    let onErrorPromise: Promise<unknown> | undefined;
+    streamTextImpl = (config) => {
+      const onError = config.onError as
+        | ((event: { error: unknown }) => Promise<unknown>)
+        | undefined;
+      onErrorPromise = Promise.resolve(
+        onError?.({
+          error: new APICallError({
+            message: "provider returned 429",
+            url: "https://provider.example/v1/chat/completions",
+            requestBodyValues: {},
+            statusCode: 429,
+          }),
+        }),
+      );
+      return {
+        toUIMessageStreamResponse: () => new Response("stream-started"),
+      };
+    };
+
+    const response = await chatRoute.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await onErrorPromise;
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
   });
@@ -196,7 +250,7 @@ describe("/v1/chat streaming credit reservation", () => {
 
 describe("/v1/chat reservation output-ceiling sizing (#11169 part 2)", () => {
   test("CoT model reserves for the effective output ceiling, not the 500 default", async () => {
-    reserveCalls.length = 0;
+    admissionCalls.length = 0;
     cotBudgetImpl = 8000; // → effectiveMax = max(4096, 8000 + 4096) = 12096
     try {
       streamTextImpl = () => ({
@@ -208,17 +262,15 @@ describe("/v1/chat reservation output-ceiling sizing (#11169 part 2)", () => {
         body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
       });
       expect(res.status).toBe(200);
-      expect(reserveCalls).toHaveLength(1);
-      // Pre-fix this was absent → reserve used DEFAULT_OUTPUT_TOKENS (500),
-      // letting a CoT completion consume ~24x its hold.
-      expect(reserveCalls[0]?.estimatedOutputTokens).toBe(12096);
+      expect(admissionCalls).toHaveLength(1);
+      expect(admissionCalls[0]?.estimatedOutputTokens).toBe(12096);
     } finally {
       cotBudgetImpl = null;
     }
   });
 
-  test("non-CoT model reserves without an output override (500 default preserved)", async () => {
-    reserveCalls.length = 0;
+  test("non-CoT model admits against the 500-token default", async () => {
+    admissionCalls.length = 0;
     cotBudgetImpl = null;
     streamTextImpl = () => ({
       toUIMessageStreamResponse: () => new Response("ok"),
@@ -229,8 +281,8 @@ describe("/v1/chat reservation output-ceiling sizing (#11169 part 2)", () => {
       body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
     });
     expect(res.status).toBe(200);
-    expect(reserveCalls).toHaveLength(1);
-    expect(reserveCalls[0]?.estimatedOutputTokens).toBeUndefined();
+    expect(admissionCalls).toHaveLength(1);
+    expect(admissionCalls[0]?.estimatedOutputTokens).toBe(500);
   });
 });
 
