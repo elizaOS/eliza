@@ -351,6 +351,71 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it("an empty stt_final (noise EOT) loops straight back to listening (#16662)", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "n",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "sess-noise", traceId: "T9" });
+    await flush();
+    expect(client.state.phase).toBe("listening");
+
+    // A cough: StartOfTurn fires, eot_timeout commits an EMPTY transcript. The
+    // server sends stt_final("") and dispatches NO LLM leg — no speaking_end
+    // will ever arrive for this turn.
+    sock.emitControl({ t: "stt_partial", text: "uh", traceId: "T9" });
+    sock.emitControl({ t: "stt_final", text: "", traceId: "T9" });
+    expect(client.state.phase).toBe("listening");
+    expect(client.state.interimTranscript).toBe("");
+    expect(client.state.finalTranscript).toBe("");
+    await client.stop();
+  });
+
+  it("a whitespace-only stt_final loops back to listening (server dispatch gate is trim-based) (#16662)", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "n",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "sess-ws", traceId: "T10" });
+    await flush();
+    expect(client.state.phase).toBe("listening");
+
+    // The wire carries the RAW provider transcript; the server's LLM-dispatch
+    // gate is transcript.trim() === "" (session.ts commitTurn). A whitespace-
+    // only final therefore dispatches no LLM leg — no speaking_end will ever
+    // arrive, exactly like the empty case.
+    sock.emitControl({ t: "stt_partial", text: "uh", traceId: "T10" });
+    sock.emitControl({ t: "stt_final", text: " \t", traceId: "T10" });
+    expect(client.state.phase).toBe("listening");
+    expect(client.state.interimTranscript).toBe("");
+    expect(client.state.finalTranscript).toBe("");
+    await client.stop();
+  });
+
   it("barge-in flushes local playback BEFORE the server interrupted ack, then reconciles", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();

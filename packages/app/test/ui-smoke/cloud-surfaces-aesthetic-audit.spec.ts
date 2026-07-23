@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test";
 import {
   type AestheticVerdictDebt,
   evaluateStrictGate,
+  readReadableCharsWithNavigationRetry,
 } from "./aesthetic-audit-rules";
 import {
   collectBlueColors,
@@ -573,23 +574,27 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // react-query settle). Non-fatal: a page that never paints is recorded
         // as a `broken` finding, not a walk abort.
         const readPaint = async (): Promise<number> =>
-          page
-            .evaluate(
-              () => document.body.innerText.trim().replace(/\s+/g, " ").length,
-            )
-            .catch(() => 0);
-        let readableChars = await readPaint();
+          page.evaluate(
+            () => document.body.innerText.trim().replace(/\s+/g, " ").length,
+          );
+        const readPaintAfterNavigation = (minimumReadableChars = 0) =>
+          readReadableCharsWithNavigationRetry(
+            readPaint,
+            (delayMs) => page.waitForTimeout(delayMs),
+            { minimumReadableChars },
+          );
+        let readableChars = await readPaintAfterNavigation();
         for (
           let attempt = 0;
           attempt < 15 && readableChars < 10;
           attempt += 1
         ) {
           await page.waitForTimeout(1000);
-          readableChars = await readPaint();
+          readableChars = await readPaintAfterNavigation();
         }
         // Let late skeleton → content transitions settle before sampling.
         await page.waitForTimeout(750);
-        readableChars = await readPaint();
+        readableChars = await readPaintAfterNavigation(10);
 
         const restPath = path.join(shotDir, `${auditCase.slug}.png`);
         let buffer = await page.screenshot({ path: restPath, fullPage: false });

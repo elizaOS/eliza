@@ -140,6 +140,23 @@ export function applyServerEvent(
       // phase jump; keep whatever transcribing/listening phase we're in.
       return { ...state, traceId: event.traceId };
     case "stt_final":
+      // An EMPTY final is not a request-dispatch edge: the server commits the
+      // turn but never dispatches the LLM leg (noise-triggered StartOfTurn +
+      // eot_timeout with no speech). No speaking_end will ever follow, so
+      // parking in 'thinking' would strand the client there forever (#16662).
+      // Treat it as terminal-of-turn; the caller loops back to listening.
+      // trim() matches the server's own LLM-dispatch gate (session.ts
+      // commitTurn): the wire text is the raw provider transcript, so a
+      // whitespace-only final is equally leg-less and must not park.
+      if (event.text.trim() === "") {
+        return {
+          ...state,
+          phase: "complete",
+          traceId: event.traceId,
+          finalTranscript: "",
+          interimTranscript: "",
+        };
+      }
       return {
         ...state,
         // `stt_final` is the server's commit/request-dispatch edge. Keeping the
