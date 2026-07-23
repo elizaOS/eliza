@@ -388,7 +388,8 @@ async function dispatchPrompt(
     await runtime.ensureConnection({
       entityId,
       roomId,
-      worldId: room?.worldId ?? stringToUuid(`trigger-world:${runtime.agentId}`),
+      worldId:
+        room?.worldId ?? stringToUuid(`trigger-world:${runtime.agentId}`),
       roomName: room?.name,
       channelId: room?.channelId,
       messageServerId: room?.messageServerId,

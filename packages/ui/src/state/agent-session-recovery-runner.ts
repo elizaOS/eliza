@@ -69,6 +69,17 @@ export interface RunAgentSessionRecoveryDeps {
   exchangePairToken?: (token: string) => Promise<string>;
   /** Injected API-key persistence (tests). Defaults to CloudPairRelay's persistence. */
   persistPairApiToken?: (apiToken: string) => void;
+  /**
+   * OPT-IN purge invoked when the pairing mint answers 401/403 (#16666). The
+   * mint is authorized by the Steward JWT — its refusal proves nothing about
+   * the durable pair token — so there is deliberately NO default: only a
+   * caller that has independently observed the adopted dedicated-agent bearer
+   * rejected (e.g. `/api/auth/me` 401 `remote_auth_required`) may supply a
+   * purge, and it should be `clearStalePairCredentialsForAgent(agentId)` so
+   * the deletion stays scoped to the proven credential. Generic pairing
+   * callers (first-run) omit it and never destroy persisted credentials.
+   */
+  clearStalePairCredentials?: () => void;
   /** Optional callback after an in-process pair succeeds. */
   onPairedInProcess?: (apiToken: string) => void | Promise<void>;
 }
@@ -126,6 +137,7 @@ export async function runAgentSessionRecovery(
     exchangePairToken = (token: string) =>
       exchangeCloudPairToken(token, { cloudApiBase }),
     persistPairApiToken = persistCloudPairApiToken,
+    clearStalePairCredentials,
     onPairedInProcess,
     fetchFn = fetch,
     sleepFn = realSleep,
@@ -163,7 +175,15 @@ export async function runAgentSessionRecovery(
     }
 
     if (res.status === 401 || res.status === 403) {
-      // No valid cloud session after all, let the wall stand.
+      // No valid cloud session after all, let the wall stand. The purge is the
+      // caller's call: this response only proves the STEWARD credential was
+      // refused, so the runner purges nothing on its own — a caller that has
+      // separately watched the agent origin reject the adopted pair bearer
+      // opts in here so the next boot cannot re-adopt the dead credential
+      // (#16666). Network-shaped failures (fetch throw, timeout, 5xx)
+      // deliberately do NOT reach this branch: an offline PWA relaunch must
+      // keep its still-valid token.
+      clearStalePairCredentials?.();
       return {
         ok: false,
         reason: "unauthorized",

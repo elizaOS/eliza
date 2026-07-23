@@ -58,6 +58,10 @@ import {
   shouldIgnoreUnhandledRejection,
 } from "./error-handlers.js";
 import { resolveRuntimeBootstrapFailure } from "./runtime-bootstrap-policy.js";
+import {
+  mergedRecoverySkipPlugins,
+  restoreOperatorSkipPlugins,
+} from "./skip-plugins-env.js";
 
 console.log(
   `${getLogPrefix()} Script starting... (timing: ${STARTUP_TIMING_SOURCE}; pre-body/import delay: ${
@@ -158,6 +162,14 @@ let runtimeBootFirstFailureAt: number | null = null;
 let runtimeBootPgliteAutoResetAttempted = false;
 let runtimeBootPgliteRecoverySkipPlugins: string[] = [];
 
+// The operator's own ELIZA_SKIP_PLUGINS, captured before the PGlite-recovery
+// retry ever touches the env var. The recovery path reuses the same variable
+// to skip crash-implicated plugins on its one retry; without this capture,
+// settling back after a successful boot would DELETE the operator's list, so
+// any later in-process runtime re-bootstrap silently resurrected every
+// operator-skipped plugin.
+const operatorSkipPlugins = process.env.ELIZA_SKIP_PLUGINS;
+
 function clearRuntimeBootTimer(): void {
   if (runtimeBootTimer) {
     clearTimeout(runtimeBootTimer);
@@ -243,7 +255,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
     runtimeBootFirstFailureAt = null;
     runtimeBootPgliteAutoResetAttempted = false;
     runtimeBootPgliteRecoverySkipPlugins = [];
-    delete process.env.ELIZA_SKIP_PLUGINS;
+    restoreOperatorSkipPlugins(operatorSkipPlugins);
     apiUpdateStartup?.({
       phase: "running",
       attempt: 0,
@@ -269,8 +281,10 @@ async function bootstrapRuntime(reason: string): Promise<void> {
           runtimeBootPgliteRecoverySkipPlugins =
             getPgliteRecoveryRetrySkipPlugins();
           if (runtimeBootPgliteRecoverySkipPlugins.length > 0) {
-            process.env.ELIZA_SKIP_PLUGINS =
-              runtimeBootPgliteRecoverySkipPlugins.join(",");
+            process.env.ELIZA_SKIP_PLUGINS = mergedRecoverySkipPlugins(
+              operatorSkipPlugins,
+              runtimeBootPgliteRecoverySkipPlugins,
+            );
             logger.warn(
               `${getLogPrefix()} Skipping previously failed plugins on the recovery retry: ${runtimeBootPgliteRecoverySkipPlugins.join(", ")}.`,
             );

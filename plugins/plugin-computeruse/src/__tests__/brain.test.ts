@@ -330,7 +330,10 @@ describe("Brain.observeAndPlan", () => {
     const scene = dummyScene();
     // Force the focused window onto a synthetic display id 0 — same as
     // captures map key.
-    scene.focused_window!.displayId = 0;
+    if (!scene.focused_window) {
+      throw new Error("expected dummyScene to include a focused window");
+    }
+    scene.focused_window.displayId = 0;
     await brain.observeAndPlan({ scene, goal: "g", captures: captures() });
     expect(receivedDisplay).toBe(0);
   });

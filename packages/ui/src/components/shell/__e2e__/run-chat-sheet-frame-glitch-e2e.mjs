@@ -1,5 +1,5 @@
 /**
- * #9142 Part-2 — single-frame visual-glitch e2e for the continuous-chat sheet.
+ * #9142 Part-2 — single-frame visual-glitch e2e for the chat sheet.
  *
  * Part 1 (the *static* invisible-drag-handle regression) is already fixed and
  * guarded. This is the missing Part 2: a harness that catches *transient*
@@ -306,7 +306,7 @@ page.on("requestfailed", (r) =>
 );
 
 await page.goto(url);
-await page.getByTestId("continuous-chat-overlay").waitFor({ timeout: 15000 });
+await page.getByTestId("chat-overlay").waitFor({ timeout: 15000 });
 // Kill the two notorious per-frame false-positive sources for pixel diffing: the
 // blinking text caret in the (focused) composer and any rendered cursor. A caret
 // toggles ~every 530ms → a one-frame diff its neighbours undo, i.e. a fake

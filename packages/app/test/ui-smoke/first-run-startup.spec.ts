@@ -123,7 +123,7 @@ test("in-chat first-run renders without a render loop and lets the runtime be ch
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
   await expect(
     page.getByText("First, where should your agent run?", { exact: false }),
@@ -214,7 +214,7 @@ test("fresh first-run offers to restore an existing local backup before onboardi
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
   await expect(
     chatOverlay.getByText("I found an existing local backup", {

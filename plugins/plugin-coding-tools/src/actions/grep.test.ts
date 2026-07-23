@@ -9,7 +9,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RipgrepService } from "../services/ripgrep-service.js";
 import { SandboxService } from "../services/sandbox-service.js";
@@ -237,5 +237,50 @@ describe("GREP", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param");
+  });
+});
+
+describe("grepHandler — read-only query stays silent", () => {
+  // Read-only query results reach the model through ActionResult and the user
+  // through the planner's final message, so exploratory calls stay out of chat.
+  it("does not invoke the visible chat callback for matching results", async () => {
+    const bundle = await buildRuntime();
+    if (!bundle) return;
+    const { runtime, message } = bundle;
+    const callback = vi.fn();
+
+    const result = await grepHandler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { pattern: "NEEDLE" } },
+      callback,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("a.ts");
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke the visible chat callback for the zero-match early return", async () => {
+    const bundle = await buildRuntime();
+    if (!bundle) return;
+    const { runtime, message } = bundle;
+    const callback = vi.fn();
+
+    const result = await grepHandler(
+      runtime,
+      message,
+      undefined,
+      { parameters: { pattern: "ZZZ_DEFINITELY_NO_MATCH_ZZZ" } },
+      callback,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("no matches");
+    expect(
+      (result.data as Record<string, unknown> | undefined)?.matches_count,
+    ).toBe(0);
+    expect(callback).not.toHaveBeenCalled();
   });
 });

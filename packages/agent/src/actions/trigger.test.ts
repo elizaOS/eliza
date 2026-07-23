@@ -241,9 +241,9 @@ describe("TRIGGER create — workflow triggers", () => {
     expect(result?.success).toBe(true);
     const trigger = createdTasks[0].metadata.trigger;
     expect(trigger?.kind).toBe("workflow");
-    expect(
-      trigger?.kind === "workflow" ? trigger.workflowId : undefined,
-    ).toBe("wf-1");
+    expect(trigger?.kind === "workflow" ? trigger.workflowId : undefined).toBe(
+      "wf-1",
+    );
     expect(createdTasks[0].roomId).toBe(AUTONOMY_ROOM_ID);
   });
 });

@@ -323,7 +323,7 @@ for (const viewport of [
     const { events } = await installStreamingThinkingRoutes(page);
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 60_000,
     });
     const composer = page

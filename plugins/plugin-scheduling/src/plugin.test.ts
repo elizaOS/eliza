@@ -23,6 +23,7 @@ vi.mock("./scheduled-task/default-pack.js", () => ({
 }));
 
 vi.mock("./scheduled-task/runner-service.js", () => ({
+  // biome-ignore lint/complexity/noStaticOnlyClass: test double mirroring the elizaOS Service class shape (static serviceType on a class)
   ScheduledTaskRunnerService: class ScheduledTaskRunnerService {
     static serviceType = "lifeops_scheduled_task_runner";
   },

@@ -155,7 +155,7 @@
      (`TabScrollView`/`TabContentView`/`AppWorkspaceChrome`) already reserve the
      bottom safe-area + floating-composer clearance. So a view must NOT re-add
      `env(safe-area-*)`, `--safe-area-top/bottom`, `--eliza-mobile-nav-offset`,
-     or `--eliza-continuous-chat-clearance` itself — that double-pads. It only
+     or `--eliza-chat-clearance` itself — that double-pads. It only
      adds these tight content gutters on top of the frame the shell gives it.
      One token per axis so the whole app breathes on one rhythm. */
   --view-pad-top: 0.5rem;

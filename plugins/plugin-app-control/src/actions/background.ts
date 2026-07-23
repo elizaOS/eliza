@@ -41,6 +41,7 @@ import type {
 } from "@elizaos/shared/events";
 import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { normalizeActionOptions, readStringOption } from "../params.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 export type {
 	BackgroundApplyOp,
@@ -579,7 +580,7 @@ async function defaultEmit(payload: BackgroundApplyPayload): Promise<void> {
 		`http://127.0.0.1:${port}/api/views/events/broadcast`,
 		{
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: createViewsRequestHeaders(),
 			body: JSON.stringify({ type: BACKGROUND_APPLY_EVENT, payload }),
 			signal: AbortSignal.timeout(5_000),
 		},
@@ -641,7 +642,7 @@ async function defaultNavigate(detail: NavigateViewDetail): Promise<void> {
 			};
 	const resp = await fetch(url, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: createViewsRequestHeaders(),
 		body,
 		signal: AbortSignal.timeout(5_000),
 	});

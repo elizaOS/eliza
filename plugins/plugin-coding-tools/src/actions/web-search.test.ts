@@ -1,7 +1,7 @@
 /**
- * WEB_SEARCH coverage for the coding-tools plugin: Parallel primary, Exa
- * fallback, MCP JSON/SSE parsing, bounded output, and stable result metadata.
- * Provider calls are routed through the guarded HTTP test seam.
+ * WEB_SEARCH coverage for the coding-tools plugin: routing metadata, Parallel
+ * primary, Exa fallback, MCP JSON/SSE parsing, bounded output, and stable
+ * result metadata. Provider calls use the guarded HTTP test seam.
  */
 import type {
   ActionParameters,
@@ -95,6 +95,16 @@ async function runSearch(parameters: ActionParameters): Promise<ActionResult> {
 describe("coding-tools WEB_SEARCH", () => {
   afterEach(() => {
     __resetWebHttpTestOverrides();
+  });
+
+  it("keeps discovery in search while routing constructable live values to fetch", () => {
+    expect(webSearchAction.routingHint).toContain("open-ended external info");
+    expect(webSearchAction.routingHint).toContain("live NOW-value");
+    expect(webSearchAction.routingHint).toContain("WEB_FETCH");
+    expect(webSearchAction.description).toContain("prefer WEB_FETCH");
+    expect(webSearchAction.description).toContain(
+      "search snippets lag live values",
+    );
   });
 
   it("returns bounded Parallel results with stable metadata", async () => {

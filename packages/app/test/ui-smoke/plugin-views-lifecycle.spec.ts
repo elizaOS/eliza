@@ -22,7 +22,10 @@ async function expectLoadedView(page: Page, view: ViewCase, phase: string) {
         const text = await viewRoot.evaluate((root) =>
           root.innerText.trim().replace(/\s+/g, " "),
         );
-        return text.length > 20 && !/^Loading view\b/.test(text);
+        return (
+          text.length >= view.minVisibleTextLength &&
+          !/^Loading view\b/.test(text)
+        );
       },
       {
         message: `${view.id} ${view.viewType} should load during ${phase}`,

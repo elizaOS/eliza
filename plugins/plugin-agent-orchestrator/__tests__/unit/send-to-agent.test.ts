@@ -15,6 +15,14 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:send", () => {
+  it("keeps send planner-visible on the umbrella action", () => {
+    expect(
+      sendToAgentAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("send");
+  });
+
   it("sends input via action=send", async () => {
     const svc = serviceMock();
     const result = await sendToAgentAction.handler(
@@ -81,6 +89,43 @@ describe("TASKS:send", () => {
       )?.data,
     ).toMatchObject({ keys: "ctrl-c" });
   });
+
+  it("returns NO_INPUT to the planner without posting a raw callback", async () => {
+    const sendCallback = callback();
+    const result = await sendToAgentAction.handler(
+      runtimeWith(serviceMock()),
+      memory({ sessionId: "abcdef123456" }),
+      state,
+      { parameters: { action: "send" } },
+      sendCallback,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("NO_INPUT");
+    expect(sendCallback).not.toHaveBeenCalled();
+  });
+
+  it("returns send failures to the planner without posting a raw callback", async () => {
+    const sendCallback = callback();
+    const svc = serviceMock({
+      sendToSession: vi.fn(async () => {
+        throw new Error("ACP session is already busy");
+      }),
+    });
+
+    const result = await sendToAgentAction.handler(
+      runtimeWith(svc),
+      memory({ sessionId: "abcdef123456", input: "continue" }),
+      state,
+      { parameters: { action: "send" } },
+      sendCallback,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("ACP session is already busy");
+    expect(sendCallback).not.toHaveBeenCalled();
+  });
+
   it("reports SERVICE_UNAVAILABLE when ACP is missing", async () => {
     expect(
       (

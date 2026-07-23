@@ -27,7 +27,12 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 
 // ─── Mock dispatchAgentChat ───────────────────────────────────────────────────
 // Co-located with the source — this relative path matches exactly what
@@ -468,7 +473,7 @@ describe("DISPATCH_TO_AGENT handler()", () => {
   // ── _callback contract ──────────────────────────────────────────────────
 
   describe("_callback contract (ElizaOS protocol)", () => {
-    it("calls _callback with success result on successful dispatch", async () => {
+    it("calls _callback with successful dispatch content", async () => {
       mockDispatchAgentChat.mockResolvedValue({
         success: true,
         agentId: AGENT_ID,
@@ -478,7 +483,7 @@ describe("DISPATCH_TO_AGENT handler()", () => {
         isLLMFailure: false,
       });
 
-      const callbackFn = mock(async () => []);
+      const callbackFn = mock<HandlerCallback>(async () => []);
       const state = buildState();
 
       await dispatchToAgentAction.handler?.(
@@ -490,14 +495,13 @@ describe("DISPATCH_TO_AGENT handler()", () => {
       );
 
       expect(callbackFn).toHaveBeenCalledTimes(1);
-      const callArg = callbackFn.mock.calls[0]?.[0] as unknown as {
-        content: { success: boolean };
-      };
-      expect(callArg.content.success).toBe(true);
+      const callArg = callbackFn.mock.calls[0]?.[0];
+      expect(callArg?.text).toContain("Dispatched to @bot");
+      expect(callArg?.agentId).toBe(AGENT_ID);
     });
 
     it("calls _callback with failure result on missing fields (error path)", async () => {
-      const callbackFn = mock(async () => []);
+      const callbackFn = mock<HandlerCallback>(async () => []);
       const state = buildState({ actionParams: undefined });
 
       await dispatchToAgentAction.handler?.(
@@ -509,11 +513,8 @@ describe("DISPATCH_TO_AGENT handler()", () => {
       );
 
       expect(callbackFn).toHaveBeenCalledTimes(1);
-      const callArg = callbackFn.mock.calls[0]?.[0] as unknown as {
-        content: { success: boolean; text: string };
-      };
-      expect(callArg.content.success).toBe(false);
-      expect(callArg.content.text).toContain("Missing");
+      const callArg = callbackFn.mock.calls[0]?.[0];
+      expect(callArg?.text).toContain("Missing");
     });
 
     it("calls _callback with failure result when dispatch fails", async () => {
@@ -524,7 +525,7 @@ describe("DISPATCH_TO_AGENT handler()", () => {
         isLLMFailure: false,
       });
 
-      const callbackFn = mock(async () => []);
+      const callbackFn = mock<HandlerCallback>(async () => []);
       const state = buildState();
 
       await dispatchToAgentAction.handler?.(
@@ -536,11 +537,9 @@ describe("DISPATCH_TO_AGENT handler()", () => {
       );
 
       expect(callbackFn).toHaveBeenCalledTimes(1);
-      const callArg = callbackFn.mock.calls[0]?.[0] as unknown as {
-        content: { success: boolean; text: string };
-      };
-      expect(callArg.content.success).toBe(false);
-      expect(callArg.content.text).toContain("Failed");
+      const callArg = callbackFn.mock.calls[0]?.[0];
+      expect(callArg?.text).toContain("Failed");
+      expect(callArg?.agentId).toBe(AGENT_ID);
     });
   });
 
@@ -570,13 +569,14 @@ describe("DISPATCH_TO_AGENT handler()", () => {
     });
 
     it("has agentId and command in parameters schema", () => {
-      const params = dispatchToAgentAction.parameters as Record<
-        string,
-        unknown
-      >;
-      expect(params).toBeDefined();
-      expect(params.agentId).toBeDefined();
-      expect(params.command).toBeDefined();
+      const params = dispatchToAgentAction.parameters;
+      expect(Array.isArray(params)).toBe(true);
+      expect(params).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "agentId" }),
+          expect.objectContaining({ name: "command" }),
+        ]),
+      );
     });
   });
 });

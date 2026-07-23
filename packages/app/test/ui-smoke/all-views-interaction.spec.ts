@@ -10,7 +10,7 @@ import {
   test,
 } from "@playwright/test";
 import {
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -544,7 +544,7 @@ test.describe("every-view interaction coverage", () => {
 
       await page.setViewportSize({ width: 1440, height: 1000 });
       await seedAppStorage(page);
-      await hideContinuousChatOverlay(page);
+      await hideChatOverlay(page);
       await installDefaultAppRoutes(page);
       await openAppPath(page, view.path);
       await page.locator("body").waitFor({ state: "visible", timeout: 60_000 });

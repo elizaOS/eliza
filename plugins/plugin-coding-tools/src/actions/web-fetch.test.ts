@@ -1,8 +1,8 @@
 /**
- * WEB_FETCH coverage for the coding-tools plugin: SSRF rejection, redirect
- * revalidation, byte caps, timeout/error surfacing, HTML extraction, binary
- * rejection, and stable success metadata. The HTTP layer is injected so tests
- * run without real DNS or network.
+ * WEB_FETCH coverage for the coding-tools plugin: routing metadata, SSRF
+ * rejection, redirect revalidation, byte caps, timeout/error surfacing, HTML
+ * extraction, binary rejection, and stable success metadata. The HTTP layer is
+ * injected so tests run without real DNS or network.
  */
 import type {
   ActionParameters,
@@ -75,6 +75,13 @@ function usePinnedRoutes(routes: Record<string, Response>): void {
 describe("coding-tools WEB_FETCH", () => {
   afterEach(() => {
     __resetWebHttpTestOverrides();
+  });
+
+  it("advertises exact live endpoints as the fresh-data path", () => {
+    expect(webFetchAction.routingHint).toContain("live NOW-values");
+    expect(webFetchAction.routingHint).toContain("api.coingecko.com");
+    expect(webFetchAction.routingHint).toContain("wttr.in");
+    expect(webFetchAction.description).toContain("Prefer this over WEB_SEARCH");
   });
 
   it("rejects private literal IP targets before any request is sent", async () => {

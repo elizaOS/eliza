@@ -2,6 +2,52 @@
   "version": "1.0.0",
   "actions": [
     {
+      "name": "ACCOUNTS_COMMAND",
+      "description": "View provider accounts and usage, or manage them",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "use, enable, disable, strategy, refresh — omit for the report",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "provider",
+          "description": "claude, codex, cerebras, or a full provider id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "value",
+          "description": "account by id, label, or email — or the strategy name for `strategy`",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "similes": ["/accounts"]
+    },
+    {
+      "name": "BACKEND_COMMAND",
+      "description": "Show or set the default coding backend",
+      "parameters": [
+        {
+          "name": "backend",
+          "description": "default coding backend for new tasks",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "similes": ["/backend"]
+    },
+    {
       "name": "COMPACT_COMMAND",
       "description": "Compact conversation history",
       "parameters": [
@@ -60,7 +106,7 @@
         },
         {
           "name": "model",
-          "description": "model id — for coding, the backend (codex, claude, opencode, elizaos)",
+          "description": "model id — for coding, the backend (codex, claude, eliza)",
           "required": false,
           "schema": {
             "type": "string"

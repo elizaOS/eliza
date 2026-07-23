@@ -5,6 +5,7 @@
  */
 
 import { spawn } from "node:child_process";
+import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { trainingStateRoot } from "./training-config.js";
@@ -199,7 +200,7 @@ async function discoverFeedGenerationArtifacts(
 ): Promise<FeedGenerationArtifact[]> {
   const manifestPaths: string[] = [];
   async function walk(dir: string): Promise<void> {
-    let entries;
+    let entries: Dirent[];
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {

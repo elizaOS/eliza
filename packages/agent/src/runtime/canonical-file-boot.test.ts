@@ -288,13 +288,16 @@ describe("real-disk round trip (synthetic tmpdir fixtures + canary reboot)", () 
     writeFileSync(join(dir, "USER.md"), "USER synthetic");
 
     const env = { [CANONICAL_BOOT_ROOT_ENV]: dir } as NodeJS.ProcessEnv;
-    const m1 = resolveCanonicalManifest(env)!;
+    const m1 = resolveCanonicalManifest(env);
+    if (!m1) throw new Error("expected canonical manifest for boot root");
     const c1 = composeCanonicalBootContext(m1, { log: false });
     expect(c1.text).toContain("canary=DISK-V1");
 
     // "restart" after editing the file
     writeFileSync(join(dir, "SOUL.md"), "SOUL canary=DISK-V2");
-    const c2 = composeCanonicalBootContext(resolveCanonicalManifest(env)!, {
+    const m2 = resolveCanonicalManifest(env);
+    if (!m2) throw new Error("expected canonical manifest after rewrite");
+    const c2 = composeCanonicalBootContext(m2, {
       log: false,
     });
     expect(c2.text).toContain("canary=DISK-V2");

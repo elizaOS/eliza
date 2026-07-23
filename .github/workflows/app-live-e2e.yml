@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euxo pipefail
           df -h /
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           docker system prune -af || true
           df -h /
 
@@ -148,7 +148,7 @@ jobs:
       - name: Free disk space for browser smoke
         run: |
           set -euxo pipefail
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           docker system prune -af || true
 
       - name: Setup Node.js
@@ -235,7 +235,7 @@ jobs:
       - name: Free disk space for browser smoke
         run: |
           set -euxo pipefail
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           docker system prune -af || true
 
       - name: Setup Node.js

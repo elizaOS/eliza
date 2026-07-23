@@ -82,9 +82,9 @@ describe("filterUnavailableLocalInference — TEXT_EMBEDDING stays on-device", (
 			null,
 			[cloud, local],
 		);
-		expect(result.map((candidate) => candidate.provider)).toContain(
+		expect(result.map((candidate) => candidate.provider)).toEqual([
 			"eliza-local-inference",
-		);
+		]);
 	});
 
 	it("falls back to cloud when the operator forces cloud embeddings", async () => {

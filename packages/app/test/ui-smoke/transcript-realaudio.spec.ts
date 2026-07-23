@@ -2,7 +2,7 @@
  * REAL-AUDIO transcript e2e (#8789) — runs in the `chromium-voice-mic` project
  * (Chromium launched with --use-file-for-fake-audio-capture=known-phrase.wav).
  *
- * This drives the REAL ContinuousChatOverlay transcript flow end-to-end with no
+ * This drives the REAL ChatOverlay transcript flow end-to-end with no
  * human and no microphone:
  *
  *   tap mic (hands-free) -> run /transcribe (transcription mode) -> the REAL
@@ -741,7 +741,7 @@ async function captureTranscriptToAttachment(
   const asr = trackAsrPosts(page);
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 
@@ -837,7 +837,7 @@ async function captureTranscriptRecordViaControlPath(
   const asr = trackAsrPosts(page);
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 
@@ -891,7 +891,7 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   const asr = trackAsrPosts(page);
 
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   const mic = page.getByTestId("chat-composer-mic");

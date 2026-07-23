@@ -1,4 +1,5 @@
 // Coordinates cloud service resolve shared agent behavior behind route handlers.
+import { ElizaError } from "@elizaos/core";
 import type { Context } from "hono";
 
 import {
@@ -22,6 +23,91 @@ export type ResolvedSharedAgent =
   | { agent: AgentSandbox; agentId: string; orgId: string; agentName: string };
 
 /**
+ * The `AgentSandbox` timestamp columns Drizzle selects as JS `Date`s. These are
+ * the fields that survive a live DB hydration as `Date` but are lost to `string`
+ * when the agent row round-trips through the scope cache (which JSON-serializes
+ * on write and JSON-parses on read).
+ */
+const AGENT_SANDBOX_DATE_FIELDS = [
+  "created_at",
+  "updated_at",
+  "deleted_at",
+  "claimed_at",
+  "pool_ready_at",
+  "last_backup_at",
+  "last_heartbeat_at",
+  "last_billed_at",
+  "shutdown_warning_sent_at",
+  "scheduled_shutdown_at",
+] as const satisfies ReadonlyArray<keyof AgentSandbox>;
+
+type AgentSandboxDateField = (typeof AGENT_SANDBOX_DATE_FIELDS)[number];
+type CachedAgentSandbox = Omit<AgentSandbox, AgentSandboxDateField> & {
+  [Field in AgentSandboxDateField]: unknown;
+};
+
+function invalidCachedAgentTimestamp(field: AgentSandboxDateField, value: unknown): ElizaError {
+  return new ElizaError("Shared-agent cache contains an invalid timestamp", {
+    code: "INVALID_CACHED_AGENT_TIMESTAMP",
+    context: { field, value },
+    severity: "fatal",
+  });
+}
+
+function rehydrateRequiredCachedDate(value: unknown, field: AgentSandboxDateField): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  throw invalidCachedAgentTimestamp(field, value);
+}
+
+function rehydrateNullableCachedDate(value: unknown, field: AgentSandboxDateField): Date | null {
+  return value === null ? null : rehydrateRequiredCachedDate(value, field);
+}
+
+/**
+ * Restore the `AgentSandbox` DATE contract after a scope-cache round-trip
+ * (CONVERSATIONS-500-2026-07-22). The cache client JSON-serializes on write and
+ * JSON-parses on read, so every `timestamp` column that Drizzle hands us as a JS
+ * `Date` on a live DB hydration comes back from cache as an ISO **string**.
+ * Downstream consumers rely on the typed contract — e.g. the shared-agent
+ * conversations route calls `agent.created_at.toISOString()`, which throws
+ * (`string.toISOString is not a function`) and 500s the read on EVERY cache hit
+ * (the exact "first call 200, then all 500" defect). Rehydrating the known date
+ * fields at the cache-read boundary keeps a cache hit equivalent to a fresh DB
+ * hydration for every caller. Nullable values and valid `Date`s are preserved;
+ * malformed values fail at this boundary because returning a row that violates
+ * `AgentSandbox` would defer the fault into an unrelated route consumer.
+ */
+function rehydrateCachedAgentDates(agent: CachedAgentSandbox): AgentSandbox {
+  return {
+    ...agent,
+    created_at: rehydrateRequiredCachedDate(agent.created_at, "created_at"),
+    updated_at: rehydrateRequiredCachedDate(agent.updated_at, "updated_at"),
+    deleted_at: rehydrateNullableCachedDate(agent.deleted_at, "deleted_at"),
+    claimed_at: rehydrateNullableCachedDate(agent.claimed_at, "claimed_at"),
+    pool_ready_at: rehydrateNullableCachedDate(agent.pool_ready_at, "pool_ready_at"),
+    last_backup_at: rehydrateNullableCachedDate(agent.last_backup_at, "last_backup_at"),
+    last_heartbeat_at: rehydrateNullableCachedDate(agent.last_heartbeat_at, "last_heartbeat_at"),
+    last_billed_at: rehydrateNullableCachedDate(agent.last_billed_at, "last_billed_at"),
+    shutdown_warning_sent_at: rehydrateNullableCachedDate(
+      agent.shutdown_warning_sent_at,
+      "shutdown_warning_sent_at",
+    ),
+    scheduled_shutdown_at: rehydrateNullableCachedDate(
+      agent.scheduled_shutdown_at,
+      "scheduled_shutdown_at",
+    ),
+  };
+}
+
+/**
  * What the shared-agent SCOPE cache stores (COLDPATH-FIX-2026-07-21): the two
  * facts the cold auth+scope gate produces — the caller's organization id and
  * the org-scoped agent row. Everything else in the success return is derived
@@ -33,7 +119,7 @@ export type ResolvedSharedAgent =
  */
 interface CachedSharedAgentScope {
   orgId: string;
-  agent: AgentSandbox;
+  agent: CachedAgentSandbox;
   /**
    * Steward user id the entry was written for, present ONLY on session-keyed
    * entries (#SHADOW-ACCOUNT-DEBUG). A session-path hit re-verifies the JWT and
@@ -138,11 +224,16 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
         (await revalidateSessionScope(c, cached.stewardUserId).catch(() => false))
       : await revalidateCachedScope(c, cached.orgId).catch(() => false);
     if (!stillAuthorized) return null;
+    // Restore the DATE contract lost to the cache's JSON round-trip before
+    // handing the agent to route consumers (e.g. conversations route calls
+    // `agent.created_at.toISOString()`). Without this a cache hit 500s the read
+    // (CONVERSATIONS-500-2026-07-22).
+    const agent = rehydrateCachedAgentDates(cached.agent);
     return {
-      agent: cached.agent,
+      agent,
       agentId,
       orgId: cached.orgId,
-      agentName: cached.agent.agent_name ?? "Eliza",
+      agentName: agent.agent_name ?? "Eliza",
     };
   };
 

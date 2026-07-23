@@ -219,7 +219,7 @@ describe("activityProfileProvider app-usage context", () => {
         metadata: {
           eventType: "USER_TYPING_PAUSED",
           activity: "typing_paused",
-          surface: "continuous_chat_overlay",
+          surface: "chat_overlay",
           conversationId: "conversation-1",
           draftLength: 19,
           idleForMs: 2000,
@@ -237,7 +237,7 @@ describe("activityProfileProvider app-usage context", () => {
     expect(result.text).toContain("composer paused 1m ago, 19 chars");
     expect(result.values).toMatchObject({
       userComposerActivity: "typing_paused",
-      userComposerSurface: "continuous_chat_overlay",
+      userComposerSurface: "chat_overlay",
       userComposerConversationId: "conversation-1",
       userComposerDraftLength: 19,
       userComposerObservedAt: Date.parse("2026-01-15T18:29:00.000Z"),

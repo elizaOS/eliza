@@ -307,16 +307,16 @@ export async function seedFirstRunCompleteBeforeLoad(
   });
 }
 
-export async function hideContinuousChatOverlay(page: Page): Promise<void> {
+export async function hideChatOverlay(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const install = () => {
-      if (document.getElementById("ui-smoke-hide-continuous-chat-overlay")) {
+      if (document.getElementById("ui-smoke-hide-chat-overlay")) {
         return;
       }
       const style = document.createElement("style");
-      style.id = "ui-smoke-hide-continuous-chat-overlay";
+      style.id = "ui-smoke-hide-chat-overlay";
       style.textContent =
-        '[data-testid="continuous-chat-overlay"] { display: none !important; }';
+        '[data-testid="chat-overlay"] { display: none !important; }';
       (document.head ?? document.documentElement).appendChild(style);
     };
 
@@ -3472,6 +3472,23 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         nodes: [],
         summary: { total: 0, enabled: 0, disabled: 0 },
       }),
+    });
+  });
+
+  // Coding-project registry read by the tasks/cockpit surfaces; the keyless
+  // stub 501s it, which trips the issue guards on any route that mounts them.
+  await page.route("**/api/projects", async (route) => {
+    if (
+      route.request().method() !== "GET" ||
+      new URL(route.request().url()).pathname !== "/api/projects"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ projects: [], activeProjectId: null }),
     });
   });
 

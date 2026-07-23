@@ -224,7 +224,11 @@ describe("code handler", () => {
   it("runs the code with frozen params and returns the result", async () => {
     const handler = buildTestHandler(
       makeDef({
-        handler: { type: "code", code: "return `${params.a}-${params.b}`;" },
+        handler: {
+          type: "code",
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture is JS source text; the placeholders are evaluated by the code handler at run time, not here.
+          code: "return `${params.a}-${params.b}`;",
+        },
         parameters: [
           { name: "a", description: "a", required: true },
           { name: "b", description: "b", required: true },

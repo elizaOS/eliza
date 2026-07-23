@@ -61,6 +61,13 @@ describe("training analysis index", () => {
   it("indexes trajectory bundles, training runs, evals, and model manifests", async () => {
     const root = await makeTempDir();
     const outputDir = join(root, "analysis");
+    const sanitizedJsonlPath = join(
+      root,
+      "bundles",
+      "run-1",
+      "sanitized",
+      "trajectories.sanitized.jsonl",
+    );
     const bundleManifest: TrajectoryExportBundleManifest = {
       schema: TRAJECTORY_EXPORT_BUNDLE_SCHEMA,
       schemaVersion: TRAJECTORY_EXPORT_BUNDLE_VERSION,
@@ -85,13 +92,7 @@ describe("training analysis index", () => {
           "raw",
           "trajectories.jsonl",
         ),
-        sanitizedJsonlPath: join(
-          root,
-          "bundles",
-          "run-1",
-          "sanitized",
-          "trajectories.sanitized.jsonl",
-        ),
+        sanitizedJsonlPath,
         taskDatasetDir: join(root, "bundles", "run-1", "tasks"),
         taskDatasetSummaryPath: join(
           root,
@@ -173,7 +174,7 @@ describe("training analysis index", () => {
       join(root, "bundles", "run-1", "manifest.json"),
       bundleManifest,
     );
-    await writeJsonl(bundleManifest.paths.sanitizedJsonlPath!, [
+    await writeJsonl(sanitizedJsonlPath, [
       {
         trajectoryId: "run-1-traj-1",
         agentId: "agent-1",

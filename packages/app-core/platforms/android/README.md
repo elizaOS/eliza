@@ -88,6 +88,78 @@ renderer reads this via
 and the `RuntimeSettingsSection` hides the Local picker option so users
 cannot try to provision an on-device agent that physically isn't there.
 
+## `build:android:lp3-cloud:debug` — direct LP3 Cloud APK
+
+```bash
+bun run --cwd packages/app build:android:lp3-cloud:debug
+```
+
+This explicit direct-distribution variant keeps the Cloud-only renderer but
+adds the Light Phone III display-color guard from issue #16888. It is not a
+Play artifact: the build preserves a `specialUse` foreground service, boot
+receiver, and `WRITE_SECURE_SETTINGS` solely when
+`ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1`. Ordinary `android-cloud` and
+`android-cloud-debug` builds strip the components, Java sources, and all three
+policy permissions.
+
+The build flag alone cannot activate the guard. On a Light/TLP301 device, the
+operator must grant the declared privileged permission, then send the explicit
+enable command as the debuggable app's own UID. The unexported receiver stores
+the opt-in in device-protected private preferences:
+
+```bash
+adb shell pm grant ai.elizaos.app android.permission.WRITE_SECURE_SETTINGS
+adb shell am start -W -n ai.elizaos.app/.MainActivity
+adb shell dumpsys activity activities | grep topResumedActivity
+adb shell run-as ai.elizaos.app am broadcast \
+  -n ai.elizaos.app/ai.elizaos.app.Lp3ColorPolicyBootReceiver \
+  -a ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY
+```
+
+Confirm that `topResumedActivity` names `ai.elizaos.app/.MainActivity` before
+sending `ENABLE`. Android 12+ can deny a foreground-service start from a custom
+background broadcast. If that happens, the receiver keeps the durable opt-in
+but logcat records `foreground guard start failed`; bring MainActivity to the
+foreground and send `SYNC_LP3_COLOR_POLICY`, or let the next boot/package
+replacement retry through its platform exemption. Never treat the preference
+write alone as proof that the guard is running.
+
+Verify the service, repair result, and final SettingsProvider state before
+calling the device durable:
+
+```bash
+adb logcat -d -s ElizaLp3Color:I '*:S'
+adb shell dumpsys activity services ai.elizaos.app | grep Lp3ColorPolicyService
+adb shell settings get secure accessibility_display_daltonizer_enabled
+adb shell settings get secure accessibility_display_daltonizer
+```
+
+The final two values must be `0` and `-1`. Reboot the device and repeat those
+checks; the boot receiver plus observer are what prove persistence beyond the
+one-time repair.
+
+To disable it cleanly, send the matching same-UID command:
+
+```bash
+adb shell run-as ai.elizaos.app am broadcast \
+  -n ai.elizaos.app/ai.elizaos.app.Lp3ColorPolicyBootReceiver \
+  -a ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY
+```
+
+`SYNC_LP3_COLOR_POLICY` re-evaluates the existing private opt-in without
+changing it. `run-as` requires a debuggable direct build and makes the sender
+the app UID; ordinary apps cannot reach the unexported receiver. The private
+state survives reboot and in-place update, but correctly disappears on app
+data clear or uninstall. Unknown actions are ignored.
+
+When all gates pass, a low-importance ongoing notification makes the lifecycle
+honest and lets the service observe only Android's two daltonizer keys. It
+writes `accessibility_display_daltonizer_enabled=0` and
+`accessibility_display_daltonizer=-1` only when either value is wrong.
+`BOOT_COMPLETED` and package-replacement delivery reapply the same gate; a
+force-stopped Android app cannot receive boot broadcasts until the user
+launches it again, by platform design.
+
 ## `build:android` — sideload-only debug
 
 ```bash
