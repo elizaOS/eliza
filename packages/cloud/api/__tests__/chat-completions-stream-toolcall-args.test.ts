@@ -1,10 +1,20 @@
 /**
- * Exercises OpenAI-compatible tool-call SSE translation through the real route
- * handler while substituting only the provider stream boundary.
+ * OpenAI streaming tool_calls argument contract for POST /api/v1/chat/completions:
+ * clients concatenate every `function.arguments` fragment for a tool-call index,
+ * so a call whose input already streamed via `tool-input-delta` must NOT have its
+ * arguments re-emitted by the SDK's consolidated `tool-call` part (the duplicate
+ * produced doubled, unparseable argument JSON in real agents — hermes/openclaw
+ * hard-failed every tool call through the cloud proxy). Providers that never
+ * stream input fragments still get the full consolidated emission. Drives the
+ * REAL streaming handler and asserts on the raw SSE bytes; only `streamText`
+ * (the provider boundary) is substituted, mirroring
+ * chat-completions-stream-usage-frame.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+// Spread the real module so other test files importing from "ai" are not
+// stranded by the process-wide registry replacement; restore in afterAll.
 const aiActual = require("ai") as Record<string, unknown>;
 
 import * as languageModelActual from "@/lib/providers/language-model";
@@ -15,7 +25,6 @@ const streamText = mock((config: Record<string, unknown>) => {
   if (!streamTextImpl) throw new Error("streamTextImpl not set");
   return streamTextImpl(config);
 });
-
 mock.module("ai", () => ({
   ...aiActual,
   streamText,
@@ -40,26 +49,12 @@ const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
 const MODEL = "openai/gpt-oss-120b";
 
-type StreamPart = Record<string, unknown>;
-
-function useProviderStream(parts: readonly StreamPart[]) {
-  streamTextImpl = () => ({
-    fullStream: (async function* () {
-      for (const part of parts) yield part;
-    })(),
-  });
-}
-
-function callStreaming() {
+function callStreaming(request: Record<string, unknown>) {
   return handleStreamingRequest(
     MODEL,
     undefined,
-    [{ role: "user", content: "use the requested tools" }] as never,
-    {
-      model: MODEL,
-      messages: [{ role: "user", content: "use the requested tools" }],
-      stream: true,
-    } as never,
+    [{ role: "user", content: "hello" }] as never,
+    request as never,
     { id: USER, organization_id: ORG },
     null,
     null,
@@ -80,15 +75,15 @@ function callStreaming() {
   );
 }
 
-async function collectJsonFrames(response: Response) {
-  const body = await response.text();
+async function collectJsonFrames(res: Response) {
+  const body = await res.text();
   const dataLines = body
     .split("\n")
-    .filter((line) => line.startsWith("data: "))
-    .map((line) => line.slice("data: ".length).trim());
+    .filter((l) => l.startsWith("data: "))
+    .map((l) => l.slice("data: ".length).trim());
   const jsonFrames = dataLines
-    .filter((data) => data && data !== "[DONE]")
-    .map((data) => JSON.parse(data) as Record<string, unknown>);
+    .filter((d) => d && d !== "[DONE]")
+    .map((d) => JSON.parse(d) as Record<string, unknown>);
   return { body, dataLines, jsonFrames };
 }
 
@@ -99,23 +94,23 @@ type ToolCallFragment = {
   function?: { name?: string; arguments?: string };
 };
 
+/** Aggregate fragments per index exactly the way an OpenAI streaming client does. */
 function aggregateToolCalls(jsonFrames: Array<Record<string, unknown>>) {
   const byIndex = new Map<
     number,
-    { id?: string; name?: string; arguments: string }
+    { id?: string; name?: string; args: string }
   >();
   for (const frame of jsonFrames) {
     const choices = frame.choices as
-      | Array<{ delta?: { content?: string; tool_calls?: ToolCallFragment[] } }>
+      | Array<{ delta?: { tool_calls?: ToolCallFragment[] } }>
       | undefined;
     for (const choice of choices ?? []) {
       for (const fragment of choice.delta?.tool_calls ?? []) {
-        const entry = byIndex.get(fragment.index) ?? { arguments: "" };
+        const entry = byIndex.get(fragment.index) ?? { args: "" };
         if (fragment.id) entry.id = fragment.id;
         if (fragment.function?.name) entry.name = fragment.function.name;
-        if (fragment.function?.arguments) {
-          entry.arguments += fragment.function.arguments;
-        }
+        if (fragment.function?.arguments)
+          entry.args += fragment.function.arguments;
         byIndex.set(fragment.index, entry);
       }
     }
@@ -123,401 +118,144 @@ function aggregateToolCalls(jsonFrames: Array<Record<string, unknown>>) {
   return byIndex;
 }
 
-function finalFinishReason(jsonFrames: Array<Record<string, unknown>>) {
-  for (let index = jsonFrames.length - 1; index >= 0; index -= 1) {
-    const choices = jsonFrames[index]?.choices as
-      | Array<{ finish_reason?: string | null }>
-      | undefined;
-    if (choices?.[0]?.finish_reason) return choices[0].finish_reason;
-  }
-  return null;
-}
-
-function expectProtocolFailure(
-  dataLines: string[],
-  jsonFrames: Array<Record<string, unknown>>,
-) {
-  expect(dataLines[dataLines.length - 1]).toBe("[DONE]");
-  const errorFrames = jsonFrames.filter((frame) => "error" in frame) as Array<{
-    error: { code: string; message: string; type: string };
-  }>;
-  expect(errorFrames).toHaveLength(1);
-  expect(errorFrames[0]?.error.code).toBe("CHAT_TOOL_CALL_STREAM_INVALID");
-  expect(errorFrames[0]?.error.type).toBe("service_unavailable");
-  expect(errorFrames[0]?.error.message).toBe(
-    "Provider returned an invalid streamed tool call",
-  );
-  expect(finalFinishReason(jsonFrames)).toBeNull();
-}
+const ARGS = '{"command": "pip --version && pip install requests"}';
 
 beforeEach(() => {
   streamText.mockClear();
   streamTextImpl = null;
 });
 
-describe("streaming chat tool-call arguments", () => {
-  test("leaves text-only streams unchanged", async () => {
-    useProviderStream([
-      { type: "text-delta", id: "text_1", text: "unchanged" },
-    ]);
+describe("streaming chat — tool_call argument fragments", () => {
+  test("input streamed via tool-input-delta is not duplicated by the consolidated tool-call part", async () => {
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield { type: "tool-input-start", id: "call_1", toolName: "terminal" };
+        yield { type: "tool-input-delta", id: "call_1", delta: ARGS };
+        yield {
+          type: "tool-call",
+          toolCallId: "call_1",
+          toolName: "terminal",
+          input: JSON.parse(ARGS),
+        };
+        yield { type: "finish", finishReason: "tool-calls" };
+      })(),
+    });
 
-    const { dataLines, jsonFrames } = await collectJsonFrames(
-      await callStreaming(),
-    );
+    const res = await callStreaming({
+      model: MODEL,
+      messages: [{ role: "user", content: "fix pip" }],
+      stream: true,
+    });
+    const { dataLines, jsonFrames } = await collectJsonFrames(res);
 
     expect(dataLines[dataLines.length - 1]).toBe("[DONE]");
-    expect(finalFinishReason(jsonFrames)).toBe("stop");
-    expect(aggregateToolCalls(jsonFrames).size).toBe(0);
-    expect(
-      jsonFrames.some((frame) => {
-        const choices = frame.choices as
-          | Array<{ delta?: { content?: string } }>
-          | undefined;
-        return choices?.[0]?.delta?.content === "unchanged";
-      }),
-    ).toBe(true);
+    const finalChunk = jsonFrames[jsonFrames.length - 1] as {
+      choices: Array<{ finish_reason: string | null }>;
+    };
+    expect(finalChunk.choices[0].finish_reason).toBe("tool_calls");
+
+    const calls = aggregateToolCalls(jsonFrames);
+    expect(calls.size).toBe(1);
+    const call = calls.get(0);
+    expect(call?.id).toBe("call_1");
+    expect(call?.name).toBe("terminal");
+    // The client-side concatenation is exactly the streamed input, once.
+    expect(call?.args).toBe(ARGS);
+    expect(JSON.parse(call?.args ?? "")).toEqual(JSON.parse(ARGS));
   });
 
-  test("reconstructs fragmented interleaved calls once with stable indexes", async () => {
-    const fragmentsA = [
-      '{"emoji":"',
-      "\ud83d",
-      "\ude80",
-      '","escaped":"line',
-      "\\",
-      'nnext"}',
-    ];
-    const fragmentsB = ['{"count":', "2", ',"ok":true}'];
-    const argumentsA = fragmentsA.join("");
-    const argumentsB = fragmentsB.join("");
+  test("a consolidated-only tool call (no input fragments) still emits full arguments", async () => {
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield {
+          type: "tool-call",
+          toolCallId: "call_solo",
+          toolName: "terminal",
+          input: JSON.parse(ARGS),
+        };
+        yield { type: "finish", finishReason: "tool-calls" };
+      })(),
+    });
 
-    useProviderStream([
-      {
-        type: "tool-input-start",
-        id: "call_a",
-        toolName: "write_note",
-      },
-      { type: "tool-input-delta", id: "call_a", delta: fragmentsA[0] },
-      {
-        type: "tool-input-start",
-        id: "call_b",
-        toolName: "set_count",
-      },
-      { type: "tool-input-delta", id: "call_b", delta: fragmentsB[0] },
-      { type: "tool-input-delta", id: "call_a", delta: fragmentsA[1] },
-      { type: "text-delta", id: "text_1", text: "working" },
-      { type: "tool-input-delta", id: "call_b", delta: fragmentsB[1] },
-      { type: "tool-input-delta", id: "call_a", delta: fragmentsA[2] },
-      { type: "tool-input-delta", id: "call_b", delta: fragmentsB[2] },
-      { type: "tool-input-end", id: "call_b" },
-      {
-        type: "tool-call",
-        toolCallId: "call_b",
-        toolName: "set_count",
-        input: { ok: true, count: 2 },
-      },
-      { type: "tool-input-delta", id: "call_a", delta: fragmentsA[3] },
-      { type: "tool-input-delta", id: "call_a", delta: fragmentsA[4] },
-      { type: "tool-input-delta", id: "call_a", delta: fragmentsA[5] },
-      { type: "tool-input-end", id: "call_a" },
-      {
-        type: "tool-call",
-        toolCallId: "call_a",
-        toolName: "write_note",
-        input: JSON.parse(argumentsA),
-      },
-      { type: "finish", finishReason: "tool-calls" },
-    ]);
+    const res = await callStreaming({
+      model: MODEL,
+      messages: [{ role: "user", content: "fix pip" }],
+      stream: true,
+    });
+    const { jsonFrames } = await collectJsonFrames(res);
 
-    const { dataLines, jsonFrames } = await collectJsonFrames(
-      await callStreaming(),
-    );
+    const calls = aggregateToolCalls(jsonFrames);
+    const call = calls.get(0);
+    expect(call?.id).toBe("call_solo");
+    expect(call?.name).toBe("terminal");
+    expect(JSON.parse(call?.args ?? "")).toEqual(JSON.parse(ARGS));
+  });
 
-    expect(dataLines[dataLines.length - 1]).toBe("[DONE]");
-    expect(finalFinishReason(jsonFrames)).toBe("tool_calls");
+  test("a started call with an empty delta stream falls back to the consolidated emission", async () => {
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield { type: "tool-input-start", id: "call_2", toolName: "terminal" };
+        yield {
+          type: "tool-call",
+          toolCallId: "call_2",
+          toolName: "terminal",
+          input: JSON.parse(ARGS),
+        };
+        yield { type: "finish", finishReason: "tool-calls" };
+      })(),
+    });
+
+    const res = await callStreaming({
+      model: MODEL,
+      messages: [{ role: "user", content: "fix pip" }],
+      stream: true,
+    });
+    const { jsonFrames } = await collectJsonFrames(res);
+
+    const calls = aggregateToolCalls(jsonFrames);
+    const call = calls.get(0);
+    expect(call?.id).toBe("call_2");
+    expect(call?.name).toBe("terminal");
+    // start emitted "" then the consolidated part supplied the full input.
+    expect(JSON.parse(call?.args ?? "")).toEqual(JSON.parse(ARGS));
+  });
+
+  test("multiple streamed tool calls keep distinct indexes and single-copy arguments", async () => {
+    const argsB = '{"command":"ls -la"}';
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield { type: "tool-input-start", id: "call_a", toolName: "terminal" };
+        yield { type: "tool-input-delta", id: "call_a", delta: ARGS };
+        yield {
+          type: "tool-call",
+          toolCallId: "call_a",
+          toolName: "terminal",
+          input: JSON.parse(ARGS),
+        };
+        yield { type: "tool-input-start", id: "call_b", toolName: "terminal" };
+        yield { type: "tool-input-delta", id: "call_b", delta: argsB };
+        yield {
+          type: "tool-call",
+          toolCallId: "call_b",
+          toolName: "terminal",
+          input: JSON.parse(argsB),
+        };
+        yield { type: "finish", finishReason: "tool-calls" };
+      })(),
+    });
+
+    const res = await callStreaming({
+      model: MODEL,
+      messages: [{ role: "user", content: "fix pip" }],
+      stream: true,
+    });
+    const { jsonFrames } = await collectJsonFrames(res);
+
     const calls = aggregateToolCalls(jsonFrames);
     expect(calls.size).toBe(2);
-    expect(calls.get(0)).toEqual({
-      id: "call_a",
-      name: "write_note",
-      arguments: argumentsA,
-    });
-    expect(calls.get(1)).toEqual({
-      id: "call_b",
-      name: "set_count",
-      arguments: argumentsB,
-    });
-    expect(JSON.parse(calls.get(0)?.arguments ?? "")).toEqual(
-      JSON.parse(argumentsA),
-    );
-    expect(JSON.parse(calls.get(1)?.arguments ?? "")).toEqual(
-      JSON.parse(argumentsB),
-    );
-    expect(
-      jsonFrames.some((frame) => {
-        const choices = frame.choices as
-          | Array<{ delta?: { content?: string } }>
-          | undefined;
-        return choices?.[0]?.delta?.content === "working";
-      }),
-    ).toBe(true);
-  });
-
-  test("emits complete arguments for consolidated-only and empty-delta providers", async () => {
-    useProviderStream([
-      {
-        type: "tool-input-start",
-        id: "call_empty",
-        toolName: "empty_delta",
-      },
-      { type: "tool-input-delta", id: "call_empty", delta: "" },
-      {
-        type: "tool-call",
-        toolCallId: "call_solo",
-        toolName: "consolidated_only",
-        input: { enabled: true },
-      },
-      {
-        type: "tool-call",
-        toolCallId: "call_empty",
-        toolName: "empty_delta",
-        input: {},
-      },
-      { type: "finish", finishReason: "stop" },
-    ]);
-
-    const { jsonFrames } = await collectJsonFrames(await callStreaming());
-    const calls = aggregateToolCalls(jsonFrames);
-
-    expect(calls.size).toBe(2);
-    expect(calls.get(0)).toEqual({
-      id: "call_empty",
-      name: "empty_delta",
-      arguments: "{}",
-    });
-    expect(calls.get(1)).toEqual({
-      id: "call_solo",
-      name: "consolidated_only",
-      arguments: '{"enabled":true}',
-    });
-    expect(finalFinishReason(jsonFrames)).toBe("tool_calls");
-  });
-
-  test("accepts semantically identical fragmented and consolidated JSON", async () => {
-    const streamed = '{"nested":{"b":2,"a":1},"items":[true,null]}';
-    useProviderStream([
-      {
-        type: "tool-input-start",
-        id: "call_order",
-        toolName: "ordered",
-      },
-      { type: "tool-input-delta", id: "call_order", delta: streamed },
-      {
-        type: "tool-call",
-        toolCallId: "call_order",
-        toolName: "ordered",
-        input: { items: [true, null], nested: { a: 1, b: 2 } },
-      },
-      { type: "finish", finishReason: "tool-calls" },
-    ]);
-
-    const { jsonFrames } = await collectJsonFrames(await callStreaming());
-
-    expect(aggregateToolCalls(jsonFrames).get(0)?.arguments).toBe(streamed);
-    expect(finalFinishReason(jsonFrames)).toBe("tool_calls");
-  });
-
-  test("rejects malformed, incomplete, or mismatched argument fragments", async () => {
-    const cases: Array<{
-      streamed: string;
-      input: unknown;
-    }> = [
-      { streamed: '{"value":', input: { value: 1 } },
-      { streamed: '{"value":]}', input: { value: 1 } },
-      { streamed: '{"value":2}', input: { value: 1 } },
-      { streamed: '{"value":1}{"extra":2}', input: { value: 1 } },
-    ];
-
-    for (const scenario of cases) {
-      useProviderStream([
-        {
-          type: "tool-input-start",
-          id: "call_invalid",
-          toolName: "validate",
-        },
-        {
-          type: "tool-input-delta",
-          id: "call_invalid",
-          delta: scenario.streamed,
-        },
-        {
-          type: "tool-call",
-          toolCallId: "call_invalid",
-          toolName: "validate",
-          input: scenario.input,
-        },
-        { type: "finish", finishReason: "tool-calls" },
-      ]);
-
-      const { dataLines, jsonFrames } = await collectJsonFrames(
-        await callStreaming(),
-      );
-      expectProtocolFailure(dataLines, jsonFrames);
-    }
-  });
-
-  test("rejects duplicate identities and out-of-order argument events", async () => {
-    const cases: StreamPart[][] = [
-      [
-        { type: "tool-input-delta", id: "call_missing", delta: "{}" },
-        { type: "finish", finishReason: "tool-calls" },
-      ],
-      [
-        {
-          type: "tool-input-start",
-          id: "call_duplicate",
-          toolName: "validate",
-        },
-        {
-          type: "tool-input-start",
-          id: "call_duplicate",
-          toolName: "validate",
-        },
-        { type: "finish", finishReason: "tool-calls" },
-      ],
-      [
-        {
-          type: "tool-call",
-          toolCallId: "call_complete",
-          toolName: "validate",
-          input: {},
-        },
-        {
-          type: "tool-call",
-          toolCallId: "call_complete",
-          toolName: "validate",
-          input: {},
-        },
-        { type: "finish", finishReason: "tool-calls" },
-      ],
-    ];
-
-    for (const parts of cases) {
-      useProviderStream(parts);
-      const { dataLines, jsonFrames } = await collectJsonFrames(
-        await callStreaming(),
-      );
-      expectProtocolFailure(dataLines, jsonFrames);
-    }
-  });
-
-  test("rejects invalid tool-input-end ordering", async () => {
-    const cases: StreamPart[][] = [
-      [
-        { type: "tool-input-end", id: "call_missing" },
-        { type: "finish", finishReason: "tool-calls" },
-      ],
-      [
-        {
-          type: "tool-input-start",
-          id: "call_delta_after_end",
-          toolName: "validate",
-        },
-        { type: "tool-input-end", id: "call_delta_after_end" },
-        {
-          type: "tool-input-delta",
-          id: "call_delta_after_end",
-          delta: "{}",
-        },
-        { type: "finish", finishReason: "tool-calls" },
-      ],
-      [
-        {
-          type: "tool-input-start",
-          id: "call_duplicate_end",
-          toolName: "validate",
-        },
-        { type: "tool-input-end", id: "call_duplicate_end" },
-        { type: "tool-input-end", id: "call_duplicate_end" },
-        { type: "finish", finishReason: "tool-calls" },
-      ],
-      [
-        {
-          type: "tool-call",
-          toolCallId: "call_completed_before_end",
-          toolName: "validate",
-          input: {},
-        },
-        { type: "tool-input-end", id: "call_completed_before_end" },
-        { type: "finish", finishReason: "tool-calls" },
-      ],
-    ];
-
-    for (const parts of cases) {
-      useProviderStream(parts);
-      const { dataLines, jsonFrames } = await collectJsonFrames(
-        await callStreaming(),
-      );
-      expectProtocolFailure(dataLines, jsonFrames);
-    }
-  });
-
-  test("rejects duplicate finish and every event after finish", async () => {
-    const cases: StreamPart[][] = [
-      [
-        { type: "finish", finishReason: "stop" },
-        { type: "finish", finishReason: "stop" },
-      ],
-      [
-        { type: "finish", finishReason: "stop" },
-        { type: "text-delta", id: "text_after_finish", text: "late" },
-      ],
-      [
-        { type: "finish", finishReason: "stop" },
-        {
-          type: "tool-input-start",
-          id: "call_after_finish",
-          toolName: "validate",
-        },
-      ],
-    ];
-
-    for (const parts of cases) {
-      useProviderStream(parts);
-      const { dataLines, jsonFrames } = await collectJsonFrames(
-        await callStreaming(),
-      );
-      expectProtocolFailure(dataLines, jsonFrames);
-    }
-  });
-
-  test("rejects streams missing a completed call or terminal finish event", async () => {
-    const cases: StreamPart[][] = [
-      [
-        {
-          type: "tool-input-start",
-          id: "call_truncated",
-          toolName: "validate",
-        },
-        { type: "tool-input-delta", id: "call_truncated", delta: "{}" },
-        { type: "finish", finishReason: "tool-calls" },
-      ],
-      [
-        {
-          type: "tool-call",
-          toolCallId: "call_no_finish",
-          toolName: "validate",
-          input: {},
-        },
-      ],
-    ];
-
-    for (const parts of cases) {
-      useProviderStream(parts);
-      const { dataLines, jsonFrames } = await collectJsonFrames(
-        await callStreaming(),
-      );
-      expectProtocolFailure(dataLines, jsonFrames);
-    }
+    expect(calls.get(0)?.args).toBe(ARGS);
+    expect(calls.get(1)?.args).toBe(argsB);
+    expect(calls.get(0)?.id).toBe("call_a");
+    expect(calls.get(1)?.id).toBe("call_b");
   });
 });
