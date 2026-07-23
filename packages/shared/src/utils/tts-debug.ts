@@ -5,12 +5,14 @@
  * Never pass secrets in `detail`. With debug on, `preview` fields may contain
  * user-visible spoken text — disable in shared logs / production.
  *
- * `ttsDebug` emits straight through the structured logger at `info` level, so
- * setting the env flag is sufficient on every server host (bare agent server,
- * app-core API, packaged desktop) — no per-host wiring exists to forget
- * (#16347). Info level is deliberate: the operator opted in explicitly, so the
- * lines must be visible at the default `LOG_LEVEL` rather than hiding behind
- * `debug`.
+ * `ttsDebug` emits straight through the structured logger, so setting the env
+ * flag is sufficient on every server host (bare agent server, app-core API,
+ * packaged desktop) — no per-host wiring exists to forget (#16347). The
+ * emission level is `info` normally, but escalates to match the logger's
+ * active threshold (`warn`/`error`/`fatal`) when `LOG_LEVEL` is stricter:
+ * the operator opted in explicitly, so the diagnostic must never be silently
+ * dead under any `LOG_LEVEL` — a below-threshold sink is the exact defect
+ * #16347 existed to kill (#16958).
  *
  * Server phases: `server:cloud-tts:*` (Eliza Cloud proxy, includes optional
  * `messageId`, `clipSegment`, `hearingFull` when the client sends
@@ -68,18 +70,35 @@ export function ttsDebugTextPreview(
   return `${singleLine.slice(0, maxChars)}…`;
 }
 
+// The logger drops entries below its LOG_LEVEL threshold, so an opted-in
+// diagnostic pinned at `info` is silently dead under LOG_LEVEL=warn/error.
+// Emit at the lowest level the active threshold still lets through: info by
+// default, escalating only as far as the configuration forces (#16958).
+function ttsEmit(): (typeof logger)["info"] {
+  const level = String(logger.level ?? "info")
+    .trim()
+    .toLowerCase();
+  if (level === "fatal" || level === "alert") return logger.fatal.bind(logger);
+  if (level === "error") return logger.error.bind(logger);
+  if (level === "warn") return logger.warn.bind(logger);
+  return logger.info.bind(logger);
+}
+
 /**
  * Emit one TTS trace line through the structured logger when
- * `ELIZA_TTS_DEBUG` is set; a no-op otherwise.
+ * `ELIZA_TTS_DEBUG` is set; a no-op otherwise. Emission is guaranteed at any
+ * `LOG_LEVEL`: the line rides at `info` normally and escalates to the active
+ * threshold when the logger is configured stricter.
  */
 export function ttsDebug(
   phase: string,
   detail?: Record<string, unknown>,
 ): void {
   if (!ttsDebugEnabled()) return;
+  const emit = ttsEmit();
   if (detail && Object.keys(detail).length > 0) {
-    logger.info(detail, `[eliza][tts] ${phase}`);
+    emit(detail, `[eliza][tts] ${phase}`);
   } else {
-    logger.info(`[eliza][tts] ${phase}`);
+    emit(`[eliza][tts] ${phase}`);
   }
 }

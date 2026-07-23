@@ -126,8 +126,9 @@ exception to "skip": it **hard-fails** on any missing acoustic artifact (a clear
 
 The workbench is the single verification surface (parent decision #10), so every
 voice PR — loud-fail (#12253), latency (#12254), turn-taking (#12255), echo
-(#12256), diarization (#12257) — files a **before/after** bundle under
-`.github/issue-evidence/<issue#>-*/`, citing ceilings from the table above:
+(#12256), diarization (#12257) — attaches a **before/after** bundle inline on
+the PR (MP4/JPG/logs in `<details>`; stage locally under
+`test-results/evidence/<issue#>-*/`), citing ceilings from the table above:
 
 1. **Workbench reports (before + after)** — `voice:workbench --logic --baseline
    src/services/voice/__fixtures__/voice-workbench-logic-baseline.json` (JSON +

@@ -161,6 +161,7 @@ bun run --cwd plugins/plugin-meetings typecheck   # tsgo --noEmit
   `createUniqueUuid(runtime, "meeting-participant:<platform>:<name>")`.
 - See the root `AGENTS.md` for repo-wide rules (ESM, logger-only, evidence).
 
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
 > The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
@@ -191,7 +192,7 @@ bun run --cwd plugins/plugin-meetings typecheck   # tsgo --noEmit
   "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
   highest-effort, production-ready version. Keep going until every possibility is exhausted.
 
-Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
 explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
 behavior, **re-capture** evidence; stale proof is worse than none.
 
@@ -205,3 +206,4 @@ behavior, **re-capture** evidence; stale proof is worse than none.
   network log while the bot is in the call.
 - Backend `[MeetingService]` structured logs covering the whole lifecycle, and a live-LLM
   trajectory for JOIN_MEETING / LEAVE_MEETING / GET_MEETING_TRANSCRIPT action changes.
+<!-- END: evidence-and-e2e-mandate -->

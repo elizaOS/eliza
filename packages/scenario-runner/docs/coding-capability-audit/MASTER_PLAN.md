@@ -2,6 +2,13 @@ I'll synthesize the 12 domain audits into a master document. Let me produce the 
 
 # elizaOS Code-Writing & Agent-Orchestration Capability — Master Audit & Gap Backlog
 
+> **Evidence-location note:** this audit snapshot predates the retirement of the
+> committed `.github/issue-evidence/` directory. Wherever a work item below says
+> to land or commit artifacts under `.github/issue-evidence/…`, read that as:
+> stage locally under `test-results/evidence/…` (gitignored) and attach the
+> artifacts inline on the issue/PR per the repo-root `AGENTS.md` evidence
+> standard.
+
 **Scope:** Direct code-writing tools, sub-agent (ACP) orchestration, Smithers workflow engines, multi-account quota/switching, orchestrator/task UI, scenario-runner harness, E2E recording, dynamic reload/rollback, platform coverage, model backends, user/connector surfacing, and concurrency. Synthesized from 12 domain audits.
 
 **Verdict in one line:** The *code* is broad and largely mature (especially `plugins/plugin-agent-orchestrator`), but the *proof* is thin — almost no committed real-LLM trajectories, screenshots, video, or timelines tie the headline capabilities (live coding loop, sub-agent spawn→route, multi-account switch, 10-project concurrency) to evidence, and several flagship live harnesses are broken or stale.
