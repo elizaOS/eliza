@@ -3021,8 +3021,11 @@ function filterSelectedContextsForRole(
 // First-person completed-side-effect claims ("I've set…", "all set",
 // "reminders are set", "Done —"). Adjacency is deliberate: "I have not set"
 // and "I can set" do not match, so offers and honest denials pass through.
+// The bare "done —" branch is anchored to the start of the (trimmed) reply or
+// of a sentence, so congratulations like "Well done — that's every task
+// cleared." are not misread as completion claims.
 const COMPLETED_SIDE_EFFECT_CLAIM_PATTERN =
-	/\b(?:i(?:['’]ve| have| just)?\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b|(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|scheduled|in\s+place)\b|done\s*[—–-])/i;
+	/\b(?:i(?:['’]ve| have| just)?\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b|(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|scheduled|in\s+place)\b|(?:^|[.!?]\s+)done\s*[—–-])/i;
 // The claim must be ABOUT a schedulable/saved thing, not e.g. "I've set aside
 // some thoughts". Vocabulary mirrors the scheduled-item nouns the LifeOps
 // surfaces own.
