@@ -39,6 +39,18 @@ describe("TASKS:create", () => {
     expect(svc.spawnSession).not.toHaveBeenCalled();
   });
 
+  it("exposes create plus capability-based issue and scheduling routes", () => {
+    const actions = createTaskAction.parameters?.find(
+      (parameter) => parameter.name === "action",
+    )?.schema.enum;
+    expect(actions).toContain("create");
+    expect(createTaskAction.routingHint).toContain("TASKS_MANAGE_ISSUES");
+    expect(createTaskAction.routingHint).toContain("TRIGGER_CREATE");
+    expect(createTaskAction.routingHint).toContain(
+      "whichever is exposed this turn",
+    );
+  });
+
   it("keeps the coding TASKS parent out of generic owner task context", () => {
     expect(createTaskAction.contexts).toContain("code");
     expect(createTaskAction.contexts).toContain("automation");

@@ -3,7 +3,6 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  goHome: vi.fn(),
   init: vi.fn(),
   push: vi.fn(async () => undefined),
   seed: vi.fn(async () => undefined),
@@ -18,7 +17,6 @@ vi.mock("../../state/notifications/notification-store", () => ({
 vi.mock("../../state/notifications/push-registration", () => ({
   initPushRegistration: mocks.push,
 }));
-vi.mock("../../state/shell-surface-store", () => ({ goHome: mocks.goHome }));
 
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import {
@@ -38,12 +36,11 @@ describe("notification boot boundaries", () => {
     expect(mocks.init).toHaveBeenCalledOnce();
   });
 
-  it("boots native push and routes notification-center ingress home", async () => {
+  it("boots native push and routes notification-center ingress to chat", async () => {
     render(<NotificationsShellBoot />);
     await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
 
     act(() => window.dispatchEvent(new Event(OPEN_NOTIFICATION_CENTER_EVENT)));
     expect(mocks.setTab).toHaveBeenCalledWith("chat");
-    expect(mocks.goHome).toHaveBeenCalledOnce();
   });
 });

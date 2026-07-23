@@ -16,6 +16,14 @@ import {
 const listOptions = { parameters: { action: "list_agents" } };
 
 describe("TASKS:list_agents", () => {
+  it("keeps list_agents planner-visible on the umbrella action", () => {
+    expect(
+      listAgentsAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("list_agents");
+  });
+
   it("lists sessions with exact public fields", async () => {
     const listCallback = callback();
     const result = await listAgentsAction.handler(

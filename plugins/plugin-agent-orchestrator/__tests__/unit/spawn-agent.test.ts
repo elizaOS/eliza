@@ -41,6 +41,14 @@ describe("TASKS:spawn_agent", () => {
     expect(svc.spawnSession).not.toHaveBeenCalled();
   });
 
+  it("keeps spawn_agent planner-visible on the umbrella action", () => {
+    expect(
+      spawnAgentAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("spawn_agent");
+  });
+
   it("does not expose lockWorkdir to planner-generated tool calls", () => {
     expect(
       spawnAgentAction.parameters?.map((param) => param.name),

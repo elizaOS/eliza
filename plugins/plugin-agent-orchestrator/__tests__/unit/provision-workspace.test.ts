@@ -60,6 +60,14 @@ describe("TASKS:provision_workspace", () => {
     expect(service.provisionWorkspace).not.toHaveBeenCalled();
   });
 
+  it("keeps provision_workspace planner-visible on the umbrella action", () => {
+    expect(
+      provisionWorkspaceAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("provision_workspace");
+  });
+
   it("uses planner parameters before legacy message content", async () => {
     const service = workspaceServiceMock();
 

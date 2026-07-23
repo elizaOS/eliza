@@ -39,6 +39,14 @@ describe("TASKS:cancel", () => {
     expect(svc.cancelSession).not.toHaveBeenCalled();
   });
 
+  it("keeps cancel planner-visible on the umbrella action", () => {
+    expect(
+      cancelTaskAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("cancel");
+  });
+
   it("cancels a session by id", async () => {
     const svc = serviceMock();
     const result = await cancelTaskAction.handler(

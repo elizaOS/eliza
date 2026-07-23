@@ -15,6 +15,14 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:send", () => {
+  it("keeps send planner-visible on the umbrella action", () => {
+    expect(
+      sendToAgentAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("send");
+  });
+
   it("sends input via action=send", async () => {
     const svc = serviceMock();
     const result = await sendToAgentAction.handler(
