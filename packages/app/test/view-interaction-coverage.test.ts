@@ -38,6 +38,8 @@ const VISUAL_BASELINE_OWNER: InteractionOwner = {
 
 const DECOMPOSED_PA_SPEC =
   "packages/app/test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts";
+const SIMPLE_VIEWS_E2E_SPEC =
+  "plugins/plugin-simple-views/src/views/simple-views.e2e.test.tsx";
 
 const GUI_INTERACTION_OWNERS: Readonly<
   Record<string, readonly InteractionOwner[]>
@@ -182,6 +184,17 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
+  notes: [
+    {
+      spec: SIMPLE_VIEWS_E2E_SPEC,
+      proves:
+        "Creates, edits, and restores a note through the real React surface and filesystem-backed interaction service.",
+      signals: [
+        "Simple Views deterministic UI-to-service journey",
+        "Demo briefing ready",
+      ],
+    },
+  ],
   phone: [
     {
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
@@ -265,6 +278,17 @@ const GUI_INTERACTION_OWNERS: Readonly<
       proves:
         "Exercises host start/open/copy/stop, remote connect, capability refresh, and request payloads.",
       signals: ["host lifecycle", "capability refresh", "screen-token-1"],
+    },
+  ],
+  "simple-calendar": [
+    {
+      spec: SIMPLE_VIEWS_E2E_SPEC,
+      proves:
+        "Creates and restores a calendar event through the real React surface and the same filesystem-backed service used by Notes.",
+      signals: [
+        "Simple Views deterministic UI-to-service journey",
+        "Cloud review",
+      ],
     },
   ],
   "task-coordinator": [
@@ -398,7 +422,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(28);
+    expect(visualCases.length).toBe(30);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",
