@@ -114,6 +114,31 @@ async function openChatSurface(page: Page): Promise<void> {
   await expect(page.locator(CHAT_COMPOSER_SELECTOR).first()).toBeVisible({
     timeout: 120_000,
   });
+  // A cold stack's first load runs a conversation bootstrap (create + preview
+  // transcript) concurrently with anything the test sends; a send racing that
+  // bootstrap can land in a conversation the overlay then navigates away from
+  // (observed twice: stream POST 200 into a thread the overlay never showed).
+  // Wait until the server-side conversation list is non-empty and stable
+  // across two polls, then reload so the overlay adopts the settled active
+  // conversation before the test types anything.
+  let previous = "";
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const response = await page.request.get("/api/conversations");
+    const body = (await response.json().catch(() => ({}))) as {
+      conversations?: Array<{ id?: string }>;
+    };
+    const ids = (body.conversations ?? [])
+      .map((conversation) => conversation.id ?? "")
+      .sort()
+      .join(",");
+    if (ids && ids === previous) break;
+    previous = ids;
+    await page.waitForTimeout(2_000);
+  }
+  await openAppPath(page, "/chat");
+  await expect(page.locator(CHAT_COMPOSER_SELECTOR).first()).toBeVisible({
+    timeout: 120_000,
+  });
 }
 
 /** Sends the config-card prompt and waits for the rendered card. */
