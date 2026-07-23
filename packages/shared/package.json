@@ -308,6 +308,16 @@
       "import": "./dist/views/view-interact-protocol.js",
       "default": "./dist/views/view-interact-protocol.js"
     },
+    "./views/view-command-matcher": {
+      "types": "./dist/views/view-command-matcher.d.ts",
+      "eliza-source": {
+        "types": "./src/views/view-command-matcher.ts",
+        "import": "./src/views/view-command-matcher.ts",
+        "default": "./src/views/view-command-matcher.ts"
+      },
+      "import": "./dist/views/view-command-matcher.js",
+      "default": "./dist/views/view-command-matcher.js"
+    },
     "./voice-wer": {
       "types": "./dist/voice-wer.d.ts",
       "eliza-source": {

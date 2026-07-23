@@ -26,6 +26,10 @@ import {
   getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
+import {
+  resolveSharedNavIntent,
+  type SharedNavIntent,
+} from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
   role: "user" | "assistant";
@@ -65,6 +69,12 @@ export interface RunSharedAgentTurnResult {
    */
   degraded: boolean;
   usage?: SharedAgentTurnUsage;
+  /**
+   * Set when the turn was an in-app navigation command handled deterministically
+   * (no LLM call). The caller attaches a VIEWS navigation handoff to the turn's
+   * `done` SSE frame so the PWA opens the view. See shared-nav-intent.ts.
+   */
+  navIntent?: SharedNavIntent;
 }
 
 export type SharedAgentTurnStreamPart =
@@ -77,6 +87,13 @@ export interface RunSharedAgentTurnStreamResult {
   reply?: string;
   history?: SharedTurnMessage[];
   parts?: AsyncIterable<SharedAgentTurnStreamPart>;
+  /**
+   * Set when the turn was an in-app navigation command handled deterministically
+   * (no LLM call, so `parts` streams the canned confirmation text). The caller
+   * attaches a VIEWS navigation handoff to the `done` SSE frame from this so the
+   * PWA opens the view. See shared-nav-intent.ts.
+   */
+  navIntent?: SharedNavIntent;
 }
 
 /**
@@ -185,6 +202,22 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
+
+  // Deterministic in-app navigation fast path (no LLM, no plugin). A Tier-0
+  // shared agent has no VIEWS action, so "go to settings" would otherwise be a
+  // hallucinated prose refusal; resolve it here and hand the client a VIEWS
+  // navigation so the view actually opens (#F5-ACTIONS).
+  const navIntent = resolveSharedNavIntent(message);
+  if (navIntent) {
+    return {
+      reply: navIntent.reply,
+      history: appendTurn(input.history, message, navIntent.reply),
+      model: "nav-intent",
+      degraded: false,
+      navIntent,
+    };
+  }
+
   const modelId = resolveSharedAgentTurnModel(input.character.model);
 
   if (!modelId) {
@@ -242,6 +275,28 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
+
+  // Deterministic in-app navigation fast path (no LLM, no plugin). Synthesize a
+  // one-shot stream that yields the confirmation text so the SSE shape is
+  // identical to a normal turn; the caller reads `navIntent` to attach a VIEWS
+  // navigation handoff to the `done` frame (#F5-ACTIONS).
+  const navIntent = resolveSharedNavIntent(message);
+  if (navIntent) {
+    const reply = navIntent.reply;
+    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      yield { type: "text-delta", text: reply };
+      yield { type: "finish", text: reply };
+    })();
+    return {
+      model: "nav-intent",
+      degraded: false,
+      reply,
+      history: appendTurn(input.history, message, reply),
+      parts,
+      navIntent,
+    };
+  }
+
   const modelId = resolveSharedAgentTurnModel(input.character.model);
 
   if (!modelId) {
