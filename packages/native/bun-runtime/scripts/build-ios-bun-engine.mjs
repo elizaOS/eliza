@@ -1211,6 +1211,7 @@ function patchBunSetupZigForWrapper() {
   const marker = "ELIZA_BUN_IOS_ZIG_EXECUTABLE";
   let contents = fs.readFileSync(setupZig, "utf8");
   if (contents.includes(marker)) return;
+  // biome-ignore-start lint/suspicious/noTemplateCurlyInString: literal CMake ${VAR} syntax written into SetupZig.cmake, not JS interpolation.
   const original = [
     "setx(ZIG_PATH ${VENDOR_PATH}/zig)",
     "",
@@ -1231,6 +1232,7 @@ function patchBunSetupZigForWrapper() {
     "  setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig)",
     "endif()",
   ].join("\n");
+  // biome-ignore-end lint/suspicious/noTemplateCurlyInString: end of literal CMake block.
   if (!contents.includes(original)) {
     fail(
       `cannot patch ${setupZig}; expected ZIG_EXECUTABLE block was not found`,

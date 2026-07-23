@@ -16,6 +16,17 @@ describe("classifyDestructiveCommand — fires", () => {
     expect(classifyDestructiveCommand("rm -fr build").destructive).toBe(true);
     expect(classifyDestructiveCommand("rm -R cache").destructive).toBe(true);
   });
+  it.each([
+    ["Remove-Item -LiteralPath C:\\temp\\old -Recurse -Force"],
+    ["remove-item C:\\temp\\old -Rec -Force"],
+    ["ri -R C:\\temp\\old"],
+    ["rmdir -Recurse C:\\temp\\old"],
+  ])("PowerShell recursive delete: %s", (command) => {
+    const verdict = classifyDestructiveCommand(command);
+    expect(verdict.destructive).toBe(true);
+    expect(verdict.reason).toBe("recursive delete");
+    expect(verdict.targets).toContain("C:\\temp\\old");
+  });
   it("recursive rm hidden behind a chain", () => {
     const v = classifyDestructiveCommand("ls && rm -rf ./data");
     expect(v.destructive).toBe(true);
@@ -56,6 +67,7 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
     ["ls -la /tmp"],
     ["rm single-file.txt"],
     ["rm -f one-exact-file.log"],
+    ["Remove-Item one-exact-file.log"],
     ["git rm old.ts"],
     ["df -h / && du -sh /home"],
     ["grep -r pattern src/"],

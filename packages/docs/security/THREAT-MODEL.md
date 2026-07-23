@@ -83,7 +83,7 @@ The boundary that matters: anything that ships from device → Cloud is in audit
 
 **Mitigations.**
 - Lockfiles + pinned versions + provenance verification where possible.
-- CI dependency audit + secret-scan + CodeQL/Semgrep.
+- CI dependency audit + secret-scan + Semgrep.
 - Trivy on container images; pinned digest base images.
 - HuggingFace model artifacts validated by hash; Cosign on our own outputs.
 - Annual penetration test scope includes supply chain.

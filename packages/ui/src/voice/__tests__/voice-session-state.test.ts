@@ -54,6 +54,42 @@ describe("voice-session-state machine (§7.4)", () => {
     expect(loopToListening(s).phase).toBe("listening");
   });
 
+  it("an empty final (noise EOT) terminates the turn instead of stranding 'thinking' (#16662)", () => {
+    let s = applyClientAction(fresh(), { type: "client/connect" });
+    s = applyServerEvent(s, {
+      t: "ready",
+      sessionId: "sess-noise",
+      traceId: "T5",
+    });
+    s = applyServerEvent(s, { t: "stt_partial", text: "uh", traceId: "T5" });
+    s = applyServerEvent(s, { t: "stt_final", text: "", traceId: "T5" });
+    // The server never dispatches an LLM leg for an empty final, so no
+    // speaking_end will follow: 'thinking' would be a dead end. The machine
+    // must land terminal-of-turn with the interim transcript cleared.
+    expect(s.phase).toBe("complete");
+    expect(s.finalTranscript).toBe("");
+    expect(s.interimTranscript).toBe("");
+    expect(loopToListening(s).phase).toBe("listening");
+  });
+
+  it("a whitespace-only final terminates the turn too (server dispatch gate is trim-based) (#16662)", () => {
+    let s = applyClientAction(fresh(), { type: "client/connect" });
+    s = applyServerEvent(s, {
+      t: "ready",
+      sessionId: "sess-noise",
+      traceId: "T6",
+    });
+    s = applyServerEvent(s, { t: "stt_partial", text: "uh", traceId: "T6" });
+    // The server sends the RAW provider transcript on the wire but gates the
+    // LLM leg on transcript.trim() === "" (session.ts commitTurn) — so a
+    // whitespace-only final is equally leg-less: no speaking_end will follow.
+    s = applyServerEvent(s, { t: "stt_final", text: " \t", traceId: "T6" });
+    expect(s.phase).toBe("complete");
+    expect(s.finalTranscript).toBe("");
+    expect(s.interimTranscript).toBe("");
+    expect(loopToListening(s).phase).toBe("listening");
+  });
+
   it("server is authoritative for interrupted; local barge-in is optimistic", () => {
     let s = applyServerEvent(fresh(), { t: "speaking_start", traceId: "T2" });
     expect(s.phase).toBe("speaking");

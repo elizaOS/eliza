@@ -3,6 +3,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { FAILURE_TEXT_PREFIX, type ToolFailure } from "../types.js";
 import {
+  capTranscriptForChat,
   failureToActionResult,
   fencePreformatted,
   readArrayParam,
@@ -143,5 +144,31 @@ describe("fencePreformatted", () => {
 
   it("does not double a trailing newline", () => {
     expect(fencePreformatted("line\n")).toBe("```\nline\n```");
+  });
+});
+
+describe("capTranscriptForChat", () => {
+  it("passes short transcripts through untouched", () => {
+    const text = "$ ls\n[exit 0]\nfile-a\nfile-b";
+    expect(capTranscriptForChat(text)).toBe(text);
+  });
+
+  it("caps long transcripts with head, tail, and an elision marker", () => {
+    const lines = Array.from({ length: 400 }, (_, i) => `line-${i}`);
+    const text = lines.join("\n");
+    const capped = capTranscriptForChat(text, 1500);
+    expect(capped.length).toBeLessThan(1700);
+    expect(capped).toContain("line-0");
+    expect(capped).toContain("line-399");
+    expect(capped).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+  });
+
+  it("keeps head and tail on line boundaries", () => {
+    const text = Array.from({ length: 300 }, (_, i) => `row ${i} content`).join(
+      "\n",
+    );
+    const capped = capTranscriptForChat(text, 1000);
+    const [head] = capped.split("\n… [");
+    expect(head.endsWith("content")).toBe(true);
   });
 });

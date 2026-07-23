@@ -221,7 +221,10 @@ describe("v5 planner loop skeleton", () => {
 			"attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now",
 		);
 		expect(plannerTemplate).toContain(
-			"Owner life-management side effects MUST call the matching exposed tool before any terminal answer",
+			"MUST call the matching exposed life-management/scheduling tool before any terminal answer",
+		);
+		expect(plannerTemplate).toContain(
+			"Never declare the capability missing because a specific name above is absent",
 		);
 		expect(plannerTemplate).toContain(
 			"A tool-owned conflict, clarification, preview, confirmation request, or fail-closed no-op is still a tool result",

@@ -194,11 +194,11 @@ test.beforeEach(async ({ page }) => {
   await installConversationStore(page, store);
 });
 
-test("collapsed chat grabber horizontal swipe opens the launcher rail without opening chat", async ({
+test("collapsed chat grabber horizontal swipe neither opens chat nor navigates", async ({
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   const surface = page.getByTestId("home-launcher-surface");
@@ -209,22 +209,25 @@ test("collapsed chat grabber horizontal swipe opens the launcher rail without op
 
   await pointerDrag(page, '[data-testid="chat-sheet-grabber"]', -180, -6, 12);
 
-  await expect(surface).toHaveAttribute("data-page", "launcher", {
-    timeout: 10_000,
-  });
+  // Home and apps share one combined surface (no home↔launcher rail): the
+  // composer classifies and consumes the sideways track so a coalesced
+  // horizontal release cannot masquerade as a tap, but it performs no
+  // navigation and must not open the sheet.
+  await page.waitForTimeout(400);
+  await expect(surface).toHaveAttribute("data-page", "home");
   await expect(overlay).not.toHaveAttribute("data-open", "true");
-  await expect(page.getByTestId("home-launcher-launcher-page")).toBeVisible();
+  await expect(page.getByTestId("home-apps-scroll")).toBeVisible();
   await expectNoPageDiagnostics(page, testInfo.title);
 });
 
 test.describe("real touch input (CDP dispatchTouchEvent) — #9943 item 6", () => {
   test.use({ hasTouch: true });
 
-  test("collapsed chat grabber swipe under REAL TOUCH (not desktop mouse) opens the launcher rail", async ({
+  test("collapsed chat grabber swipe under REAL TOUCH (not desktop mouse) neither opens chat nor navigates", async ({
     page,
   }, testInfo) => {
     await openAppPath(page, "/chat");
-    const overlay = page.getByTestId("continuous-chat-overlay");
+    const overlay = page.getByTestId("chat-overlay");
     await expect(overlay).toBeVisible({ timeout: 60_000 });
 
     const surface = page.getByTestId("home-launcher-surface");
@@ -236,11 +239,12 @@ test.describe("real touch input (CDP dispatchTouchEvent) — #9943 item 6", () =
     // Genuine finger swipe (touch input), not page.mouse.
     await touchDrag(page, '[data-testid="chat-sheet-grabber"]', -180, -6, 12);
 
-    await expect(surface).toHaveAttribute("data-page", "launcher", {
-      timeout: 10_000,
-    });
+    // Combined surface: the sideways touch track is consumed (no ghost tap)
+    // but performs no navigation and must not open the sheet.
+    await page.waitForTimeout(400);
+    await expect(surface).toHaveAttribute("data-page", "home");
     await expect(overlay).not.toHaveAttribute("data-open", "true");
-    await expect(page.getByTestId("home-launcher-launcher-page")).toBeVisible();
+    await expect(page.getByTestId("home-apps-scroll")).toBeVisible();
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 });
@@ -249,7 +253,7 @@ test("single-thread open thread: search lives in the composer + menu (no header 
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   // Open the sheet: flick the grabber UP (≥ distance threshold → onPullUp).

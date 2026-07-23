@@ -248,10 +248,15 @@ test("reports uncovered live-only scenarios as explicit deferrals", () => {
     expect(Object.values(summary.deferredDefaultReasons)).toContainEqual(
       expect.stringContaining("#16448"),
     );
-    expect(PLUGIN_ROUTE_COVERAGE["plugin-personal-assistant"]).toMatchObject({
-      status: "exempt",
-      reason: expect.stringContaining("live-scenarios.yml"),
-    });
+    // Plain reads, not toMatchObject with an asymmetric matcher: bun's
+    // toMatchObject writes expect.stringContaining(...) INTO the received
+    // object, and PLUGIN_ROUTE_COVERAGE is shared module state — the corrupted
+    // entry then fails e2e-coverage.test.ts's written-reason gate later in the
+    // same sweep process.
+    const paEntry = PLUGIN_ROUTE_COVERAGE["plugin-personal-assistant"];
+    expect(paEntry?.status).toBe("exempt");
+    if (paEntry?.status !== "exempt") throw new Error("unreachable");
+    expect(paEntry.reason).toContain("live-scenarios.yml");
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

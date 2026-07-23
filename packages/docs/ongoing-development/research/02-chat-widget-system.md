@@ -44,7 +44,7 @@ documentation, and unverified settings-in-chat / hosted-secret flows.
   (`packages/ui/src/components/chat/message-parser-helpers.ts:1-16`) turns a
   reply into ordered segments — prose, code, `[CONFIG:…]`, UiSpec JSON,
   permission cards, plus every registry widget. Both `MessageContent`
-  (ChatView) and `InlineWidgetText` (ContinuousChatOverlay, the primary
+  (ChatView) and `InlineWidgetText` (ChatOverlay, the primary
   web/mobile surface) delegate to it; parity is contract-tested
   (`render-parity.contract.test.tsx`, `parser-parity.contract.test.ts`).
 - Widget → chat round-trip is single-sourced:
@@ -84,7 +84,7 @@ documentation, and unverified settings-in-chat / hosted-secret flows.
   (`packages/ui/src/components/chat/MessageContent.tsx:610-700`, rendered at
   `:1068-1069`) — per-field password inputs, OAuth connect button, tunnel path
   for sub-agent credentials, remote-connect path for first-run. The overlay
-  renders it too (`packages/ui/src/components/shell/ContinuousChatOverlay.tsx:823-825`).
+  renders it too (`packages/ui/src/components/shell/ChatOverlay.tsx:823-825`).
 - Hosted page (the "elizacloud.ai flow" this workstream was asked to design)
   **already exists**:
   `packages/ui/src/cloud/public-pages/pages/sensitive-requests/sensitive-request-page.tsx`
@@ -155,7 +155,7 @@ documentation, and unverified settings-in-chat / hosted-secret flows.
   divergence "D1 — host-only segments" claims the overlay does not render
   `[CONFIG]`/permission/secret/UiSpec — false since the overlay gained those
   renderers (`InlineWidgetText.tsx:109-137`,
-  `ContinuousChatOverlay.tsx:823-825`).
+  `ChatOverlay.tsx:823-825`).
 - **Oversized guide:** `uiCatalog` leads with "Method 1 — inline JSONL patches"
   (GenUI) and appends a ~156-component catalog summary
   (`packages/agent/src/shared/ui-catalog-prompt.ts`, 1178 lines) every time it

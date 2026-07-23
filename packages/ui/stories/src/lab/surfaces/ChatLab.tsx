@@ -1,5 +1,5 @@
 /**
- * Chat surface for the Design Lab: mounts the REAL ContinuousChatOverlay over a
+ * Chat surface for the Design Lab: mounts the REAL ChatOverlay over a
  * fake workspace backdrop with a live mock controller, and portals a control
  * panel (transcript seed, phase, voice state, plus imperative send/append/stream
  * actions) into the lab's controls column. The same component powers the
@@ -8,7 +8,7 @@
  * that drives the falling-edge reveal a static prop can't reach.
  */
 
-import { ContinuousChatOverlay } from "@ui-src/components/shell/ContinuousChatOverlay";
+import { ChatOverlay } from "@ui-src/components/shell/ChatOverlay";
 import type { ShellController } from "@ui-src/components/shell/useShellController";
 
 import { GlassStyles } from "@ui-src/glass";
@@ -183,7 +183,7 @@ export function ChatLab({
         </div>
       </div>
       <GlassStyles />
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={chat.controller}
         firstRunOpen={firstRun}
       />

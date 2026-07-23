@@ -7,6 +7,7 @@
  * true once it owns a request, false to let the caller keep dispatching.
  */
 import type http from "node:http";
+import type { InferenceTurnSummary, Log } from "@elizaos/core";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -23,6 +24,108 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
+  const body = asRecord(log.body);
+  const metadata = asRecord(body?.metadata);
+  const turnId = typeof body?.runId === "string" ? body.runId : null;
+  const t0EpochMs = finiteNumber(body?.startTime);
+  const closedAtEpochMs = finiteNumber(body?.endTime);
+  const totalMs = finiteNumber(body?.duration);
+  const label = typeof metadata?.label === "string" ? metadata.label : null;
+  if (!body || !metadata || !turnId || t0EpochMs === null || !label)
+    return null;
+
+  const spans = Array.isArray(metadata.spans)
+    ? metadata.spans.flatMap((value) => {
+        const span = asRecord(value);
+        const name = typeof span?.name === "string" ? span.name : null;
+        const startMs = finiteNumber(span?.startMs);
+        const endMs = finiteNumber(span?.endMs);
+        const durationMs = finiteNumber(span?.durationMs);
+        if (
+          !name ||
+          startMs === null ||
+          endMs === null ||
+          durationMs === null
+        ) {
+          return [];
+        }
+        const rawMeta = asRecord(span?.meta);
+        const rawMetaEntries = rawMeta ? Object.entries(rawMeta) : [];
+        const meta = Object.fromEntries(
+          rawMetaEntries.filter(
+            (entry): entry is [string, string | number | boolean] =>
+              typeof entry[1] === "string" ||
+              typeof entry[1] === "number" ||
+              typeof entry[1] === "boolean",
+          ),
+        );
+        return [
+          {
+            name,
+            startMs,
+            endMs,
+            durationMs,
+            ...(Object.keys(meta).length > 0 ? { meta } : {}),
+          },
+        ];
+      })
+    : [];
+  const marks = Array.isArray(metadata.marks)
+    ? metadata.marks.flatMap((value) => {
+        const mark = asRecord(value);
+        const name = typeof mark?.name === "string" ? mark.name : null;
+        const tMs = finiteNumber(mark?.tMs);
+        return name && tMs !== null ? [{ name, tMs }] : [];
+      })
+    : [];
+  const byNameRecord = asRecord(metadata.byName);
+  const byName: InferenceTurnSummary["byName"] = {};
+  if (byNameRecord) {
+    for (const [name, value] of Object.entries(byNameRecord)) {
+      const aggregate = asRecord(value);
+      const aggregateTotalMs = finiteNumber(aggregate?.totalMs);
+      const count = finiteNumber(aggregate?.count);
+      if (aggregateTotalMs !== null && count !== null) {
+        byName[name] = { totalMs: aggregateTotalMs, count };
+      }
+    }
+  }
+
+  return {
+    turnId,
+    label,
+    roomId: typeof body.roomId === "string" ? body.roomId : null,
+    modelProvider:
+      typeof metadata.modelProvider === "string"
+        ? metadata.modelProvider
+        : null,
+    t0EpochMs,
+    closedAtEpochMs,
+    totalMs,
+    timeToFirstTokenMs: finiteNumber(metadata.timeToFirstTokenMs),
+    timeToReplyMs: finiteNumber(metadata.timeToReplyMs),
+    spans,
+    marks,
+    byName,
+    anomalies: Array.isArray(metadata.anomalies)
+      ? metadata.anomalies.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [],
+  };
+}
 
 /**
  * Dev observability routes (loopback where noted).
@@ -268,10 +371,23 @@ export async function handleDevCompatRoutes(
     const limitRaw = url.searchParams.get("limit");
     const limit = limitRaw ? Number(limitRaw) : undefined;
     const { buildInferenceTimingDevPayload } = await import("@elizaos/core");
+    const persistedTurns = state.current
+      ? (
+          await state.current.getLogs({
+            type: "inference_timing",
+            limit: 4_096,
+          })
+        )
+          .map(parseInferenceTimingLog)
+          .filter(
+            (summary): summary is InferenceTurnSummary => summary !== null,
+          )
+      : [];
     const payload = buildInferenceTimingDevPayload(
       Number.isFinite(limit) && (limit as number) > 0
         ? (limit as number)
         : undefined,
+      persistedTurns,
     );
     sendJsonResponse(res, 200, payload);
     return true;

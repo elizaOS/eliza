@@ -83,7 +83,7 @@ export const Editable: Story = {
   },
 };
 
-/** The overlay's floating dark-glass chrome (the continuous-chat row) on a dark
+/** The overlay's floating dark-glass chrome (the chat row) on a dark
  * substrate — the same ChatMessage, `appearance="glass"`. */
 export const GlassAssistant: Story = {
   decorators: [

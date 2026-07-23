@@ -187,7 +187,7 @@ and for each gesture dispatches OS-level `adb input` touch, asserting both that
 the WebView saw real touch (`pointerType=mouse` stays absent) and the gesture's
 own semantics:
 
-- **Sheet detents** — grabber drag opens (`continuous-chat-overlay[data-open]`,
+- **Sheet detents** — grabber drag opens (`chat-overlay[data-open]`,
   `chat-sheet[data-detent]`) then collapses.
 - **Rail pager** — home→launcher and launcher→home (`home-launcher-surface[data-page]`).
 - **Push-to-talk** — a >200ms hold on `chat-composer-mic` arms dictation without

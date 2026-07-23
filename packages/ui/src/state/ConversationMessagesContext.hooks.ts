@@ -7,7 +7,7 @@
  * cascade those per-token updates to every useApp() subscriber (~135 of them:
  * sidebars, settings panels, the companion overlay, etc.). This dedicated
  * context lets only the chat surfaces (ChatView and the shell controller that
- * drives ContinuousChatOverlay) re-render as tokens arrive.
+ * drives ChatOverlay) re-render as tokens arrive.
  *
  * The context object + hook live here (not in the sibling AppContext.tsx) so the
  * Provider file stays React Fast Refresh-compatible.

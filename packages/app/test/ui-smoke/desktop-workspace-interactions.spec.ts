@@ -15,7 +15,10 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
-  await seedAppStorage(page);
+  // The injected __electrobunWindowId makes the platform read as desktop,
+  // which arms the permission-priming modal (#12331); its Radix focus trap
+  // would swallow the console-filter fill below. Mark it already shown.
+  await seedAppStorage(page, { "eliza:permissions-primed": "1" });
   await installDefaultAppRoutes(page);
 });
 

@@ -4,7 +4,7 @@
  */
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -72,7 +72,7 @@ test.beforeEach(async ({ page }) => {
     "elizaos:ui:sidebar:eliza:page-sidebar:wallets:nfts:collapsed": "false",
   });
   await installDefaultAppRoutes(page);
-  await hideContinuousChatOverlay(page);
+  await hideChatOverlay(page);
 });
 
 test("wallet inventory exposes chain badges, rows, copy controls, and hide state", async ({

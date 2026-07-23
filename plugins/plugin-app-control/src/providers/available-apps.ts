@@ -19,6 +19,89 @@ const MAX_LISTED = 30;
 const MAX_RUNS_RETURNED = 30;
 const MAX_ORPHAN_RUNS = 10;
 
+// Stale-while-revalidate snapshot so the planner compose never blocks on the
+// two loopback /api/apps calls: a warm turn returns the last snapshot
+// immediately and refreshes out-of-band. Install/run state moves on human
+// timescales, so a 45s-stale inventory is fine for action targeting.
+const SNAPSHOT_TTL_MS = 45_000;
+let snapshot: { at: number; result: ProviderResult } | null = null;
+let refreshInFlight = false;
+
+async function fetchAvailableApps(): Promise<ProviderResult> {
+	try {
+		const client = createAppControlClient();
+		const [installed, runs] = await Promise.all([
+			client.listInstalledApps(),
+			client.listAppRuns(),
+		]);
+
+		if (installed.length === 0 && runs.length === 0) {
+			return { text: "" };
+		}
+
+		const runsByApp = new Map<string, number>();
+		for (const run of runs) {
+			runsByApp.set(run.appName, (runsByApp.get(run.appName) ?? 0) + 1);
+		}
+
+		const listedInstalled = installed.slice(0, MAX_LISTED);
+		const overflow = installed.length - listedInstalled.length;
+
+		const lines: string[] = [];
+		lines.push("available_apps:");
+		lines.push(`  installedCount: ${installed.length}`);
+		lines.push(`  runningCount: ${runs.length}`);
+		lines.push("  actions: APP mode=launch | relaunch | create");
+		if (listedInstalled.length > 0) {
+			lines.push(
+				`apps[${listedInstalled.length}]{name,displayName,pluginName,running}:`,
+			);
+			for (const app of listedInstalled) {
+				const running = runsByApp.get(app.name) ?? 0;
+				lines.push(
+					`  ${app.name},${app.displayName},${app.pluginName},${running}`,
+				);
+			}
+			if (overflow > 0) {
+				lines.push(`truncated: ${overflow}`);
+			}
+		} else {
+			lines.push("apps[0]:");
+		}
+
+		const orphanRuns = runs
+			.filter((r) => !installed.some((app) => app.name === r.appName))
+			.slice(0, MAX_ORPHAN_RUNS);
+		if (orphanRuns.length > 0) {
+			lines.push(
+				`otherRuns[${orphanRuns.length}]{runId,appName,displayName,status}:`,
+			);
+			for (const run of orphanRuns) {
+				lines.push(
+					`  ${run.runId},${run.appName},${run.displayName},${run.status}`,
+				);
+			}
+		}
+
+		return {
+			text: lines.join("\n"),
+			values: {
+				installedAppCount: installed.length,
+				runningAppCount: runs.length,
+			},
+			data: {
+				installed: listedInstalled,
+				runs: runs.slice(0, MAX_RUNS_RETURNED),
+				truncated: overflow > 0,
+			},
+		};
+	} catch {
+		// error-policy:J4 apps surface degrades to absent context for the
+		// planner; a failed loopback call must not fail the message turn.
+		return { text: "", values: {}, data: {} };
+	}
+}
+
 export const availableAppsProvider: Provider = {
 	name: "available_apps",
 	description:
@@ -39,76 +122,22 @@ export const availableAppsProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		try {
-			const client = createAppControlClient();
-			const [installed, runs] = await Promise.all([
-				client.listInstalledApps(),
-				client.listAppRuns(),
-			]);
-
-			if (installed.length === 0 && runs.length === 0) {
-				return { text: "" };
+		if (snapshot) {
+			if (Date.now() - snapshot.at > SNAPSHOT_TTL_MS && !refreshInFlight) {
+				refreshInFlight = true;
+				void fetchAvailableApps()
+					.then((result) => {
+						snapshot = { at: Date.now(), result };
+					})
+					.finally(() => {
+						refreshInFlight = false;
+					});
 			}
-
-			const runsByApp = new Map<string, number>();
-			for (const run of runs) {
-				runsByApp.set(run.appName, (runsByApp.get(run.appName) ?? 0) + 1);
-			}
-
-			const listedInstalled = installed.slice(0, MAX_LISTED);
-			const overflow = installed.length - listedInstalled.length;
-
-			const lines: string[] = [];
-			lines.push("available_apps:");
-			lines.push(`  installedCount: ${installed.length}`);
-			lines.push(`  runningCount: ${runs.length}`);
-			lines.push("  actions: APP mode=launch | relaunch | create");
-			if (listedInstalled.length > 0) {
-				lines.push(
-					`apps[${listedInstalled.length}]{name,displayName,pluginName,running}:`,
-				);
-				for (const app of listedInstalled) {
-					const running = runsByApp.get(app.name) ?? 0;
-					lines.push(
-						`  ${app.name},${app.displayName},${app.pluginName},${running}`,
-					);
-				}
-				if (overflow > 0) {
-					lines.push(`truncated: ${overflow}`);
-				}
-			} else {
-				lines.push("apps[0]:");
-			}
-
-			const orphanRuns = runs
-				.filter((r) => !installed.some((app) => app.name === r.appName))
-				.slice(0, MAX_ORPHAN_RUNS);
-			if (orphanRuns.length > 0) {
-				lines.push(
-					`otherRuns[${orphanRuns.length}]{runId,appName,displayName,status}:`,
-				);
-				for (const run of orphanRuns) {
-					lines.push(
-						`  ${run.runId},${run.appName},${run.displayName},${run.status}`,
-					);
-				}
-			}
-
-			return {
-				text: lines.join("\n"),
-				values: {
-					installedAppCount: installed.length,
-					runningAppCount: runs.length,
-				},
-				data: {
-					installed: listedInstalled,
-					runs: runs.slice(0, MAX_RUNS_RETURNED),
-					truncated: overflow > 0,
-				},
-			};
-		} catch {
-			return { text: "", values: {}, data: {} };
+			return snapshot.result;
 		}
+		const result = await fetchAvailableApps();
+		snapshot = { at: Date.now(), result };
+		return result;
 	},
 };
 

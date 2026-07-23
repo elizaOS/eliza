@@ -208,7 +208,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
         // The launcher grid below is the only vertical scroll owner. Keeping
         // the shell itself clipped avoids nested wheel/touch arbitration with
         // notification pull gestures.
-        "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-hidden",
+        "eliza-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-hidden",
         // The shell root already reserves the status-bar safe area (its
         // paddingTop: var(--safe-area-top)); adding it again here double-padded
         // the content and left a large empty band above the dashboard. Just a
@@ -221,7 +221,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
         // screens use compact app icons and a smaller breathing gutter so the
         // first row keeps both icon and label in view without touching chat;
         // overflow still belongs to the launcher region below.
-        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+0.5rem)]",
+        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+0.5rem)]",
       )}
     >
       <style>{HOME_ENTER_CSS}</style>
