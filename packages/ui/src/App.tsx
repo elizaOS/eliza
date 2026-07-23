@@ -144,7 +144,10 @@ import {
   firstRunOwnsLoginSurface,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
-import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
+import {
+  isBootstrapGateRequired,
+  isLoopbackGatewayHost,
+} from "./state/use-startup-shell-controller";
 import {
   SurfaceRealmScope,
   setActiveSurfaceRealmScope,
@@ -1630,6 +1633,8 @@ function ViewRouter({
   // lands.
   const shellPageRegistryVersion = useAppShellPageRegistryVersion();
   useEffect(() => {
+    // The version is the re-run trigger (same pattern as useResolvedDynamicPage).
+    void shellPageRegistryVersion;
     if (routeOverride) return;
     if (activeTab !== "views") return;
     if (typeof window === "undefined") return;
@@ -2112,6 +2117,17 @@ function AppContent() {
   // Runtime-dependent effects and overlay apps below stay gated on
   // `isCoordinatorReady` and defer safely.
   const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
+  // Cloud-container bootstrap: first-run-required is shell-paintable (in-chat
+  // onboarding), but a provisioned container without a bootstrap session must
+  // still hold the full-screen StartupScreen so its token gate can run — the
+  // shell controller computes the matching `bootstrap` view.
+  const firstRunCloudProvisionedContainer = useAppSelector(
+    (s) => s.firstRunCloudProvisionedContainer,
+  );
+  const bootstrapGateHolds = isBootstrapGateRequired(
+    startupCoordinator.phase,
+    firstRunCloudProvisionedContainer,
+  );
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -2715,7 +2731,7 @@ function AppContent() {
     );
   }
 
-  if (!isShellPaintableNow) {
+  if (!isShellPaintableNow || bootstrapGateHolds) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />

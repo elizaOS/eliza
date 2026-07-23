@@ -79,6 +79,24 @@ function needsBootstrapSession(): boolean {
   }
 }
 
+/**
+ * Whether the cloud-container bootstrap gate must hold the full-screen
+ * StartupScreen even though `first-run-required` is otherwise shell-paintable
+ * (in-chat onboarding). App.tsx consults this at its paintability gate — the
+ * controller computes the same condition into `view: { kind: "bootstrap" }`,
+ * but the view is only rendered where StartupScreen is mounted.
+ */
+export function isBootstrapGateRequired(
+  phase: string,
+  firstRunCloudProvisionedContainer: boolean,
+): boolean {
+  return (
+    phase === "first-run-required" &&
+    firstRunCloudProvisionedContainer &&
+    needsBootstrapSession()
+  );
+}
+
 export interface StartupShellController {
   view: StartupShellView;
   retryStartup: () => void;
