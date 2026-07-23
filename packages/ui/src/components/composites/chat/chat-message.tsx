@@ -564,6 +564,16 @@ export const ChatMessage = memo(function ChatMessage({
     isUser && !isGrouped && Boolean(senderDisplayName || senderHandle);
   const visibleReactions = normalizeMessageReactions(message.reactions);
 
+  const focusMessageSurface = useCallback(() => {
+    const messageElement = articleRef.current;
+    const focusTarget = glass
+      ? messageElement?.querySelector<HTMLElement>(
+          '[data-chat-message-bubble="true"]',
+        )
+      : messageElement;
+    focusTarget?.focus({ preventScroll: true });
+  }, [glass]);
+
   const handleCopy = useCallback(() => {
     onCopy?.(message.text);
     flashCopied();
@@ -571,10 +581,13 @@ export const ChatMessage = memo(function ChatMessage({
 
   const handleReply = useCallback(() => {
     onReply?.(message);
-    // Collapse the tap-revealed rail (touch/glass) after arming the reply so the
-    // focus returns to the composer, not a lingering action row.
-    if (glass || !supportsHover) setShowActions(false);
-  }, [message, onReply, glass, supportsHover]);
+    // Focus the stable message surface before hiding the touch/glass actions;
+    // otherwise the browser can retain focus inside controls being unmounted.
+    if (glass || !supportsHover) {
+      focusMessageSurface();
+      setShowActions(false);
+    }
+  }, [message, onReply, glass, supportsHover, focusMessageSurface]);
 
   // Press-and-hold to copy an assistant answer (glass) — the only extraction
   // affordance on touch. A still hold past COPY_HOLD_MS copies + flashes
@@ -664,6 +677,16 @@ export const ChatMessage = memo(function ChatMessage({
       setShowActions((prev) => !prev);
     },
     [isEditing, supportsHover],
+  );
+
+  const handleActionsMouseLeave = useCallback(
+    (event: MouseEvent<HTMLElement>) => {
+      const activeElement = event.currentTarget.ownerDocument.activeElement;
+      if (!event.currentTarget.contains(activeElement)) {
+        setShowActions(false);
+      }
+    },
+    [],
   );
 
   const handleEditKeyDown = useCallback(
@@ -775,6 +798,7 @@ export const ChatMessage = memo(function ChatMessage({
     // bubble stays a plain, non-interactive container.
     const hasActions =
       canRowCopy || canPlay || canEdit || canRowDelete || canReply;
+    const accessoryVisible = actionsVisible && !isEditing;
     // An assistant turn carrying an inline choice/form/followups widget must
     // stay a plain container — see messageHasInteractiveWidget.
     const hasInteractiveWidget =
@@ -932,6 +956,9 @@ export const ChatMessage = memo(function ChatMessage({
         "w-fit max-w-full rounded-2xl rounded-bl-md border border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
+      // Align the user bubble's bordered text edge with the flat assistant
+      // text edge so the reserved action lane has the same visual rhythm.
+      isUser && "py-[3px]",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
       // last so it wins over the glass hairline.
@@ -951,13 +978,33 @@ export const ChatMessage = memo(function ChatMessage({
         initial={initial}
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={transition}
-        className="mb-1.5"
+        className="mb-0"
+        onMouseEnter={
+          supportsHover && hasActions ? () => setShowActions(true) : undefined
+        }
+        onMouseLeave={
+          supportsHover && hasActions ? handleActionsMouseLeave : undefined
+        }
+        onFocusCapture={hasActions ? () => setShowActions(true) : undefined}
+        onBlurCapture={
+          hasActions
+            ? (event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setShowActions(false);
+                }
+              }
+            : undefined
+        }
       >
         {/* Bubble + its click-to-reveal action row stack vertically, aligned to
             the turn's side (#10713). */}
         <MessageRowContent
           className={cn(
-            "flex flex-col gap-1",
+            "relative flex flex-col",
+            // Reserve the action lane before reveal so hover, focus, and touch
+            // never reflow nearby messages. Coarse pointers keep 44px targets
+            // while overlapping the lane edges to avoid an oversized gap.
+            hasActions && "pb-5 pointer-coarse:pb-9",
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -990,6 +1037,8 @@ export const ChatMessage = memo(function ChatMessage({
               variant="glass"
               bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
+              tabIndex={-1}
+              aria-label={`${isUser ? "Your" : agentName} message`}
               {...(holdHandlers ?? {})}
               className={bubbleExtraClassName}
               data-chat-message-bubble="true"
@@ -998,30 +1047,50 @@ export const ChatMessage = memo(function ChatMessage({
               {bubbleContent}
             </ChatBubble>
           )}
-          {actionsVisible && !isEditing && hasActions ? (
-            <MessageRowFooter
+          {hasActions ? (
+            <motion.div
               data-testid="thread-line-actions"
+              aria-hidden={!accessoryVisible}
+              inert={!accessoryVisible}
+              initial={false}
+              animate={
+                accessoryVisible
+                  ? { opacity: 1, y: 0, scale: 1 }
+                  : {
+                      opacity: 0,
+                      y: reduceMotion ? 0 : 4,
+                      scale: reduceMotion ? 1 : 0.98,
+                    }
+              }
+              transition={{
+                duration: reduceMotion ? 0.1 : 0.2,
+                ease: GLASS_EASE,
+              }}
               className={cn(
-                "flex items-center gap-1.5 px-0 text-white/70",
-                isUser ? "pr-1" : "pl-1",
+                "absolute z-10 min-w-0",
+                isUser
+                  ? "-bottom-1 right-0 origin-top-right pointer-coarse:-bottom-2"
+                  : "bottom-0 left-0 origin-top-left pointer-coarse:-bottom-1",
               )}
             >
-              <ChatMessageActions
-                appearance="glass-row"
-                canDelete={canRowDelete}
-                canEdit={canEdit}
-                canPlay={canPlay}
-                canReply={canReply}
-                copied={copied}
-                labels={labels}
-                onCopy={canRowCopy ? handleCopy : undefined}
-                onDelete={() => onDelete?.(message.id)}
-                onEdit={handleStartEditing}
-                onPlay={() => onSpeak?.(message.id, message.text)}
-                onReply={handleReply}
-                playing={playing}
-              />
-            </MessageRowFooter>
+              <MessageRowFooter className="flex items-center p-0 text-white/70">
+                <ChatMessageActions
+                  appearance="glass-row"
+                  canDelete={canRowDelete}
+                  canEdit={canEdit}
+                  canPlay={canPlay}
+                  canReply={canReply}
+                  copied={copied}
+                  labels={labels}
+                  onCopy={canRowCopy ? handleCopy : undefined}
+                  onDelete={() => onDelete?.(message.id)}
+                  onEdit={handleStartEditing}
+                  onPlay={() => onSpeak?.(message.id, message.text)}
+                  onReply={handleReply}
+                  playing={playing}
+                />
+              </MessageRowFooter>
+            </motion.div>
           ) : null}
           {/* Retry a recoverable failure by re-sending the preceding user turn.
               Always visible on the failed turn (not gated behind the reveal
@@ -1061,8 +1130,19 @@ export const ChatMessage = memo(function ChatMessage({
       }`}
       data-testid="chat-message"
       data-role={message.role}
+      tabIndex={isFirstRun ? undefined : 0}
       onMouseEnter={supportsHover ? () => setShowActions(true) : undefined}
-      onMouseLeave={supportsHover ? () => setShowActions(false) : undefined}
+      onMouseLeave={supportsHover ? handleActionsMouseLeave : undefined}
+      onFocusCapture={!isFirstRun ? () => setShowActions(true) : undefined}
+      onBlurCapture={
+        !isFirstRun
+          ? (event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                setShowActions(false);
+              }
+            }
+          : undefined
+      }
       onTouchStart={handleTapStart}
       onTouchEnd={handleTapReveal}
       aria-label={`${
@@ -1250,6 +1330,8 @@ export const ChatMessage = memo(function ChatMessage({
           {!isEditing && !isFirstRun ? (
             <div
               data-testid="chat-message-action-rail"
+              aria-hidden={!actionsVisible}
+              inert={!actionsVisible}
               className={cn(
                 "absolute top-0 flex items-center gap-1 transition-opacity duration-200",
                 // Below the `sm` breakpoint (narrow phones) anchor the

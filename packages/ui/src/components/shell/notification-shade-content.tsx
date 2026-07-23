@@ -227,14 +227,21 @@ function NotificationSourceIcon({
 function NotificationStackPreviewContent({
   notification,
   stackCount,
+  visibility,
 }: {
   notification: AgentNotification;
   stackCount?: number;
+  visibility: number;
 }): JSX.Element {
   return (
     <span
       aria-hidden
       data-notification-stack-preview-content=""
+      data-notification-stack-preview-visibility={visibility}
+      style={{
+        opacity: visibility,
+        visibility: visibility > 0 ? "visible" : "hidden",
+      }}
       className="pointer-events-none flex min-h-touch min-w-0 items-center gap-3 px-3 py-2 text-left"
     >
       <NotificationSourceIcon
@@ -463,6 +470,11 @@ export const NotificationRow = memo(function NotificationRow({
   const promotingStack = Boolean(
     dismissing && stackPeeks && !stackPeeks.fanned,
   );
+  const stackPreviewVisibility = promotingStack
+    ? 1
+    : dragging
+      ? Math.min(1, Math.abs(swipeX) / 44)
+      : 0;
   const collapsingDismissedRow = Boolean(
     dismissing && (!stackPeeks || stackPeeks.fanned),
   );
@@ -634,6 +646,7 @@ export const NotificationRow = memo(function NotificationRow({
                         ? stackPeeks.totalCount - 1
                         : undefined
                     }
+                    visibility={index === 0 ? stackPreviewVisibility : 0}
                   />
                 ) : null}
               </button>

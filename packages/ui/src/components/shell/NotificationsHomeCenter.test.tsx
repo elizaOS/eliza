@@ -1583,11 +1583,16 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       expandShade();
       const swipe = screen.getByTestId("notification-row-swipe");
       const peek = screen.getByTestId("notification-stack-peek");
+      const preview = peek.querySelector<HTMLElement>(
+        "[data-notification-stack-preview-content]",
+      );
       expect(
         peek
           .querySelector("[data-notification-stack-preview-title]")
           ?.getAttribute("data-notification-stack-preview-title"),
       ).toBe("Below");
+      expect(preview?.style.visibility).toBe("hidden");
+      expect(preview?.style.opacity).toBe("0");
       const step = (type: string, x: number) =>
         (
           fireEvent as unknown as Record<
@@ -1602,6 +1607,8 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
         });
       step("pointerDown", 20);
       step("pointerMove", 80);
+      expect(preview?.style.visibility).toBe("visible");
+      expect(preview?.style.opacity).toBe("1");
       step("pointerMove", 150);
       expect(swipe.style.transform).toContain("translateX(130px)");
       expect(peek.style.transform).toContain("translateY(7px)");
@@ -1609,6 +1616,8 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       expect(swipe.style.transform).toContain("translateX(120%)");
       expect(peek.getAttribute("data-swipe-promoting")).toBe("");
       expect(peek.style.transform).toContain("translateY(0px) scale(1)");
+      expect(preview?.style.visibility).toBe("visible");
+      expect(preview?.style.opacity).toBe("1");
 
       act(() => {
         vi.advanceTimersByTime(NOTIFICATION_ROW_SETTLE_MS);
@@ -1952,6 +1961,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    const prioritySurface = priorityRow.closest<HTMLElement>(
+      '[data-testid="notification-row-swipe"]',
+    );
+    const priorityGroupContent = priorityRow.closest<HTMLElement>(
+      "[data-notification-group-content]",
+    );
+    expect(prioritySurface?.className).toContain("eliza-notif-glass");
+    expect(prioritySurface?.style.opacity).toBe("1");
+    expect(priorityGroupContent?.style.opacity).toBe("1");
     const overpullCountOpacity = Number.parseFloat(
       screen.getByTestId("notifications-count").style.opacity,
     );

@@ -7,7 +7,13 @@
  * branch under test.
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ChatMessage } from "./chat-message";
@@ -44,7 +50,10 @@ function makeMessage(
 }
 
 function deleteControl(): HTMLElement | null {
-  return screen.queryByRole("button", { name: "Delete message" });
+  return screen.queryByRole("button", {
+    name: "Delete message",
+    hidden: true,
+  });
 }
 
 describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
@@ -92,6 +101,117 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
     expect(deleteControl()).toBeNull();
   });
 
+  it("keeps panel actions available while keyboard focus remains within the message", () => {
+    render(
+      <>
+        <ChatMessage
+          message={makeMessage()}
+          onCopy={vi.fn()}
+          onReply={vi.fn()}
+          onSpeak={vi.fn()}
+        />
+        <button type="button">Outside panel message</button>
+      </>,
+    );
+
+    const message = screen.getByTestId("chat-message");
+    const rail = screen.getByTestId("chat-message-action-rail");
+    expect(message.tabIndex).toBe(0);
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rail.hasAttribute("inert")).toBe(true);
+
+    act(() => message.focus());
+    expect(rail.getAttribute("aria-hidden")).toBe("false");
+    expect(rail.hasAttribute("inert")).toBe(false);
+
+    const copy = screen.getByRole("button", { name: "Copy message" });
+    act(() => copy.focus());
+    fireEvent.mouseLeave(message);
+    expect(document.activeElement).toBe(copy);
+    expect(rail.getAttribute("aria-hidden")).toBe("false");
+
+    act(() =>
+      screen.getByRole("button", { name: "Outside panel message" }).focus(),
+    );
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rail.hasAttribute("inert")).toBe(true);
+  });
+
+  it("keeps glass actions visible while keyboard focus moves within the row", () => {
+    render(
+      <>
+        <ChatMessage
+          appearance="glass"
+          message={makeMessage({ role: "user", text: "Keyboard draft" })}
+          onCopy={vi.fn()}
+          onEdit={vi.fn()}
+          onReply={vi.fn()}
+        />
+        <button type="button">Outside glass message</button>
+      </>,
+    );
+
+    const message = screen.getByTestId("thread-line");
+    const bubble = screen.getByRole("button", {
+      name: "Show message actions",
+    });
+    const actions = screen.getByTestId("thread-line-actions");
+    const content = actions.parentElement;
+    const restingContentClass = content?.className;
+    expect(message.className).toContain("mb-0");
+    expect(content?.className).toContain("pb-5");
+    expect(content?.className).toContain("pointer-coarse:pb-9");
+    expect(actions.className).toContain("absolute");
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+
+    act(() => bubble.focus());
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(actions.hasAttribute("inert")).toBe(false);
+    expect(actions.parentElement?.className).toBe(restingContentClass);
+
+    const edit = screen.getByRole("button", { name: "Edit" });
+    act(() => edit.focus());
+    fireEvent.mouseLeave(message);
+    expect(document.activeElement).toBe(edit);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(actions.parentElement?.className).toBe(restingContentClass);
+
+    act(() =>
+      screen.getByRole("button", { name: "Outside glass message" }).focus(),
+    );
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+    expect(actions.parentElement?.className).toBe(restingContentClass);
+  });
+
+  it("returns focus to the visible glass message before Reply hides its actions", () => {
+    const onReply = vi.fn();
+    render(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage()}
+        onCopy={vi.fn()}
+        onReply={onReply}
+      />,
+    );
+
+    const bubble = screen.getByRole("button", {
+      name: "Show message actions",
+    });
+    act(() => bubble.focus());
+    const reply = screen.getByRole("button", { name: "Reply" });
+    act(() => reply.focus());
+
+    fireEvent.click(reply);
+
+    expect(onReply).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(bubble);
+    const actions = screen.getByTestId("thread-line-actions");
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+  });
+
   it("renders a frosted first-run greeting with no action rail", () => {
     // The onboarding greeting is seeded wallpaper prose with a CTA beneath it;
     // reply / copy / delete / play are meaningless on it and the hover rail read
@@ -132,6 +252,6 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
     expect(bubble?.classList.contains("rounded-br-md")).toBe(true);
     expect(bubble?.classList.contains("border-white/15")).toBe(true);
     expect(bubble?.classList.contains("px-3.5")).toBe(true);
-    expect(bubble?.classList.contains("py-2")).toBe(true);
+    expect(bubble?.classList.contains("py-[3px]")).toBe(true);
   });
 });

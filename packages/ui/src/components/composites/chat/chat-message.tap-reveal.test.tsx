@@ -9,7 +9,13 @@
 // (non-collapsed) text selection suppresses it so ending a highlight drag
 // never also flips the rail.
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ChatMessage } from "./chat-message";
@@ -51,19 +57,11 @@ function getArticle(): HTMLElement {
   return screen.getByTestId("chat-message");
 }
 
-/**
- * The rail's visibility is carried by an opacity class on the wrapper around
- * ChatMessageActions (opacity-100 shown, opacity-0 hidden) — walk up from the
- * always-rendered Copy button to read it.
- */
 function railVisible(): boolean {
-  let el: HTMLElement | null = screen.getByLabelText("Copy message");
-  while (el) {
-    if (el.classList.contains("opacity-100")) return true;
-    if (el.classList.contains("opacity-0")) return false;
-    el = el.parentElement;
-  }
-  throw new Error("action-rail visibility wrapper not found");
+  const rail = screen.getByTestId("chat-message-action-rail");
+  if (rail.classList.contains("opacity-100")) return true;
+  if (rail.classList.contains("opacity-0")) return false;
+  throw new Error("action-rail visibility class not found");
 }
 
 function touchPoint(clientX: number, clientY: number) {
@@ -85,6 +83,31 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     fireEvent.touchStart(article, { touches: [touchPoint(50, 100)] });
     fireEvent.touchEnd(article, { changedTouches: [touchPoint(50, 100)] });
     expect(railVisible()).toBe(false);
+  });
+
+  it("returns focus to the panel message before Reply hides the touch rail", () => {
+    const onReply = vi.fn();
+    render(
+      <ChatMessage
+        message={makeMessage()}
+        onCopy={vi.fn()}
+        onReply={onReply}
+      />,
+    );
+
+    const article = getArticle();
+    const rail = screen.getByTestId("chat-message-action-rail");
+    act(() => article.focus());
+    const reply = screen.getByRole("button", { name: "Reply" });
+    act(() => reply.focus());
+
+    fireEvent.click(reply);
+
+    expect(onReply).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(article);
+    expect(rail.contains(document.activeElement)).toBe(false);
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rail.hasAttribute("inert")).toBe(true);
   });
 
   it("a scroll-like touch (travel past the slop) does NOT toggle the rail", () => {
