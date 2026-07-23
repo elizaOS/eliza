@@ -16,6 +16,7 @@ import type {
 import {
   isApiError,
   type ModelCatalogProviders,
+  type ModelCatalogResponse,
 } from "../api/client-types-core";
 import {
   resolveSettingsSectionToken,
@@ -40,6 +41,36 @@ const GUI_SURFACE = "gui" as const;
 
 /** Event the App shell listens for to open settings at a specific section. */
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
+
+function resolveModelCatalogProviders(
+  models: ModelCatalogResponse,
+): ModelCatalogProviders | null {
+  const nestedProviders = models.catalog?.providers;
+  if (isModelCatalogProviders(nestedProviders)) return nestedProviders;
+  if (isModelCatalogProviders(models.providers)) return models.providers;
+  return null;
+}
+
+function isModelCatalogProviders(
+  value: unknown,
+): value is ModelCatalogProviders {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).every(
+    (entries) =>
+      Array.isArray(entries) &&
+      entries.every(
+        (entry) =>
+          entry &&
+          typeof entry === "object" &&
+          typeof (entry as { id?: unknown }).id === "string" &&
+          typeof (entry as { display?: unknown }).display === "string" &&
+          Array.isArray((entry as { efforts?: unknown }).efforts) &&
+          Array.isArray((entry as { roles?: unknown }).roles),
+      ),
+  );
+}
 
 /**
  * Report a user-initiated view switch to the agent (#8792). Fire-and-forget,
@@ -333,7 +364,8 @@ export function useSlashCommandController(
         void client
           .getModelsCatalog()
           .then((models) => {
-            if (!cancelled) setModelCatalog(models.catalog.providers);
+            if (!cancelled)
+              setModelCatalog(resolveModelCatalogProviders(models));
           })
           .catch((error: unknown) => {
             // error-policy:J4 model completions degrade to none with the
