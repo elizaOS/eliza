@@ -11,14 +11,144 @@
  * for substring inclusion (`.includes(path)`) rather than exact equality.
  */
 
-import type { Plugin } from "@elizaos/core";
+import { type IAgentRuntime, type Plugin, Service } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { getView } from "../api/views-registry.ts";
 import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
-import { createTestRuntime } from "./plugin-lifecycle-test-utils.ts";
+import {
+  createTestRuntime,
+  type TestRuntime,
+} from "./plugin-lifecycle-test-utils.ts";
 
 /** Returns true if the runtime has a registered route whose path includes the given segment. */
 function hasRoutePath(routes: { path: string }[], segment: string): boolean {
   return routes.some((r) => r.path.includes(segment));
+}
+
+type LifecycleRaceFixture = {
+  plugin: Plugin;
+  actionName: string;
+  routePath: string;
+  serviceType: string;
+  viewId: string;
+};
+
+type InspectableRuntime = TestRuntime & {
+  getPluginOwnership: (pluginName: string) => {
+    registeredPlugin?: Plugin;
+  } | null;
+};
+
+function makeLifecycleRaceFixture(
+  pluginName: string,
+  version: string,
+  init?: Plugin["init"],
+): LifecycleRaceFixture {
+  const token = `${pluginName}-${version}`;
+  const actionName = token.replaceAll("-", "_").toUpperCase();
+  const routePath = `/api/${token}`;
+  const serviceType = `${token}-service`;
+  const viewId = `${token}-view`;
+
+  class LifecycleRaceService extends Service {
+    static override serviceType = serviceType;
+    override capabilityDescription = `Service for ${token}.`;
+
+    static override async start(
+      runtime: IAgentRuntime,
+    ): Promise<LifecycleRaceService> {
+      return new LifecycleRaceService(runtime);
+    }
+
+    override async stop(): Promise<void> {}
+  }
+
+  return {
+    actionName,
+    routePath,
+    serviceType,
+    viewId,
+    plugin: {
+      name: pluginName,
+      description: `Lifecycle race fixture ${token}.`,
+      init,
+      actions: [
+        {
+          name: actionName,
+          description: "Lifecycle race action.",
+          examples: [],
+          similes: [],
+          validate: async () => true,
+          handler: async () => ({ success: true }),
+        },
+      ],
+      routes: [
+        {
+          type: "GET",
+          path: routePath,
+          rawPath: true,
+          handler: async (_req, res) => {
+            res.json({ ok: true });
+          },
+        },
+      ],
+      services: [LifecycleRaceService],
+      views: [{ id: viewId, label: `Lifecycle ${version}` }],
+    },
+  };
+}
+
+function expectFixtureComponentsAbsent(
+  runtime: TestRuntime,
+  fixture: LifecycleRaceFixture,
+): void {
+  expect(
+    runtime.actions.some((action) => action.name === fixture.actionName),
+  ).toBe(false);
+  expect(hasRoutePath(runtime.routes, fixture.routePath)).toBe(false);
+  expect(runtime.hasService(fixture.serviceType)).toBe(false);
+  expect(getView(fixture.viewId)).toBeUndefined();
+}
+
+function expectFixturePresent(
+  runtime: InspectableRuntime,
+  fixture: LifecycleRaceFixture,
+): void {
+  expect(
+    runtime.plugins.filter((plugin) => plugin.name === fixture.plugin.name),
+  ).toEqual([fixture.plugin]);
+  expect(
+    runtime.actions.some((action) => action.name === fixture.actionName),
+  ).toBe(true);
+  expect(hasRoutePath(runtime.routes, fixture.routePath)).toBe(true);
+  expect(runtime.hasService(fixture.serviceType)).toBe(true);
+  expect(getView(fixture.viewId)).toMatchObject({
+    pluginName: fixture.plugin.name,
+  });
+  expect(
+    runtime.getPluginOwnership(fixture.plugin.name)?.registeredPlugin,
+  ).toBe(fixture.plugin);
+}
+
+function expectPluginAbsent(
+  runtime: InspectableRuntime,
+  fixture: LifecycleRaceFixture,
+): void {
+  expect(
+    runtime.plugins.some((plugin) => plugin.name === fixture.plugin.name),
+  ).toBe(false);
+  expectFixtureComponentsAbsent(runtime, fixture);
+  expect(runtime.getPluginOwnership(fixture.plugin.name)).toBeNull();
+}
+
+function installFallbackLifecycle(runtime: TestRuntime): void {
+  const internal = runtime as TestRuntime & {
+    __elizaPluginLifecycleInstalled?: boolean;
+    __elizaPluginViewSyncInstalled?: boolean;
+  };
+  delete internal.__elizaPluginLifecycleInstalled;
+  delete internal.__elizaPluginViewSyncInstalled;
+  installRuntimePluginLifecycle(runtime);
 }
 
 /**
@@ -394,7 +524,186 @@ describe("schema-bearing plugin registration", () => {
     ).toBe(false);
     expect(hasRoutePath(runtime.routes, "/api/schema-failure")).toBe(false);
   });
+
+  it("shares one failed registration across concurrent same-name callers", async () => {
+    const runtime = createTestRuntime();
+    installRuntimePluginLifecycle(runtime);
+    const runPluginMigrations = vi.fn(async () => {});
+    const initEntered = Promise.withResolvers<void>();
+    const initRelease = Promise.withResolvers<void>();
+
+    runtime.registerDatabaseAdapter({
+      isReady: async () => true,
+      runPluginMigrations,
+    } as never);
+
+    const plugin: Plugin = {
+      name: "concurrent-failure-plugin",
+      description: "plugin whose owner registration fails after publishing",
+      schema: {
+        widgets: {
+          id: "text",
+        },
+      },
+      init: async () => {
+        initEntered.resolve();
+        await initRelease.promise;
+        throw new Error("init failed");
+      },
+      actions: [
+        {
+          name: "CONCURRENT_FAILURE_ACTION",
+          description: "action",
+          examples: [],
+          similes: [],
+          validate: async () => true,
+          handler: async () => ({ success: true }),
+        },
+      ],
+      routes: [
+        {
+          type: "GET",
+          path: "/api/concurrent-failure",
+          rawPath: true,
+          handler: async (_req, res) => {
+            res.json({ ok: true });
+          },
+        },
+      ],
+      views: [
+        {
+          id: "concurrent-failure-view",
+          label: "Concurrent failure",
+        },
+      ],
+    };
+
+    const ownerRegistration = runtime.registerPlugin(plugin);
+    await initEntered.promise;
+    const duplicateRegistration = runtime.registerPlugin(plugin);
+    initRelease.resolve();
+
+    const results = await Promise.allSettled([
+      ownerRegistration,
+      duplicateRegistration,
+    ]);
+
+    expect(results).toHaveLength(2);
+    for (const result of results) {
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected") {
+        expect(result.reason).toBeInstanceOf(Error);
+        expect((result.reason as Error).message).toBe("init failed");
+      }
+    }
+    expect(runPluginMigrations).toHaveBeenCalledOnce();
+    expect(runtime.plugins.some((entry) => entry.name === plugin.name)).toBe(
+      false,
+    );
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "CONCURRENT_FAILURE_ACTION",
+      ),
+    ).toBe(false);
+    expect(hasRoutePath(runtime.routes, "/api/concurrent-failure")).toBe(false);
+    expect(getView("concurrent-failure-view")).toBeUndefined();
+
+    await runtime.registerPlugin({
+      ...plugin,
+      init: async () => {},
+    });
+
+    expect(runPluginMigrations).toHaveBeenCalledTimes(2);
+    expect(runtime.plugins.some((entry) => entry.name === plugin.name)).toBe(
+      true,
+    );
+    expect(
+      runtime.actions.some(
+        (action) => action.name === "CONCURRENT_FAILURE_ACTION",
+      ),
+    ).toBe(true);
+    expect(hasRoutePath(runtime.routes, "/api/concurrent-failure")).toBe(true);
+    expect(getView("concurrent-failure-view")).toMatchObject({
+      pluginName: plugin.name,
+    });
+
+    await runtime.unloadPlugin(plugin.name);
+    expect(getView("concurrent-failure-view")).toBeUndefined();
+  });
 });
+
+for (const mode of [
+  {
+    label: "core lifecycle plus view sync",
+    install: installRuntimePluginLifecycle,
+  },
+  {
+    label: "agent fallback lifecycle",
+    install: installFallbackLifecycle,
+  },
+] as const) {
+  describe(`${mode.label} operation ordering`, () => {
+    it("queues unload behind in-flight init and leaves no resurrected state", async () => {
+      const runtime = createTestRuntime() as InspectableRuntime;
+      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      mode.install(runtime);
+      const initEntered = Promise.withResolvers<void>();
+      const initRelease = Promise.withResolvers<void>();
+      const fixture = makeLifecycleRaceFixture(
+        `concurrent-unload-${mode.label.replaceAll(" ", "-")}`,
+        "initial",
+        async () => {
+          initEntered.resolve();
+          await initRelease.promise;
+        },
+      );
+
+      const registration = runtime.registerPlugin(fixture.plugin);
+      await initEntered.promise;
+      const unload = runtime.unloadPlugin(fixture.plugin.name);
+      initRelease.resolve();
+      await Promise.all([registration, unload]);
+
+      expectPluginAbsent(runtime, fixture);
+
+      const retry = makeLifecycleRaceFixture(fixture.plugin.name, "retry");
+      await runtime.registerPlugin(retry.plugin);
+      expectFixturePresent(runtime, retry);
+      await runtime.unloadPlugin(retry.plugin.name);
+      expectPluginAbsent(runtime, retry);
+    });
+
+    it("queues reload behind in-flight init and keeps exactly one replacement", async () => {
+      const runtime = createTestRuntime() as InspectableRuntime;
+      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      mode.install(runtime);
+      const initEntered = Promise.withResolvers<void>();
+      const initRelease = Promise.withResolvers<void>();
+      const pluginName = `concurrent-reload-${mode.label.replaceAll(" ", "-")}`;
+      const initial = makeLifecycleRaceFixture(
+        pluginName,
+        "initial",
+        async () => {
+          initEntered.resolve();
+          await initRelease.promise;
+        },
+      );
+      const replacement = makeLifecycleRaceFixture(pluginName, "replacement");
+
+      const registration = runtime.registerPlugin(initial.plugin);
+      await initEntered.promise;
+      const reload = runtime.reloadPlugin(replacement.plugin);
+      initRelease.resolve();
+      await Promise.all([registration, reload]);
+
+      expectFixtureComponentsAbsent(runtime, initial);
+      expectFixturePresent(runtime, replacement);
+
+      await runtime.unloadPlugin(pluginName);
+      expectPluginAbsent(runtime, replacement);
+    });
+  });
+}
 
 describe("dispose error handling", () => {
   it("a plugin whose dispose hook throws does not corrupt the runtime state", async () => {

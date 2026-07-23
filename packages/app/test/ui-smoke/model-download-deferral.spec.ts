@@ -153,7 +153,12 @@ test("selecting on-device inference drops the user into chat while the model dow
     await fulfillJson(route, 200, { ok: true, models: [], installed: [] });
   });
 
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    // These specs drive the Local/on-device runtime cards; the chooser is off
+    // by default since cloud-only onboarding (#13377/#15532) - opt back in.
+    "eliza:enable-runtime-chooser": "1",
+  });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const chatOverlay = page.getByTestId("chat-overlay");

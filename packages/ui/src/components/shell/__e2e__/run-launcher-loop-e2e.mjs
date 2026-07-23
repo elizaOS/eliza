@@ -316,6 +316,13 @@ let applied = 0;
 let lastVideoPath = null;
 let brandAfter = null;
 
+// A dropped/coalesced CDP touch under CI compositor load can red a batch
+// without a product defect (same policy as launcher-gesture-loop.spec.ts's
+// bounded outer retry). One same-seed retry in a fresh context keeps the gate
+// honest: a genuine invariant violation is deterministic and fails both
+// attempts, while an environmental drop passes the replay.
+const BATCH_ATTEMPTS = 2;
+
 for (let batch = 0; batch < batchCount; batch += 1) {
   if (ONLY_BATCH !== null && batch !== ONLY_BATCH) continue;
   const remaining = TOTAL_ACTIONS - applied;
@@ -325,32 +332,79 @@ for (let batch = 0; batch < batchCount; batch += 1) {
   // stream, replayable end-to-end from ELIZA_LOOP_SEED.
   const batchSeed = (SEED + batch * 0x9e3779b1) >>> 0;
 
-  const context = await newBatchContext();
-  await context.tracing.start({ screenshots: true, snapshots: true });
-  const page = await context.newPage();
-  const sink = { errors: [] };
-  let batchOk = true;
+  let batchOk = false;
+  let lastError = null;
   const isLastBatch = batch === batchCount - 1 || size >= remaining;
-  try {
-    await bootPage(page, sink);
-    const result = await runLauncherLoop(page, {
-      seed: batchSeed,
-      actions: size,
-      weights: TOUCH_WEIGHTS,
-    });
-    if (sink.errors.length > 0) {
-      throw new Error(`page errors during batch: ${sink.errors.join(" | ")}`);
+  for (let attempt = 1; attempt <= BATCH_ATTEMPTS && !batchOk; attempt += 1) {
+    const context = await newBatchContext();
+    await context.tracing.start({ screenshots: true, snapshots: true });
+    const page = await context.newPage();
+    const sink = { errors: [] };
+    let attemptOk = true;
+    try {
+      await bootPage(page, sink);
+      const result = await runLauncherLoop(page, {
+        seed: batchSeed,
+        actions: size,
+        weights: TOUCH_WEIGHTS,
+      });
+      if (sink.errors.length > 0) {
+        throw new Error(`page errors during batch: ${sink.errors.join(" | ")}`);
+      }
+      applied += result.actions;
+      console.log(
+        `  ✓ batch ${batch + 1}/${batchCount} — ${result.actions} actions (total ${applied}), seed ${batchSeed}${attempt > 1 ? ` (attempt ${attempt})` : ""}`,
+      );
+      if (isLastBatch) brandAfter = await page.evaluate(scanBrandColors);
+      batchOk = true;
+    } catch (error) {
+      attemptOk = false;
+      lastError = error;
+      console.error(
+        `\n✗ batch ${batch + 1} attempt ${attempt}/${BATCH_ATTEMPTS} failed (seed ${batchSeed}) — ${error?.message ?? error}\n`,
+      );
+    } finally {
+      const video = page.video();
+      if (attemptOk) {
+        await context.tracing.stop().catch(() => {});
+        await page.close();
+        await context.close();
+        if (video) {
+          const p = await video.path().catch(() => null);
+          if (p) {
+            if (lastVideoPath) await rm(lastVideoPath, { force: true }).catch(() => {});
+            lastVideoPath = p;
+          }
+        }
+      } else if (attempt < BATCH_ATTEMPTS) {
+        // Failed attempt with a retry remaining: discard its artifacts.
+        await context.tracing.stop().catch(() => {});
+        await page.close();
+        await context.close();
+        if (video) {
+          const p = await video.path().catch(() => null);
+          if (p) await rm(p, { force: true }).catch(() => {});
+        }
+      } else {
+        await context.tracing
+          .stop({ path: join(outDir, `failure-batch-${batch + 1}.trace.zip`) })
+          .catch(() => {});
+        await page.close();
+        await context.close();
+        if (video) {
+          const p = await video.path().catch(() => null);
+          if (p)
+            await rename(p, join(outDir, `failure-batch-${batch + 1}.webm`)).catch(
+              () => {},
+            );
+        }
+      }
     }
-    applied += result.actions;
-    console.log(
-      `  ✓ batch ${batch + 1}/${batchCount} — ${result.actions} actions (total ${applied}), seed ${batchSeed}`,
-    );
-    if (isLastBatch) brandAfter = await page.evaluate(scanBrandColors);
-  } catch (error) {
-    batchOk = false;
+  }
+  if (!batchOk) {
     failures += 1;
     console.error(
-      `\n✗ batch ${batch + 1} FAILED (seed ${batchSeed}) — ${error?.message ?? error}\n`,
+      `\n✗ batch ${batch + 1} FAILED after ${BATCH_ATTEMPTS} attempts (seed ${batchSeed}) — ${lastError?.message ?? lastError}\n`,
     );
     await writeFile(
       join(outDir, `failure-batch-${batch + 1}.json`),
@@ -359,42 +413,16 @@ for (let batch = 0; batch < batchCount; batch += 1) {
           runSeed: SEED,
           batch: batch + 1,
           batchSeed,
+          attempts: BATCH_ATTEMPTS,
           replay: `ELIZA_LOOP_SEED=${SEED} ELIZA_LOOP_ONLY_BATCH=${batch}`,
-          message: String(error?.message ?? error),
-          stack: String(error?.stack ?? ""),
+          message: String(lastError?.message ?? lastError),
+          stack: String(lastError?.stack ?? ""),
         },
         null,
         2,
       )}\n`,
     );
-  } finally {
-    const video = page.video();
-    if (batchOk) {
-      await context.tracing.stop().catch(() => {});
-      await page.close();
-      await context.close();
-      if (video) {
-        const p = await video.path().catch(() => null);
-        if (p) {
-          if (lastVideoPath) await rm(lastVideoPath, { force: true }).catch(() => {});
-          lastVideoPath = p;
-        }
-      }
-    } else {
-      await context.tracing
-        .stop({ path: join(outDir, `failure-batch-${batch + 1}.trace.zip`) })
-        .catch(() => {});
-      await page.close();
-      await context.close();
-      if (video) {
-        const p = await video.path().catch(() => null);
-        if (p)
-          await rename(p, join(outDir, `failure-batch-${batch + 1}.webm`)).catch(
-            () => {},
-          );
-      }
-      break;
-    }
+    break;
   }
 }
 

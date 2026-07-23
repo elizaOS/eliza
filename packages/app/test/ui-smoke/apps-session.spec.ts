@@ -22,7 +22,7 @@ test("apps view can route into internal tool pages and survive a reload", async 
   await assertReadyChecks(
     page,
     "apps-view",
-    [{ text: "LifeOps" }],
+    [{ text: "My Apps" }],
     "all",
     90_000,
   );
@@ -33,7 +33,7 @@ test("apps view can route into internal tool pages and survive a reload", async 
   await assertReadyChecks(
     page,
     "apps-view-reload",
-    [{ text: "LifeOps" }],
+    [{ text: "My Apps" }],
     "all",
     90_000,
   );

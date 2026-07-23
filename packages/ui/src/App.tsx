@@ -144,7 +144,10 @@ import {
   firstRunOwnsLoginSurface,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
-import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
+import {
+  isBootstrapGateRequired,
+  isLoopbackGatewayHost,
+} from "./state/use-startup-shell-controller";
 import {
   SurfaceRealmScope,
   setActiveSurfaceRealmScope,
@@ -1613,12 +1616,33 @@ function ViewRouter({
   settingsNavigateSequence?: number;
 }) {
   const activeTab = useAppSelector((s) => s.tab);
+  const setActiveTab = useAppSelector((s) => s.setTab);
   const tab = routeOverride?.tab ?? activeTab;
   // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
   // camera + the home tiles + the launcher tiles) — never rendered on web,
   // desktop, iOS, or stock Play-Store Android, even via a deep link.
   const nativeOsSurfaceEnabled = isAospShellEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
+  // Late plugin registrations can land AFTER the boot path→tab resolution: a
+  // direct deep link to a plugin-owned page (e.g. /phone-companion) resolves
+  // to the "views" fallback because registerAppShellPage runs on the deferred
+  // idle pump, after first paint. Re-derive the tab for the current path on
+  // every registry change and adopt the now-registered page. Correcting only
+  // away from the "views" fallback means user navigation is never fought —
+  // for a fixed path, tabFromPath's answer only changes when a registration
+  // lands.
+  const shellPageRegistryVersion = useAppShellPageRegistryVersion();
+  useEffect(() => {
+    // The version is the re-run trigger (same pattern as useResolvedDynamicPage).
+    void shellPageRegistryVersion;
+    if (routeOverride) return;
+    if (activeTab !== "views") return;
+    if (typeof window === "undefined") return;
+    const resolved = tabFromPath(getWindowNavigationPath());
+    if (resolved && resolved !== "views") {
+      setActiveTab(resolved);
+    }
+  }, [shellPageRegistryVersion, routeOverride, activeTab, setActiveTab]);
   const [navigationPath, setNavigationPath] = useState(
     () =>
       routeOverride?.navigationPath ??
@@ -2093,6 +2117,17 @@ function AppContent() {
   // Runtime-dependent effects and overlay apps below stay gated on
   // `isCoordinatorReady` and defer safely.
   const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
+  // Cloud-container bootstrap: first-run-required is shell-paintable (in-chat
+  // onboarding), but a provisioned container without a bootstrap session must
+  // still hold the full-screen StartupScreen so its token gate can run — the
+  // shell controller computes the matching `bootstrap` view.
+  const firstRunCloudProvisionedContainer = useAppSelector(
+    (s) => s.firstRunCloudProvisionedContainer,
+  );
+  const bootstrapGateHolds = isBootstrapGateRequired(
+    startupCoordinator.phase,
+    firstRunCloudProvisionedContainer,
+  );
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -2696,7 +2731,7 @@ function AppContent() {
     );
   }
 
-  if (!isShellPaintableNow) {
+  if (!isShellPaintableNow || bootstrapGateHolds) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />

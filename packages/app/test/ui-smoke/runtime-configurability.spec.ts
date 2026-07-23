@@ -83,7 +83,12 @@ test("in-chat first-run exposes cloud and local runtimes and Local is configurab
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page);
   await injectFullCapabilityHost(page);
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    // These specs drive the Local/on-device runtime cards; the chooser is off
+    // by default since cloud-only onboarding (#13377/#15532) - opt back in.
+    "eliza:enable-runtime-chooser": "1",
+  });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -130,7 +135,12 @@ test("in-chat first-run survives browser back and forward while it churns", asyn
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page);
   await injectFullCapabilityHost(page);
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    // These specs drive the Local/on-device runtime cards; the chooser is off
+    // by default since cloud-only onboarding (#13377/#15532) - opt back in.
+    "eliza:enable-runtime-chooser": "1",
+  });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expectInChatFirstRun(page);
