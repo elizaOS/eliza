@@ -22,6 +22,10 @@ function runtime(
     db,
     getSetting: (key: string) => settings[key] ?? null,
     getService: (type: string) => services[type] ?? null,
+    getTasks: async () => [],
+    createTask: async () => '00000000-0000-4000-8000-000000000001',
+    deleteTask: async () => {},
+    reportError: () => {},
   } satisfies Partial<IAgentRuntime> & { db?: unknown };
 
   return mockRuntime as IAgentRuntime;
@@ -200,6 +204,34 @@ describe('EmbeddedWorkflowService', () => {
     await service.stop();
     await embedded.stop();
     await harness.close();
+  }, 60_000);
+
+  test('reports and fails startup when the persistent task store cannot be reconciled', async () => {
+    const harness = await persistentRuntime();
+    const reports: Array<{ scope: string; error: unknown }> = [];
+    const runtimeWithOfflineTasks = {
+      ...harness.runtime,
+      getTasks: async () => {
+        throw new Error('persistent task store unavailable');
+      },
+      reportError: (scope: string, error: unknown) => {
+        reports.push({ scope, error });
+      },
+    } as IAgentRuntime;
+
+    try {
+      await expect(EmbeddedWorkflowService.start(runtimeWithOfflineTasks)).rejects.toMatchObject({
+        code: 'WORKFLOW_SCHEDULE_RECONCILIATION_FAILED',
+        message: 'Failed to reconcile workflow schedule tasks',
+      });
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({
+        scope: 'EmbeddedWorkflowService.rehydrateSchedules',
+        error: { code: 'WORKFLOW_SCHEDULE_RECONCILIATION_FAILED' },
+      });
+    } finally {
+      await harness.close();
+    }
   }, 60_000);
 
   test('seeds and runs the no-LLM device health check workflow by default', async () => {
@@ -558,7 +590,16 @@ describe('EmbeddedWorkflowService', () => {
       const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-child-'));
       const client = new PGlite({ dataDir: join(dir, 'pglite') });
       const db = drizzle(client, { schema: dbSchema });
-      const runtime = { agentId: 'agent-test', db, getSetting: () => null, getService: () => null };
+      const runtime = {
+        agentId: 'agent-test',
+        db,
+        getSetting: () => null,
+        getService: () => null,
+        getTasks: async () => [],
+        createTask: async () => '00000000-0000-4000-8000-000000000001',
+        deleteTask: async () => {},
+        reportError: () => {},
+      };
       const service = await EmbeddedWorkflowService.start(runtime);
       try {
         globalThis.fetch = async (url, options) =>
@@ -714,7 +755,17 @@ describe('EmbeddedWorkflowService', () => {
       const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-code-'));
       const client = new PGlite({ dataDir: join(dir, 'pglite') });
       const db = drizzle(client, { schema: dbSchema });
-      const runtime = { agentId: 'agent-test', character: { settings: {} }, db, getSetting: () => null, getService: () => null };
+      const runtime = {
+        agentId: 'agent-test',
+        character: { settings: {} },
+        db,
+        getSetting: () => null,
+        getService: () => null,
+        getTasks: async () => [],
+        createTask: async () => '00000000-0000-4000-8000-000000000001',
+        deleteTask: async () => {},
+        reportError: () => {},
+      };
       const service = await EmbeddedWorkflowService.start(runtime);
       try {
         const created = await service.createWorkflow({
@@ -832,7 +883,17 @@ describe('EmbeddedWorkflowService', () => {
       const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-smithers-'));
       const client = new PGlite({ dataDir: join(dir, 'pglite') });
       const db = drizzle(client, { schema: dbSchema });
-      const runtime = { agentId: 'agent-test', character: { settings: {} }, db, getSetting: () => null, getService: () => null };
+      const runtime = {
+        agentId: 'agent-test',
+        character: { settings: {} },
+        db,
+        getSetting: () => null,
+        getService: () => null,
+        getTasks: async () => [],
+        createTask: async () => '00000000-0000-4000-8000-000000000001',
+        deleteTask: async () => {},
+        reportError: () => {},
+      };
       const service = await EmbeddedWorkflowService.start(runtime);
       let smithersDbPath = null;
       try {
@@ -940,7 +1001,17 @@ describe('EmbeddedWorkflowService', () => {
       const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-webhook-'));
       const client = new PGlite({ dataDir: join(dir, 'pglite') });
       const db = drizzle(client, { schema: dbSchema });
-      const runtime = { agentId: 'agent-test', character: { settings: {} }, db, getSetting: () => null, getService: () => null };
+      const runtime = {
+        agentId: 'agent-test',
+        character: { settings: {} },
+        db,
+        getSetting: () => null,
+        getService: () => null,
+        getTasks: async () => [],
+        createTask: async () => '00000000-0000-4000-8000-000000000001',
+        deleteTask: async () => {},
+        reportError: () => {},
+      };
       const service = await EmbeddedWorkflowService.start(runtime);
       try {
         const created = await service.createWorkflow({
