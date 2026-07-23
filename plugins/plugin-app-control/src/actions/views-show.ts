@@ -387,18 +387,19 @@ async function navigateToView(
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
-		const sectionSuffix = resolvedSubview ? ` → ${resolvedSubview}` : "";
+		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
+		const openedText = `Opened ${view.label}${sectionSuffix}.`;
 		if (resp.ok)
 			return {
 				ok: true,
-				text: `Navigated to ${view.label}${sectionSuffix} (${view.viewType ?? "gui"}).`,
+				text: openedText,
 				subview: resolvedSubview,
 			};
 		// 501/404 = navigation route unsupported by this shell; opening succeeds.
 		if (resp.status === 501 || resp.status === 404)
 			return {
 				ok: true,
-				text: `Opened ${view.label}${sectionSuffix}.`,
+				text: openedText,
 				subview: resolvedSubview,
 			};
 
@@ -506,6 +507,13 @@ export async function runViewsShow({
 	return {
 		success: result.ok,
 		text: result.text,
+		...(result.ok
+			? {
+					userFacingText: result.text,
+					verifiedUserFacing: true,
+					turnComplete: true,
+				}
+			: {}),
 		values: {
 			mode: "show",
 			viewId: view.id,

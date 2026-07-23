@@ -318,6 +318,28 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["settings"]);
 		});
+
+		it("owns one canonical completion after a successful view switch", async () => {
+			installNavigateCapture();
+
+			const { result, callback } = await runShow(REGISTRY, "open the calendar");
+
+			expect(callback).toHaveBeenCalledTimes(1);
+			expect(callback).toHaveBeenCalledWith({ text: "Opened Calendar." });
+			expect(result).toMatchObject({
+				success: true,
+				text: "Opened Calendar.",
+				userFacingText: "Opened Calendar.",
+				verifiedUserFacing: true,
+				turnComplete: true,
+				values: {
+					mode: "show",
+					viewId: "calendar",
+					viewType: "gui",
+					label: "Calendar",
+				},
+			});
+		});
 	});
 
 	describe("PASSIVE intent routing — intent-only phrases (planner supplies view id)", () => {
@@ -418,9 +440,17 @@ describe("view switching — VIEWS action resolver", () => {
 	describe("ambiguity + miss handling", () => {
 		it("returns no-match (not a wrong view) for an unknown target", async () => {
 			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "open the spaceship view");
+			const { result, callback } = await runShow(
+				REGISTRY,
+				"open the spaceship view",
+			);
 			expect(result?.success).toBe(false);
 			expect(result?.text).toContain("No view matches");
+			expect(result?.turnComplete).toBeUndefined();
+			expect(callback).toHaveBeenCalledTimes(1);
+			expect(callback).toHaveBeenCalledWith({
+				text: expect.stringContaining("No view matches"),
+			});
 			expect(navigated).toEqual([]);
 		});
 
