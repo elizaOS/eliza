@@ -50,6 +50,8 @@ export const CacheKeys = {
   sharedAgentScope: {
     resolve: (keyHashPrefix: string, agentId: string) =>
       `shared-agent-scope:${keyHashPrefix}:${agentId}:v1`,
+    voice: (organizationId: string, userId: string, agentId: string) =>
+      `shared-agent-scope:voice:${organizationId}:${userId}:${agentId}:v1`,
   },
   /**
    * Inference hot-path caches (#9899). The IAC entry collapses auth + org +

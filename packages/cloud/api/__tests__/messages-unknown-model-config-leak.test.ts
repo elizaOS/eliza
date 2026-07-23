@@ -1,5 +1,6 @@
 /**
  * Provider-config leak repro for POST /api/v1/messages (Anthropic-compatible).
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * Sibling of the /v1/chat/completions fix (#13913): a request for an
  * unknown/unconfigured model surfaced the raw provider-configuration error to

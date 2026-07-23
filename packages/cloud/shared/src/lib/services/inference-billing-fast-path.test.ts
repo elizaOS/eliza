@@ -63,6 +63,7 @@ const {
   isOptimisticEligible,
   isPendingInferenceCharge,
   getGateBalanceUsd,
+  InferenceBalanceCacheWarmingError,
   writePendingInferenceCharge,
   createOptimisticDebitSettler,
   sweepStalePendingInferenceCharges,
@@ -245,6 +246,37 @@ describe("getGateBalanceUsd", () => {
     expect(results).toEqual([42, 42, 42]); // all served the stale value
     await new Promise((r) => setTimeout(r, 25));
     expect(freshBalanceCalls).toBe(1); // in-flight guard collapsed 3 reads to 1 DB refresh
+  });
+
+  test("cache-only miss fails closed and hydrates under waitUntil", async () => {
+    const org = uid("org");
+    freshBalanceUsd = 27;
+    const background: Promise<unknown>[] = [];
+    await expect(
+      getGateBalanceUsd(org, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => background.push(promise) },
+      }),
+    ).rejects.toBeInstanceOf(InferenceBalanceCacheWarmingError);
+    expect(background).toHaveLength(1);
+    await background[0];
+    expect(freshBalanceCalls).toBe(1);
+    expect((await readOrgBalanceHint(org))?.balanceUsd).toBe(27);
+  });
+
+  test("stale hint returns immediately and revalidates off path", async () => {
+    const org = uid("org");
+    freshBalanceUsd = 19;
+    await writeOrgBalanceHint(org, 31, Date.now() - 61_000);
+    const background: Promise<unknown>[] = [];
+    expect(
+      await getGateBalanceUsd(org, {
+        executionCtx: { waitUntil: (promise) => background.push(promise) },
+      }),
+    ).toBe(31);
+    expect(background).toHaveLength(1);
+    await background[0];
+    expect((await readOrgBalanceHint(org))?.balanceUsd).toBe(19);
   });
 });
 

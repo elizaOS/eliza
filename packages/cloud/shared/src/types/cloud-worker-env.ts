@@ -13,6 +13,14 @@ export interface RuntimeRateLimitBinding {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
+export interface RuntimeDurableObjectStub {
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+}
+
+export interface RuntimeDurableObjectNamespace {
+  getByName(name: string): RuntimeDurableObjectStub;
+}
+
 export interface Bindings {
   // ---- Deployment environment ----
   /**
@@ -43,6 +51,12 @@ export interface Bindings {
    * prefers it when bound. Read via getCloudBinding("CACHE_KV").
    */
   CACHE_KV?: KvNamespaceLike;
+
+  /**
+   * One strongly ordered coordinator per shared agent conversation. The object
+   * owns warm history and mirrors it to Postgres after the response path.
+   */
+  SHARED_RUNTIME_CONVERSATIONS?: RuntimeDurableObjectNamespace;
 
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;

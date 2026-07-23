@@ -1,4 +1,6 @@
 // Coordinates cloud service resolve shared agent behavior behind route handlers.
+
+import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import type { Context } from "hono";
 
@@ -16,11 +18,22 @@ import {
 import { cache } from "../../cache/client";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
 import { logger } from "../../utils/logger";
+import { charactersService } from "../characters/characters";
 import { isDedicatedBootstrapWindow } from "./dedicated-bootstrap";
 
 export type ResolvedSharedAgent =
-  | { error: string; status: 400 | 404 }
+  | { error: string; status: 400 | 404 | 503 }
   | { agent: AgentSandbox; agentId: string; orgId: string; agentName: string };
+
+export interface ResolveSharedAgentOptions {
+  /**
+   * A production inference request must never hydrate scope from Postgres
+   * inline. On a miss, populate the cache under waitUntil and return a
+   * retryable warming response.
+   */
+  cacheOnly?: boolean;
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+}
 
 /**
  * The `AgentSandbox` timestamp columns Drizzle selects as JS `Date`s. These are
@@ -148,7 +161,11 @@ interface CachedSharedAgentScope {
  * full authoritative gate — the exact 401/403 taxonomy is preserved, we only
  * fast-path the HAPPY case. Session/JWT requests never reach here (no api key).
  */
-async function revalidateCachedScope(c: Context<AppEnv>, cachedOrgId: string): Promise<boolean> {
+async function revalidateCachedScope(
+  c: Context<AppEnv>,
+  cachedOrgId: string,
+  cacheOnly: boolean,
+): Promise<boolean> {
   const apiKey =
     c.req.header("X-API-Key") ||
     c.req.header("x-api-key") ||
@@ -157,8 +174,19 @@ async function revalidateCachedScope(c: Context<AppEnv>, cachedOrgId: string): P
       : null) ||
     null;
   if (!apiKey) return false;
-  const { apiKeysService } = await import("../../services/api-keys");
-  const validated = await apiKeysService.validateApiKey(apiKey);
+  const validated = cacheOnly
+    ? await cache.get<{
+        is_active?: boolean;
+        organization_id?: string;
+        expires_at?: Date | string | null;
+      }>(
+        CacheKeys.apiKey.validation(
+          createHash("sha256").update(apiKey).digest("hex").substring(0, 16),
+        ),
+      )
+    : await import("../../services/api-keys").then(({ apiKeysService }) =>
+        apiKeysService.validateApiKey(apiKey),
+      );
   if (!validated || !validated.is_active) return false;
   if (validated.expires_at && new Date(validated.expires_at) < new Date()) return false;
   // The key must still be scoped to the org the cached agent belongs to. A
@@ -180,7 +208,10 @@ async function revalidateCachedScope(c: Context<AppEnv>, cachedOrgId: string): P
  * its own subdomain REST surface instead. Returns the superset of fields the
  * leaves read; each caller takes what it needs.
  */
-export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSharedAgent> {
+export async function resolveSharedAgent(
+  c: Context<AppEnv>,
+  options: ResolveSharedAgentOptions = {},
+): Promise<ResolvedSharedAgent> {
   const agentId = c.req.param("agentId");
   if (!agentId) return { error: "Missing agent id", status: 400 };
 
@@ -222,7 +253,7 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     const stillAuthorized = isSessionScope
       ? cached.stewardUserId != null &&
         (await revalidateSessionScope(c, cached.stewardUserId).catch(() => false))
-      : await revalidateCachedScope(c, cached.orgId).catch(() => false);
+      : await revalidateCachedScope(c, cached.orgId, options.cacheOnly === true).catch(() => false);
     if (!stillAuthorized) return null;
     // Restore the DATE contract lost to the cache's JSON round-trip before
     // handing the agent to route consumers (e.g. conversations route calls
@@ -257,11 +288,15 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     // row self-heals via the authoritative gate.
     if (now - firstWrittenAtMs >= CacheTTL.sharedAgentScope.resolveMaxAgeMs) return;
     const refreshed: CachedSharedAgentScope = { ...cached, firstWrittenAtMs };
-    void cache.set(scopeCacheKey, refreshed, CacheTTL.sharedAgentScope.resolve).catch((error) => {
-      logger.debug("[resolveSharedAgent] scope cache sliding refresh failed", {
-        error: error instanceof Error ? error.message : String(error),
+    const refresh = cache
+      .set(scopeCacheKey, refreshed, CacheTTL.sharedAgentScope.resolve)
+      .catch((error) => {
+        logger.debug("[resolveSharedAgent] scope cache sliding refresh failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-    });
+    if (options.executionCtx) options.executionCtx.waitUntil(refresh);
+    else void refresh;
   };
 
   if (scopeCacheKey) {
@@ -290,28 +325,59 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
   // an independent hydration if the lock backend is absent or the holder is
   // slow past the poll window (getOrSet's own fall-through), so this can never
   // hang a turn — worst case it degrades to today's stampede behavior.
+  const hydrateScope = async (): Promise<CachedSharedAgentScope | null> => {
+    const { user, orgLookupResult: agent } = await requireUserOrApiKeyWithOrgLookup(c, (orgId) =>
+      agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
+    );
+    if (!agent || agent.execution_tier !== "shared") return null;
+    if (agent.character_id) {
+      await charactersService.getById(agent.character_id);
+    }
+    const base =
+      isSessionScope && typeof user.steward_id === "string"
+        ? {
+            orgId: user.organization_id,
+            agent,
+            stewardUserId: user.steward_id,
+          }
+        : { orgId: user.organization_id, agent };
+    return { ...base, firstWrittenAtMs: Date.now() };
+  };
+
+  if (scopeCacheKey && options.cacheOnly) {
+    const hydration = cache
+      .getOrSet<CachedSharedAgentScope | null>(
+        scopeCacheKey,
+        CacheTTL.sharedAgentScope.resolve,
+        hydrateScope,
+        { singleflight: true },
+      )
+      .then(() => undefined)
+      .catch((error) => {
+        // error-policy:J7 cache hydration is deliberately off the inference
+        // path; the retry remains fail-closed until an authoritative fill wins.
+        logger.warn("[resolveSharedAgent] background scope hydration failed", {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    if (options.executionCtx) {
+      options.executionCtx.waitUntil(hydration);
+    } else {
+      void hydration;
+    }
+    return {
+      error: "Agent authorization cache is warming. Retry shortly.",
+      status: 503,
+    };
+  }
+
   if (scopeCacheKey) {
     const hydrated = await cache
       .getOrSet<CachedSharedAgentScope | null>(
         scopeCacheKey,
         CacheTTL.sharedAgentScope.resolve,
-        async () => {
-          const { user, orgLookupResult: agent } = await requireUserOrApiKeyWithOrgLookup(
-            c,
-            (orgId) => agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
-          );
-          // Only a settled shared-tier agent is cacheable (never the
-          // time-sensitive dedicated-bootstrap window). A non-cacheable or
-          // not-found result returns null so getOrSet does NOT populate the
-          // cache, and this caller falls through to the authoritative path
-          // below to produce the correct 404 / bootstrap handling.
-          if (!agent || agent.execution_tier !== "shared") return null;
-          const base =
-            isSessionScope && typeof user.steward_id === "string"
-              ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
-              : { orgId: user.organization_id, agent };
-          return { ...base, firstWrittenAtMs: Date.now() };
-        },
+        hydrateScope,
         { singleflight: true },
       )
       .catch(() => null);

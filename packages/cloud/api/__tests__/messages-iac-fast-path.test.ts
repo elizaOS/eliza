@@ -248,6 +248,30 @@ function postMessages(
   });
 }
 
+function postMessagesInWorker() {
+  return messagesRoute.request(
+    "/",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": "eliza_test_key",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 16,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    },
+    {},
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as never,
+  );
+}
+
 describe("/v1/messages IAC fast path", () => {
   test("authorized resolver result skips serial auth, api-key lookup, and sync moderation", async () => {
     const response = await postMessages();
@@ -266,6 +290,22 @@ describe("/v1/messages IAC fast path", () => {
       16,
     );
     expect(generateText).toHaveBeenCalledTimes(1);
+  });
+
+  test("Worker requests fail closed while the API-key cache warms", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "warming",
+      message: "Inference authentication cache is warming. Retry shortly.",
+    });
+
+    const response = await postMessagesInWorker();
+
+    expect(response.status).toBe(503);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      cacheOnly: true,
+    });
+    expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
   });
 
   test("suspended resolver result returns Anthropic 403 before billing or provider work", async () => {

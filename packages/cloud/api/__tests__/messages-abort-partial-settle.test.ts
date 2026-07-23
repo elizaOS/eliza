@@ -1,5 +1,6 @@
 /**
  * Money-leak reproduction tests for POST /api/v1/messages streaming (#11513).
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * A credit reservation is a ~1.5x upfront hold that MUST be settled — to actual
  * usage on success, to the delivered partial cost on client abort, or released

@@ -1,5 +1,6 @@
 /**
  * Regression test for #12994 (the #11588 class on POST /api/v1/messages).
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * The billing `requestId` feeds the affiliate-earnings dedupe sourceId
  * (`getAffiliateEarningsSourceId` → `ai_billing:<op>:<requestId>`, deduped on

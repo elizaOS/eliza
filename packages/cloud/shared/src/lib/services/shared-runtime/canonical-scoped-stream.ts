@@ -5,11 +5,14 @@
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
 
+import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
+import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
-import type { BridgeRequest } from "../eliza-sandbox";
-import { elizaSandboxService } from "../eliza-sandbox";
+import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
+import { coordinateSharedStream } from "./conversation-coordinator";
+import type { BridgeExecutionContext } from "./shared-runtime-chat";
 
 const CORS_METHODS = "POST, OPTIONS";
 const STREAM_HEADERS = {
@@ -24,6 +27,9 @@ export interface CanonicalScopedStreamRequest {
   orgId: string;
   conversationId: string;
   userId?: string;
+  agent?: AgentSandbox;
+  namespace?: RuntimeDurableObjectNamespace;
+  executionCtx?: BridgeExecutionContext;
   body: unknown;
   origin?: string | null;
   timings?: Record<string, number>;
@@ -90,7 +96,14 @@ export async function handleCanonicalScopedAgentStream(
   let upstream: Response | null;
   const bridgeStartedAt = nowMs();
   try {
-    upstream = await elizaSandboxService.bridgeStream(request.agentId, request.orgId, rpc);
+    upstream = request.agent
+      ? await coordinateSharedStream(request.agent, rpc, {
+          namespace: request.namespace,
+          executionCtx: request.executionCtx,
+        })
+      : await import("../eliza-sandbox").then(({ elizaSandboxService }) =>
+          elizaSandboxService.bridgeStream(request.agentId, request.orgId, rpc),
+        );
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {
     timings.bridge = elapsedMs(bridgeStartedAt);
@@ -110,6 +123,24 @@ export async function handleCanonicalScopedAgentStream(
               retryable: false,
             },
             { status: 402 },
+          ),
+          CORS_METHODS,
+          request.origin,
+        ),
+        timings,
+      );
+    }
+    if (error instanceof Error && error.name === "SharedRuntimeCacheWarmingError") {
+      return addStreamTimingHeaders(
+        applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: error.message,
+              code: "shared_runtime_cache_warming",
+              retryable: true,
+            },
+            { status: 503 },
           ),
           CORS_METHODS,
           request.origin,

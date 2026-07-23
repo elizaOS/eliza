@@ -1,5 +1,6 @@
 /**
  * Off-response-path billing tests for POST /api/v1/messages (#15414).
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * Before the fix, the streaming path's `onFinish` awaited the settlement chain
  * (billUsage → settleReservation → recordUsageAnalytics) INLINE, and the AI SDK

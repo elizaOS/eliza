@@ -1,6 +1,7 @@
 /**
  * OpenAI stream_options.include_usage contract for POST /api/v1/chat/completions
  * streaming: a terminal usage-only chunk (empty choices) before `data: [DONE]`,
+ * with requests traversing the real authorization and credit-admission boundary.
  * `usage: null` on every other chunk, nothing when not requested, and never a
  * fabricated usage frame when the SDK reported none. Drives the REAL streaming
  * handler and asserts on the raw SSE bytes; only `streamText` (the provider

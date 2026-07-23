@@ -1,5 +1,6 @@
 /**
  * Provider-config leak repro for POST /api/v1/chat/completions (#13406).
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * On prod, a request for an unknown/unconfigured model surfaced the raw
  * provider-configuration error to the DIRECT API caller — including the
