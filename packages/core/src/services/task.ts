@@ -62,8 +62,26 @@ export class TaskService extends Service {
 	 * so a transient getTasks/update failure can't re-narrate on the next tick.
 	 */
 	private quarantinedOrphans = new Set<string>();
+	/**
+	 * Service construction time (epoch-ms). A missing worker inside
+	 * {@link TaskService.ORPHAN_GRACE_MS} of this moment is treated as "not
+	 * registered YET" (boot ordering: the 1s tick can start before every plugin
+	 * has registered its workers), not as an orphan. WHY: without the grace, a
+	 * healthy task whose plugin registers a beat later was wrongly quarantined —
+	 * repeat tasks auto-paused, one-shots DELETED — and the first tick emitted
+	 * the TASK_WORKER_MISSING diagnostic that painted red system lines into the
+	 * owner's chat view on every boot.
+	 */
+	private readonly startedAt = Date.now();
 	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
 	private stopped = false;
+	/**
+	 * Boot grace window (ms) during which a missing worker is skipped silently
+	 * instead of quarantined. 60s comfortably covers slow plugin boots (remote
+	 * capability sync, late schema migrations) while still healing a genuinely
+	 * orphaned row within the first minute of steady-state.
+	 */
+	private static readonly ORPHAN_GRACE_MS = 60_000;
 	static serviceType = ServiceType.TASK;
 	capabilityDescription = "The agent is able to schedule and execute tasks";
 
@@ -225,7 +243,22 @@ export class TaskService extends Service {
 		for (const task of tasks) {
 			const context = { taskId: task.id, taskName: task.name };
 			const metadata = task.metadata as TaskMetadata | undefined;
-			if (task.tags?.includes("repeat") && metadata?.paused) continue;
+			if (task.tags?.includes("repeat") && metadata?.paused) {
+				// Heal in BOTH directions: a repeat task WE paused for a missing
+				// worker (orphanedNoWorker marker) must resume once a redeploy
+				// re-registers that worker. Without this, the paused check here (which
+				// runs before the worker lookup) stranded healed tasks paused forever.
+				// Operator-paused tasks (no marker) are never touched.
+				if (
+					metadata.orphanedNoWorker === true &&
+					task.id &&
+					this.runtime.getTaskWorker(task.name)
+				) {
+					await this.resumeHealedOrphanTask(task, metadata);
+				}
+				// Resumed or not, skip this tick; a resumed task runs when next due.
+				continue;
+			}
 			if (!task.id) {
 				errors.push(
 					new ElizaError("Scheduled task is missing an id", {
@@ -239,6 +272,14 @@ export class TaskService extends Service {
 
 			const worker = this.runtime.getTaskWorker(task.name);
 			if (!worker) {
+				// Boot ordering: the tick can run before every plugin has registered
+				// its workers. Inside the grace window a missing worker is "not
+				// registered YET" — skip silently (no error, no heal). Quarantining
+				// here wrongly paused/DELETED healthy tasks and emitted the
+				// TASK_WORKER_MISSING noise seen on every staging boot.
+				if (Date.now() - this.startedAt < TaskService.ORPHAN_GRACE_MS) {
+					continue;
+				}
 				// Orphaned task: no worker registered in THIS build. Self-heal instead
 				// of re-erroring every 1s tick (the TASK_WORKER_MISSING → TASK_TICK_FAILED
 				// loop that narrated into chat 9×). Emit the diagnostic ONCE per orphan.
@@ -329,6 +370,10 @@ export class TaskService extends Service {
 						metadata: {
 							...task.metadata,
 							paused: true,
+							// Marks the pause as OURS so validateTasks can auto-resume it
+							// when the worker re-registers. Operator pauses lack this flag
+							// and are never auto-resumed.
+							orphanedNoWorker: true,
 							lastError: `No worker registered for task ${task.name} (orphan auto-paused)`,
 							updatedAt: Date.now(),
 						},
@@ -368,6 +413,55 @@ export class TaskService extends Service {
 			);
 		}
 		this.quarantinedOrphans.add(task.id);
+	}
+
+	/**
+	 * Resume a repeat task that quarantineOrphanTask paused (orphanedNoWorker
+	 * marker) now that its worker is registered again (plugin reloaded / build
+	 * redeployed). Clears the pause + marker + lastError and drops the in-memory
+	 * quarantine mark so a FUTURE disappearance re-heals and re-diagnoses once.
+	 * Best-effort: a failed resume write is logged and retried on the next tick
+	 * (the task simply stays paused until the write succeeds).
+	 */
+	private async resumeHealedOrphanTask(
+		task: Task,
+		metadata: TaskMetadata,
+	): Promise<void> {
+		if (!task.id) return;
+		try {
+			await this.runtime.updateTask(task.id, {
+				metadata: {
+					...metadata,
+					paused: false,
+					orphanedNoWorker: false,
+					lastError: undefined,
+					updatedAt: Date.now(),
+				},
+			});
+			this.quarantinedOrphans.delete(task.id);
+			this.runtime.logger.info(
+				{
+					src: "plugin:basic-capabilities:service:task",
+					agentId: this.runtime.agentId,
+					taskId: task.id,
+					taskName: task.name,
+				},
+				"Orphan-paused task auto-resumed (worker registered again)",
+			);
+		} catch (cause) {
+			// Logged only — resume is retried on the next tick; failing the whole
+			// tick over a resume write would recreate the noise this path removes.
+			this.runtime.logger.warn(
+				{
+					src: "plugin:basic-capabilities:service:task",
+					agentId: this.runtime.agentId,
+					taskId: task.id,
+					taskName: task.name,
+					err: cause,
+				},
+				"Failed to auto-resume orphan-paused task; will retry next tick",
+			);
+		}
 	}
 
 	private invalidScheduleField(task: Task): string | undefined {
