@@ -291,3 +291,103 @@ describe("GET /api/dev/inference-timing", () => {
     expect(captured.status).toBe(403);
   });
 });
+
+describe("development compatibility route dispatch", () => {
+  beforeEach(() => {
+    delete process.env.NODE_ENV;
+    delete process.env.ELIZA_ELECTROBUN_SCREENSHOT_URL;
+    delete process.env.ELIZA_DESKTOP_DEV_LOG_PATH;
+  });
+
+  afterEach(() => {
+    delete process.env.NODE_ENV;
+    delete process.env.ELIZA_ELECTROBUN_SCREENSHOT_URL;
+    delete process.env.ELIZA_DESKTOP_DEV_LOG_PATH;
+  });
+
+  it("leaves non-dev and unknown dev routes to the next dispatcher", async () => {
+    const ordinary = makeReqRes({ url: "/api/agents" });
+    const unknown = makeReqRes({ url: "/api/dev/not-a-route" });
+
+    await expect(
+      handleDevCompatRoutes(ordinary.req, ordinary.res, STATE),
+    ).resolves.toBe(false);
+    await expect(
+      handleDevCompatRoutes(unknown.req, unknown.res, STATE),
+    ).resolves.toBe(false);
+  });
+
+  it("returns stack metadata with the actual listening port", async () => {
+    const { req, res, captured } = makeReqRes({ url: "/api/dev/stack" });
+
+    await expect(handleDevCompatRoutes(req, res, STATE)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(JSON.parse(captured.body ?? "{}")).toMatchObject({
+      api: {
+        listenPort: 31337,
+        baseUrl: "http://127.0.0.1:31337",
+      },
+    });
+  });
+
+  it("rejects a non-loopback stack request", async () => {
+    const { req, res, captured } = makeReqRes({
+      url: "/api/dev/stack",
+      remoteAddress: "10.0.0.8",
+    });
+
+    await expect(handleDevCompatRoutes(req, res, STATE)).resolves.toBe(true);
+    expect(captured.status).toBe(403);
+  });
+
+  it("reports a disabled screenshot server without attempting a fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { req, res, captured } = makeReqRes({
+      url: "/api/dev/cursor-screenshot",
+    });
+
+    await expect(handleDevCompatRoutes(req, res, STATE)).resolves.toBe(true);
+
+    expect(captured.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("rejects malformed and non-loopback screenshot upstreams", async () => {
+    process.env.ELIZA_ELECTROBUN_SCREENSHOT_URL = "not a URL";
+    const malformed = makeReqRes({ url: "/api/dev/cursor-screenshot" });
+    await handleDevCompatRoutes(malformed.req, malformed.res, STATE);
+    expect(malformed.captured.status).toBe(400);
+
+    process.env.ELIZA_ELECTROBUN_SCREENSHOT_URL =
+      "https://example.com/screenshot";
+    const external = makeReqRes({ url: "/api/dev/cursor-screenshot" });
+    await handleDevCompatRoutes(external.req, external.res, STATE);
+    expect(external.captured.status).toBe(403);
+  });
+
+  it("reports a missing desktop console log explicitly", async () => {
+    const { req, res, captured } = makeReqRes({
+      url: "/api/dev/console-log?maxLines=10",
+    });
+
+    await expect(handleDevCompatRoutes(req, res, STATE)).resolves.toBe(true);
+
+    expect(captured.status).toBe(404);
+    expect(JSON.parse(captured.body ?? "{}").error).toBe(
+      "desktop dev log not configured",
+    );
+  });
+
+  it("returns the route-timing instrumentation snapshot", async () => {
+    const { req, res, captured } = makeReqRes({
+      url: "/api/dev/route-timings",
+    });
+
+    await expect(handleDevCompatRoutes(req, res, STATE)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(JSON.parse(captured.body ?? "{}")).toHaveProperty("enabled");
+  });
+});
