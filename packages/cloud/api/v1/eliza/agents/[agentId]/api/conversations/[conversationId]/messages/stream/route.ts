@@ -155,6 +155,7 @@ app.post("/", async (c) => {
   return handleCanonicalScopedAgentStream({
     agentId: r.agentId,
     orgId: r.orgId,
+    agent: r.agent,
     conversationId,
     ...("userId" in r ? { userId: r.userId } : {}),
     body: raw,

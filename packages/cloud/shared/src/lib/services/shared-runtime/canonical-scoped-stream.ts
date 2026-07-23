@@ -5,6 +5,7 @@
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
 
+import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import type { BridgeExecutionContext, BridgeRequest } from "../eliza-sandbox";
@@ -22,6 +23,7 @@ const STREAM_HEADERS = {
 export interface CanonicalScopedStreamRequest {
   agentId: string;
   orgId: string;
+  agent?: AgentSandbox;
   conversationId: string;
   userId?: string;
   body: unknown;
@@ -101,6 +103,7 @@ export async function handleCanonicalScopedAgentStream(
       request.orgId,
       rpc,
       request.executionCtx,
+      request.agent,
     );
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {

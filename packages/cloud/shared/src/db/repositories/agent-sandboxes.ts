@@ -703,6 +703,18 @@ export class AgentSandboxesRepository {
       .set({ ...data, updated_at: new Date() })
       .where(eq(agentSandboxes.id, id))
       .returning();
+    if (r && data.status !== undefined) {
+      void import("../../lib/services/shared-runtime/resolve-shared-agent")
+        .then(({ invalidateSharedAgentRunningSandbox }) =>
+          invalidateSharedAgentRunningSandbox(r.id, r.organization_id),
+        )
+        .catch((error) => {
+          logger.debug("[agent-sandboxes] running sandbox cache invalidation failed", {
+            id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+    }
     return r;
   }
 

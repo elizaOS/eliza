@@ -4,7 +4,7 @@
 
 import { sql } from "drizzle-orm";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";
-import { dbWrite, writeTransaction } from "../../db/helpers";
+import { dbWrite } from "../../db/helpers";
 import {
   appsRepository,
   type CreditPack,
@@ -1189,30 +1189,21 @@ export class CreditsService {
     | { kind: "no_reservation_row" }
   > {
     const { organizationId, reservationTransactionId, actualCost, description, metadata } = params;
+    const normalizedActualCost = Math.max(actualCost, 0);
+    const inputMetadata = JSON.stringify(metadata ?? {});
 
-    const existingSettlementIds = async (executor: SqlExecutor): Promise<string[]> => {
-      const rows = await sqlRows<{ id: string }>(
-        executor,
-        sql`
-          SELECT id
-          FROM credit_transactions
-          WHERE metadata->>'reservation_transaction_id' = ${reservationTransactionId}
-            AND organization_id = ${organizationId}
-          ORDER BY created_at ASC
-        `,
-      );
-      return rows.map((row) => row.id);
-    };
-
-    const result = await writeTransaction(async (tx) => {
-      const reservationRows = await sqlRows<{
-        id: string;
-        amount: string | number;
-        settled_at: Date | string | null;
-      }>(
-        tx,
-        sql`
-          SELECT id, amount, settled_at
+    const rows = await sqlRows<{
+      reservation_found: boolean | string | number | null;
+      claimed: boolean | string | number | null;
+      reserved_amount: string | number | null;
+      new_balance: string | number | null;
+      settlement_ids: string[] | null;
+      adjustment_type: CreditReconciliationResult["adjustmentType"] | null;
+    }>(
+      dbWrite,
+      sql`
+        WITH reservation AS (
+          SELECT id, organization_id, amount::numeric AS amount, settled_at
           FROM credit_transactions
           WHERE id = ${reservationTransactionId}
             AND organization_id = ${organizationId}
@@ -1225,300 +1216,198 @@ export class CreditsService {
               )
             )
           LIMIT 1
-        `,
-      );
-      const reservation = reservationRows[0];
-      if (!reservation) {
-        return { kind: "no_reservation_row" as const };
-      }
-
-      const reservedAmount = Math.abs(parseNumeric(reservation.amount, "reservation_amount"));
-
-      if (reservation.settled_at !== null) {
-        return {
-          kind: "handled" as const,
-          claimed: false,
-          result: {
-            reservedAmount,
-            actualCost,
-            reservationTransactionId,
-            settlementTransactionIds: await existingSettlementIds(tx),
-            adjustmentType: "none" as const,
-          },
-        };
-      }
-
-      const preexistingSettlementIds = await existingSettlementIds(tx);
-      if (preexistingSettlementIds.length > 0) {
-        const markedRows = await sqlRows<{ id: string }>(
-          tx,
-          sql`
-            UPDATE credit_transactions
-            SET settled_at = NOW()
-            WHERE id = ${reservationTransactionId}
-              AND organization_id = ${organizationId}
-              AND type = 'debit'
-              AND (
-                metadata->>'type' = 'reservation'
-                OR (
-                  metadata->>'type' = 'app_chat_reservation'
-                  AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
-                )
-              )
-              AND settled_at IS NULL
-            RETURNING id
-          `,
-        );
-        return {
-          kind: "handled" as const,
-          claimed: markedRows.length > 0,
-          result: {
-            reservedAmount,
-            actualCost,
-            reservationTransactionId,
-            settlementTransactionIds: preexistingSettlementIds,
-            adjustmentType: "none" as const,
-          },
-        };
-      }
-
-      const claimedRows = await sqlRows<{
-        id: string;
-        amount: string | number;
-      }>(
-        tx,
-        sql`
-          UPDATE credit_transactions
+        ),
+        reservation_values AS (
+          SELECT
+            id,
+            organization_id,
+            ABS(amount)::numeric AS reserved_amount,
+            ${String(normalizedActualCost)}::numeric AS actual_cost,
+            (ABS(amount)::numeric - ${String(normalizedActualCost)}::numeric) AS difference,
+            settled_at
+          FROM reservation
+        ),
+        existing_settlements AS (
+          SELECT COALESCE(array_agg(ct.id ORDER BY ct.created_at ASC), ARRAY[]::uuid[]) AS ids
+          FROM credit_transactions ct
+          WHERE ct.metadata->>'reservation_transaction_id' = ${reservationTransactionId}
+            AND ct.organization_id = ${organizationId}
+        ),
+        claim AS (
+          UPDATE credit_transactions ct
           SET settled_at = NOW()
-          WHERE id = ${reservationTransactionId}
-            AND organization_id = ${organizationId}
-            AND type = 'debit'
+          FROM reservation_values rv
+          WHERE ct.id = rv.id
+            AND rv.settled_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM existing_settlements es WHERE cardinality(es.ids) > 0)
+            AND ct.settled_at IS NULL
+          RETURNING ct.id
+        ),
+        mark_preexisting AS (
+          UPDATE credit_transactions ct
+          SET settled_at = NOW()
+          FROM reservation_values rv
+          WHERE ct.id = rv.id
+            AND rv.settled_at IS NULL
+            AND EXISTS (SELECT 1 FROM existing_settlements es WHERE cardinality(es.ids) > 0)
+            AND ct.settled_at IS NULL
+          RETURNING ct.id
+        ),
+        mutation_plan AS (
+          SELECT
+            rv.*,
+            CASE
+              WHEN NOT EXISTS (SELECT 1 FROM claim) THEN 'none'
+              WHEN ABS(rv.difference) < ${String(EPSILON)}::numeric THEN 'none'
+              WHEN rv.difference > 0 THEN 'refund'
+              ELSE 'overage'
+            END AS phase,
+            CASE
+              WHEN NOT EXISTS (SELECT 1 FROM claim) THEN 0::numeric
+              WHEN ABS(rv.difference) < ${String(EPSILON)}::numeric THEN 0::numeric
+              ELSE ABS(rv.difference)::numeric
+            END AS amount
+          FROM reservation_values rv
+        ),
+        org AS (
+          SELECT o.id, o.credit_balance::numeric AS current_balance
+          FROM organizations o
+          JOIN mutation_plan mp ON mp.organization_id = o.id
+          WHERE mp.phase IN ('refund', 'overage')
+          FOR UPDATE
+        ),
+        org_update AS (
+          UPDATE organizations o
+          SET credit_balance = CASE
+                WHEN mp.phase = 'refund' THEN org.current_balance + mp.amount
+                WHEN mp.phase = 'overage' THEN org.current_balance - mp.amount
+                ELSE org.current_balance
+              END,
+              updated_at = NOW()
+          FROM org, mutation_plan mp
+          WHERE o.id = org.id
             AND (
-              metadata->>'type' = 'reservation'
-              OR (
-                metadata->>'type' = 'app_chat_reservation'
-                AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
-              )
+              mp.phase = 'refund'
+              OR (mp.phase = 'overage' AND org.current_balance >= mp.amount)
             )
-            AND settled_at IS NULL
-          RETURNING id, amount
-        `,
-      );
-      const claimed = claimedRows[0];
-      if (!claimed) {
-        return {
-          kind: "handled" as const,
-          claimed: false,
-          result: {
-            reservedAmount,
-            actualCost,
-            reservationTransactionId,
-            settlementTransactionIds: await existingSettlementIds(tx),
-            adjustmentType: "none" as const,
-          },
-        };
-      }
-
-      const claimedReservedAmount = Math.abs(parseNumeric(claimed.amount, "reservation_amount"));
-      const normalizedActualCost = Math.max(actualCost, 0);
-      const difference = claimedReservedAmount - normalizedActualCost;
-      const baseMetadata = {
-        ...metadata,
-        reservation_transaction_id: reservationTransactionId,
-        reserved: claimedReservedAmount,
-        actual: normalizedActualCost,
-      };
-
-      if (Math.abs(difference) < EPSILON) {
-        return {
-          kind: "handled" as const,
-          claimed: true,
-          result: {
-            reservedAmount: claimedReservedAmount,
-            actualCost: normalizedActualCost,
-            reservationTransactionId,
-            settlementTransactionIds: [],
-            adjustmentType: "none" as const,
-          },
-        };
-      }
-
-      if (difference > 0) {
-        const refundMetadata = JSON.stringify({
-          ...baseMetadata,
-          type: "reconciliation_refund",
-        });
-        const refundRows = await sqlRows<{
-          id: string | null;
-          new_balance: string | number | null;
-        }>(
-          tx,
-          sql`
-            WITH org AS (
-              SELECT id, credit_balance::numeric AS current_balance
-              FROM organizations
-              WHERE id = ${organizationId}
-              FOR UPDATE
-            ),
-            updated AS (
-              UPDATE organizations AS o
-              SET credit_balance = org.current_balance + ${String(difference)}::numeric,
-                  updated_at = NOW()
-              FROM org
-              WHERE o.id = org.id
-              RETURNING o.credit_balance AS new_balance
-            ),
-            inserted AS (
-              INSERT INTO credit_transactions (
-                organization_id,
-                amount,
-                type,
-                description,
-                metadata,
-                stripe_payment_intent_id,
-                created_at
-              )
-              SELECT
-                org.id,
-                ${String(difference)}::numeric,
-                'refund',
-                ${`${description} (refund)`},
-                ${refundMetadata}::jsonb,
-                ${`recon:${reservationTransactionId}:refund`},
-                NOW()
-              FROM org
-              WHERE EXISTS (SELECT 1 FROM updated)
-              ON CONFLICT (stripe_payment_intent_id) DO NOTHING
-              RETURNING id
-            )
-            SELECT
-              (SELECT id FROM inserted) AS id,
-              (SELECT new_balance FROM updated) AS new_balance
-          `,
-        );
-        const refund = refundRows[0];
-        if (!refund?.id) {
-          throw new Error("[CreditsService] Reservation refund settlement did not insert a row");
-        }
-        return {
-          kind: "handled" as const,
-          claimed: true,
-          newBalance: parseNumeric(refund.new_balance, "new_balance"),
-          result: {
-            reservedAmount: claimedReservedAmount,
-            actualCost: normalizedActualCost,
-            reservationTransactionId,
-            settlementTransactionIds: [refund.id],
-            adjustmentType: "refund" as const,
-          },
-        };
-      }
-
-      const overage = -difference;
-      const overageMetadata = JSON.stringify({
-        ...baseMetadata,
-        type: "reconciliation_overage",
-      });
-      const overageRows = await sqlRows<{
-        id: string | null;
-        debited: boolean | string | number | null;
-        new_balance: string | number | null;
-      }>(
-        tx,
-        sql`
-          WITH org AS (
-            SELECT id, credit_balance::numeric AS current_balance
-            FROM organizations
-            WHERE id = ${organizationId}
-            FOR UPDATE
-          ),
-          updated AS (
-            UPDATE organizations AS o
-            SET credit_balance = org.current_balance - ${String(overage)}::numeric,
-                updated_at = NOW()
-            FROM org
-            WHERE o.id = org.id
-              AND org.current_balance >= ${String(overage)}::numeric
-            RETURNING o.credit_balance AS new_balance
-          ),
-          inserted AS (
-            INSERT INTO credit_transactions (
-              organization_id,
-              amount,
-              type,
-              description,
-              metadata,
-              stripe_payment_intent_id,
-              created_at
-            )
-            SELECT
-              org.id,
-              ${String(-overage)}::numeric,
-              'debit',
-              ${`${description} (overage)`},
-              ${overageMetadata}::jsonb,
-              ${`recon:${reservationTransactionId}:overage`},
-              NOW()
-            FROM org
-            WHERE EXISTS (SELECT 1 FROM updated)
-            ON CONFLICT (stripe_payment_intent_id) DO NOTHING
-            RETURNING id
+          RETURNING o.credit_balance AS new_balance
+        ),
+        inserted AS (
+          INSERT INTO credit_transactions (
+            organization_id,
+            amount,
+            type,
+            description,
+            metadata,
+            stripe_payment_intent_id,
+            created_at
           )
           SELECT
-            EXISTS(SELECT 1 FROM updated) AS debited,
-            (SELECT id FROM inserted) AS id,
-            (SELECT new_balance FROM updated) AS new_balance
-        `,
-      );
-      const overageRow = overageRows[0];
-      if (!isPgTrue(overageRow?.debited)) {
-        return {
-          kind: "handled" as const,
-          claimed: true,
-          result: {
-            reservedAmount: claimedReservedAmount,
-            actualCost: normalizedActualCost,
-            reservationTransactionId,
-            settlementTransactionIds: [],
-            adjustmentType: "uncollected_overage" as const,
-          },
-        };
-      }
-      if (!overageRow?.id) {
-        throw new Error("[CreditsService] Reservation overage settlement did not insert a row");
-      }
-      return {
-        kind: "handled" as const,
-        claimed: true,
-        newBalance: parseNumeric(overageRow.new_balance, "new_balance"),
-        balanceDecreaseMetadata: {
-          ...baseMetadata,
-          type: "reconciliation_overage",
-        },
-        result: {
-          reservedAmount: claimedReservedAmount,
-          actualCost: normalizedActualCost,
-          reservationTransactionId,
-          settlementTransactionIds: [overageRow.id],
-          adjustmentType: "overage" as const,
-        },
-      };
-    });
+            mp.organization_id,
+            CASE WHEN mp.phase = 'refund' THEN mp.amount ELSE -mp.amount END,
+            CASE WHEN mp.phase = 'refund' THEN 'refund' ELSE 'debit' END,
+            CASE
+              WHEN mp.phase = 'refund' THEN ${`${description} (refund)`}
+              ELSE ${`${description} (overage)`}
+            END,
+            (
+              ${inputMetadata}::jsonb ||
+              jsonb_build_object(
+                'reservation_transaction_id', ${reservationTransactionId},
+                'reserved', mp.reserved_amount,
+                'actual', mp.actual_cost,
+                'type', CASE
+                  WHEN mp.phase = 'refund' THEN 'reconciliation_refund'
+                  ELSE 'reconciliation_overage'
+                END
+              )
+            ),
+            CASE
+              WHEN mp.phase = 'refund' THEN ${`recon:${reservationTransactionId}:refund`}
+              ELSE ${`recon:${reservationTransactionId}:overage`}
+            END,
+            NOW()
+          FROM mutation_plan mp
+          WHERE mp.phase IN ('refund', 'overage')
+            AND EXISTS (SELECT 1 FROM org_update)
+          ON CONFLICT (stripe_payment_intent_id) DO NOTHING
+          RETURNING id
+        )
+        SELECT
+          EXISTS(SELECT 1 FROM reservation) AS reservation_found,
+          EXISTS(SELECT 1 FROM claim) OR EXISTS(SELECT 1 FROM mark_preexisting) AS claimed,
+          (SELECT reserved_amount FROM reservation_values) AS reserved_amount,
+          (SELECT new_balance FROM org_update) AS new_balance,
+          CASE
+            WHEN EXISTS(SELECT 1 FROM inserted) THEN (SELECT array_agg(id ORDER BY id) FROM inserted)
+            ELSE (SELECT ids FROM existing_settlements)
+          END AS settlement_ids,
+          CASE
+            WHEN NOT EXISTS(SELECT 1 FROM reservation) THEN NULL
+            WHEN NOT EXISTS(SELECT 1 FROM claim) THEN 'none'
+            WHEN EXISTS(SELECT 1 FROM mark_preexisting) THEN 'none'
+            WHEN EXISTS(SELECT 1 FROM mutation_plan WHERE phase = 'none') THEN 'none'
+            WHEN EXISTS(SELECT 1 FROM mutation_plan WHERE phase = 'refund')
+              THEN CASE WHEN EXISTS(SELECT 1 FROM inserted) THEN 'refund' ELSE 'none' END
+            WHEN EXISTS(SELECT 1 FROM mutation_plan WHERE phase = 'overage')
+              THEN CASE WHEN EXISTS(SELECT 1 FROM org_update) THEN 'overage' ELSE 'uncollected_overage' END
+            ELSE 'none'
+          END AS adjustment_type
+      `,
+    );
 
-    if (result.kind !== "handled" || !result.claimed) {
-      return result;
+    const row = rows[0];
+    if (!row || !isPgTrue(row.reservation_found)) {
+      return { kind: "no_reservation_row" };
     }
 
-    await CacheInvalidation.onCreditMutation(organizationId).catch((error) => {
-      logger.error("[CreditsService] Failed to invalidate credit mutation cache:", error);
-    });
-    invalidateOrganizationCache(organizationId).catch((error) => {
-      logger.error("[CreditsService] Failed to invalidate org cache:", error);
-    });
-    if (result.balanceDecreaseMetadata && result.newBalance !== undefined) {
-      this.notifyBalanceDecrease(organizationId, result.newBalance, result.balanceDecreaseMetadata);
+    const reservedAmount = parseNumeric(row.reserved_amount, "reservation_amount");
+    const adjustmentType = row.adjustment_type ?? "none";
+    const settlementTransactionIds = row.settlement_ids ?? [];
+    const result: CreditReconciliationResult = {
+      reservedAmount,
+      actualCost: normalizedActualCost,
+      reservationTransactionId,
+      settlementTransactionIds,
+      adjustmentType,
+    };
+    const handled = {
+      kind: "handled" as const,
+      claimed: isPgTrue(row.claimed),
+      ...(row.new_balance !== null && row.new_balance !== undefined
+        ? { newBalance: parseNumeric(row.new_balance, "new_balance") }
+        : {}),
+      ...(adjustmentType === "overage"
+        ? {
+            balanceDecreaseMetadata: {
+              ...metadata,
+              reservation_transaction_id: reservationTransactionId,
+              reserved: reservedAmount,
+              actual: normalizedActualCost,
+              type: "reconciliation_overage",
+            },
+          }
+        : {}),
+      result,
+    };
+
+    if (handled.claimed) {
+      await CacheInvalidation.onCreditMutation(organizationId).catch((error) => {
+        logger.error("[CreditsService] Failed to invalidate credit mutation cache:", error);
+      });
+      invalidateOrganizationCache(organizationId).catch((error) => {
+        logger.error("[CreditsService] Failed to invalidate org cache:", error);
+      });
+      if (handled.balanceDecreaseMetadata && handled.newBalance !== undefined) {
+        this.notifyBalanceDecrease(
+          organizationId,
+          handled.newBalance,
+          handled.balanceDecreaseMetadata,
+        );
+      }
     }
-    return result;
+
+    return handled;
   }
 
   async markReservationSettled(params: {

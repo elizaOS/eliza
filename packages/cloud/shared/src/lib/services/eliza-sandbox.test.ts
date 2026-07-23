@@ -1450,6 +1450,51 @@ describe("ElizaSandboxService recoverDisconnected", () => {
   });
 });
 
+
+describe("ElizaSandboxService bridgeStream scope-cache reuse", () => {
+  test("uses the already-resolved running agent row without re-querying findRunningSandbox", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox: AgentSandbox = {
+      ...customSandbox(),
+      execution_tier: "shared",
+      status: "running",
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => {
+        throw new Error("findRunningSandbox should not run when the stream route passes resolvedAgent");
+      },
+    );
+    const service = new ElizaSandboxService();
+    const sharedSpy = spyOn(service as never, "bridgeSharedMessageStream" as never).mockResolvedValue(
+      new Response("event: done\ndata: {}\n\n", {
+        headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      }) as never,
+    );
+
+    try {
+      const res = await service.bridgeStream(
+        sandbox.id,
+        sandbox.organization_id,
+        {
+          jsonrpc: "2.0",
+          id: "bridge-cache-test",
+          method: "message.send",
+          params: { text: "hello", roomId: "room-1" },
+        },
+        undefined,
+        sandbox,
+      );
+
+      expect(res?.status).toBe(200);
+      expect(findSpy).not.toHaveBeenCalled();
+      expect(sharedSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
+      sharedSpy.mockRestore();
+    }
+  });
+});
+
 describe("ElizaSandboxService heartbeat", () => {
   // Pins the behaviour the probeBridgeHealth() extraction must preserve on the
   // prod-critical heartbeat path: grace-window hysteresis and the exact DB

@@ -901,6 +901,45 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
     PGLITE_TIMEOUT,
   );
 
+
+  test(
+    "concurrent settle attempts claim exactly one reconciliation row",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0);
+
+      const [first, second] = await Promise.all([
+        creditsService.reconcile({
+          organizationId: ORG_ID,
+          reservedAmount: 1.0,
+          actualCost: 0.4,
+          description: "concurrent chat completion settle a",
+          metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        }),
+        creditsService.reconcile({
+          organizationId: ORG_ID,
+          reservedAmount: 1.0,
+          actualCost: 0.4,
+          description: "concurrent chat completion settle b",
+          metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
+        }),
+      ]);
+
+      expect([first.adjustmentType, second.adjustmentType].sort()).toEqual(["none", "refund"]);
+      expect(await getBalance()).toBeCloseTo(9.6, 6);
+      expect(await countByType("refund")).toBe(1);
+      expect(await settlementRowsForReservation(reservationId)).toEqual([
+        {
+          amount: "0.600000",
+          type: "refund",
+          stripe_payment_intent_id: `recon:${reservationId}:refund`,
+        },
+      ]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
   test(
     "sweep ignores ambiguous pre-marker reservations",
     async () => {
