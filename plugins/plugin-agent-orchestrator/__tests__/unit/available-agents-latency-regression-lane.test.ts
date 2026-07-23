@@ -4,7 +4,11 @@
  */
 import { expect, it } from "vitest";
 import "./available-agents.test";
+import {
+  acpAvailableAgentsProvider,
+  availableAgentsProvider,
+} from "../../src/providers/available-agents";
 
 it("loads the available-agent inventory regression matrix", () => {
-  expect(true).toBe(true);
+  expect(acpAvailableAgentsProvider).toBe(availableAgentsProvider);
 });

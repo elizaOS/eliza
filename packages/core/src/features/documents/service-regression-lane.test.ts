@@ -8,7 +8,8 @@ import "./__tests__/search.test";
 import "./ctx-embeddings.test";
 import "./service-batch-embed.test";
 import "./service-character-ingest.test";
+import { DocumentService } from "./service";
 
 it("loads the document service regression matrix", () => {
-  expect(true).toBe(true);
+	expect(DocumentService.serviceType).toBe("documents");
 });

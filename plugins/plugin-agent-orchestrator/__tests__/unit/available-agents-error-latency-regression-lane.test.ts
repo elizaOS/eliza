@@ -4,7 +4,11 @@
  */
 import { expect, it } from "vitest";
 import "./available-agents-framework-error.test";
+import { availableAgentsProvider } from "../../src/providers/available-agents";
 
 it("loads the available-agent failure regression matrix", () => {
-  expect(true).toBe(true);
+  expect(availableAgentsProvider).toMatchObject({
+    name: "AVAILABLE_AGENTS",
+    dynamic: true,
+  });
 });

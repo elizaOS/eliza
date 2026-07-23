@@ -20,7 +20,18 @@ import "./task-control-structural.test";
 import "./task-history.test";
 import "./tasks-action-aliases.test";
 import "./tasks-create-validator-lifecycle.test";
+import {
+  createTaskAction,
+  spawnAgentAction,
+  tasksAction,
+} from "../../src/actions/tasks";
 
 it("loads the task-action regression matrix", () => {
-  expect(true).toBe(true);
+  expect(tasksAction).toMatchObject({
+    name: "TASKS",
+    suppressEarlyReply: true,
+    suppressPostActionContinuation: true,
+  });
+  expect(createTaskAction).toBe(tasksAction);
+  expect(spawnAgentAction).toBe(tasksAction);
 });

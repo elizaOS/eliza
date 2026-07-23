@@ -9,7 +9,8 @@ import "./dev-boot-history.test";
 import "./dev-route-catalog.test";
 import "./dev-stack.test";
 import "./dev-voice-latency-route.test";
+import { handleDevCompatRoutes } from "./dev-compat-routes";
 
 it("loads the development compatibility route regression matrix", () => {
-  expect(true).toBe(true);
+  expect(handleDevCompatRoutes).toBeTypeOf("function");
 });
