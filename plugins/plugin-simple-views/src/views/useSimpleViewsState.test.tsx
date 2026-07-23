@@ -162,6 +162,51 @@ describe("useSimpleViewsState", () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it("stays busy until every overlapping mutation has settled", async () => {
+    transport.fetchState.mockResolvedValueOnce(snapshot(1));
+    const { result } = renderHook(() => useSimpleViewsState());
+    await waitFor(() => expect(result.current.snapshot?.revision).toBe(1));
+
+    const first = deferred<{
+      success: true;
+      text: string;
+      state: SimpleViewsSnapshot;
+    }>();
+    const second = deferred<{
+      success: true;
+      text: string;
+      state: SimpleViewsSnapshot;
+    }>();
+    transport.interact
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+
+    let firstMutation!: Promise<unknown>;
+    let secondMutation!: Promise<unknown>;
+    act(() => {
+      firstMutation = result.current.mutate("create-note", { title: "One" });
+      secondMutation = result.current.mutate("create-note", { title: "Two" });
+    });
+    expect(result.current.busy).toBe(true);
+
+    await act(async () => {
+      first.resolve({ success: true, text: "Created One", state: snapshot(2) });
+      await firstMutation;
+    });
+    expect(result.current.busy).toBe(true);
+
+    await act(async () => {
+      second.resolve({
+        success: true,
+        text: "Created Two",
+        state: snapshot(3),
+      });
+      await secondMutation;
+    });
+    expect(result.current.busy).toBe(false);
+    expect(result.current.snapshot?.revision).toBe(3);
+  });
+
   it("refreshes shared state after either view broker reports an update", async () => {
     transport.fetchState.mockResolvedValueOnce(snapshot(1));
     const { result } = renderHook(() => useSimpleViewsState());

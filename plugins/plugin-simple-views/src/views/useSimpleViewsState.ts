@@ -43,6 +43,7 @@ export function useSimpleViewsState(): SimpleViewsState {
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
   const refreshGeneration = useRef(0);
+  const pendingMutations = useRef(0);
 
   useEffect(() => {
     mounted.current = true;
@@ -117,6 +118,7 @@ export function useSimpleViewsState(): SimpleViewsState {
 
   const mutate = useCallback(
     async (capability: string, params?: Record<string, unknown>) => {
+      pendingMutations.current += 1;
       if (mounted.current) {
         setBusy(true);
         setError(null);
@@ -130,7 +132,8 @@ export function useSimpleViewsState(): SimpleViewsState {
         if (mounted.current) setError(errorMessage(cause));
         throw cause;
       } finally {
-        if (mounted.current) setBusy(false);
+        pendingMutations.current -= 1;
+        if (mounted.current) setBusy(pendingMutations.current > 0);
       }
     },
     [acceptSnapshot],

@@ -180,12 +180,9 @@ export class SimpleViewsStore {
 
     this.shared.phase = "loading";
     this.shared.failure = undefined;
-    this.shared.initialization = this.load();
-    try {
-      await this.shared.initialization;
-    } catch (error) {
-      // error-policy:J2 context-adding rethrow — callers need the durable file
-      // path and a stable store code while preserving the original fs/JSON cause.
+    const initialization = this.load().catch((error) => {
+      // error-policy:J2 context-adding rethrow — every service instance sharing
+      // this initialization must observe the same typed failure and cause.
       const failure = toStoreError(
         error,
         "SIMPLE_VIEWS_STORE_LOAD_FAILED",
@@ -195,8 +192,14 @@ export class SimpleViewsStore {
       this.shared.failure = failure;
       this.shared.phase = "error";
       throw failure;
+    });
+    this.shared.initialization = initialization;
+    try {
+      await initialization;
     } finally {
-      this.shared.initialization = undefined;
+      if (this.shared.initialization === initialization) {
+        this.shared.initialization = undefined;
+      }
     }
   }
 
