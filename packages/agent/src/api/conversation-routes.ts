@@ -56,6 +56,7 @@ import {
 import type {
   AccountConnectRequest,
   ChatGenerationResult,
+  ChatMessageIdOutcome,
   LogEntry,
 } from "./chat-routes.ts";
 import {
@@ -64,19 +65,18 @@ import {
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
-  getChatMessageIdFirstSeenAt,
-  getRecentVisibleAssistantMemorySince,
-  getRecentVisibleAssistantMemoryTextSince,
-  hasRecentVisibleAssistantMemorySince,
+  getChatMessageIdOutcome,
   initSse,
   isDuplicateChatMessage,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
+  persistExactConversationMemory,
   readChatRequestPayload,
   releaseChatMessageId,
   resolveNoResponseFallback,
+  setChatMessageIdOutcome,
   writeChatStatusSse,
   writeChatTokenSse,
   writeChatToolSse,
@@ -715,22 +715,6 @@ async function ensureWorldOwnershipAndRoles(
   }
 }
 
-async function shouldPersistFinalAssistantTurn(
-  runtime: AgentRuntime,
-  roomId: UUID,
-  turnStartedAt: number,
-  result: ChatGenerationResult,
-): Promise<boolean> {
-  if (!result.usedActionCallbacks) {
-    return true;
-  }
-
-  const alreadyPersistedVisibleAssistantTurn =
-    await hasRecentVisibleAssistantMemorySince(runtime, roomId, turnStartedAt);
-
-  return !alreadyPersistedVisibleAssistantTurn;
-}
-
 function markConversationDeleted(
   state: ConversationRouteState,
   conversationId: string,
@@ -1082,36 +1066,151 @@ export function buildPersistedAssistantContent(
       };
 }
 
-function resolvePersistedResponseMessageId(
+async function resolvePersistedResponseMemory(
+  runtime: AgentRuntime,
+  roomId: UUID,
   result: ChatGenerationResult,
   resolvedText: string,
-): UUID | null {
-  const expectedText = resolvedText.trim();
-  if (!expectedText) {
+  logBuffer: LogEntry[],
+): Promise<Memory | null> {
+  const normalizeCandidateText = (text: string): string => {
+    const trimmed = text.trim();
+    const wrapped = trimmed.match(/^<response>\s*([\s\S]*?)\s*<\/response>$/);
+    return normalizeChatResponseText(wrapped?.[1] ?? text, logBuffer, runtime);
+  };
+  const expectsInternal = result.transcriptVisibility === "internal";
+  const candidate = (result.responseMessages ?? [])
+    .slice()
+    .reverse()
+    .find((responseMessage) => {
+      const content = responseMessage.content;
+      if (
+        !content ||
+        typeof content.text !== "string" ||
+        (content.transcriptVisibility === "internal") !== expectsInternal
+      ) {
+        return false;
+      }
+      return normalizeCandidateText(content.text) === resolvedText;
+    });
+  const candidateId = validateUuid(candidate?.id);
+  if (!candidateId) {
     return null;
   }
-  const expectsInternal = result.transcriptVisibility === "internal";
 
-  for (
-    let index = (result.responseMessages?.length ?? 0) - 1;
-    index >= 0;
-    index -= 1
+  const [memory] = await runtime.getMemoriesByIds([candidateId], "messages");
+  const content = memory?.content as Content | undefined;
+  if (
+    !memory ||
+    memory.id !== candidateId ||
+    memory.roomId !== roomId ||
+    memory.agentId !== runtime.agentId ||
+    memory.entityId !== runtime.agentId ||
+    (content?.transcriptVisibility === "internal") !== expectsInternal ||
+    typeof content?.text !== "string" ||
+    normalizeCandidateText(content.text) !== resolvedText
   ) {
-    const responseMessage = result.responseMessages?.[index];
-    const messageId = validateUuid(responseMessage?.id);
-    const content = responseMessage?.content;
-    if (
-      !messageId ||
-      (content?.transcriptVisibility === "internal") !== expectsInternal ||
-      typeof content?.text !== "string" ||
-      content.text.trim() !== expectedText
-    ) {
-      continue;
-    }
-    return messageId;
+    return null;
   }
+  return memory;
+}
 
-  return null;
+function bindClientUserMemoryId(
+  roomId: UUID,
+  clientMessageId: string | null | undefined,
+  messages: Awaited<ReturnType<typeof buildUserMessages>>,
+): void {
+  if (!clientMessageId) return;
+  const id = stringToUuid(
+    `conversation-user:${roomId}:${clientMessageId}`,
+  ) as UUID;
+  messages.userMessage.id = id;
+  messages.messageToStore.id = id;
+}
+
+async function persistClientUserMemory(
+  runtime: AgentRuntime,
+  memory: ReturnType<typeof createMessageMemory>,
+  clientMessageId: string | null | undefined,
+): Promise<void> {
+  if (!clientMessageId) {
+    await persistConversationMemory(runtime, memory);
+    return;
+  }
+  await persistExactConversationMemory(runtime, memory);
+}
+
+function writeConversationDoneSse(
+  res: http.ServerResponse,
+  outcome: ChatMessageIdOutcome,
+): void {
+  const { text, ...terminalMetadata } = outcome;
+  writeSseJson(res, {
+    type: "done",
+    fullText: text,
+    ...terminalMetadata,
+  });
+}
+
+function buildGenerationMessageIdOutcome(
+  result: ChatGenerationResult,
+  text: string,
+  messageId?: UUID,
+): ChatMessageIdOutcome {
+  return {
+    text,
+    agentName: result.agentName,
+    ...(messageId ? { messageId } : {}),
+    ...(result.transcriptVisibility
+      ? { transcriptVisibility: result.transcriptVisibility }
+      : {}),
+    ...(result.thought ? { thought: result.thought } : {}),
+    ...(result.usage ? { usage: result.usage } : {}),
+    ...(result.actionResults?.length
+      ? { actionResults: result.actionResults }
+      : {}),
+    ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+    ...(result.accountConnect ? { accountConnect: result.accountConnect } : {}),
+    ...(result.localInference ? { localInference: result.localInference } : {}),
+    ...(result.noResponseReason
+      ? { noResponseReason: result.noResponseReason }
+      : {}),
+  };
+}
+
+function buildConversationJsonOutcome(
+  outcome: ChatMessageIdOutcome,
+): ChatMessageIdOutcome {
+  return {
+    text: outcome.text,
+    agentName: outcome.agentName,
+    ...(outcome.messageId ? { messageId: outcome.messageId } : {}),
+    ...(outcome.transcriptVisibility
+      ? { transcriptVisibility: outcome.transcriptVisibility }
+      : {}),
+    ...(outcome.actionResults?.length
+      ? { actionResults: outcome.actionResults }
+      : {}),
+    ...(outcome.failureKind ? { failureKind: outcome.failureKind } : {}),
+    ...(outcome.accountConnect
+      ? { accountConnect: outcome.accountConnect }
+      : {}),
+    ...(outcome.localInference
+      ? { localInference: outcome.localInference }
+      : {}),
+    ...(outcome.noResponseReason
+      ? { noResponseReason: outcome.noResponseReason }
+      : {}),
+  };
+}
+
+function isCallbackHistoryPersistenceError(
+  error: unknown,
+): error is ElizaError {
+  return (
+    error instanceof ElizaError &&
+    error.code === "CONVERSATION_CALLBACK_HISTORY_WRITE_FAILED"
+  );
 }
 
 export async function persistRecentAssistantActionCallbackHistory(
@@ -1119,6 +1218,7 @@ export async function persistRecentAssistantActionCallbackHistory(
   roomId: UUID,
   actionCallbackHistory: readonly string[],
   sinceMs: number,
+  targetMemoryId?: UUID,
 ): Promise<boolean> {
   const normalizedHistory = normalizeActionCallbackHistory(
     actionCallbackHistory,
@@ -1128,14 +1228,21 @@ export async function persistRecentAssistantActionCallbackHistory(
   }
 
   try {
-    const recent = await runtime.getMemories({
-      roomId,
-      tableName: "messages",
-      limit: 12,
-    });
+    const recent = targetMemoryId
+      ? await runtime.getMemoriesByIds([targetMemoryId], "messages")
+      : await runtime.getMemories({
+          roomId,
+          tableName: "messages",
+          limit: 12,
+        });
 
     const target = recent
-      .filter((memory) => memory.entityId === runtime.agentId)
+      .filter(
+        (memory) =>
+          memory.roomId === roomId &&
+          memory.agentId === runtime.agentId &&
+          memory.entityId === runtime.agentId,
+      )
       .filter((memory) => {
         const content = memory.content as { text?: unknown } | undefined;
         const createdAt = memory.createdAt ?? 0;
@@ -1143,13 +1250,24 @@ export async function persistRecentAssistantActionCallbackHistory(
           typeof memory.id === "string" &&
           typeof content?.text === "string" &&
           content.text.trim().length > 0 &&
-          createdAt >= sinceMs - 2000
+          (targetMemoryId
+            ? memory.id === targetMemoryId
+            : createdAt >= sinceMs - 2000)
         );
       })
       .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
       .at(-1);
 
     if (!target || typeof target.id !== "string") {
+      if (targetMemoryId) {
+        throw new ElizaError(
+          "Exact assistant memory for callback history was not found",
+          {
+            code: "CONVERSATION_CALLBACK_TARGET_NOT_FOUND",
+            context: { roomId, targetMemoryId },
+          },
+        );
+      }
       return false;
     }
 
@@ -1181,11 +1299,12 @@ export async function persistRecentAssistantActionCallbackHistory(
     });
 
     return true;
-  } catch (err) {
-    logger.debug(
-      `[conversations] Failed to persist action callback history: ${getErrorMessage(err)}`,
-    );
-    return false;
+  } catch (cause) {
+    throw new ElizaError("Failed to persist action callback history", {
+      code: "CONVERSATION_CALLBACK_HISTORY_WRITE_FAILED",
+      cause,
+      context: { roomId, targetMemoryId },
+    });
   }
 }
 
@@ -1635,6 +1754,24 @@ function normalizeMessageSearchQuery(value: string | null): string {
   return (value === null ? "" : value).trim().replace(/\s+/g, " ");
 }
 
+function isLegacyViewsInventoryContent(
+  content: Record<string, unknown>,
+): boolean {
+  const text = typeof content.text === "string" ? content.text.trim() : "";
+  if (!/^available_views:\s*(?:\n|$)/.test(text)) return false;
+
+  const callbackHistory = normalizeActionCallbackHistory(
+    content.actionCallbackHistory,
+  );
+  if (callbackHistory.length > 0 && text === callbackHistory.join("\n")) {
+    return true;
+  }
+  return (
+    /^views\[\d+\]\{id,label,type,path,available\}:/m.test(text) ||
+    /^\s*count:\s*0\s*$/m.test(text)
+  );
+}
+
 /**
  * Parse an optional `since`/`until` search param into epoch ms. Accepts a
  * non-negative epoch-ms integer or any `Date.parse`-able string (ISO 8601).
@@ -1786,10 +1923,15 @@ export async function handleConversationRoutes(
           ? conversationsByRoomId.get(roomId)
           : undefined;
         if (!roomId || !conversation) return [];
-        const content = memory.content as
-          | { text?: unknown; transcriptVisibility?: unknown }
-          | undefined;
+        const content = memory.content as Record<string, unknown> | undefined;
         if (content?.transcriptVisibility === "internal") return [];
+        if (
+          content &&
+          memory.entityId === runtime.agentId &&
+          isLegacyViewsInventoryContent(content)
+        ) {
+          return [];
+        }
         const text = content?.text;
         if (typeof text !== "string") return [];
         const rawText = text.trim();
@@ -2659,37 +2801,18 @@ export async function handleConversationRoutes(
     // the first attempt lands. Requests without a clientMessageId are never
     // treated as duplicates.
     if (isDuplicateChatMessage(conv.roomId, clientMessageId ?? null)) {
-      const firstSeenAt = getChatMessageIdFirstSeenAt(
+      const settledOutcome = getChatMessageIdOutcome(
         conv.roomId,
         clientMessageId ?? null,
       );
-      const persistedFirstReply =
-        state.runtime && firstSeenAt !== null
-          ? await getRecentVisibleAssistantMemorySince(
-              state.runtime,
-              conv.roomId,
-              firstSeenAt,
-              // No pre-arrival slack: same-process clocks mean any reply
-              // persisted before this id's first arrival is a PRIOR turn's.
-              0,
-            )
-          : null;
       initSse(res);
-      writeSseJson(
+      writeConversationDoneSse(
         res,
-        persistedFirstReply
-          ? {
-              type: "done",
-              fullText: persistedFirstReply.text,
-              agentName: state.agentName,
-              messageId: persistedFirstReply.id,
-            }
-          : {
-              type: "done",
-              fullText: "",
-              agentName: state.agentName,
-              noResponseReason: "ignored",
-            },
+        settledOutcome ?? {
+          text: "",
+          agentName: state.agentName,
+          noResponseReason: "ignored",
+        },
       );
       finishStreamResponse();
       return true;
@@ -2719,6 +2842,7 @@ export async function handleConversationRoutes(
       writeConversationStreamHeartbeat(res, disconnectTracker);
     }, 5000);
     const failStream = (message: string): true => {
+      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       writeSse(res, { type: "error", message });
       clearInterval(heartbeatInterval);
       finishStreamResponse();
@@ -2728,7 +2852,14 @@ export async function handleConversationRoutes(
     // Hold the streaming turn through the warming window instead of dropping it
     // — the client already shows the optimistic bubble + typing indicator, and
     // the response streams the instant first-turn capability comes online.
-    const runtime = await resolveRuntimeForChatTurn(state);
+    let runtime: AgentRuntime | null;
+    try {
+      runtime = await resolveRuntimeForChatTurn(state);
+    } catch (err) {
+      return failStream(
+        `Failed to resolve agent runtime: ${getErrorMessage(err)}`,
+      );
+    }
     if (!runtime) {
       return failStream("Agent is not running");
     }
@@ -2737,16 +2868,25 @@ export async function handleConversationRoutes(
     const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
-    const { userMessage, messageToStore } = await buildUserMessages({
-      images,
-      prompt,
-      userId,
-      agentId: runtime.agentId,
-      roomId: conv.roomId,
-      channelType,
-      messageSource: source,
-      metadata: chatMetadata,
-    });
+    let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
+    try {
+      userMessages = await buildUserMessages({
+        images,
+        prompt,
+        userId,
+        agentId: runtime.agentId,
+        roomId: conv.roomId,
+        channelType,
+        messageSource: source,
+        metadata: chatMetadata,
+      });
+    } catch (err) {
+      return failStream(
+        `Failed to prepare user message: ${getErrorMessage(err)}`,
+      );
+    }
+    bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
+    const { userMessage, messageToStore } = userMessages;
 
     const connectionDescriptor = captureConversationConnection(
       state,
@@ -2767,7 +2907,11 @@ export async function handleConversationRoutes(
     }
     try {
       assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-      await persistConversationMemory(runtime, messageToStore);
+      await persistClientUserMemory(
+        runtime,
+        messageToStore,
+        clientMessageId ?? null,
+      );
       assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
     } catch (err) {
       if (isConversationConnectionError(err)) {
@@ -2796,28 +2940,33 @@ export async function handleConversationRoutes(
               state.runtime,
               connectionDescriptor,
             );
+            const routeOwnedId = crypto.randomUUID() as UUID;
             const persisted = await persistAssistantConversationMemory(
               runtime,
               conv.roomId,
               walletModeGuidance,
               channelType,
               turnStartedAt,
+              routeOwnedId,
             );
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
             );
             conv.updatedAt = new Date().toISOString();
-            writeSseJson(res, {
-              type: "done",
-              fullText: walletModeGuidance,
+            const outcome: ChatMessageIdOutcome = {
+              text: walletModeGuidance,
               agentName: state.agentName,
               ...(persisted?.id ? { messageId: persisted.id } : {}),
-            });
+            };
+            setChatMessageIdOutcome(
+              conv.roomId,
+              clientMessageId ?? null,
+              outcome,
+            );
+            writeConversationDoneSse(res, outcome);
           } catch (persistErr) {
-            if (isConversationConnectionError(persistErr)) {
-              releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-            }
+            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
             writeSse(res, {
               type: "error",
               message: getErrorMessage(persistErr),
@@ -2838,6 +2987,12 @@ export async function handleConversationRoutes(
           });
         }
       } finally {
+        if (
+          clientMessageId &&
+          !getChatMessageIdOutcome(conv.roomId, clientMessageId)
+        ) {
+          releaseChatMessageId(conv.roomId, clientMessageId);
+        }
         clearInterval(heartbeatInterval);
         finishStreamResponse();
         endActiveChatTurn();
@@ -2855,13 +3010,7 @@ export async function handleConversationRoutes(
     // the wire carries each phase transition once. Distinct consecutive phases
     // (thinking → running_action → thinking) still pass through.
     let lastStatusSignature = "thinking::";
-    // The client needs the persisted assistant id in the terminal `done` frame
-    // so it can replace its streamed `temp-resp-*` bubble in place. Create the
-    // memory before `done`, but defer only the DB insert until after the socket
-    // closes so the latency optimization stays intact and the id is still the
-    // same one the later WS proactive-message broadcast carries.
-    let deferredPersistence: Promise<void> | null = null;
-
+    let generationResult: ChatGenerationResult | null = null;
     try {
       const result = await generateChatResponse(
         runtime,
@@ -2938,6 +3087,7 @@ export async function handleConversationRoutes(
           preferredLanguage,
         },
       );
+      generationResult = result;
       assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
 
       if (!disconnectTracker.isAborted()) {
@@ -2962,113 +3112,81 @@ export async function handleConversationRoutes(
           }
           const visibleResolvedText =
             result.transcriptVisibility === "internal" ? "" : resolvedText;
-          // Resolve the durable assistant-memory id BEFORE emitting `done` so
-          // the client can swap its optimistic temp-resp-* bubble to the
-          // persisted id, and the proactive-message WS echo then reconciles by
-          // id instead of appending a duplicate bubble. Two topologies:
-          //  - action-callback turns may have ALREADY persisted (and WS-echoed)
-          //    the reply via the client_chat send handler — reuse that memory's
-          //    id and skip the route's own persist (same suppression
-          //    shouldPersistFinalAssistantTurn provided, but id-carrying);
-          //  - otherwise pre-mint the id here and defer only the DB insert.
-          let persistedAssistantId: UUID | null = null;
-          let shouldPersistAssistantTurn = false;
-          if (result.usedActionCallbacks) {
-            const existingAssistantTurn =
-              await getRecentVisibleAssistantMemorySince(
-                runtime,
-                conv.roomId,
-                turnStartedAt,
-              );
-            if (existingAssistantTurn) {
-              persistedAssistantId = existingAssistantTurn.id;
-            } else {
-              persistedAssistantId = crypto.randomUUID() as UUID;
-              shouldPersistAssistantTurn = true;
-            }
-          } else {
-            persistedAssistantId = crypto.randomUUID() as UUID;
-            shouldPersistAssistantTurn = true;
-          }
-          // Emit `done` before the DB insert so user-perceived end-of-turn
-          // latency excludes the memory write, but include the pre-minted
-          // persisted id so the client can reconcile its streamed temp bubble.
+          // A response id returned by the model pipeline is authoritative only
+          // after the exact row is visible in this room. Transient and
+          // do-not-persist responseMessages therefore fall through to the
+          // route-owned durable memory instead of producing an orphan SSE id.
           assertConversationConnectionRuntime(
             state.runtime,
             connectionDescriptor,
           );
-          writeSseJson(res, {
-            type: "done",
-            fullText: visibleResolvedText,
-            agentName: result.agentName,
-            ...(persistedAssistantId
-              ? { messageId: persistedAssistantId }
-              : {}),
-            ...(result.transcriptVisibility
-              ? { transcriptVisibility: result.transcriptVisibility }
-              : {}),
-            ...(result.thought ? { thought: result.thought } : {}),
-            ...(result.usage ? { usage: result.usage } : {}),
-            ...(result.actionResults?.length
-              ? { actionResults: result.actionResults }
-              : {}),
-            // A non-throwing result can still carry a failure classification
-            // (e.g. a canned provider-issue phrase folded into the reply). Mirror
-            // the error branch so the renderer's gate + Retry persist.
-            ...(result.failureKind ? { failureKind: result.failureKind } : {}),
-            // Structured "connect another account" request from CONNECT_ACCOUNT.
-            // Carried like failureKind so the renderer can offer the inline
-            // AddAccountDialog entry point instead of a plain reply bubble.
-            ...(result.accountConnect
-              ? { accountConnect: result.accountConnect }
-              : {}),
-            ...(result.localInference
-              ? { localInference: result.localInference }
-              : {}),
-          });
-          deferredPersistence = (async () => {
-            if (result.actionCallbackHistory?.length) {
-              assertConversationConnectionRuntime(
-                state.runtime,
-                connectionDescriptor,
-              );
-              await persistRecentAssistantActionCallbackHistory(
-                runtime,
-                conv.roomId,
-                result.actionCallbackHistory,
-                turnStartedAt,
-              );
-            }
-            if (shouldPersistAssistantTurn && persistedAssistantId) {
-              assertConversationConnectionRuntime(
-                state.runtime,
-                connectionDescriptor,
-              );
-              await persistAssistantConversationMemory(
-                runtime,
-                conv.roomId,
-                buildPersistedAssistantContent(resolvedText, result),
-                channelType,
-                turnStartedAt,
-                persistedAssistantId,
-              );
-            }
-          })();
+          const existingResponseMemory = await resolvePersistedResponseMemory(
+            runtime,
+            conv.roomId,
+            result,
+            resolvedText,
+            state.logBuffer,
+          );
+          const routeOwnedId = crypto.randomUUID() as UUID;
+          const persistedAssistantMemory =
+            existingResponseMemory ??
+            (resolvedText.trim()
+              ? await persistAssistantConversationMemory(
+                  runtime,
+                  conv.roomId,
+                  buildPersistedAssistantContent(resolvedText, result),
+                  channelType,
+                  turnStartedAt,
+                  routeOwnedId,
+                )
+              : null);
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const persistedAssistantId = validateUuid(
+            persistedAssistantMemory?.id,
+          );
+          if (result.actionCallbackHistory?.length && persistedAssistantId) {
+            await persistRecentAssistantActionCallbackHistory(
+              runtime,
+              conv.roomId,
+              result.actionCallbackHistory,
+              turnStartedAt,
+              persistedAssistantId,
+            );
+          }
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const outcome = buildGenerationMessageIdOutcome(
+            result,
+            visibleResolvedText,
+            persistedAssistantId ?? undefined,
+          );
+          setChatMessageIdOutcome(
+            conv.roomId,
+            clientMessageId ?? null,
+            outcome,
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          writeConversationDoneSse(res, outcome);
         } else {
           assertConversationConnectionRuntime(
             state.runtime,
             connectionDescriptor,
           );
-          writeSseJson(res, {
-            type: "done",
-            fullText: "",
-            agentName: result.agentName,
-            noResponseReason: "ignored",
-            ...(result.usage ? { usage: result.usage } : {}),
-            ...(result.actionResults?.length
-              ? { actionResults: result.actionResults }
-              : {}),
-          });
+          const outcome = buildGenerationMessageIdOutcome(result, "");
+          setChatMessageIdOutcome(
+            conv.roomId,
+            clientMessageId ?? null,
+            outcome,
+          );
+          writeConversationDoneSse(res, outcome);
         }
       }
     } catch (err) {
@@ -3108,6 +3226,12 @@ export async function handleConversationRoutes(
         // instead of being suppressed into dead air (the iOS-suspend →
         // disconnect-abort → retry-eaten scenario).
         releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+      } else if (isCallbackHistoryPersistenceError(err)) {
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        writeSse(res, {
+          type: "error",
+          message: getErrorMessage(err),
+        });
       } else if (!disconnectTracker.isAborted()) {
         // If text was already streamed to the client (e.g. the initial
         // response succeeded but planner follow-up failed), use the
@@ -3126,28 +3250,33 @@ export async function handleConversationRoutes(
               state.runtime,
               connectionDescriptor,
             );
+            const routeOwnedId = crypto.randomUUID() as UUID;
             const persisted = await persistAssistantConversationMemory(
               runtime,
               conv.roomId,
               streamedText,
               channelType,
               turnStartedAt,
+              routeOwnedId,
             );
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
             );
             conv.updatedAt = new Date().toISOString();
-            writeSseJson(res, {
-              type: "done",
-              fullText: streamedText,
+            const outcome: ChatMessageIdOutcome = {
+              text: streamedText,
               agentName: state.agentName,
               ...(persisted?.id ? { messageId: persisted.id } : {}),
-            });
+            };
+            setChatMessageIdOutcome(
+              conv.roomId,
+              clientMessageId ?? null,
+              outcome,
+            );
+            writeConversationDoneSse(res, outcome);
           } catch (persistErr) {
-            if (isConversationConnectionError(persistErr)) {
-              releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-            }
+            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
             writeSse(res, {
               type: "error",
               message: getErrorMessage(persistErr),
@@ -3164,38 +3293,87 @@ export async function handleConversationRoutes(
             },
             "Chat generation failed with no streamed text",
           );
-          const alreadyPersistedVisibleAssistantTurn =
-            await hasRecentVisibleAssistantMemorySince(
-              runtime,
-              conv.roomId,
-              turnStartedAt,
+          try {
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
             );
-          if (alreadyPersistedVisibleAssistantTurn) {
-            logger.warn(
-              {
-                err: getErrorMessage(terminalError),
-                conversationId: conv.id,
-                roomId: conv.roomId,
-              },
-              "Chat generation failed after an assistant reply was already persisted — suppressing synthetic fallback",
+            const generationResolvedText = generationResult
+              ? normalizeChatResponseText(
+                  generationResult.text,
+                  state.logBuffer,
+                  runtime,
+                )
+              : "";
+            const exactPersistedResponse =
+              generationResult &&
+              generationResult.transcriptVisibility !== "internal" &&
+              generationResolvedText
+                ? await resolvePersistedResponseMemory(
+                    runtime,
+                    conv.roomId,
+                    generationResult,
+                    generationResolvedText,
+                    state.logBuffer,
+                  )
+                : null;
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
             );
-            try {
+            const exactPersistedId = validateUuid(exactPersistedResponse?.id);
+            if (
+              generationResult &&
+              exactPersistedResponse &&
+              exactPersistedId
+            ) {
+              logger.warn(
+                {
+                  err: getErrorMessage(terminalError),
+                  conversationId: conv.id,
+                  roomId: conv.roomId,
+                  messageId: exactPersistedId,
+                },
+                "Chat generation failed after its exact assistant reply was already durable",
+              );
+              if (generationResult.actionCallbackHistory?.length) {
+                await persistRecentAssistantActionCallbackHistory(
+                  runtime,
+                  conv.roomId,
+                  generationResult.actionCallbackHistory,
+                  turnStartedAt,
+                  exactPersistedId,
+                );
+              }
               assertConversationConnectionRuntime(
                 state.runtime,
                 connectionDescriptor,
               );
-            } catch (connectionErr) {
-              releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-              writeSse(res, {
-                type: "error",
-                message: getErrorMessage(connectionErr),
-              });
+              const outcome = buildGenerationMessageIdOutcome(
+                generationResult,
+                generationResolvedText,
+                exactPersistedId,
+              );
+              setChatMessageIdOutcome(
+                conv.roomId,
+                clientMessageId ?? null,
+                outcome,
+              );
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              writeConversationDoneSse(res, outcome);
               return true;
             }
-            writeSseJson(res, {
-              type: "done",
-              fullText: "",
-              agentName: state.agentName,
+          } catch (salvageErr) {
+            // error-policy:J1 route boundary — this code already runs inside
+            // the generation catch, so exact-row salvage failures require
+            // their own observable SSE terminal instead of escaping silently.
+            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+            writeSse(res, {
+              type: "error",
+              message: getErrorMessage(salvageErr),
             });
             return true;
           }
@@ -3212,30 +3390,34 @@ export async function handleConversationRoutes(
               state.runtime,
               connectionDescriptor,
             );
+            const routeOwnedId = crypto.randomUUID() as UUID;
             const persisted = await persistAssistantConversationMemory(
               runtime,
               conv.roomId,
               providerIssueReply,
               channelType,
+              undefined,
+              routeOwnedId,
             );
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
             );
             conv.updatedAt = new Date().toISOString();
-            writeSse(res, {
-              type: "done",
-              fullText: providerIssueReply,
+            const outcome: ChatMessageIdOutcome = {
+              text: providerIssueReply,
               agentName: state.agentName,
               ...(persisted?.id ? { messageId: persisted.id } : {}),
-              // See non-streaming branch — renderer gates chat input on
-              // failureKind === "no_provider".
               failureKind,
-            });
+            };
+            setChatMessageIdOutcome(
+              conv.roomId,
+              clientMessageId ?? null,
+              outcome,
+            );
+            writeConversationDoneSse(res, outcome);
           } catch (persistErr) {
-            if (isConversationConnectionError(persistErr)) {
-              releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-            }
+            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
             writeSse(res, {
               type: "error",
               message: getErrorMessage(persistErr),
@@ -3250,22 +3432,15 @@ export async function handleConversationRoutes(
         releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       }
     } finally {
+      if (
+        clientMessageId &&
+        !getChatMessageIdOutcome(conv.roomId, clientMessageId)
+      ) {
+        releaseChatMessageId(conv.roomId, clientMessageId);
+      }
       clearInterval(heartbeatInterval);
       finishStreamResponse();
       endActiveChatTurn();
-      // Persistence runs after the client has already received `done` + the
-      // socket is closed. Failures must still be observable — never swallow.
-      if (deferredPersistence !== null) {
-        deferredPersistence.catch((persistErr: unknown) => {
-          logger.error(
-            {
-              roomId: conv.roomId,
-              err: getErrorMessage(persistErr),
-            },
-            "[ConversationStream] persistence failed",
-          );
-        });
-      }
     }
     return true;
   }
@@ -3308,23 +3483,12 @@ export async function handleConversationRoutes(
     // success without starting a second LLM turn or persisting a duplicate
     // assistant memory.
     if (isDuplicateChatMessage(conv.roomId, clientMessageId ?? null)) {
-      const firstSeenAt = getChatMessageIdFirstSeenAt(
+      const settledOutcome = getChatMessageIdOutcome(
         conv.roomId,
         clientMessageId ?? null,
       );
-      const persistedFirstReply =
-        state.runtime && firstSeenAt !== null
-          ? await getRecentVisibleAssistantMemoryTextSince(
-              state.runtime,
-              conv.roomId,
-              firstSeenAt,
-              // No pre-arrival slack: same-process clocks mean any reply
-              // persisted before this id's first arrival is a PRIOR turn's.
-              0,
-            )
-          : null;
-      if (persistedFirstReply) {
-        json(res, { text: persistedFirstReply, agentName: state.agentName });
+      if (settledOutcome) {
+        json(res, buildConversationJsonOutcome(settledOutcome));
       } else {
         json(res, {
           text: "",
@@ -3336,8 +3500,20 @@ export async function handleConversationRoutes(
     }
     // Hold the turn through the warming window (early API bind → runtime ready)
     // instead of dropping it; the client already shows the optimistic bubble.
-    const runtime = await resolveRuntimeForChatTurn(state);
+    let runtime: AgentRuntime | null;
+    try {
+      runtime = await resolveRuntimeForChatTurn(state);
+    } catch (err) {
+      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+      error(
+        res,
+        `Failed to resolve agent runtime: ${getErrorMessage(err)}`,
+        503,
+      );
+      return true;
+    }
     if (!runtime) {
+      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       error(res, "Agent is not running", 503);
       return true;
     }
@@ -3363,25 +3539,40 @@ export async function handleConversationRoutes(
       return true;
     }
 
-    const { userMessage, messageToStore } = await buildUserMessages({
-      images,
-      prompt,
-      userId,
-      agentId: runtime.agentId,
-      roomId: conv.roomId,
-      channelType,
-      messageSource: source,
-      metadata: restMetadata,
-    });
+    let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
+    try {
+      userMessages = await buildUserMessages({
+        images,
+        prompt,
+        userId,
+        agentId: runtime.agentId,
+        roomId: conv.roomId,
+        channelType,
+        messageSource: source,
+        metadata: restMetadata,
+      });
+    } catch (err) {
+      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+      error(
+        res,
+        `Failed to prepare user message: ${getErrorMessage(err)}`,
+        500,
+      );
+      return true;
+    }
+    bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
+    const { userMessage, messageToStore } = userMessages;
 
     try {
       assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-      await persistConversationMemory(runtime, messageToStore);
+      await persistClientUserMemory(
+        runtime,
+        messageToStore,
+        clientMessageId ?? null,
+      );
       assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
     } catch (err) {
-      if (isConversationConnectionError(err)) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      }
+      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       error(res, `Failed to store user message: ${getErrorMessage(err)}`, 500);
       return true;
     }
@@ -3394,28 +3585,37 @@ export async function handleConversationRoutes(
           state.runtime,
           connectionDescriptor,
         );
-        await persistAssistantConversationMemory(
+        const routeOwnedId = crypto.randomUUID() as UUID;
+        const persisted = await persistAssistantConversationMemory(
           runtime,
           conv.roomId,
           walletModeGuidance,
           channelType,
           turnStartedAt,
+          routeOwnedId,
         );
         assertConversationConnectionRuntime(
           state.runtime,
           connectionDescriptor,
         );
         conv.updatedAt = new Date().toISOString();
-        json(res, {
+        const outcome: ChatMessageIdOutcome = {
           text: walletModeGuidance,
           agentName: state.agentName,
-        });
+          ...(persisted?.id ? { messageId: persisted.id } : {}),
+        };
+        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
+        json(res, buildConversationJsonOutcome(outcome));
       } catch (persistErr) {
-        if (isConversationConnectionError(persistErr)) {
-          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        }
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
         error(res, getErrorMessage(persistErr), 500);
       } finally {
+        if (
+          clientMessageId &&
+          !getChatMessageIdOutcome(conv.roomId, clientMessageId)
+        ) {
+          releaseChatMessageId(conv.roomId, clientMessageId);
+        }
         endActiveChatTurn();
       }
       return true;
@@ -3442,77 +3642,67 @@ export async function handleConversationRoutes(
           state.logBuffer,
           runtime,
         );
-        if (result.actionCallbackHistory?.length) {
-          assertConversationConnectionRuntime(
-            state.runtime,
-            connectionDescriptor,
-          );
+        const existingResponseMemory = await resolvePersistedResponseMemory(
+          runtime,
+          conv.roomId,
+          result,
+          resolvedText,
+          state.logBuffer,
+        );
+        const persistedAssistantMemory =
+          existingResponseMemory ??
+          (resolvedText.trim()
+            ? await persistAssistantConversationMemory(
+                runtime,
+                conv.roomId,
+                buildPersistedAssistantContent(resolvedText, result),
+                channelType,
+                turnStartedAt,
+                crypto.randomUUID() as UUID,
+              )
+            : null);
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+        const persistedAssistantId = validateUuid(persistedAssistantMemory?.id);
+        if (result.actionCallbackHistory?.length && persistedAssistantId) {
           await persistRecentAssistantActionCallbackHistory(
             runtime,
             conv.roomId,
             result.actionCallbackHistory,
             turnStartedAt,
-          );
-        }
-        if (
-          await shouldPersistFinalAssistantTurn(
-            runtime,
-            conv.roomId,
-            turnStartedAt,
-            result,
-          )
-        ) {
-          assertConversationConnectionRuntime(
-            state.runtime,
-            connectionDescriptor,
-          );
-          await persistAssistantConversationMemory(
-            runtime,
-            conv.roomId,
-            buildPersistedAssistantContent(resolvedText, result),
-            channelType,
-            turnStartedAt,
+            persistedAssistantId,
           );
         }
         assertConversationConnectionRuntime(
           state.runtime,
           connectionDescriptor,
         );
-        json(res, {
-          text: result.transcriptVisibility === "internal" ? "" : resolvedText,
-          agentName: result.agentName,
-          ...(result.transcriptVisibility
-            ? { transcriptVisibility: result.transcriptVisibility }
-            : {}),
-          ...(result.actionResults?.length
-            ? { actionResults: result.actionResults }
-            : {}),
-          // A non-throwing result can still carry a failure classification
-          // (e.g. a canned provider-issue phrase folded into the reply). Mirror
-          // the error branch so the renderer's gate + Retry persist.
-          ...(result.failureKind ? { failureKind: result.failureKind } : {}),
-          ...(result.accountConnect
-            ? { accountConnect: result.accountConnect }
-            : {}),
-          ...(result.localInference
-            ? { localInference: result.localInference }
-            : {}),
-        });
+        const visibleResolvedText =
+          result.transcriptVisibility === "internal" ? "" : resolvedText;
+        const outcome = buildGenerationMessageIdOutcome(
+          result,
+          visibleResolvedText,
+          persistedAssistantId ?? undefined,
+        );
+        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
+        json(res, buildConversationJsonOutcome(outcome));
       } else {
         assertConversationConnectionRuntime(
           state.runtime,
           connectionDescriptor,
         );
-        json(res, {
-          text: "",
-          agentName: result.agentName,
-          noResponseReason: "ignored",
-          ...(result.actionResults?.length
-            ? { actionResults: result.actionResults }
-            : {}),
-        });
+        const outcome = buildGenerationMessageIdOutcome(result, "");
+        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
+        json(res, buildConversationJsonOutcome(outcome));
       }
     } catch (err) {
+      if (isCallbackHistoryPersistenceError(err)) {
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        error(res, getErrorMessage(err), 500);
+        return true;
+      }
       logger.warn(
         `[conversations] POST /messages failed: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -3532,33 +3722,39 @@ export async function handleConversationRoutes(
           state.runtime,
           connectionDescriptor,
         );
-        await persistAssistantConversationMemory(
+        const routeOwnedId = crypto.randomUUID() as UUID;
+        const persisted = await persistAssistantConversationMemory(
           runtime,
           conv.roomId,
           providerIssueReply,
           channelType,
+          undefined,
+          routeOwnedId,
         );
         assertConversationConnectionRuntime(
           state.runtime,
           connectionDescriptor,
         );
         conv.updatedAt = new Date().toISOString();
-        json(res, {
+        const outcome: ChatMessageIdOutcome = {
           text: providerIssueReply,
           agentName: state.agentName,
-          // Renderer keys off this discriminator. "no_provider" means the
-          // chat input should be gated with a "Connect a provider" CTA
-          // instead of treating the message text as a normal assistant
-          // reply (the user can't make progress without taking action).
+          ...(persisted?.id ? { messageId: persisted.id } : {}),
           failureKind,
-        });
+        };
+        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
+        json(res, buildConversationJsonOutcome(outcome));
       } catch (persistErr) {
-        if (isConversationConnectionError(persistErr)) {
-          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        }
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
         error(res, getErrorMessage(persistErr), 500);
       }
     } finally {
+      if (
+        clientMessageId &&
+        !getChatMessageIdOutcome(conv.roomId, clientMessageId)
+      ) {
+        releaseChatMessageId(conv.roomId, clientMessageId);
+      }
       endActiveChatTurn();
     }
     return true;

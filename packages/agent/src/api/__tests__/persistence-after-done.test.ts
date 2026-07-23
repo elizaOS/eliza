@@ -1,27 +1,36 @@
 /**
- * Verifies that the streaming chat handler emits the SSE `done` frame and
- * closes the response BEFORE assistant-memory persistence resolves, so the
- * user-perceived end-of-turn excludes the persistence write. Also verifies
- * that persistence rejections still surface via the structured logger
- * instead of being silently swallowed.
+ * Verifies that a streaming terminal frame never advertises an assistant id
+ * before that exact memory is durable. Persistence failures remain observable
+ * as an SSE error and cannot leave an orphan terminal id in the client.
  */
 
 import { EventEmitter } from "node:events";
 import http from "node:http";
-import { ChannelType, logger, stringToUuid, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  logger,
+  type Memory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Capture the deferred persistence promise the handler kicks off so the test
-// can resolve it on demand and assert ordering against the SSE writes.
-let persistResolve: ((value?: unknown) => void) | null = null;
-let persistReject: ((err: unknown) => void) | null = null;
+// Capture the persistence promise so the test can resolve it on demand and
+// assert that the terminal frame stays behind the durable write.
+let persistResolve: (() => void) | null = null;
 let persistCalledAt: number | null = null;
 let persistResolvedAt: number | null = null;
 let captureGenerateAbortSignal: AbortSignal | undefined;
 let generateWaitsForAbort = false;
 let generateThrowsTurnAbort = false;
 let generateThrowsTimeout = false;
-let assistantMemoryAlreadyPersisted = false;
+let generateReturnsExactPersisted = false;
+let generateReturnsExactInternal = false;
+let normalizeThrowsAfterResult = false;
+let exactPersistedCallbackHistory: string[] | undefined;
+let requestClientMessageId: string | undefined;
+const EXACT_PERSISTED_ID = stringToUuid("exact-persisted-assistant") as UUID;
+const EXACT_INTERNAL_ID = stringToUuid("exact-internal-assistant") as UUID;
 
 vi.mock("../chat-routes.ts", async () => {
   const actual =
@@ -53,23 +62,33 @@ vi.mock("../chat-routes.ts", async () => {
       preferredLanguage: undefined,
       source: "api",
       metadata: undefined,
+      clientMessageId: requestClientMessageId,
     })),
     persistConversationMemory: vi.fn(async () => undefined),
-    persistAssistantConversationMemory: vi.fn(async () => {
-      persistCalledAt = Date.now();
-      return new Promise<void>((resolve, reject) => {
-        persistResolve = (_value) => {
-          persistResolvedAt = Date.now();
-          resolve();
-        };
-        persistReject = (err) => {
-          persistResolvedAt = Date.now();
-          reject(err);
-        };
-      });
-    }),
-    hasRecentVisibleAssistantMemorySince: vi.fn(
-      async () => assistantMemoryAlreadyPersisted,
+    persistAssistantConversationMemory: vi.fn(
+      async (
+        runtime,
+        roomId,
+        content,
+        _channelType,
+        _dedupeSinceMs,
+        memoryId,
+      ) => {
+        persistCalledAt = Date.now();
+        return new Promise<Memory>((resolve) => {
+          persistResolve = () => {
+            persistResolvedAt = Date.now();
+            resolve({
+              id: memoryId ?? stringToUuid("persisted-assistant"),
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              roomId,
+              content:
+                typeof content === "string" ? { text: content } : content,
+            });
+          };
+        });
+      },
     ),
     generateChatResponse: vi.fn(async (_runtime, _msg, agentName, opts) => {
       captureGenerateAbortSignal = opts?.abortSignal;
@@ -92,6 +111,40 @@ vi.mock("../chat-routes.ts", async () => {
         });
         throw new Error("aborted");
       }
+      if (generateReturnsExactPersisted) {
+        return {
+          text: "Already durable.",
+          agentName,
+          responseContent: { text: "Already durable." },
+          actionCallbackHistory: exactPersistedCallbackHistory,
+          responseMessages: [
+            {
+              id: EXACT_PERSISTED_ID,
+              content: { text: "Already durable." },
+            },
+          ],
+        };
+      }
+      if (generateReturnsExactInternal) {
+        return {
+          text: "Internal diagnostic.",
+          agentName,
+          transcriptVisibility: "internal" as const,
+          responseContent: {
+            text: "Internal diagnostic.",
+            transcriptVisibility: "internal" as const,
+          },
+          responseMessages: [
+            {
+              id: EXACT_INTERNAL_ID,
+              content: {
+                text: "Internal diagnostic.",
+                transcriptVisibility: "internal" as const,
+              },
+            },
+          ],
+        };
+      }
       // Stream a single token so the SSE wire format mirrors a real turn.
       opts?.onChunk?.("ok");
       return {
@@ -103,7 +156,13 @@ vi.mock("../chat-routes.ts", async () => {
         noResponseReason: undefined,
       };
     }),
-    normalizeChatResponseText: (text: string) => text,
+    normalizeChatResponseText: (text: string) => {
+      if (normalizeThrowsAfterResult) {
+        normalizeThrowsAfterResult = false;
+        throw new Error("post-result normalization failed");
+      }
+      return text;
+    },
     resolveNoResponseFallback: () => "",
   };
 });
@@ -146,7 +205,7 @@ vi.mock("../character-routes.ts", async () => {
 });
 
 import {
-  hasRecentVisibleAssistantMemorySince,
+  generateChatResponse,
   persistAssistantConversationMemory,
   readChatRequestPayload,
 } from "../chat-routes.ts";
@@ -216,6 +275,11 @@ function createMockRes(): {
 function createState(): ConversationRouteState {
   const roomId = stringToUuid("room-1") as UUID;
   const adminId = stringToUuid("admin-1") as UUID;
+  const worlds = new Map<
+    UUID,
+    { id: UUID; agentId: UUID; metadata: Record<string, unknown> }
+  >();
+  const storedMemories = new Map<UUID, Memory>();
   const conv = {
     id: "conv-1",
     title: "Test conv",
@@ -227,10 +291,58 @@ function createState(): ConversationRouteState {
     agentId: stringToUuid("agent-1"),
     character: { name: "Test Agent" },
     logger,
-    ensureConnection: vi.fn(async () => undefined),
+    ensureConnection: vi.fn(async (input: { worldId?: UUID }) => {
+      if (!input.worldId) throw new Error("worldId is required");
+      if (!worlds.has(input.worldId)) {
+        worlds.set(input.worldId, {
+          id: input.worldId,
+          agentId: stringToUuid("agent-1"),
+          metadata: {},
+        });
+      }
+    }),
     updateWorld: vi.fn(async () => undefined),
-    getWorld: vi.fn(async () => null),
+    getWorld: vi.fn(async (worldId: UUID) => worlds.get(worldId) ?? null),
     getRoom: vi.fn(async () => null),
+    createMemory: vi.fn(async (memory: Memory) => {
+      if (memory.id) storedMemories.set(memory.id as UUID, memory);
+      return memory.id;
+    }),
+    getMemoriesByIds: vi.fn(async (ids: UUID[]) => {
+      const stored = ids
+        .map((id) => storedMemories.get(id))
+        .filter((memory): memory is Memory => Boolean(memory));
+      if (stored.length > 0) return stored;
+      if (ids.includes(EXACT_PERSISTED_ID)) {
+        return [
+          {
+            id: EXACT_PERSISTED_ID,
+            entityId: stringToUuid("agent-1"),
+            agentId: stringToUuid("agent-1"),
+            roomId,
+            content: { text: "<response>Already durable.</response>" },
+            createdAt: Date.now(),
+          },
+        ];
+      }
+      if (ids.includes(EXACT_INTERNAL_ID)) {
+        return [
+          {
+            id: EXACT_INTERNAL_ID,
+            entityId: stringToUuid("agent-1"),
+            agentId: stringToUuid("agent-1"),
+            roomId,
+            content: {
+              text: "Internal diagnostic.",
+              transcriptVisibility: "internal" as const,
+            },
+            createdAt: Date.now(),
+          },
+        ];
+      }
+      return [];
+    }),
+    updateMemory: vi.fn(async () => undefined),
     adapter: {},
   };
   return {
@@ -277,77 +389,60 @@ function createCtx(): {
 describe("conversation-routes streaming persistence ordering", () => {
   beforeEach(() => {
     persistResolve = null;
-    persistReject = null;
     persistCalledAt = null;
     persistResolvedAt = null;
     captureGenerateAbortSignal = undefined;
     generateWaitsForAbort = false;
     generateThrowsTurnAbort = false;
     generateThrowsTimeout = false;
-    assistantMemoryAlreadyPersisted = false;
+    generateReturnsExactPersisted = false;
+    generateReturnsExactInternal = false;
+    normalizeThrowsAfterResult = false;
+    exactPersistedCallbackHistory = undefined;
+    requestClientMessageId = undefined;
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it("emits `done` frame and ends the response BEFORE persistence resolves", async () => {
+  it("emits `done` only after the advertised assistant memory is durable", async () => {
     const { ctx, record } = createCtx();
 
     // Kick the handler off; do NOT await — persistence is hanging.
     const handlerDone = handleConversationRoutes(ctx);
 
-    // Yield repeatedly so the handler reaches the `done` write + res.end().
+    // Yield repeatedly so the handler reaches the pending persistence write.
     for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
 
-    const doneAt = (() => {
-      const ts = record.writes.findIndex((w) => w.includes('"type":"done"'));
-      return ts >= 0 ? ts : -1;
-    })();
-    expect(doneAt).toBeGreaterThanOrEqual(0);
-    expect(record.ended).toBe(true);
     expect(persistCalledAt).not.toBeNull();
     expect(persistResolvedAt).toBeNull();
+    expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(false);
+    expect(record.ended).toBe(false);
 
-    // Now resolve persistence and let the handler clean up.
+    // Once persistence resolves, the terminal frame may safely carry its id.
     persistResolve?.();
     await handlerDone;
     expect(persistResolvedAt).not.toBeNull();
-    // res.end() ran before persistence finished.
+    expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(true);
+    expect(record.ended).toBe(true);
     expect(record.endedAt).not.toBeNull();
-    expect(record.endedAt ?? 0).toBeLessThanOrEqual(
-      persistResolvedAt ?? Infinity,
+    expect(record.endedAt ?? Infinity).toBeGreaterThanOrEqual(
+      persistResolvedAt ?? 0,
     );
   });
 
-  it("logs persistence failures via Logger.error and still ends the response cleanly", async () => {
-    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+  it("returns an SSE error instead of an orphan done id when persistence fails", async () => {
     const { ctx, record } = createCtx();
+    vi.mocked(persistAssistantConversationMemory).mockRejectedValue(
+      new Error("simulated db failure"),
+    );
 
-    const handlerDone = handleConversationRoutes(ctx);
-    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
-
+    await handleConversationRoutes(ctx);
     expect(record.ended).toBe(true);
-    const persistErr = new Error("simulated db failure");
-    persistReject?.(persistErr);
-    await handlerDone;
-    // Detached catch handler runs after handlerDone resolves; flush microtasks.
-    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
-
-    expect(errorSpy).toHaveBeenCalled();
-    const call = errorSpy.mock.calls.find((c) => {
-      const ctxArg = c[0] as { roomId?: unknown; err?: unknown } | undefined;
-      const msg = c[1];
-      return (
-        typeof msg === "string" &&
-        msg.includes("[ConversationStream] persistence failed") &&
-        ctxArg !== undefined &&
-        typeof ctxArg.err === "string" &&
-        ctxArg.err.includes("simulated db failure")
-      );
-    });
-    expect(call).toBeDefined();
-    errorSpy.mockRestore();
+    expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(false);
+    expect(record.writes.some((w) => w.includes('"type":"error"'))).toBe(true);
+    expect(record.writes.join("")).toContain("simulated db failure");
   });
 
   it("aborts generation when the client socket closes after request body parsing", async () => {
@@ -398,17 +493,99 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(persistCalledAt).toBeNull();
   });
 
-  it("suppresses synthetic fallback when a timed-out turn already persisted a reply", async () => {
-    generateThrowsTimeout = true;
-    assistantMemoryAlreadyPersisted = true;
+  it("replays only the exact correlated visible row when a post-result step fails", async () => {
+    generateReturnsExactPersisted = true;
+    normalizeThrowsAfterResult = true;
     const { ctx, record } = createCtx();
 
     await handleConversationRoutes(ctx);
 
-    expect(hasRecentVisibleAssistantMemorySince).toHaveBeenCalled();
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
-    expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(true);
+    expect(record.writes.join("")).toContain('"type":"done"');
+    expect(record.writes.join("")).toContain('"fullText":"Already durable."');
+    expect(record.writes.join("")).toContain(
+      `"messageId":"${EXACT_PERSISTED_ID}"`,
+    );
     expect(record.writes.join("")).not.toContain("provider issue");
+    expect(record.ended).toBe(true);
+  });
+
+  it("reports exact-salvage callback failure and releases the retry key", async () => {
+    generateReturnsExactPersisted = true;
+    exactPersistedCallbackHistory = ["VIEWS"];
+    requestClientMessageId = "post-result-callback-retry";
+    normalizeThrowsAfterResult = true;
+    const first = createCtx();
+    if (!first.state.runtime) throw new Error("runtime fixture missing");
+    first.state.runtime.updateMemory = vi.fn(async () => {
+      throw new Error("callback metadata write failed");
+    });
+
+    const callsBefore = vi.mocked(generateChatResponse).mock.calls.length;
+    await handleConversationRoutes(first.ctx);
+
+    const firstPayloads = first.record.writes
+      .filter((write) => write.startsWith("data: "))
+      .map(
+        (write) =>
+          JSON.parse(write.slice(6)) as { message?: string; type?: string },
+      );
+    expect(
+      firstPayloads.filter((payload) => payload.type === "error"),
+    ).toHaveLength(1);
+    expect(
+      firstPayloads.find((payload) => payload.type === "error")?.message,
+    ).toContain("Failed to persist action callback history");
+    expect(firstPayloads.some((payload) => payload.type === "done")).toBe(
+      false,
+    );
+    expect(first.record.ended).toBe(true);
+    expect(vi.mocked(generateChatResponse)).toHaveBeenCalledTimes(
+      callsBefore + 1,
+    );
+
+    normalizeThrowsAfterResult = true;
+    const retry = createCtx();
+    await handleConversationRoutes(retry.ctx);
+
+    expect(vi.mocked(generateChatResponse)).toHaveBeenCalledTimes(
+      callsBefore + 2,
+    );
+    expect(retry.record.writes.join("")).toContain('"type":"done"');
+    expect(retry.record.writes.join("")).not.toContain(
+      '"noResponseReason":"ignored"',
+    );
+    expect(retry.record.ended).toBe(true);
+  });
+
+  it("does not treat an exact internal-only row as a visible terminal reply", async () => {
+    generateReturnsExactInternal = true;
+    normalizeThrowsAfterResult = true;
+    vi.mocked(persistAssistantConversationMemory).mockImplementationOnce(
+      async (
+        runtime,
+        roomId,
+        content,
+        _channelType,
+        _dedupeSinceMs,
+        memoryId,
+      ) =>
+        ({
+          id: memoryId ?? stringToUuid("visible-fallback"),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          roomId,
+          content: typeof content === "string" ? { text: content } : content,
+        }) as never,
+    );
+    const { ctx, record } = createCtx();
+
+    await handleConversationRoutes(ctx);
+
+    expect(record.writes.join("")).not.toContain("Internal diagnostic.");
+    expect(record.writes.join("")).toContain('"type":"done"');
+    expect(record.writes.join("")).toContain("provider issue");
+    expect(record.writes.join("")).toContain('"messageId"');
     expect(record.ended).toBe(true);
   });
 });
