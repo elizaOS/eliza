@@ -8056,11 +8056,30 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerResult.trajectory,
 			exposedPlannerActions,
 		);
-		const plannedReplyEgressDecision = evaluatePlannedReplyEgress({
-			reply: String(plannerResult.finalMessage ?? ""),
-			actionResults: egressActionResults,
-			actions: args.runtime.actions,
-		});
+		// An echo of text an action callback already delivered never egresses —
+		// the duplicate-suppression below drops it. Replacing it here with the
+		// "couldn't verify" fallback would instead DELIVER that doubt as a second
+		// bubble contradicting the receipt the user already saw, so the guard
+		// only evaluates replies that can actually reach the user.
+		const normalizedPlannedFinal = normalizeVisibleTextForDuplicateCheck(
+			String(plannerResult.finalMessage ?? ""),
+		);
+		const plannedFinalEchoesDeliveredText =
+			normalizedPlannedFinal.length > 0 &&
+			[...deliveredVisibleTexts].some(
+				(delivered) =>
+					delivered === normalizedPlannedFinal ||
+					(delivered.startsWith(normalizedPlannedFinal) &&
+						/[^a-z0-9]/i.test(delivered.charAt(normalizedPlannedFinal.length))),
+			);
+		const plannedReplyEgressDecision: PlannedReplyEgressDecision =
+			plannedFinalEchoesDeliveredText
+				? { verdict: "allow" }
+				: evaluatePlannedReplyEgress({
+						reply: String(plannerResult.finalMessage ?? ""),
+						actionResults: egressActionResults,
+						actions: args.runtime.actions,
+					});
 		if (plannedReplyEgressDecision.verdict === "reject") {
 			args.runtime.logger?.warn?.(
 				{
