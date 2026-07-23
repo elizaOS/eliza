@@ -118,15 +118,59 @@ export function isPendingInferenceCharge(value: unknown): value is PendingInfere
   );
 }
 
+// De-dupes background revalidations: while one authoritative refresh for an org
+// is in flight, concurrent stale reads skip scheduling another (no read
+// stampede). Module-scoped, so it is per-isolate best-effort — correctness never
+// depends on the refresh completing (see getGateBalanceUsd).
+const balanceRevalidationInFlight = new Set<string>();
+
 /**
- * Read the gate balance for an org. Uses the short-lived KV hint when present;
- * on a miss reads a FRESH authoritative balance and caches the hint. The
- * fast-vs-safe decision is therefore made on a number at most `orgBalance` TTL
- * old (plus KV lag), which the threshold must account for.
+ * Best-effort background revalidation of the org-balance hint. Reads the
+ * authoritative balance and writes it as the fresh hint, off the request's hot
+ * path. Not awaited and not durable: if the isolate is torn down before it
+ * finishes, the hint stays stale and the next stale read simply reschedules —
+ * money-safety does not depend on it (the debit settler + top-up invalidation
+ * keep the served value correct regardless).
+ */
+function scheduleOrgBalanceRevalidation(organizationId: string): void {
+  if (balanceRevalidationInFlight.has(organizationId)) return;
+  balanceRevalidationInFlight.add(organizationId);
+  void (async () => {
+    try {
+      const fresh = await creditsService.getOrganizationBalanceUsd(organizationId);
+      await writeOrgBalanceHint(organizationId, fresh, Date.now());
+    } catch (error) {
+      logger.warn("[InferenceBilling] org-balance revalidation failed", {
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      balanceRevalidationInFlight.delete(organizationId);
+    }
+  })();
+}
+
+/**
+ * Read the gate balance for an org, stale-while-revalidate. Serves the KV hint
+ * whenever one exists; if it is older than the `orgBalance` freshness window it
+ * is still returned immediately and an authoritative refresh is scheduled in the
+ * background. Only a full miss (no hint within the physical `orgBalanceStale`
+ * lifetime) blocks on the authoritative read. This keeps the human-paced first
+ * call of each turn off the ~200-500ms balance re-read that a hard 15s TTL
+ * forced, without widening the over-admit window: every optimistic charge still
+ * lands in the durable pending-charge ledger, the debit settler lowers the hint
+ * after each settle, and top-ups invalidate it — so a drained org is corrected
+ * on its first settle exactly as before, not after the stale window.
  */
 export async function getGateBalanceUsd(organizationId: string): Promise<number> {
   const hint = await readOrgBalanceHint(organizationId);
-  if (hint) return hint.balanceUsd;
+  if (hint) {
+    const freshnessMs = CacheTTL.inference.orgBalance * 1000;
+    if (Date.now() - hint.balanceAt > freshnessMs) {
+      scheduleOrgBalanceRevalidation(organizationId);
+    }
+    return hint.balanceUsd;
+  }
   const fresh = await creditsService.getOrganizationBalanceUsd(organizationId);
   await writeOrgBalanceHint(organizationId, fresh, Date.now());
   return fresh;
