@@ -36,7 +36,7 @@ describe("native GlassBridge wallpaper contract", () => {
     expect(ios).toContain('call.resolve(["applied": true])');
     expect(android).toContain('call.getString("imageBase64")');
     expect(android).toContain("BitmapFactory.decodeByteArray");
-    expect(android).toContain("resolveApplied(call, true)");
+    expect(android).toContain("settleApplied(call, true)");
   });
 
   it("contains NO network or cookie machinery — bytes only, ever", () => {
@@ -56,5 +56,40 @@ describe("native GlassBridge wallpaper contract", () => {
   it("restores WebView opacity when nothing native remains", () => {
     expect(ios).toContain("restoreWebViewOpacityIfUnneeded");
     expect(android).toContain("restoreWebViewOpacityIfUnneeded");
+  });
+
+  it("bounds the byte boundary BEFORE allocation on both platforms", () => {
+    // setBackdrop is externally callable: encoded length is checked before
+    // base64 decode, and pixel dimensions come from image METADATA before the
+    // full bitmap allocation a decompression bomb relies on.
+    expect(ios).toContain("maxBackdropEncodedChars");
+    expect(ios).toContain("maxBackdropPixels");
+    expect(ios).toContain("CGImageSourceCopyPropertiesAtIndex");
+    expect(android).toContain("MAX_BACKDROP_ENCODED_CHARS");
+    expect(android).toContain("MAX_BACKDROP_PIXELS");
+    expect(android).toContain("inJustDecodeBounds");
+  });
+
+  it("exposes an idempotent reset for renderer-reload teardown", () => {
+    // Native regions/backdrop outlive the document; each fresh renderer
+    // resets the host at boot so stale views never survive a reload.
+    expect(ios).toContain('CAPPluginMethod(name: "reset"');
+    expect(ios).toContain("func reset(");
+    expect(android).toContain("void reset(PluginCall call)");
+  });
+
+  it("ties the Android decoder executor to the plugin lifecycle", () => {
+    // The single-thread decoder must not outlive the Activity, and every
+    // in-flight backdrop call settles exactly once even through teardown.
+    expect(android).toContain("void handleOnDestroy()");
+    expect(android).toContain("shutdownNow");
+    expect(android).toContain("RejectedExecutionException");
+    expect(android).toContain("pendingBackdropCalls");
+  });
+
+  it("settles every iOS call even on plugin deallocation", () => {
+    // A `guard let self else { return }` that drops the CAPPluginCall leaves
+    // the JS promise hung forever; the bare-return form is banned.
+    expect(ios).not.toMatch(/guard let self else \{ return \}/);
   });
 });

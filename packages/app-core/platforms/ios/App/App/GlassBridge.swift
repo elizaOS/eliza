@@ -1,5 +1,6 @@
 import Capacitor
 import Foundation
+import ImageIO
 import UIKit
 import WebKit
 
@@ -45,6 +46,7 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setGrouping", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setBackdrop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearBackdrop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "reset", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getRegionState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isAvailable", returnType: CAPPluginReturnPromise),
     ]
@@ -90,6 +92,14 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let imageBase64 = call.getString("imageBase64")
+        // Untrusted Capacitor boundary: bound the ENCODED payload before any
+        // allocation. The renderer downsamples to screen scale, so anything
+        // beyond this is malformed or hostile — refuse, never decode.
+        if let imageBase64, imageBase64.count > Self.maxBackdropEncodedChars {
+            CAPLog.print("⚡️  GlassBridge setBackdrop: encoded payload over bound")
+            call.resolve(["applied": false])
+            return
+        }
         let color = call.getString("color").flatMap(Self.color(fromCSSHex:)) ?? .black
         DispatchQueue.main.async { [weak self] in
             guard let self else {
@@ -108,10 +118,12 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
                 call.resolve(["applied": true])
                 return
             }
-            // Decode off-main; the payload is screen-sized by the web encoder,
-            // so this is a bounded decode, not an arbitrary-file one.
+            // Decode off-main. Dimensions are read from the image METADATA
+            // (CGImageSource) and bounded before the first pixel buffer is
+            // allocated, so a decompression bomb never reaches UIImage.
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                let decoded = Data(base64Encoded: imageBase64).flatMap(UIImage.init(data:))
+                let decoded = Data(base64Encoded: imageBase64)
+                    .flatMap(Self.decodeBoundedImage(from:))
                 // UIImage(data:) is lazy — rasterize now so installing the
                 // layer never triggers a main-thread decode on the next frame.
                 let image: UIImage?
@@ -158,6 +170,29 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// Idempotent full teardown: every glass region, the backdrop, and the
+    /// WebView transparency flip. Native views outlive the document, so a
+    /// renderer that reloads (crash, HMR, navigation) calls this at boot —
+    /// a region anchored by the previous page must never survive under the
+    /// next one, whose React ids no longer match.
+    @objc public func reset(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.resolve()
+                return
+            }
+            self.backdropGeneration += 1
+            for view in self.regions.values {
+                view.removeFromSuperview()
+            }
+            self.regions.removeAll()
+            self.backdropView?.removeFromSuperview()
+            self.backdropView = nil
+            self.restoreWebViewOpacityIfUnneeded()
+            call.resolve()
+        }
+    }
+
     @objc public func attachGlass(_ call: CAPPluginCall) {
         guard let id = call.getString("id"), let rect = Self.parseRect(call.getObject("rect"))
         else {
@@ -174,7 +209,12 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         let colorScheme = call.getString("colorScheme") ?? "system"
 
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                // Settle even on deallocation — an abandoned call leaves the
+                // JS promise (and the anchor state machine behind it) hung.
+                call.resolve(["attached": false])
+                return
+            }
             #if compiler(>=6.2) && canImport(UIKit)
                 if #available(iOS 26.0, *) {
                     guard let webView = self.webView, let container = webView.superview else {
@@ -219,7 +259,10 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
             return
         }
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                call.resolve()
+                return
+            }
             guard let effectView = self.regions[id], let webView = self.webView else {
                 call.resolve()
                 return
@@ -348,6 +391,31 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
 
     /// Untrusted-boundary rect bound (CSS px) — mirrors the Android plugin.
     private static let maxRectCoordCssPx: Double = 100_000
+
+    /// Untrusted-boundary payload bounds — mirror the Android plugin. The
+    /// renderer encodes at screen scale under a 16M px canvas cap, so these
+    /// generous ceilings only ever reject malformed or hostile input.
+    private static let maxBackdropEncodedChars = 24_000_000
+    private static let maxBackdropPixels = 18_000_000
+
+    // error-policy:J3 untrusted Capacitor boundary — dimensions come from the
+    // image METADATA (no pixel allocation); an unreadable header or an
+    // over-budget pixel count produces nil → the caller resolves
+    // {applied:false}. Only a metadata-validated image reaches UIImage.
+    private static func decodeBoundedImage(from data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int,
+            width > 0, height > 0,
+            width * height <= Self.maxBackdropPixels
+        else {
+            CAPLog.print("⚡️  GlassBridge setBackdrop: image dimensions over bound or unreadable")
+            return nil
+        }
+        return UIImage(data: data)
+    }
 
     // error-policy:J3 untrusted Capacitor boundary — a malformed rect
     // (missing/non-finite/non-positive/out-of-envelope values) produces nil →

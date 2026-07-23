@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acquireNativeBackdrop,
   activateNativeBackdrop,
+  type NativeBackdropLease,
   releaseNativeBackdrop,
   resetNativeBackdropForTests,
   setNativeBackdropEncoderForTests,
@@ -34,6 +35,7 @@ function installNativeGlassBridge() {
     setGrouping: vi.fn(async () => {}),
     setBackdrop: vi.fn(async () => ({ applied: true })),
     clearBackdrop: vi.fn(async () => {}),
+    reset: vi.fn(async () => {}),
     isAvailable: vi.fn(async () => ({ available: true })),
   };
   (globalThis as { Capacitor?: unknown }).Capacitor = {
@@ -247,8 +249,9 @@ describe("AppBackground", () => {
     const { container } = render(<AppBackground />);
     // Simulate the chat-sheet anchor's lease + atomic flip.
     await act(async () => {
-      expect(await acquireNativeBackdrop()).toBe(true);
-      activateNativeBackdrop();
+      const lease = await acquireNativeBackdrop();
+      expect(lease).not.toBeNull();
+      expect(activateNativeBackdrop(lease as NativeBackdropLease)).toBe(true);
     });
     expect(bridge.setBackdrop).toHaveBeenCalledTimes(1);
     expect(bridge.setBackdrop).toHaveBeenCalledWith({
@@ -282,12 +285,14 @@ describe("AppBackground", () => {
       imageUrl: "/wallpapers/canopy.webp",
     });
     const { container } = render(<AppBackground />);
+    let lease: NativeBackdropLease | null = null;
     await act(async () => {
-      expect(await acquireNativeBackdrop()).toBe(true);
-      activateNativeBackdrop();
+      lease = await acquireNativeBackdrop();
+      expect(lease).not.toBeNull();
+      expect(activateNativeBackdrop(lease as NativeBackdropLease)).toBe(true);
     });
     act(() => {
-      releaseNativeBackdrop();
+      releaseNativeBackdrop(lease as unknown as NativeBackdropLease);
     });
     const image = container.querySelector<HTMLElement>(
       '[data-testid="app-background-image"]',
@@ -307,7 +312,7 @@ describe("AppBackground", () => {
     render(<AppBackground />);
     await act(async () => {
       // No image wallpaper published → a lease attempt must refuse.
-      expect(await acquireNativeBackdrop()).toBe(false);
+      expect(await acquireNativeBackdrop()).toBeNull();
     });
     expect(bridge.setBackdrop).not.toHaveBeenCalled();
   });

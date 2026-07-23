@@ -39,6 +39,7 @@ function fakeBridge(overrides: Record<string, unknown> = {}) {
     setGrouping: vi.fn(async () => {}),
     setBackdrop: vi.fn(async (_options: unknown) => ({ applied: true })),
     clearBackdrop: vi.fn(async () => {}),
+    reset: vi.fn(async () => {}),
     isAvailable: vi.fn(async () => ({ available: true })),
     ...overrides,
   };
@@ -284,6 +285,37 @@ describe("GlassSurface", () => {
     expect(getByTestId("anchor").dataset.glassTier).toMatch(/^css-/);
     await waitFor(() => expect(bridge.detachGlass).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(bridge.clearBackdrop).toHaveBeenCalledTimes(1));
+  });
+
+  it("refuses activation when the wallpaper changes while the region attach is in flight", async () => {
+    // The #17048 review's pending-lease race: acquire succeeds, then the
+    // wallpaper source changes (or vanishes) while attachGlass is awaiting.
+    // Activation must revalidate the lease and refuse — hiding the DOM over
+    // the pixels native still holds would flash the previous wallpaper.
+    let resolveAttach: (value: { attached: boolean }) => void = () => {};
+    const bridge = fakeBridge({
+      attachGlass: vi.fn(
+        () =>
+          new Promise<{ attached: boolean }>((resolve) => {
+            resolveAttach = resolve;
+          }),
+      ),
+    });
+    installCapacitor(bridge);
+    seedWallpaper();
+    const { getByTestId } = render(<AnchorHarness enabled />);
+    await waitFor(() => expect(bridge.attachGlass).toHaveBeenCalledTimes(1));
+    // Source vanishes while the region attach is still awaiting its ack.
+    act(() => {
+      setNativeWallpaperSource(null);
+    });
+    await act(async () => {
+      resolveAttach({ attached: true });
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    // Never native over stale pixels; the anchor released its lease.
+    expect(getByTestId("anchor").dataset.glassTier).toMatch(/^css-/);
+    await waitFor(() => expect(bridge.detachGlass).toHaveBeenCalledTimes(1));
   });
 
   it("drops to CSS and tears down when the wallpaper switches away while anchored", async () => {

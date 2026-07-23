@@ -9,6 +9,7 @@ import {
   setNativeWallpaperSource,
   useNativeBackdropActive,
 } from "../glass/native-backdrop";
+import { resetNativeGlassHost } from "../glass/native-bridge";
 import type { ShaderConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
 import { useBackgroundConfig } from "../state/useBackgroundConfig";
@@ -82,6 +83,14 @@ export function AppBackground({
   useBackgroundApplyChannel();
   useAppearanceApplyChannel();
   useVoiceSettingsApplyChannel();
+
+  // Native glass regions and the hosted wallpaper live OUTSIDE the WebView,
+  // so they survive a renderer reload/crash/HMR that JS cleanup never saw.
+  // This component mounts once per document at the shell root, making it the
+  // renderer's boot boundary: clear any state a previous document left.
+  useEffect(() => {
+    void resetNativeGlassHost();
+  }, []);
 
   // Publish the image wallpaper (resolved to an absolute renderer URL) to the
   // native-backdrop coordinator. Publishing is passive — nothing goes native

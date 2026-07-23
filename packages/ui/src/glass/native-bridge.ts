@@ -77,6 +77,13 @@ interface GlassBridgePlugin {
   setBackdrop(options: NativeBackdropOptions): Promise<{ applied: boolean }>;
   /** Remove the wallpaper layer; restores WebView opacity when possible. */
   clearBackdrop(): Promise<void>;
+  /**
+   * Idempotent full teardown: every region, the backdrop, and the WebView
+   * transparency flip. Native state outlives the document, so each fresh
+   * renderer calls this at boot — a region anchored by the previous page
+   * (reload, crash, HMR) must never survive under the next one.
+   */
+  reset(): Promise<void>;
   isAvailable(): Promise<{ available: boolean }>;
   /**
    * Reads the region's REAL native view state (existence, count, z-order,
@@ -192,6 +199,23 @@ export async function clearNativeBackdrop(): Promise<void> {
   } catch {
     // error-policy:J4 capability write — an old shell without clearBackdrop
     // also never installed a backdrop; there is nothing to clear.
+  }
+}
+
+/**
+ * Clear any native glass state left by a PREVIOUS document. Region views and
+ * the hosted wallpaper live outside the WebView, so JS effect cleanup cannot
+ * reach them across a reload/crash/HMR boundary; the shell root calls this
+ * once per renderer boot.
+ */
+export async function resetNativeGlassHost(): Promise<void> {
+  const bridge = glassBridge();
+  if (!bridge) return;
+  try {
+    await bridge.reset();
+  } catch {
+    // error-policy:J4 capability write — a shell predating reset() has no
+    // cross-document state contract to clean; callers proceed on CSS.
   }
 }
 

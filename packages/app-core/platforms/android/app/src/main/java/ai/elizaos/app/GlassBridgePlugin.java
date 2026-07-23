@@ -52,10 +52,14 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 /** Native material regions behind the WebView; see the file header. */
 @CapacitorPlugin(name = "GlassBridge")
@@ -67,6 +71,12 @@ public class GlassBridgePlugin extends Plugin {
     // any real viewport, far below anything that could stress LayoutParams
     // or the animator with absurd math.
     private static final double MAX_RECT_COORD_CSS_PX = 100_000d;
+    // Untrusted-boundary payload bounds — mirror the iOS plugin. The renderer
+    // encodes at screen scale under a 16M px canvas cap, so these generous
+    // ceilings only ever reject malformed or hostile input, BEFORE the full
+    // pixel allocation happens.
+    private static final int MAX_BACKDROP_ENCODED_CHARS = 24_000_000;
+    private static final long MAX_BACKDROP_PIXELS = 18_000_000L;
 
     /** Attached panel views by caller id. Main-thread only. */
     private final Map<String, View> regions = new HashMap<>();
@@ -83,6 +93,11 @@ public class GlassBridgePlugin extends Plugin {
      *  never install over a newer one. Main-thread only. */
     private int backdropGeneration = 0;
     private final ExecutorService backdropDecoder = Executors.newSingleThreadExecutor();
+    /** Backdrop calls that have not settled yet. Every entry resolves exactly
+     *  once — through {@link #settleApplied} on the ordinary path, or swept
+     *  {@code applied:false} by {@link #handleOnDestroy} when teardown drops
+     *  the decode queue. */
+    private final Set<PluginCall> pendingBackdropCalls = ConcurrentHashMap.newKeySet();
 
     private static boolean glassSupported() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
@@ -121,21 +136,28 @@ public class GlassBridgePlugin extends Plugin {
         }
         activity.runOnUiThread(() -> {
             int generation = ++backdropGeneration;
+            pendingBackdropCalls.add(call);
             if (imageBase64 == null) {
                 installBackdrop(call, generation, null, color);
                 return;
             }
-            backdropDecoder.execute(() -> {
-                Bitmap bitmap = decodeBackdrop(imageBase64);
-                activity.runOnUiThread(() -> {
-                    if (bitmap == null) {
-                        Logger.warn("GlassBridge", "setBackdrop: base64 image decode failed");
-                        resolveApplied(call, false);
-                        return;
-                    }
-                    installBackdrop(call, generation, bitmap, color);
+            try {
+                backdropDecoder.execute(() -> {
+                    Bitmap bitmap = decodeBackdrop(imageBase64);
+                    activity.runOnUiThread(() -> {
+                        if (bitmap == null) {
+                            Logger.warn("GlassBridge",
+                                    "setBackdrop: image refused (malformed, over bound, or undecodable)");
+                            settleApplied(call, false);
+                            return;
+                        }
+                        installBackdrop(call, generation, bitmap, color);
+                    });
                 });
-            });
+            } catch (RejectedExecutionException rejected) {
+                // Executor already shut down (plugin teardown raced the call).
+                settleApplied(call, false);
+            }
         });
     }
 
@@ -354,6 +376,67 @@ public class GlassBridgePlugin extends Plugin {
         });
     }
 
+    /**
+     * Idempotent full teardown: every glass region, the backdrop, the layout
+     * listener, and the WebView transparency flip. Native views outlive the
+     * document, so a renderer that reloads (crash, HMR, navigation) calls
+     * this at boot — a region anchored by the previous page must never
+     * survive under the next one, whose React ids no longer match.
+     */
+    @PluginMethod
+    public void reset(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.resolve();
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            backdropGeneration++;
+            WebView webView = bridge.getWebView();
+            if (backdropLayoutListener != null && webView != null) {
+                webView.removeOnLayoutChangeListener(backdropLayoutListener);
+            }
+            backdropLayoutListener = null;
+            if (backdropView != null && backdropView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) backdropView.getParent()).removeView(backdropView);
+            }
+            backdropView = null;
+            for (View panel : regions.values()) {
+                if (panel.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) panel.getParent()).removeView(panel);
+                }
+            }
+            regions.clear();
+            restoreWebViewOpacityIfUnneeded(webView);
+            call.resolve();
+        });
+    }
+
+    /**
+     * Activity teardown: stop the decoder (dropping queued jobs), settle
+     * every still-pending backdrop call {@code applied:false}, and drop view
+     * references. The views themselves die with the Activity; what must NOT
+     * survive are queued payloads retaining Activity callbacks and JS
+     * promises that would otherwise hang forever.
+     */
+    @Override
+    protected void handleOnDestroy() {
+        backdropDecoder.shutdownNow();
+        for (PluginCall pending : new ArrayList<>(pendingBackdropCalls)) {
+            settleApplied(pending, false);
+        }
+        WebView webView = bridge != null ? bridge.getWebView() : null;
+        if (backdropLayoutListener != null && webView != null) {
+            webView.removeOnLayoutChangeListener(backdropLayoutListener);
+        }
+        backdropLayoutListener = null;
+        backdropView = null;
+        regions.clear();
+        webViewMadeTransparent = false;
+        originalWebViewBackground = null;
+        backdropGeneration++;
+    }
+
     @PluginMethod
     public void setGrouping(PluginCall call) {
         // Stored for parity with iOS (UIGlassContainerEffect spacing); the
@@ -441,14 +524,14 @@ public class GlassBridgePlugin extends Plugin {
      *  {@code applied:false} so the web side keeps its DOM paint. */
     private void installBackdrop(PluginCall call, int generation, Bitmap bitmap, int color) {
         if (generation != backdropGeneration) {
-            resolveApplied(call, false);
+            settleApplied(call, false);
             return;
         }
         WebView webView = bridge.getWebView();
         ViewGroup container = webView != null ? (ViewGroup) webView.getParent() : null;
         Activity activity = getActivity();
         if (webView == null || container == null || activity == null) {
-            resolveApplied(call, false);
+            settleApplied(call, false);
             return;
         }
         makeWebViewTransparentOnce(webView);
@@ -481,19 +564,43 @@ public class GlassBridgePlugin extends Plugin {
             next.setY(view.getY());
         };
         webView.addOnLayoutChangeListener(backdropLayoutListener);
-        resolveApplied(call, true);
+        settleApplied(call, true);
     }
 
-    // error-policy:J3 untrusted Capacitor boundary — malformed base64 or
-    // non-image bytes produce an explicit null → the caller resolves
-    // {@code applied:false}; nothing installs a fake-valid wallpaper.
+    // error-policy:J3 untrusted Capacitor boundary — malformed base64,
+    // non-image bytes, or dimensions over the pixel budget produce an
+    // explicit null → the caller resolves {@code applied:false}; nothing
+    // installs a fake-valid wallpaper. Dimensions are read with
+    // inJustDecodeBounds (header only) so an over-budget image is refused
+    // BEFORE the full bitmap allocation a decompression bomb relies on.
     private static Bitmap decodeBackdrop(String imageBase64) {
+        if (imageBase64.length() > MAX_BACKDROP_ENCODED_CHARS) {
+            return null;
+        }
         try {
             byte[] bytes = Base64.decode(imageBase64, Base64.DEFAULT);
+            BitmapFactory.Options header = new BitmapFactory.Options();
+            header.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, header);
+            long pixels = (long) header.outWidth * header.outHeight;
+            if (header.outWidth <= 0 || header.outHeight <= 0
+                    || pixels > MAX_BACKDROP_PIXELS) {
+                return null;
+            }
             return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
         } catch (IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    /** Exactly-once settlement for backdrop calls: whichever of the ordinary
+     *  path and the teardown sweep gets here first wins; the loser is a
+     *  no-op instead of a double-resolve crash. */
+    private void settleApplied(PluginCall call, boolean applied) {
+        if (!pendingBackdropCalls.remove(call)) {
+            return;
+        }
+        resolveApplied(call, applied);
     }
 
     private static void resolveApplied(PluginCall call, boolean applied) {

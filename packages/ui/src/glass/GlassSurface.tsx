@@ -29,6 +29,7 @@ import {
   acquireNativeBackdrop,
   activateNativeBackdrop,
   isNativeBackdropActive,
+  type NativeBackdropLease,
   releaseNativeBackdrop,
   setNativeGlassDiag,
   subscribeNativeBackdrop,
@@ -161,7 +162,7 @@ export function useNativeGlassAnchor(
       return;
     }
     let alive = true;
-    let held = false;
+    let lease: NativeBackdropLease | null = null;
     let attached = false;
     let observer: ResizeObserver | null = null;
     let unsubscribe: (() => void) | null = null;
@@ -184,16 +185,17 @@ export function useNativeGlassAnchor(
         attached = false;
         void bridge.detachGlass({ id: regionId });
       }
-      if (held) {
-        held = false;
-        releaseNativeBackdrop();
+      if (lease) {
+        const heldLease = lease;
+        lease = null;
+        releaseNativeBackdrop(heldLease);
       }
       setNativeLive(false);
     };
     void (async () => {
-      const leased = await acquireNativeBackdrop();
-      if (!leased) return; // no image wallpaper / native refused → stay CSS
-      held = true;
+      const acquired = await acquireNativeBackdrop();
+      if (!acquired) return; // no image wallpaper / native refused → stay CSS
+      lease = acquired;
       if (!alive) {
         teardown();
         return;
@@ -220,8 +222,14 @@ export function useNativeGlassAnchor(
         teardown();
         return;
       }
+      // Atomic promotion: the wallpaper may have changed while attachGlass
+      // was in flight, in which case the pixels native holds are stale and
+      // activation refuses the lease — stay CSS rather than flash them.
+      if (!activateNativeBackdrop(acquired)) {
+        teardown();
+        return;
+      }
       setNativeGlassDiag("native-anchored");
-      activateNativeBackdrop();
       setNativeLive(true);
       unsubscribe = subscribeNativeBackdrop(() => {
         if (!isNativeBackdropActive()) teardown();

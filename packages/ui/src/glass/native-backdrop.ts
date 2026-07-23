@@ -35,6 +35,18 @@ export interface NativeWallpaperSource {
   color: string;
 }
 
+/**
+ * Proof of a held backdrop lease. Activation revalidates `epoch` against the
+ * live store so a wallpaper change that lands between `acquireNativeBackdrop`
+ * and `activateNativeBackdrop` (a region attach in flight) can never promote
+ * stale native pixels behind a hidden DOM. `released` makes release
+ * exactly-once so a double teardown cannot free someone else's lease.
+ */
+export interface NativeBackdropLease {
+  readonly epoch: number;
+  released: boolean;
+}
+
 let source: NativeWallpaperSource | null = null;
 let active = false;
 let holders = 0;
@@ -122,7 +134,13 @@ export function setNativeWallpaperSource(
   source = next;
   epoch += 1;
   encoded = null;
-  if (!active) return;
+  if (!active) {
+    // Pre-activation holders now carry a stale lease (activation will refuse
+    // it); wake subscribers so an anchor waiting on its region attach can
+    // observe the change instead of discovering it only at activate time.
+    if (holders > 0) notify();
+    return;
+  }
   if (!next) {
     deactivate();
     return;
@@ -170,15 +188,15 @@ async function pipe(
 /**
  * Pipe the current wallpaper below the WebView and take a lease on it. The
  * DOM keeps painting throughout — the native copy is invisible until
- * `activateNativeBackdrop()`. Resolves false (no lease) when there is no
+ * `activateNativeBackdrop()`. Resolves null (no lease) when there is no
  * image wallpaper, encoding fails, or the native host refuses.
  */
-export async function acquireNativeBackdrop(): Promise<boolean> {
+export async function acquireNativeBackdrop(): Promise<NativeBackdropLease | null> {
   const requested = source;
   const requestedEpoch = epoch;
   if (!requested) {
     setNativeGlassDiag("no-image-wallpaper");
-    return false;
+    return null;
   }
   // Cancel a scheduled clear first: a drag → settle cycle inside the clear's
   // two-frame grace re-leases the layer native still holds.
@@ -186,36 +204,48 @@ export async function acquireNativeBackdrop(): Promise<boolean> {
   const key = `${requested.imageUrl}|${requested.color}`;
   if (installed !== key) {
     const applied = await pipe(requested, requestedEpoch);
-    if (!applied) return false;
+    if (!applied) return null;
   }
   if (requestedEpoch !== epoch) {
     setNativeGlassDiag("stale-acquire");
-    return false;
+    return null;
   }
   holders += 1;
   setNativeGlassDiag("backdrop-leased");
-  return true;
+  return { epoch: requestedEpoch, released: false };
 }
 
 /**
  * Flip the store: the DOM wallpaper hides in the same React commit that the
  * calling surface uses to go transparent, so the handoff is atomic — there is
  * never a frame with neither paint. Call only after `acquireNativeBackdrop()`
- * resolved true (and after any dependent native work, e.g. region attach,
- * acknowledged).
+ * resolved a lease (and after any dependent native work, e.g. region attach,
+ * acknowledged). Returns false — and the caller must tear down — when the
+ * wallpaper changed while that dependent work was in flight: the pixels
+ * native holds no longer match the DOM, so hiding the DOM over them would
+ * flash the previous wallpaper.
  */
-export function activateNativeBackdrop(): void {
-  if (holders === 0 || active) return;
-  active = true;
-  notify();
+export function activateNativeBackdrop(lease: NativeBackdropLease): boolean {
+  if (lease.released || lease.epoch !== epoch || holders === 0) {
+    setNativeGlassDiag("stale-lease");
+    return false;
+  }
+  if (!active) {
+    active = true;
+    notify();
+  }
+  return true;
 }
 
 /**
- * Drop a lease. The store flips immediately (DOM wallpaper repaints this
- * commit); the native layer is cleared two frames later so the native copy
- * covers the swap-back, then the WebView regains its opaque backing.
+ * Drop a lease (exactly once — later calls with the same lease are no-ops).
+ * The store flips immediately (DOM wallpaper repaints this commit); the
+ * native layer is cleared two frames later so the native copy covers the
+ * swap-back, then the WebView regains its opaque backing.
  */
-export function releaseNativeBackdrop(): void {
+export function releaseNativeBackdrop(lease: NativeBackdropLease): void {
+  if (lease.released) return;
+  lease.released = true;
   if (holders === 0) return;
   holders -= 1;
   if (holders > 0) return;
@@ -255,6 +285,14 @@ type WallpaperEncoder = (
   target: NativeWallpaperSource,
 ) => Promise<string | null>;
 
+/**
+ * Hard area cap on the encode canvas. The long-side screen bound alone still
+ * admits a huge square image on a high-dpr display (7680² ≈ 59M px on a 2x 4K
+ * monitor); the native decoders refuse anything above their own 18M px
+ * budget, so the renderer stays safely below it.
+ */
+const MAX_ENCODE_PIXELS = 16_000_000;
+
 /** Test seam: jsdom has no real image decode/canvas readback. */
 let encoderOverride: WallpaperEncoder | null = null;
 export function setNativeBackdropEncoderForTests(
@@ -288,7 +326,10 @@ function encodeSource(target: NativeWallpaperSource): Promise<string | null> {
         setNativeGlassDiag("encode-error:empty-image");
         return null;
       }
-      const scale = Math.min(1, scaleBound / largest);
+      const area = image.naturalWidth * image.naturalHeight;
+      const areaScale =
+        area > MAX_ENCODE_PIXELS ? Math.sqrt(MAX_ENCODE_PIXELS / area) : 1;
+      const scale = Math.min(1, scaleBound / largest, areaScale);
       const width = Math.max(1, Math.round(image.naturalWidth * scale));
       const height = Math.max(1, Math.round(image.naturalHeight * scale));
       const canvas = document.createElement("canvas");
