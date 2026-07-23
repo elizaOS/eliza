@@ -71,6 +71,35 @@
 			"import": "./dist/browser/index.browser.js",
 			"default": "./dist/browser/index.browser.js"
 		},
+		"./errors": {
+			"types": "./dist/errors.d.ts",
+			"eliza-source": {
+				"types": "./src/errors.ts",
+				"import": "./src/errors.ts",
+				"default": "./src/errors.ts"
+			},
+			"browser": {
+				"types": "./dist/errors.d.ts",
+				"import": "./dist/browser/index.browser.js",
+				"default": "./dist/browser/index.browser.js"
+			},
+			"edge": {
+				"types": "./dist/errors.d.ts",
+				"import": "./dist/edge/index.edge.js",
+				"default": "./dist/edge/index.edge.js"
+			},
+			"node": {
+				"types": "./dist/errors.d.ts",
+				"import": "./dist/node/index.node.js",
+				"default": "./dist/node/index.node.js"
+			},
+			"bun": {
+				"types": "./dist/errors.d.ts",
+				"import": "./dist/node/index.node.js",
+				"default": "./dist/node/index.node.js"
+			},
+			"default": "./dist/node/index.node.js"
+		},
 		"./roles": {
 			"types": "./dist/roles.d.ts",
 			"import": "./dist/roles.js",

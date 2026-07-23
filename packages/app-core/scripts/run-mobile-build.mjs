@@ -6,7 +6,7 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-sms-gateway|android-cloud|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
@@ -53,6 +53,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { ElizaError } from "@elizaos/core/errors";
 import {
   appStoreExecutionProfile,
   findForbiddenRuntimeImportGroups,
@@ -63,6 +64,15 @@ import {
   loadAospVariantConfig,
   resolveAppConfigPath,
 } from "./aosp/lib/load-variant-config.mjs";
+import {
+  ANDROID_BUNDLETOOL_JAR_ENV,
+  ANDROID_LP3_POLICY_CLASSES,
+  ANDROID_LP3_POLICY_MARKERS,
+  ANDROID_LP3_PRIVATE_ACTIONS,
+  ensureAndroidBundletoolJar,
+  inspectAndroidAppBundle,
+  resolveAndroidArtifactKind,
+} from "./lib/android-cloud-artifact-audit.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { artifactStaleness } from "./lib/artifact-staleness.mjs";
 import {
@@ -170,6 +180,21 @@ export {
   ANDROID_BUILD_TARGETS,
   resolveAndroidBuildTarget,
 } from "./mobile/targets/android.mjs";
+
+function mobileBuildError(
+  message,
+  { cause, code = "MOBILE_BUILD_FAILED", context, severity = "fatal" } = {},
+) {
+  return new ElizaError(message, {
+    cause,
+    code,
+    context: {
+      subsystem: "mobile-build",
+      ...context,
+    },
+    severity,
+  });
+}
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -6697,7 +6722,8 @@ const ANDROID_ARTIFACT_AUDITS = Object.freeze({
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
   smsGateway: ({ androidSdkRoot, javaHome }) =>
     auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
-  system: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
+  system: ({ androidSdkRoot, javaHome }) =>
+    auditAndroidSystemArtifact({ androidSdkRoot, javaHome }),
 });
 
 const ANDROID_POST_BUILDS = Object.freeze({
@@ -6859,6 +6885,11 @@ export async function runAndroidBuild(
     "post-gradle",
     { env: resolvedEnv },
   );
+  if (target.artifactAuditKey === "cloud") {
+    resolvedEnv[ANDROID_BUNDLETOOL_JAR_ENV] = await ensureAndroidBundletoolJar({
+      env: resolvedEnv,
+    });
+  }
   const artifact = runAndroidTargetPhase(
     target,
     ANDROID_ARTIFACT_AUDITS,
@@ -6904,7 +6935,7 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
   return artifact;
 }
 
-function auditAndroidSystemArtifact({ javaHome } = {}) {
+function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
   // The AOSP/system target gets the web-payload mirror like the other three
   // sync targets, but the privileged release APK still needs the same positive
   // artifact audit or it could ship web-less (ERR_CONNECTION_REFUSED) silently —
@@ -6917,6 +6948,28 @@ function auditAndroidSystemArtifact({ javaHome } = {}) {
     );
   }
   const entries = listAndroidArtifactEntries(artifact, javaHome);
+  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
+  if (!aapt) {
+    throw mobileBuildError(
+      "[mobile-build] Could not find aapt under Android SDK build-tools for android-system artifact audit.",
+    );
+  }
+  // RECEIVE_BOOT_COMPLETED and FOREGROUND_SERVICE_SPECIAL_USE are also used by
+  // non-LP3 AOSP services. WRITE_SECURE_SETTINGS is the LP3-only manifest
+  // delta; the remaining private boundary is enforced by component/action/DEX
+  // markers below.
+  assertAndroidArtifactOmitsLp3ManifestMarkers(
+    dumpAndroidArtifactManifest(aapt, artifact),
+    {
+      label: "ordinary AOSP",
+      permissions: ["WRITE_SECURE_SETTINGS"],
+    },
+  );
+  auditAndroidArtifactDexLp3Policy(artifact, entries, javaHome, {
+    debug: false,
+    expectedPresent: false,
+    label: "ordinary AOSP",
+  });
   assertAndroidArtifactShipsWebPayload(artifact, entries, {
     requireAgent: true,
     label: "android-system",
@@ -6992,78 +7045,108 @@ function resolveJarTool(javaHome) {
 function listAndroidArtifactEntries(artifact, javaHome) {
   const jar = resolveJarTool(javaHome);
   const result = spawnSync(jar, ["tf", artifact], { encoding: "utf8" });
-  if (result.status !== 0) {
-    throw new Error(
+  if (result.error || result.status !== 0) {
+    throw mobileBuildError(
       `[mobile-build] Could not inspect ${artifact}: ${
-        result.stderr || result.stdout || `jar exited with ${result.status}`
+        result.error?.message ||
+        result.stderr ||
+        result.stdout ||
+        `jar exited with ${result.status}`
       }`,
+      result.error ? { cause: result.error } : undefined,
     );
   }
   return result.stdout.split(/\r?\n/);
 }
 
-function auditAndroidArtifactDexLp3Policy(
+function readAndroidArtifactEntryBuffers(
   artifact,
   entries,
   javaHome,
-  { debug, expectedPresent },
+  { label = "artifact policy" } = {},
+) {
+  const extractionDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-android-artifact-audit-"),
+  );
+  try {
+    const jar = resolveJarTool(javaHome);
+    const extraction = spawnSync(jar, ["xf", artifact, ...entries], {
+      cwd: extractionDir,
+      encoding: "utf8",
+    });
+    if (extraction.error || extraction.status !== 0) {
+      throw mobileBuildError(
+        `[mobile-build] Could not extract entries for ${label}: ${
+          extraction.error?.message ||
+          extraction.stderr ||
+          extraction.stdout ||
+          `jar exited with ${extraction.status}`
+        }`,
+        extraction.error ? { cause: extraction.error } : undefined,
+      );
+    }
+    return entries.map((entry) =>
+      fs.readFileSync(path.join(extractionDir, ...entry.split("/"))),
+    );
+  } finally {
+    fs.rmSync(extractionDir, { force: true, recursive: true });
+  }
+}
+
+export function auditAndroidArtifactDexLp3Policy(
+  artifact,
+  entries,
+  javaHome,
+  { debug, expectedPresent, label = "normal Cloud" },
+  { readEntryBuffers = readAndroidArtifactEntryBuffers } = {},
 ) {
   const dexEntries = entries.filter((entry) =>
     /(^|\/)classes\d*\.dex$/.test(entry),
   );
   if (dexEntries.length === 0) {
-    throw new Error(
+    throw mobileBuildError(
       `[mobile-build] Android artifact has no classes*.dex entries: ${artifact}`,
     );
   }
 
-  const extractionDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "eliza-lp3-dex-audit-"),
-  );
-  try {
-    const jar = resolveJarTool(javaHome);
-    const extraction = spawnSync(jar, ["xf", artifact, ...dexEntries], {
-      cwd: extractionDir,
-      encoding: "utf8",
-    });
-    if (extraction.status !== 0) {
-      throw new Error(
-        `[mobile-build] Could not extract DEX for LP3 policy audit: ${
-          extraction.stderr ||
-          extraction.stdout ||
-          `jar exited with ${extraction.status}`
-        }`,
-      );
-    }
-    const dexBuffers = dexEntries.map((entry) =>
-      fs.readFileSync(path.join(extractionDir, entry)),
+  const dexBuffers = readEntryBuffers(artifact, dexEntries, javaHome, {
+    label: "LP3 policy DEX audit",
+  });
+  const packagePath = APP.appId.replaceAll(".", "/");
+  const classNames =
+    expectedPresent && !debug
+      ? ANDROID_LP3_COLOR_POLICY_COMPONENTS
+      : ANDROID_LP3_COLOR_POLICY_JAVA_FILES.map((file) =>
+          file.replace(/\.java$/, ""),
+        );
+  const findings = classNames.filter((className) => {
+    const marker = Buffer.from(`${packagePath}/${className}`, "utf8");
+    return dexBuffers.some((dex) => dex.includes(marker));
+  });
+  if (expectedPresent && findings.length !== classNames.length) {
+    const missing = classNames.filter((name) => !findings.includes(name));
+    throw mobileBuildError(
+      "[mobile-build] opted-in LP3 artifact DEX is missing policy classes:\n" +
+        missing.map((name) => `  - ${APP.appId}.${name}`).join("\n"),
     );
-    const packagePath = APP.appId.replaceAll(".", "/");
-    const classNames =
-      expectedPresent && !debug
-        ? ANDROID_LP3_COLOR_POLICY_COMPONENTS
-        : ANDROID_LP3_COLOR_POLICY_JAVA_FILES.map((file) =>
-            file.replace(/\.java$/, ""),
-          );
-    const findings = classNames.filter((className) => {
-      const marker = Buffer.from(`${packagePath}/${className}`, "utf8");
-      return dexBuffers.some((dex) => dex.includes(marker));
+  }
+  if (!expectedPresent) {
+    const forbiddenMarkers = [
+      ...ANDROID_LP3_POLICY_CLASSES.map(
+        (className) => `${packagePath}/${className}`,
+      ),
+      ...ANDROID_LP3_PRIVATE_ACTIONS,
+      ...ANDROID_LP3_POLICY_MARKERS,
+    ];
+    const markerFindings = forbiddenMarkers.filter((marker) => {
+      const bytes = Buffer.from(marker, "utf8");
+      return dexBuffers.some((dex) => dex.includes(bytes));
     });
-    if (expectedPresent && findings.length !== classNames.length) {
-      const missing = classNames.filter((name) => !findings.includes(name));
-      throw new Error(
-        "[mobile-build] opted-in LP3 artifact DEX is missing policy classes:\n" +
-          missing.map((name) => `  - ${APP.appId}.${name}`).join("\n"),
-      );
-    }
-    if (!expectedPresent && findings.length > 0) {
-      throw new Error(
-        "[mobile-build] normal Cloud artifact DEX still contains LP3 policy classes:\n" +
-          findings.map((name) => `  - ${APP.appId}.${name}`).join("\n"),
-      );
-    }
-  } finally {
-    fs.rmSync(extractionDir, { force: true, recursive: true });
+    if (markerFindings.length === 0) return;
+    throw mobileBuildError(
+      `[mobile-build] ${label} artifact DEX still contains LP3 policy markers:\n` +
+        markerFindings.map((marker) => `  - ${marker}`).join("\n"),
+    );
   }
 }
 
@@ -7145,6 +7228,29 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
   }
 }
 
+export function assertAndroidArtifactOmitsLp3ManifestMarkers(
+  manifestText,
+  { label, permissions = [] },
+) {
+  const forbiddenMarkers = [
+    ...ANDROID_LP3_POLICY_CLASSES.map(
+      (className) => `${APP.appId}.${className}`,
+    ),
+    ...ANDROID_LP3_PRIVATE_ACTIONS,
+    ...ANDROID_LP3_POLICY_MARKERS,
+    ...permissions.map((permission) => `android.permission.${permission}`),
+  ];
+  const findings = forbiddenMarkers.filter((marker) =>
+    manifestText.includes(marker),
+  );
+  if (findings.length > 0) {
+    throw mobileBuildError(
+      `[mobile-build] ${label} artifact manifest still contains LP3 policy markers:\n` +
+        findings.map((marker) => `  - ${marker}`).join("\n"),
+    );
+  }
+}
+
 /**
  * Positive assertion that an installable APK actually ships the web renderer
  * (and, for local builds, the on-device agent). Without this, a sync that
@@ -7187,17 +7293,35 @@ function assertAndroidArtifactShipsWebPayload(
   }
 }
 
-function auditAndroidCloudArtifact({
+export function auditAndroidCloudArtifact({
+  artifact: requestedArtifact,
   debug = false,
   env = process.env,
   javaHome,
 } = {}) {
   const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
-  const artifact = debug ? findAndroidCloudDebugApk() : findAndroidCloudAab();
+  const artifact =
+    typeof requestedArtifact === "string" && requestedArtifact.trim() !== ""
+      ? path.resolve(requestedArtifact.trim())
+      : debug
+        ? findAndroidCloudDebugApk()
+        : findAndroidCloudAab();
+  if (artifact && !fs.existsSync(artifact)) {
+    throw mobileBuildError(
+      `[mobile-build] requested android-cloud artifact does not exist: ${artifact}`,
+    );
+  }
   if (!artifact) {
-    throw new Error(
+    throw mobileBuildError(
       `[mobile-build] android-cloud ${debug ? "debug APK" : "release AAB"} was not found under app/build/outputs/.`,
+    );
+  }
+  const expectedArtifactKind = debug ? "apk" : "aab";
+  const artifactKind = resolveAndroidArtifactKind(artifact);
+  if (artifactKind !== expectedArtifactKind) {
+    throw mobileBuildError(
+      `[mobile-build] android-cloud ${debug ? "debug" : "release"} audit expected ${expectedArtifactKind.toUpperCase()} but received ${artifactKind.toUpperCase()}: ${artifact}`,
     );
   }
   const entries = listAndroidArtifactEntries(artifact, javaHome);
@@ -7207,58 +7331,86 @@ function auditAndroidCloudArtifact({
     ),
   );
   if (offenders.length > 0) {
-    throw new Error(
+    throw mobileBuildError(
       `[mobile-build] android-cloud artifact contains local runtime payloads:\n` +
         offenders.map((entry) => `  - ${entry}`).join("\n"),
     );
   }
-  const aapt = resolveAndroidBuildTool(resolveAndroidSdkRoot(env), "aapt");
-  if (!aapt) {
-    throw new Error(
-      "[mobile-build] Could not find aapt under Android SDK build-tools for android-cloud artifact audit.",
-    );
-  }
-  const badging = dumpAndroidArtifactBadging(aapt, artifact);
-  const permissionOffenders = stripPolicy.permissions.filter((perm) =>
-    badging.includes(`uses-permission: name='android.permission.${perm}'`),
-  );
-  if (permissionOffenders.length > 0) {
-    throw new Error(
-      "[mobile-build] android-cloud artifact still requests stripped permissions:\n" +
-        permissionOffenders
-          .map((perm) => `  - android.permission.${perm}`)
-          .join("\n"),
-    );
-  }
-  const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
-  for (const component of stripPolicy.components) {
-    if (manifestText.includes(`${APP.appId}.${component}`)) {
-      throw new Error(
-        `[mobile-build] android-cloud artifact still declares stripped component ${component}`,
+  if (artifactKind === "apk") {
+    // APK inspection deliberately retains the existing AAPT badging/xmltree
+    // behavior. bundletool is only valid for the release App Bundle path.
+    const aapt = resolveAndroidBuildTool(resolveAndroidSdkRoot(env), "aapt");
+    if (!aapt) {
+      throw mobileBuildError(
+        "[mobile-build] Could not find aapt under Android SDK build-tools for android-cloud artifact audit.",
       );
     }
-  }
-  if (lp3ColorPolicyEnabled) {
-    const missingPermissions = ANDROID_LP3_COLOR_POLICY_PERMISSIONS.filter(
-      (permission) =>
-        !badging.includes(
-          `uses-permission: name='android.permission.${permission}'`,
-        ),
+    const badging = dumpAndroidArtifactBadging(aapt, artifact);
+    const permissionOffenders = stripPolicy.permissions.filter((perm) =>
+      badging.includes(`uses-permission: name='android.permission.${perm}'`),
     );
-    if (missingPermissions.length > 0) {
-      throw new Error(
-        "[mobile-build] opted-in LP3 artifact is missing required permissions:\n" +
-          missingPermissions
-            .map((permission) => `  - android.permission.${permission}`)
+    if (permissionOffenders.length > 0) {
+      throw mobileBuildError(
+        "[mobile-build] android-cloud artifact still requests stripped permissions:\n" +
+          permissionOffenders
+            .map((perm) => `  - android.permission.${perm}`)
             .join("\n"),
       );
     }
-    assertAndroidLp3ColorPolicyManifest(manifestText);
+    const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
+    for (const component of stripPolicy.components) {
+      if (manifestText.includes(`${APP.appId}.${component}`)) {
+        throw mobileBuildError(
+          `[mobile-build] android-cloud artifact still declares stripped component ${component}`,
+        );
+      }
+    }
+    if (lp3ColorPolicyEnabled) {
+      const missingPermissions = ANDROID_LP3_COLOR_POLICY_PERMISSIONS.filter(
+        (permission) =>
+          !badging.includes(
+            `uses-permission: name='android.permission.${permission}'`,
+          ),
+      );
+      if (missingPermissions.length > 0) {
+        throw mobileBuildError(
+          "[mobile-build] opted-in LP3 artifact is missing required permissions:\n" +
+            missingPermissions
+              .map((permission) => `  - android.permission.${permission}`)
+              .join("\n"),
+        );
+      }
+      assertAndroidLp3ColorPolicyManifest(manifestText);
+    } else {
+      assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
+        label: "normal Cloud",
+      });
+    }
+    auditAndroidArtifactDexLp3Policy(artifact, entries, javaHome, {
+      debug,
+      expectedPresent: lp3ColorPolicyEnabled,
+    });
+  } else {
+    const evidence = inspectAndroidAppBundle({
+      appId: APP.appId,
+      artifact,
+      entries,
+      env,
+      javaHome,
+      readDexEntries: (dexEntries) =>
+        readAndroidArtifactEntryBuffers(artifact, dexEntries, javaHome, {
+          label: "android-cloud AAB DEX audit",
+        }),
+      strippedComponents: stripPolicy.components,
+      strippedPermissions: stripPolicy.permissions,
+    });
+    console.log(
+      `[mobile-build] android-cloud AAB manifests inspected: ${evidence.modules.join(", ")}`,
+    );
+    console.log(
+      `[mobile-build] android-cloud AAB DEX inspected:\n${evidence.dexEntries.map((entry) => `  - ${entry}`).join("\n")}`,
+    );
   }
-  auditAndroidArtifactDexLp3Policy(artifact, entries, javaHome, {
-    debug,
-    expectedPresent: lp3ColorPolicyEnabled,
-  });
   // Cloud is a thin client (no on-device agent), but it must still ship the
   // renderer — a web-less cloud APK is just as broken as a web-less sideload.
   assertAndroidArtifactShipsWebPayload(artifact, entries, {
@@ -7330,8 +7482,12 @@ function assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome) {
   }
 }
 
-function dumpAndroidArtifactBadging(aapt, artifact) {
-  const badging = spawnSync(aapt, ["dump", "badging", artifact], {
+export function dumpAndroidArtifactBadging(
+  aapt,
+  artifact,
+  { spawnSyncImpl = spawnSync } = {},
+) {
+  const badging = spawnSyncImpl(aapt, ["dump", "badging", artifact], {
     encoding: "utf8",
   });
   if (badging.status !== 0) {
@@ -7356,8 +7512,12 @@ function assertAndroidSmsGatewayBadging(badging) {
   }
 }
 
-function dumpAndroidArtifactManifest(aapt, artifact) {
-  const manifest = spawnSync(
+export function dumpAndroidArtifactManifest(
+  aapt,
+  artifact,
+  { spawnSyncImpl = spawnSync } = {},
+) {
+  const manifest = spawnSyncImpl(
     aapt,
     ["dump", "xmltree", artifact, "AndroidManifest.xml"],
     { encoding: "utf8" },
@@ -7775,6 +7935,7 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "android" &&
     target !== "android-sms-gateway" &&
     target !== "android-cloud" &&
+    target !== "android-cloud-audit" &&
     target !== "android-cloud-debug" &&
     target !== "android-system" &&
     target !== "ios" &&
@@ -7782,7 +7943,7 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-sms-gateway|android-cloud|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
@@ -7792,6 +7953,17 @@ export async function main(argv = process.argv.slice(2)) {
     await buildAndroidSmsGateway();
   } else if (target === "android-cloud") {
     await buildAndroidCloud();
+  } else if (target === "android-cloud-audit") {
+    const jdk = resolveJavaHome(process.env);
+    if (!jdk) throw mobileBuildError("JDK 21 not found. Set JAVA_HOME.");
+    process.env[ANDROID_BUNDLETOOL_JAR_ENV] = await ensureAndroidBundletoolJar({
+      env: process.env,
+    });
+    auditAndroidCloudArtifact({
+      artifact: argv[1],
+      env: process.env,
+      javaHome: jdk,
+    });
   } else if (target === "android-cloud-debug") {
     await buildAndroidCloud({ debug: true });
   } else if (target === "android-system") {
