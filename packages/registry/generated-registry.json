@@ -1023,6 +1023,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-yieldsignal": {
+      "git": {
+        "repo": "Stakemate369/plugin-yieldsignal",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-yieldsignal",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Buyer-side GET_YIELD_SIGNAL action: risk-weighted USDC/WETH lending APY on Base via x402, with client-side spend controls, EIP-712 response verification and schema validation.",
+      "homepage": "https://yieldsignal.vercel.app",
+      "topics": [
+        "defi",
+        "x402",
+        "yield",
+        "base",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-agentscoin": {
       "git": {
         "repo": "axiosdevs/plugin-agentscoin",
