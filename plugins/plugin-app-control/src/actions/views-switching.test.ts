@@ -376,6 +376,34 @@ describe("view switching — VIEWS action resolver", () => {
 				},
 			});
 		});
+
+		it("acknowledges Home without relabeling an explicit Messages destination", async () => {
+			installNavigateCapture();
+			const messagesView = [
+				{
+					...REGISTRY[0],
+					label: "Messages",
+				},
+			];
+
+			const home = await runShow(messagesView, "go home");
+			expect(home.callback).toHaveBeenCalledWith({ text: "Opened Home." });
+			expect(home.result).toMatchObject({
+				success: true,
+				text: "Opened Home.",
+				values: { viewId: "chat", label: "Home" },
+			});
+
+			const messages = await runShow(messagesView, "open messages");
+			expect(messages.callback).toHaveBeenCalledWith({
+				text: "Opened Messages.",
+			});
+			expect(messages.result).toMatchObject({
+				success: true,
+				text: "Opened Messages.",
+				values: { viewId: "chat", label: "Messages" },
+			});
+		});
 	});
 
 	describe("PASSIVE intent routing — intent-only phrases (planner supplies view id)", () => {
