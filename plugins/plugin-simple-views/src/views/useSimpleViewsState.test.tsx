@@ -90,13 +90,15 @@ describe("useSimpleViewsState", () => {
     expect(result.current.error).toBeNull();
 
     await act(async () => {
-      pending.reject(new Error("Local agent is offline"));
+      pending.reject(null);
       await pending.promise.catch(() => undefined);
     });
 
     expect(result.current.loading).toBe(false);
     expect(result.current.snapshot).toBeNull();
-    expect(result.current.error).toBe("Local agent is offline");
+    expect(result.current.error).toBe(
+      "Simple Views could not reach your agent.",
+    );
   });
 
   it("recovers stale state from the client's websocket reconnect event", async () => {
