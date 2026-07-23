@@ -563,6 +563,12 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
   documents: [
     "documents",
     "document",
+    // The registered view's user-facing label is "Knowledge" (the multimedia
+    // knowledge hub), so the label itself must be a first-class noun — users
+    // say "open knowledge" because that is the name on the tab.
+    "knowledge",
+    "knowledge base",
+    "knowledge hub",
     "files",
     "file",
     "docs",

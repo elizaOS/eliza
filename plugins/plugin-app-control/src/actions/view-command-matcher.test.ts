@@ -33,6 +33,11 @@ describe("matchViewCommand — explicit user examples", () => {
 		["pull up my documents", "documents"],
 		["open docs", "documents"],
 		["show my files", "documents"],
+		// the registered view's label is "Knowledge" — the on-screen name must
+		// resolve (live QA gap: "open knowledge" fell through to the planner)
+		["open knowledge", "documents"],
+		["open the knowledge base", "documents"],
+		["show my knowledge hub", "documents"],
 		["switch to focus mode", "focus"],
 		["open my goals", "goals"],
 		// coding cockpit — wins over task-coordinator's bare "coding"
