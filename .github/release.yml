@@ -1,0 +1,53 @@
+# Configures GitHub's auto-generated release notes (generate_release_notes: true
+# in packages/scripts/lib/release-github.mjs). Groups merged PRs into readable
+# categories and drops noise so the Releases page reads cleanly.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - skip-changelog
+    authors:
+      - github-actions
+      - github-actions[bot]
+      - dependabot
+      - dependabot[bot]
+      - renovate
+      - renovate[bot]
+  categories:
+    - title: ⚠️ Breaking Changes
+      labels:
+        - breaking
+        - breaking-change
+        - semver:major
+    - title: 🚀 Features
+      labels:
+        - feature
+        - feat
+        - enhancement
+    - title: 🐛 Fixes
+      labels:
+        - fix
+        - bug
+        - bugfix
+    - title: ⚡ Performance
+      labels:
+        - perf
+        - performance
+    - title: 🔒 Security
+      labels:
+        - security
+    - title: 📚 Documentation
+      labels:
+        - docs
+        - documentation
+    - title: 🧰 Build, CI & Maintenance
+      labels:
+        - build
+        - ci
+        - chore
+        - refactor
+        - test
+        - dependencies
+    - title: Other Changes
+      labels:
+        - "*"
