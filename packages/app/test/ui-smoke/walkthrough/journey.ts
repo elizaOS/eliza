@@ -536,7 +536,18 @@ export async function installJourneyRoutes(
   lane: Lane,
 ): Promise<JourneyRoutes> {
   await injectFullCapabilityHost(page);
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    // The journey's steps 01-03 walk the runtime chooser (Local vs Cloud);
+    // cloud-only sign-in is the default since #15244/#15532, so opt back in
+    // the same way first-run-startup.spec.ts and onboarding-to-home.shared.ts do.
+    "eliza:enable-runtime-chooser": "1",
+    // The injected __electrobunWindowId makes the platform read as desktop,
+    // which arms the post-onboarding permission-priming modal (#12331); its
+    // overlay would swallow every mid-journey click. Mark it already shown,
+    // matching assistant-home-flow / home-widget-priority / all-pages.
+    "eliza:permissions-primed": "1",
+  });
   await installDefaultAppRoutes(page);
   // The agent's TTS playback (e.g. the tutorial tour narrating) posts far-end
   // reference frames to this OPTIONAL echo-cancellation route. The keyless stub
@@ -580,6 +591,40 @@ async function installMockLaneWrites(page: Page): Promise<void> {
   await page.route("**/api/character", async (route) => {
     const method = route.request().method();
     if (method === "PUT" || method === "PATCH") {
+      await fulfillJson(route, 200, { ok: true });
+      return;
+    }
+    await route.fallback();
+  });
+  // The Models & Providers settings section (step 06) reads the model catalog,
+  // model config, and linked accounts; the keyless stub 501s all three, which
+  // trips the diagnostics gate without changing any asserted behaviour. Serve
+  // minimal healthy-empty payloads in the mock lane only.
+  await page.route("**/api/models**", async (route) => {
+    if (route.request().method() === "GET") {
+      const url = new URL(route.request().url());
+      await fulfillJson(
+        route,
+        200,
+        url.pathname.endsWith("/config")
+          ? { config: {}, providers: [] }
+          : { models: [] },
+      );
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/accounts", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, 200, { accounts: [] });
+      return;
+    }
+    await route.fallback();
+  });
+  // Chat collapse/reopen fires a best-effort turn abort; ack it so the gate
+  // sees no 5xx on a write the mock lane cannot execute.
+  await page.route("**/api/turns/*/abort", async (route) => {
+    if (route.request().method() === "POST") {
       await fulfillJson(route, 200, { ok: true });
       return;
     }
