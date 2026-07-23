@@ -11,7 +11,9 @@ import type { LinkedAccountConfig } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountsRouteContext } from "../../src/api/accounts-routes";
 import {
+  __clearSubscriptionCliInstallFailures,
   _resetAccountsRoutesPoolCache,
+  ensureSubscriptionCli,
   handleAccountsRoutes,
 } from "../../src/api/accounts-routes";
 import {
@@ -93,6 +95,7 @@ function createContext(
 describe("accounts routes provider-scoped account resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __clearSubscriptionCliInstallFailures();
     _resetAccountsRoutesPoolCache();
     // The routes read the pool through the host-bridge seam (not an
     // @elizaos/app-core import), so the fixture pool is installed the same
@@ -724,5 +727,240 @@ describe("accounts routes provider-scoped account resolution", () => {
         }),
       ],
     );
+  });
+
+  it("installs a missing subscription CLI into the per-user prefix", async () => {
+    let availabilityChecks = 0;
+    const isAvailable = vi.fn(async () => availabilityChecks++ > 0);
+    const runInstall = vi.fn(async (_args: string[]) => undefined);
+
+    await ensureSubscriptionCli("openai-codex", { isAvailable, runInstall });
+
+    expect(runInstall).toHaveBeenCalledTimes(1);
+    const installArgs = runInstall.mock.calls[0]?.[0] ?? [];
+    expect(installArgs[0]).toBe("install");
+    expect(installArgs).toContain("--prefix");
+    expect(installArgs).toContain("@openai/codex");
+    expect(isAvailable).toHaveBeenCalledWith("codex");
+  });
+
+  it("caches a failed CLI install and skips reinstall during the cooldown", async () => {
+    const isAvailable = vi.fn(async () => false);
+    let nowMs = 10_000;
+    const failingInstall = vi.fn(async () => {
+      throw new Error("npm exploded");
+    });
+
+    const firstError = await ensureSubscriptionCli("anthropic-subscription", {
+      isAvailable,
+      runInstall: failingInstall,
+      now: () => nowMs,
+    }).then(
+      () => null,
+      (err: unknown) => err as { code?: string },
+    );
+    expect(firstError?.code).toBe("SUBSCRIPTION_CLI_INSTALL_FAILED");
+
+    // Inside the cooldown the cached failure is rethrown without re-running
+    // npm, even though this attempt's install would have succeeded.
+    nowMs += 1_000;
+    const recoveredInstall = vi.fn(async () => undefined);
+    const cachedError = await ensureSubscriptionCli("anthropic-subscription", {
+      isAvailable,
+      runInstall: recoveredInstall,
+      now: () => nowMs,
+    }).then(
+      () => null,
+      (err: unknown) => err as { code?: string },
+    );
+    expect(cachedError?.code).toBe("SUBSCRIPTION_CLI_INSTALL_FAILED");
+    expect(recoveredInstall).not.toHaveBeenCalled();
+    expect(failingInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when an installed CLI still is not resolvable", async () => {
+    const isAvailable = vi.fn(async () => false);
+    const runInstall = vi.fn(async () => undefined);
+
+    const error = await ensureSubscriptionCli("openai-codex", {
+      isAvailable,
+      runInstall,
+    }).then(
+      () => null,
+      (err: unknown) => err as { code?: string },
+    );
+
+    expect(error?.code).toBe("SUBSCRIPTION_CLI_NOT_ON_PATH");
+    expect(runInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects OAuth for providers without a first-party OAuth surface", async () => {
+    const direct = createContext({
+      method: "POST",
+      pathname: "/api/accounts/openai-api/oauth/start",
+      body: { label: "Work" },
+    });
+    expect(await handleAccountsRoutes(direct)).toBe(true);
+    expect(direct.status).toBe(400);
+    expect((direct.body as { error: string }).error).toContain(
+      "OAuth not supported",
+    );
+
+    const externalCli = createContext({
+      method: "POST",
+      pathname: "/api/accounts/gemini-cli/oauth/start",
+      body: { label: "Work" },
+    });
+    expect(await handleAccountsRoutes(externalCli)).toBe(true);
+    expect(externalCli.status).toBe(501);
+    expect((externalCli.body as { error: string }).error).toContain(
+      "Gemini CLI",
+    );
+  });
+
+  it("guards the OAuth status stream behind a known sessionId", async () => {
+    const missing = createContext({
+      method: "GET",
+      pathname: "/api/accounts/anthropic-subscription/oauth/status",
+    });
+    expect(await handleAccountsRoutes(missing)).toBe(true);
+    expect(missing.status).toBe(400);
+    expect(missing.body).toEqual({ error: "Missing sessionId" });
+
+    const unknown = createContext({
+      method: "GET",
+      pathname: "/api/accounts/anthropic-subscription/oauth/status",
+    });
+    unknown.req.url =
+      "/api/accounts/anthropic-subscription/oauth/status?sessionId=not-a-real-session";
+    expect(await handleAccountsRoutes(unknown)).toBe(true);
+    expect(unknown.status).toBe(404);
+    expect(unknown.body).toEqual({ error: "Unknown sessionId" });
+  });
+
+  it("reports unknown OAuth sessions honestly on submit and cancel", async () => {
+    const submit = createContext({
+      method: "POST",
+      pathname: "/api/accounts/anthropic-subscription/oauth/submit-code",
+      body: { sessionId: "not-a-real-session", code: "123456" },
+    });
+    expect(await handleAccountsRoutes(submit)).toBe(true);
+    expect(submit.status).toBe(400);
+    expect(submit.body).toEqual({
+      error: "No active flow accepts a code submission",
+    });
+
+    const cancel = createContext({
+      method: "POST",
+      pathname: "/api/accounts/anthropic-subscription/oauth/cancel",
+      body: { sessionId: "not-a-real-session" },
+    });
+    expect(await handleAccountsRoutes(cancel)).toBe(true);
+    expect(cancel.body).toEqual({ cancelled: false });
+  });
+
+  it("tests coding-plan credentials against the plan's models endpoint", async () => {
+    vi.stubEnv("ZAI_CODING_BASE_URL", "");
+    vi.stubEnv("Z_AI_CODING_BASE_URL", "");
+    poolMock.get.mockReturnValue(linkedAccount("zai-coding"));
+    vi.mocked(getAccessToken).mockResolvedValue("sk-test-zai-coding-key");
+    const fetchMock = vi.fn(
+      async () => new Response('{"data":[]}', { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/zai-coding/shared-id/test",
+    });
+
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("https://api.z.ai/api/coding/paas/v4/models");
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer sk-test-zai-coding-key",
+    );
+    expect(ctx.body).toMatchObject({ ok: true, status: 200 });
+  });
+
+  it("marks a coding-plan account needs-reauth when the plan rejects its key", async () => {
+    vi.stubEnv("KIMI_CODING_BASE_URL", "");
+    poolMock.get.mockReturnValue(linkedAccount("kimi-coding"));
+    poolMock.upsert.mockResolvedValue(undefined);
+    vi.mocked(getAccessToken).mockResolvedValue("sk-test-kimi-coding-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unauthorized", { status: 401 })),
+    );
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/kimi-coding/shared-id/refresh-usage",
+    });
+
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+
+    expect(poolMock.upsert.mock.calls).toEqual([
+      [expect.objectContaining({ id: "shared-id", health: "needs-reauth" })],
+    ]);
+    expect(ctx.body).toMatchObject({
+      source: "coding-plan-probe",
+      account: { health: "needs-reauth" },
+      probe: { ok: false, status: 401 },
+    });
+  });
+
+  it("refreshes OAuth subscription usage through the pool singleton", async () => {
+    const linked = linkedAccount("anthropic-subscription");
+    const refreshed = { ...linked, usage: { refreshedAt: 42 } };
+    poolMock.get.mockReturnValueOnce(linked).mockReturnValue(refreshed);
+    poolMock.refreshUsage.mockResolvedValue(undefined);
+    vi.mocked(getAccessToken).mockResolvedValue("sk-ant-oat01-live");
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/anthropic-subscription/shared-id/refresh-usage",
+    });
+
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+
+    expect(poolMock.refreshUsage).toHaveBeenCalledWith(
+      "shared-id",
+      "sk-ant-oat01-live",
+      { providerId: "anthropic-subscription" },
+    );
+    expect(ctx.body).toMatchObject({
+      source: "pool",
+      account: { usage: { refreshedAt: 42 } },
+    });
+  });
+
+  it("falls back to the inline probe when the pool usage refresh fails", async () => {
+    const linked = linkedAccount("anthropic-subscription");
+    poolMock.get.mockReturnValue(linked);
+    poolMock.refreshUsage.mockRejectedValue(new Error("usage endpoint down"));
+    poolMock.upsert.mockResolvedValue(undefined);
+    vi.mocked(getAccessToken).mockResolvedValue("sk-ant-oat01-live");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response('{"id":"msg_1"}', { status: 200 })),
+    );
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/anthropic-subscription/shared-id/refresh-usage",
+    });
+
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+
+    expect(poolMock.upsert.mock.calls).toEqual([
+      [expect.objectContaining({ id: "shared-id", health: "ok" })],
+    ]);
+    expect(ctx.body).toMatchObject({
+      source: "inline-probe",
+      account: { health: "ok" },
+      probe: { ok: true },
+    });
   });
 });
