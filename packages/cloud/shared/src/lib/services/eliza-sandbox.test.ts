@@ -5299,4 +5299,110 @@ describe("snapshot hydration budgets (#16639)", () => {
       }),
     ).toThrow("expanded byte budget");
   });
+
+  test("a reader-less response under budget falls back to text() intact", async () => {
+    const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
+    // A null-body Response is the real reader-less shape (bun keeps body null).
+    expect(await readBodyWithinBudget(new Response(null), 16)).toBe("");
+  });
+
+  test("a reader-less response past the budget is rejected, not retained", async () => {
+    const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
+    const readerless = {
+      body: null,
+      text: async () => "x".repeat(2048),
+    } as unknown as Response;
+    await expect(readBodyWithinBudget(readerless, 1024)).rejects.toThrow("raw hydration budget");
+  });
+
+  test("manifest file-sets count every component, taking max(declared, decoded)", async () => {
+    const { assertSnapshotExpandedBudgets } = await import("./eliza-sandbox.ts?actual");
+    // Within budget: exercises the pglite + media + vault + stateFiles loops
+    // and the configFile counter without throwing. One entry declares MORE
+    // than its base64 decodes to (declared wins), one declares LESS (decoded
+    // wins) — both sides of the max(declared, decoded) counter.
+    assertSnapshotExpandedBudgets({
+      memories: [],
+      config: {},
+      workspaceFiles: {},
+      manifest: {
+        schemaVersion: 1,
+        format: "elizaos.agent-backup",
+        createdAt: "2026-07-19T00:00:00Z",
+        agentId: "a",
+        components: {
+          database: {
+            kind: "pglite-files",
+            pglite: {
+              kind: "file-set",
+              rootLabel: "pglite-dir",
+              files: [
+                // declared 1024 > decoded 3 — the lying-manifest declared side.
+                { path: "db/base", sha256: "s", size: 1024, bytesBase64: "AAAA" },
+              ],
+              sha256: "s",
+            },
+            sha256: "s",
+          },
+          media: {
+            kind: "file-set",
+            rootLabel: "state-dir",
+            files: [
+              // declared 1 < decoded 6 — the under-declared side loses to decode.
+              { path: "m/a.png", sha256: "s", size: 1, bytesBase64: "AAAAAAAA" },
+            ],
+            sha256: "s",
+          },
+          vault: {
+            kind: "file-set",
+            rootLabel: "state-dir",
+            files: [{ path: "v/k", sha256: "s", size: 8, bytesBase64: "AAAA" }],
+            sha256: "s",
+          },
+          character: {
+            runtimeCharacter: {},
+            configFile: { path: "character.json", sha256: "s", size: 64, bytesBase64: "AAAAAAAA" },
+            sha256: "s",
+          },
+          stateFiles: {
+            kind: "file-set",
+            rootLabel: "state-dir",
+            files: [{ path: "s/notes.txt", sha256: "s", size: 16, bytesBase64: "AAAA" }],
+            sha256: "s",
+          },
+        },
+        integrity: { componentHashes: {} },
+      },
+    });
+    // The same manifest shape breaches the FILE budget when a component's
+    // file-set alone exceeds it — the count must come from the manifest loops,
+    // not just legacy workspaceFiles.
+    const manyEntries = Array.from({ length: 5_001 }, (_, i) => ({
+      path: `m/f${i}`,
+      sha256: "s",
+      size: 1,
+      bytesBase64: "AAAA",
+    }));
+    expect(() =>
+      assertSnapshotExpandedBudgets({
+        memories: [],
+        config: {},
+        workspaceFiles: {},
+        manifest: {
+          schemaVersion: 1,
+          format: "elizaos.agent-backup",
+          createdAt: "2026-07-19T00:00:00Z",
+          agentId: "a",
+          components: {
+            database: { kind: "none", sha256: "s" },
+            media: { kind: "file-set", rootLabel: "state-dir", files: manyEntries, sha256: "s" },
+            vault: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "s" },
+            character: { runtimeCharacter: {}, sha256: "s" },
+            stateFiles: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "s" },
+          },
+          integrity: { componentHashes: {} },
+        },
+      }),
+    ).toThrow("file budget");
+  });
 });
