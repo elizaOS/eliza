@@ -555,5 +555,16 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
       if (!("agent" in result)) throw new Error("expected a resolved agent");
       expect(result.agent.deleted_at).toBeNull();
     });
+
+    test("an unparseable timestamp string is left as-is (no bogus Date)", async () => {
+      // The rehydration is best-effort per field: a corrupt cached value must
+      // be handed through untouched rather than converted to an Invalid Date
+      // (this pins the typeof-string + isNaN guard now that the read path is
+      // typed via `unknown` instead of a row-wide double-cast).
+      seedCacheHit({ last_backup_at: "not-a-timestamp" });
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+      expect(result.agent.last_backup_at).toBe("not-a-timestamp" as never);
+    });
   });
 });

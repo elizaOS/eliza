@@ -61,4 +61,14 @@ describe("mergedRecoverySkipPlugins", () => {
       "plugin-browser",
     );
   });
+
+  it("treats not-set and empty-string operator values identically (explicit undefined branch)", () => {
+    // The undefined case is a distinct "operator never set the var" state
+    // handled by an explicit branch (not an `?? ""` default); both it and a
+    // set-but-empty value must yield exactly the recovery list.
+    expect(
+      mergedRecoverySkipPlugins(undefined, ["plugin-sql", "plugin-sql"]),
+    ).toBe("plugin-sql");
+    expect(mergedRecoverySkipPlugins("", ["plugin-sql"])).toBe("plugin-sql");
+  });
 });
