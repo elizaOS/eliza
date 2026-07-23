@@ -705,6 +705,39 @@ for (const mode of [
   });
 }
 
+describe("service-less plugin — explicit absent-services branch", () => {
+  it("registers and unloads a plugin that declares NO services (services key absent)", async () => {
+    // Pins the #9940-style explicit branch in snapshot/trackPluginServiceClasses:
+    // an absent `services` array is a distinct state, not an empty iteration,
+    // and the register/unload cycle must behave identically either way.
+    const runtime = createTestRuntime();
+    const plugin: Plugin = {
+      name: "no-services-plugin",
+      description: "plugin without a services key",
+      actions: [
+        {
+          name: "NO_SERVICES_ACTION",
+          description: "action",
+          examples: [],
+          similes: [],
+          validate: async () => true,
+          handler: async () => ({ success: true }),
+        },
+      ],
+    };
+
+    await runtime.registerPlugin(plugin);
+    expect(runtime.actions.some((a) => a.name === "NO_SERVICES_ACTION")).toBe(
+      true,
+    );
+
+    await runtime.unloadPlugin("no-services-plugin");
+    expect(runtime.actions.some((a) => a.name === "NO_SERVICES_ACTION")).toBe(
+      false,
+    );
+  });
+});
+
 describe("dispose error handling", () => {
   it("a plugin whose dispose hook throws does not corrupt the runtime state", async () => {
     const plugin: Plugin = {
