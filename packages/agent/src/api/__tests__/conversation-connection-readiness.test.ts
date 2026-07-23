@@ -1,15 +1,13 @@
 /**
- * Exercises the connection-proof coordinator under overlapping refresh,
- * deletion, failure, topology, and runtime replacement races.
+ * Exercises serialized connection reconciliation and descriptor invalidation
+ * under overlap, deletion, failure, topology replacement, and bounded tracking.
  */
 import { type AgentRuntime, stringToUuid, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   assertConversationConnectionRuntime,
   captureConversationConnectionDescriptor,
-  hasReadyConversationConnection,
   invalidateConversationConnectionTopology,
-  prepareConversationConnectionRoom,
   scheduleConversationConnectionEnsure,
   serializeConversationConnectionRoomDeletion,
 } from "../conversation-connection-readiness.ts";
@@ -66,7 +64,7 @@ function deferred() {
 }
 
 describe("conversation connection readiness", () => {
-  it("coalesces identical in-flight refreshes", async () => {
+  it("coalesces only identical in-flight reconciliation", async () => {
     const runtime = createRuntime();
     const descriptor = captureDescriptor(runtime);
     const gate = deferred();
@@ -81,10 +79,12 @@ describe("conversation connection readiness", () => {
     await Promise.all([first, second]);
 
     expect(ensure).toHaveBeenCalledTimes(1);
-    expect(hasReadyConversationConnection(descriptor)).toBe(true);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, descriptor),
+    ).not.toThrow();
   });
 
-  it("serializes overlapping role reconciliation for the shared world", async () => {
+  it("serializes every caller reconciliation for the shared world", async () => {
     const runtime = createRuntime();
     const firstDescriptor = captureDescriptor(runtime, {
       callerSeed: "readiness-user",
@@ -120,60 +120,62 @@ describe("conversation connection readiness", () => {
     );
 
     await vi.waitFor(() => expect(starts).toEqual(["user"]));
-    expect(active).toBe(1);
     firstGate.resolve();
     await Promise.all([first, second]);
 
     expect(starts).toEqual(["user", "guest"]);
     expect(maximumActive).toBe(1);
-    expect(hasReadyConversationConnection(firstDescriptor)).toBe(true);
-    expect(hasReadyConversationConnection(secondDescriptor)).toBe(true);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, firstDescriptor),
+    ).not.toThrow();
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, secondDescriptor),
+    ).not.toThrow();
   });
 
-  it("does not let an older role proof revive after the same caller is reconciled", async () => {
+  it("does not cache success across sequential turns", async () => {
     const runtime = createRuntime();
-    const userDescriptor = captureDescriptor(runtime, {
-      callerRole: "USER",
-    });
-    await scheduleConversationConnectionEnsure(userDescriptor, async () => {});
-    expect(hasReadyConversationConnection(userDescriptor)).toBe(true);
+    const descriptor = captureDescriptor(runtime);
+    const firstEnsure = vi.fn(async () => {});
+    const secondEnsure = vi.fn(async () => {});
 
-    const guestDescriptor = captureDescriptor(runtime, {
-      callerRole: "GUEST",
-    });
-    expect(hasReadyConversationConnection(guestDescriptor)).toBe(false);
-    await scheduleConversationConnectionEnsure(guestDescriptor, async () => {});
+    await scheduleConversationConnectionEnsure(descriptor, firstEnsure);
+    await scheduleConversationConnectionEnsure(
+      captureDescriptor(runtime),
+      secondEnsure,
+    );
 
-    expect(hasReadyConversationConnection(userDescriptor)).toBe(false);
-    expect(hasReadyConversationConnection(guestDescriptor)).toBe(true);
-    expect(
-      hasReadyConversationConnection(
-        captureDescriptor(runtime, { callerRole: "USER" }),
-      ),
-    ).toBe(false);
+    expect(firstEnsure).toHaveBeenCalledTimes(1);
+    expect(secondEnsure).toHaveBeenCalledTimes(1);
   });
 
-  it("invalidates the shared topology immediately when its owner changes", async () => {
+  it("invalidates an ensured descriptor immediately when its owner changes", async () => {
     const runtime = createRuntime();
     const firstOwner = captureDescriptor(runtime, {
       ownerSeed: "readiness-owner-one",
     });
     await scheduleConversationConnectionEnsure(firstOwner, async () => {});
-    expect(hasReadyConversationConnection(firstOwner)).toBe(true);
 
     const secondOwner = captureDescriptor(runtime, {
       ownerSeed: "readiness-owner-two",
     });
-    expect(hasReadyConversationConnection(firstOwner)).toBe(false);
-    expect(hasReadyConversationConnection(secondOwner)).toBe(false);
+
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, firstOwner),
+    ).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
+    );
+    await scheduleConversationConnectionEnsure(secondOwner, async () => {});
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, secondOwner),
+    ).not.toThrow();
   });
 
-  it("invalidates every proof after a refresh fails", async () => {
+  it("invalidates the descriptor after failure and allows a fresh retry", async () => {
     const runtime = createRuntime();
     const descriptor = captureDescriptor(runtime);
-
-    await scheduleConversationConnectionEnsure(descriptor, async () => {});
-    expect(hasReadyConversationConnection(descriptor)).toBe(true);
 
     await expect(
       scheduleConversationConnectionEnsure(descriptor, async () => {
@@ -182,21 +184,85 @@ describe("conversation connection readiness", () => {
     ).rejects.toMatchObject({
       code: "CONVERSATION_CONNECTION_REFRESH_FAILED",
     });
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, descriptor),
+    ).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
+    );
 
-    const nextDescriptor = captureDescriptor(runtime);
-    expect(hasReadyConversationConnection(descriptor)).toBe(false);
-    expect(hasReadyConversationConnection(nextDescriptor)).toBe(false);
+    const retryDescriptor = captureDescriptor(runtime);
+    const retry = vi.fn(async () => {});
+    await scheduleConversationConnectionEnsure(retryDescriptor, retry);
+
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, retryDescriptor),
+    ).not.toThrow();
   });
 
-  it("keeps a late refresh from reviving a deleted room generation", async () => {
+  it("times out callers while quarantining the unsettled raw mutation", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = createRuntime();
+      const descriptor = captureDescriptor(runtime);
+      const ensureStarted = deferred();
+      const ensureGate = deferred();
+      const ensure = vi.fn(async () => {
+        ensureStarted.resolve();
+        await ensureGate.promise;
+      });
+
+      const first = scheduleConversationConnectionEnsure(descriptor, ensure);
+      const firstRejection = expect(first).rejects.toMatchObject({
+        code: "CONVERSATION_CONNECTION_TIMEOUT",
+      });
+      await ensureStarted.promise;
+      await vi.advanceTimersByTimeAsync(15_000);
+      await firstRejection;
+
+      const quarantinedDescriptor = captureDescriptor(runtime);
+      const blockedEnsure = vi.fn(async () => {});
+      await expect(
+        scheduleConversationConnectionEnsure(
+          quarantinedDescriptor,
+          blockedEnsure,
+        ),
+      ).rejects.toMatchObject({
+        code: "CONVERSATION_CONNECTION_TIMEOUT",
+      });
+      expect(blockedEnsure).not.toHaveBeenCalled();
+
+      ensureGate.resolve();
+      for (let index = 0; index < 5; index += 1) {
+        await Promise.resolve();
+      }
+
+      const recoveredDescriptor = captureDescriptor(runtime);
+      const recoveredEnsure = vi.fn(async () => {});
+      await scheduleConversationConnectionEnsure(
+        recoveredDescriptor,
+        recoveredEnsure,
+      );
+      expect(recoveredEnsure).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("invalidates ensured and in-flight descriptors across room deletion", async () => {
     const runtime = createRuntime();
-    const descriptor = captureDescriptor(runtime);
-    await scheduleConversationConnectionEnsure(descriptor, async () => {});
+    const ensuredDescriptor = captureDescriptor(runtime);
+    await scheduleConversationConnectionEnsure(
+      ensuredDescriptor,
+      async () => {},
+    );
 
     const refreshStarted = deferred();
     const refreshGate = deferred();
     const lateRefresh = scheduleConversationConnectionEnsure(
-      descriptor,
+      ensuredDescriptor,
       async () => {
         refreshStarted.resolve();
         await refreshGate.promise;
@@ -207,70 +273,89 @@ describe("conversation connection readiness", () => {
     const deleteRoom = vi.fn(async () => {});
     const deletion = serializeConversationConnectionRoomDeletion(
       runtime,
-      descriptor.roomId,
+      ensuredDescriptor.roomId,
       deleteRoom,
     );
-    expect(hasReadyConversationConnection(descriptor)).toBe(false);
+    const duringDeletionDescriptor = captureDescriptor(runtime);
+
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, ensuredDescriptor),
+    ).toThrow();
+    await expect(
+      scheduleConversationConnectionEnsure(
+        duringDeletionDescriptor,
+        async () => {},
+      ),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_ROOM_BLOCKED",
+    });
 
     refreshGate.resolve();
     await expect(lateRefresh).rejects.toMatchObject({
       code: "CONVERSATION_CONNECTION_INVALIDATED",
     });
     await deletion;
+
     expect(deleteRoom).toHaveBeenCalledTimes(1);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, ensuredDescriptor),
+    ).toThrow();
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, duringDeletionDescriptor),
+    ).toThrow();
 
-    const blockedDescriptor = captureDescriptor(runtime);
-    await expect(
-      scheduleConversationConnectionEnsure(blockedDescriptor, async () => {}),
-    ).rejects.toMatchObject({
-      code: "CONVERSATION_CONNECTION_ROOM_BLOCKED",
-    });
-
-    prepareConversationConnectionRoom(runtime, descriptor.roomId);
     const recreatedDescriptor = captureDescriptor(runtime);
     await scheduleConversationConnectionEnsure(
       recreatedDescriptor,
       async () => {},
     );
-    expect(hasReadyConversationConnection(recreatedDescriptor)).toBe(true);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, recreatedDescriptor),
+    ).not.toThrow();
   });
 
-  it("rejects old-name completion after an in-place topology change", async () => {
+  it("rejects an ensured descriptor after an in-place rename", async () => {
     const runtime = createRuntime("Old Name");
     const oldDescriptor = captureDescriptor(runtime);
     await scheduleConversationConnectionEnsure(oldDescriptor, async () => {});
-
-    const refreshStarted = deferred();
-    const refreshGate = deferred();
-    const oldRefresh = scheduleConversationConnectionEnsure(
-      oldDescriptor,
-      async () => {
-        refreshStarted.resolve();
-        await refreshGate.promise;
-      },
-    );
-    await refreshStarted.promise;
 
     invalidateConversationConnectionTopology(runtime);
     runtime.character.name = "New Name";
     const newDescriptor = captureDescriptor(runtime, {
       agentName: "New Name",
     });
-    const newEnsure = vi.fn(async () => {});
-    const newRefresh = scheduleConversationConnectionEnsure(
-      newDescriptor,
-      newEnsure,
+
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, oldDescriptor),
+    ).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
     );
+    await scheduleConversationConnectionEnsure(newDescriptor, async () => {});
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, newDescriptor),
+    ).not.toThrow();
+  });
 
-    refreshGate.resolve();
-    await expect(oldRefresh).rejects.toMatchObject({
-      code: "CONVERSATION_CONNECTION_INVALIDATED",
-    });
-    await newRefresh;
+  it("eviction invalidates old room tokens instead of reviving them", () => {
+    const runtime = createRuntime();
+    const oldest = captureDescriptor(runtime, { roomSeed: "room-0" });
 
-    expect(newEnsure).toHaveBeenCalledTimes(1);
-    expect(hasReadyConversationConnection(oldDescriptor)).toBe(false);
-    expect(hasReadyConversationConnection(newDescriptor)).toBe(true);
+    for (let index = 1; index <= 2_048; index += 1) {
+      captureDescriptor(runtime, { roomSeed: `room-${index}` });
+    }
+
+    expect(() => assertConversationConnectionRuntime(runtime, oldest)).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
+    );
+    const recaptured = captureDescriptor(runtime, { roomSeed: "room-0" });
+    expect(recaptured.roomGeneration).not.toBe(oldest.roomGeneration);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, recaptured),
+    ).not.toThrow();
   });
 
   it("rejects a turn when the route state replaces its exact runtime", () => {

@@ -39,6 +39,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // single fixture drives both the legacy and delta-v2 framings through the real
 // route handler.
 let requestStreamProtocol: "delta-v2" | undefined;
+let requestClientMessageId: string | undefined;
 
 vi.mock("../chat-routes.ts", async () => {
   const actual =
@@ -56,6 +57,9 @@ vi.mock("../chat-routes.ts", async () => {
       metadata: undefined,
       ...(requestStreamProtocol
         ? { streamProtocol: requestStreamProtocol }
+        : {}),
+      ...(requestClientMessageId
+        ? { clientMessageId: requestClientMessageId }
         : {}),
     })),
     persistConversationMemory: vi.fn(async (_runtime, memory) => memory),
@@ -96,6 +100,7 @@ import {
   persistAssistantConversationMemory,
   persistConversationMemory,
 } from "../chat-routes.ts";
+import { serializeConversationConnectionRoomDeletion } from "../conversation-connection-readiness.ts";
 import type {
   ConversationRouteContext,
   ConversationRouteState,
@@ -473,10 +478,35 @@ function createDeferred() {
   };
 }
 
+function createGatedMessageService(
+  started: ReturnType<typeof createDeferred>,
+  gate: ReturnType<typeof createDeferred>,
+): NonNullable<AgentRuntime["messageService"]> {
+  return {
+    async handleMessage() {
+      started.resolve();
+      await gate.promise;
+      return {
+        didRespond: true,
+        responseContent: { text: FINAL_TEXT, thought: THOUGHT },
+        responseMessages: [],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "stream-contract-gated-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  };
+}
+
 describe("conversation stream SSE contract (#10712)", () => {
   afterEach(() => {
     vi.clearAllMocks();
     requestStreamProtocol = undefined;
+    requestClientMessageId = undefined;
   });
 
   it("emits thinking→streaming status, ordered cumulative token frames, then a terminal done frame with thought", async () => {
@@ -568,72 +598,62 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
   });
 
-  it("refreshes a previously proven connection alongside generation without racing user persistence", async () => {
-    const first = createCtx();
-    await handleConversationRoutes(first.ctx);
-
-    const runtime = first.state.runtime;
+  it("awaits connection reconciliation before persistence and generation", async () => {
+    const fixture = createCtx();
+    const runtime = fixture.state.runtime;
     if (!runtime) throw new Error("runtime fixture missing");
-    let finishRefresh: (() => void) | undefined;
-    const refresh = new Promise<void>((resolve) => {
-      finishRefresh = resolve;
-    });
+    const refresh = createDeferred();
+    const reconcile = vi
+      .mocked(runtime.ensureConnection)
+      .getMockImplementation();
+    if (!reconcile) throw new Error("connection fixture missing");
     vi.mocked(runtime.ensureConnection).mockImplementationOnce(
-      async () => refresh,
+      async (input) => {
+        await refresh.promise;
+        await reconcile(input);
+      },
     );
     vi.mocked(persistConversationMemory).mockClear();
-    first.useModel.mockClear();
-
-    const socket = createMockSocket();
-    const req = createReq(socket);
-    const { res, record } = createMockRes();
-    const secondCtx = {
-      ...first.ctx,
-      req,
-      res,
-      state: first.state,
-    };
-    const turn = handleConversationRoutes(secondCtx);
+    fixture.useModel.mockClear();
+    const turn = handleConversationRoutes(fixture.ctx);
 
     await vi.waitFor(() => {
-      expect(first.useModel).toHaveBeenCalledTimes(1);
+      expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
     });
-    expect(persistConversationMemory).toHaveBeenCalledTimes(1);
-    expect(record.ended).toBe(false);
+    expect(persistConversationMemory).not.toHaveBeenCalled();
+    expect(fixture.useModel).not.toHaveBeenCalled();
+    expect(fixture.record.ended).toBe(false);
 
-    finishRefresh?.();
+    refresh.resolve();
     await turn;
-    expect(record.ended).toBe(true);
+    expect(persistConversationMemory).toHaveBeenCalledTimes(1);
+    expect(fixture.useModel).toHaveBeenCalledTimes(1);
+    expect(fixture.record.ended).toBe(true);
   });
 
-  it("fails closed when a warm refresh rejects after visible tokens stream", async () => {
+  it("releases an undelivered connection failure for retry with the same id", async () => {
+    requestClientMessageId = "connection-retry-id";
     const first = createCtx();
-    await handleConversationRoutes(first.ctx);
-
     const runtime = first.state.runtime;
     if (!runtime) throw new Error("runtime fixture missing");
     const failedRefresh = createDeferred();
     vi.mocked(runtime.ensureConnection).mockImplementationOnce(
       async () => failedRefresh.promise,
     );
-    first.useModel.mockClear();
+    vi.mocked(persistConversationMemory).mockClear();
     vi.mocked(persistAssistantConversationMemory).mockClear();
 
-    const second = createFollowupCtx(first.ctx, first.state);
-    const secondTurn = handleConversationRoutes(second.ctx);
+    const firstTurn = handleConversationRoutes(first.ctx);
     await vi.waitFor(() => {
-      expect(first.useModel).toHaveBeenCalledTimes(1);
-      expect(
-        parseSsePayloads(second.record.writes).some(
-          (payload) => payload.type === "token",
-        ),
-      ).toBe(true);
+      expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
     });
+    expect(first.useModel).not.toHaveBeenCalled();
+    expect(persistConversationMemory).not.toHaveBeenCalled();
 
     failedRefresh.reject(new Error("role reconciliation failed"));
-    await secondTurn;
+    await firstTurn;
 
-    const failedPayloads = parseSsePayloads(second.record.writes);
+    const failedPayloads = parseSsePayloads(first.record.writes);
     expect(failedPayloads).toContainEqual(
       expect.objectContaining({
         type: "error",
@@ -645,90 +665,85 @@ describe("conversation stream SSE contract (#10712)", () => {
     );
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
 
-    const coldRetryGate = createDeferred();
     vi.mocked(runtime.ensureConnection).mockClear();
-    vi.mocked(runtime.ensureConnection).mockImplementationOnce(
-      async () => coldRetryGate.promise,
-    );
     first.useModel.mockClear();
-    const third = createFollowupCtx(first.ctx, first.state);
-    const thirdTurn = handleConversationRoutes(third.ctx);
+    const retry = createFollowupCtx(first.ctx, first.state);
+    await handleConversationRoutes(retry.ctx);
 
-    await vi.waitFor(() => {
-      expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
-    });
-    expect(first.useModel).not.toHaveBeenCalled();
-    expect(third.record.ended).toBe(false);
-
-    coldRetryGate.resolve();
-    await thirdTurn;
+    expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
     expect(first.useModel).toHaveBeenCalledTimes(1);
-    expect(third.record.ended).toBe(true);
+    expect(
+      parseSsePayloads(retry.record.writes).some(
+        (payload) => payload.type === "done",
+      ),
+    ).toBe(true);
   });
 
-  it("joins a warm refresh when generation fails and gives the prerequisite failure priority", async () => {
-    const first = createCtx();
-    await handleConversationRoutes(first.ctx);
-
-    const runtime = first.state.runtime;
-    if (!runtime?.messageService) throw new Error("runtime fixture missing");
-    const failedRefresh = createDeferred();
+  it("fails closed when the room is deleted after ensure and allows retry", async () => {
+    requestClientMessageId = "delete-during-generation-id";
     const generationStarted = createDeferred();
-    vi.mocked(runtime.ensureConnection).mockImplementationOnce(
-      async () => failedRefresh.promise,
+    const generationGate = createDeferred();
+    const first = createCtx(
+      createGatedMessageService(generationStarted, generationGate),
     );
-    runtime.messageService = {
-      ...runtime.messageService,
-      handleMessage: vi.fn(async () => {
-        generationStarted.resolve();
-        throw new Error("generation failed first");
-      }),
-    };
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
     vi.mocked(persistAssistantConversationMemory).mockClear();
 
-    const second = createFollowupCtx(first.ctx, first.state);
-    const turn = handleConversationRoutes(second.ctx);
+    const turn = handleConversationRoutes(first.ctx);
     await generationStarted.promise;
 
-    expect(second.record.ended).toBe(false);
-    failedRefresh.reject(new Error("refresh failed second"));
+    await serializeConversationConnectionRoomDeletion(
+      runtime,
+      ROOM_ID,
+      async () => {},
+    );
+    generationGate.resolve();
     await turn;
 
-    const payloads = parseSsePayloads(second.record.writes);
+    const payloads = parseSsePayloads(first.record.writes);
     expect(payloads).toContainEqual(
       expect.objectContaining({
         type: "error",
-        message: expect.stringContaining("refresh failed second"),
+        message: expect.stringContaining("invalidated"),
       }),
     );
     expect(payloads.some((payload) => payload.type === "done")).toBe(false);
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+
+    runtime.messageService = createModelBackedMessageService();
+    first.useModel.mockClear();
+    const retry = createFollowupCtx(first.ctx, first.state);
+    await handleConversationRoutes(retry.ctx);
+
+    expect(first.useModel).toHaveBeenCalledTimes(1);
+    expect(
+      parseSsePayloads(retry.record.writes).some(
+        (payload) => payload.type === "done",
+      ),
+    ).toBe(true);
   });
 
   it("fails the terminal frame if route state swaps runtimes mid-turn", async () => {
-    const first = createCtx();
-    await handleConversationRoutes(first.ctx);
-
+    const generationStarted = createDeferred();
+    const generationGate = createDeferred();
+    const first = createCtx(
+      createGatedMessageService(generationStarted, generationGate),
+    );
     const runtime = first.state.runtime;
     if (!runtime) throw new Error("runtime fixture missing");
-    const refreshGate = createDeferred();
-    vi.mocked(runtime.ensureConnection).mockImplementationOnce(
-      async () => refreshGate.promise,
-    );
-    first.useModel.mockClear();
     vi.mocked(persistAssistantConversationMemory).mockClear();
 
-    const second = createFollowupCtx(first.ctx, first.state);
-    const turn = handleConversationRoutes(second.ctx);
-    await vi.waitFor(() => expect(first.useModel).toHaveBeenCalledTimes(1));
+    const turn = handleConversationRoutes(first.ctx);
+    await generationStarted.promise;
 
     const replacement = createState().state.runtime;
     if (!replacement) throw new Error("replacement fixture missing");
     first.state.runtime = replacement;
-    refreshGate.resolve();
+    generationGate.resolve();
     await turn;
 
-    const payloads = parseSsePayloads(second.record.writes);
+    const payloads = parseSsePayloads(first.record.writes);
     expect(payloads).toContainEqual(
       expect.objectContaining({
         type: "error",

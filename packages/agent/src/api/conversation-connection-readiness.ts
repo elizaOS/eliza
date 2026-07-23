@@ -1,22 +1,25 @@
 /**
- * Coordinates web-conversation connection proofs for one running agent.
+ * Serializes web-conversation topology reconciliation for a running agent.
  *
- * A proof is tied to an immutable runtime/topology/caller descriptor. All
- * mutations are serialized because every web conversation shares one world,
- * while generation may overlap a refresh only after that exact descriptor has
- * completed once. Generation counters keep late completions from reviving
- * proofs invalidated by failure, deletion, or an in-place topology change.
+ * Descriptors capture the exact runtime, topology, room generation, and caller
+ * used by a turn. Connection work is single-flight per descriptor and serialized
+ * per runtime because every web conversation mutates one shared world. Room
+ * generation tokens are globally unique and safely evictable: eviction makes an
+ * old descriptor invalid instead of letting a default generation revive it.
  */
 import { type AgentRuntime, ElizaError, type UUID } from "@elizaos/core";
 import type { BoundaryWorldRole } from "./boundary-role-resolver.ts";
 
-const MAX_READY_CONNECTION_PROOFS = 2_048;
-const MAX_BLOCKED_CONVERSATION_ROOMS = 5_000;
+const MAX_TRACKED_CONVERSATION_ROOMS = 2_048;
+const MAX_PENDING_CONNECTION_MUTATIONS = 256;
+const CONNECTION_MUTATION_TIMEOUT_MS = 15_000;
 
 const CONNECTION_ERROR_CODES = new Set([
   "CONVERSATION_CONNECTION_INVALIDATED",
+  "CONVERSATION_CONNECTION_QUEUE_SATURATED",
   "CONVERSATION_CONNECTION_REFRESH_FAILED",
   "CONVERSATION_CONNECTION_ROOM_BLOCKED",
+  "CONVERSATION_CONNECTION_TIMEOUT",
   "CONVERSATION_RUNTIME_CHANGED",
 ]);
 
@@ -39,16 +42,6 @@ export interface ConversationConnectionDescriptor {
   readonly roomGeneration: number;
 }
 
-interface ReadyConnectionProof {
-  readonly roomId: UUID;
-  readonly ownerId: UUID;
-  readonly callerEntityId: UUID;
-  readonly callerRole: BoundaryWorldRole;
-  readonly callerUserName: string;
-  readonly topologyGeneration: number;
-  readonly roomGeneration: number;
-}
-
 interface InFlightConnectionEnsure {
   readonly descriptor: ConversationConnectionDescriptor;
   readonly promise: Promise<void>;
@@ -57,10 +50,12 @@ interface InFlightConnectionEnsure {
 interface ConversationConnectionRegistry {
   topologyIdentity: string | null;
   topologyGeneration: number;
+  nextRoomGeneration: number;
   readonly roomGenerations: Map<UUID, number>;
-  readonly readyProofs: Map<string, ReadyConnectionProof>;
   readonly inFlightEnsures: Map<string, InFlightConnectionEnsure>;
   readonly blockedRooms: Set<UUID>;
+  readonly stalledMutations: Set<Promise<void>>;
+  pendingMutationCount: number;
   mutationTail: Promise<void>;
 }
 
@@ -72,10 +67,12 @@ function getRegistry(runtime: AgentRuntime): ConversationConnectionRegistry {
     registry = {
       topologyIdentity: null,
       topologyGeneration: 0,
+      nextRoomGeneration: 0,
       roomGenerations: new Map(),
-      readyProofs: new Map(),
       inFlightEnsures: new Map(),
       blockedRooms: new Set(),
+      stalledMutations: new Set(),
+      pendingMutationCount: 0,
       mutationTail: Promise.resolve(),
     };
     registries.set(runtime, registry);
@@ -127,75 +124,67 @@ function invalidateTopology(
 ): void {
   registry.topologyGeneration += 1;
   registry.topologyIdentity = nextTopologyIdentity;
-  registry.readyProofs.clear();
 }
 
-function deleteRoomProofs(
+function roomHasInFlightEnsure(
   registry: ConversationConnectionRegistry,
   roomId: UUID,
-): void {
-  for (const [identity, proof] of registry.readyProofs) {
-    if (proof.roomId === roomId) {
-      registry.readyProofs.delete(identity);
+): boolean {
+  return Array.from(registry.inFlightEnsures.values()).some(
+    (entry) => entry.descriptor.roomId === roomId,
+  );
+}
+
+function pruneRoomGenerations(registry: ConversationConnectionRegistry): void {
+  const candidateCount = registry.roomGenerations.size;
+  let inspected = 0;
+  while (
+    registry.roomGenerations.size > MAX_TRACKED_CONVERSATION_ROOMS &&
+    inspected < candidateCount
+  ) {
+    const oldestRoomId = registry.roomGenerations.keys().next().value;
+    if (typeof oldestRoomId !== "string") return;
+    inspected += 1;
+    if (
+      registry.blockedRooms.has(oldestRoomId) ||
+      roomHasInFlightEnsure(registry, oldestRoomId)
+    ) {
+      const generation = registry.roomGenerations.get(oldestRoomId);
+      registry.roomGenerations.delete(oldestRoomId);
+      if (generation !== undefined) {
+        registry.roomGenerations.set(oldestRoomId, generation);
+      }
+      continue;
     }
+    // Missing is an invalid generation. A later capture allocates a globally
+    // unique token, so eviction can never make an old descriptor current.
+    registry.roomGenerations.delete(oldestRoomId);
   }
 }
 
-function incrementRoomGeneration(
+function allocateRoomGeneration(
   registry: ConversationConnectionRegistry,
   roomId: UUID,
 ): number {
-  const nextGeneration = (registry.roomGenerations.get(roomId) ?? 0) + 1;
-  registry.roomGenerations.set(roomId, nextGeneration);
-  deleteRoomProofs(registry, roomId);
-  return nextGeneration;
+  registry.nextRoomGeneration += 1;
+  const generation = registry.nextRoomGeneration;
+  registry.roomGenerations.delete(roomId);
+  registry.roomGenerations.set(roomId, generation);
+  pruneRoomGenerations(registry);
+  return generation;
 }
 
-function pruneReadyProofs(registry: ConversationConnectionRegistry): void {
-  while (registry.readyProofs.size > MAX_READY_CONNECTION_PROOFS) {
-    const oldestIdentity = registry.readyProofs.keys().next().value;
-    if (typeof oldestIdentity !== "string") return;
-    registry.readyProofs.delete(oldestIdentity);
-  }
-}
-
-function deleteConflictingCallerProofs(
+function currentRoomGeneration(
   registry: ConversationConnectionRegistry,
-  descriptor: ConversationConnectionDescriptor,
-): void {
-  for (const [identity, proof] of registry.readyProofs) {
-    if (
-      proof.ownerId !== descriptor.ownerId ||
-      (proof.callerEntityId === descriptor.callerEntityId &&
-        (proof.callerRole !== descriptor.callerRole ||
-          proof.callerUserName !== descriptor.callerUserName))
-    ) {
-      registry.readyProofs.delete(identity);
-    }
+  roomId: UUID,
+): number {
+  const generation = registry.roomGenerations.get(roomId);
+  if (generation !== undefined) {
+    registry.roomGenerations.delete(roomId);
+    registry.roomGenerations.set(roomId, generation);
+    return generation;
   }
-}
-
-function pruneBlockedRooms(registry: ConversationConnectionRegistry): void {
-  const candidateCount = registry.blockedRooms.size;
-  let inspected = 0;
-  while (
-    registry.blockedRooms.size > MAX_BLOCKED_CONVERSATION_ROOMS &&
-    inspected < candidateCount
-  ) {
-    const oldestRoomId = registry.blockedRooms.values().next().value;
-    if (typeof oldestRoomId !== "string") return;
-    inspected += 1;
-    const hasInFlightEnsure = Array.from(
-      registry.inFlightEnsures.values(),
-    ).some((entry) => entry.descriptor.roomId === oldestRoomId);
-    if (hasInFlightEnsure) {
-      registry.blockedRooms.delete(oldestRoomId);
-      registry.blockedRooms.add(oldestRoomId);
-      continue;
-    }
-    registry.blockedRooms.delete(oldestRoomId);
-    registry.roomGenerations.delete(oldestRoomId);
-  }
+  return allocateRoomGeneration(registry, roomId);
 }
 
 function descriptorGenerationsAreCurrent(
@@ -205,7 +194,7 @@ function descriptorGenerationsAreCurrent(
   return (
     registry.topologyIdentity === descriptor.topologyIdentity &&
     registry.topologyGeneration === descriptor.topologyGeneration &&
-    (registry.roomGenerations.get(descriptor.roomId) ?? 0) ===
+    registry.roomGenerations.get(descriptor.roomId) ===
       descriptor.roomGeneration
   );
 }
@@ -224,7 +213,7 @@ function invalidatedConnectionError(
   descriptor: ConversationConnectionDescriptor,
   cause?: unknown,
 ): ElizaError {
-  return new ElizaError("Conversation connection proof was invalidated", {
+  return new ElizaError("Conversation connection descriptor was invalidated", {
     code: "CONVERSATION_CONNECTION_INVALIDATED",
     ...(cause !== undefined ? { cause } : {}),
     context: {
@@ -257,16 +246,108 @@ function assertDescriptorCurrent(
   }
 }
 
+interface ConnectionMutationContext {
+  readonly agentId: UUID;
+  readonly roomId: UUID;
+  readonly conversationId?: string;
+  readonly worldId?: UUID;
+}
+
+interface EnqueuedConnectionMutation {
+  /** The exclusive lock remains attached to this promise until I/O settles. */
+  readonly raw: Promise<void>;
+  /** The request-facing observer rejects at the bounded deadline. */
+  readonly result: Promise<void>;
+}
+
+function mutationUnavailableError(
+  context: ConnectionMutationContext,
+  code:
+    | "CONVERSATION_CONNECTION_QUEUE_SATURATED"
+    | "CONVERSATION_CONNECTION_TIMEOUT",
+  message: string,
+): ElizaError {
+  return new ElizaError(message, {
+    code,
+    context: { ...context },
+    severity: "ephemeral",
+  });
+}
+
 function enqueueConnectionMutation(
   registry: ConversationConnectionRegistry,
+  context: ConnectionMutationContext,
   mutation: () => Promise<void>,
-): Promise<void> {
-  const run = registry.mutationTail.then(mutation, mutation);
+  onTimeout: () => void,
+): EnqueuedConnectionMutation {
+  if (registry.stalledMutations.size > 0) {
+    throw mutationUnavailableError(
+      context,
+      "CONVERSATION_CONNECTION_TIMEOUT",
+      "Conversation connection reconciliation is quarantined behind an unsettled write",
+    );
+  }
+  if (registry.pendingMutationCount >= MAX_PENDING_CONNECTION_MUTATIONS) {
+    throw mutationUnavailableError(
+      context,
+      "CONVERSATION_CONNECTION_QUEUE_SATURATED",
+      "Conversation connection reconciliation queue is saturated",
+    );
+  }
+
+  const timeoutError = mutationUnavailableError(
+    context,
+    "CONVERSATION_CONNECTION_TIMEOUT",
+    "Conversation connection reconciliation exceeded its deadline",
+  );
+  let cancelledBeforeStart = false;
+  const execute = async (): Promise<void> => {
+    if (cancelledBeforeStart) throw timeoutError;
+    await mutation();
+  };
+
+  registry.pendingMutationCount += 1;
+  const run = registry.mutationTail.then(execute, execute);
   registry.mutationTail = run.then(
     () => undefined,
     () => undefined,
   );
-  return run;
+
+  let observerSettled = false;
+  const result = new Promise<void>((resolve, reject) => {
+    const deadline = setTimeout(() => {
+      if (observerSettled) return;
+      observerSettled = true;
+      cancelledBeforeStart = true;
+      onTimeout();
+      // The request may fail now, but the raw write keeps exclusive ownership
+      // of mutationTail. New mutations fail fast until that I/O truly settles.
+      registry.stalledMutations.add(run);
+      reject(timeoutError);
+    }, CONNECTION_MUTATION_TIMEOUT_MS);
+
+    run.then(
+      () => {
+        clearTimeout(deadline);
+        if (observerSettled) return;
+        observerSettled = true;
+        resolve();
+      },
+      (error: unknown) => {
+        clearTimeout(deadline);
+        if (observerSettled) return;
+        observerSettled = true;
+        reject(error);
+      },
+    );
+  });
+
+  const releaseMutation = (): void => {
+    registry.pendingMutationCount -= 1;
+    registry.stalledMutations.delete(run);
+  };
+  run.then(releaseMutation, releaseMutation);
+  return { raw: run, result };
 }
 
 /**
@@ -327,33 +408,13 @@ export function captureConversationConnectionDescriptor(input: {
     topologyIdentity,
     proofIdentity,
     topologyGeneration: registry.topologyGeneration,
-    roomGeneration: registry.roomGenerations.get(input.roomId) ?? 0,
+    roomGeneration: currentRoomGeneration(registry, input.roomId),
   });
 }
 
-/** Returns true only for the exact current descriptor and refreshes its LRU. */
-export function hasReadyConversationConnection(
-  descriptor: ConversationConnectionDescriptor,
-): boolean {
-  const registry = getRegistry(descriptor.runtime);
-  if (!descriptorIsCurrent(registry, descriptor)) return false;
-  const proof = registry.readyProofs.get(descriptor.proofIdentity);
-  if (
-    !proof ||
-    proof.topologyGeneration !== descriptor.topologyGeneration ||
-    proof.roomGeneration !== descriptor.roomGeneration
-  ) {
-    return false;
-  }
-  registry.readyProofs.delete(descriptor.proofIdentity);
-  registry.readyProofs.set(descriptor.proofIdentity, proof);
-  return true;
-}
-
 /**
- * Coalesces identical work and serializes all web-world mutations for the
- * runtime. A failed mutation clears every proof for that topology because the
- * shared world may have been only partially reconciled.
+ * Coalesces identical work and serializes shared-world mutations. Callers await
+ * this prerequisite before generation; it is not a success cache.
  */
 export function scheduleConversationConnectionEnsure(
   descriptor: ConversationConnectionDescriptor,
@@ -375,48 +436,53 @@ export function scheduleConversationConnectionEnsure(
     return existing.promise;
   }
 
-  const run = enqueueConnectionMutation(registry, async () => {
-    assertDescriptorCurrent(registry, descriptor);
-    try {
-      await ensure();
-      assertDescriptorCurrent(registry, descriptor);
-      deleteConflictingCallerProofs(registry, descriptor);
-      registry.readyProofs.delete(descriptor.proofIdentity);
-      registry.readyProofs.set(descriptor.proofIdentity, {
+  let run: Promise<void>;
+  try {
+    run = enqueueConnectionMutation(
+      registry,
+      {
+        agentId: descriptor.runtimeAgentId,
+        conversationId: descriptor.conversationId,
         roomId: descriptor.roomId,
-        ownerId: descriptor.ownerId,
-        callerEntityId: descriptor.callerEntityId,
-        callerRole: descriptor.callerRole,
-        callerUserName: descriptor.callerUserName,
-        topologyGeneration: descriptor.topologyGeneration,
-        roomGeneration: descriptor.roomGeneration,
-      });
-      pruneReadyProofs(registry);
-    } catch (error) {
-      if (isConversationConnectionError(error)) {
-        throw error;
-      }
-      if (!descriptorIsCurrent(registry, descriptor)) {
-        throw invalidatedConnectionError(descriptor, error);
-      }
-      invalidateTopology(registry, registry.topologyIdentity);
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new ElizaError(
-        `Conversation connection refresh failed: ${reason}`,
-        {
-          code: "CONVERSATION_CONNECTION_REFRESH_FAILED",
-          cause: error,
-          context: {
-            agentId: descriptor.runtimeAgentId,
-            conversationId: descriptor.conversationId,
-            roomId: descriptor.roomId,
-            worldId: descriptor.worldId,
-          },
-          severity: "ephemeral",
-        },
-      );
-    }
-  });
+        worldId: descriptor.worldId,
+      },
+      async () => {
+        assertDescriptorCurrent(registry, descriptor);
+        try {
+          await ensure();
+          assertDescriptorCurrent(registry, descriptor);
+        } catch (error) {
+          if (isConversationConnectionError(error)) {
+            throw error;
+          }
+          if (!descriptorIsCurrent(registry, descriptor)) {
+            throw invalidatedConnectionError(descriptor, error);
+          }
+          invalidateTopology(registry, registry.topologyIdentity);
+          const reason = error instanceof Error ? error.message : String(error);
+          throw new ElizaError(
+            `Conversation connection reconciliation failed: ${reason}`,
+            {
+              code: "CONVERSATION_CONNECTION_REFRESH_FAILED",
+              cause: error,
+              context: {
+                agentId: descriptor.runtimeAgentId,
+                conversationId: descriptor.conversationId,
+                roomId: descriptor.roomId,
+                worldId: descriptor.worldId,
+              },
+              severity: "ephemeral",
+            },
+          );
+        }
+      },
+      () => {
+        invalidateTopology(registry, registry.topologyIdentity);
+      },
+    ).result;
+  } catch (error) {
+    return Promise.reject(error);
+  }
 
   let tracked: Promise<void>;
   tracked = run.finally(() => {
@@ -426,41 +492,40 @@ export function scheduleConversationConnectionEnsure(
     ) {
       registry.inFlightEnsures.delete(descriptor.proofIdentity);
     }
+    pruneRoomGenerations(registry);
   });
   registry.inFlightEnsures.set(descriptor.proofIdentity, {
     descriptor,
     promise: tracked,
   });
-  // error-policy:J5 stream routes join this guarded rejection before emitting
-  // their terminal frame; serial route callers await the returned promise.
+  // error-policy:J5 route callers await the returned promise; this observer
+  // prevents a rejection from becoming unhandled before a queued caller joins.
   tracked.catch(() => {});
   return tracked;
 }
 
-/** Invalidates every proof and in-flight generation for an in-place rename. */
+/** Invalidates every descriptor and in-flight ensure for an in-place rename. */
 export function invalidateConversationConnectionTopology(
   runtime: AgentRuntime,
 ): void {
   invalidateTopology(getRegistry(runtime), null);
 }
 
-/**
- * Unblocks an explicitly recreated room and gives it a new generation. Normal
- * stream requests cannot clear a deletion block.
- */
+/** Gives an explicitly created or recreated room a fresh generation token. */
 export function prepareConversationConnectionRoom(
   runtime: AgentRuntime,
   roomId: UUID,
 ): void {
   const registry = getRegistry(runtime);
   registry.blockedRooms.delete(roomId);
-  incrementRoomGeneration(registry, roomId);
+  allocateRoomGeneration(registry, roomId);
 }
 
 /**
- * Invalidates immediately, then performs deletion after all earlier connection
- * mutations. A late ensure therefore fails its generation check before the
- * serialized delete removes the room.
+ * Invalidates immediately, drains earlier reconciliation, and blocks new work
+ * until deletion completes. Retiring the generation makes every descriptor
+ * captured before or during deletion permanently stale without retaining a
+ * historical tombstone in memory.
  */
 export async function serializeConversationConnectionRoomDeletion(
   runtime: AgentRuntime,
@@ -468,14 +533,34 @@ export async function serializeConversationConnectionRoomDeletion(
   deleteRoom: () => Promise<void>,
 ): Promise<void> {
   const registry = getRegistry(runtime);
-  incrementRoomGeneration(registry, roomId);
-  registry.blockedRooms.delete(roomId);
+  allocateRoomGeneration(registry, roomId);
   registry.blockedRooms.add(roomId);
-  pruneBlockedRooms(registry);
-  await enqueueConnectionMutation(registry, deleteRoom);
+  let queued: EnqueuedConnectionMutation;
+  try {
+    queued = enqueueConnectionMutation(
+      registry,
+      { agentId: runtime.agentId, roomId },
+      deleteRoom,
+      () => undefined,
+    );
+  } catch (error) {
+    registry.blockedRooms.delete(roomId);
+    registry.roomGenerations.delete(roomId);
+    throw error;
+  }
+
+  const releaseRoom = (): void => {
+    registry.blockedRooms.delete(roomId);
+    registry.roomGenerations.delete(roomId);
+  };
+  queued.raw.then(releaseRoom, releaseRoom);
+  await queued.result;
 }
 
-/** Rejects a turn whose runtime was replaced while its work was in flight. */
+/**
+ * Rejects a turn when its runtime, topology, or room generation changed after
+ * capture, including deletion and in-place character rename.
+ */
 export function assertConversationConnectionRuntime(
   currentRuntime: AgentRuntime | null,
   descriptor: ConversationConnectionDescriptor,
@@ -492,9 +577,10 @@ export function assertConversationConnectionRuntime(
       severity: "ephemeral",
     });
   }
+  assertDescriptorCurrent(getRegistry(descriptor.runtime), descriptor);
 }
 
-/** Narrows errors that must terminate the stream without a success fallback. */
+/** Narrows errors that must terminate the request without a success fallback. */
 export function isConversationConnectionError(
   error: unknown,
 ): error is ElizaError {

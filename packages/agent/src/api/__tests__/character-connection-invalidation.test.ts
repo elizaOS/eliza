@@ -9,8 +9,8 @@ import {
   handleCharacterRoutes,
 } from "../character-routes.ts";
 import {
+  assertConversationConnectionRuntime,
   captureConversationConnectionDescriptor,
-  hasReadyConversationConnection,
   scheduleConversationConnectionEnsure,
 } from "../conversation-connection-readiness.ts";
 
@@ -43,7 +43,9 @@ describe("character connection topology invalidation", () => {
     } as unknown as AgentRuntime;
     const oldDescriptor = captureDescriptor(runtime, "Old Name");
     await scheduleConversationConnectionEnsure(oldDescriptor, async () => {});
-    expect(hasReadyConversationConnection(oldDescriptor)).toBe(true);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, oldDescriptor),
+    ).not.toThrow();
 
     const json = vi.fn();
     const handled = await handleCharacterRoutes({
@@ -69,9 +71,20 @@ describe("character connection topology invalidation", () => {
       expect.anything(),
       expect.objectContaining({ ok: true, agentName: "New Name" }),
     );
-    expect(hasReadyConversationConnection(oldDescriptor)).toBe(false);
-    expect(
-      hasReadyConversationConnection(captureDescriptor(runtime, "New Name")),
-    ).toBe(false);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, oldDescriptor),
+    ).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
+    );
+    const renamedDescriptor = captureDescriptor(runtime, "New Name");
+    await scheduleConversationConnectionEnsure(
+      renamedDescriptor,
+      async () => {},
+    );
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, renamedDescriptor),
+    ).not.toThrow();
   });
 });
