@@ -2950,7 +2950,7 @@
         "pngjs": "^7.0.0",
         "postcss": "^8.5.16",
         "react": "19.2.5",
-        "react-dom": "19.2.7",
+        "react-dom": "19.2.5",
         "react-plaid-link": "^4.1.1",
         "sharp": "^0.35.3",
         "storybook": "^10.0.0",
@@ -2970,7 +2970,7 @@
         "@elizaos/capacitor-llama": "workspace:*",
         "llama-cpp-capacitor": "^0.1.5",
         "react": "19.2.5",
-        "react-dom": "19.2.7",
+        "react-dom": "19.2.5",
       },
       "optionalPeers": [
         "@capacitor-community/bluetooth-le",
