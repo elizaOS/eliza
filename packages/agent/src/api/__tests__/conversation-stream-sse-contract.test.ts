@@ -392,6 +392,7 @@ function createCtx(
 ): {
   ctx: ConversationRouteContext;
   record: MockResponseRecord;
+  state: ConversationRouteState;
   useModel: ReturnType<typeof createStreamingUseModelFixture>;
 } {
   const socket = createMockSocket();
@@ -411,7 +412,7 @@ function createCtx(
       response.end();
     }),
   } as unknown as ConversationRouteContext;
-  return { ctx, record, useModel };
+  return { ctx, record, state, useModel };
 }
 
 describe("conversation stream SSE contract (#10712)", () => {
@@ -493,6 +494,44 @@ describe("conversation stream SSE contract (#10712)", () => {
       (payload) => payload.type === "status" && payload.kind === "streaming",
     );
     expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
+  });
+
+  it("refreshes a previously proven connection alongside generation without racing user persistence", async () => {
+    const first = createCtx();
+    await handleConversationRoutes(first.ctx);
+
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    let finishRefresh: (() => void) | undefined;
+    const refresh = new Promise<void>((resolve) => {
+      finishRefresh = resolve;
+    });
+    vi.mocked(runtime.ensureConnection).mockImplementationOnce(
+      async () => refresh,
+    );
+    vi.mocked(persistConversationMemory).mockClear();
+    first.useModel.mockClear();
+
+    const socket = createMockSocket();
+    const req = createReq(socket);
+    const { res, record } = createMockRes();
+    const secondCtx = {
+      ...first.ctx,
+      req,
+      res,
+      state: first.state,
+    };
+    const turn = handleConversationRoutes(secondCtx);
+
+    await vi.waitFor(() => {
+      expect(first.useModel).toHaveBeenCalledTimes(1);
+    });
+    expect(persistConversationMemory).toHaveBeenCalledTimes(1);
+    expect(record.ended).toBe(false);
+
+    finishRefresh?.();
+    await turn;
+    expect(record.ended).toBe(true);
   });
 
   it("carries a direct VIEWS shortcut result on the terminal done frame", async () => {

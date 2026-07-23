@@ -2821,33 +2821,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     // Use withEntityContext to set Entity RLS context if needed
     // This delegates to the concrete adapter implementation (PostgreSQL or PGLite)
     await this.withEntityContext(memory.entityId, async (tx) => {
-      // Idempotent on the `id` primary key. The `getMemoryById` guard above
-      // handles the common already-persisted case, but it is a check-then-
-      // insert (TOCTOU): two writers persisting the SAME memory id
-      // concurrently — e.g. the conversation route's user-message persist and
-      // the message pipeline's ingress persist racing on a warm turn — can both
-      // observe no existing row and both reach this INSERT. Without ON CONFLICT
-      // the loser throws a duplicate-primary-key error; the pipeline ingress
-      // persist is uncaught and would fail the whole turn. DO NOTHING makes the
-      // losing insert a structural no-op (no sleep, no retry) and the method
-      // still returns the shared id, so exactly one memory row exists.
-      await tx
-        .insert(memoryTable)
-        .values([
-          {
-            id: memoryId,
-            type: tableName,
-            content: sql`${contentToInsert}::jsonb`,
-            metadata: sql`${metadataToInsert}::jsonb`,
-            entityId: memory.entityId,
-            roomId: memory.roomId,
-            worldId: memory.worldId, // Include worldId
-            agentId: memory.agentId || this.agentId,
-            unique: memory.unique,
-            createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
-          },
-        ])
-        .onConflictDoNothing({ target: memoryTable.id });
+      await tx.insert(memoryTable).values([
+        {
+          id: memoryId,
+          type: tableName,
+          content: sql`${contentToInsert}::jsonb`,
+          metadata: sql`${metadataToInsert}::jsonb`,
+          entityId: memory.entityId,
+          roomId: memory.roomId,
+          worldId: memory.worldId, // Include worldId
+          agentId: memory.agentId || this.agentId,
+          unique: memory.unique,
+          createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
+        },
+      ]);
 
       if (memory.embedding && Array.isArray(memory.embedding)) {
         const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
