@@ -263,8 +263,8 @@ const SHELL_OWNED_ROOT_CLASSES: ReadonlySet<string> = new Set([
 const SHELL_OWNED_ROOT_VARS: ReadonlySet<string> = new Set([
   ...Object.values(THEME_CSS_VAR_MAP),
   ...Object.values(THEME_FONT_CSS_VARS),
-  "--eliza-continuous-chat-clearance",
-  "--eliza-continuous-chat-side-clearance",
+  "--eliza-chat-clearance",
+  "--eliza-chat-side-clearance",
 ]);
 const SHELL_OWNED_ROOT_VAR_PREFIXES = [
   "--accent",

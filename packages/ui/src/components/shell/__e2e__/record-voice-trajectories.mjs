@@ -1,6 +1,6 @@
 /**
  * Records a screen-capture VIDEO of the voice / voice-chat trajectories on the
- * live-mic continuous-chat overlay — the surface that carries the microphone
+ * live-mic chat overlay — the surface that carries the microphone
  * button and the transcript toggle. It reuses the same esbuild bundle as
  * run-chat-sheet-e2e.mjs, then drives the fixture through the canonical voice
  * trajectories with real pointer input under Playwright's recordVideo, so the

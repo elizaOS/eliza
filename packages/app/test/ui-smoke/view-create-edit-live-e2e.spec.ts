@@ -438,7 +438,7 @@ async function putViewInForegroundForRouting(
 }
 
 async function settleViewForScreenshot(page: Page): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   if ((await overlay.getAttribute("data-open")) === "true") {
     await page.locator(COMPOSER).first().press("Escape");

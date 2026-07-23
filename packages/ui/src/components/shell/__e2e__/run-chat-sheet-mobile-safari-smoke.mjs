@@ -1,5 +1,5 @@
 /**
- * Real Mobile Safari visual smoke for the continuous-chat sheet.
+ * Real Mobile Safari visual smoke for the chat sheet.
  *
  * This is intentionally a visual simulator smoke, not a gesture automation
  * suite: plain `xcrun simctl` can boot/open/capture Mobile Safari, but does not

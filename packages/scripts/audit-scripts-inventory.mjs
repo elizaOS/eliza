@@ -73,12 +73,14 @@ const CATEGORIES = [
 
 // packages/app scripts can also be reached app-internally (one app script runs
 // another, or via an npm pre/post lifecycle pair) — a color the root/file graphs
-// don't need. Priority: verify > test > build > ci-workflow > app-internal.
+// don't need. Priority: verify > test > build > ci-workflow > operator-script >
+// app-internal.
 const APP_CATEGORIES = [
   "reachable-from-verify",
   "reachable-from-test",
   "reachable-from-build",
   "reachable-from-ci-workflow",
+  "reachable-from-operator-script",
   "reachable-from-app-internal",
   "orphan",
 ];
@@ -563,6 +565,11 @@ function buildInventory() {
     "reachable-from-test": new Set(),
     "reachable-from-build": new Set(),
     "reachable-from-ci-workflow": new Set(),
+    // Named root commands an operator runs by hand (e.g. root `lint` fanning
+    // out Turbo's `lint` across the workspace) still reach app scripts; since
+    // the read-only gate split (root verify fans out `lint:check`), this is the
+    // only color that reaches app `lint`.
+    "reachable-from-operator-script": new Set(),
   };
   for (const name of Object.keys(rootScripts)) {
     const color = classifyRoot(name);
@@ -603,12 +610,18 @@ function buildInventory() {
     appScripts,
     appUniverse,
   );
+  const operatorApp = reachableAppScripts(
+    appSeedsByColor["reachable-from-operator-script"],
+    appScripts,
+    appUniverse,
+  );
   // App-internal: reachable through the app graph from any directly-seeded script.
   const directlySeeded = new Set([
     ...verifyApp,
     ...testApp,
     ...buildApp,
     ...ciApp,
+    ...operatorApp,
   ]);
   const internalApp = reachableAppScripts(
     directlySeeded,
@@ -621,6 +634,7 @@ function buildInventory() {
     if (testApp.has(name)) return "reachable-from-test";
     if (buildApp.has(name)) return "reachable-from-build";
     if (ciApp.has(name)) return "reachable-from-ci-workflow";
+    if (operatorApp.has(name)) return "reachable-from-operator-script";
     if (internalApp.has(name)) return "reachable-from-app-internal";
     return "orphan";
   };
@@ -699,11 +713,11 @@ function printSummary(inv) {
 
   // packages/app — the second dense script surface (issue #10200, item 2).
   w("[audit-scripts-inventory] packages/app/package.json reachability\n\n");
-  w("  category                       scripts\n");
-  w("  ---------------------------- ---------\n");
+  w("  category                         scripts\n");
+  w("  ------------------------------ ---------\n");
   for (const c of APP_CATEGORIES) {
     w(
-      `  ${c.padEnd(28)} ${String(summary.appScriptsByCategory[c]).padStart(7)}\n`,
+      `  ${c.padEnd(30)} ${String(summary.appScriptsByCategory[c]).padStart(7)}\n`,
     );
   }
   w("  ---------------------------- ---------\n");

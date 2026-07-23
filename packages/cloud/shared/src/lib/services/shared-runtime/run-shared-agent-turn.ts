@@ -26,10 +26,7 @@ import {
   getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
-import {
-  resolveSharedNavIntent,
-  type SharedNavIntent,
-} from "./shared-nav-intent";
+import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
   role: "user" | "assistant";

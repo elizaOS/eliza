@@ -7,14 +7,11 @@
  * prompt catalog), this collector drops NOTHING — it answers "which action ids
  * exist in code", not "which actions should the model be taught up front".
  *
- * Two consumers share it so there is exactly one extraction rule set:
- * `generate-action-docs.js` renders the inventory into the "Registered runtime
- * actions" section of `packages/docs/action-catalog.md`, and the view→action
- * ratchet (`packages/scripts/view-action-ratchet.mjs`) validates that every
- * builtin-view mutation maps to one of these ids and that the catalog has not
- * drifted from source. Issues #14365/#14366/#14367 were mis-filed as "action
- * missing" precisely because the catalog omitted registered actions — this
- * scanner is what makes that class of drift mechanically visible (#14369).
+ * `generate-action-docs.js` consumes this inventory to render the "Registered
+ * runtime actions" section of `packages/docs/action-catalog.md`. Issues
+ * #14365/#14366/#14367 were mis-filed as "action missing" because the catalog
+ * omitted registered actions; this scanner keeps that source-derived section
+ * complete without duplicating extraction rules.
  *
  * Detection is lexical (no TS compiler dependency, usable from dependency-free
  * CI audits): an action is a `const X: Action = {...}` or

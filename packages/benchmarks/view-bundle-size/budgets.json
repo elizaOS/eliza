@@ -15,9 +15,10 @@
       "gzipBudgetBytes": 4500
     },
     "plugin-app-control": {
-      "measuredRawBytes": 5767,
-      "measuredGzipBytes": 2245,
-      "gzipBudgetBytes": 3000
+      "measuredRawBytes": 10408,
+      "measuredGzipBytes": 3444,
+      "gzipBudgetBytes": 3900,
+      "baselineReason": "Runtime response validation, typed failures, and authenticated cross-platform navigation are part of the shipped view manager; the previous baseline predated that transport hardening."
     },
     "plugin-birdclaw": {
       "measuredRawBytes": 9930,

@@ -68,7 +68,7 @@ jobs:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup || true
+            /usr/local/.ghcup || true
           sudo docker image prune -af || true
           df -h
 

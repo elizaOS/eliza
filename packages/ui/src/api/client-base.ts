@@ -470,10 +470,13 @@ function getInjectedWsBase(): string | undefined {
   return undefined;
 }
 
-function isMixedContentWebSocketBlocked(wsProtocol: "ws:" | "wss:"): boolean {
+function shouldUseRestOnlyForInsecureWebSocket(
+  wsProtocol: "ws:" | "wss:",
+): boolean {
   if (wsProtocol !== "ws:") return false;
   if (typeof window === "undefined") return false;
-  return window.location?.protocol === "https:";
+  const rendererProtocol = window.location?.protocol;
+  return rendererProtocol === "https:" || rendererProtocol === "capacitor:";
 }
 
 // ---------------------------------------------------------------------------
@@ -1387,12 +1390,11 @@ export class ElizaClient {
 
     if (!host) return;
 
-    // WKWebView and browsers on an HTTPS origin block insecure `ws://` as mixed
-    // content before the backend can answer. REST/SSE remains usable in that
-    // remote-host simulator lane, so degrade to connected-over-REST instead of
-    // burning the reconnect budget and surfacing the fatal lost-connection
-    // overlay against a healthy agent.
-    if (isMixedContentWebSocketBlocked(wsProtocol)) {
+    // HTTPS renderers block `ws://` as mixed content. Capacitor's packaged
+    // renderer also cannot use that cleartext WebView socket even though its
+    // native HTTP bridge keeps REST healthy. Both origins therefore use the
+    // same REST-only state instead of reporting a dead backend (#16843).
+    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
       this.disconnectedAt = null;

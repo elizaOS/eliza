@@ -68,6 +68,14 @@ function runtimeWithServices(opts: {
 }
 
 describe("TASKS:history", () => {
+  it("keeps history planner-visible on the umbrella action", () => {
+    expect(
+      taskHistoryAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("history");
+  });
+
   it("validates history when the durable task service is available without ACP", async () => {
     const taskService = { listTasks: vi.fn(async () => []) };
     const runtime = runtimeWithServices({ taskService });
@@ -92,6 +100,7 @@ describe("TASKS:history", () => {
       }),
     ];
     const taskService = { listTasks: vi.fn(async () => tasks) };
+    const historyCallback = callback();
 
     const result = await taskHistoryAction.handler(
       runtimeWithServices({ taskService }),
@@ -105,7 +114,7 @@ describe("TASKS:history", () => {
           search: "billing",
         },
       },
-      callback(),
+      historyCallback,
     );
 
     expect(taskService.listTasks).toHaveBeenCalledWith({
@@ -122,6 +131,92 @@ describe("TASKS:history", () => {
       search: "billing",
       includeArchived: false,
     });
+    expect(historyCallback).not.toHaveBeenCalled();
+  });
+
+  it("resolves an older session through the durable session index", async () => {
+    const targetedTask = task({
+      id: "task-target",
+      title: "Long-running migration",
+      latestSessionId: "session-newest",
+      latestSessionLabel: "newest-agent",
+    });
+    const unrelatedTask = task({
+      id: "task-unrelated",
+      title: "Unrelated work",
+      latestSessionId: "session-unrelated",
+    });
+    const taskService = {
+      getTaskForSession: vi.fn(async (sessionId: string) =>
+        sessionId === "session-older" ? { id: targetedTask.id } : null,
+      ),
+      listTasks: vi.fn(async () => [unrelatedTask, targetedTask]),
+    };
+    const historyCallback = callback();
+
+    const result = await taskHistoryAction.handler(
+      runtimeWithServices({ taskService }),
+      memory({ text: "show that older agent session" }),
+      state,
+      {
+        parameters: {
+          action: "history",
+          metric: "detail",
+          sessionId: "session-older",
+        },
+      },
+      historyCallback,
+    );
+
+    expect(taskService.getTaskForSession).toHaveBeenCalledWith("session-older");
+    expect(taskService.listTasks).toHaveBeenCalledWith({
+      includeArchived: false,
+    });
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain(
+      'The orchestrator task containing session session-older is "Long-running migration" [active].',
+    );
+    expect(result?.text).toContain("Latest session: newest-agent");
+    expect(result?.text).not.toContain("Unrelated work");
+    expect(result?.data?.taskIds).toEqual(["task-target"]);
+    expect(result?.data?.filters).toMatchObject({
+      sessionId: "session-older",
+      includeArchived: false,
+    });
+    expect(historyCallback).not.toHaveBeenCalled();
+  });
+
+  it("returns an empty scoped result when the session index has no match", async () => {
+    const taskService = {
+      getTaskForSession: vi.fn(async () => null),
+      listTasks: vi.fn(async () => [task({ id: "task-unrelated" })]),
+    };
+    const historyCallback = callback();
+
+    const result = await taskHistoryAction.handler(
+      runtimeWithServices({ taskService }),
+      memory({ text: "show missing session" }),
+      state,
+      {
+        parameters: {
+          action: "history",
+          sessionId: "session-missing",
+        },
+      },
+      historyCallback,
+    );
+
+    expect(taskService.getTaskForSession).toHaveBeenCalledWith(
+      "session-missing",
+    );
+    expect(taskService.listTasks).not.toHaveBeenCalled();
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain(
+      "I did not find any orchestrator task threads matching session session-missing.",
+    );
+    expect(result?.data?.count).toBe(0);
+    expect(result?.data?.taskIds).toEqual([]);
+    expect(historyCallback).not.toHaveBeenCalled();
   });
 
   it("applies the active window before the requested result limit", async () => {
@@ -197,6 +292,7 @@ describe("TASKS:history", () => {
         },
       ]),
     });
+    const historyCallback = callback();
 
     const result = await taskHistoryAction.handler(
       runtimeWithServices({ acpService }),
@@ -210,7 +306,7 @@ describe("TASKS:history", () => {
           search: "billing",
         },
       },
-      callback(),
+      historyCallback,
     );
 
     expect(result?.success).toBe(true);
@@ -219,5 +315,6 @@ describe("TASKS:history", () => {
     expect(result?.text).not.toContain("session-c");
     expect(result?.data?.sessionIds).toEqual(["session-a"]);
     expect(acpService.listSessions).toHaveBeenCalledTimes(1);
+    expect(historyCallback).not.toHaveBeenCalled();
   });
 });

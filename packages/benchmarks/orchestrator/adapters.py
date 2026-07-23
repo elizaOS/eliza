@@ -1325,52 +1325,6 @@ def _command_rolodex(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     return args
 
 
-def _command_social_alpha(
-    ctx: ExecutionContext, adapter: BenchmarkAdapter
-) -> list[str]:
-    system_raw = ctx.request.extra_config.get("system")
-    if isinstance(system_raw, str) and system_raw.strip():
-        system = system_raw.strip()
-    elif ctx.request.provider.strip().lower() in {
-        "eliza",
-        "eliza-bridge",
-        "eliza-ts",
-        "cerebras",
-        "openai",
-        "groq",
-        "openrouter",
-        "vllm",
-    }:
-        # Route LLM-backed providers through the eliza TS bridge so the actual
-        # registered Eliza agent is exercised, not the Python port in
-        # benchmark/systems/full_system.py.
-        system = "eliza-bridge"
-    else:
-        system = "baseline"
-    data_dir = str(
-        ctx.request.extra_config.get("data_dir", "trenches-chat-dataset/data")
-    )
-    output_dir = str(ctx.output_root)
-    args = [
-        sys.executable,
-        "-m",
-        "benchmark.harness",
-        "--data-dir",
-        data_dir,
-        "--system",
-        system,
-        "--model",
-        ctx.request.model,
-        "--output",
-        output_dir,
-    ]
-    suites = ctx.request.extra_config.get("suites")
-    if isinstance(suites, list):
-        for suite in suites:
-            args.extend(["--suite", str(suite)])
-    return args
-
-
 def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     handler = str(ctx.request.extra_config.get("handler", "oracle"))
     provider_name = ctx.request.provider.strip().lower()
@@ -2216,35 +2170,6 @@ def _score_from_app_eval(path: Path) -> ScoreSummary:
     )
 
 
-def _score_from_social_alpha(path: Path) -> ScoreSummary:
-    import json
-
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
-    composite = data.get("COMPOSITE")
-    suite_scores: dict[str, float] = {}
-    for key, value in data.items():
-        if key == "COMPOSITE" or not isinstance(value, dict):
-            continue
-        suite_score = value.get("suite_score")
-        if isinstance(suite_score, (int, float)):
-            suite_scores[key] = float(suite_score)
-    score = None
-    if isinstance(composite, dict):
-        raw = composite.get("trust_marketplace_score")
-        if isinstance(raw, (int, float)):
-            score = float(raw) / 100.0
-    if score is None and suite_scores:
-        score = (sum(suite_scores.values()) / len(suite_scores)) / 100.0
-    return ScoreSummary(
-        score=score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={"composite": composite, "suite_scores": suite_scores},
-    )
-
-
 def _score_from_trust(path: Path) -> ScoreSummary:
     import json
 
@@ -2773,9 +2698,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_examples": 2,
             "max_new_tokens": 128,
         },
-        "social_alpha": {
-            "system": "eliza",
-        },
         "swe_bench": {
             "max_instances": 1,
         },
@@ -3075,24 +2997,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             cwd=str((benchmarks_root / "rolodex").resolve()),
             command_builder=_command_rolodex,
             result_patterns=["rolodex-results-*.json", "**/rolodex-results-*.json"],
-        ),
-        _make_extra_adapter(
-            adapter_id="social_alpha",
-            directory="social-alpha",
-            description="Social-alpha trust marketplace benchmark",
-            cwd=str((benchmarks_root / "social-alpha").resolve()),
-            command_builder=_command_social_alpha,
-            env_builder=lambda ctx, adapter: {
-                "PYTHONPATH": os.pathsep.join(
-                    [
-                        str((ctx.benchmarks_root / "eliza-adapter").resolve()),
-                        ctx.env.get("PYTHONPATH", ""),
-                    ]
-                ).rstrip(os.pathsep)
-            },
-            result_patterns=["benchmark_results_*.json"],
-            score_extractor=_score_from_social_alpha,
-            default_extra_config={"suites": ["detect"]},
         ),
         _make_extra_adapter(
             adapter_id="trust",

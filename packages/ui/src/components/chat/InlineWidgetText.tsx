@@ -1,6 +1,6 @@
 // Renders assistant message text with its inline widgets (#8876, #8997, #9304).
 //
-// The continuous-chat overlay shows raw `message.content`. Without segmentation
+// The chat overlay shows raw `message.content`. Without segmentation
 // it would leak, as literal text, every marker the full ChatView surface
 // handles: the inline-widget markers (`[TASK:…]`, `[CHOICE:…]`, `[FORM]…[/FORM]`,
 // `[FOLLOWUPS]…[/FOLLOWUPS]`), the structured markers (`[CONFIG:…]`, fenced

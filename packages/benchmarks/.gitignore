@@ -89,15 +89,6 @@ openclaw-benchmark/benchmark/benchmark_resukts/
 **/smart_smoke/
 **/final_benchmark_results/
 
-# --- Social-alpha ---
-social-alpha/results/
-social-alpha/trust_marketplace_benchmark.egg-info/
-
-# Large dataset files (should be fetched separately or use LFS)
-social-alpha/trenches-chat-dataset/data/
-social-alpha/trenches-chat-dataset/compressed/
-social-alpha/trenches-chat-dataset/price_fetch_progress.json
-
 # --- Framework generated results (keep .gitkeep) ---
 framework/results/*.json
 

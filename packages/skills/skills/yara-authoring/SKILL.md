@@ -23,7 +23,7 @@ allowed-tools:
 
 - Dynamic malware analysis (use sandbox environments)
 - Network traffic analysis (use Suricata/Snort rules)
-- Static analysis of source code (use Semgrep/CodeQL)
+- Static analysis of source code (use Semgrep)
 
 ## Rule Template
 

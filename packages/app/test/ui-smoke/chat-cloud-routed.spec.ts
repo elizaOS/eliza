@@ -1,5 +1,5 @@
 // Cloud runtime-mode chat coverage for the REAL web chat surface (the
-// continuous-chat overlay on /chat). Flips the runtime-mode + cloud-status
+// chat overlay on /chat). Flips the runtime-mode + cloud-status
 // fixtures to "cloud" and proves the overlay still drives a chat turn end to
 // end, and that the cloud routing surfaces where it is actually observable in
 // the keyless harness (the cloud voice/TTS proxy). Keyless against the stub.
@@ -241,7 +241,7 @@ test("chat overlay: in cloud runtime mode a send flows through the conversation 
   const conversations = await installConversationStreamMock(page);
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
   const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
@@ -358,7 +358,7 @@ test("chat overlay: in cloud runtime mode a voice reply is spoken through the cl
   });
 
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   const micButton = overlay

@@ -1,5 +1,5 @@
 // End-to-end Playwright spec for the chat task widget contract:
-//   1. Boot the app's real continuous-chat surface with a mocked backend.
+//   1. Boot the app's real chat surface with a mocked backend.
 //   2. Send a user request through the composer and stream an assistant reply
 //      containing `[TASK:<uuid>]<title>[/TASK]`.
 //   3. `MessageContent` resolves the block to a TaskWidget that polls

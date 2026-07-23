@@ -51,7 +51,7 @@ jobs:
           set -euo pipefail
           echo "=== before ==="
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc 2>/dev/null || true
           sudo docker image prune -af 2>/dev/null || true
           echo "=== after ==="
           df -h /

@@ -278,7 +278,7 @@ function renderHandoff(
   ].join("\n");
   const tail =
     `\n## Recent context\n` +
-    (recentContext.length ? recentContext.join("\n") + "\n" : "_none_\n");
+    (recentContext.length ? `${recentContext.join("\n")}\n` : "_none_\n");
   return `${head}\n${body}${tail}`;
 }
 
