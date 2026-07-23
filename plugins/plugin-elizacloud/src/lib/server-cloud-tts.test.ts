@@ -3,13 +3,26 @@
  * real node req/res fakes and a stubbed upstream fetch. Pins the #16425
  * contract — the client's per-utterance Idempotency-Key is forwarded upstream
  * so the cloud route can replay the direct attempt's committed reservation —
- * plus the handler's auth/validation/success/error envelope.
+ * plus the handler's auth/validation/success/error envelope and the #16347
+ * `ELIZA_TTS_DEBUG` contract (phases observably emitted on the structured
+ * logger when the flag is set, silent otherwise).
  */
-import { afterAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 import type http from "node:http";
+import { addLogListener, type LogEntry } from "@elizaos/core";
 import { handleCloudTtsPreviewRoute } from "./server-cloud-tts";
 
+// The logger freezes its level at module init and the repo test setup defaults
+// LOG_LEVEL to "error", which would gate the info-level tts lines (and their
+// listener delivery) off. vi.hoisted runs before the imports above evaluate,
+// so the logger initializes at "info" — the production default the
+// ELIZA_TTS_DEBUG diagnostic is documented against.
+vi.hoisted(() => {
+  process.env.LOG_LEVEL = "info";
+});
+
 const prevApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
+const prevTtsDebug = process.env.ELIZA_TTS_DEBUG;
 const realFetch = globalThis.fetch;
 
 interface CapturedUpstream {
@@ -115,6 +128,8 @@ afterAll(() => {
   globalThis.fetch = realFetch;
   if (prevApiKey === undefined) delete process.env.ELIZAOS_CLOUD_API_KEY;
   else process.env.ELIZAOS_CLOUD_API_KEY = prevApiKey;
+  if (prevTtsDebug === undefined) delete process.env.ELIZA_TTS_DEBUG;
+  else process.env.ELIZA_TTS_DEBUG = prevTtsDebug;
 });
 
 describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
@@ -221,5 +236,82 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
     expect(JSON.parse(String(state.body))).toMatchObject({
       error: "Insufficient credits",
     });
+  });
+});
+
+// #16347: server-side ELIZA_TTS_DEBUG must actually emit — entries observed on
+// the real structured logger's listener stream, driven through the real route.
+describe("ELIZA_TTS_DEBUG tracing on /api/tts/cloud", () => {
+  let entries: LogEntry[] = [];
+  let unsubscribe: (() => void) | null = null;
+
+  const ttsLines = () =>
+    entries.filter((entry) => entry.msg.includes("[eliza][tts]"));
+
+  beforeEach(() => {
+    entries = [];
+    unsubscribe?.();
+    unsubscribe = addLogListener((entry) => entries.push(entry));
+  });
+
+  afterAll(() => {
+    unsubscribe?.();
+  });
+
+  test("successful proxy emits proxy → upstream-ok → success phases", async () => {
+    process.env.ELIZA_TTS_DEBUG = "1";
+    const { res, state } = fakeRes();
+    await handleCloudTtsPreviewRoute(
+      fakeReq(JSON.stringify({ text: "trace me please" }), {
+        "x-elizaos-tts-message-id": "msg-42",
+      }),
+      res,
+    );
+
+    expect(state.statusCode).toBe(200);
+    const phases = ttsLines().map((entry) => entry.msg);
+    expect(
+      phases.some((m) => m.includes("[eliza][tts] server:cloud-tts:proxy")),
+    ).toBe(true);
+    expect(
+      phases.some((m) =>
+        m.includes("[eliza][tts] server:cloud-tts:upstream-ok"),
+      ),
+    ).toBe(true);
+    expect(
+      phases.some((m) => m.includes("[eliza][tts] server:cloud-tts:success")),
+    ).toBe(true);
+    // Client correlation header and spoken-text preview ride along.
+    expect(phases.some((m) => m.includes("msg-42"))).toBe(true);
+    expect(phases.some((m) => m.includes("trace me please"))).toBe(true);
+  });
+
+  test("missing cloud key emits a reject phase with the reason", async () => {
+    process.env.ELIZA_TTS_DEBUG = "1";
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
+    const { res, state } = fakeRes();
+    await handleCloudTtsPreviewRoute(
+      fakeReq(JSON.stringify({ text: "hi" })),
+      res,
+    );
+
+    expect(state.statusCode).toBe(401);
+    const reject = ttsLines().find((entry) =>
+      entry.msg.includes("server:cloud-tts:reject"),
+    );
+    expect(reject).toBeDefined();
+    expect(reject?.msg).toContain("no_api_key");
+  });
+
+  test("flag unset → the same successful request emits zero tts lines", async () => {
+    delete process.env.ELIZA_TTS_DEBUG;
+    const { res, state } = fakeRes();
+    await handleCloudTtsPreviewRoute(
+      fakeReq(JSON.stringify({ text: "silent run" })),
+      res,
+    );
+
+    expect(state.statusCode).toBe(200);
+    expect(ttsLines()).toHaveLength(0);
   });
 });
