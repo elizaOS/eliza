@@ -33,6 +33,9 @@ from .types import SUITES, Sample, SuiteId
 log = logging.getLogger("elizaos_voicebench.dataset")
 
 HF_REPO = "hlt-lab/voicebench"
+# Upstream publishes to a moving main branch; pin a revision so a benchmark
+# score names an exact corpus (repo doctrine: pinned, complete datasets).
+HF_REVISION = "b02edcef1330480be3a11bd6f7434ac32f05ad08"
 
 EDGE_VARIANTS: tuple[dict[str, str], ...] = (
     {"id": "hesitation", "prefix": "Um, "},
@@ -216,14 +219,20 @@ def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
     if split is None:
         # Sorted for a deterministic sample order; loaded one split at a time
         # so a small ``limit`` does not download the whole sharded suite.
-        splits = sorted(get_dataset_split_names(HF_REPO, suite))
+        splits = sorted(get_dataset_split_names(HF_REPO, suite, revision=HF_REVISION))
     else:
         splits = [split]
 
     samples: list[Sample] = []
     for name in splits:
-        log.info("loading %s/%s (split=%s) from Hugging Face", HF_REPO, suite, name)
-        ds = load_dataset(HF_REPO, suite, split=name)
+        log.info(
+            "loading %s/%s (split=%s, revision=%s) from Hugging Face",
+            HF_REPO,
+            suite,
+            name,
+            HF_REVISION,
+        )
+        ds = load_dataset(HF_REPO, suite, split=name, revision=HF_REVISION)
         try:
             from datasets import Audio  # type: ignore[import-not-found]
 
