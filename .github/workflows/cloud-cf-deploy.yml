@@ -129,25 +129,10 @@ jobs:
             exit 1
           fi
 
-  authorize-staging:
-    name: Authorize staging release
+  admit-staging:
+    name: Authorize and admit staging release
     needs: validate-deploy-source
     if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    # This environment contains only deployment policy. Runtime secrets remain
-    # in `staging`, whose jobs are reached only after this gate and admission
-    # check. Keeping approval outside every shared concurrency group prevents a
-    # reviewer wait from owning a deployment lock.
-    environment: staging-approval
-    steps:
-      - name: Record approval
-        run: echo "Staging release $GITHUB_SHA approved."
-
-  admit-release:
-    name: Admit current release
-    needs: [validate-deploy-source, authorize-staging]
-    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && (needs.authorize-staging.result == 'success' || needs.authorize-staging.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -155,6 +140,11 @@ jobs:
       contents: read
     outputs:
       should_deploy: ${{ steps.admission.outputs.should_deploy }}
+    # This environment contains only deployment policy. Runtime secrets remain
+    # in `staging`, whose jobs are reached only after this gate and admission
+    # check. Keeping approval outside every shared concurrency group prevents a
+    # reviewer wait from owning a deployment lock.
+    environment: staging-approval
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -211,8 +201,8 @@ jobs:
   # ---------------------------------------------------------------------------
   migrate-db:
     name: Run Database Migrations
-    needs: admit-release
-    if: ${{ github.event_name != 'pull_request' && needs.admit-release.outputs.should_deploy == 'true' }}
+    needs: [validate-deploy-source, admit-staging]
+    if: ${{ always() && github.event_name != 'pull_request' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') || (!((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true')) }}
     # GitHub-hosted by DEFAULT so migrations don't inherit the shared
     # self-hosted deploy fleet's heavy-checkout failure modes (mirrors
     # cloud-deploy-backend). But the hosted ubuntu-latest pool periodically
