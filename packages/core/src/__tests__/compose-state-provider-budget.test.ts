@@ -82,6 +82,65 @@ describe("composeState per-provider time budget", () => {
 		expect(state.text).toContain("WITHIN_BUDGET_PRESENT");
 	});
 
+	it("the DEFAULT budget applies to a provider with no declared timeoutMs", async () => {
+		// COMPOSE_STATE_PROVIDER_TIMEOUT_MS is captured once in a module-init
+		// IIFE (runtime.ts, reading ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS), so the
+		// statically-imported AgentRuntime above has already baked in the 3s
+		// built-in default. Re-reading the env in-process requires a fresh
+		// module evaluation (vitest `vi.stubEnv` + `vi.resetModules` + dynamic
+		// import), which bun's vitest-compat runner does not support — so this
+		// test exercises the default path directly: a provider with NO declared
+		// timeoutMs that sleeps well past the built-in 3s default must be
+		// truncated to an empty contribution at the default budget. This locks
+		// the class where a no-timeoutMs provider blocks compose for the length
+		// of its own work (the available_apps 10.9s live-turn shape).
+		const runtime = new AgentRuntime({
+			character: { name: "budget-default" } as Character,
+		});
+		const slowNoDeclaredBudget: Provider = {
+			name: "SLOW_NO_DECLARED_BUDGET",
+			// Deliberately NO timeoutMs — this provider must fall under the
+			// module-level default budget (3s built-in).
+			get: async () => {
+				await sleep(4_500);
+				return {
+					text: "DEFAULT_BUDGET_SLOW_MUST_NOT_APPEAR",
+					values: {},
+					data: {},
+				};
+			},
+		};
+		const fast: Provider = {
+			name: "FAST_LOCAL",
+			get: async () => ({
+				text: "FAST_RESULT_PRESENT",
+				values: {},
+				data: {},
+			}),
+		};
+		runtime.registerProvider(slowNoDeclaredBudget);
+		runtime.registerProvider(fast);
+
+		const start = Date.now();
+		const state = await runtime.composeState(
+			makeMessage("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+			null,
+			false,
+			true,
+		);
+		const elapsed = Date.now() - start;
+
+		// The no-timeoutMs provider is truncated to an empty contribution at
+		// the DEFAULT budget, and the fast provider's output still lands.
+		expect(state.text).toContain("FAST_RESULT_PRESENT");
+		expect(state.text).not.toContain("DEFAULT_BUDGET_SLOW_MUST_NOT_APPEAR");
+		// Compose returns at the default budget (~3s), not the provider's full
+		// 4.5s runtime — proving the default truncation fired. The lower bound
+		// pins that the applied budget was the default, not some shorter one.
+		expect(elapsed).toBeGreaterThanOrEqual(2_500);
+		expect(elapsed).toBeLessThan(4_300);
+	}, 15_000);
+
 	it("ignores sub-floor timeoutMs declarations instead of racing at unusable budgets", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "budget-floor" } as Character,
