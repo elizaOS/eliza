@@ -232,6 +232,55 @@ export class PooledCredentialsRepository {
         },
       });
   }
+
+  /**
+   * Attribute one successful inference and update pool recency in one database
+   * round trip. The data-modifying CTE preserves the daily upsert and the
+   * organization-scoped credential update as one atomic statement.
+   */
+  async recordInferenceUse(params: {
+    organizationId: string;
+    credentialId: string;
+    userId: string;
+    day: string;
+    usedAt: Date;
+  }): Promise<void> {
+    await dbWrite.execute(sql`
+      WITH usage_write AS (
+        INSERT INTO ${pooledCredentialUsage} (
+          organization_id,
+          credential_id,
+          user_id,
+          day,
+          calls,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${params.organizationId},
+          ${params.credentialId},
+          ${params.userId},
+          ${params.day},
+          1,
+          ${params.usedAt},
+          ${params.usedAt}
+        )
+        ON CONFLICT (credential_id, user_id, day)
+        DO UPDATE SET
+          calls = ${pooledCredentialUsage.calls} + 1,
+          updated_at = ${params.usedAt}
+        RETURNING credential_id
+      )
+      UPDATE ${pooledCredentials}
+      SET
+        last_used_at = ${params.usedAt},
+        updated_at = ${params.usedAt}
+      WHERE
+        ${pooledCredentials.id} = ${params.credentialId}
+        AND ${pooledCredentials.organization_id} = ${params.organizationId}
+        AND EXISTS (SELECT 1 FROM usage_write)
+    `);
+  }
 }
 
 export const pooledCredentialsRepository = new PooledCredentialsRepository();
