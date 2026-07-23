@@ -667,9 +667,27 @@ export function bindReadyPhase(
       const d = depsRef.current;
       if (!d) return;
       if (cid === d.activeConversationIdRef.current)
-        d.setConversationMessages((prev: ConversationMessage[]) =>
-          prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
-        );
+        d.setConversationMessages((prev: ConversationMessage[]) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          if (
+            msg.role === "assistant" &&
+            msg.source === MESSAGE_SOURCE_CLIENT_CHAT
+          ) {
+            const normalizedIncoming = msg.text.replace(/\s+/g, " ").trim();
+            if (
+              normalizedIncoming &&
+              prev.some(
+                (m) =>
+                  m.role === "assistant" &&
+                  m.id.startsWith("temp-resp-") &&
+                  m.text.replace(/\s+/g, " ").trim() === normalizedIncoming,
+              )
+            ) {
+              return prev;
+            }
+          }
+          return [...prev, msg];
+        });
       else
         d.setUnreadConversations(
           (prev: Set<string>) => new Set([...prev, cid]),
