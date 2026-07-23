@@ -69,7 +69,12 @@ export function makeBenchGates(tag: string, requireEnvName: string): BenchGates 
 	};
 }
 
-/** Load the fused lib (ABI v12) or skip. */
+/**
+ * Load the fused lib or skip. The loaded library must report exactly
+ * `ELIZA_INFERENCE_ABI_VERSION` (the canonical current contract) — the benches
+ * prove the current ABI, so the loader's graduated back-compat set is not
+ * accepted here.
+ */
 export function bootFusedFfi(gates: BenchGates): {
 	ffi: ElizaInferenceFfi;
 	libPath: string;
