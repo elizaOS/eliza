@@ -12,6 +12,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
+  // The client-lifeops / client-calendar extension modules (side-effect
+  // imports of the capture) install methods onto ElizaClient.prototype at
+  // module scope; give the mock a real class so those installs land.
+  ElizaClient: class ElizaClient {},
   getStatus: vi.fn(async () => ({ state: "running" })),
   captureLifeOpsActivitySignal: vi.fn(async () => ({
     signal: { id: "sig-1" },
@@ -21,22 +25,13 @@ const h = vi.hoisted(() => ({
   loadDesktopWorkspaceSnapshot: vi.fn(async () => ({ supported: false })),
 }));
 
-// The three @elizaos/ui specifiers (root barrel, /api, /browser) alias to one
-// stub file under this package's vitest config, so each mock carries the full
-// export surface the capture module reads.
-vi.mock("@elizaos/ui", () => ({
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-}));
+// The four @elizaos/ui subpath specifiers (/api, /bridge, /browser, /events)
+// alias to one stub file under this package's vitest config, so each mock
+// carries the full export surface the capture module reads — the last mock
+// registered for the shared file wins.
 vi.mock("@elizaos/ui/api", () => ({
   isApiError: h.isApiError,
+  ElizaClient: h.ElizaClient,
   isElectrobunRuntime: h.isElectrobunRuntime,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   APP_PAUSE_EVENT: "eliza:app-pause",
@@ -45,11 +40,36 @@ vi.mock("@elizaos/ui/api", () => ({
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
+}));
+vi.mock("@elizaos/ui/bridge", () => ({
+  APP_PAUSE_EVENT: "eliza:app-pause",
+  APP_RESUME_EVENT: "eliza:app-resume",
+  client: {
+    getStatus: h.getStatus,
+    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
+  },
+  isElectrobunRuntime: h.isElectrobunRuntime,
+  isApiError: h.isApiError,
+  ElizaClient: h.ElizaClient,
+  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
+}));
+vi.mock("@elizaos/ui/events", () => ({
+  APP_PAUSE_EVENT: "eliza:app-pause",
+  APP_RESUME_EVENT: "eliza:app-resume",
+  client: {
+    getStatus: h.getStatus,
+    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
+  },
+  isElectrobunRuntime: h.isElectrobunRuntime,
+  isApiError: h.isApiError,
+  ElizaClient: h.ElizaClient,
+  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
 vi.mock("@elizaos/ui/browser", () => ({
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  ElizaClient: h.ElizaClient,
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {

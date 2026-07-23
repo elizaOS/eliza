@@ -37,22 +37,35 @@ import {
   type MobileSignalsSignal,
   type MobileSignalsSnapshot,
 } from "@elizaos/capacitor-mobile-signals";
-import {
-  APP_PAUSE_EVENT,
-  APP_RESUME_EVENT,
-  client,
-  isElectrobunRuntime,
-} from "@elizaos/ui";
-// isApiError / loadDesktopWorkspaceSnapshot live on the /api and /browser
-// subpaths, not the @elizaos/ui root barrel; importing them from the root left
-// isApiError untyped, which collapsed its type-guard.
-import { isApiError } from "@elizaos/ui/api";
+// The LifeOps client methods this controller calls are installed onto
+// ElizaClient.prototype by the client-lifeops side-effect module. Import it
+// here, not just in the root facade: the register entry can evaluate before
+// (or without) the PA root facade, and the capture must never race the
+// prototype extension — without this import, boot-batch signals are lost and
+// surface as spurious capture_error until the idle facade load lands.
+import "../api/client-lifeops.js";
+// Narrow @elizaos/ui subpaths only — the root barrel drags react-router and
+// the full component tree into this headless register chunk, which both
+// bloats the renderer bundle and breaks under node module resolution in test
+// lanes. (isApiError also only carries its type-guard on the /api subpath.)
+import { client as apiClient, isApiError } from "@elizaos/ui/api";
+import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 import { loadDesktopWorkspaceSnapshot } from "@elizaos/ui/browser";
+import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/ui/events";
+import type { LifeOpsElizaClientMethods } from "../api/client-lifeops.js";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   LifeOpsActivitySignal,
 } from "../contracts/index.js";
 import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
+
+// client-lifeops (imported above for its side effect) installs the LifeOps
+// methods onto ElizaClient.prototype before this module body runs, but its
+// declaration merge targets the `@elizaos/ui` root barrel only — this headless
+// chunk imports the /api subpath, so it re-types its view of the client with
+// the one LifeOps method it calls.
+const client = apiClient as typeof apiClient &
+  Pick<LifeOpsElizaClientMethods, "captureLifeOpsActivitySignal">;
 
 const LOG_PREFIX = "[LifeOpsActivitySignals]";
 
@@ -228,6 +241,16 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     });
   };
 
+  // Runtime not up yet (boot, restart) is the designed stand-down state; only
+  // transport loss and the 503 "runtime starting" shape count as that state.
+  // Anything else coming out of the status probe (persistent 500s included) is
+  // a real defect and must surface, not read as "not ready" forever (#16504).
+  const isExpectedProbeFailure = (error: unknown): boolean =>
+    isApiError(error) &&
+    (error.kind === "network" ||
+      error.kind === "timeout" ||
+      (error.kind === "http" && error.status === 503));
+
   const refreshRuntimeReady = async (): Promise<boolean> => {
     try {
       const status = await client.getStatus();
@@ -235,14 +258,12 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
       runtimeReady = ready;
       return ready;
     } catch (error) {
-      // error-policy:J4 an unreachable status endpoint is the designed
-      // "runtime not up yet" state: capture stands down until the ready poll
-      // recovers. Only API-shaped transport errors qualify — anything else is
-      // unexpected and surfaced before standing down.
-      if (!isApiError(error)) {
+      // error-policy:J4 capture stands down until a later poll succeeds;
+      // unexpected probe failures still surface as a capture_error status.
+      runtimeReady = false;
+      if (!isExpectedProbeFailure(error)) {
         reportCaptureError(error);
       }
-      runtimeReady = false;
       return false;
     }
   };
