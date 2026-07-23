@@ -129,6 +129,14 @@ interface BriefLifeOpsService {
     reminders?: readonly unknown[];
     goals?: readonly unknown[];
   }>;
+  listOwnerOccurrencesCompletedToday(): Promise<
+    ReadonlyArray<{
+      id: string;
+      definitionKind: string;
+      title: string;
+      dueAt: string | null;
+    }>
+  >;
 }
 
 async function getBriefLifeOpsService(
