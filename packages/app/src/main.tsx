@@ -129,6 +129,7 @@ import {
 } from "@elizaos/ui/platform/browser-launch";
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
+import { startRendererServiceHost } from "@elizaos/ui/platform/renderer-services";
 import {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,
@@ -176,6 +177,7 @@ import {
   APP_NAMESPACE,
   APP_URL_SCHEME,
 } from "./app-config";
+import { cachedDynamicImport } from "./app-module-cache";
 import { renderBootFailure } from "./boot-failure";
 import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
@@ -187,7 +189,7 @@ import {
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
 import { decideChatOverlayToggle } from "./desktop-hotkey";
-import { runEmbedHandshake } from "./embed-bootstrap";
+import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
@@ -207,6 +209,7 @@ import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
+import { resolveRendererShellKind } from "./renderer-shell-scope";
 import {
   applyRuntimeChooserOverrideFromUrl,
   removeUrlParameter,
@@ -229,7 +232,6 @@ declare global {
   }
 }
 
-const appModuleCache = new Map<string, Promise<unknown>>();
 const { createRoot } = ReactDomClient;
 let deferredAppModuleLoadsScheduled = false;
 
@@ -245,17 +247,6 @@ markStartup("module-eval", { platform: Capacitor.getPlatform() });
 // DynamicViewLoader before any view can load. Synchronous + idempotent, so it
 // is safe to run at the earliest renderer checkpoint.
 registerAppHostExternalImporters();
-
-function cachedDynamicImport<T>(
-  key: string,
-  loader: () => Promise<T>,
-): Promise<T> {
-  const existing = appModuleCache.get(key) as Promise<T> | undefined;
-  if (existing) return existing;
-  const promise = loader();
-  appModuleCache.set(key, promise);
-  return promise;
-}
 
 function importPersonalAssistant() {
   return cachedDynamicImport(
@@ -308,12 +299,6 @@ const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
     async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
-// Headless effect: mounts the LifeOps presence/screen-time activity-signal
-// capture feed (Capacitor mobile signals + desktop power/screen-time) inside
-// the GUI shell so it runs for the lifetime of the main app.
-const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
-  async () => (await importPersonalAssistant()).LifeOpsActivitySignalsEffect,
-);
 const CodingAgentControlChip = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppTaskCoordinator()).CodingAgentControlChip,
 );
@@ -626,9 +611,37 @@ function scheduleAppModuleIdleLoads(
   scheduleAppModuleIdleWork(pump);
 }
 
+function installRendererServiceHost(): void {
+  // The host must exist before any side-effect registration module can load:
+  // plugin `register` entries declare lifecycle-scoped renderer services
+  // (registerRendererService) instead of starting work at import time, and the
+  // host is what starts eligible services in THIS window's shell and retains
+  // their disposers for pagehide/replacement teardown. Scope resolution reuses
+  // the exact boot inputs the shell branches on, so a popout/detached/
+  // companion/app-window/model-tester/embed renderer never runs main-scoped
+  // background services like LifeOps activity capture.
+  startRendererServiceHost({
+    shell: resolveRendererShellKind({
+      windowShellRoute,
+      isPopout: isPopoutWindow(),
+      isPhoneCompanion: isPhoneCompanionMode(),
+      appWindowSlug: resolveAppWindowSlug(),
+      isModelTesterRoute: shouldLoadModelTesterShellRoute(),
+      isEmbedRoute: isEmbedPath(window.location.pathname),
+    }),
+    reportError: (serviceId, error, phase) => {
+      console.error(
+        `${APP_LOG_PREFIX} renderer service "${serviceId}" ${phase} failed:`,
+        error,
+      );
+    },
+  });
+}
+
 function scheduleDeferredAppModuleLoadsAfterPaint(): void {
   if (deferredAppModuleLoadsScheduled) return;
   deferredAppModuleLoadsScheduled = true;
+  installRendererServiceHost();
 
   scheduleAfterReactPaint(() => {
     // These modules register routes, tabs, overlay apps, and feature surfaces,
@@ -2425,11 +2438,6 @@ function mountReactApp(): void {
       <ShellModalityProvider modality="gui">
         <ShellRoleProvider>
           <App />
-          {/* Presence/screen-time activity-signal capture. Own Suspense so the
-              lazy plugin-personal-assistant chunk never blocks the app render. */}
-          <Suspense fallback={null}>
-            <LifeOpsActivitySignalsEffect />
-          </Suspense>
         </ShellRoleProvider>
       </ShellModalityProvider>
     </>
@@ -3129,6 +3137,10 @@ async function main(): Promise<void> {
       () => import("@elizaos/app-model-tester"),
     );
     setupPlatformStyles();
+    // This early-return path never schedules the deferred side-effect loads,
+    // but the service host still needs to exist so any model-tester-scoped
+    // renderer service can run — and main-scoped ones observably cannot.
+    installRendererServiceHost();
     mountReactApp();
     return;
   }

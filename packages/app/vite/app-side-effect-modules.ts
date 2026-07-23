@@ -21,8 +21,19 @@ import path from "node:path";
 export type AppRegisterMode = "register" | "ui";
 
 export type SideEffectAppModule = {
-  /** Canonical package name — used as the dedupe key + load log label. */
+  /**
+   * Role-qualified loader identity: `<packageName>#<mode>`. The app shell's
+   * dynamic-import cache is keyed by this string, and the role suffix is what
+   * keeps a generated side-effect loader from ever sharing a cached promise
+   * with a package-root facade import of the same package — with a bare-name
+   * key, whichever loader won would suppress the other and hand consumers the
+   * wrong module namespace (#16504).
+   */
   key: string;
+  /** Canonical package name (workspace dependency name). */
+  packageName: string;
+  /** Declared registration mode from `elizaos.appRegister`. */
+  mode: AppRegisterMode;
   /** Absolute path to the renderer registration entry imported at boot. */
   entry: string;
 };
@@ -47,9 +58,10 @@ function resolveRegistrationEntry(
 
 /**
  * Scan the given package roots (e.g. `plugins/`, `packages/`) for app plugins
- * that declare `elizaos.appRegister`, returning their canonical name + the
- * absolute path to import for renderer side-effect registration. Sorted by name
- * so the generated module is deterministic.
+ * that declare `elizaos.appRegister`, returning a role-qualified loader
+ * identity (`<name>#<mode>`) plus the absolute path to import for renderer
+ * side-effect registration. Sorted by key so the generated module is
+ * deterministic.
  *
  * Throws if a plugin declares the marker but its entry file is missing — a
  * broken pipeline should fail the build loudly, not silently drop the plugin.
@@ -87,7 +99,12 @@ export function discoverSideEffectAppModules(
         );
       }
       seen.add(name);
-      discovered.push({ key: name, entry });
+      discovered.push({
+        key: `${name}#${mode}`,
+        packageName: name,
+        mode,
+        entry,
+      });
     }
   }
 
