@@ -73,6 +73,38 @@ mock.module("./run-shared-agent-turn", () => ({
   runSharedAgentTurnStream: async () => streamTurn,
 }));
 
+// Sibling suites in the same bun process mock ../../cache/client globally with
+// partial doubles (server-wallets-provision-proof exposes only setIfNotExists;
+// resolve-shared-agent substitutes its own get/set), and bun's mock.module
+// patches the process-wide registry — so batch composition decided whether the
+// character-hydration get/set flow here saw a working cache. Pin this suite's
+// own Map-backed double instead. It cannot be built from the real module: a
+// sibling that loaded first has already replaced the registry entry, so an
+// import here returns that sibling's partial mock, not the real exports.
+const localCacheStore = new Map<string, unknown>();
+mock.module("../../cache/client", () => ({
+  NEGATIVE_CACHE_SENTINEL: { __none: true },
+  cache: {
+    isAvailable: () => true,
+    get: async (key: string) => (localCacheStore.has(key) ? localCacheStore.get(key) : null),
+    set: async (key: string, value: unknown) => {
+      localCacheStore.set(key, value);
+      return { ok: true };
+    },
+    getOrSet: async (key: string, compute: () => Promise<unknown>) => {
+      if (localCacheStore.has(key)) return localCacheStore.get(key);
+      const value = await compute();
+      localCacheStore.set(key, value);
+      return value;
+    },
+    setIfNotExists: async (key: string) => {
+      if (localCacheStore.has(key)) return false;
+      localCacheStore.set(key, "1");
+      return true;
+    },
+  },
+}));
+
 const { InsufficientCreditsError } = await import("../ai-billing");
 const { SharedRuntimeChatService } = await import("./shared-runtime-chat");
 
