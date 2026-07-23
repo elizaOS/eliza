@@ -44,6 +44,33 @@ describe("WalletProvider local chain and cache behavior", () => {
     expect(fromKey.getSupportedChains()).toEqual(["mainnet", "optimism"]);
   });
 
+  it("validates private keys and builds custom chain configurations", () => {
+    const rt = runtime();
+
+    expect(() => new WalletProvider("0x1234", rt, { mainnet })).toThrow(
+      "Invalid private key format",
+    );
+    expect(() => WalletProvider.genChainFromName("missing-chain")).toThrow(
+      "Invalid chain name",
+    );
+
+    const custom = WalletProvider.genChainFromName(
+      "mainnet",
+      "http://127.0.0.1:8545",
+    );
+    expect(custom.rpcUrls.custom?.http).toEqual(["http://127.0.0.1:8545"]);
+  });
+
+  it("constructs public, wallet, and test clients without opening the transport", () => {
+    const provider = new WalletProvider(generatePrivateKey(), runtime(), {
+      mainnet,
+    });
+
+    expect(provider.getPublicClient("mainnet").chain?.id).toBe(mainnet.id);
+    expect(provider.getWalletClient("mainnet").chain?.id).toBe(mainnet.id);
+    expect(provider.getTestClient().mode).toBe("hardhat");
+  });
+
   it("returns a warm balance cache without opening an RPC client", async () => {
     const rt = runtime();
     const getCache = vi.spyOn(rt, "getCache").mockResolvedValue({ mainnet: "2.5" });
@@ -100,6 +127,49 @@ describe("WalletProvider local chain and cache behavior", () => {
 
     await expect(initWalletProvider(rt)).rejects.toThrow("WALLET_SECRET_SALT required");
   });
+
+  it("initializes a TEE wallet once and reuses the derived account", async () => {
+    const rt = runtime();
+    rt.character.settings = {
+      ...rt.character.settings,
+      chains: { evm: ["not-a-chain"] },
+    };
+    const key = generatePrivateKey();
+    const deriveEcdsaKeypair = vi
+      .fn()
+      .mockResolvedValue({ keypair: key, attestation: {} });
+    vi.spyOn(rt, "getSetting").mockImplementation((name) => {
+      if (name === "TEE_MODE") return "ON";
+      if (name === "WALLET_SECRET_SALT") return "wallet-test";
+      return undefined;
+    });
+    vi.spyOn(rt, "getService").mockReturnValue({
+      deriveEcdsaKeypair,
+    } as never);
+    vi.spyOn(rt, "getCache").mockResolvedValue(undefined);
+    vi.spyOn(rt, "setCache").mockResolvedValue(true);
+
+    const provider = await initWalletProvider(rt);
+    expect(() => provider.getAddress()).toThrow("TEE wallet not initialized");
+    await expect(provider.getWalletBalances()).resolves.toEqual({});
+    await expect(provider.getWalletBalances()).resolves.toEqual({});
+    expect(provider.getAddress()).toBe(privateKeyToAccount(key).address);
+    expect(deriveEcdsaKeypair).toHaveBeenCalledOnce();
+  });
+
+  it("surfaces a missing TEE service at the first async wallet operation", async () => {
+    const rt = runtime();
+    vi.spyOn(rt, "getSetting").mockImplementation((name) => {
+      if (name === "TEE_MODE") return "ON";
+      if (name === "WALLET_SECRET_SALT") return "wallet-test";
+      return undefined;
+    });
+
+    const provider = await initWalletProvider(rt);
+    await expect(provider.getWalletBalances()).rejects.toThrow(
+      "TEE service not found",
+    );
+  });
 });
 
 describe("evmWalletProvider prompt context", () => {
@@ -109,6 +179,19 @@ describe("evmWalletProvider prompt context", () => {
     const result = await evmWalletProvider.get(rt, message, state);
 
     expect(result.text).toContain("EVM service is not available");
+    expect(result.values).toMatchObject({
+      walletReady: false,
+      walletError: "EVMError",
+    });
+  });
+
+  it("reports an explicit unavailable state when the service has no cache boundary", async () => {
+    const rt = runtime();
+    vi.spyOn(rt, "getService").mockReturnValue({} as never);
+
+    const result = await evmWalletProvider.get(rt, message, state);
+
+    expect(result.text).toContain("does not expose its wallet cache");
     expect(result.values).toMatchObject({
       walletReady: false,
       walletError: "EVMError",
