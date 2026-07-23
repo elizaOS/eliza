@@ -5504,6 +5504,8 @@ import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
+import androidx.core.splashscreen.SplashScreen;
+
 import com.getcapacitor.BridgeActivity;
 
 import ${androidPackage}.BuildConfig;
@@ -5530,6 +5532,12 @@ ${cloudBrandUserAgentMarkerLines()}
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // The launch theme's postSplashScreenTheme is applied only when the
+        // AndroidX splash lifecycle is installed before BridgeActivity builds
+        // the WebView. Otherwise the splash theme keeps a native action bar
+        // over the top of the cloud client for the activity's lifetime.
+        SplashScreen.installSplashScreen(this);
+
         if (BuildConfig.DEBUG) {
             WebView.setWebContentsDebuggingEnabled(true);
         }

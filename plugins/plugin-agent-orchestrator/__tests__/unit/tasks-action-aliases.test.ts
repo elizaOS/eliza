@@ -18,4 +18,13 @@ describe("TASKS action aliases", () => {
       expect.arrayContaining(["CREATE_TASK", "START_CODING_TASK", "CODE_TASK"]),
     );
   });
+
+  it("documents sessionId as an exact history scope for older sessions", () => {
+    const sessionId = tasksAction.parameters?.find(
+      (parameter) => parameter.name === "sessionId",
+    );
+
+    expect(sessionId?.description).toContain("action=history");
+    expect(sessionId?.description).toContain("not the task's latest session");
+  });
 });
