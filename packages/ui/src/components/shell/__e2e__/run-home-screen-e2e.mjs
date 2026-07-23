@@ -27,6 +27,7 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import {
+  touchDragHold,
   touchLongPress,
   touchSwipe,
   touchTap,
@@ -731,10 +732,72 @@ try {
       (await countButton.textContent())?.includes("1 Notification"),
       "the rested count control reflects the seeded notification",
     );
+    const restedClearState = await center
+      .getByTestId("notifications-clear-all")
+      .evaluate((button) => {
+        const slot = button.closest("[data-notification-clear-slot]");
+        return {
+          opacity: slot ? getComputedStyle(slot).opacity : null,
+          height: slot ? getComputedStyle(slot).height : null,
+          ariaHidden: slot?.getAttribute("aria-hidden"),
+          inert: slot?.hasAttribute("inert"),
+        };
+      });
     assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 0 &&
+      restedClearState.opacity === "0" &&
+        restedClearState.height === "0px" &&
+        restedClearState.ariaHidden === "true" &&
+        restedClearState.inert === true &&
         (await center.getByTestId("notifications-collapse").count()) === 0,
-      "expanded-only controls stay hidden at rest",
+      "expanded controls remain mounted but fully inert and hidden at rest",
+    );
+
+    const countSlot = center.getByTestId("notifications-count");
+    const restedCountBox = await countSlot.boundingBox();
+    if (!restedCountBox) throw new Error("missing notification count bounds");
+    const partialPull = await touchDragHold(
+      mobile,
+      '[data-testid="home-notification-list"]',
+      0,
+      48,
+      { steps: 6, stepDelayMs: 16 },
+    );
+    await mobile.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(resolve)),
+    );
+    const heldCountBox = await countSlot.boundingBox();
+    if (!heldCountBox) throw new Error("missing pulled count bounds");
+    const heldCountTravel = heldCountBox.y - restedCountBox.y;
+    assert(
+      heldCountTravel > 1 && heldCountTravel < 28,
+      `a partial pull moves the count continuously instead of inserting a 40px row (${heldCountTravel.toFixed(2)}px)`,
+    );
+
+    await partialPull.release();
+    const releaseTrace = await mobile.evaluate(async (restedTop) => {
+      const samples = [];
+      const startedAt = performance.now();
+      // Keep sampling through click suppression so the next tap is both a
+      // separate user action and a settled-state check.
+      while (performance.now() - startedAt < 560) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const count = document.querySelector(
+          '[data-testid="notifications-count"]',
+        );
+        if (!(count instanceof HTMLElement)) break;
+        samples.push(count.getBoundingClientRect().top - restedTop);
+      }
+      return samples;
+    }, restedCountBox.y);
+    const releasePeak = Math.max(...releaseTrace);
+    const releaseFinal = releaseTrace.at(-1) ?? Number.POSITIVE_INFINITY;
+    assert(
+      releasePeak <= heldCountTravel + 1.5,
+      `a cancelled pull returns without bouncing farther from rest (${releasePeak.toFixed(2)}px peak)`,
+    );
+    assert(
+      Math.abs(releaseFinal) < 0.75,
+      `the notification count settles back at rest (${releaseFinal.toFixed(2)}px)`,
     );
 
     await touchTap(mobile, '[data-testid="notifications-count-button"]');
@@ -748,6 +811,12 @@ try {
         (await center.getByTestId("notifications-collapse").count()) === 1,
       "opening the shade reveals clear and collapse controls",
     );
+    await mobile.waitForFunction(() => {
+      const footer = document.querySelector(
+        '[data-testid="notifications-collapse-footer"]',
+      );
+      return footer instanceof HTMLElement && !footer.hasAttribute("inert");
+    });
 
     await touchTap(mobile, '[data-testid="notifications-collapse"]');
     await center
@@ -755,28 +824,33 @@ try {
         '[data-testid="home-notification-list"][data-shade-mode="rested"]',
       )
       .waitFor({ state: "visible", timeout: 5000 });
+    const collapsedClearState = await center
+      .getByTestId("notifications-clear-all")
+      .evaluate((button) => {
+        const slot = button.closest("[data-notification-clear-slot]");
+        return {
+          opacity: slot ? getComputedStyle(slot).opacity : null,
+          height: slot ? getComputedStyle(slot).height : null,
+          ariaHidden: slot?.getAttribute("aria-hidden"),
+          inert: slot?.hasAttribute("inert"),
+        };
+      });
     assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 0 &&
+      collapsedClearState.opacity === "0" &&
+        collapsedClearState.height === "0px" &&
+        collapsedClearState.ariaHidden === "true" &&
+        collapsedClearState.inert === true &&
         (await center.getByTestId("notifications-collapse").count()) === 0,
-      "collapse returns the notification center to its rested controls",
+      "collapse restores the mounted clear control to its inert rested state",
     );
   }
-  // No general quick-access tiles anymore - Launcher is the adjacent
-  // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
-  // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
-  for (const id of ["messages", "phone", "contacts", "camera"]) {
-    assert(
-      await mobile.getByTestId(`home-tile-${id}`).isVisible(),
-      `native-OS tile ${id} renders (native enabled)`,
-    );
-  }
-  // The removed defaults must NOT appear, even with native enabled.
-  for (const id of ["tutorial", "help", "settings", "views"]) {
-    assert(
-      (await mobile.getByTestId(`home-tile-${id}`).count()) === 0,
-      `removed default tile ${id} is gone`,
-    );
-  }
+  // Apps and native surfaces live exclusively on the adjacent launcher page;
+  // the home half remains the quiet widget and notification surface even when
+  // the native bridge is available.
+  assert(
+    (await mobile.getByTestId("home-tiles").count()) === 0,
+    "mobile native mode keeps app tiles off the Home page",
+  );
   // Home-grid geometry integrity (#11752). Every widget must apply its
   // host-supplied grid-span classes to its root grid item; a widget that
   // drops them collapses to a one-column (~85px) auto-placed cell whose
