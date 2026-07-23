@@ -221,6 +221,31 @@ describe("getGateBalanceUsd", () => {
     expect(freshBalanceCalls).toBe(1); // hint served, no 2nd DB read
     expect((await readOrgBalanceHint(org))?.balanceUsd).toBe(33);
   });
+  test("stale hint is served immediately AND triggers a background revalidation", async () => {
+    const org = uid("org");
+    freshBalanceUsd = 77;
+    // A hint older than the orgBalance freshness window (15s).
+    await writeOrgBalanceHint(org, 42, Date.now() - 20_000);
+    const bal = await getGateBalanceUsd(org);
+    expect(bal).toBe(42); // served the STALE value without blocking on a DB read
+    // Revalidation runs off the hot path; let the background task settle.
+    await new Promise((r) => setTimeout(r, 25));
+    expect(freshBalanceCalls).toBe(1); // authoritative refresh happened in the background
+    expect((await readOrgBalanceHint(org))?.balanceUsd).toBe(77); // hint now fresh
+  });
+  test("concurrent stale reads dedupe to a single revalidation", async () => {
+    const org = uid("org");
+    freshBalanceUsd = 88;
+    await writeOrgBalanceHint(org, 42, Date.now() - 20_000);
+    const results = await Promise.all([
+      getGateBalanceUsd(org),
+      getGateBalanceUsd(org),
+      getGateBalanceUsd(org),
+    ]);
+    expect(results).toEqual([42, 42, 42]); // all served the stale value
+    await new Promise((r) => setTimeout(r, 25));
+    expect(freshBalanceCalls).toBe(1); // in-flight guard collapsed 3 reads to 1 DB refresh
+  });
 });
 
 describe("writePendingInferenceCharge + durable backstop", () => {
