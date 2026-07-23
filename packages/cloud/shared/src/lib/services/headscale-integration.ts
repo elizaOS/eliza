@@ -189,11 +189,17 @@ export class HeadscaleIntegration {
 
     while (Date.now() < deadline) {
       try {
-        const node = await this.client.getNodeByName(nodeName);
+        // Collision-rename tolerant lookup (#blue-green): when the preserved
+        // green node holds the base hostname, Headscale registers blue as
+        // `<name>-<random>`. Exact-name polling never finds it and the upgrade
+        // times out despite a healthy registration.
+        const node = await this.client.getNodeByNameOrSuffixed(nodeName, {
+          excludeNodeId: options?.excludeNodeId,
+        });
 
         if (node && node.ipAddresses.length > 0 && node.id !== options?.excludeNodeId) {
           const ip = node.ipAddresses[0];
-          logger.info(`[headscale-integration] VPN registered for ${nodeName}: ${ip}`);
+          logger.info(`[headscale-integration] VPN registered for ${nodeName}: ${ip} (node name ${node.name})`);
           return { ip, nodeId: node.id };
         }
       } catch (err) {

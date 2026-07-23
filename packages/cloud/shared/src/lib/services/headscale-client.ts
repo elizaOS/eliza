@@ -153,6 +153,34 @@ export class HeadscaleClient {
     return nodes.find((n) => n.name === name) ?? null;
   }
 
+  /**
+   * Find a node by hostname, tolerating Headscale's collision rename.
+   * When a node registers under a hostname that is already taken (the exact
+   * blue/green upgrade overlap: the preserved live node holds the base name),
+   * Headscale assigns `<name>-<random>` as the givenName. An exact-match poll
+   * then never sees the new node and the upgrade times out even though the
+   * blue container registered fine. Matching `name` OR `name-*` (optionally
+   * excluding a known node id, i.e. the preserved green node) finds it.
+   */
+  async getNodeByNameOrSuffixed(
+    name: string,
+    options?: { excludeNodeId?: string },
+  ): Promise<HeadscaleNode | null> {
+    const nodes = await this.listNodes();
+    const candidates = nodes.filter(
+      (n) =>
+        (n.name === name || n.name.startsWith(`${name}-`)) &&
+        n.id !== options?.excludeNodeId,
+    );
+    if (candidates.length === 0) return null;
+    // Exact match wins; otherwise take the newest suffixed registration.
+    return (
+      candidates.find((n) => n.name === name) ??
+      candidates.sort((a, b) => (b.id > a.id ? 1 : -1))[0] ??
+      null
+    );
+  }
+
   /** Find a node by hostname while propagating listing failures. */
   async getNodeByNameStrict(name: string): Promise<HeadscaleNode | null> {
     const nodes = await this.listNodesStrict();
