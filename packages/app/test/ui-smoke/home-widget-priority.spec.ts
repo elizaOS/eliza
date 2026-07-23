@@ -450,15 +450,6 @@ async function seedHomeWidgetStorage(page: Page): Promise<void> {
   });
 }
 
-async function dragHomeRailToLauncher(page: Page): Promise<void> {
-  await page.mouse.move(320, 300);
-  await page.mouse.down();
-  await page.mouse.move(260, 304);
-  await page.mouse.move(200, 304);
-  await page.mouse.move(150, 304);
-  await page.mouse.up();
-}
-
 async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type Bridge = {
@@ -738,35 +729,17 @@ test.describe("home widget priority (#9143)", () => {
     });
     await screenshot(page, "mobile");
 
-    // Launcher capture — the home (widgets) and the launcher (launcher
-    // tiles) are the two pages of HomeLauncherSurface, sharing one ambient
-    // wallpaper after the Views→Launcher consolidation. Flip to the launcher
-    // page with a real leftward drag across the home half (the in-app rail
-    // gesture, which calls `goLauncher()` directly) and screenshot the launcher
-    // to capture the consolidated home↔launcher pair on the same surface.
+    // Launcher capture — the widgets and the launcher tiles share ONE combined
+    // home surface (HomeScreen with the embedded LauncherSurface grid under the
+    // "Apps" region; there is no home↔launcher rail). Scroll the grid into
+    // view the way a user would and capture the consolidated pair.
     const surface = page.getByTestId("home-launcher-surface");
-    const launcherPage = page.getByTestId("home-launcher-launcher-page");
-    const homeHalf = page.getByTestId("home-launcher-home-page");
-    await expect(homeHalf).toBeVisible({ timeout: 15_000 });
-    await dragHomeRailToLauncher(page);
-    await expect(surface).toHaveAttribute("data-page", "launcher", {
-      timeout: 10_000,
-    });
-    await expect(launcherPage).toBeVisible();
-    // The rail slides over 300ms. Wait on the rail geometry itself; descendant
-    // launcher/icon animations can be long-lived and should not block capture.
-    await page.waitForFunction(
-      () => {
-        const rail = document.querySelector(
-          '[data-testid="home-launcher-rail"]',
-        );
-        if (!rail) return false;
-        const left = rail.getBoundingClientRect().left;
-        return Math.abs(left + window.innerWidth) <= 1;
-      },
-      undefined,
-      { timeout: 5_000 },
-    );
+    await expect(surface).toHaveAttribute("data-page", "home");
+    const appsRegion = page.getByTestId("home-apps-scroll");
+    await expect(appsRegion).toBeVisible({ timeout: 15_000 });
+    const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
+    await settingsTile.scrollIntoViewIfNeeded();
+    await expect(settingsTile).toBeVisible({ timeout: 15_000 });
     await screenshot(page, "launcher");
   });
 });

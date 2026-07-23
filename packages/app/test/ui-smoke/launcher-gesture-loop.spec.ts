@@ -1,22 +1,23 @@
 /**
  * Real-app launcher gesture-loop e2e (#12179 WI-6 / #12375). Drives the shared
  * launcher-loop engine's seeded fast-check command stream + CDP-touch driver
- * (packages/ui/src/testing/launcher-loop) against the REAL booted app's composed
- * home↔launcher surface — the same engine the fixture web lane and the Android/
- * iOS native lanes run, now exercised against production wiring rather than an
- * esbuild fixture bundle.
+ * (packages/ui/src/testing/launcher-loop) against the REAL booted app's
+ * combined home surface — the same engine the fixture web lane and the
+ * Android/iOS native lanes run, now exercised against production wiring rather
+ * than an esbuild fixture bundle.
  *
- * Tile taps navigate away and unmount the surface, so this lane drives the
- * navigation-safe alphabet (`tileIds: []`): rail swipes (commit + reject), edge
- * buttons, grid/widget scrolls (the home half's scroll covers the pinned
- * notification center card too), and Tab focus — all through the public test
- * ids (`home-launcher-surface` / `-rail` / `-page-probe` / `-home-page` /
- * `-launcher-page`, `rail-pager-edge-*`). After each command the engine checks
- * every §D invariant
- * (page/probe/transform agreement, focus never inert, telemetry launch count,
- * zero console errors, CLS budget, no blue). Tile launch itself is covered by
- * the fixture lane (which can't navigate away) and gesture-matrix's dedicated
- * tile tests. A blue + hover brand scan bookends the loop.
+ * The production app renders ONE combined page (HomeScreen with the embedded
+ * launcher grid — no home↔launcher rail), so this lane drives the
+ * combined-surface, navigation-safe alphabet (`tileIds: []`, rail families
+ * zero-weighted): grid/widget scrolls (the home column's scroll covers the
+ * pinned notification center card too) and Tab focus, through the public test
+ * ids (`home-launcher-surface` / `-page-probe`, `launcher-page-window`,
+ * `home-screen`). After each command the engine checks every §D invariant
+ * that applies (page/probe agreement, focus never inert, telemetry launch
+ * count — ghost-launch guard, zero console errors, CLS budget, no blue). The
+ * two-half rail alphabet still runs in full against HomeLauncherSurface in
+ * the fixture lane; tile launch is covered there and by gesture-matrix's
+ * dedicated tile tests. A blue + hover brand scan bookends the loop.
  *
  * Runs on the desktop `chromium` and `mobile-chromium` (Pixel 7) projects; both
  * opt into `hasTouch` so the CDP-touch gestures are accepted. The seed is pinned
@@ -85,13 +86,11 @@ test.describe("launcher gesture loop (real app, shared engine)", () => {
   // loop's real-touch gestures work on the desktop chromium project too.
   test.use({ hasTouch: true });
 
-  // This is a real-CDP-touch FUZZ lane: a 60-command seeded gesture stream. Under
-  // CI compositor load a single committing rail flick can be dropped or coalesced
-  // even after the driver's own bounded re-dispatch (see cdp-gestures.ts
-  // `railSwipe`), so the loop occasionally reds on an environmental drop rather
-  // than a product defect. A genuine invariant violation is deterministic and
-  // fails every retry, so a bounded outer retry — the driver's per-swipe policy
-  // applied to the whole sequence — keeps the lane honest while immune to the
+  // This is a real-CDP-touch FUZZ lane: a seeded gesture stream. Under CI
+  // compositor load a single touch scroll can be dropped or coalesced, so the
+  // loop occasionally reds on an environmental drop rather than a product
+  // defect. A genuine invariant violation is deterministic and fails every
+  // retry, so a bounded outer retry keeps the lane honest while immune to the
   // rare dropped touch (the global config runs with retries: 0).
   test.describe.configure({ retries: 2 });
 
@@ -122,15 +121,16 @@ test.describe("launcher gesture loop (real app, shared engine)", () => {
     const hoverBefore = await collectHoverViolations(page);
     expect(hoverBefore.violations, "no orange→black hover before").toEqual([]);
 
-    // Drive the navigation-safe alphabet against the real surface. `tileIds: []`
-    // omits the tile tap/long-press commands (a tap navigates away + unmounts
-    // the surface); every other gesture family stays in play.
+    // Drive the combined-surface alphabet against the real surface.
+    // `tileIds: []` omits the tile tap/long-press commands (a tap navigates
+    // away + unmounts the surface); the rail families are zero-weighted
+    // because the production home has no home↔launcher rail — scrolls and
+    // Tab focus stay in play.
     const result = await runLauncherLoop(page, {
       seed: SEED,
       actions: ACTIONS,
       tileIds: [],
-      // Coarse-pointer layouts intentionally hide the desktop edge arrows.
-      weights: { ...DEFAULT_WEIGHTS, railEdgeButton: 0 },
+      weights: { ...DEFAULT_WEIGHTS, railSwipe: 0, railEdgeButton: 0 },
     });
     expect(result.actions).toBe(ACTIONS);
     expect(result.seed).toBe(SEED);

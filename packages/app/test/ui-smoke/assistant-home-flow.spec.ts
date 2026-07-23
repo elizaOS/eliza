@@ -12,7 +12,6 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
-import { mousePointerDrag } from "./helpers/gesture-inputs";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const SCREENSHOT_DIR = path.join(
@@ -431,35 +430,17 @@ function launcherTile(page: Page, viewId: string) {
   return page.getByTestId(`launcher-tile-${viewId}`).first();
 }
 
-async function settleHomeLauncherRail(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () => {
-      const rail = document.querySelector('[data-testid="home-launcher-rail"]');
-      if (!rail) return false;
-      return !(rail as HTMLElement)
-        .getAnimations({ subtree: true })
-        .some((animation) => animation.playState === "running");
-    },
-    undefined,
-    { timeout: 5_000 },
-  );
-}
-
 async function openHomeLauncher(page: Page): Promise<void> {
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toBeVisible({ timeout: 15_000 });
-  // A real leftward drag across the home half drives the rail gesture handler
-  // into `goLauncher()` — the store action the UI itself calls. No event bridge.
-  const homeHalf = page.getByTestId("home-launcher-home-page");
-  await expect(homeHalf).toBeVisible({ timeout: 15_000 });
-  await mousePointerDrag(page, homeHalf, -220, 4, { steps: 10 });
-  await expect(surface).toHaveAttribute("data-page", "launcher", {
-    timeout: 10_000,
-  });
-  await expect(page.getByTestId("home-launcher-launcher-page")).toBeVisible({
-    timeout: 15_000,
-  });
-  await settleHomeLauncherRail(page);
+  // Home and apps share one combined surface: the launcher grid is embedded
+  // under the "Apps" region of the home column — scroll it into view the way
+  // a user would; there is no separate launcher page to navigate to.
+  const appsRegion = page.getByTestId("home-apps-scroll");
+  await expect(appsRegion).toBeVisible({ timeout: 15_000 });
+  const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
+  await settingsTile.scrollIntoViewIfNeeded();
+  await expect(settingsTile).toBeVisible({ timeout: 15_000 });
 }
 
 function conversationLog(page: Page) {
@@ -959,20 +940,17 @@ test.describe("assistant home app flow", () => {
 
     await openReadyChat(page, "/chat");
 
-    // The home dashboard renders behind the floating chat. App launchers now
-    // live on the paired launcher page of HomeLauncherSurface.
+    // The home dashboard renders behind the floating chat. App launchers live
+    // on the embedded launcher grid of the combined home surface.
     await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
       "data-page",
       "home",
     );
-    await expect(page.getByTestId("home-launcher-home-page")).toBeVisible({
-      timeout: 15_000,
-    });
     await expect(page.getByTestId("home-screen")).toBeVisible();
 
     await openHomeLauncher(page);
     const settingsTile = page
-      .getByTestId("home-launcher-launcher-page")
+      .getByTestId("home-apps-scroll")
       .getByTestId("launcher-tile-settings");
     await expect(settingsTile).toBeVisible({ timeout: 15_000 });
 
