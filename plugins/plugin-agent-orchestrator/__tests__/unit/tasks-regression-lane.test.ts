@@ -4,6 +4,7 @@
  * control, dispatch, workspace provisioning, aliases, and validation through
  * the production action handlers.
  */
+import { expect, it } from "vitest";
 import "./archive-reopen-lifecycle.test";
 import "./cancel-task.test";
 import "./control-resume-clears-paused.test";
@@ -19,3 +20,7 @@ import "./task-control-structural.test";
 import "./task-history.test";
 import "./tasks-action-aliases.test";
 import "./tasks-create-validator-lifecycle.test";
+
+it("loads the task-action regression matrix", () => {
+  expect(true).toBe(true);
+});
