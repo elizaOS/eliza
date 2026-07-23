@@ -1102,6 +1102,17 @@ export class AgentSandboxesRepository {
       // returns null cleanly and the caller falls through to the cold provision
       // path (which itself enforces the C1b guard). The skipped null-node rows
       // are left unclaimed for the drain/reap sweeps to clear.
+      // F2 (warm-pool flip report): claim readiness must require a resolved
+      // BRIDGE URL, not just docker-health. `pool_ready_at` is stamped at
+      // docker-health, but a pool entry whose bridge URL never resolved (or
+      // whose tailnet session rotted before the bridge URL was persisted) is
+      // unreachable — claiming it hands the user a dead container (observed:
+      // flip-report runs 1-3 claimed tailnet-dead / `health: starting`
+      // entries). Gating on `bridge_url IS NOT NULL AND <> ''` at selection
+      // means such entries are skipped and the next reachable candidate is
+      // claimed; a pool with only unreachable rows returns null and the caller
+      // falls through to the cold path. Deeper liveness (a booted-then-rotted
+      // tailnet session) remains the health sweep's job (healthProbe reaps it).
       const poolRows = await sqlRows<AgentSandbox>(
         tx,
         sql`
@@ -1113,6 +1124,8 @@ export class AgentSandboxesRepository {
             AND ${agentSandboxes.pool_ready_at} IS NOT NULL
             AND ${agentSandboxes.node_id} IS NOT NULL
             AND ${agentSandboxes.node_id} <> ''
+            AND ${agentSandboxes.bridge_url} IS NOT NULL
+            AND ${agentSandboxes.bridge_url} <> ''
           ORDER BY ${agentSandboxes.pool_ready_at} ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
