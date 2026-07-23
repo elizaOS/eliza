@@ -7,7 +7,7 @@
  * a self-contained HTML contact sheet + a markdown summary, prints a one-line
  * status, and exits non-zero on a blocking gap when enforcement is on.
  *
- * Advisory-then-required (mirrors `.github/workflows/coverage-gate.yml`):
+ * Advisory-then-required:
  *   - default: report only, exit 0 (advisory).
  *   - `--fail-on-missing` or `E2E_COVERAGE_GATE_ENFORCE=1`: exit 1 on a blocking
  *     gap (required).

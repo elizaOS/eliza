@@ -24,9 +24,8 @@ const keywordGeneratorPath = fileURLToPath(
   new URL('../../../../packages/shared/scripts/generate-keywords.mjs', import.meta.url)
 );
 
-// The changed-file coverage lane resolves workspace packages from source before
-// any package build, so create the same gitignored keyword module required by
-// every other source-mode CI lane.
+// Source-mode test runs need the generated keyword module before packages have
+// been built.
 if (!existsSync(coreKeywordDataPath)) {
   const generation = spawnSync(process.env.NODE_BIN ?? 'node', [keywordGeneratorPath], {
     cwd: repoRoot,
