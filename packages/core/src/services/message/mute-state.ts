@@ -81,21 +81,22 @@ export function roomMuteActive(
  * inherit the mute (e.g. a Discord thread's parent channel). `worldId` may be
  * passed when the caller already knows it (connectors derive it without a DB
  * read); otherwise it is read from the first room record. Likewise
- * `primaryParticipantState` lets a caller that already fetched the first
- * room's participant state skip the refetch — the message pipeline reads it
- * for its LLM-off check just before this resolver runs.
+ * `primaryRoom` and `primaryParticipantState` let a caller that already fetched
+ * the first room's environment reuse both records — the message pipeline needs
+ * them for should-respond and its LLM-off check immediately around this gate.
  */
 export async function resolveEffectiveMuteState(
 	runtime: IAgentRuntime,
 	args: {
 		roomIds: readonly UUID[];
 		worldId?: UUID;
+		primaryRoom?: Room | null;
 		primaryParticipantState?: ParticipantUserState;
 	},
 	now: number = Date.now(),
 ): Promise<EffectiveMuteState> {
 	let worldId = args.worldId;
-	let primaryRoom: Room | null | undefined;
+	let primaryRoom = args.primaryRoom;
 
 	for (const roomId of args.roomIds) {
 		const state =
@@ -103,7 +104,10 @@ export async function resolveEffectiveMuteState(
 				? args.primaryParticipantState
 				: await runtime.getParticipantUserState(roomId, runtime.agentId);
 		if (state !== "MUTED") continue;
-		const room = await runtime.getRoom(roomId);
+		const room =
+			roomId === args.roomIds[0] && primaryRoom !== undefined
+				? primaryRoom
+				: await runtime.getRoom(roomId);
 		if (roomId === args.roomIds[0]) primaryRoom = room;
 		const untilIso = readMuteUntilIso(
 			room?.metadata as Record<string, unknown> | undefined,

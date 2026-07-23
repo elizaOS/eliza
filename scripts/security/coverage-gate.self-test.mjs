@@ -75,6 +75,7 @@ function runGate({
   lcov,
   enforce = true,
   threshold = 50,
+  floorEnabled = true,
   excluded = "",
 }) {
   const changedArgument = changed
@@ -91,6 +92,8 @@ function runGate({
       `changed=${changedArgument}`,
       "-v",
       `threshold=${threshold}`,
+      "-v",
+      `floor_enabled=${floorEnabled ? 1 : 0}`,
       "-v",
       `excluded=${excludedArgument}`,
       "-f",
@@ -217,6 +220,19 @@ try {
       );
     },
   );
+  assertGate("disabled floor reports low coverage without failing", () => {
+    const src = "packages/core/src/services/message.ts";
+    const lcov = writeLcov(dir, src, 100, 7);
+    const result = runGate({
+      changed: src,
+      lcov,
+      floorEnabled: false,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /7\.00% packages\/core\/src\/services\/message\.ts/);
+    assert.match(result.stdout, /threshold: disabled/);
+    assert.doesNotMatch(result.stdout, /BELOW:/);
+  });
   assertGate(
     "union-merges complementary isolated Bun hits before comparing logical lanes",
     () => {

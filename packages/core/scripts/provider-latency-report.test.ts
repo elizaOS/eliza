@@ -5,6 +5,8 @@
  * established by the operator benchmark rather than this structural gate.
  */
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -25,12 +27,17 @@ describe("provider latency report process", () => {
 			import.meta.dirname,
 			"provider-latency-report.ts",
 		);
+		const reportDirectory = mkdtempSync(
+			path.join(tmpdir(), "provider-latency-report-"),
+		);
+		const reportPath = path.join(reportDirectory, "report.json");
 		const result = spawnSync("bun", [script], {
 			cwd: path.resolve(import.meta.dirname, "../../.."),
 			encoding: "utf8",
 			env: {
 				...process.env,
 				ELIZA_LOG_LEVEL: "fatal",
+				ELIZA_PROVIDER_LATENCY_REPORT: reportPath,
 				ELIZA_PROVIDER_LATENCY_SAMPLES: "1",
 				ELIZA_PROVIDER_LATENCY_WARMUPS: "1",
 			},
@@ -46,6 +53,10 @@ describe("provider latency report process", () => {
 		const report = JSON.parse(
 			result.stdout.slice(jsonStart, jsonEnd + 2),
 		) as ProviderLatencyReport;
+		expect(
+			JSON.parse(readFileSync(reportPath, "utf8")) as ProviderLatencyReport,
+		).toEqual(report);
+		rmSync(reportDirectory, { recursive: true });
 
 		expect(report.samples).toBe(1);
 		expect(report.providerCount).toBeGreaterThanOrEqual(20);
