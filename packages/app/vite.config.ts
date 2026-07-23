@@ -46,6 +46,7 @@ import {
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
+import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
@@ -2942,16 +2943,16 @@ export const INVALID_TRACER_PROVIDER = {};
       "zod",
       "zod/v3",
       "zod/v4",
-      // react-day-picker (via @elizaos/ui's calendar) statically imports the
-      // `date-fns/locale` barrel from many call sites. Pre-bundling collapses
-      // the date-fns and date-fns-jalali locale trees into a single optimized
-      // chunk, avoiding hundreds of cold module requests per page load or HMR
-      // full reload.
-      "react-day-picker",
-      "date-fns",
-      "date-fns/locale",
-      "date-fns-jalali",
-      "date-fns-jalali/locale",
+      // Calendar packages are pre-bundled only after resolution. Vite treats
+      // optimizeDeps.include as required even when react-day-picker exposes a
+      // calendar system as an optional integration.
+      ...calendarOptimizeDeps({
+        reactDayPickerEntry,
+        dateFnsEntry,
+        dateFnsLocaleEntry,
+        dateFnsJalaliEntry,
+        dateFnsJalaliLocaleEntry,
+      }),
       // Resolvable via the resolve.alias above (transitive through @elizaos/core).
       "@opentelemetry/api",
       // Pre-bundle feross `buffer` so the dev server serves it as ESM with a

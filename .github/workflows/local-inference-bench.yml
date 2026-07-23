@@ -7,8 +7,8 @@ name: Local Inference Bench
 #   1. PR + nightly: harness route smoke. Boots
 #      `packages/scripts/benchmark/synthetic-agent-server.mjs` on a free port and
 #      runs the profile harness against its model-ensure path.
-#   2. Nightly only: real agent profile. Boots `bun run dev`, points the
-#      harness at the dev server, writes the report under
+#   2. Nightly only: real agent profile. Boots the backend-only agent, points
+#      the harness at its API, writes the report under
 #      `reports/porting/<YYYY-MM-DD>/profile.{json,md}`, uploads the
 #      directory as a workflow artifact, and opens/updates a tracking
 #      issue with the markdown summary.
@@ -169,35 +169,54 @@ jobs:
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
 
-      - name: Prepare dev workspace packages
-        # `bun run dev` starts Vite from a clean checkout. Build the app's
-        # workspace dependencies first so Vite can resolve package exports like
-        # @elizaos/core instead of failing before the benchmark can run.
+      - name: Prepare agent workspace packages
+        # The source agent starts from a clean checkout. Build its transitive
+        # workspace packages so package exports resolve before boot.
         run: bun run dev:prepare
 
-      - name: Boot dev agent
+      - name: Boot backend agent
         env:
           ELIZA_API_PORT: "31337"
-          ELIZA_PORT: "2138"
           NODE_ENV: "test"
           ELIZA_DISABLE_TRAJECTORY_LOGGING: "1"
         run: |
           set -euo pipefail
           mkdir -p .ci-logs
-          # Run the dev server in the background. The orchestrator
-          # already auto-shifts ports if the defaults are busy and writes
-          # a `.eliza/desktop-dev-console.log` we can tail if needed.
-          bun run dev > .ci-logs/dev.log 2>&1 &
-          echo $! > /tmp/dev.pid
-          # Health probe — give the agent up to 120s to come up.
+          # The benchmark only consumes HTTP routes. Keeping Vite out of this
+          # process prevents renderer dependency failures from terminating a
+          # healthy API during a long model download.
+          bun run start > .ci-logs/agent.log 2>&1 &
+          echo $! > /tmp/agent.pid
+          # HTTP 200 is returned while the runtime is still initializing. Wait
+          # for the database, plugins, and deferred feature routes as well.
+          health=""
           for _ in $(seq 1 60); do
-            if curl --silent --fail "http://127.0.0.1:31337/api/health" >/dev/null 2>&1; then
+            health="$(curl --silent --fail "http://127.0.0.1:31337/api/health" 2>/dev/null || true)"
+            if jq -e '
+              .ready == true and
+              .runtime == "ok" and
+              .database == "ok" and
+              .plugins.failed == 0 and
+              .deferredBoot.settled == true
+            ' <<<"$health" >/dev/null 2>&1; then
               echo "agent ready"
               break
             fi
             sleep 2
           done
-          curl --silent --fail "http://127.0.0.1:31337/api/health"
+          if ! jq -e '
+            .ready == true and
+            .runtime == "ok" and
+            .database == "ok" and
+            .plugins.failed == 0 and
+            .deferredBoot.settled == true
+          ' <<<"$health" >/dev/null 2>&1; then
+            echo "::error ::Agent did not reach benchmark readiness within 120 seconds"
+            printf '%s\n' "$health"
+            tail -n 200 .ci-logs/agent.log
+            exit 1
+          fi
+          printf '%s\n' "$health"
 
       - name: Run profile harness (host-cpu config)
         env:
@@ -215,11 +234,11 @@ jobs:
             --ensure-models
           echo "REPORT_DIR=$OUT_DIR" >> "$GITHUB_ENV"
 
-      - name: Tear down dev agent
+      - name: Tear down backend agent
         if: ${{ always() }}
         run: |
-          if [ -f /tmp/dev.pid ]; then
-            kill "$(cat /tmp/dev.pid)" || true
+          if [ -f /tmp/agent.pid ]; then
+            kill "$(cat /tmp/agent.pid)" || true
           fi
 
       - name: Upload report artifact
@@ -231,12 +250,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      - name: Upload dev server log
+      - name: Upload agent server log
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: dev-log-nightly-${{ github.run_id }}
-          path: .ci-logs/dev.log
+          name: agent-log-nightly-${{ github.run_id }}
+          path: .ci-logs/agent.log
           if-no-files-found: warn
           retention-days: 14
 
