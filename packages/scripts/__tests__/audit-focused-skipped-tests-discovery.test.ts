@@ -35,11 +35,17 @@ describe("anti-larp test discovery", () => {
         "plugins/one/src/nested/component.SPEC.CTS",
         "packages/two/tests/helper.MJS",
         "packages/three/src/feed.e2e.test.tsx",
+        "packages/three/src/security-swap.bench.ts",
+        "packages/three/src/register.benchmark.ts",
+        "packages/three/src/browser.cy.ts",
         "packages/three/src/production.ts",
         "packages/four/src/native.test.rs",
       ]),
     ).toEqual([
+      "packages/three/src/browser.cy.ts",
       "packages/three/src/feed.e2e.test.tsx",
+      "packages/three/src/register.benchmark.ts",
+      "packages/three/src/security-swap.bench.ts",
       "packages/two/tests/helper.MJS",
       "plugins/one/src/nested/component.SPEC.CTS",
     ]);
@@ -190,6 +196,37 @@ describe("anti-larp test discovery", () => {
     ]);
   });
 
+  test("resolves nested declarations, assignments, and sequence-wrapped aliases", () => {
+    const source = `
+      describe("nested", () => {
+        const focused = it.only;
+        const { only: destructuredFocus, skip: destructuredSkip } = test;
+        let assignedFocus;
+        let assignedSkip;
+        assignedFocus = it.only;
+        assignedSkip = test.todo;
+        focused("nested focus", () => {});
+        destructuredFocus("destructured focus", () => {});
+        assignedFocus("assigned focus", () => {});
+        destructuredSkip("ordinary title", () => {});
+        assignedSkip("another ordinary title", () => {});
+      });
+      (0, it.only)("sequence focus", () => {});
+      it.only.bind(it)("bound focus", () => {});
+    `;
+    expect(
+      findViolations("fixture.test.ts", source).map(({ kind }) => kind),
+    ).toEqual([
+      "focused",
+      "focused",
+      "focused",
+      "orphaned-skip",
+      "orphaned-skip",
+      "focused",
+      "focused",
+    ]);
+  });
+
   test("evaluates static truthy disables and accepts false or reasoned options", () => {
     const source = `
       import { test } from "vitest";
@@ -204,6 +241,23 @@ describe("anti-larp test discovery", () => {
     expect(
       findViolations("fixture.test.ts", source).map(({ kind }) => kind),
     ).toEqual(["orphaned-skip", "orphaned-skip", "orphaned-skip"]);
+  });
+
+  test("rejects option-form focus unless it is statically false", () => {
+    const source = `
+      const yes = true;
+      const only = false;
+      test("environment focus", { only: process.env.FOCUS }, () => {});
+      test("identifier focus", { only: yes }, () => {});
+      test("expression focus", { only: 1 === 1 }, () => {});
+      test("shorthand focus", { only }, () => {});
+      test("literal false", { only: false }, () => {});
+      test("numeric false", { only: 0 }, () => {});
+      test("negated false", { only: !true }, () => {});
+    `;
+    expect(
+      findViolations("fixture.test.ts", source).map(({ kind }) => kind),
+    ).toEqual(["focused", "focused", "focused", "focused"]);
   });
 
   test("does not treat shadowed or unrelated runner-shaped names as test APIs", () => {

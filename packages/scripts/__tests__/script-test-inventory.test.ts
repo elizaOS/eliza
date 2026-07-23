@@ -591,6 +591,58 @@ jobs:
         "reports/junit.xml",
       ),
     ).toThrow("invalid location");
+
+    const zeroAssertions = xml.replaceAll('assertions="2"', 'assertions="0"');
+    expect(
+      validateJunitEvidence(
+        zeroAssertions,
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toMatchObject({ assertions: 0, status: "valid" });
+
+    const skipped = xml
+      .replaceAll('skipped="0"', 'skipped="1"')
+      .replace('assertions="2" />', 'assertions="2"><skipped /></testcase>');
+    expect(() =>
+      validateJunitEvidence(
+        skipped,
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toThrow("skipped test");
+
+    const emptySuite =
+      '<testsuite name="packages/scripts/empty.test.ts" file="packages/scripts/empty.test.ts" tests="0" assertions="0" failures="0" skipped="0"></testsuite>';
+    expect(() =>
+      validateJunitEvidence(
+        xml.replace(
+          '<testsuites tests="1" assertions="2" failures="0" skipped="0">',
+          '<testsuites tests="1" assertions="2" failures="0" skipped="0">' +
+            emptySuite,
+        ),
+        ["packages/scripts/empty.test.ts", "packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toThrow("contains zero testcases");
+
+    expect(() =>
+      validateJunitEvidence(
+        '<testsuites tests="0" assertions="0" failures="0" skipped="0"></testsuites>',
+        [],
+        "reports/junit.xml",
+      ),
+    ).toThrow("contains zero tests");
+    expect(() =>
+      validateJunitEvidence(
+        xml.replace(
+          '<testsuites tests="1" assertions="2" failures="0" skipped="0">',
+          '<testsuites tests="1" assertions="2" failures="0" skipped="0"><![CDATA[smuggled]]>',
+        ),
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toThrow("unexpected CDATA");
   });
 
   test("the real repository has one executing lane for every discovered test", () => {

@@ -9,13 +9,16 @@
  *   bun test packages/scripts/__tests__/audit-scripts-inventory.test.ts
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import fs, { readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   buildInventory,
   parseInventoryArgs,
+  readRepositoryCandidateText,
+  workflowExecutionSteps,
 } from "../audit-scripts-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -182,5 +185,59 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(inv.summary.filesByCategory.orphan).toBe(0);
     expect(inv.summary.orphanFiles).toBe(0);
     expect(inv.summary.documentationFileReferences).toBeGreaterThan(0);
+  });
+
+  test("repository candidate readers reject symlinked files and parents", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "script-audit-root-"));
+    const outside = fs.mkdtempSync(
+      path.join(os.tmpdir(), "script-audit-outside-"),
+    );
+    try {
+      fs.mkdirSync(path.join(root, "fixtures"));
+      for (const name of [
+        "runner.mjs",
+        "package.json",
+        "guide.md",
+        "workflow.yml",
+      ]) {
+        const source = path.join(outside, name);
+        fs.writeFileSync(source, "outside\n");
+        fs.symlinkSync(source, path.join(root, "fixtures", name));
+        expect(() =>
+          readRepositoryCandidateText(root, `fixtures/${name}`),
+        ).toThrow("may not traverse a symlink");
+      }
+      fs.mkdirSync(path.join(outside, "nested"));
+      fs.writeFileSync(path.join(outside, "nested", "guide.md"), "outside\n");
+      fs.symlinkSync(path.join(outside, "nested"), path.join(root, "linked"));
+      expect(() =>
+        readRepositoryCandidateText(root, "linked/guide.md"),
+      ).toThrow("may not traverse a symlink");
+    } finally {
+      fs.rmSync(root, { force: true, recursive: true });
+      fs.rmSync(outside, { force: true, recursive: true });
+    }
+  });
+
+  test("workflow execution seeds come only from structural run steps", () => {
+    const steps = workflowExecutionSteps(`
+      jobs:
+        proof:
+          env:
+            COMMENT_ONLY: bun run hidden:env
+          steps:
+            - uses: actions/checkout@v4
+              with:
+                note: bun run hidden:input
+            # bun run hidden:comment
+            - working-directory: packages/app
+              run: bun run visible:command
+    `);
+    expect(steps).toEqual([
+      {
+        run: "bun run visible:command",
+        workingDirectory: "packages/app",
+      },
+    ]);
   });
 });

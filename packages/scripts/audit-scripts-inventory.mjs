@@ -49,16 +49,31 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseDocument } from "yaml";
 import {
   atomicWriteJsonSync,
   resolveReportArtifactPath,
 } from "./lib/report-artifact-path.mjs";
+import {
+  assertContainedRegularFile,
+  assertUniqueRepositoryIdentities,
+  normalizeGitRepositoryPath,
+} from "./lib/repository-file-integrity.mjs";
 import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..", "..");
-const SCRIPTS_DIR = path.join(ROOT, "packages", "scripts");
-const APP_PKG = path.join(ROOT, "packages", "app", "package.json");
+const APP_PACKAGE_PATH = "packages/app/package.json";
+
+// The public feed path is a checked-in alias of the canonical regular file,
+// which the documentation scan reads independently. Keeping the one alias
+// explicit prevents a broad symlink exemption from weakening source evidence.
+const DOCUMENTATION_SOURCE_ALIASES = new Map([
+  [
+    "packages/feed/apps/web/public/genesis.json",
+    "packages/feed/apps/web/genesis.json",
+  ],
+]);
 
 const CATEGORIES = [
   "reachable-from-verify",
@@ -100,16 +115,34 @@ const DOCUMENTATION_REFERENCE_EXTENSIONS = new Set([
   ".yml",
 ]);
 
-function readJson(file) {
-  return JSON.parse(readFileSync(file, "utf8"));
+/** Read one Git-named repository file without following symlinked components. */
+export function readRepositoryCandidateText(repoRoot, relative, label) {
+  const source = assertContainedRegularFile(
+    repoRoot,
+    relative,
+    label ?? `script inventory source ${relative}`,
+  );
+  return readFileSync(source.absolute, "utf8");
 }
 
-function readText(file) {
-  return readFileSync(file, "utf8");
+function readRepositoryText(relative) {
+  return readRepositoryCandidateText(ROOT, relative);
+}
+
+function readRepositoryJson(relative) {
+  const source = readRepositoryText(relative);
+  try {
+    return JSON.parse(source);
+  } catch (error) {
+    // error-policy:J2 identify the repository manifest that invalidated inventory
+    throw new Error(`invalid JSON in script inventory source ${relative}`, {
+      cause: error,
+    });
+  }
 }
 
 function repositoryCandidateFiles() {
-  return execFileSync(
+  const files = execFileSync(
     "git",
     [
       "-C",
@@ -127,12 +160,59 @@ function repositoryCandidateFiles() {
   )
     .split("\0")
     .filter(Boolean)
-    .map((file) => file.split("\\").join("/"))
+    .map((file) =>
+      normalizeGitRepositoryPath(file, "script inventory candidate"),
+    )
     .sort();
+  assertUniqueRepositoryIdentities(
+    files,
+    "case-colliding or duplicate script inventory candidates",
+  );
+  return files;
 }
 
-function loc(file) {
-  const text = readText(file);
+/** Extract executable workflow step bodies without treating comments or env as calls. */
+export function workflowExecutionSteps(source, file = "<workflow>") {
+  const document = parseDocument(source, {
+    merge: false,
+    prettyErrors: true,
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) {
+    throw new Error(
+      `invalid workflow YAML in ${file}: ${document.errors[0].message}`,
+    );
+  }
+  const root = document.toJS();
+  const jobs =
+    root && typeof root === "object" && !Array.isArray(root)
+      ? root.jobs
+      : undefined;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) return [];
+  const executionSteps = [];
+  for (const job of Object.values(jobs)) {
+    if (!job || typeof job !== "object" || !Array.isArray(job.steps)) continue;
+    for (const step of job.steps) {
+      if (!step || typeof step !== "object" || !Object.hasOwn(step, "run")) {
+        continue;
+      }
+      if (typeof step.run !== "string") {
+        throw new Error(`workflow run step in ${file} must be a string`);
+      }
+      executionSteps.push({
+        run: step.run,
+        workingDirectory:
+          typeof step["working-directory"] === "string"
+            ? step["working-directory"]
+            : undefined,
+      });
+    }
+  }
+  return executionSteps;
+}
+
+function loc(relative) {
+  const text = readRepositoryText(relative);
   return text.split("\n").length;
 }
 
@@ -197,7 +277,7 @@ function reachableRootScripts(seeds, rootScripts) {
 function buildFileGraph(fileUniverse) {
   const graph = new Map();
   for (const file of fileUniverse) {
-    const body = readText(path.join(SCRIPTS_DIR, file));
+    const body = readRepositoryText(`packages/scripts/${file}`);
     const refs = referencedScriptFiles(body, fileUniverse);
     refs.delete(file);
     graph.set(file, refs);
@@ -272,8 +352,7 @@ function filesFromPackageScripts(fileUniverse, candidateFiles) {
   for (const relativeFile of candidateFiles) {
     if (path.posix.basename(relativeFile) !== "package.json") continue;
     if (relativeFile === "package.json") continue;
-    const file = path.join(ROOT, relativeFile);
-    const pkg = readJson(file);
+    const pkg = readRepositoryJson(relativeFile);
     const scripts = pkg.scripts ?? {};
     for (const [name, body] of Object.entries(scripts)) {
       for (const scriptFile of referencedScriptFiles(body, fileUniverse)) {
@@ -304,6 +383,7 @@ function filesFromPackageScripts(fileUniverse, candidateFiles) {
  */
 function filesFromDocumentation(fileUniverse, candidateFiles) {
   const referencesByFile = new Map();
+  const candidates = new Set(candidateFiles);
   for (const rel of candidateFiles) {
     if (rel === "package.json" || path.posix.basename(rel) === "package.json") {
       continue;
@@ -315,7 +395,16 @@ function filesFromDocumentation(fileUniverse, candidateFiles) {
     ) {
       continue;
     }
-    const body = readText(path.join(ROOT, rel));
+    const canonicalAliasTarget = DOCUMENTATION_SOURCE_ALIASES.get(rel);
+    if (canonicalAliasTarget) {
+      if (!candidates.has(canonicalAliasTarget)) {
+        throw new Error(
+          `documentation source alias ${rel} is missing canonical target ${canonicalAliasTarget}`,
+        );
+      }
+      continue;
+    }
+    const body = readRepositoryText(rel);
     for (const scriptFile of referencedScriptFiles(body, fileUniverse)) {
       const ownScriptPath = path.posix.join("packages", "scripts", scriptFile);
       if (rel === ownScriptPath) continue;
@@ -389,14 +478,12 @@ function appScriptsViaRun(body, appUniverse) {
  * Split each workflow into step blocks (list items under `steps:`) so a
  * working-directory in one step never bleeds onto another step's commands.
  */
-function appScriptsFromCiWorkdir(workflowChunks, appUniverse) {
+function appScriptsFromCiWorkdir(workflowSteps, appUniverse) {
   const found = new Set();
-  for (const text of workflowChunks) {
-    for (const block of text.split(/\n(?=\s*- )/)) {
-      if (!/working-directory:\s*packages\/app(\s|$)/m.test(block)) continue;
-      for (const name of referencedRootScripts(block)) {
-        if (appUniverse.has(name)) found.add(name);
-      }
+  for (const step of workflowSteps) {
+    if (step.workingDirectory !== "packages/app") continue;
+    for (const name of referencedRootScripts(step.run)) {
+      if (appUniverse.has(name)) found.add(name);
     }
   }
   return found;
@@ -438,7 +525,7 @@ function reachableAppScripts(seeds, appScripts, appUniverse) {
 }
 
 function buildInventory() {
-  const rootScripts = readJson(path.join(ROOT, "package.json")).scripts ?? {};
+  const rootScripts = readRepositoryJson("package.json").scripts ?? {};
   const candidateFiles = repositoryCandidateFiles();
   const fileUniverse = collectScriptFiles(candidateFiles);
   if (fileUniverse.length === 0) {
@@ -463,10 +550,14 @@ function buildInventory() {
   if (workflowFiles.length === 0) {
     throw new Error("script inventory discovered zero GitHub workflows");
   }
-  const workflowChunks = workflowFiles.map((file) =>
-    readText(path.join(ROOT, file)),
+  const workflowSources = workflowFiles.map((file) => ({
+    file,
+    source: readRepositoryText(file),
+  }));
+  const workflowSteps = workflowSources.flatMap(({ file, source }) =>
+    workflowExecutionSteps(source, file),
   );
-  const ciText = workflowChunks.join("\n");
+  const ciText = workflowSteps.map(({ run }) => run).join("\n");
   const scenarioWorkflowPath = ".github/workflows/scenario-pr.yml";
   if (!candidateFiles.includes(scenarioWorkflowPath)) {
     throw new Error(`script inventory is missing ${scenarioWorkflowPath}`);
@@ -475,7 +566,7 @@ function buildInventory() {
     repoRoot: ROOT,
     candidateFiles,
     packageScripts: rootScripts,
-    scenarioWorkflow: readText(path.join(ROOT, scenarioWorkflowPath)),
+    scenarioWorkflow: readRepositoryText(scenarioWorkflowPath),
   });
   const ciRootSeeds = referencedRootScripts(ciText);
   const ciFileSeeds = referencedScriptFiles(ciText, fileUniverse);
@@ -556,7 +647,7 @@ function buildInventory() {
 
   const files = fileUniverse.map((file) => ({
     file,
-    loc: loc(path.join(SCRIPTS_DIR, file)),
+    loc: loc(`packages/scripts/${file}`),
     category: classifyFile(file),
     operatorScriptCallers: operatorScriptCallersByFile.get(file) ?? [],
     packageScriptCallers: packageScriptCallersByFile.get(file) ?? [],
@@ -580,8 +671,8 @@ function buildInventory() {
   // script is reachable when a reachable root script or a CI workflow invokes it
   // (via `--cwd packages/app <name>` or a `working-directory: packages/app` step),
   // or when another reachable app script / npm lifecycle hook chains to it.
-  const appScripts = existsSync(APP_PKG)
-    ? (readJson(APP_PKG).scripts ?? {})
+  const appScripts = existsSync(path.join(ROOT, APP_PACKAGE_PATH))
+    ? (readRepositoryJson(APP_PACKAGE_PATH).scripts ?? {})
     : {};
   const appUniverse = new Set(Object.keys(appScripts));
 
@@ -611,7 +702,7 @@ function buildInventory() {
   for (const app of appScriptsViaCwd(ciText, appUniverse)) {
     appSeedsByColor["reachable-from-ci-workflow"].add(app);
   }
-  for (const app of appScriptsFromCiWorkdir(workflowChunks, appUniverse)) {
+  for (const app of appScriptsFromCiWorkdir(workflowSteps, appUniverse)) {
     appSeedsByColor["reachable-from-ci-workflow"].add(app);
   }
 

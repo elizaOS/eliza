@@ -52,6 +52,82 @@ const HOST_EXTERNAL_REGISTRATION_PATHS = [
   },
 ];
 
+// Relative imports are loader-private implementation paths, so their public
+// specifier binding cannot be inferred from string equality. Keep the mapping
+// exact: any new alias must identify the concrete module it exposes.
+const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
+  ["@elizaos/ui/api", "../../api/index.ts"],
+  ["@elizaos/ui/api/csrf-client", "../../api/csrf-client.ts"],
+  ["@elizaos/ui/config", "../../config/index.ts"],
+  ["@elizaos/ui/events", "../../events/index.ts"],
+  ["@elizaos/ui/hooks", "../../hooks/index.ts"],
+  ["@elizaos/ui/layouts", "../../layouts/index.ts"],
+  ["@elizaos/ui/platform", "../../platform/index.ts"],
+  ["@elizaos/ui/platform/ios-runtime", "../../platform/ios-runtime.ts"],
+  ["@elizaos/ui/spatial", "../../spatial/index.ts"],
+  ["@elizaos/ui/state", "../../state/index.ts"],
+  ["@elizaos/ui/state/useApp", "../../state/useApp.ts"],
+  ["@elizaos/ui/utils", "../../utils/index.ts"],
+  [
+    "@elizaos/ui/components/composites/page-panel",
+    "../composites/page-panel/index.ts",
+  ],
+  [
+    "@elizaos/ui/components/composites/sidebar/sidebar-content",
+    "../composites/sidebar/sidebar-content.tsx",
+  ],
+  [
+    "@elizaos/ui/components/composites/sidebar/sidebar-panel",
+    "../composites/sidebar/sidebar-panel.tsx",
+  ],
+  [
+    "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region",
+    "../composites/sidebar/sidebar-scroll-region.tsx",
+  ],
+  [
+    "@elizaos/ui/components/pages/MemoryDetailPanel",
+    "../pages/MemoryDetailPanel.tsx",
+  ],
+  [
+    "@elizaos/ui/components/pages/vector-browser-utils",
+    "../pages/vector-browser-utils.ts",
+  ],
+  [
+    "@elizaos/ui/components/shared/AppPageSidebar",
+    "../shared/AppPageSidebar.tsx",
+  ],
+  ["@elizaos/ui/components/ui/button", "../ui/button.tsx"],
+  ["@elizaos/ui/components/ui/input", "../ui/input.tsx"],
+  ["@elizaos/ui/components/ui/select", "../ui/select.tsx"],
+  [
+    "@elizaos/ui/components/ui/settings-controls",
+    "../ui/settings-controls.tsx",
+  ],
+  ["@elizaos/ui/components/ui/spinner", "../ui/spinner.tsx"],
+  ["@elizaos/ui/components/ui/skeleton-layouts", "../ui/skeleton-layouts.tsx"],
+  ["@elizaos/ui/components/ui/tabs", "../ui/tabs.tsx"],
+  ["@elizaos/ui/components/ui/textarea", "../ui/textarea.tsx"],
+  ["@elizaos/ui/components/ui/tooltip-extended", "../ui/tooltip-extended.tsx"],
+]);
+
+// Compatibility importers assemble curated namespaces rather than importing a
+// same-named package. Their function identities are therefore part of the
+// loader contract and must not be interchangeable across map keys.
+const LOADER_NAMED_IMPORTER_BINDINGS = new Map([
+  ["@elizaos/app-core", "importAppCoreViewCompat"],
+  ["@elizaos/app-core/browser", "importAppCoreViewCompat"],
+  ["@elizaos/app-core/ui-compat", "importAppCoreViewCompat"],
+  ["@elizaos/core", "importCoreViewCompat"],
+  ["@elizaos/ui", "importUiRootCompat"],
+  ["@elizaos/ui/app-navigate-view", "importUiAppNavigateViewCompat"],
+  ["@elizaos/ui/bridge", "importUiBridgeCompat"],
+  ["@elizaos/ui/components", "importUiComponentsCompat"],
+]);
+
+const LOADER_NAMESPACE_IMPORT_BINDINGS = new Map([
+  ["@elizaos/ui/agent-surface", "../../agent-surface"],
+]);
+
 function parseSource(source, file, scriptKind) {
   const sourceFile = ts.createSourceFile(
     file,
@@ -103,11 +179,103 @@ function hasExportModifier(node) {
   );
 }
 
+function bindingIdentifiers(name, identifiers = []) {
+  if (ts.isIdentifier(name)) {
+    identifiers.push(name);
+  } else if (
+    ts.isObjectBindingPattern(name) ||
+    ts.isArrayBindingPattern(name)
+  ) {
+    for (const element of name.elements) {
+      if (ts.isBindingElement(element)) {
+        bindingIdentifiers(element.name, identifiers);
+      }
+    }
+  }
+  return identifiers;
+}
+
+function directScopeBindings(scope) {
+  const bindings = new Map();
+  const statements =
+    ts.isSourceFile(scope) || ts.isBlock(scope) ? scope.statements : [];
+  for (const statement of statements) {
+    if (ts.isImportDeclaration(statement)) {
+      const clause = statement.importClause;
+      if (clause?.name) bindings.set(clause.name.text, clause.name);
+      const named = clause?.namedBindings;
+      if (named && ts.isNamespaceImport(named)) {
+        bindings.set(named.name.text, named.name);
+      } else if (named && ts.isNamedImports(named)) {
+        for (const element of named.elements) {
+          bindings.set(element.name.text, element.name);
+        }
+      }
+    } else if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        for (const identifier of bindingIdentifiers(declaration.name)) {
+          bindings.set(identifier.text, identifier);
+        }
+      }
+    } else if (
+      (ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement)) &&
+      statement.name
+    ) {
+      bindings.set(statement.name.text, statement.name);
+    }
+  }
+  return bindings;
+}
+
+function nearestBinding(identifier) {
+  let current = identifier.parent;
+  while (current) {
+    if (ts.isBlock(current) || ts.isSourceFile(current)) {
+      const binding = directScopeBindings(current).get(identifier.text);
+      if (binding) return binding;
+    }
+    if (ts.isFunctionLike(current)) {
+      for (const parameter of current.parameters) {
+        const binding = bindingIdentifiers(parameter.name).find(
+          (candidate) => candidate.text === identifier.text,
+        );
+        if (binding) return binding;
+      }
+      if (
+        (ts.isFunctionExpression(current) ||
+          ts.isFunctionDeclaration(current)) &&
+        current.name?.text === identifier.text
+      ) {
+        return current.name;
+      }
+    }
+    if (ts.isCatchClause(current) && current.variableDeclaration) {
+      const binding = bindingIdentifiers(current.variableDeclaration.name).find(
+        (candidate) => candidate.text === identifier.text,
+      );
+      if (binding) return binding;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
 function topLevelUnits(sourceFile) {
   const units = new Map();
+  const add = (name, unit) => {
+    if (units.has(name)) {
+      throw new Error(
+        `[view-bundle-guard] duplicate top-level declaration for ${name}`,
+      );
+    }
+    units.set(name, unit);
+  };
   for (const statement of sourceFile.statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name) {
-      units.set(statement.name.text, {
+      add(statement.name.text, {
+        callable: true,
+        declaration: statement.name,
         exported: hasExportModifier(statement),
         node: statement,
       });
@@ -116,9 +284,14 @@ function topLevelUnits(sourceFile) {
     if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
       if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-        units.set(declaration.name.text, {
+        const initializer = unwrapExpression(declaration.initializer);
+        add(declaration.name.text, {
+          callable:
+            ts.isArrowFunction(initializer) ||
+            ts.isFunctionExpression(initializer),
+          declaration: declaration.name,
           exported: hasExportModifier(statement),
-          node: declaration.initializer,
+          node: initializer,
         });
       }
     }
@@ -126,46 +299,309 @@ function topLevelUnits(sourceFile) {
   return units;
 }
 
-function assertLoaderMapIsRuntimeReachable(
-  sourceFile,
-  declaration,
-  loaderFile,
-) {
-  const units = topLevelUnits(sourceFile);
+function assertLoaderMapIsRuntimeReachable(declaration, loaderFile, units) {
+  const unitByDeclaration = new Map(
+    [...units.values()].map((unit) => [unit.declaration, unit]),
+  );
   const graph = new Map();
   for (const [name, unit] of units) {
     const dependencies = new Set();
     let consumesMap = false;
     const visit = (node) => {
       if (
+        node !== unit.node &&
+        (ts.isFunctionLike(node) || ts.isClassLike(node))
+      ) {
+        return;
+      }
+      if (
         ts.isIdentifier(node) &&
-        node.text === "HOST_EXTERNAL_IMPORTERS" &&
-        node !== declaration.name
+        node !== declaration.name &&
+        nearestBinding(node) === declaration.name
       ) {
         consumesMap = true;
       }
-      if (ts.isIdentifier(node) && units.has(node.text) && node.text !== name) {
-        dependencies.add(node.text);
+      if (ts.isCallExpression(node)) {
+        const callee = unwrapExpression(node.expression);
+        if (ts.isIdentifier(callee)) {
+          const target = unitByDeclaration.get(nearestBinding(callee));
+          if (target && target !== unit) dependencies.add(target);
+        }
       }
       ts.forEachChild(node, visit);
     };
     visit(unit.node);
     graph.set(name, { consumesMap, dependencies });
   }
-  const pending = [...units]
-    .filter(([, unit]) => unit.exported)
-    .map(([name]) => name);
+  const hostImport = units.get("hostImport");
+  if (!hostImport?.exported || !hostImport.callable) {
+    throw new Error(
+      `[view-bundle-guard] ${loaderFile} must directly export a callable hostImport`,
+    );
+  }
+  const pending = [hostImport];
   const visited = new Set();
   while (pending.length > 0) {
-    const name = pending.pop();
-    if (visited.has(name)) continue;
-    visited.add(name);
-    const record = graph.get(name);
+    const unit = pending.pop();
+    if (visited.has(unit)) continue;
+    visited.add(unit);
+    const record = graph.get(unit.declaration.text);
     if (record?.consumesMap) return;
     pending.push(...(record?.dependencies ?? []));
   }
   throw new Error(
-    `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${loaderFile} is not consumed by an exported runtime path`,
+    `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${loaderFile} is not consumed by the exported hostImport call path`,
+  );
+}
+
+function returnedExpression(callable) {
+  if (ts.isArrowFunction(callable) && !ts.isBlock(callable.body)) {
+    return callable.body;
+  }
+  const body = callable.body;
+  if (!body || !ts.isBlock(body) || body.statements.length !== 1) {
+    return undefined;
+  }
+  const statement = body.statements[0];
+  return ts.isReturnStatement(statement) ? statement.expression : undefined;
+}
+
+function unwrapReturnedExpression(expression) {
+  let current = expression && unwrapExpression(expression);
+  while (current && ts.isAwaitExpression(current)) {
+    current = unwrapExpression(current.expression);
+  }
+  return current;
+}
+
+function assertHostImportWrapper(identifier, file) {
+  const declaration = nearestBinding(identifier);
+  const fn =
+    declaration &&
+    ts.isIdentifier(declaration) &&
+    ts.isFunctionDeclaration(declaration.parent)
+      ? declaration.parent
+      : undefined;
+  const parameter = fn?.parameters[0];
+  const statement = fn?.body?.statements[0];
+  const returned =
+    fn?.parameters.length === 1 &&
+    parameter &&
+    ts.isIdentifier(parameter.name) &&
+    fn.body?.statements.length === 1 &&
+    statement &&
+    ts.isReturnStatement(statement)
+      ? unwrapReturnedExpression(statement.expression)
+      : undefined;
+  if (
+    !returned ||
+    !ts.isCallExpression(returned) ||
+    returned.expression.kind !== ts.SyntaxKind.ImportKeyword ||
+    returned.arguments.length !== 1 ||
+    !ts.isIdentifier(returned.arguments[0]) ||
+    returned.arguments[0].text !== parameter.name.text
+  ) {
+    throw new Error(
+      `[view-bundle-guard] ${file} importHostExternal must directly return a dynamic import of its sole parameter`,
+    );
+  }
+}
+
+function directImporterCallSpecifier(expression, file) {
+  const value = unwrapReturnedExpression(expression);
+  if (!value || !ts.isCallExpression(value)) return undefined;
+  const isDynamicImport = value.expression.kind === ts.SyntaxKind.ImportKeyword;
+  const isHostImport =
+    ts.isIdentifier(value.expression) &&
+    value.expression.text === "importHostExternal";
+  if (!isDynamicImport && !isHostImport) return undefined;
+  if (isHostImport) assertHostImportWrapper(value.expression, file);
+  if (
+    value.arguments.length !== 1 ||
+    !ts.isStringLiteralLike(value.arguments[0])
+  ) {
+    throw new Error(
+      `[view-bundle-guard] ${file} importer must consume one literal specifier`,
+    );
+  }
+  return value.arguments[0].text;
+}
+
+function hasTerminalValueReturn(unit) {
+  const root = unit.node;
+  if (ts.isArrowFunction(root) && !ts.isBlock(root.body)) return true;
+  const finalStatement = root.body?.statements?.at(-1);
+  return (
+    finalStatement !== undefined &&
+    ts.isReturnStatement(finalStatement) &&
+    finalStatement.expression !== undefined
+  );
+}
+
+function hasDirectThrow(callable) {
+  let found = false;
+  const visit = (node) => {
+    if (
+      node !== callable &&
+      (ts.isFunctionLike(node) ||
+        ts.isClassDeclaration(node) ||
+        ts.isClassExpression(node))
+    ) {
+      return;
+    }
+    if (ts.isThrowStatement(node)) found = true;
+    ts.forEachChild(node, visit);
+  };
+  visit(callable);
+  return found;
+}
+
+function validateLoaderSpecifierBinding(key, imported, file) {
+  if (imported.startsWith(".")) {
+    const expected = LOADER_RELATIVE_IMPORT_BINDINGS.get(key);
+    if (expected === imported) return;
+    throw new Error(
+      `[view-bundle-guard] ${file} loader importer for ${key} consumes mismatched relative specifier ${imported}; expected ${expected ?? "<none>"}`,
+    );
+  }
+  if (imported !== key) {
+    throw new Error(
+      `[view-bundle-guard] ${file} loader importer for ${key} consumes mismatched specifier ${imported}`,
+    );
+  }
+}
+
+function namespaceImportSpecifier(identifier) {
+  const binding = nearestBinding(identifier);
+  const namespaceImport = binding?.parent;
+  const declaration = namespaceImport?.parent?.parent;
+  if (
+    !namespaceImport ||
+    !ts.isNamespaceImport(namespaceImport) ||
+    !declaration ||
+    !ts.isImportDeclaration(declaration) ||
+    !ts.isStringLiteralLike(declaration.moduleSpecifier)
+  ) {
+    return undefined;
+  }
+  return declaration.moduleSpecifier.text;
+}
+
+function validateJsxDevRuntimeImporter(callable, key, file) {
+  const imports = [];
+  let hasReturn = false;
+  const visit = (node) => {
+    if (
+      node !== callable &&
+      (ts.isFunctionLike(node) ||
+        ts.isClassDeclaration(node) ||
+        ts.isClassExpression(node))
+    ) {
+      return;
+    }
+    if (ts.isReturnStatement(node) && node.expression) hasReturn = true;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "catch"
+    ) {
+      throw new Error(
+        `[view-bundle-guard] ${file} loader importer may not catch and fabricate a module`,
+      );
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword
+    ) {
+      if (
+        node.arguments.length !== 1 ||
+        !ts.isStringLiteralLike(node.arguments[0])
+      ) {
+        throw new Error(
+          `[view-bundle-guard] ${file} loader importer must consume literal specifiers`,
+        );
+      }
+      imports.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(callable);
+  if (
+    !hasReturn ||
+    imports.length !== 2 ||
+    imports[0] !== key ||
+    imports[1] !== "react/jsx-runtime"
+  ) {
+    throw new Error(
+      `[view-bundle-guard] ${file} ${key} importer must preserve its explicit development-to-production runtime fallback`,
+    );
+  }
+}
+
+function validateLoaderImporter(property, key, units, file) {
+  if (!ts.isPropertyAssignment(property)) {
+    throw new Error(
+      `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${file} must assign each specifier to a callable importer`,
+    );
+  }
+  const value = unwrapExpression(property.initializer);
+  if (ts.isIdentifier(value)) {
+    const unitByDeclaration = new Map(
+      [...units.values()].map((unit) => [unit.declaration, unit]),
+    );
+    const unit = unitByDeclaration.get(nearestBinding(value));
+    const expectedImporter = LOADER_NAMED_IMPORTER_BINDINGS.get(key);
+    if (
+      value.text !== expectedImporter ||
+      !unit?.callable ||
+      unit.node.parameters.length !== 0 ||
+      !hasTerminalValueReturn(unit) ||
+      hasDirectThrow(unit.node)
+    ) {
+      throw new Error(
+        `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS ${key} value in ${file} does not resolve to its expected callable importer ${expectedImporter ?? "<none>"}`,
+      );
+    }
+    return;
+  }
+  if (!ts.isArrowFunction(value) && !ts.isFunctionExpression(value)) {
+    throw new Error(
+      `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS ${key} value in ${file} must be callable`,
+    );
+  }
+  if (value.parameters.length !== 0) {
+    throw new Error(
+      `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS ${key} importer in ${file} may not require arguments`,
+    );
+  }
+  const result = returnedExpression(value);
+  if (result) {
+    const imported = directImporterCallSpecifier(result, file);
+    if (imported !== undefined) {
+      validateLoaderSpecifierBinding(key, imported, file);
+      return;
+    }
+    const returned = unwrapReturnedExpression(result);
+    if (returned && ts.isIdentifier(returned)) {
+      const imported = namespaceImportSpecifier(returned);
+      const expected = LOADER_NAMESPACE_IMPORT_BINDINGS.get(key);
+      if (imported !== undefined && imported === expected) return;
+      if (imported !== undefined) {
+        throw new Error(
+          `[view-bundle-guard] ${file} loader importer for ${key} consumes mismatched namespace ${imported}; expected ${expected ?? "<none>"}`,
+        );
+      }
+    }
+    throw new Error(
+      `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS ${key} callable in ${file} does not directly return a module importer`,
+    );
+  }
+  if (key === "react/jsx-dev-runtime") {
+    validateJsxDevRuntimeImporter(value, key, file);
+    return;
+  }
+  throw new Error(
+    `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS ${key} callable in ${file} must directly return its module`,
   );
 }
 
@@ -284,27 +720,22 @@ function callableImporterSpecifier(expression, file) {
       `[view-bundle-guard] ${file} host-external importer must be an inline callable`,
     );
   }
-  const literals = [];
-  const visit = (node) => {
-    if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) &&
-          node.expression.text === "importHostExternal")) &&
-      node.arguments.length === 1 &&
-      ts.isStringLiteralLike(node.arguments[0])
-    ) {
-      literals.push(node.arguments[0].text);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(callable.body);
-  if (literals.length !== 1) {
+  if (callable.parameters.length !== 0) {
     throw new Error(
-      `[view-bundle-guard] ${file} host-external importer must consume exactly one literal specifier`,
+      `[view-bundle-guard] ${file} host-external importer may not require arguments`,
     );
   }
-  return literals[0];
+  const result = returnedExpression(callable);
+  const specifier =
+    result === undefined
+      ? undefined
+      : directImporterCallSpecifier(result, file);
+  if (specifier === undefined) {
+    throw new Error(
+      `[view-bundle-guard] ${file} host-external importer must directly return or await exactly one literal import without a fallback`,
+    );
+  }
+  return specifier;
 }
 
 function registrationModuleSpecifier(registrationFile, entryFile) {
@@ -365,6 +796,7 @@ export function hostExternalSpecifiersFromSources(
 ) {
   const loaderFile = "<DynamicViewLoader.tsx>";
   const loader = parseSource(loaderSource, loaderFile, ts.ScriptKind.TSX);
+  const units = topLevelUnits(loader);
   const declarations = [];
   const findDeclarations = (node) => {
     if (
@@ -413,6 +845,7 @@ export function hostExternalSpecifiersFromSources(
         `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS contains duplicate specifier ${specifier}`,
       );
     }
+    validateLoaderImporter(property, specifier, units, loaderFile);
     specifiers.add(specifier);
   }
   if (specifiers.size === 0) {
@@ -420,7 +853,7 @@ export function hostExternalSpecifiersFromSources(
       "[view-bundle-guard] extracted zero host-external specifiers",
     );
   }
-  assertLoaderMapIsRuntimeReachable(loader, declarations[0], loaderFile);
+  assertLoaderMapIsRuntimeReachable(declarations[0], loaderFile, units);
 
   for (const { entryFile, entrySource, file, source } of registrationSources) {
     const sourceFile = parseSource(source, file, ts.ScriptKind.TS);
@@ -461,6 +894,11 @@ export function hostExternalSpecifiersFromSources(
       entrySource,
     );
     for (const call of calls) {
+      if (call.arguments.length !== 2) {
+        throw new Error(
+          `[view-bundle-guard] ${file} host-external registration must receive exactly a specifier and importer`,
+        );
+      }
       const registeredSpecifier = call.arguments[0];
       const importer = call.arguments[1];
       if (
@@ -567,6 +1005,45 @@ export function bareImportSpecifiers(source, file = "<view-bundle>") {
   return out;
 }
 
+/** Require an emitted bundle to contribute a non-empty runtime namespace. */
+export function assertViewBundleExports(source, file = "<view-bundle>") {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  if (sourceFile.parseDiagnostics?.length > 0) {
+    const diagnostic = sourceFile.parseDiagnostics[0];
+    throw new Error(
+      `[view-bundle-guard] ${file} is not parseable JavaScript: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
+    );
+  }
+  const hasRuntimeExport = sourceFile.statements.some((statement) => {
+    if (ts.isExportAssignment(statement)) return true;
+    if (
+      (ts.isVariableStatement(statement) ||
+        ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement)) &&
+      hasExportModifier(statement)
+    ) {
+      return true;
+    }
+    if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) {
+      return false;
+    }
+    if (!statement.exportClause) return true;
+    if (ts.isNamespaceExport(statement.exportClause)) return true;
+    return statement.exportClause.elements.some(
+      (element) => !element.isTypeOnly,
+    );
+  });
+  if (!hasRuntimeExport) {
+    throw new Error(`[view-bundle-guard] ${file} exports no runtime bindings`);
+  }
+}
+
 /**
  * Resolve every expected bundle through the same workspace inventory as the
  * producer. Tests may inject inventory options to exercise malformed trees.
@@ -597,6 +1074,11 @@ async function listBuiltBundles(options = {}) {
           `[view-bundle-guard] expected bundle is not a regular file: ${entry.relativeBundle}`,
         );
       }
+      if (metadata.size === 0) {
+        throw new Error(
+          `[view-bundle-guard] expected bundle is empty: ${entry.relativeBundle}`,
+        );
+      }
     } catch (error) {
       if (error?.code === "ENOENT") {
         missingBundles.push(entry);
@@ -609,14 +1091,24 @@ async function listBuiltBundles(options = {}) {
   return { bundles, missingBundles, expectedBundleCount: expected.length };
 }
 
+/** Classify a directory entry without treating devices or sockets as absent. */
+export function viewOutputEntryKind(entry, file) {
+  if (entry.isDirectory()) return "directory";
+  if (entry.isFile() || entry.isSymbolicLink()) return "file";
+  throw new Error(
+    `[view-bundle-guard] unsupported filesystem entry in view output: ${file}`,
+  );
+}
+
 async function listOutputFiles(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
     const absolute = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
+    const kind = viewOutputEntryKind(entry, absolute);
+    if (kind === "directory") {
       files.push(...(await listOutputFiles(absolute)));
-    } else if (entry.isFile() || entry.isSymbolicLink()) {
+    } else {
       files.push(absolute);
     }
   }
@@ -692,6 +1184,7 @@ export async function validateViewBundles(options = {}) {
   const violations = [];
   for (const { name, bundle } of bundles) {
     const source = await fs.readFile(bundle, "utf8");
+    assertViewBundleExports(source, bundle);
     for (const spec of bareImportSpecifiers(source, bundle)) {
       if (!allowed.has(spec))
         violations.push({ plugin: name, specifier: spec });

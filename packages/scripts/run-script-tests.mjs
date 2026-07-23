@@ -102,7 +102,11 @@ function integerAttribute(attributes, name, label) {
   if (raw === undefined || !/^(?:0|[1-9]\d*)$/.test(raw)) {
     throw new Error(`JUnit ${label} has no valid ${name} count`);
   }
-  return Number(raw);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`JUnit ${label} has no safe ${name} count`);
+  }
+  return value;
 }
 
 function parseJunitDocument(xml) {
@@ -156,6 +160,11 @@ function parseJunitDocument(xml) {
   parser.on("text", (text) => {
     if (text.trim() && !["failure", "skipped"].includes(stack.at(-1)?.name)) {
       throw new Error("JUnit artifact contains unexpected text content");
+    }
+  });
+  parser.on("cdata", (text) => {
+    if (text.trim() && !["failure", "skipped"].includes(stack.at(-1)?.name)) {
+      throw new Error("JUnit artifact contains unexpected CDATA content");
     }
   });
   parser.write(xml).close();
@@ -250,6 +259,11 @@ export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
     }
     suiteFiles.add(file);
     const counts = reconcileSuite(suite, undefined, identities);
+    if (counts.tests === 0) {
+      throw new Error(
+        `JUnit top-level testsuite ${file} contains zero testcases`,
+      );
+    }
     for (const key of Object.keys(actual)) actual[key] += counts[key];
   }
   for (const key of Object.keys(actual)) {
@@ -261,6 +275,14 @@ export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
     }
   }
   const { tests, assertions, failures, skipped } = actual;
+  if (tests === 0) {
+    throw new Error("JUnit artifact contains zero tests");
+  }
+  if (skipped !== 0) {
+    throw new Error(
+      `JUnit artifact contains ${skipped} skipped test(s); the complete script lane may not omit discovered coverage`,
+    );
+  }
   const expectedFiles = new Set(inventoryFiles);
   const missingFiles = [...expectedFiles].filter(
     (file) => !suiteFiles.has(file),

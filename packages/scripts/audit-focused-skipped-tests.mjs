@@ -75,7 +75,7 @@ const TEST_DIRECTORY_SEGMENTS = new Set([
   "tests",
 ]);
 const TEST_BASENAME_PATTERN =
-  /(?:^|[._-])(?:e2e[._-])?(?:test|spec)(?:[._-]|$)|(?:^|[._-])self-test(?:[._-]|$)/i;
+  /(?:^|[._-])(?:e2e[._-])?(?:bench|benchmark|cy|test|spec)(?:[._-]|$)|(?:^|[._-])self-test(?:[._-]|$)/i;
 const RUNNER_ROOTS = new Set([
   "bench",
   "context",
@@ -262,23 +262,16 @@ function scriptKind(filePath) {
 }
 
 function callChain(expression) {
-  if (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isNonNullExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression)
-  ) {
-    return callChain(expression.expression);
+  const current = unwrapExpression(expression);
+  if (ts.isCallExpression(current)) return callChain(current.expression);
+  if (ts.isIdentifier(current)) return [current.text];
+  if (ts.isPropertyAccessExpression(current)) {
+    const base = callChain(current.expression);
+    return base ? [...base, current.name.text] : null;
   }
-  if (ts.isCallExpression(expression)) return callChain(expression.expression);
-  if (ts.isIdentifier(expression)) return [expression.text];
-  if (ts.isPropertyAccessExpression(expression)) {
-    const base = callChain(expression.expression);
-    return base ? [...base, expression.name.text] : null;
-  }
-  if (ts.isElementAccessExpression(expression)) {
-    const base = callChain(expression.expression);
-    const key = expression.argumentExpression;
+  if (ts.isElementAccessExpression(current)) {
+    const base = callChain(current.expression);
+    const key = current.argumentExpression;
     if (!base || !key || !ts.isStringLiteralLike(key)) return null;
     return [...base, key.text];
   }
@@ -368,26 +361,18 @@ function nearestBinding(identifier) {
 }
 
 function baseIdentifier(expression) {
-  let current = expression;
-  while (
-    ts.isCallExpression(current) ||
-    ts.isParenthesizedExpression(current) ||
-    ts.isNonNullExpression(current) ||
-    ts.isAsExpression(current) ||
-    ts.isSatisfiesExpression(current) ||
-    ts.isPropertyAccessExpression(current) ||
-    ts.isElementAccessExpression(current)
-  ) {
+  let current = unwrapExpression(expression);
+  while (true) {
     if (
+      ts.isCallExpression(current) ||
       ts.isPropertyAccessExpression(current) ||
       ts.isElementAccessExpression(current)
     ) {
       current = current.expression;
-    } else if (ts.isCallExpression(current)) {
-      current = current.expression;
-    } else {
-      current = current.expression;
+      current = unwrapExpression(current);
+      continue;
     }
+    break;
   }
   return ts.isIdentifier(current) ? current : undefined;
 }
@@ -395,10 +380,15 @@ function baseIdentifier(expression) {
 function resolvedAlias(expression, aliases) {
   const identifier = baseIdentifier(expression);
   if (!identifier) return undefined;
-  const alias = aliases.get(identifier.text);
-  return alias && nearestBinding(identifier) === alias.declaration
-    ? alias
-    : undefined;
+  const binding = nearestBinding(identifier);
+  if (!binding) return undefined;
+  const records = aliases.get(binding);
+  if (!records) return undefined;
+  const position = identifier.getStart();
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    if (records[index].position <= position) return records[index];
+  }
+  return undefined;
 }
 
 function canonicalCallChain(expression, aliases) {
@@ -431,6 +421,16 @@ function requireRunnerModule(expression) {
 
 function collectRunnerAliases(sourceFile) {
   const aliases = new Map();
+  const addAlias = (
+    declaration,
+    chain,
+    position,
+    conditionalDisable = undefined,
+  ) => {
+    const records = aliases.get(declaration) ?? [];
+    records.push({ chain, conditionalDisable, declaration, position });
+    aliases.set(declaration, records);
+  };
   for (const statement of sourceFile.statements) {
     if (
       !ts.isImportDeclaration(statement) ||
@@ -442,17 +442,11 @@ function collectRunnerAliases(sourceFile) {
     }
     const clause = statement.importClause;
     if (clause?.name) {
-      aliases.set(clause.name.text, {
-        chain: ["test"],
-        declaration: clause.name,
-      });
+      addAlias(clause.name, ["test"], 0);
     }
     const bindings = clause?.namedBindings;
     if (bindings && ts.isNamespaceImport(bindings)) {
-      aliases.set(bindings.name.text, {
-        chain: [],
-        declaration: bindings.name,
-      });
+      addAlias(bindings.name, [], 0);
     } else if (bindings && ts.isNamedImports(bindings)) {
       for (const element of bindings.elements) {
         if (element.isTypeOnly) continue;
@@ -462,19 +456,15 @@ function collectRunnerAliases(sourceFile) {
           FOCUSED_ALIASES.has(imported) ||
           DISABLED_ALIASES.has(imported)
         ) {
-          aliases.set(element.name.text, {
-            chain: [imported],
-            declaration: element.name,
-          });
+          addAlias(element.name, [imported], 0);
         }
       }
     }
   }
 
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (!declaration.initializer) continue;
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      const declaration = node;
       if (ts.isIdentifier(declaration.name)) {
         let chain;
         let conditionalDisable;
@@ -496,42 +486,65 @@ function collectRunnerAliases(sourceFile) {
           }
         }
         if (chain) {
-          aliases.set(declaration.name.text, {
+          addAlias(
+            declaration.name,
             chain,
+            declaration.getEnd(),
             conditionalDisable,
-            declaration: declaration.name,
-          });
+          );
         }
-        continue;
-      }
-      if (!ts.isObjectBindingPattern(declaration.name)) continue;
-      let base;
-      if (requireRunnerModule(declaration.initializer)) {
-        base = [];
-      } else {
-        base = canonicalCallChain(declaration.initializer, aliases);
-      }
-      if (!base) continue;
-      for (const element of declaration.name.elements) {
-        if (
-          element.dotDotDotToken ||
-          !ts.isIdentifier(element.name) ||
-          !(
-            element.propertyName === undefined ||
-            ts.isIdentifier(element.propertyName) ||
-            ts.isStringLiteralLike(element.propertyName)
-          )
-        ) {
-          continue;
+      } else if (ts.isObjectBindingPattern(declaration.name)) {
+        let base;
+        if (requireRunnerModule(declaration.initializer)) {
+          base = [];
+        } else {
+          base = canonicalCallChain(declaration.initializer, aliases);
         }
-        const property = element.propertyName?.text ?? element.name.text;
-        aliases.set(element.name.text, {
-          chain: [...base, property],
-          declaration: element.name,
-        });
+        if (base) {
+          for (const element of declaration.name.elements) {
+            if (
+              element.dotDotDotToken ||
+              !ts.isIdentifier(element.name) ||
+              !(
+                element.propertyName === undefined ||
+                ts.isIdentifier(element.propertyName) ||
+                ts.isStringLiteralLike(element.propertyName)
+              )
+            ) {
+              continue;
+            }
+            const property = element.propertyName?.text ?? element.name.text;
+            addAlias(element.name, [...base, property], declaration.getEnd());
+          }
+        }
+      }
+    } else if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
+      const target = unwrapExpression(node.left);
+      if (ts.isIdentifier(target)) {
+        const declaration = nearestBinding(target);
+        const chain = canonicalCallChain(node.right, aliases);
+        if (declaration && chain) {
+          let conditionalDisable;
+          const initializer = unwrapExpression(node.right);
+          if (
+            ts.isCallExpression(initializer) &&
+            ["skipIf", "todoIf"].includes(chain.at(-1))
+          ) {
+            conditionalDisable = {
+              condition: initializer.arguments[0],
+              node: initializer,
+            };
+          }
+          addAlias(declaration, chain, node.getEnd(), conditionalDisable);
+        }
       }
     }
-  }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
   return aliases;
 }
 
@@ -544,13 +557,28 @@ function disabledModifier(chain) {
 
 function unwrapExpression(node) {
   let current = node;
-  while (
-    ts.isParenthesizedExpression(current) ||
-    ts.isNonNullExpression(current) ||
-    ts.isAsExpression(current) ||
-    ts.isSatisfiesExpression(current)
-  ) {
-    current = current.expression;
+  while (true) {
+    if (
+      ts.isParenthesizedExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isSatisfiesExpression(current)
+    ) {
+      current = current.expression;
+      continue;
+    }
+    if (
+      ts.isBinaryExpression(current) &&
+      current.operatorToken.kind === ts.SyntaxKind.CommaToken
+    ) {
+      current = current.right;
+      continue;
+    }
+    if (ts.isCommaListExpression(current)) {
+      current = current.elements.at(-1);
+      continue;
+    }
+    break;
   }
   return current;
 }
@@ -625,12 +653,34 @@ function hasOuterModifierCall(node, modifier, sourceFile, aliases) {
   return false;
 }
 
+function hasOuterFocusedCall(node, sourceFile, aliases) {
+  const start = node.getStart(sourceFile);
+  let parent = node.parent;
+  while (parent && parent.getStart(sourceFile) === start) {
+    if (
+      ts.isCallExpression(parent) &&
+      isFocusedChain(canonicalCallChain(parent.expression, aliases))
+    ) {
+      return true;
+    }
+    parent = parent.parent;
+  }
+  return false;
+}
+
 function staticOptionCalls(node) {
   const options = [];
   for (const argument of node.arguments) {
     const value = unwrapExpression(argument);
     if (!ts.isObjectLiteralExpression(value)) continue;
     for (const property of value.properties) {
+      if (
+        ts.isShorthandPropertyAssignment(property) &&
+        property.name.text === "only"
+      ) {
+        options.push({ modifier: "only", documented: false });
+        continue;
+      }
       if (
         !ts.isPropertyAssignment(property) ||
         !(
@@ -642,7 +692,10 @@ function staticOptionCalls(node) {
       }
       if (!["only", "skip", "todo"].includes(property.name.text)) continue;
       const truthy = staticTruthiness(property.initializer);
-      if (truthy === true) {
+      if (
+        (property.name.text === "only" && truthy !== false) ||
+        (property.name.text !== "only" && truthy === true)
+      ) {
         const reason = unwrapExpression(property.initializer);
         options.push({
           modifier: property.name.text,
@@ -782,7 +835,9 @@ export function findViolations(filePath, content) {
   const aliases = collectRunnerAliases(sourceFile);
   const conditionalAliasInitializers = new Set(
     [...aliases.values()]
-      .map((alias) => alias.conditionalDisable?.node)
+      .flatMap((records) =>
+        records.map((alias) => alias.conditionalDisable?.node),
+      )
       .filter(Boolean),
   );
   const violations = [];
@@ -797,8 +852,9 @@ export function findViolations(filePath, content) {
           : [];
       const position = node.getStart(sourceFile);
       if (
-        isFocusedChain(chain) ||
-        optionCalls.some(({ modifier }) => modifier === "only")
+        (isFocusedChain(chain) ||
+          optionCalls.some(({ modifier }) => modifier === "only")) &&
+        !hasOuterFocusedCall(node, sourceFile, aliases)
       ) {
         const key = `focused:${position}`;
         if (!recorded.has(key)) {

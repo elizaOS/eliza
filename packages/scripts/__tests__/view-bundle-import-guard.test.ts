@@ -8,10 +8,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  assertViewBundleExports,
   bareImportSpecifiers,
   getHostExternalSpecifiers,
   hostExternalSpecifiersFromSources,
   validateViewBundles,
+  viewOutputEntryKind,
 } from "../view-bundle-import-guard.mjs";
 
 const tempDirs: string[] = [];
@@ -100,7 +102,10 @@ describe("view bundle import guard", () => {
     const { absoluteDir, options } = fixture();
     const bundleDir = path.join(absoluteDir, "dist", "views");
     fs.mkdirSync(path.join(bundleDir, "lazy"), { recursive: true });
-    fs.writeFileSync(path.join(bundleDir, "bundle.js"), "export {};\n");
+    fs.writeFileSync(
+      path.join(bundleDir, "bundle.js"),
+      "export const view = 1;\n",
+    );
     fs.writeFileSync(
       path.join(bundleDir, "lazy", "old-chunk.js"),
       "export {};\n",
@@ -129,7 +134,10 @@ describe("view bundle import guard", () => {
     const { absoluteDir, options } = fixture();
     const bundleDir = path.join(absoluteDir, "dist", "views");
     fs.mkdirSync(bundleDir, { recursive: true });
-    fs.writeFileSync(path.join(bundleDir, "bundle.js"), "export {};\n");
+    fs.writeFileSync(
+      path.join(bundleDir, "bundle.js"),
+      "export const view = 1;\n",
+    );
     fs.writeFileSync(path.join(bundleDir, "view-module.js"), "export {};\n");
     fs.writeFileSync(path.join(bundleDir, "view-module.d.ts"), "export {};\n");
 
@@ -152,6 +160,43 @@ describe("view bundle import guard", () => {
         'const text = "import x from fake"; import("./relative.js");',
       ),
     ).toThrow("must be self-contained");
+  });
+
+  test("rejects empty or namespace-free bundle artifacts", async () => {
+    const empty = fixture();
+    const emptyBundleDir = path.join(empty.absoluteDir, "dist", "views");
+    fs.mkdirSync(emptyBundleDir, { recursive: true });
+    fs.writeFileSync(path.join(emptyBundleDir, "bundle.js"), "");
+    await expect(validateViewBundles(empty.options)).rejects.toThrow(
+      "expected bundle is empty",
+    );
+
+    for (const source of [
+      "// build completed without a view export\n",
+      "export {};\n",
+    ]) {
+      const candidate = fixture();
+      const bundleDir = path.join(candidate.absoluteDir, "dist", "views");
+      fs.mkdirSync(bundleDir, { recursive: true });
+      fs.writeFileSync(path.join(bundleDir, "bundle.js"), source);
+      await expect(validateViewBundles(candidate.options)).rejects.toThrow(
+        "exports no runtime bindings",
+      );
+    }
+    expect(() =>
+      assertViewBundleExports("export const view = 1;"),
+    ).not.toThrow();
+  });
+
+  test("rejects unsupported filesystem nodes in view output", () => {
+    const unsupported = {
+      isDirectory: () => false,
+      isFile: () => false,
+      isSymbolicLink: () => false,
+    };
+    expect(() => viewOutputEntryKind(unsupported, "dist/views/device")).toThrow(
+      "unsupported filesystem entry",
+    );
   });
 
   test("rejects imports whose runtime specifier cannot be proven loadable", () => {
@@ -234,7 +279,7 @@ describe("view bundle import guard", () => {
     };
     expect(() =>
       hostExternalSpecifiersFromSources(deadLoader, [registration]),
-    ).toThrow("not consumed by an exported runtime path");
+    ).toThrow(/callable hostImport|not consumed/);
 
     const liveLoader = `
       const HOST_EXTERNAL_IMPORTERS = { react: () => import("react") };
@@ -254,6 +299,111 @@ describe("view bundle import guard", () => {
         },
       ]),
     ).toThrow("module scope");
+  });
+
+  test("binds loader values and reachability to real callable imports", () => {
+    const registration = {
+      entryFile: "main.tsx",
+      entrySource: `
+        import { initializeHostExternals } from "./host-externals";
+        initializeHostExternals();
+      `,
+      file: "host-externals.ts",
+      source: `
+        import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
+        export function initializeHostExternals() {
+          registerHostExternalImporter("@fixture/runtime", () => import("@fixture/runtime"));
+        }
+      `,
+    };
+    const loader = (value: string, hostImport: string) => `
+      const HOST_EXTERNAL_IMPORTERS = { react: ${value} };
+      ${hostImport}
+    `;
+
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        loader(
+          "42",
+          "export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]; }",
+        ),
+        [registration],
+      ),
+    ).toThrow("must be callable");
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        loader(
+          '() => import("evil")',
+          "export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]; }",
+        ),
+        [registration],
+      ),
+    ).toThrow("mismatched specifier");
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        loader(
+          '() => { throw new Error("disabled"); }',
+          "export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]; }",
+        ),
+        [registration],
+      ),
+    ).toThrow("must directly return");
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        loader(
+          '() => import("react")',
+          "export function hostImport(HOST_EXTERNAL_IMPORTERS) { return HOST_EXTERNAL_IMPORTERS.react(); }",
+        ),
+        [registration],
+      ),
+    ).toThrow("not consumed by the exported hostImport call path");
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        loader(
+          '() => import("react")',
+          `
+            function hidden(name) { return HOST_EXTERNAL_IMPORTERS[name]; }
+            export function hostImport() { return hidden; }
+          `,
+        ),
+        [registration],
+      ),
+    ).toThrow("not consumed by the exported hostImport call path");
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        `
+          function importCoreViewCompat() { return {}; }
+          const HOST_EXTERNAL_IMPORTERS = {
+            "@elizaos/app-core": importCoreViewCompat,
+          };
+          export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]?.(); }
+        `,
+        [registration],
+      ),
+    ).toThrow("expected callable importer");
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        `
+          function importCoreViewCompat() { throw new Error("disabled"); }
+          const HOST_EXTERNAL_IMPORTERS = {
+            "@elizaos/core": importCoreViewCompat,
+          };
+          export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]?.(); }
+        `,
+        [registration],
+      ),
+    ).toThrow("expected callable importer");
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        `
+          const HOST_EXTERNAL_IMPORTERS = {
+            "@elizaos/ui/api": () => import("../../state/index.ts"),
+          };
+          export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]?.(); }
+        `,
+        [registration],
+      ),
+    ).toThrow("mismatched relative specifier");
   });
 
   test("rejects shadowed, non-callable, dead-branch, and mismatched registrations", () => {
@@ -303,6 +453,20 @@ describe("view bundle import guard", () => {
         ),
       ]),
     ).toThrow("mismatched specifier");
+    expect(() =>
+      hostExternalSpecifiersFromSources(loader, [
+        source(
+          'registerHostExternalImporter("@fixture/runtime", () => { importHostExternal("@fixture/runtime"); return Promise.resolve({}); });',
+        ),
+      ]),
+    ).toThrow(/directly return|importHostExternal/);
+    expect(() =>
+      hostExternalSpecifiersFromSources(loader, [
+        source(
+          'registerHostExternalImporter("@fixture/runtime", () => importHostExternal("@fixture/runtime").catch(() => ({})));',
+        ),
+      ]),
+    ).toThrow(/directly return|importHostExternal/);
   });
 
   test("accepts only imports provided by the host", async () => {
