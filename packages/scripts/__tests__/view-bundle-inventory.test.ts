@@ -41,7 +41,7 @@ function addWorkspace(
   fs.mkdirSync(absoluteDir, { recursive: true });
   const config = options.config;
   if (config) fs.writeFileSync(path.join(absoluteDir, config), "export {};\n");
-  return {
+  const workspace = {
     name: options.name ?? `@fixture/${path.basename(dir)}`,
     dir,
     packageJson: {
@@ -55,6 +55,11 @@ function addWorkspace(
           : { "build:views": options.buildScript },
     },
   };
+  fs.writeFileSync(
+    path.join(absoluteDir, "package.json"),
+    `${JSON.stringify(workspace.packageJson)}\n`,
+  );
+  return workspace;
 }
 
 describe("dynamic-view build inventory", () => {
@@ -62,13 +67,13 @@ describe("dynamic-view build inventory", () => {
     const root = makeRoot();
     const workspace = addWorkspace(root, "packages/nested/viewer", {
       config: "vite.config.views.mts",
-      buildScript: "vite build --config vite.config.views.mts",
+      buildScript: "bunx --bun vite build --config vite.config.views.mts",
     });
 
     const inventory = discoverViewBundleInventory({
       repoRoot: root,
       workspacePackages: [workspace],
-      repositoryFiles: ["packages\\nested\\viewer\\vite.config.views.mts"],
+      repositoryFiles: ["packages/nested/viewer/vite.config.views.mts"],
     });
 
     expect(inventory.configCount).toBe(1);
@@ -80,6 +85,13 @@ describe("dynamic-view build inventory", () => {
         bundle: "packages/nested/viewer/dist/views/bundle.js",
       }),
     ]);
+    expect(() =>
+      discoverViewBundleInventory({
+        repoRoot: root,
+        workspacePackages: [workspace],
+        repositoryFiles: ["packages\\nested\\viewer\\vite.config.views.mts"],
+      }),
+    ).toThrow("backslash");
   });
 
   test("rejects an unowned view config", () => {
@@ -105,7 +117,7 @@ describe("dynamic-view build inventory", () => {
           "plugins/viewer/VITE.CONFIG.VIEWS.TS",
         ],
       }),
-    ).toThrow(/case-colliding view configs/);
+    ).toThrow(/case-colliding or duplicate view configs/);
 
     expect(() =>
       discoverViewBundleInventory({
@@ -113,18 +125,18 @@ describe("dynamic-view build inventory", () => {
         workspacePackages: [workspace, { ...workspace, dir: "Plugins/Viewer" }],
         repositoryFiles: [],
       }),
-    ).toThrow(/case-colliding workspace paths/);
+    ).toThrow(/case-colliding or duplicate workspace paths/);
   });
 
   test("rejects target identities shared across nested workspaces", () => {
     const root = makeRoot();
     const first = addWorkspace(root, "plugins/alpha/plugin-view", {
       config: "vite.config.views.ts",
-      buildScript: "vite build --config vite.config.views.ts",
+      buildScript: "bunx --bun vite build --config vite.config.views.ts",
     });
     const second = addWorkspace(root, "packages/beta/plugin-view", {
       config: "vite.config.views.ts",
-      buildScript: "vite build --config vite.config.views.ts",
+      buildScript: "bunx --bun vite build --config vite.config.views.ts",
     });
     expect(() =>
       discoverViewBundleInventory({
@@ -149,11 +161,11 @@ describe("dynamic-view build inventory", () => {
         workspacePackages: [withoutScript],
         repositoryFiles: ["plugins/no-script/vite.config.views.ts"],
       }),
-    ).toThrow(/has no non-empty build:views/);
+    ).toThrow(/build:views must be exactly/);
 
     const wrongScript = addWorkspace(root, "plugins/wrong-script", {
       config: "vite.config.views.ts",
-      buildScript: "vite build --config other.config.ts",
+      buildScript: "bunx --bun vite build --config other.config.ts",
     });
     expect(() =>
       discoverViewBundleInventory({
@@ -161,10 +173,31 @@ describe("dynamic-view build inventory", () => {
         workspacePackages: [wrongScript],
         repositoryFiles: ["plugins/wrong-script/vite.config.views.ts"],
       }),
-    ).toThrow(/must reference exactly vite\.config\.views\.ts/);
+    ).toThrow(/build:views must be exactly/);
+    for (const buildScript of [
+      "echo bunx --bun vite build --config vite.config.views.ts",
+      "bunx --bun vite build --config vite.config.views.ts && true",
+      "bunx --bun vite build --config vite.config.views.ts # producer",
+    ]) {
+      const deceptive = addWorkspace(
+        root,
+        `plugins/deceptive-${buildScript.length}`,
+        {
+          config: "vite.config.views.ts",
+          buildScript,
+        },
+      );
+      expect(() =>
+        discoverViewBundleInventory({
+          repoRoot: root,
+          workspacePackages: [deceptive],
+          repositoryFiles: [`${deceptive.dir}/vite.config.views.ts`],
+        }),
+      ).toThrow(/build:views must be exactly/);
+    }
 
     const scriptOnly = addWorkspace(root, "plugins/script-only", {
-      buildScript: "vite build --config vite.config.views.ts",
+      buildScript: "bunx --bun vite build --config vite.config.views.ts",
     });
     expect(() =>
       discoverViewBundleInventory({
@@ -176,7 +209,7 @@ describe("dynamic-view build inventory", () => {
 
     const oldVite = addWorkspace(root, "plugins/old-vite", {
       config: "vite.config.views.ts",
-      buildScript: "vite build --config vite.config.views.ts",
+      buildScript: "bunx --bun vite build --config vite.config.views.ts",
     });
     oldVite.packageJson.devDependencies.vite = "^7.0.0";
     expect(() =>
@@ -186,6 +219,92 @@ describe("dynamic-view build inventory", () => {
         repositoryFiles: ["plugins/old-vite/vite.config.views.ts"],
       }),
     ).toThrow(/must declare Vite 8 or newer directly/);
+
+    const prereleaseVite = addWorkspace(root, "plugins/prerelease-vite", {
+      config: "vite.config.views.ts",
+      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+    });
+    prereleaseVite.packageJson.devDependencies.vite = "^8.0.0-beta.1";
+    expect(() =>
+      discoverViewBundleInventory({
+        repoRoot: root,
+        workspacePackages: [prereleaseVite],
+        repositoryFiles: ["plugins/prerelease-vite/vite.config.views.ts"],
+      }),
+    ).toThrow(/must declare Vite 8 or newer directly/);
+  });
+
+  test("rejects symlinked workspace manifests, configs, and ancestors", () => {
+    const root = makeRoot();
+    const workspace = addWorkspace(root, "plugins/linked", {
+      config: "vite.config.views.ts",
+      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+    });
+    const outsideManifest = path.join(root, "outside-package.json");
+    fs.writeFileSync(outsideManifest, '{"name":"outside"}\n');
+    fs.rmSync(path.join(root, workspace.dir, "package.json"));
+    fs.symlinkSync(
+      outsideManifest,
+      path.join(root, workspace.dir, "package.json"),
+    );
+    expect(() =>
+      discoverViewBundleInventory({
+        repoRoot: root,
+        workspacePackages: [workspace],
+        repositoryFiles: [`${workspace.dir}/vite.config.views.ts`],
+      }),
+    ).toThrow("may not traverse a symlink");
+
+    const configWorkspace = addWorkspace(root, "plugins/linked-config", {
+      config: "vite.config.views.ts",
+      buildScript: "bunx --bun vite build --config vite.config.views.ts",
+    });
+    const outsideConfig = path.join(root, "outside-config.ts");
+    fs.writeFileSync(outsideConfig, "export {};\n");
+    fs.rmSync(path.join(root, configWorkspace.dir, "vite.config.views.ts"));
+    fs.symlinkSync(
+      outsideConfig,
+      path.join(root, configWorkspace.dir, "vite.config.views.ts"),
+    );
+    expect(() =>
+      discoverViewBundleInventory({
+        repoRoot: root,
+        workspacePackages: [configWorkspace],
+        repositoryFiles: [`${configWorkspace.dir}/vite.config.views.ts`],
+      }),
+    ).toThrow("may not traverse a symlink");
+
+    const externalWorkspace = path.join(root, "external-workspace");
+    fs.mkdirSync(externalWorkspace);
+    fs.writeFileSync(
+      path.join(externalWorkspace, "package.json"),
+      '{"name":"@fixture/ancestor"}\n',
+    );
+    fs.writeFileSync(
+      path.join(externalWorkspace, "vite.config.views.ts"),
+      "export {};\n",
+    );
+    fs.symlinkSync(externalWorkspace, path.join(root, "linked-workspace"));
+    expect(() =>
+      discoverViewBundleInventory({
+        repoRoot: root,
+        workspacePackages: [
+          {
+            name: "@fixture/ancestor",
+            dir: "linked-workspace",
+            packageJson: {
+              name: "@fixture/ancestor",
+              devDependencies: { vite: "^8.0.0" },
+              scripts: {
+                "build:views":
+                  "bunx --bun vite build --config vite.config.views.ts",
+              },
+            },
+          },
+        ],
+        repositoryFiles: ["linked-workspace/vite.config.views.ts"],
+      }),
+    ).toThrow("may not traverse a symlink");
   });
 
   test("rejects a zero-target inventory", () => {
@@ -227,7 +346,7 @@ describe("dynamic-view build inventory", () => {
     const root = makeRoot();
     const workspace = addWorkspace(root, "plugins/viewer", {
       config: "vite.config.views.ts",
-      buildScript: "vite build --config vite.config.views.ts",
+      buildScript: "bunx --bun vite build --config vite.config.views.ts",
     });
     const serialized = serializeViewBundleInventory(
       discoverViewBundleInventory({
@@ -251,7 +370,7 @@ describe("dynamic-view build inventory", () => {
           configBytes: 11,
           configSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
           bundle: "plugins/viewer/dist/views/bundle.js",
-          buildScript: "vite build --config vite.config.views.ts",
+          buildScript: "bunx --bun vite build --config vite.config.views.ts",
           packageManifestSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
           viteDependency: "^8.0.0",
         },

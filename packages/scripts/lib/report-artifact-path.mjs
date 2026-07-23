@@ -6,27 +6,44 @@
  * source, configuration, or an external filesystem location.
  */
 
-import { lstatSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import {
+  closeSync,
+  constants,
+  lstatSync,
+  openSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
-function assertSafeParents(repoRoot, absolute, label) {
+const WINDOWS_DEVICE_NAME =
+  /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]|CONIN\$|CONOUT\$)$/i;
+
+function assertSafeDirectory(directory, relative, label) {
+  try {
+    const metadata = lstatSync(directory);
+    if (metadata.isSymbolicLink()) {
+      throw new Error(`${label} has a symlinked parent: ${relative}`);
+    }
+    if (!metadata.isDirectory()) {
+      throw new Error(`${label} parent is not a directory: ${relative}`);
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+function assertSafeParents(reportsRoot, absolute, label) {
+  assertSafeDirectory(reportsRoot, "reports", label);
   let current = path.dirname(absolute);
-  while (current !== repoRoot) {
-    const relative = path.relative(repoRoot, current);
+  while (current !== reportsRoot) {
+    const relative = path.relative(reportsRoot, current);
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new Error(`${label} escapes the repository reports directory`);
     }
-    try {
-      const metadata = lstatSync(current);
-      if (metadata.isSymbolicLink()) {
-        throw new Error(`${label} has a symlinked parent: ${relative}`);
-      }
-      if (!metadata.isDirectory()) {
-        throw new Error(`${label} parent is not a directory: ${relative}`);
-      }
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
-    }
+    assertSafeDirectory(current, `reports/${relative}`, label);
     const parent = path.dirname(current);
     if (parent === current) {
       throw new Error(`${label} could not be contained within the repository`);
@@ -60,8 +77,24 @@ export function resolveReportArtifactPath(
   ) {
     throw new Error(`${label} may not contain empty or traversal segments`);
   }
+  for (const segment of segments) {
+    if (segment.includes(":")) {
+      throw new Error(
+        `${label} may not contain drive-relative or stream names`,
+      );
+    }
+    if (/[. ]$/.test(segment)) {
+      throw new Error(
+        `${label} may not contain Windows-normalized trailing dots or spaces`,
+      );
+    }
+    const deviceStem = segment.split(".")[0];
+    if (WINDOWS_DEVICE_NAME.test(deviceStem)) {
+      throw new Error(`${label} may not contain a Windows device name`);
+    }
+  }
   const relative = path.posix.normalize(normalizedSlashes);
-  if (!relative.startsWith("reports/")) {
+  if (segments[0] !== "reports" || segments.length < 2) {
     throw new Error(`${label} must be under reports/`);
   }
   if (
@@ -71,7 +104,61 @@ export function resolveReportArtifactPath(
     throw new Error(`${label} must name a ${extension} file`);
   }
   const root = path.resolve(repoRoot);
-  const absolute = path.resolve(root, ...relative.split("/"));
-  assertSafeParents(root, absolute, label);
+  const reportsRoot = path.resolve(root, "reports");
+  const absolute = path.resolve(reportsRoot, ...segments.slice(1));
+  const containment = path.relative(reportsRoot, absolute);
+  if (
+    containment === "" ||
+    containment.startsWith("..") ||
+    path.isAbsolute(containment)
+  ) {
+    throw new Error(`${label} escapes the repository reports directory`);
+  }
+  assertSafeParents(reportsRoot, absolute, label);
   return { absolute, relative };
+}
+
+/**
+ * Atomically replace one file through an exclusive, unpredictable sibling.
+ *
+ * Tests may inject the token and pid to prove a pre-created symlink is refused.
+ */
+export function atomicWriteFileSync(
+  destination,
+  data,
+  { mode = 0o600, pid = process.pid, randomToken } = {},
+) {
+  const token = randomToken ?? randomBytes(16).toString("hex");
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(token)) {
+    throw new Error("atomic report token must be 8-128 safe characters");
+  }
+  const temporary = `${destination}.${pid}.${token}.tmp`;
+  let descriptor;
+  try {
+    descriptor = openSync(
+      temporary,
+      constants.O_CREAT |
+        constants.O_EXCL |
+        constants.O_WRONLY |
+        (constants.O_NOFOLLOW ?? 0),
+      mode,
+    );
+    writeFileSync(descriptor, data);
+    closeSync(descriptor);
+    descriptor = undefined;
+    renameSync(temporary, destination);
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    rmSync(temporary, { force: true });
+    throw error;
+  }
+}
+
+/** Serialize one JSON report through the shared exclusive atomic writer. */
+export function atomicWriteJsonSync(destination, value, options) {
+  atomicWriteFileSync(
+    destination,
+    `${JSON.stringify(value, null, 2)}\n`,
+    options,
+  );
 }

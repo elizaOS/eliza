@@ -9,16 +9,21 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstatSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import semver from "semver";
+import {
+  assertContainedRegularFile,
+  assertUniqueRepositoryIdentities,
+  normalizeGitRepositoryPath,
+} from "./repository-file-integrity.mjs";
 import { listPackages } from "./workspaces.mjs";
 
 const VIEW_CONFIG_BASENAME =
   /^vite\.config\.views\.(?:ts|mts|cts|js|mjs|cjs)$/i;
 
 function normalizeRelativePath(value) {
-  return value.split("\\").join("/").replace(/^\.\//, "");
+  return normalizeGitRepositoryPath(value, "view inventory path");
 }
 
 function compareText(left, right) {
@@ -59,20 +64,6 @@ function listRepositoryFiles(repoRoot) {
     .sort(compareText);
 }
 
-function assertNoCaseCollisions(values, label) {
-  const seen = new Map();
-  for (const value of values) {
-    const identity = normalizedIdentity(value);
-    const previous = seen.get(identity);
-    if (previous && previous !== value) {
-      throw new Error(
-        `[view-inventory] case-colliding ${label}: ${previous} and ${value}`,
-      );
-    }
-    seen.set(identity, value);
-  }
-}
-
 function assertUniqueTargetIdentities(targets) {
   const owners = new Map();
   for (const target of targets) {
@@ -93,27 +84,12 @@ function assertUniqueTargetIdentities(targets) {
   }
 }
 
-function configReferences(scriptBody) {
-  const references = [];
-  const pattern = /--config(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/g;
-  for (const match of scriptBody.matchAll(pattern)) {
-    references.push(normalizeRelativePath(match[1] ?? match[2] ?? match[3]));
-  }
-  return references;
-}
-
 function validateBuildScript(workspace, configName) {
   const script = workspace.packageJson.scripts?.["build:views"];
-  if (typeof script !== "string" || script.trim().length === 0) {
+  const expected = `bunx --bun vite build --config ${configName}`;
+  if (script !== expected) {
     throw new Error(
-      `[view-inventory] ${workspace.dir}/${configName} has no non-empty build:views package script`,
-    );
-  }
-
-  const references = configReferences(script);
-  if (references.length !== 1 || references[0] !== configName) {
-    throw new Error(
-      `[view-inventory] ${workspace.dir} build:views must reference exactly ${configName} via --config`,
+      `[view-inventory] ${workspace.dir} build:views must be exactly: ${expected}`,
     );
   }
   return script;
@@ -125,7 +101,7 @@ function validateViteDependency(workspace) {
     workspace.packageJson.dependencies?.vite;
   const minimum =
     typeof declared === "string" ? semver.minVersion(declared) : null;
-  if (!minimum || minimum.major < 8) {
+  if (!minimum || !semver.gte(minimum, "8.0.0")) {
     throw new Error(
       `[view-inventory] ${workspace.dir} must declare Vite 8 or newer directly; the shared bundle config uses Rolldown output contracts`,
     );
@@ -151,11 +127,14 @@ export function discoverViewBundleInventory(options = {}) {
     VIEW_CONFIG_BASENAME.test(path.posix.basename(relativePath)),
   );
 
-  assertNoCaseCollisions(
+  assertUniqueRepositoryIdentities(
     workspacePackages.map(({ dir }) => normalizeRelativePath(dir)),
-    "workspace paths",
+    "[view-inventory] case-colliding or duplicate workspace paths",
   );
-  assertNoCaseCollisions(configPaths, "view configs");
+  assertUniqueRepositoryIdentities(
+    configPaths,
+    "[view-inventory] case-colliding or duplicate view configs",
+  );
 
   const workspaceByDir = new Map(
     workspacePackages.map((workspace) => [
@@ -178,6 +157,11 @@ export function discoverViewBundleInventory(options = {}) {
   const targets = [];
   for (const workspace of workspacePackages) {
     const workspaceDir = normalizeRelativePath(workspace.dir);
+    assertContainedRegularFile(
+      repoRoot,
+      `${workspaceDir}/package.json`,
+      `[view-inventory] ${workspaceDir}/package.json`,
+    );
     const absoluteDir = path.join(repoRoot, workspaceDir);
     const onDiskConfigNames = readdirSync(absoluteDir)
       .filter((name) => VIEW_CONFIG_BASENAME.test(name))
@@ -216,13 +200,11 @@ export function discoverViewBundleInventory(options = {}) {
     }
 
     const configName = onDiskConfigNames[0];
-    const configAbsolute = path.join(absoluteDir, configName);
-    const configMetadata = lstatSync(configAbsolute);
-    if (!configMetadata.isFile() || configMetadata.isSymbolicLink()) {
-      throw new Error(
-        `[view-inventory] ${workspaceDir}/${configName} must be a regular file`,
-      );
-    }
+    const { absolute: configAbsolute } = assertContainedRegularFile(
+      repoRoot,
+      `${workspaceDir}/${configName}`,
+      `[view-inventory] ${workspaceDir}/${configName}`,
+    );
     const configContent = readFileSync(configAbsolute);
     const validatedBuildScript = validateBuildScript(workspace, configName);
     const viteDependency = validateViteDependency(workspace);

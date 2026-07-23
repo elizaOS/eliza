@@ -11,6 +11,12 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { isAlias, isMap, isScalar, isSeq, parseDocument, visit } from "yaml";
+import {
+  assertContainedRegularFile,
+  assertUniqueRepositoryIdentities,
+  normalizeGitRepositoryPath,
+} from "./repository-file-integrity.mjs";
 
 export const SCRIPT_TEST_RUNNER =
   "node packages/scripts/run-script-tests.mjs --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml";
@@ -31,7 +37,7 @@ export const SCRIPT_TEST_EXTENSIONS = [
 ];
 
 const SCRIPT_TEST_PATTERN = new RegExp(
-  `^packages/scripts/(?:.+/)?[^/]+\\.(?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
+  `^packages/scripts/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
   "i",
 );
 
@@ -45,7 +51,7 @@ function compareText(left, right) {
 }
 
 export function normalizeRepositoryPath(value) {
-  return value.split("\\").join("/").replace(/^\.\//, "");
+  return normalizeGitRepositoryPath(value, "script-test inventory path");
 }
 
 export function isScriptTestPath(value) {
@@ -71,20 +77,6 @@ function listRepositoryFiles(repoRoot) {
   )
     .split("\0")
     .filter(Boolean);
-}
-
-function assertNoCaseCollisions(paths) {
-  const seen = new Map();
-  for (const file of paths) {
-    const identity = file.toLocaleLowerCase("en-US");
-    const previous = seen.get(identity);
-    if (previous && previous !== file) {
-      throw new Error(
-        `[script-test-inventory] case-colliding test paths: ${previous} and ${file}`,
-      );
-    }
-    seen.set(identity, file);
-  }
 }
 
 function validateExclusions(eligibleFiles, exclusions) {
@@ -113,6 +105,150 @@ function validateExclusions(eligibleFiles, exclusions) {
   return records.sort((left, right) => compareText(left.file, right.file));
 }
 
+function scalarKey(pair) {
+  return isScalar(pair.key) && typeof pair.key.value === "string"
+    ? pair.key.value
+    : undefined;
+}
+
+function mappingValue(mapping, key) {
+  const pair = mapping.items.find((candidate) => scalarKey(candidate) === key);
+  return pair?.value;
+}
+
+function scalarString(mapping, key, label, requiredType) {
+  const value = mappingValue(mapping, key);
+  if (!isScalar(value) || typeof value.value !== "string") {
+    throw new Error(`[script-test-inventory] ${label} must be a string scalar`);
+  }
+  if (requiredType !== undefined && value.type !== requiredType) {
+    throw new Error(
+      `[script-test-inventory] ${label} must use ${requiredType.toLocaleLowerCase("en-US")} YAML scalar syntax`,
+    );
+  }
+  return value.value;
+}
+
+function parseScenarioWorkflow(source) {
+  const document = parseDocument(source, {
+    merge: false,
+    prettyErrors: true,
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) {
+    throw new Error(
+      `[script-test-inventory] scenario-pr.yml is invalid YAML: ${document.errors[0].message}`,
+    );
+  }
+  visit(document, {
+    Alias(_key, node) {
+      if (isAlias(node)) {
+        throw new Error(
+          "[script-test-inventory] scenario-pr.yml may not use YAML aliases",
+        );
+      }
+    },
+    Pair(_key, pair) {
+      if (scalarKey(pair) === "<<") {
+        throw new Error(
+          "[script-test-inventory] scenario-pr.yml may not use YAML merge keys",
+        );
+      }
+    },
+  });
+  if (!isMap(document.contents)) {
+    throw new Error(
+      "[script-test-inventory] scenario-pr.yml root must be a mapping",
+    );
+  }
+  return document.contents;
+}
+
+function assertScenarioLane(scenarioWorkflow) {
+  const root = parseScenarioWorkflow(scenarioWorkflow);
+  const jobs = mappingValue(root, "jobs");
+  if (!isMap(jobs)) {
+    throw new Error(
+      "[script-test-inventory] scenario-pr.yml must declare a jobs mapping",
+    );
+  }
+  const job = mappingValue(jobs, "scenario-runner-e2e");
+  if (!isMap(job)) {
+    throw new Error(
+      "[script-test-inventory] scenario-pr.yml must declare jobs.scenario-runner-e2e",
+    );
+  }
+  if (
+    scalarString(job, "needs", "scenario-runner-e2e.needs", "PLAIN") !==
+    "changes"
+  ) {
+    throw new Error(
+      "[script-test-inventory] scenario-runner-e2e must depend directly on changes",
+    );
+  }
+  if (
+    scalarString(job, "if", "scenario-runner-e2e.if", "PLAIN") !==
+    "needs.changes.outputs.run_scenario_pr == 'true'"
+  ) {
+    throw new Error(
+      "[script-test-inventory] scenario-runner-e2e must use the required change-gate condition",
+    );
+  }
+  if (mappingValue(job, "continue-on-error") !== undefined) {
+    throw new Error(
+      "[script-test-inventory] scenario-runner-e2e may not continue on error",
+    );
+  }
+  const steps = mappingValue(job, "steps");
+  if (!isSeq(steps)) {
+    throw new Error(
+      "[script-test-inventory] scenario-runner-e2e.steps must be a sequence",
+    );
+  }
+  const named = steps.items.filter(
+    (step) =>
+      isMap(step) &&
+      mappingValue(step, "name")?.value ===
+        "Complete packages/scripts test sweep",
+  );
+  if (named.length !== 1 || !isMap(named[0])) {
+    throw new Error(
+      "[script-test-inventory] scenario-runner-e2e must own exactly one Complete packages/scripts test sweep step",
+    );
+  }
+  const step = named[0];
+  for (const forbidden of [
+    "continue-on-error",
+    "if",
+    "shell",
+    "uses",
+    "working-directory",
+  ]) {
+    if (mappingValue(step, forbidden) !== undefined) {
+      throw new Error(
+        `[script-test-inventory] packages/scripts test sweep may not declare ${forbidden}`,
+      );
+    }
+  }
+  if (
+    scalarString(step, "run", "packages/scripts test sweep run", "PLAIN") !==
+    "bun run test:scripts"
+  ) {
+    throw new Error(
+      "[script-test-inventory] scenario-pr.yml packages/scripts sweep must execute bun run test:scripts",
+    );
+  }
+  const env = mappingValue(step, "env");
+  if (
+    !isMap(env) ||
+    String(mappingValue(env, "E2E_COVERAGE_GATE_ENFORCE")?.value) !== "1"
+  ) {
+    throw new Error(
+      "[script-test-inventory] packages/scripts sweep must enforce the E2E coverage gate",
+    );
+  }
+}
+
 function assertLaneContracts({ packageScripts, scenarioWorkflow }) {
   if (packageScripts["test:scripts"] !== SCRIPT_TEST_RUNNER) {
     throw new Error(
@@ -128,47 +264,7 @@ function assertLaneContracts({ packageScripts, scenarioWorkflow }) {
       );
     }
   }
-  const stepPattern =
-    /^([ \t]*)- name: Complete packages\/scripts test sweep[ \t]*$/gm;
-  const matches = [...scenarioWorkflow.matchAll(stepPattern)];
-  if (matches.length !== 1) {
-    throw new Error(
-      "[script-test-inventory] scenario-pr.yml must own exactly one Complete packages/scripts test sweep step",
-    );
-  }
-  const match = matches[0];
-  const indentation = match[1].length;
-  const propertyIndentation = indentation + 2;
-  const start = match.index + match[0].length;
-  const following = scenarioWorkflow.slice(start).split("\n");
-  const block = [];
-  for (const line of following) {
-    const nextStep = line.match(/^([ \t]*)-[ \t]+/);
-    if (nextStep && nextStep[1].length === indentation) break;
-    block.push(line);
-  }
-  const blockText = block.join("\n");
-  const directProperty = (name) =>
-    new RegExp(`^[ \\t]{${propertyIndentation}}${name}:`, "gm");
-  if (directProperty("if").test(blockText)) {
-    throw new Error(
-      "[script-test-inventory] packages/scripts test sweep may not carry a step-level condition",
-    );
-  }
-  if (directProperty("continue-on-error").test(blockText)) {
-    throw new Error(
-      "[script-test-inventory] packages/scripts test sweep may not continue on error",
-    );
-  }
-  const runPattern = new RegExp(
-    `^[ \\t]{${propertyIndentation}}run:[ \\t]+bun run test:scripts[ \\t]*$`,
-    "gm",
-  );
-  if ([...blockText.matchAll(runPattern)].length !== 1) {
-    throw new Error(
-      "[script-test-inventory] scenario-pr.yml packages/scripts sweep must execute bun run test:scripts",
-    );
-  }
+  assertScenarioLane(scenarioWorkflow);
 }
 
 /**
@@ -185,7 +281,10 @@ export function buildScriptTestInventory(options = {}) {
     .map(normalizeRepositoryPath)
     .sort(compareText);
   const eligibleFiles = candidateFiles.filter(isScriptTestPath);
-  assertNoCaseCollisions(eligibleFiles);
+  assertUniqueRepositoryIdentities(
+    eligibleFiles,
+    "[script-test-inventory] case-colliding or duplicate test paths",
+  );
 
   const exclusionMap = options.exclusions ?? SCRIPT_TEST_EXCLUSIONS;
   const excluded = validateExclusions(eligibleFiles, exclusionMap);
@@ -200,7 +299,12 @@ export function buildScriptTestInventory(options = {}) {
   const identities = new Map();
   if (options.verifyReadable !== false) {
     for (const file of files) {
-      const content = readFileSync(path.join(repoRoot, file));
+      const { absolute } = assertContainedRegularFile(
+        repoRoot,
+        file,
+        `[script-test-inventory] ${file}`,
+      );
+      const content = readFileSync(absolute);
       identities.set(file, {
         bytes: content.byteLength,
         sha256: createHash("sha256").update(content).digest("hex"),

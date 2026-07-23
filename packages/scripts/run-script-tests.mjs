@@ -10,19 +10,18 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveReportArtifactPath } from "./lib/report-artifact-path.mjs";
+import { SaxesParser } from "saxes";
+import {
+  atomicWriteJsonSync,
+  resolveReportArtifactPath,
+} from "./lib/report-artifact-path.mjs";
 import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
+const SCRIPT_TEST_BUN_CONFIG = "packages/scripts/bunfig.script-tests.toml";
 
 export function parseScriptTestArgs(args) {
   let reportPath;
@@ -87,9 +86,7 @@ function atomicWriteJson(file, value) {
     label: "--report",
   });
   mkdirSync(path.dirname(absolute), { recursive: true });
-  const temporary = `${absolute}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(temporary, absolute);
+  atomicWriteJsonSync(absolute, value);
 }
 
 function reportRecord(inventory, execution) {
@@ -100,57 +97,170 @@ function reportRecord(inventory, execution) {
   };
 }
 
-function xmlAttribute(attributes, name) {
-  const match = attributes.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`));
-  return match?.[1];
-}
-
-function integerAttribute(attributes, name) {
-  const raw = xmlAttribute(attributes, name);
+function integerAttribute(attributes, name, label) {
+  const raw = attributes[name];
   if (raw === undefined || !/^(?:0|[1-9]\d*)$/.test(raw)) {
-    throw new Error(`JUnit root has no valid ${name} count`);
+    throw new Error(`JUnit ${label} has no valid ${name} count`);
   }
   return Number(raw);
 }
 
-function decodeXmlAttribute(value) {
-  const named = {
-    "&amp;": "&",
-    "&apos;": "'",
-    "&gt;": ">",
-    "&lt;": "<",
-    "&quot;": '"',
-  };
-  return value.replace(/&(?:amp|apos|gt|lt|quot);/g, (entity) => named[entity]);
+function parseJunitDocument(xml) {
+  const parser = new SaxesParser({ xmlns: false });
+  const stack = [];
+  let root;
+
+  parser.on("doctype", () => {
+    throw new Error("JUnit artifact may not contain a DOCTYPE");
+  });
+  parser.on("opentag", (tag) => {
+    if (
+      !["testsuites", "testsuite", "testcase", "failure", "skipped"].includes(
+        tag.name,
+      )
+    ) {
+      throw new Error(
+        `JUnit artifact contains unsupported <${tag.name}> element`,
+      );
+    }
+    const parent = stack.at(-1);
+    const allowed =
+      (tag.name === "testsuites" && parent === undefined) ||
+      (tag.name === "testsuite" &&
+        (parent?.name === "testsuites" || parent?.name === "testsuite")) ||
+      (tag.name === "testcase" && parent?.name === "testsuite") ||
+      ((tag.name === "failure" || tag.name === "skipped") &&
+        parent?.name === "testcase");
+    if (!allowed) {
+      throw new Error(
+        `JUnit artifact contains <${tag.name}> in an invalid location`,
+      );
+    }
+    if (tag.name === "testsuites" && root !== undefined) {
+      throw new Error(
+        "JUnit artifact must contain one complete testsuites root",
+      );
+    }
+    const node = {
+      name: tag.name,
+      attributes: tag.attributes,
+      children: [],
+    };
+    if (parent) parent.children.push(node);
+    else root = node;
+    stack.push(node);
+  });
+  parser.on("closetag", () => {
+    stack.pop();
+  });
+  parser.on("text", (text) => {
+    if (text.trim() && !["failure", "skipped"].includes(stack.at(-1)?.name)) {
+      throw new Error("JUnit artifact contains unexpected text content");
+    }
+  });
+  parser.write(xml).close();
+  if (root?.name !== "testsuites" || stack.length !== 0) {
+    throw new Error("JUnit artifact must contain one complete testsuites root");
+  }
+  return root;
+}
+
+function reconcileTestcase(testcase, suiteFile) {
+  const file = testcase.attributes.file;
+  if (file !== suiteFile) {
+    throw new Error(
+      `JUnit testcase file ${file ?? "<missing>"} does not match suite file ${suiteFile}`,
+    );
+  }
+  const assertions = integerAttribute(
+    testcase.attributes,
+    "assertions",
+    "testcase",
+  );
+  const failures = testcase.children.filter(
+    ({ name }) => name === "failure",
+  ).length;
+  const skipped = testcase.children.filter(
+    ({ name }) => name === "skipped",
+  ).length;
+  if (failures > 1 || skipped > 1 || failures + skipped > 1) {
+    throw new Error(
+      "JUnit testcase may contain at most one failure or skipped result",
+    );
+  }
+  return { tests: 1, assertions, failures, skipped };
+}
+
+function reconcileSuite(suite, inheritedFile, identities) {
+  const file = suite.attributes.file;
+  if (typeof file !== "string" || file.length === 0) {
+    throw new Error("JUnit testsuite has no file identity");
+  }
+  if (inheritedFile !== undefined && file !== inheritedFile) {
+    throw new Error(
+      `JUnit nested testsuite file ${file} does not match parent file ${inheritedFile}`,
+    );
+  }
+  const identity = `${file}\0${suite.attributes.name ?? ""}\0${suite.attributes.line ?? ""}`;
+  if (identities.has(identity)) {
+    throw new Error(`JUnit contains duplicate testsuite identity for ${file}`);
+  }
+  identities.add(identity);
+
+  const actual = { tests: 0, assertions: 0, failures: 0, skipped: 0 };
+  for (const child of suite.children) {
+    const counts =
+      child.name === "testcase"
+        ? reconcileTestcase(child, file)
+        : reconcileSuite(child, file, identities);
+    for (const key of Object.keys(actual)) actual[key] += counts[key];
+  }
+  for (const key of Object.keys(actual)) {
+    const declared = integerAttribute(
+      suite.attributes,
+      key,
+      `testsuite ${file}`,
+    );
+    if (declared !== actual[key]) {
+      throw new Error(
+        `JUnit testsuite ${file} ${key}=${declared} does not match nested ${key}=${actual[key]}`,
+      );
+    }
+  }
+  return actual;
 }
 
 /** Validate Bun's JUnit artifact and bind it to the discovered source list. */
 export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
   if (!xml.trim()) throw new Error("JUnit artifact is empty");
-  const roots = [...xml.matchAll(/<testsuites\b([^>]*)>/g)];
-  if (roots.length !== 1 || !/<\/testsuites>\s*$/.test(xml)) {
-    throw new Error("JUnit artifact must contain one complete testsuites root");
-  }
-  const attributes = roots[0][1];
-  const tests = integerAttribute(attributes, "tests");
-  const assertions = integerAttribute(attributes, "assertions");
-  const failures = integerAttribute(attributes, "failures");
-  const skipped = integerAttribute(attributes, "skipped");
-  const testcaseCount = [...xml.matchAll(/<testcase\b/g)].length;
-  if (testcaseCount !== tests) {
+  const root = parseJunitDocument(xml);
+  const directSuites = root.children.filter(({ name }) => name === "testsuite");
+  if (directSuites.length !== root.children.length) {
     throw new Error(
-      `JUnit testcase count ${testcaseCount} does not match root tests=${tests}`,
+      "JUnit testsuites root may contain only testsuite elements",
     );
   }
-  if (failures + skipped > tests) {
-    throw new Error("JUnit failures plus skipped exceeds its test count");
+  const suiteFiles = new Set();
+  const identities = new Set();
+  const actual = { tests: 0, assertions: 0, failures: 0, skipped: 0 };
+  for (const suite of directSuites) {
+    const file = suite.attributes.file;
+    if (suiteFiles.has(file)) {
+      throw new Error(`JUnit contains duplicate top-level suite for ${file}`);
+    }
+    suiteFiles.add(file);
+    const counts = reconcileSuite(suite, undefined, identities);
+    for (const key of Object.keys(actual)) actual[key] += counts[key];
   }
-
-  const suiteFiles = new Set(
-    [...xml.matchAll(/<testsuite\b[^>]*\bfile="([^"]+)"/g)].map((match) =>
-      decodeXmlAttribute(match[1]),
-    ),
-  );
+  for (const key of Object.keys(actual)) {
+    const declared = integerAttribute(root.attributes, key, "root");
+    if (declared !== actual[key]) {
+      throw new Error(
+        `JUnit root ${key}=${declared} does not match suite ${key}=${actual[key]}`,
+      );
+    }
+  }
+  const { tests, assertions, failures, skipped } = actual;
   const expectedFiles = new Set(inventoryFiles);
   const missingFiles = [...expectedFiles].filter(
     (file) => !suiteFiles.has(file),
@@ -200,7 +310,11 @@ export function runScriptTests(options = {}) {
   if (resolvedReport && absoluteJunitPath === resolvedReport.absolute) {
     throw new Error("--report and --junit must name different files");
   }
-  const bunArgs = ["test", "--conditions=eliza-source"];
+  const bunArgs = [
+    `--config=${SCRIPT_TEST_BUN_CONFIG}`,
+    "test",
+    "--conditions=eliza-source",
+  ];
   if (absoluteJunitPath) {
     mkdirSync(path.dirname(absoluteJunitPath), { recursive: true });
     rmSync(absoluteJunitPath, { force: true });

@@ -41,10 +41,14 @@ function fixture() {
         vite: "^8.0.0",
       },
       scripts: {
-        "build:views": "vite build --config vite.config.views.ts",
+        "build:views": "bunx --bun vite build --config vite.config.views.ts",
       },
     },
   };
+  fs.writeFileSync(
+    path.join(absoluteDir, "package.json"),
+    `${JSON.stringify(workspace.packageJson)}\n`,
+  );
   return {
     root,
     absoluteDir,
@@ -165,29 +169,140 @@ describe("view bundle import guard", () => {
         react: () => import("react"),
         "@fixture/static": () => import("@fixture/static"),
       };
+      function resolveHostExternal(specifier) {
+        return HOST_EXTERNAL_IMPORTERS[specifier];
+      }
+      export const hostImport = (specifier) => resolveHostExternal(specifier)?.();
     `;
     const registration = `
       import { registerHostExternalImporter as register } from "@elizaos/ui/app-shell-registry";
       // register("<comment-only>", () => import("<comment-only>"));
       const example = 'register("<string-only>", factory)';
-      register("@fixture/runtime", () => import("@fixture/runtime"));
+      function importHostExternal(specifier) {
+        return import(specifier);
+      }
+      export function initializeHostExternals() {
+        register("@fixture/runtime", () => importHostExternal("@fixture/runtime"));
+      }
     `;
-    expect(
-      hostExternalSpecifiersFromSources(loader, [
-        { file: "host-externals.ts", source: registration },
-      ]),
-    ).toEqual(new Set(["react", "@fixture/static", "@fixture/runtime"]));
+    const record = {
+      entryFile: "main.tsx",
+      entrySource: `
+        import { initializeHostExternals } from "./host-externals";
+        initializeHostExternals();
+      `,
+      file: "host-externals.ts",
+      source: registration,
+    };
+    expect(hostExternalSpecifiersFromSources(loader, [record])).toEqual(
+      new Set(["react", "@fixture/static", "@fixture/runtime"]),
+    );
     expect(() =>
       hostExternalSpecifiersFromSources(loader, [
         {
+          ...record,
           file: "host-externals.ts",
           source: `
             import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
-            registerHostExternalImporter(specifier, factory);
+            export function initializeHostExternals() {
+              registerHostExternalImporter(specifier, () => importHostExternal("@fixture/runtime"));
+            }
           `,
         },
       ]),
     ).toThrow("literal specifiers");
+  });
+
+  test("requires the loader map and registration initializer to be reachable", () => {
+    const deadLoader = `
+      const HOST_EXTERNAL_IMPORTERS = { react: () => import("react") };
+      function deadLookup(name) { return HOST_EXTERNAL_IMPORTERS[name]; }
+      export const unrelated = true;
+    `;
+    const registration = {
+      entryFile: "main.tsx",
+      entrySource: `
+        import { initializeHostExternals } from "./host-externals";
+      `,
+      file: "host-externals.ts",
+      source: `
+        import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
+        export function initializeHostExternals() {
+          registerHostExternalImporter("@fixture/runtime", () => import("@fixture/runtime"));
+        }
+      `,
+    };
+    expect(() =>
+      hostExternalSpecifiersFromSources(deadLoader, [registration]),
+    ).toThrow("not consumed by an exported runtime path");
+
+    const liveLoader = `
+      const HOST_EXTERNAL_IMPORTERS = { react: () => import("react") };
+      export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]?.(); }
+    `;
+    expect(() =>
+      hostExternalSpecifiersFromSources(liveLoader, [registration]),
+    ).toThrow("must call initializeHostExternals exactly once at module scope");
+    expect(() =>
+      hostExternalSpecifiersFromSources(liveLoader, [
+        {
+          ...registration,
+          entrySource: `
+            import { initializeHostExternals } from "./host-externals";
+            if (false) initializeHostExternals();
+          `,
+        },
+      ]),
+    ).toThrow("module scope");
+  });
+
+  test("rejects shadowed, non-callable, dead-branch, and mismatched registrations", () => {
+    const loader = `
+      const HOST_EXTERNAL_IMPORTERS = { react: () => import("react") };
+      export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]?.(); }
+    `;
+    const entry = `
+      import { initializeHostExternals } from "./host-externals";
+      initializeHostExternals();
+    `;
+    const source = (body: string, parameters = "") => ({
+      entryFile: "main.tsx",
+      entrySource: entry,
+      file: "host-externals.ts",
+      source: `
+        import { registerHostExternalImporter } from "@elizaos/ui/app-shell-registry";
+        export function initializeHostExternals(${parameters}) {
+          ${body}
+        }
+      `,
+    });
+    expect(() =>
+      hostExternalSpecifiersFromSources(loader, [
+        source(
+          'registerHostExternalImporter("@fixture/runtime", () => import("@fixture/runtime"));',
+          "registerHostExternalImporter",
+        ),
+      ]),
+    ).toThrow("shadows the registration API");
+    expect(() =>
+      hostExternalSpecifiersFromSources(loader, [
+        source('registerHostExternalImporter("@fixture/runtime", undefined);'),
+      ]),
+    ).toThrow("inline callable");
+    expect(() =>
+      hostExternalSpecifiersFromSources(loader, [
+        source(
+          'if (enabled) registerHostExternalImporter("@fixture/runtime", () => import("@fixture/runtime"));',
+        ),
+      ]),
+    ).toThrow("direct statements");
+    expect(() =>
+      hostExternalSpecifiersFromSources(loader, [
+        source(
+          'registerHostExternalImporter("@fixture/runtime", () => import("@fixture/other"));',
+        ),
+      ]),
+    ).toThrow("mismatched specifier");
   });
 
   test("accepts only imports provided by the host", async () => {

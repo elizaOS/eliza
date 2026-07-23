@@ -46,7 +46,10 @@ const LOADER_PATH = path.join(
 // the guard must union them into the allowed set. Any additional file that
 // registers host externals must be listed here.
 const HOST_EXTERNAL_REGISTRATION_PATHS = [
-  path.join(repoRoot, "packages/app/src/host-externals.ts"),
+  {
+    entryPath: path.join(repoRoot, "packages/app/src/main.tsx"),
+    registrationPath: path.join(repoRoot, "packages/app/src/host-externals.ts"),
+  },
 ];
 
 function parseSource(source, file, scriptKind) {
@@ -94,6 +97,261 @@ function staticPropertyName(property, file) {
   );
 }
 
+function hasExportModifier(node) {
+  return node.modifiers?.some(
+    (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+  );
+}
+
+function topLevelUnits(sourceFile) {
+  const units = new Map();
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      units.set(statement.name.text, {
+        exported: hasExportModifier(statement),
+        node: statement,
+      });
+      continue;
+    }
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+        units.set(declaration.name.text, {
+          exported: hasExportModifier(statement),
+          node: declaration.initializer,
+        });
+      }
+    }
+  }
+  return units;
+}
+
+function assertLoaderMapIsRuntimeReachable(
+  sourceFile,
+  declaration,
+  loaderFile,
+) {
+  const units = topLevelUnits(sourceFile);
+  const graph = new Map();
+  for (const [name, unit] of units) {
+    const dependencies = new Set();
+    let consumesMap = false;
+    const visit = (node) => {
+      if (
+        ts.isIdentifier(node) &&
+        node.text === "HOST_EXTERNAL_IMPORTERS" &&
+        node !== declaration.name
+      ) {
+        consumesMap = true;
+      }
+      if (ts.isIdentifier(node) && units.has(node.text) && node.text !== name) {
+        dependencies.add(node.text);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(unit.node);
+    graph.set(name, { consumesMap, dependencies });
+  }
+  const pending = [...units]
+    .filter(([, unit]) => unit.exported)
+    .map(([name]) => name);
+  const visited = new Set();
+  while (pending.length > 0) {
+    const name = pending.pop();
+    if (visited.has(name)) continue;
+    visited.add(name);
+    const record = graph.get(name);
+    if (record?.consumesMap) return;
+    pending.push(...(record?.dependencies ?? []));
+  }
+  throw new Error(
+    `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${loaderFile} is not consumed by an exported runtime path`,
+  );
+}
+
+function importedLocalName(sourceFile, imported, moduleSpecifier, file) {
+  const names = [];
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteralLike(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== moduleSpecifier ||
+      statement.importClause?.isTypeOnly ||
+      !statement.importClause?.namedBindings ||
+      !ts.isNamedImports(statement.importClause.namedBindings)
+    ) {
+      continue;
+    }
+    for (const element of statement.importClause.namedBindings.elements) {
+      if (
+        !element.isTypeOnly &&
+        (element.propertyName?.text ?? element.name.text) === imported
+      ) {
+        names.push(element.name.text);
+      }
+    }
+  }
+  if (names.length !== 1) {
+    throw new Error(
+      `[view-bundle-guard] ${file} must import ${imported} exactly once from ${moduleSpecifier}`,
+    );
+  }
+  return names[0];
+}
+
+function exportedSynchronousInitializers(sourceFile, file) {
+  const initializers = [];
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isFunctionDeclaration(statement) &&
+      statement.name &&
+      statement.body &&
+      hasExportModifier(statement)
+    ) {
+      if (
+        statement.modifiers?.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword,
+        ) ||
+        statement.asteriskToken
+      ) {
+        throw new Error(
+          `[view-bundle-guard] ${file} host-external initializer must be synchronous`,
+        );
+      }
+      initializers.push(statement);
+    }
+  }
+  return initializers;
+}
+
+function directRegistrationCalls(initializer, localRegistrationName, file) {
+  let shadowed = false;
+  const findShadow = (node) => {
+    if (
+      ((ts.isParameter(node) || ts.isVariableDeclaration(node)) &&
+        ts.isIdentifier(node.name) &&
+        node.name.text === localRegistrationName) ||
+      ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
+        node !== initializer &&
+        node.name?.text === localRegistrationName)
+    ) {
+      shadowed = true;
+    }
+    ts.forEachChild(node, findShadow);
+  };
+  findShadow(initializer);
+  if (shadowed) {
+    throw new Error(
+      `[view-bundle-guard] ${file} shadows the registration API inside its initializer`,
+    );
+  }
+  const calls = [];
+  for (const statement of initializer.body.statements) {
+    if (
+      ts.isExpressionStatement(statement) &&
+      ts.isCallExpression(unwrapExpression(statement.expression)) &&
+      ts.isIdentifier(unwrapExpression(statement.expression).expression) &&
+      unwrapExpression(statement.expression).expression.text ===
+        localRegistrationName
+    ) {
+      calls.push(unwrapExpression(statement.expression));
+    }
+  }
+  let totalCalls = 0;
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === localRegistrationName
+    ) {
+      totalCalls += 1;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(initializer.body);
+  if (calls.length !== totalCalls) {
+    throw new Error(
+      `[view-bundle-guard] ${file} registrations must be direct statements in the exported synchronous initializer`,
+    );
+  }
+  return calls;
+}
+
+function callableImporterSpecifier(expression, file) {
+  const callable = unwrapExpression(expression);
+  if (!ts.isArrowFunction(callable) && !ts.isFunctionExpression(callable)) {
+    throw new Error(
+      `[view-bundle-guard] ${file} host-external importer must be an inline callable`,
+    );
+  }
+  const literals = [];
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) &&
+          node.expression.text === "importHostExternal")) &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      literals.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(callable.body);
+  if (literals.length !== 1) {
+    throw new Error(
+      `[view-bundle-guard] ${file} host-external importer must consume exactly one literal specifier`,
+    );
+  }
+  return literals[0];
+}
+
+function registrationModuleSpecifier(registrationFile, entryFile) {
+  const relative = path.posix.relative(
+    path.posix.dirname(entryFile),
+    registrationFile.replace(/\.[^.]+$/, ""),
+  );
+  return relative.startsWith(".") ? relative : `./${relative}`;
+}
+
+function assertInitializerRunsAtEntry(
+  initializerName,
+  registrationFile,
+  entryFile,
+  entrySource,
+) {
+  if (typeof entrySource !== "string") {
+    throw new Error(
+      `[view-bundle-guard] ${registrationFile} requires an entry source proving its initializer runs`,
+    );
+  }
+  const sourceFile = parseSource(entrySource, entryFile, ts.ScriptKind.TSX);
+  const moduleSpecifier = registrationModuleSpecifier(
+    registrationFile,
+    entryFile,
+  );
+  const localName = importedLocalName(
+    sourceFile,
+    initializerName,
+    moduleSpecifier,
+    entryFile,
+  );
+  const calls = sourceFile.statements.filter(
+    (statement) =>
+      ts.isExpressionStatement(statement) &&
+      ts.isCallExpression(unwrapExpression(statement.expression)) &&
+      ts.isIdentifier(unwrapExpression(statement.expression).expression) &&
+      unwrapExpression(statement.expression).expression.text === localName &&
+      unwrapExpression(statement.expression).arguments.length === 0,
+  );
+  if (calls.length !== 1) {
+    throw new Error(
+      `[view-bundle-guard] ${entryFile} must call ${initializerName} exactly once at module scope`,
+    );
+  }
+}
+
 /**
  * Extract the exact runtime host-external contract from parsed source.
  *
@@ -124,6 +382,16 @@ export function hostExternalSpecifiersFromSources(
       `[view-bundle-guard] expected exactly one HOST_EXTERNAL_IMPORTERS declaration in ${loaderFile}, found ${declarations.length}`,
     );
   }
+  const declarationStatement = declarations[0].parent?.parent;
+  if (
+    !declarationStatement ||
+    !ts.isVariableStatement(declarationStatement) ||
+    declarationStatement.parent !== loader
+  ) {
+    throw new Error(
+      `[view-bundle-guard] HOST_EXTERNAL_IMPORTERS in ${loaderFile} must be declared at module scope`,
+    );
+  }
   const initializer = declarations[0].initializer;
   const objectLiteral = initializer && unwrapExpression(initializer);
   if (!objectLiteral || !ts.isObjectLiteralExpression(objectLiteral)) {
@@ -152,65 +420,74 @@ export function hostExternalSpecifiersFromSources(
       "[view-bundle-guard] extracted zero host-external specifiers",
     );
   }
+  assertLoaderMapIsRuntimeReachable(loader, declarations[0], loaderFile);
 
-  for (const { file, source } of registrationSources) {
+  for (const { entryFile, entrySource, file, source } of registrationSources) {
     const sourceFile = parseSource(source, file, ts.ScriptKind.TS);
-    const localRegistrationNames = new Set();
-    for (const statement of sourceFile.statements) {
-      if (
-        !ts.isImportDeclaration(statement) ||
-        !ts.isStringLiteralLike(statement.moduleSpecifier) ||
-        statement.moduleSpecifier.text !== "@elizaos/ui/app-shell-registry" ||
-        statement.importClause?.isTypeOnly ||
-        !statement.importClause?.namedBindings ||
-        !ts.isNamedImports(statement.importClause.namedBindings)
-      ) {
-        continue;
-      }
-      for (const element of statement.importClause.namedBindings.elements) {
-        if (
-          !element.isTypeOnly &&
-          (element.propertyName?.text ?? element.name.text) ===
-            "registerHostExternalImporter"
-        ) {
-          localRegistrationNames.add(element.name.text);
-        }
-      }
-    }
-    if (localRegistrationNames.size !== 1) {
-      throw new Error(
-        `[view-bundle-guard] ${file} must import registerHostExternalImporter exactly once from @elizaos/ui/app-shell-registry`,
+    const localRegistrationName = importedLocalName(
+      sourceFile,
+      "registerHostExternalImporter",
+      "@elizaos/ui/app-shell-registry",
+      file,
+    );
+    const initializers = exportedSynchronousInitializers(sourceFile, file);
+    let initializer;
+    let calls = [];
+    for (const candidate of initializers) {
+      const candidateCalls = directRegistrationCalls(
+        candidate,
+        localRegistrationName,
+        file,
       );
-    }
-
-    let registrationCount = 0;
-    const visit = (node) => {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        localRegistrationNames.has(node.expression.text)
-      ) {
-        const specifier = node.arguments[0];
-        if (!specifier || !ts.isStringLiteralLike(specifier)) {
+      if (candidateCalls.length > 0) {
+        if (initializer) {
           throw new Error(
-            `[view-bundle-guard] ${file} must register host externals with literal specifiers`,
+            `[view-bundle-guard] ${file} must expose one host-external initializer`,
           );
         }
-        if (specifiers.has(specifier.text)) {
-          throw new Error(
-            `[view-bundle-guard] ${file} duplicates host-external specifier ${specifier.text}`,
-          );
-        }
-        specifiers.add(specifier.text);
-        registrationCount += 1;
+        initializer = candidate;
+        calls = candidateCalls;
       }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
-    if (registrationCount === 0) {
+    }
+    if (!initializer?.name || calls.length === 0) {
       throw new Error(
-        `[view-bundle-guard] ${file} contains no host-external registrations`,
+        `[view-bundle-guard] ${file} contains no registrations in an exported synchronous initializer`,
       );
+    }
+    assertInitializerRunsAtEntry(
+      initializer.name.text,
+      file,
+      entryFile,
+      entrySource,
+    );
+    for (const call of calls) {
+      const registeredSpecifier = call.arguments[0];
+      const importer = call.arguments[1];
+      if (
+        !registeredSpecifier ||
+        !ts.isStringLiteralLike(registeredSpecifier)
+      ) {
+        throw new Error(
+          `[view-bundle-guard] ${file} must register host externals with literal specifiers`,
+        );
+      }
+      if (!importer) {
+        throw new Error(
+          `[view-bundle-guard] ${file} must register a callable importer`,
+        );
+      }
+      const importedSpecifier = callableImporterSpecifier(importer, file);
+      if (importedSpecifier !== registeredSpecifier.text) {
+        throw new Error(
+          `[view-bundle-guard] ${file} importer for ${registeredSpecifier.text} consumes mismatched specifier ${importedSpecifier}`,
+        );
+      }
+      if (specifiers.has(registeredSpecifier.text)) {
+        throw new Error(
+          `[view-bundle-guard] ${file} duplicates host-external specifier ${registeredSpecifier.text}`,
+        );
+      }
+      specifiers.add(registeredSpecifier.text);
     }
   }
   return specifiers;
@@ -220,10 +497,17 @@ export function hostExternalSpecifiersFromSources(
 export async function getHostExternalSpecifiers() {
   const loaderSource = await fs.readFile(LOADER_PATH, "utf8");
   const registrationSources = await Promise.all(
-    HOST_EXTERNAL_REGISTRATION_PATHS.map(async (registrationPath) => ({
-      file: path.relative(repoRoot, registrationPath),
-      source: await fs.readFile(registrationPath, "utf8"),
-    })),
+    HOST_EXTERNAL_REGISTRATION_PATHS.map(
+      async ({ entryPath, registrationPath }) => ({
+        entryFile: path.relative(repoRoot, entryPath).split(path.sep).join("/"),
+        entrySource: await fs.readFile(entryPath, "utf8"),
+        file: path
+          .relative(repoRoot, registrationPath)
+          .split(path.sep)
+          .join("/"),
+        source: await fs.readFile(registrationPath, "utf8"),
+      }),
+    ),
   );
   return hostExternalSpecifiersFromSources(loaderSource, registrationSources);
 }

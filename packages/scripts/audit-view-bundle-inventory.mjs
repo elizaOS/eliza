@@ -7,10 +7,13 @@
  * across Linux, macOS, Windows, local worktrees, and hosted CI.
  */
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveReportArtifactPath } from "./lib/report-artifact-path.mjs";
+import {
+  atomicWriteJsonSync,
+  resolveReportArtifactPath,
+} from "./lib/report-artifact-path.mjs";
 import {
   discoverViewBundleInventory,
   serializeViewBundleInventory,
@@ -66,9 +69,7 @@ function writeJson(file, value) {
     label: "--output",
   });
   mkdirSync(path.dirname(absolute), { recursive: true });
-  const temporary = `${absolute}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(temporary, absolute);
+  atomicWriteJsonSync(absolute, value);
 }
 
 function printUsage() {

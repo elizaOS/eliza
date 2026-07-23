@@ -7,6 +7,7 @@
  * import guard across nested workspaces and platforms (#15791, #16995).
  */
 import { spawn } from "node:child_process";
+import { lstatSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -21,6 +22,44 @@ const repoRoot = path.resolve(import.meta.dirname, "../..");
 /** Absolute path to the bundle a plugin's view config is required to emit. */
 export function expectedBundlePath(configPath) {
   return path.join(path.dirname(configPath), "dist", "views", "bundle.js");
+}
+
+/**
+ * Resolve the generated output directory without allowing an existing path
+ * component to redirect recursive cleanup outside its owning workspace.
+ */
+export function assertSafeViewOutputDirectory(configPath) {
+  const workspace = path.resolve(path.dirname(configPath));
+  const output = path.resolve(path.dirname(expectedBundlePath(configPath)));
+  if (
+    path.relative(workspace, output).split(path.sep).join("/") !== "dist/views"
+  ) {
+    throw new Error(
+      "[build-views] view output must be workspace-local dist/views",
+    );
+  }
+  let current = workspace;
+  for (const segment of ["dist", "views"]) {
+    current = path.join(current, segment);
+    try {
+      const metadata = lstatSync(current);
+      if (metadata.isSymbolicLink()) {
+        throw new Error(
+          `[build-views] refusing to clean symlinked output path: ${current}`,
+        );
+      }
+      if (!metadata.isDirectory()) {
+        throw new Error(
+          `[build-views] output path component is not a directory: ${current}`,
+        );
+      }
+    } catch (error) {
+      // error-policy:J3 an output directory that does not exist is clean
+      if (error?.code === "ENOENT") break;
+      throw error;
+    }
+  }
+  return output;
 }
 
 /**
@@ -81,7 +120,7 @@ async function buildView(configPath) {
   // The directory is generated output owned solely by this config. Clearing it
   // prevents a stale bundle or lazy chunk from surviving a later single-file
   // build and being mistaken for current output.
-  await rm(path.dirname(expectedBundlePath(configPath)), {
+  await rm(assertSafeViewOutputDirectory(configPath), {
     force: true,
     recursive: true,
   });

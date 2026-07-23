@@ -3,10 +3,19 @@
  * synthetic path sets, then checked against the complete real repository tree.
  */
 
-import { describe, expect, test } from "bun:test";
-import { resolveReportArtifactPath } from "../lib/report-artifact-path.mjs";
+import { afterEach, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {
+  atomicWriteFileSync,
+  resolveReportArtifactPath,
+} from "../lib/report-artifact-path.mjs";
 import {
   buildScriptTestInventory,
+  isScriptTestPath,
+  SCRIPT_TEST_EXTENSIONS,
   SCRIPT_TEST_LANE_COMMANDS,
   SCRIPT_TEST_RUNNER,
 } from "../lib/script-test-inventory.mjs";
@@ -21,10 +30,29 @@ const packageScripts = {
   ...SCRIPT_TEST_LANE_COMMANDS,
 };
 const scenarioWorkflow = `
-steps:
-  - name: Complete packages/scripts test sweep
-    run: bun run test:scripts
+jobs:
+  scenario-runner-e2e:
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    steps:
+      - name: Complete packages/scripts test sweep
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
+        run: bun run test:scripts
 `;
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const directory of tempDirs.splice(0)) {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+function tempRoot() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "script-inventory-"));
+  tempDirs.push(root);
+  return root;
+}
 
 function inventory(candidateFiles: string[], options = {}) {
   return buildScriptTestInventory({
@@ -38,27 +66,42 @@ function inventory(candidateFiles: string[], options = {}) {
 }
 
 describe("packages/scripts executable-test inventory", () => {
-  test("discovers every supported extension, nested location, separator, and case", () => {
+  test("discovers every Bun dot/underscore test/spec form, extension, and case", () => {
     const files = [
       "packages/scripts/root.test.ts",
-      "packages\\scripts\\cloud\\nested.SPEC.MTS",
+      "packages/scripts/cloud/nested.SPEC.MTS",
       "packages/scripts/a/b/c.test.cts",
       "packages/scripts/a/b/c.spec.js",
       "packages/scripts/a/b/c.test.jsx",
       "packages/scripts/a/b/c.spec.mjs",
       "packages/scripts/a/b/c.test.cjs",
+      "packages/scripts/a/b/name_test.tsx",
+      "packages/scripts/a/b/name_spec.js",
+      "packages/scripts/a/b/_test.ts",
+      "packages/scripts/a/b/_spec.mts",
+      "packages/scripts/a/b/.test.ts",
+      "packages/scripts/a/b/.spec.cjs",
       "packages/scripts/a/b/not-a-test.ts",
       "packages/other/ignored.test.ts",
     ];
     expect(inventory(files).files.map(({ file }) => file)).toEqual([
+      "packages/scripts/a/b/.spec.cjs",
+      "packages/scripts/a/b/.test.ts",
+      "packages/scripts/a/b/_spec.mts",
+      "packages/scripts/a/b/_test.ts",
       "packages/scripts/a/b/c.spec.js",
       "packages/scripts/a/b/c.spec.mjs",
       "packages/scripts/a/b/c.test.cjs",
       "packages/scripts/a/b/c.test.cts",
       "packages/scripts/a/b/c.test.jsx",
+      "packages/scripts/a/b/name_spec.js",
+      "packages/scripts/a/b/name_test.tsx",
       "packages/scripts/cloud/nested.SPEC.MTS",
       "packages/scripts/root.test.ts",
     ]);
+    expect(() =>
+      inventory(["packages\\scripts\\cloud\\nested.test.ts"]),
+    ).toThrow("backslash");
   });
 
   test("rejects empty inventories and case-colliding paths", () => {
@@ -68,6 +111,54 @@ describe("packages/scripts executable-test inventory", () => {
     expect(() =>
       inventory(["packages/scripts/a.test.ts", "packages/SCRIPTS/A.TEST.TS"]),
     ).toThrow("case-colliding");
+  });
+
+  test("matches Bun's recursive discovery across every supported naming form", () => {
+    const root = tempRoot();
+    const forms = [
+      (extension: string) => `dot.test.${extension}`,
+      (extension: string) => `underscore_test.${extension}`,
+      (extension: string) => `bare_test/_test.${extension}`,
+      (extension: string) => `dot.spec.${extension}`,
+      (extension: string) => `underscore_spec.${extension}`,
+      (extension: string) => `bare_spec/_spec.${extension}`,
+    ];
+    const fixtures = SCRIPT_TEST_EXTENSIONS.flatMap((extension, index) =>
+      forms.map(
+        (form) =>
+          `packages/scripts/nested/${form(index % 2 ? extension.toUpperCase() : extension)}`,
+      ),
+    );
+    fixtures.push("packages/scripts/nested/not-a-test.ts");
+    for (const file of fixtures) {
+      const absolute = path.join(root, ...file.split("/"));
+      fs.mkdirSync(path.dirname(absolute), { recursive: true });
+      fs.writeFileSync(
+        absolute,
+        'import { expect, test } from "bun:test"; test("runs", () => expect(1).toBe(1));\n',
+      );
+    }
+    const junit = path.join(root, "junit.xml");
+    const result = spawnSync(
+      "bun",
+      [
+        "test",
+        "--reporter=junit",
+        `--reporter-outfile=${junit}`,
+        "packages/scripts",
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    expect(result.status).toBe(0);
+    const bunFiles = [
+      ...fs
+        .readFileSync(junit, "utf8")
+        .matchAll(/<testsuite\b[^>]*\bfile="([^"]+)"/g),
+    ]
+      .map((match) => match[1])
+      .sort();
+    const inventoryFiles = fixtures.filter(isScriptTestPath).sort();
+    expect(bunFiles).toEqual(inventoryFiles);
   });
 
   test("requires exact, reasoned, non-stale exclusions", () => {
@@ -113,54 +204,126 @@ describe("packages/scripts executable-test inventory", () => {
         packageScripts: { ...packageScripts, test: "node workspace-tests.mjs" },
       }),
     ).toThrow("package.json test must be exactly");
-    expect(() => inventory(files, { scenarioWorkflow: "steps: []" })).toThrow(
-      "must own exactly one",
+    expect(() => inventory(files, { scenarioWorkflow: "jobs: {}" })).toThrow(
+      "jobs.scenario-runner-e2e",
     );
     expect(() =>
       inventory(files, {
         scenarioWorkflow: `
-steps:
-  - name: Complete packages/scripts test sweep
-    if: false
-    # run: bun run test:scripts
+jobs:
+  scenario-runner-e2e:
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    steps:
+      - name: Complete packages/scripts test sweep
+        if: false
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
+        run: bun run test:scripts
 `,
       }),
-    ).toThrow("may not carry a step-level condition");
+    ).toThrow("may not declare if");
     expect(() =>
       inventory(files, {
         scenarioWorkflow: `
-steps:
-  - name: Complete packages/scripts test sweep
+jobs:
+  scenario-runner-e2e:
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
     continue-on-error: true
-    run: bun run test:scripts
+    steps:
+      - name: Complete packages/scripts test sweep
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
+        run: bun run test:scripts
 `,
       }),
-    ).toThrow("may not continue on error");
+    ).toThrow("scenario-runner-e2e may not continue on error");
     expect(() =>
       inventory(files, {
         scenarioWorkflow: `
-steps:
-  - name: Complete packages/scripts test sweep
-    # run: bun run test:scripts
+jobs:
+  scenario-runner-e2e:
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    steps:
+      - name: Complete packages/scripts test sweep
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
 `,
       }),
-    ).toThrow("must execute");
+    ).toThrow("must be a string scalar");
     expect(() =>
       inventory(files, {
         scenarioWorkflow: `
-steps:
-  - name: Complete packages/scripts test sweep
-    with:
-      run: bun run test:scripts
-  - run: bun run test:scripts
+jobs:
+  disabled-copy:
+    steps:
+      - name: Complete packages/scripts test sweep
+        run: bun run test:scripts
+  scenario-runner-e2e:
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    steps: []
 `,
-      }),
-    ).toThrow("must execute");
-    expect(() =>
-      inventory(files, {
-        scenarioWorkflow: `${scenarioWorkflow}${scenarioWorkflow}`,
       }),
     ).toThrow("must own exactly one");
+    expect(() =>
+      inventory(files, {
+        scenarioWorkflow: `
+jobs:
+  scenario-runner-e2e:
+    needs: changes
+    if: "needs.changes.outputs.run_scenario_pr == 'true'"
+    steps:
+      - name: Complete packages/scripts test sweep
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
+        run: bun run test:scripts
+`,
+      }),
+    ).toThrow("must use plain YAML scalar syntax");
+    expect(() =>
+      inventory(files, {
+        scenarioWorkflow: `
+jobs:
+  scenario-runner-e2e:
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    steps:
+      - name: Complete packages/scripts test sweep
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
+        run: |
+          echo "bun run test:scripts"
+`,
+      }),
+    ).toThrow("must use plain YAML scalar syntax");
+    expect(() =>
+      inventory(files, {
+        scenarioWorkflow: `${scenarioWorkflow}
+jobs:
+  duplicate: {}
+`,
+      }),
+    ).toThrow("Map keys must be unique");
+    expect(() =>
+      inventory(files, {
+        scenarioWorkflow: `
+base: &base
+  run: bun run test:scripts
+jobs:
+  scenario-runner-e2e:
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    steps:
+      - name: Complete packages/scripts test sweep
+        <<: *base
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
+`,
+      }),
+    ).toThrow(/aliases|merge keys/);
   });
 
   test("parses runner input strictly and preserves child failure", () => {
@@ -243,6 +406,11 @@ steps:
       status: "failed",
     });
     const command = reports[0]?.execution.command ?? [];
+    expect(command.slice(0, 3)).toEqual([
+      "bun",
+      "--config=packages/scripts/bunfig.script-tests.toml",
+      "test",
+    ]);
     expect(command.indexOf("--reporter=junit")).toBeLessThan(
       command.indexOf("packages/scripts/example.test.ts"),
     );
@@ -269,6 +437,10 @@ steps:
       "reports/../package.json",
       "reports//junit.xml",
       "reports/junit.json",
+      "reports/C:../package.xml",
+      "reports/CON.xml",
+      "reports/name.xml ",
+      "reports/name.xml.",
     ]) {
       expect(() =>
         resolveReportArtifactPath("/tmp/example-repository", unsafe, {
@@ -277,15 +449,76 @@ steps:
         }),
       ).toThrow();
     }
+
+    const root = tempRoot();
+    const outside = path.join(root, "outside");
+    fs.mkdirSync(path.join(root, "reports"));
+    fs.mkdirSync(outside);
+    fs.symlinkSync(outside, path.join(root, "reports", "script-tests"));
+    expect(() =>
+      resolveReportArtifactPath(root, "reports/script-tests/junit.xml", {
+        extension: ".xml",
+        label: "--junit",
+      }),
+    ).toThrow("symlinked parent");
+  });
+
+  test("uses an exclusive same-directory temporary and cleans failed writes", () => {
+    const root = tempRoot();
+    const reports = path.join(root, "reports");
+    fs.mkdirSync(reports);
+    const destination = path.join(reports, "result.json");
+    const victim = path.join(root, "victim.txt");
+    fs.writeFileSync(victim, "unchanged");
+    const occupied = `${destination}.123.deadbeef.tmp`;
+    fs.symlinkSync(victim, occupied);
+    expect(() =>
+      atomicWriteFileSync(destination, "replacement", {
+        pid: 123,
+        randomToken: "deadbeef",
+      }),
+    ).toThrow();
+    expect(fs.readFileSync(victim, "utf8")).toBe("unchanged");
+    expect(fs.existsSync(occupied)).toBe(false);
+    expect(fs.existsSync(destination)).toBe(false);
+
+    fs.mkdirSync(destination);
+    const failedTemporary = `${destination}.456.cafefeed.tmp`;
+    expect(() =>
+      atomicWriteFileSync(destination, "replacement", {
+        pid: 456,
+        randomToken: "cafefeed",
+      }),
+    ).toThrow();
+    expect(fs.existsSync(failedTemporary)).toBe(false);
+  });
+
+  test("rejects symlinked script-test sources", () => {
+    const root = tempRoot();
+    const source = path.join(root, "source.ts");
+    const testFile = "packages/scripts/linked.test.ts";
+    fs.writeFileSync(source, 'test("not repository-owned", () => {});\n');
+    fs.mkdirSync(path.join(root, "packages", "scripts"), { recursive: true });
+    fs.symlinkSync(source, path.join(root, ...testFile.split("/")));
+    expect(() =>
+      inventory([testFile], {
+        repoRoot: root,
+        verifyReadable: true,
+      }),
+    ).toThrow("may not traverse a symlink");
   });
 
   test("binds JUnit counts and suite identities to the discovered files", () => {
     const xml = `<?xml version="1.0"?>
       <testsuites tests="1" assertions="2" failures="0" skipped="0">
-        <testsuite file="packages/scripts/example.test.ts">
-          <testcase name="works" assertions="2" />
+        <testsuite name="packages/scripts/example.test.ts" file="packages/scripts/example.test.ts" tests="1" assertions="2" failures="0" skipped="0">
+          <testcase name="works" file="packages/scripts/example.test.ts" assertions="2" />
         </testsuite>
       </testsuites>`;
+    const suiteXml = xml.slice(
+      xml.indexOf("<testsuite "),
+      xml.lastIndexOf("</testsuite>") + "</testsuite>".length,
+    );
     expect(
       validateJunitEvidence(
         xml,
@@ -313,10 +546,51 @@ steps:
         ["packages/scripts/example.test.ts"],
         "reports/junit.xml",
       ),
-    ).toThrow("testcase count");
+    ).toThrow("root tests");
     expect(() =>
       validateJunitEvidence('<testsuites tests="0">', [], "reports/junit.xml"),
-    ).toThrow("complete testsuites root");
+    ).toThrow();
+    expect(() =>
+      validateJunitEvidence(
+        `${xml.slice(0, -1)} garbage`,
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toThrow();
+    expect(() =>
+      validateJunitEvidence(
+        `<!DOCTYPE testsuites [<!ENTITY injected "x">]>${xml}`,
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toThrow("DOCTYPE");
+    expect(() =>
+      validateJunitEvidence(
+        xml.replace(
+          "</testsuite>",
+          '<testcase name="hidden failure" file="packages/scripts/example.test.ts" assertions="0"><failure>boom</failure></testcase></testsuite>',
+        ),
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toThrow(/tests|failures/);
+    expect(() =>
+      validateJunitEvidence(
+        xml.replace("</testsuites>", `${suiteXml}</testsuites>`),
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toThrow("duplicate top-level suite");
+    expect(() =>
+      validateJunitEvidence(
+        xml.replace(
+          'assertions="2" failures="0" skipped="0">',
+          'assertions="2" failures="0" skipped="0"><failure>boom</failure>',
+        ),
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toThrow("invalid location");
   });
 
   test("the real repository has one executing lane for every discovered test", () => {

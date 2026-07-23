@@ -314,6 +314,7 @@
     "playwright": "^1.61.0",
     "pure-rand": "^8.4.0",
     "react-test-renderer": "^19.0.0",
+    "saxes": "6.0.0",
     "secp256k1": "^5.0.1",
     "semver": "7.8.5",
     "tesseract.js": "^6.0.1",
@@ -322,7 +323,8 @@
     "typescript": "^6.0.3",
     "vite": "8.0.16",
     "vitest": "^4.0.17",
-    "verdaccio": "6.8.0"
+    "verdaccio": "6.8.0",
+    "yaml": "2.9.0"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",

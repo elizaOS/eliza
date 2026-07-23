@@ -46,15 +46,13 @@
  *   node packages/scripts/audit-scripts-inventory.mjs --json     # print JSON
  */
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  atomicWriteJsonSync,
+  resolveReportArtifactPath,
+} from "./lib/report-artifact-path.mjs";
 import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -807,9 +805,7 @@ function printUsage() {
 }
 
 function writeJsonAtomic(file, value) {
-  const temporary = `${file}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(temporary, file);
+  atomicWriteJsonSync(file, value);
 }
 
 function main() {
@@ -827,7 +823,14 @@ function main() {
 
   const outDir = path.join(ROOT, "reports");
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-  const outFile = path.join(outDir, "scripts-inventory.json");
+  const outFile = resolveReportArtifactPath(
+    ROOT,
+    "reports/scripts-inventory.json",
+    {
+      extension: ".json",
+      label: "scripts inventory report",
+    },
+  ).absolute;
   writeJsonAtomic(outFile, inv);
   printSummary(inv);
   process.stdout.write(`  JSON written to ${path.relative(ROOT, outFile)}\n\n`);
