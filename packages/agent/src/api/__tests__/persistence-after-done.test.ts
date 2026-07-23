@@ -1,7 +1,8 @@
 /**
- * Verifies that a streaming terminal frame never advertises an assistant id
- * before that exact memory is durable. Persistence failures remain observable
- * as an SSE error and cannot leave an orphan terminal id in the client.
+ * Verifies that the streaming chat handler treats `done` as a durable commit
+ * boundary: assistant persistence resolves before the terminal frame and both
+ * ids in that frame already exist. Persistence failures become terminal SSE
+ * errors rather than a false successful completion.
  */
 
 import { EventEmitter } from "node:events";
@@ -31,6 +32,28 @@ let exactPersistedCallbackHistory: string[] | undefined;
 let requestClientMessageId: string | undefined;
 const EXACT_PERSISTED_ID = stringToUuid("exact-persisted-assistant") as UUID;
 const EXACT_INTERNAL_ID = stringToUuid("exact-internal-assistant") as UUID;
+
+// Connection readiness has its own integration suite. This fixture isolates
+// the later assistant commit boundary and therefore supplies an already-valid
+// descriptor without running world/room topology writes.
+vi.mock("../conversation-connection-readiness.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("../conversation-connection-readiness.ts")
+  >("../conversation-connection-readiness.ts");
+  return {
+    ...actual,
+    captureConversationConnectionDescriptor: vi.fn((input) => ({
+      ...input,
+      runtimeAgentId: input.runtime.agentId,
+      topologyIdentity: "test-topology",
+      proofIdentity: "test-proof",
+      topologyGeneration: 1,
+      roomGeneration: 1,
+    })),
+    scheduleConversationConnectionEnsure: vi.fn(async () => undefined),
+    assertConversationConnectionRuntime: vi.fn(),
+  };
+});
 
 vi.mock("../chat-routes.ts", async () => {
   const actual =
@@ -90,7 +113,7 @@ vi.mock("../chat-routes.ts", async () => {
         });
       },
     ),
-    generateChatResponse: vi.fn(async (_runtime, _msg, agentName, opts) => {
+    generateChatResponse: vi.fn(async (runtime, msg, agentName, opts) => {
       captureGenerateAbortSignal = opts?.abortSignal;
       if (generateThrowsTurnAbort) {
         const err = new Error("Turn aborted: ui-chat-abort") as Error & {
@@ -120,9 +143,13 @@ vi.mock("../chat-routes.ts", async () => {
           responseMessages: [
             {
               id: EXACT_PERSISTED_ID,
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              roomId: msg.roomId,
               content: { text: "Already durable." },
             },
           ],
+          persistedResponseMessageIds: [EXACT_PERSISTED_ID],
         };
       }
       if (generateReturnsExactInternal) {
@@ -137,12 +164,16 @@ vi.mock("../chat-routes.ts", async () => {
           responseMessages: [
             {
               id: EXACT_INTERNAL_ID,
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              roomId: msg.roomId,
               content: {
                 text: "Internal diagnostic.",
                 transcriptVisibility: "internal" as const,
               },
             },
           ],
+          persistedResponseMessageIds: [EXACT_INTERNAL_ID],
         };
       }
       // Stream a single token so the SSE wire format mirrors a real turn.
@@ -406,7 +437,7 @@ describe("conversation-routes streaming persistence ordering", () => {
     vi.clearAllMocks();
   });
 
-  it("emits `done` only after the advertised assistant memory is durable", async () => {
+  it("emits `done` only after both advertised memories are durable", async () => {
     const { ctx, record } = createCtx();
 
     // Kick the handler off; do NOT await — persistence is hanging.
@@ -424,12 +455,16 @@ describe("conversation-routes streaming persistence ordering", () => {
     persistResolve?.();
     await handlerDone;
     expect(persistResolvedAt).not.toBeNull();
-    expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(true);
+    const doneFrame = record.writes.find((w) => w.includes('"type":"done"'));
+    expect(doneFrame).toContain(
+      `"messageId":"${stringToUuid("persisted-assistant")}"`,
+    );
+    expect(doneFrame).toContain(
+      `"userMessageId":"${stringToUuid("user-msg-store")}"`,
+    );
     expect(record.ended).toBe(true);
     expect(record.endedAt).not.toBeNull();
-    expect(record.endedAt ?? Infinity).toBeGreaterThanOrEqual(
-      persistResolvedAt ?? 0,
-    );
+    expect(record.endedAt ?? 0).toBeGreaterThanOrEqual(persistResolvedAt ?? 0);
   });
 
   it("returns an SSE error instead of an orphan done id when persistence fails", async () => {

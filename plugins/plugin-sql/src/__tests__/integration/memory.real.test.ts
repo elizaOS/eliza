@@ -150,6 +150,22 @@ describe("Memory Integration Tests", () => {
       expect(retrieved.content).toEqual({ text: "simple memory" });
     });
 
+    it("creates a duplicate ID atomically under concurrent writes", async () => {
+      const id = v4() as UUID;
+      const first = { ...createTestMemory({ text: "first" }), id };
+      const second = { ...createTestMemory({ text: "second" }), id };
+
+      const ids = await Promise.all([
+        adapter.createMemory(first, "messages"),
+        adapter.createMemory(second, "messages"),
+      ]);
+
+      expect(ids).toEqual([id, id]);
+      const rows = await adapter.getMemoriesByIds([id]);
+      expect(rows).toHaveLength(1);
+      expect(["first", "second"]).toContain(rows[0]?.content.text);
+    });
+
     it("should count memories through the runtime object contract", async () => {
       await adapter.createMemory(createTestMemory({ text: "message one" }), "messages");
       await adapter.createMemory(createTestMemory({ text: "message two" }), "messages");

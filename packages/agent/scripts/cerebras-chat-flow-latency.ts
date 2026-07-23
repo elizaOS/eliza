@@ -16,8 +16,10 @@ import {
   drainPostDeliveryTasks,
   type InferenceFlowStage,
   type InferenceHistogramSummary,
+  InferenceTurnTimer,
   inferenceTimingRegistry,
   type Memory,
+  runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
@@ -221,10 +223,10 @@ async function main(): Promise<void> {
     for (let index = 0; index < sampleCount; index += 1) {
       turns.push(await runTurn(index, false));
     }
-    const telemetry = buildInferenceTimingDevPayload(sampleCount);
-    if (telemetry.turns.length !== sampleCount) {
+    const chatTelemetry = buildInferenceTimingDevPayload(sampleCount);
+    if (chatTelemetry.turns.length !== sampleCount) {
       throw new Error(
-        `Expected ${sampleCount} timed turns, observed ${telemetry.turns.length}`,
+        `Expected ${sampleCount} timed turns, observed ${chatTelemetry.turns.length}`,
       );
     }
     if (turns.some((turn) => turn.usage.llmCalls !== 1)) {
@@ -232,6 +234,42 @@ async function main(): Promise<void> {
         "Every benchmark turn must make exactly one live LLM call",
       );
     }
+
+    const registeredProviderNames = runtime.providers.map(
+      (provider) => provider.name,
+    );
+    inferenceTimingRegistry.reset();
+    const providerSweepWallMs: number[] = [];
+    for (let index = 0; index < sampleCount; index += 1) {
+      const message = createMessageMemory({
+        id: randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: {
+          text: `Provider telemetry sweep ${index}`,
+          source: "provider_latency_audit",
+          channelType: ChannelType.DM,
+        },
+      });
+      const timer = new InferenceTurnTimer({
+        turnId: `provider-sweep-${index}`,
+        label: "all-provider-sweep",
+        roomId,
+      });
+      const startedAt = performance.now();
+      await runWithInferenceTiming(timer, () =>
+        runtime.composeState(
+          message as Memory,
+          registeredProviderNames,
+          true,
+          true,
+        ),
+      );
+      providerSweepWallMs.push(performance.now() - startedAt);
+      inferenceTimingRegistry.record(timer.close());
+      await drainPostDeliveryTasks(runtime);
+    }
+    const providerSweepTelemetry = buildInferenceTimingDevPayload(sampleCount);
 
     const report = {
       generatedAt: new Date().toISOString(),
@@ -245,7 +283,7 @@ async function main(): Promise<void> {
         "production generateChatResponse path with streaming, persistence, and distinct proof validation",
       warmups: warmupCount,
       samples: sampleCount,
-      registeredProviders: runtime.providers.map((provider) => provider.name),
+      registeredProviders: registeredProviderNames,
       wallMs: distribution(turns.map((turn) => turn.wallMs)),
       backgroundQuiescenceMs: distribution(
         turns.map((turn) => turn.backgroundQuiescenceMs),
@@ -253,16 +291,24 @@ async function main(): Promise<void> {
       totalToQuiescenceMs: distribution(
         turns.map((turn) => turn.totalToQuiescenceMs),
       ),
-      stageHistograms: stageHistograms(telemetry.flows),
-      derivedHistograms: telemetry.derivedHistograms satisfies Record<
+      stageHistograms: stageHistograms(chatTelemetry.flows),
+      derivedHistograms: chatTelemetry.derivedHistograms satisfies Record<
         string,
         InferenceHistogramSummary
       >,
-      spanHistograms: telemetry.spanHistograms,
-      providerTelemetry: telemetry.providers,
+      spanHistograms: chatTelemetry.spanHistograms,
+      providerTelemetry: chatTelemetry.providers,
+      allProviderSweep: {
+        execution:
+          "every registered provider explicitly selected and executed concurrently by AgentRuntime.composeState",
+        samples: sampleCount,
+        wallMs: distribution(providerSweepWallMs),
+        providerTelemetry: providerSweepTelemetry.providers,
+        turns: providerSweepTelemetry.turns,
+      },
       turns,
-      inferenceTurns: telemetry.turns,
-      flows: telemetry.flows,
+      inferenceTurns: chatTelemetry.turns,
+      flows: chatTelemetry.flows,
     };
     const json = `${JSON.stringify(report, null, 2)}\n`;
     const reportPath = process.env.ELIZA_CEREBRAS_CHAT_REPORT?.trim();

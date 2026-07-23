@@ -343,7 +343,6 @@ const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 // recent and in-flight turns while bounding memory.
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
-const SLOW_PROVIDER_WARN_MS = 100;
 
 type ProviderExecutionOutcome =
 	| "success"
@@ -4416,18 +4415,6 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 
-					if (duration > SLOW_PROVIDER_WARN_MS) {
-						this.logger.warn(
-							{
-								src: "agent",
-								agentId: this.agentId,
-								provider: provider.name,
-								durationMs: duration,
-								coalesced: providerCoalesced,
-							},
-							"Slow provider",
-						);
-					}
 					return {
 						...result,
 						providerName: provider.name,

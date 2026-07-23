@@ -1,10 +1,9 @@
-/** Validates the auth-latency probe's bounded parser, samples, summaries, and gates. */
+/** Validates the auth-latency probe's bounded parser, samples, and summaries. */
 
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  enforceAcceptance,
   parseArgs,
   parseAuthServerTiming,
   parseAuthTrace,
@@ -49,7 +48,6 @@ test("parseArgs requires exact HTTPS deployment provenance and sample counts", (
       "31",
       "--miss-count",
       "11",
-      "--enforce",
     ]),
     {
       baseUrl: "https://preview.example",
@@ -61,7 +59,6 @@ test("parseArgs requires exact HTTPS deployment provenance and sample counts", (
       missCount: 11,
       timeoutMs: 30_000,
       intervalMs: 250,
-      enforce: true,
     },
   );
   assert.throws(
@@ -499,21 +496,23 @@ function sample(phase, resolveMs) {
   };
 }
 
-test("summary and acceptance enforce sample volume, hit tails, and 50% cold improvement", () => {
+test("summary reports sample volume and latency distributions without thresholds", () => {
   const passing = [
     ...Array.from({ length: 30 }, () => sample("hit", 10)),
     ...Array.from({ length: 10 }, () => sample("miss", 1_000)),
   ];
   const summary = summarizeAuthSamples(passing, SHA);
   assert.deepEqual(summary.counts, { hit: 30, miss: 10 });
-  assert.doesNotThrow(() => enforceAcceptance(summary));
-
-  const slow = summarizeAuthSamples(
-    [
-      ...Array.from({ length: 30 }, () => sample("hit", 10)),
-      ...Array.from({ length: 10 }, () => sample("miss", 2_100)),
-    ],
-    SHA,
-  );
-  assert.throws(() => enforceAcceptance(slow), /multi-second tail/);
+  assert.deepEqual(summary.hitAuthResolveMs, {
+    p50: 10,
+    p90: 10,
+    p95: 10,
+    max: 10,
+  });
+  assert.deepEqual(summary.missAuthResolveMs, {
+    p50: 1_000,
+    p90: 1_000,
+    p95: 1_000,
+    max: 1_000,
+  });
 });

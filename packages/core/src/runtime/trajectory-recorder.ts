@@ -1462,65 +1462,31 @@ export function createJsonFileTrajectoryRecorder(
 // Trajectory finalization guard
 // ---------------------------------------------------------------------------
 
-/** Bound on optional pre-end work before the terminal status is written anyway. */
-export const DEFAULT_FINALIZE_TIMEOUT_MS = 60_000;
-
 export interface FinalizeTrajectoryRecordingOptions {
 	recorder: TrajectoryRecorder;
 	trajectoryId: string;
 	status: "finished" | "errored";
 	/**
 	 * Optional best-effort work to run before the terminal write (e.g. recording
-	 * a late background stage). Failures and timeouts are logged, never fatal.
+	 * a late background stage). Failures are logged, never fatal.
 	 */
 	beforeEnd?: () => Promise<void>;
-	beforeEndTimeoutMs?: number;
 	logger?: RecorderLogger;
-}
-
-async function awaitBounded(
-	work: Promise<void>,
-	timeoutMs: number,
-): Promise<"done" | "timeout"> {
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	try {
-		return await Promise.race([
-			work.then(() => "done" as const),
-			new Promise<"timeout">((resolve) => {
-				timer = setTimeout(() => resolve("timeout"), timeoutMs);
-				(timer as { unref?: () => void }).unref?.();
-			}),
-		]);
-	} finally {
-		if (timer !== undefined) clearTimeout(timer);
-		// error-policy:J5 rejection-suppression — a raced-out `work` may still reject
-		// later; the timeout result is already returned, so keep the late rejection
-		// from surfacing as an unhandled rejection.
-		void work.catch(() => undefined);
-	}
 }
 
 /**
  * Lifecycle guard: every started trajectory must reach a terminal status.
  *
- * Runs `beforeEnd` bounded by `beforeEndTimeoutMs`, then writes the terminal
- * status no matter what — a hung or throwing `beforeEnd` (historically the
- * background FACTS_AND_RELATIONSHIPS model call) must never leave the
- * trajectory stuck in `running`.
+ * Runs `beforeEnd`, then writes the terminal status. The caller owns
+ * cancellation for background model work; this layer does not invent a
+ * wall-clock deadline that can truncate an otherwise valid trajectory.
  */
 export async function finalizeTrajectoryRecording(
 	opts: FinalizeTrajectoryRecordingOptions,
 ): Promise<void> {
-	const timeoutMs = opts.beforeEndTimeoutMs ?? DEFAULT_FINALIZE_TIMEOUT_MS;
 	try {
 		if (opts.beforeEnd) {
-			const outcome = await awaitBounded(opts.beforeEnd(), timeoutMs);
-			if (outcome === "timeout") {
-				opts.logger?.warn?.(
-					{ trajectoryId: opts.trajectoryId, timeoutMs },
-					"[TrajectoryRecorder] finalize: pre-end work timed out; ending trajectory without it",
-				);
-			}
+			await opts.beforeEnd();
 		}
 	} catch (err) {
 		opts.logger?.warn?.(

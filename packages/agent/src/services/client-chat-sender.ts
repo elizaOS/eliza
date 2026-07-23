@@ -219,13 +219,9 @@ function installDashboardFallbackSend(
   const originalSend = runtime.sendMessageToTarget.bind(runtime);
   const hasRegisteredHandler = (source: string): boolean => {
     if (typeof runtime.getMessageConnectors !== "function") return false;
-    try {
-      return runtime
-        .getMessageConnectors()
-        .some((connector) => connector.source === source);
-    } catch {
-      return false;
-    }
+    return runtime
+      .getMessageConnectors()
+      .some((connector) => connector.source === source);
   };
 
   runtime.sendMessageToTarget = async (target, content) => {

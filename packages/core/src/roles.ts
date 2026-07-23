@@ -28,6 +28,7 @@ import {
 } from "./connectors.ts";
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
+import { memoizeTurnWork } from "./trajectory-context.ts";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,
@@ -931,7 +932,10 @@ export async function resolveWorldForMessage(
 	world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>;
 	metadata: RolesWorldMetadata;
 } | null> {
-	const room = await runtime.getRoom(message.roomId);
+	const room = await memoizeTurnWork(
+		`room:${runtime.agentId}:${message.roomId}`,
+		() => runtime.getRoom(message.roomId),
+	);
 	const worldId =
 		room?.worldId ?? resolveWorldIdFromMessageMetadata(runtime, message);
 	if (!worldId) return null;

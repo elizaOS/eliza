@@ -29,6 +29,7 @@ import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
+import { memoizeTurnWork } from "../../../trajectory-context.ts";
 import type {
 	CustomMetadata,
 	Entity,
@@ -402,7 +403,10 @@ export const recentMessagesProvider: Provider = {
 			);
 
 			// First get room to check for compaction point
-			const room = await runtime.getRoom(roomId);
+			const room = await memoizeTurnWork(
+				`room:${runtime.agentId}:${roomId}`,
+				() => runtime.getRoom(roomId),
+			);
 
 			// Check for compaction point - only load messages after this timestamp
 			const lastCompactionAt = room?.metadata?.lastCompactionAt as

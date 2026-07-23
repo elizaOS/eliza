@@ -29,7 +29,7 @@ describe("streamChatEndpoint client abort", () => {
       }
       // The stream is now stalled between tokens. Simulate the user hitting Stop
       // while this read is pending — the abort must tear the loop down without
-      // waiting for this (never-resolving) read or the 60s idle timeout.
+      // waiting for this never-resolving read.
       queueMicrotask(() => controller.abort());
       return new Promise<never>(() => {});
     });

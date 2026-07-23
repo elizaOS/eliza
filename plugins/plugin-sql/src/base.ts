@@ -2788,11 +2788,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<UUID> {
     const memoryId = memory.id ?? (v4() as UUID);
 
-    const existing = await this.getMemoryById(memoryId);
-    if (existing) {
-      return memoryId;
-    }
-
     // only do costly check if we need to
     if (memory.unique === undefined) {
       memory.unique = true; // set default
@@ -2821,20 +2816,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     // Use withEntityContext to set Entity RLS context if needed
     // This delegates to the concrete adapter implementation (PostgreSQL or PGLite)
     await this.withEntityContext(memory.entityId, async (tx) => {
-      await tx.insert(memoryTable).values([
-        {
-          id: memoryId,
-          type: tableName,
-          content: sql`${contentToInsert}::jsonb`,
-          metadata: sql`${metadataToInsert}::jsonb`,
-          entityId: memory.entityId,
-          roomId: memory.roomId,
-          worldId: memory.worldId, // Include worldId
-          agentId: memory.agentId || this.agentId,
-          unique: memory.unique,
-          createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
-        },
-      ]);
+      const inserted = await tx
+        .insert(memoryTable)
+        .values([
+          {
+            id: memoryId,
+            type: tableName,
+            content: sql`${contentToInsert}::jsonb`,
+            metadata: sql`${metadataToInsert}::jsonb`,
+            entityId: memory.entityId,
+            roomId: memory.roomId,
+            worldId: memory.worldId, // Include worldId
+            agentId: memory.agentId || this.agentId,
+            unique: memory.unique,
+            createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
+          },
+        ])
+        .onConflictDoNothing()
+        .returning();
+
+      if (inserted.length === 0) {
+        return;
+      }
 
       if (memory.embedding && Array.isArray(memory.embedding)) {
         const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));

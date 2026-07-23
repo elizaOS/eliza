@@ -683,21 +683,13 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("Navigated to Notes (gui).");
   });
 
-  it("routes a clean extension to onChunk but an in-place revision to onSnapshot", async () => {
-    // chat-routes' appendIncomingText() runs every onStreamChunk value through
-    // resolveStreamingUpdate(responseText, incoming):
-    //   - a clean extension of the buffer => append => onChunk(delta)
-    //   - an in-place revision that does NOT extend the buffer => replace =>
-    //     onSnapshot(full text)
-    // This locks that the route does not garble a corrected snapshot into the
-    // delta stream. "helo world" -> "hello world" is the canonical revision
-    // (fixes a typo in an already-streamed word) classified as a replacement.
+  it("uses authoritative accumulated text for an in-place stream revision", async () => {
     const service: MessageService = {
       async handleMessage(_runtime, _message, _callback, options) {
         await Promise.resolve();
-        await options?.onStreamChunk?.("helo world");
+        await options?.onStreamChunk?.("helo world", undefined, "helo world");
         await Promise.resolve();
-        await options?.onStreamChunk?.("hello world");
+        await options?.onStreamChunk?.("l", undefined, "hello world");
         return {
           didRespond: true,
           responseContent: { text: "hello world" },
@@ -774,6 +766,46 @@ describe("generateChatResponse token streaming", () => {
     expect(chunks.join("")).toBe(complete);
     expect(snapshots).toEqual([]);
     expect(result.text).toBe(complete);
+  });
+
+  it("preserves whitespace and repeated prefixes across genuine stream deltas", async () => {
+    const deltas = ["Fast ", "streaming ", "stays ", "smooth."];
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, _callback, options) {
+        let accumulated = "";
+        for (const delta of deltas) {
+          accumulated += delta;
+          await options?.onStreamChunk?.(delta, undefined, accumulated);
+        }
+        return {
+          didRespond: true,
+          responseContent: { text: accumulated },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "streaming-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const chunks: string[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("preserve token boundaries"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => chunks.push(chunk),
+      },
+    );
+
+    expect(chunks).toEqual(deltas);
+    expect(result.text).toBe("Fast streaming stays smooth.");
   });
 
   it("returns sanitized action result summaries for UI handoffs", async () => {

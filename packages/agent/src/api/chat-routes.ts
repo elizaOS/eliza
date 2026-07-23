@@ -43,6 +43,7 @@ import {
   runWithTrajectoryContext,
   stringToUuid,
   timeInferenceSpan,
+  trackPostDeliveryTask,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -194,17 +195,18 @@ const CLIENT_MESSAGE_ID_MAX_LENGTH = 128;
  *
  * Keyed by `${conversationOrUserScope}:${clientMessageId}` so a legitimately
  * identical message in a different conversation, or the same text re-sent after
- * the TTL, is NOT suppressed. The TTL must cover the full server generation
- * window plus the client's reconnect retry wait; otherwise a retry after a long
- * but successful turn can land after the arrival timestamp expires and start a
- * second billed LLM turn. The map stays bounded via an amortized sweep (at most
- * once per TTL window) — the same O(1)-check / amortized-eviction shape as the
- * WS cache.
+ * the retention window, is NOT suppressed. The map stays bounded via an
+ * amortized sweep (at most once per retention window) — the same O(1)-check /
+ * amortized-eviction shape as the WS cache. This window only retains keys; it
+ * never delays or aborts a response.
  */
 export interface ChatMessageIdOutcome {
   text: string;
   agentName: string;
   messageId?: UUID;
+  userMessageId?: UUID;
+  assistantEphemeral?: boolean;
+  historyRefreshRequired?: boolean;
   transcriptVisibility?: "internal";
   thought?: string;
   usage?: ChatGenerationResult["usage"];
@@ -221,13 +223,7 @@ interface ChatMessageIdEntry {
 }
 
 const chatSeenMessageIds = new Map<string, ChatMessageIdEntry>();
-const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
-const CHAT_DEDUPE_RECONNECT_WAIT_MS = 30_000;
-const CHAT_DEDUPE_SETTLE_BUFFER_MS = 30_000;
-const CHAT_DEDUPE_TTL_MS =
-  resolveChatGenerationTimeoutMs() +
-  CHAT_DEDUPE_RECONNECT_WAIT_MS +
-  CHAT_DEDUPE_SETTLE_BUFFER_MS;
+const CHAT_DEDUPE_TTL_MS = 5 * 60_000;
 let chatSeenLastSweepAt = 0;
 
 /** Normalize a raw body value into a usable idempotency key, or `null` when
@@ -884,8 +880,13 @@ export interface ChatGenerationResult {
   responseContent?: Content | null;
   responseMessages?: Array<{
     id?: string;
+    entityId?: UUID;
+    agentId?: UUID;
+    roomId?: UUID;
     content?: Content;
   }>;
+  /** Exact response IDs durably committed by the message service before return. */
+  persistedResponseMessageIds?: string[];
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -1678,11 +1679,11 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
   }
 
   const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
-  if (!fromEnv) return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
+  if (!fromEnv) return 0;
 
   const parsed = Number.parseInt(fromEnv, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
+    return 0;
   }
 
   return Math.max(1_000, parsed);
@@ -1698,6 +1699,9 @@ async function withTimeout<T>(
   createError: () => Error,
   onTimeout?: () => void,
 ): Promise<T> {
+  if (timeoutMs <= 0) {
+    return promise;
+  }
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -2325,11 +2329,10 @@ export async function persistAssistantConversationMemory(
   content: string | Content,
   channelType: ChannelType,
   dedupeSinceMs?: number,
-  // Caller-supplied memory id. The streaming route pre-mints the id and stamps
-  // it on the SSE `done` frame BEFORE this (possibly deferred) persist runs,
-  // so the client can swap its optimistic temp-resp-* bubble to the durable id
-  // and the proactive-message WS echo reconciles by id instead of appending a
-  // duplicate bubble.
+  // Callers that need a deterministic retry key may supply the memory id. The
+  // returned Memory remains the authority for terminal transport metadata:
+  // callers emit `done` only after this write resolves and use its durable id
+  // to reconcile optimistic and proactive-message copies.
   memoryId?: UUID,
 ): Promise<Memory | null> {
   const persistedContent = markSyntheticChatFailureContent(
@@ -2537,28 +2540,30 @@ function readMessageTrajectoryGrouping(
   });
 }
 
-async function persistMessageTrajectoryGrouping(
+function scheduleMessageTrajectoryGroupingPersistence(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
-): Promise<void> {
+): void {
   const stepId = readMessageTrajectoryStepId(message);
   if (!stepId) return;
 
   const grouping = readMessageTrajectoryGrouping(message);
   if (!grouping.scenarioId && !grouping.batchId) return;
 
-  await startTrajectoryStepInDatabase({
-    runtime,
-    stepId,
-    source:
-      typeof message.content.source === "string" &&
-      message.content.source.trim().length > 0
-        ? message.content.source
-        : undefined,
-    metadata: {
-      ...(grouping.scenarioId ? { scenarioId: grouping.scenarioId } : {}),
-      ...(grouping.batchId ? { batchId: grouping.batchId } : {}),
-    },
+  void trackPostDeliveryTask(runtime, "chat:trajectory-grouping", async () => {
+    await startTrajectoryStepInDatabase({
+      runtime,
+      stepId,
+      source:
+        typeof message.content.source === "string" &&
+        message.content.source.trim().length > 0
+          ? message.content.source
+          : undefined,
+      metadata: {
+        ...(grouping.scenarioId ? { scenarioId: grouping.scenarioId } : {}),
+        ...(grouping.batchId ? { batchId: grouping.batchId } : {}),
+      },
+    });
   });
 }
 
@@ -2618,10 +2623,6 @@ async function generateChatResponseWithTiming(
     opts?.timeoutDuration,
   );
   let generationTimedOut = false;
-  if (generationTimeoutMs <= 1) {
-    generationTimedOut = true;
-    throw createChatGenerationTimeoutError(generationTimeoutMs);
-  }
   const generationAbortController = new AbortController();
   const abortGeneration = (reason?: unknown): void => {
     if (!generationAbortController.signal.aborted) {
@@ -2709,14 +2710,22 @@ async function generateChatResponseWithTiming(
       }
       return activeStreamSource === source;
     };
-    const appendIncomingText = (incoming: string): void => {
-      const update = resolveStreamingUpdate(responseText, incoming);
-      if (update.kind === "unchanged") return;
-      if (update.kind === "append") {
-        emitChunk(update.emittedText);
+    const appendIncomingText = (chunk: string, accumulated?: string): void => {
+      // StreamChunkCallback defines `chunk` as a delta. Structured extractors
+      // additionally provide their authoritative accumulation, which lets this
+      // boundary recover an actual upstream rewrite without guessing from text
+      // overlap. Applying overlap deduplication to genuine deltas corrupts valid
+      // boundaries such as "Fast " + "streaming " and repeated tokens.
+      if (accumulated === undefined) {
+        emitChunk(chunk);
         return;
       }
-      emitSnapshot(update.nextText);
+      if (accumulated === responseText) return;
+      if (accumulated.startsWith(responseText)) {
+        emitChunk(accumulated.slice(responseText.length));
+        return;
+      }
+      emitSnapshot(accumulated);
     };
     const captureCallbackBaseline = (): void => {
       if (preCallbackText === null) {
@@ -3057,17 +3066,19 @@ async function generateChatResponseWithTiming(
                     const visibleChunk = isInternalStructuredStreamText(chunk)
                       ? ""
                       : chunk;
-                    recordActionCallback(
-                      extractCallbackActionTag(content),
-                      Boolean(visibleChunk),
-                    );
                     if (!visibleChunk) return [];
                     if (!claimStreamSource("callback")) return [];
+                    recordActionCallback(
+                      extractCallbackActionTag(content),
+                      true,
+                    );
                     applyCallbackTextUpdate(content, visibleChunk);
                     return [];
                   },
                   {
-                    timeoutDuration: generationTimeoutMs,
+                    ...(generationTimeoutMs > 0
+                      ? { timeoutDuration: generationTimeoutMs }
+                      : {}),
                     abortSignal: generationAbortController.signal,
                     keepExistingResponses: true,
                     onStreamChunk: opts?.onChunk
@@ -3095,11 +3106,7 @@ async function generateChatResponseWithTiming(
                             return;
                           }
                           if (!claimStreamSource("onStreamChunk")) return;
-                          // Structured extractors provide authoritative cumulative text.
-                          // Using it avoids mistaking repeated characters at adjacent chunk
-                          // boundaries for transport overlap; raw delta handlers still fall
-                          // back to the route's compatibility reconciler.
-                          appendIncomingText(accumulated ?? chunk);
+                          appendIncomingText(chunk, accumulated);
                         }
                       : undefined,
                   },
@@ -3400,8 +3407,18 @@ async function generateChatResponseWithTiming(
     const responseMessages = Array.isArray(result?.responseMessages)
       ? result.responseMessages.map((entry) => ({
           ...(entry.id ? { id: entry.id } : {}),
+          ...(entry.entityId ? { entityId: entry.entityId } : {}),
+          ...(entry.agentId ? { agentId: entry.agentId } : {}),
+          ...(entry.roomId ? { roomId: entry.roomId } : {}),
           ...(entry.content ? { content: entry.content } : {}),
         }))
+      : [];
+    const persistedResponseMessageIds = Array.isArray(
+      result?.persistedResponseMessageIds,
+    )
+      ? result.persistedResponseMessageIds.filter(
+          (id): id is UUID => typeof id === "string" && id.length > 0,
+        )
       : [];
     const responseContent: Content | null =
       result?.responseContent && typeof result.responseContent === "object"
@@ -3448,7 +3465,8 @@ async function generateChatResponseWithTiming(
       rawFailureKind === "insufficient_credits" ||
       rawFailureKind === "local_inference" ||
       rawFailureKind === "no_provider" ||
-      rawFailureKind === "provider_issue"
+      rawFailureKind === "provider_issue" ||
+      rawFailureKind === "rate_limited"
         ? rawFailureKind
         : undefined;
 
@@ -3474,7 +3492,7 @@ async function generateChatResponseWithTiming(
       ...(failureKind ? { failureKind } : {}),
       ...(accountConnect ? { accountConnect } : {}),
       ...(localInference ? { localInference } : {}),
-      ...(actionCallbacksSeen > 0 ? { usedActionCallbacks: true } : {}),
+      ...(result?.mode === "actions" ? { usedActionCallbacks: true } : {}),
       ...(actionCallbackHistory.length > 0
         ? { actionCallbackHistory: [...actionCallbackHistory] }
         : {}),
@@ -3483,23 +3501,14 @@ async function generateChatResponseWithTiming(
         : {}),
       ...(responseContent ? { responseContent } : {}),
       ...(responseMessages.length > 0 ? { responseMessages } : {}),
+      ...(persistedResponseMessageIds.length > 0
+        ? { persistedResponseMessageIds }
+        : {}),
       usage: buildChatUsage(runtime, message, finalText, capturedUsage),
     };
   } finally {
     opts?.abortSignal?.removeEventListener("abort", onExternalAbort);
-    try {
-      await persistMessageTrajectoryGrouping(runtime, message);
-    } catch (err) {
-      runtime.logger.warn(
-        {
-          err,
-          src: "eliza-api",
-          messageId: message.id,
-          roomId: message.roomId,
-        },
-        "Failed to persist trajectory grouping metadata",
-      );
-    }
+    scheduleMessageTrajectoryGroupingPersistence(runtime, message);
     closeResponseFinalization?.();
   }
 }

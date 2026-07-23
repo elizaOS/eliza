@@ -1320,28 +1320,25 @@ describe("finalizeTrajectoryRecording (running-status leak guard)", () => {
 		return JSON.parse(raw) as RecordedTrajectory;
 	}
 
-	it("writes a terminal status even when the pre-end work never settles", async () => {
-		const warn = vi.fn();
+	it("waits for pre-end work before writing the terminal status", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+		let release: (() => void) | undefined;
+		const beforeEnd = new Promise<void>((resolve) => {
+			release = resolve;
+		});
 
-		await finalizeTrajectoryRecording({
+		const finalization = finalizeTrajectoryRecording({
 			recorder,
 			trajectoryId: id,
 			status: "finished",
-			// Simulates a hung background facts-stage model call.
-			beforeEnd: () => new Promise<void>(() => {}),
-			beforeEndTimeoutMs: 25,
-			logger: { warn },
+			beforeEnd: () => beforeEnd,
 		});
 
-		const persisted = await readPersisted(id);
-		expect(persisted.status).toBe("finished");
-		expect(persisted.endedAt).toBeGreaterThan(0);
-		expect(warn).toHaveBeenCalledWith(
-			expect.objectContaining({ trajectoryId: id, timeoutMs: 25 }),
-			expect.stringContaining("timed out"),
-		);
+		expect((await recorder.load(id))?.status).toBe("running");
+		release?.();
+		await finalization;
+		expect((await readPersisted(id)).status).toBe("finished");
 	});
 
 	it("writes a terminal errored status even when the pre-end work throws", async () => {

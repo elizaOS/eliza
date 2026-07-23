@@ -39,6 +39,7 @@ import {
 	InferenceTurnTimer,
 	markInference,
 	nextInferenceTurnId,
+	recordInferenceSpan,
 	runWithInferenceTiming,
 	timeInferenceSpan,
 } from "../inference-timing";
@@ -189,6 +190,7 @@ import {
 } from "../streaming-context";
 import {
 	getTrajectoryContext,
+	memoizeTurnWork,
 	runWithTrajectoryContext,
 } from "../trajectory-context";
 import type { CharacterSettings } from "../types/agent";
@@ -6936,6 +6938,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		availableContexts,
 		extraProviderExclusions: stage1ProviderExclusionsForMessage(args.message),
 	});
+	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
 	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
@@ -6980,6 +6983,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		result: FactsAndRelationshipsRunResult | null;
 		error?: unknown;
 	} | null> = Promise.resolve(null);
+	let messageHandlerStageTask: Promise<void> = Promise.resolve();
 	try {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
@@ -7201,6 +7205,10 @@ export async function runV5MessageRuntimeStage1(args: {
 		// number of times before falling back to the planner.
 		const stage1RetryLimit = readStage1EmptyRetryLimit(args.runtime);
 		let stage1RetryCount = 0;
+		recordInferenceSpan(
+			"message:stage1:preprocess",
+			performance.now() - stage1PreprocessStartedAt,
+		);
 		let rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			stage1ModelParams,
@@ -7370,7 +7378,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
 		if (recorder && trajectoryId) {
-			await recordMessageHandlerStage({
+			messageHandlerStageTask = recordMessageHandlerStage({
 				recorder,
 				trajectoryId,
 				messages: messageHandlerInput.messages,
@@ -8330,23 +8338,8 @@ export async function runV5MessageRuntimeStage1(args: {
 		endStatus = "errored";
 		throw err;
 	} finally {
-		// Finalize the trajectory: record the FACTS_AND_RELATIONSHIPS side-effect
-		// stage, then end the trajectory.
-		//
-		// CRITICAL (latency): factsTask is the FACTS_AND_RELATIONSHIPS stage — a
-		// heavy background TEXT_LARGE call that is launched in parallel precisely
-		// so it does NOT block the user reply (see the launch comment above). The
-		// facts/relationships are persisted *inside* runFactsAndRelationshipsStage
-		// independently of this await, so the only thing awaiting it here buys is
-		// the trajectory record's facts-stage entry. Awaiting it in `finally`
-		// gated EVERY reply on the slow facts model — dedicated cloud agents took
-		// 30s+ per turn for a reply that was already ready in ~3s. So run the
-		// finalize in the background by default and let the turn return as soon as
-		// the reply is decided. Await it only when deterministic trajectory
-		// ordering is required (e.g. the scenario-runner) via ELIZA_AWAIT_FACTS_STAGE.
-		// finalizeTrajectoryRecording is the lifecycle guard: it bounds the wait
-		// on the facts stage and writes the terminal status no matter what, so a
-		// hung facts model call can never leave the trajectory stuck `running`.
+		// Trajectory persistence is diagnostic work. Preserve stage ordering in
+		// its own task without adding filesystem latency to the user-visible turn.
 		const finalizeTrajectory = async () => {
 			if (!recorder || !trajectoryId) return;
 			await finalizeTrajectoryRecording({
@@ -8354,6 +8347,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				trajectoryId,
 				status: endStatus,
 				beforeEnd: async () => {
+					await messageHandlerStageTask;
 					const factsOutcome = await factsTask;
 					if (factsOutcome) {
 						await recordFactsAndRelationshipsStage({
@@ -8371,8 +8365,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 		if (process.env.ELIZA_AWAIT_FACTS_STAGE === "true") {
 			await finalizeTrajectory();
-		} else {
-			void finalizeTrajectory();
+		} else if (recorder && trajectoryId) {
+			detachPostDeliverySideEffect(
+				args.runtime,
+				"trajectory-finalization",
+				finalizeTrajectory,
+			);
 		}
 	}
 }
@@ -10013,7 +10011,6 @@ export class DefaultMessageService implements IMessageService {
 					: undefined;
 		}
 
-		const senderRole = await resolveStage1SenderRole(runtime, message);
 		const trajectoryContextBase = {
 			// Minted above (before MESSAGE_RECEIVED) so file, DB, and spawn paths
 			// share it for the whole turn (#13775).
@@ -10021,7 +10018,7 @@ export class DefaultMessageService implements IMessageService {
 			runId: runtime.getCurrentRunId?.(),
 			roomId: message.roomId,
 			messageId: message.id,
-			userRole: senderRole,
+			turnMemo: new Map<string, Promise<unknown>>(),
 		};
 
 		return runWithTrajectoryContext<MessageProcessingResult>(
@@ -10035,6 +10032,13 @@ export class DefaultMessageService implements IMessageService {
 					}
 				: trajectoryContextBase,
 			async (): Promise<MessageProcessingResult> => {
+				const senderRole = await timeInferenceSpan(
+					"message:ingress:sender-role",
+					() => resolveStage1SenderRole(runtime, message),
+				);
+				const trajectoryContext = getTrajectoryContext();
+				if (trajectoryContext) trajectoryContext.userRole = senderRole;
+
 				// Determine shouldRespondModel from options or runtime settings
 				const shouldRespondModelSetting = runtime.getSetting(
 					"SHOULD_RESPOND_MODEL",
@@ -10205,7 +10209,10 @@ export class DefaultMessageService implements IMessageService {
 
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
-					timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
+					// A turn has no implicit wall-clock deadline. Callers that own a
+					// real execution budget may provide one explicitly; cancellation
+					// otherwise travels through abortSignal.
+					timeoutDuration: options?.timeoutDuration ?? 0,
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -10320,6 +10327,7 @@ export class DefaultMessageService implements IMessageService {
 					);
 
 					const timeoutPromise = new Promise<never>((_, reject) => {
+						if (opts.timeoutDuration <= 0) return;
 						timeoutId = setTimeout(async () => {
 							await runtime.emitEvent(EventType.RUN_TIMEOUT, {
 								runtime,
@@ -10626,20 +10634,11 @@ export class DefaultMessageService implements IMessageService {
 			const persistableMessage = stripAugmentationForPersistence(message);
 
 			if (message.id) {
-				const existingMemory = await runtime.getMemoryById(message.id);
-				if (existingMemory) {
-					runtime.logger.debug(
-						{ src: "service:message" },
-						"Memory already exists, skipping creation",
-					);
-					memoryToQueue = existingMemory;
-				} else {
-					const createdMemoryId = await runtime.createMemory(
-						persistableMessage,
-						"messages",
-					);
-					memoryToQueue = { ...persistableMessage, id: createdMemoryId };
-				}
+				const createdMemoryId = await runtime.createMemory(
+					persistableMessage,
+					"messages",
+				);
+				memoryToQueue = { ...persistableMessage, id: createdMemoryId };
 				await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
 			} else {
 				const memoryId = await runtime.createMemory(
@@ -10660,7 +10659,9 @@ export class DefaultMessageService implements IMessageService {
 				runtime.getParticipantUserState(message.roomId, runtime.agentId),
 			),
 			timeInferenceSpan("message:ingress:room", () =>
-				runtime.getRoom(message.roomId),
+				memoizeTurnWork(`room:${runtime.agentId}:${message.roomId}`, () =>
+					runtime.getRoom(message.roomId),
+				),
 			),
 		]);
 
@@ -11292,6 +11293,9 @@ export class DefaultMessageService implements IMessageService {
 
 		let responseContent: Content | null = null;
 		let responseMessages: Memory[] = [];
+		const persistedResponseMessageIds = new Set<UUID>(
+			Array.from(persistedEarlyReplyIds, (id) => id as UUID),
+		);
 		let actionResults: ActionResult[] | undefined;
 		let mode: StrategyMode = "none";
 
@@ -11403,6 +11407,9 @@ export class DefaultMessageService implements IMessageService {
 					await timeInferenceSpan("message:delivery:persistence", () =>
 						runtime.createMemory(responseMemory, "messages"),
 					);
+					if (responseMemory.id) {
+						persistedResponseMessageIds.add(responseMemory.id);
+					}
 
 					await timeInferenceSpan("message:delivery:event", () =>
 						this.emitMessageSent(
@@ -11494,6 +11501,9 @@ export class DefaultMessageService implements IMessageService {
 									await timeInferenceSpan("message:delivery:persistence", () =>
 										runtime.createMemory(responseMemory, "messages"),
 									);
+									if (responseMemory.id) {
+										persistedResponseMessageIds.add(responseMemory.id);
+									}
 
 									detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
 										this.emitMessageSent(
@@ -11736,8 +11746,9 @@ export class DefaultMessageService implements IMessageService {
 			roomName,
 		};
 
-		// Emit run ended event
-		await timeInferenceSpan("message:lifecycle:run-ended", () =>
+		// Delivery is already committed; lifecycle observers run after the
+		// caller receives the result and remain drainable during shutdown.
+		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
 			runtime.emitEvent(EventType.RUN_ENDED, {
 				runtime,
 				source: "messageHandler",
@@ -11756,6 +11767,13 @@ export class DefaultMessageService implements IMessageService {
 			didRespond,
 			responseContent,
 			responseMessages,
+			...(persistedResponseMessageIds.size > 0
+				? {
+						persistedResponseMessageIds: Array.from(
+							persistedResponseMessageIds,
+						),
+					}
+				: {}),
 			...(actionResults ? { actionResults } : {}),
 			state,
 			mode,
