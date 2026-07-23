@@ -1,7 +1,7 @@
 /**
  * Default vitest config for the unit suite (`__tests__/**\/*.test.ts`). Excludes
  * the `*.harness.test.ts` (real-PGLite) and `*.live.test.ts` (real-API) files —
- * the guarded `models.live` suite runs only in the `post-merge` lane, and the
+ * the guarded live suites run only in the `post-merge` lane, and the
  * unguarded native-plumbing live file stays excluded everywhere. Runs files
  * sequentially and isolated, and redirects PGlite data to the OS temp dir.
  */
@@ -18,7 +18,7 @@ export default defineConfig({
     include: ["__tests__/**/*.test.ts"],
     // `*.harness.test.ts` boot a real PGLite runtime and need the workspace
     // source aliases from vitest.harness.config.ts — run via `test:harness`.
-    // #9310 §E: the guarded models.live suite (self-skips keyless) is
+    // #9310 §E: guarded live suites (self-skip keyless) are
     // invocable only in the post-merge lane, where run-all-tests.mjs prints
     // a named skip accounting; the unguarded native-plumbing live file stays
     // excluded in every lane.

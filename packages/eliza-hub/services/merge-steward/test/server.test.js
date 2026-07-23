@@ -1510,6 +1510,10 @@ describe("merge steward server", () => {
       assert.equal(response.status, 413);
       assert.equal(body.error, "bad_request");
       assert.equal(body.message, "request_body_too_large");
+
+      const healthResponse = await fetch(`${limitedBaseUrl}/health`);
+      assert.equal(healthResponse.status, 200);
+      assert.equal((await healthResponse.json()).ok, true);
     });
   });
 

@@ -8,11 +8,10 @@ harnesses differ only in isolation, which the report discloses:
 - **eliza** — one ``ElizaClient`` (one bench-server / AgentRuntime) shared
   across the lane; each task's ``build_lifeops_bench_agent_fn`` mints a fresh
   ``lifeops-<uuid>`` session on it. Interference is real: N sessions contend
-  for one runtime. Per-session usage attribution depends on the AsyncLocalStorage
-  fix in ``packages/lifeops-bench/src/server.ts`` (issue #13777 PR 1); until
-  that lands, the eliza live lane double-counts turn usage across overlapping
-  sessions and must not be published — the CLI gates it behind
-  ``MULTITASK_ELIZA_USAGE_FIX=1``.
+  for one runtime. Per-session usage attribution rides the AsyncLocalStorage
+  buffer in ``packages/lifeops-bench/src/server.ts`` (#13777): each turn's
+  MODEL_USED events bind to their own async call chain, so overlapping
+  sessions never double-count cost or tokens.
 - **hermes / openclaw** — one client shared across the lane, each task's
   ``agent_fn`` driving an isolated native-runtime process per turn.
   Interference is only the shared rate/cost budget.
@@ -191,14 +190,5 @@ def build_agent_factory(harness: str, *, model: str | None = None) -> AgentFacto
         raise ValueError(
             f"unknown harness {harness!r}; expected one of "
             f"{sorted(_FACTORY_BUILDERS)}"
-        )
-    if harness == "eliza" and not os.environ.get("MULTITASK_ELIZA_USAGE_FIX"):
-        raise SystemExit(
-            "The eliza live lane needs the per-session usage-buffer fix in "
-            "packages/lifeops-bench/src/server.ts (issue #13777 PR 1). Without "
-            "it, MODEL_USED events from overlapping sessions land in one global "
-            "buffer and per-task cost/token attribution is wrong. Set "
-            "MULTITASK_ELIZA_USAGE_FIX=1 once that fix is in your tree to run "
-            "the eliza lane anyway."
         )
     return builder(model)

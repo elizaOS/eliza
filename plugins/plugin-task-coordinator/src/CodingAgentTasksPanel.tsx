@@ -557,7 +557,7 @@ function ThreadDetailPane({
     <div className="flex flex-col gap-3" data-testid="task-detail-pane">
       <BackChip
         label={t("codingagenttaskspanel.backToTasks", {
-          defaultValue: "Tasks",
+          defaultValue: "Projects",
         })}
         onClick={onBack}
         testId="task-detail-back"
@@ -886,7 +886,7 @@ export function CodingAgentTasksPanel({
       data-testid="task-coordinator-panel"
     >
       {fullPage ? (
-        // The shell `ViewHeader` (icon-only back + centered "Tasks") owns this
+        // The shell `ViewHeader` (icon-only back + centered "Projects") owns this
         // view's top bar, so the panel drops its own title/back row to avoid a
         // second heading (#13565). The counts survive as a lightweight,
         // left-aligned meta strip that mirrors the SectionNav secondary-row

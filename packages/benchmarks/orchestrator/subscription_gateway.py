@@ -356,8 +356,21 @@ def start_claude_subscription_gateway(
     stderr_handle: Any | None = None
     process: GatewayProcess | None = None
     try:
-        stdout_handle = stdout_file.open("ab")
-        stderr_handle = stderr_file.open("ab")
+        # Gateway process output may echo credential-adjacent diagnostics, so
+        # the logs are private regardless of the operator's umask. The mode
+        # argument only applies at creation; fchmod also covers a log file a
+        # pre-hardening run left behind with wider permissions (process_root
+        # is reused across runs and the handles append).
+        stdout_handle = os.fdopen(
+            os.open(stdout_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600),
+            "ab",
+        )
+        os.fchmod(stdout_handle.fileno(), 0o600)
+        stderr_handle = os.fdopen(
+            os.open(stderr_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600),
+            "ab",
+        )
+        os.fchmod(stderr_handle.fileno(), 0o600)
         if content_contract_file is not None:
             try:
                 descriptor = os.open(

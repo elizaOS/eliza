@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
 import asyncio
@@ -31,6 +32,34 @@ from .types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_llm_endpoint() -> tuple[str, str]:
+    """Resolve the (base_url, api_key) pair for the judge/persona LLM client.
+
+    Operator-set env must win over provider defaults so campaign runs can route
+    all traffic through an OpenAI-compatible proxy (e.g. the Eliza Cloud
+    gateway) instead of hitting a provider's public API directly. Precedence:
+    BENCHMARK_BASE_URL > OPENAI_BASE_URL > CEREBRAS_BASE_URL, and only when
+    none is set do we fall back to the public endpoint of whichever provider's
+    key is present (OPENAI_API_KEY wins over CEREBRAS_API_KEY, matching the
+    fallback choice below).
+    """
+    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    cerebras_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
+    api_key = openai_key or cerebras_key
+    if not api_key:
+        raise RuntimeError(
+            "WooBench LLM evaluator requires OPENAI_API_KEY or CEREBRAS_API_KEY"
+        )
+    for var in ("BENCHMARK_BASE_URL", "OPENAI_BASE_URL", "CEREBRAS_BASE_URL"):
+        value = os.environ.get(var, "").strip()
+        if value:
+            # Trailing slash would produce "//chat/completions" on some gateways.
+            return value.rstrip("/"), api_key
+    if not openai_key:
+        return "https://api.cerebras.ai/v1", api_key
+    return "https://api.openai.com/v1", api_key
 
 
 class WooBenchEvaluator:
@@ -811,18 +840,8 @@ Respond ONLY with the rephrased response, nothing else."""
         """
         try:
             import httpx
-            import os
 
-            api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-            base_url = os.environ.get("OPENAI_BASE_URL", "").strip()
-            if not api_key and os.environ.get("CEREBRAS_API_KEY", "").strip():
-                api_key = os.environ["CEREBRAS_API_KEY"].strip()
-                base_url = base_url or "https://api.cerebras.ai/v1"
-            base_url = base_url or "https://api.openai.com/v1"
-            if not api_key:
-                raise RuntimeError(
-                    "WooBench LLM evaluator requires OPENAI_API_KEY or CEREBRAS_API_KEY"
-                )
+            base_url, api_key = resolve_llm_endpoint()
 
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(

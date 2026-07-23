@@ -458,6 +458,38 @@ def fail_running_runs_in_group(
     return max(0, int(cursor.rowcount))
 
 
+def pause_running_runs_in_group(
+    conn: sqlite3.Connection,
+    *,
+    run_group_id: str,
+    ended_at: str,
+    error: str,
+) -> int:
+    """Retire a killed attempt's leftover rows before a resume.
+
+    A cohort resume starts fresh worker rows and reruns every harness with
+    ``force=True``, so every ``running``/``failed``/``succeeded`` row in the
+    group belongs to the dead attempt — the same terminal-state set
+    ``pause_run_group`` retires. Retiring all of them to ``paused_unknown``
+    keeps the group's row states honest: nothing is left for a later stale-run
+    recovery to flip, and no stale ``failed`` row from the killed attempt can
+    poison the cohort finalization's any-row-failed check after the resumed
+    attempt's reruns all succeed.
+    """
+
+    cursor = conn.execute(
+        """
+        UPDATE benchmark_runs
+        SET status = 'paused_unknown', ended_at = COALESCE(ended_at, ?), error = ?
+        WHERE run_group_id = ?
+          AND status IN ('running', 'failed', 'succeeded')
+        """,
+        (ended_at, error, run_group_id),
+    )
+    conn.commit()
+    return max(0, int(cursor.rowcount))
+
+
 def fail_succeeded_runs_for_publication(
     conn: sqlite3.Connection,
     *,
@@ -1248,15 +1280,37 @@ def recover_stale_running_runs(
     *,
     stale_before: str,
     ended_at: str,
+    include_namespaced_groups: bool = True,
 ) -> list[str]:
+    """Fail or pause ``running`` rows abandoned by a dead orchestrator process.
+
+    Only unfinished groups are eligible. A finished group's terminal state is
+    authoritative: reopening it would break subscription cohort reuse and the
+    one-unfinished-group-per-namespace invariant that
+    ``find_resumable_run_group`` enforces, so a zombie ``running`` row inside a
+    finished group is left alone rather than resurrecting the group.
+
+    ``include_namespaced_groups=False`` restricts recovery to namespace-less
+    (non-subscription) groups so cohort startup can self-heal crashed API-key
+    cohorts without disturbing the durable pause/resume semantics of
+    subscription executions.
+    """
+
+    # The namespace filter is a constant SQL fragment, never caller data.
+    namespace_filter = (
+        ""
+        if include_namespaced_groups
+        else " AND TRIM(COALESCE(g.execution_namespace, '')) = ''"
+    )
     rows = conn.execute(
-        """
+        f"""
         SELECT r.run_id, r.run_group_id, r.started_at,
                g.execution_namespace
         FROM benchmark_runs r
         JOIN run_groups g ON g.run_group_id = r.run_group_id
         WHERE r.status = 'running'
           AND r.started_at < ?
+          AND g.finished_at IS NULL{namespace_filter}
         ORDER BY r.started_at ASC
         """,
         (stale_before,),
@@ -1317,13 +1371,16 @@ def recover_stale_running_runs(
             failed_groups.add(run_group_id)
 
     for run_group_id in sorted(resumable_groups):
+        # Selection already excludes finished groups; the WHERE guard keeps a
+        # concurrently finished group from being reopened between the SELECT
+        # and this UPDATE.
         conn.execute(
             """
             UPDATE run_groups
             SET cohort_status = 'paused_unknown', pause_retry_at = NULL,
                 pause_reason = 'orchestrator_interrupted',
-                pause_metadata_json = ?, updated_at = ?, finished_at = NULL
-            WHERE run_group_id = ?
+                pause_metadata_json = ?, updated_at = ?
+            WHERE run_group_id = ? AND finished_at IS NULL
             """,
             (
                 _json_dumps(

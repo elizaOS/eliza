@@ -17,7 +17,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
@@ -34,13 +34,26 @@ from .db import (
     list_run_groups,
     list_runs,
     pause_run_group,
+    pause_running_runs_in_group,
     record_run_group_storage_preflight,
+    recover_stale_running_runs,
     repair_nonpublishable_success_statuses,
     repair_nonzero_returncode_statuses,
     resume_run_group,
 )
 from .locking import campaign_execution_lock
+from .provider_forwarder import (
+    ProviderForwarderProcess,
+    is_loopback_url,
+    start_provider_forwarder,
+)
 from .runner import (
+    DEFAULT_STALE_RECOVERY_SECONDS,
+    OPENAI_COMPAT_BASE_URL,
+    PROVIDER_BASE_URL_ENV,
+    PROVIDER_DUMMY_KEY,
+    PROVIDER_KEY_ENV,
+    _ambient_env,
     _ensure_viewer_snapshot,
     _effective_request,
     _is_harness_compatible,
@@ -48,6 +61,7 @@ from .runner import (
     _rebuild_latest_result_snapshots,
     _repair_current_compatibility_statuses,
     _repo_meta,
+    _resolve_openai_compat_base_url,
     _signature_for,
     run_benchmarks,
 )
@@ -412,6 +426,20 @@ def _prepare_cohort(
     conn = connect_database(output_root / "orchestrator.sqlite")
     try:
         initialize_database(conn)
+        # Standalone runs recover interrupted rows at startup (run_benchmarks);
+        # without the same sweep here, a killed non-subscription cohort keeps
+        # its rows 'running' and its group open until an operator runs
+        # recover-stale-runs by hand. Namespaced (subscription) groups are
+        # excluded: their zombie rows are retired by the durable pause/resume
+        # path, never by a timeout.
+        recover_stale_running_runs(
+            conn,
+            stale_before=(
+                datetime.now(UTC) - timedelta(seconds=DEFAULT_STALE_RECOVERY_SECONDS)
+            ).isoformat(),
+            ended_at=_utc_now(),
+            include_namespaced_groups=False,
+        )
         repair_nonzero_returncode_statuses(conn)
         repair_nonpublishable_success_statuses(conn)
         request_payload = asdict(replace(request, benchmarks=(benchmark_id,)))
@@ -603,6 +631,60 @@ def _run_worker(
         execution_env_overrides=execution_env_overrides,
         execution_cancel_event=execution_cancel_event,
     )
+
+
+def _forwarder_upstream(
+    *,
+    workspace_root: Path,
+    request: RunRequest,
+) -> tuple[str, str] | None:
+    """Resolve the remote upstream a non-subscription cohort must reach.
+
+    Returns ``(upstream_base_url, upstream_api_key)`` when the provider's
+    resolved OpenAI-compatible endpoint is non-loopback and therefore needs
+    the loopback provider forwarder for the hermes/openclaw legs to stay
+    publishable. Non-OpenAI-compat providers and already-loopback endpoints
+    (e.g. local vllm) return ``None`` and keep the direct path.
+
+    The base URL is resolved with the same precedence and dotenv-loaded
+    ambient env the worker's ``_default_env`` uses, so the coordinator's
+    decision and the workers' resolution can never disagree. extra_config
+    endpoint pins fail closed: registry command builders forward those values
+    to benchmark CLIs as literal ``--base-url`` flags, which would bypass the
+    per-leg env injection and hand a harness the remote URL directly.
+    """
+
+    provider = request.provider.strip().lower()
+    if provider not in OPENAI_COMPAT_BASE_URL:
+        return None
+    ambient_env = _ambient_env(workspace_root)
+    resolved_base_url = _resolve_openai_compat_base_url(
+        provider, request, ambient_env
+    )
+    if is_loopback_url(resolved_base_url):
+        return None
+    for extra_key in (f"{provider}_base_url", "base_url", "model_endpoint"):
+        candidate = request.extra_config.get(extra_key)
+        if isinstance(candidate, str) and candidate.strip():
+            raise ValueError(
+                f"extra_config {extra_key!r} pins a non-loopback endpoint; "
+                "registry commands forward it to benchmark CLIs as a literal "
+                "endpoint flag (--base-url / --model-endpoint) that bypasses "
+                "the loopback provider forwarder. Export the URL via "
+                f"{PROVIDER_BASE_URL_ENV[provider]} or OPENAI_BASE_URL instead"
+            )
+    upstream_api_key = (
+        ambient_env.get(PROVIDER_KEY_ENV[provider], "").strip()
+        or ambient_env.get("OPENAI_API_KEY", "").strip()
+        or PROVIDER_DUMMY_KEY.get(provider, "")
+    )
+    if not upstream_api_key:
+        raise RuntimeError(
+            f"Provider {provider} resolves to a non-loopback endpoint but "
+            f"neither {PROVIDER_KEY_ENV[provider]} nor OPENAI_API_KEY is set; "
+            "the loopback provider forwarder cannot authenticate upstream"
+        )
+    return resolved_base_url, upstream_api_key
 
 
 def _attach_gateway_audit(
@@ -890,6 +972,19 @@ def _resume_cohort(
             resumed_at=_utc_now(),
             storage_preflight=_storage_payload(storage_preflight),
         )
+        # A killed attempt leaves worker rows behind in 'running', 'failed',
+        # or 'succeeded'. Retire all of them before new workers start: the
+        # resumed attempt reruns every harness with force=True, so every prior
+        # row is superseded. Leaving a 'running' row would let a
+        # recover-stale-runs pass flip the group's state hours after it
+        # finishes, and leaving a 'failed' row would make _finalize_cohort's
+        # any-row-failed check finish an all-green resumed cohort as 'failed'.
+        pause_running_runs_in_group(
+            conn,
+            run_group_id=run_group_id,
+            ended_at=_utc_now(),
+            error="Superseded by a resumed cohort attempt",
+        )
     finally:
         conn.close()
 
@@ -1005,6 +1100,7 @@ def run_benchmark_cohorts(
     request: RunRequest,
     harnesses: tuple[str, ...],
     stop_after_failed_cohort: bool = True,
+    assume_quota_reset: bool = False,
 ) -> list[BenchmarkCohortResult]:
     """Run compatible harnesses together and benchmarks serially.
 
@@ -1012,6 +1108,12 @@ def run_benchmark_cohorts(
     current cohort, leaving the next benchmark untouched for the operator to
     debug and rerun. Worker crashes raise only after sibling workers have
     stopped and the shared run group has been finalized.
+
+    ``assume_quota_reset`` is the operator's assertion that the subscription
+    account behind a stored quota pause was swapped: a known-future
+    ``retry_at`` then no longer blocks a ``resume``. The override is
+    fail-closed — a still-latched gateway immediately re-pauses the cohort
+    with a fresh ``retry_at``.
     """
 
     normalized_harnesses = tuple(
@@ -1116,8 +1218,8 @@ def run_benchmark_cohorts(
                 )
                 if stored_execution is not None:
                     pause = _stored_pause_state(stored_execution)
-                    should_remain_paused = (
-                        not cohort_request.resume or _known_retry_is_future(pause)
+                    should_remain_paused = not cohort_request.resume or (
+                        not assume_quota_reset and _known_retry_is_future(pause)
                     )
                     if (
                         should_remain_paused
@@ -1187,6 +1289,7 @@ def run_benchmark_cohorts(
             failures: dict[str, Exception] = {}
             viewer_snapshot: Path | None = None
             gateway: ClaudeSubscriptionGatewayProcess | None = None
+            forwarder: ProviderForwarderProcess | None = None
             gateway_pause: GatewayPauseState | None = None
             storage_pause_preflight: StoragePreflight | None = None
             execution_cancel_event = threading.Event()
@@ -1213,6 +1316,22 @@ def run_benchmark_cohorts(
                             else None
                         ),
                     )
+                else:
+                    forwarder_target = _forwarder_upstream(
+                        workspace_root=workspace_root,
+                        request=cohort_request,
+                    )
+                    if forwarder_target is not None:
+                        forwarder = start_provider_forwarder(
+                            run_group_id=run_group_id,
+                            provider=cohort_request.provider.strip().lower(),
+                            harnesses=supported,
+                            upstream_base_url=forwarder_target[0],
+                            upstream_api_key=forwarder_target[1],
+                            evidence_dir=(
+                                output_root / run_group_id / "provider-forwarder"
+                            ),
+                        )
                 with ThreadPoolExecutor(
                     max_workers=len(supported),
                     thread_name_prefix=f"benchmark-{benchmark_id}",
@@ -1229,7 +1348,11 @@ def run_benchmark_cohorts(
                             execution_env_overrides=(
                                 gateway.env_for_harness(harness)
                                 if gateway is not None
-                                else None
+                                else (
+                                    forwarder.env_for_harness(harness)
+                                    if forwarder is not None
+                                    else None
+                                )
                             ),
                             execution_cancel_event=execution_cancel_event,
                         )
@@ -1321,6 +1444,15 @@ def run_benchmark_cohorts(
                 # executor creation, and always finalizes the shared group.
                 failures["coordinator-execution"] = error
             finally:
+                if forwarder is not None:
+                    try:
+                        forwarder.close()
+                    except Exception as error:
+                        # error-policy:J1 forwarder shutdown is a required
+                        # cohort boundary: a loopback boundary that died
+                        # mid-cohort durably fails the group even when every
+                        # worker already finished.
+                        failures["provider-forwarder"] = error
                 if gateway is not None:
                     try:
                         audit_path = gateway.close()

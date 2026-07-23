@@ -152,6 +152,7 @@ import {
 } from "./client-types";
 import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -2501,18 +2502,20 @@ ElizaClient.prototype.listConnectorAccountAuditEvents = async function (
 };
 
 ElizaClient.prototype.getTriggers = async function (this: ElizaClient) {
-  return this.fetch("/api/triggers");
+  return workflowSurfaceClient(this).fetch("/api/triggers");
 };
 
 ElizaClient.prototype.getTrigger = async function (this: ElizaClient, id) {
-  return this.fetch(`/api/triggers/${encodeURIComponent(id)}`);
+  return workflowSurfaceClient(this).fetch(
+    `/api/triggers/${encodeURIComponent(id)}`,
+  );
 };
 
 ElizaClient.prototype.createTrigger = async function (
   this: ElizaClient,
   request,
 ) {
-  return this.fetch("/api/triggers", {
+  return workflowSurfaceClient(this).fetch("/api/triggers", {
     method: "POST",
     body: JSON.stringify(request),
   });
@@ -2523,26 +2526,37 @@ ElizaClient.prototype.updateTrigger = async function (
   id,
   request,
 ) {
-  return this.fetch(`/api/triggers/${encodeURIComponent(id)}`, {
-    method: "PUT",
-    body: JSON.stringify(request),
-  });
+  return workflowSurfaceClient(this).fetch(
+    `/api/triggers/${encodeURIComponent(id)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(request),
+    },
+  );
 };
 
 ElizaClient.prototype.deleteTrigger = async function (this: ElizaClient, id) {
-  return this.fetch(`/api/triggers/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
+  return workflowSurfaceClient(this).fetch(
+    `/api/triggers/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
 };
 
 ElizaClient.prototype.runTriggerNow = async function (this: ElizaClient, id) {
-  return this.fetch(`/api/triggers/${encodeURIComponent(id)}/execute`, {
-    method: "POST",
-  });
+  return workflowSurfaceClient(this).fetch(
+    `/api/triggers/${encodeURIComponent(id)}/execute`,
+    {
+      method: "POST",
+    },
+  );
 };
 
 ElizaClient.prototype.getTriggerRuns = async function (this: ElizaClient, id) {
-  return this.fetch(`/api/triggers/${encodeURIComponent(id)}/runs`);
+  return workflowSurfaceClient(this).fetch(
+    `/api/triggers/${encodeURIComponent(id)}/runs`,
+  );
 };
 
 ElizaClient.prototype.emitTriggerEvent = async function (
@@ -2550,10 +2564,13 @@ ElizaClient.prototype.emitTriggerEvent = async function (
   eventKind,
   payload = {},
 ) {
-  return this.fetch(`/api/triggers/events/${encodeURIComponent(eventKind)}`, {
-    method: "POST",
-    body: JSON.stringify({ payload }),
-  });
+  return workflowSurfaceClient(this).fetch(
+    `/api/triggers/events/${encodeURIComponent(eventKind)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ payload }),
+    },
+  );
 };
 
 ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
@@ -2569,7 +2586,7 @@ ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
   } catch {
     /* fall through */
   }
-  return this.fetch("/api/triggers/health");
+  return workflowSurfaceClient(this).fetch("/api/triggers/health");
 };
 
 ElizaClient.prototype.getTrainingStatus = async function (this: ElizaClient) {

@@ -24,6 +24,9 @@
  * injected on the user content blocks corresponding to the cacheBreakpoints from
  * the provider cache plan. This extends the single system-message breakpoint to
  * up to three more user-content breakpoints under Anthropic's four-block cap.
+ * Anthropic-local cache options are parsed only on Anthropic routes. Consumed
+ * breakpoint plans are validated as a whole before a provider request is built,
+ * because silently dropping one marker changes the caller's cost/latency contract.
  */
 import type {
   GenerateTextParams,
@@ -98,8 +101,8 @@ type GenerateTextParamsWithAttachments = GenerateTextParams & {
     anthropic?: {
       cacheControl?: AnthropicCacheControl;
       cacheSystem?: boolean;
-      cacheBreakpoints?: unknown[];
-      maxBreakpoints?: number;
+      cacheBreakpoints?: unknown;
+      maxBreakpoints?: unknown;
       cacheTools?: boolean;
       cacheTrajectory?: boolean;
     };
@@ -135,7 +138,7 @@ type NativeTextModelResult = string & NativeGenerateTextResult;
 function buildUserContent(
   params: GenerateTextParamsWithAttachments,
   options: { includePrompt?: boolean } = { includePrompt: true }
-): UserContent {
+): Exclude<UserContent, string> {
   const content: Array<
     | { type: "text"; text: string }
     | {
@@ -251,7 +254,7 @@ function anthropicCacheProviderOptions(cacheControl: AnthropicCacheControl): Wir
   return {
     anthropic: {
       cacheControl:
-        cacheControl.ttl === "5m" || cacheControl.ttl === "1h"
+        cacheControl.ttl !== undefined
           ? { type: "ephemeral", ttl: cacheControl.ttl }
           : { type: "ephemeral" },
     },
@@ -408,26 +411,110 @@ type AnthropicCacheBreakpoint = {
   cacheControl: AnthropicCacheControl;
 };
 
-function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBreakpoint {
-  return (
-    isRecord(value) &&
-    typeof value.segmentIndex === "number" &&
-    Number.isInteger(value.segmentIndex) &&
-    value.segmentIndex >= 0 &&
-    isRecord(value.cacheControl) &&
-    value.cacheControl.type === "ephemeral"
-  );
+function invalidAnthropicCacheBreakpoint(message: string, context: Record<string, unknown>): never {
+  throw new ElizaError(message, {
+    code: "OPENROUTER_INVALID_CACHE_BREAKPOINT",
+    context,
+    severity: "fatal",
+  });
+}
+
+function parseAnthropicCacheBreakpoint(value: unknown, index: number): AnthropicCacheBreakpoint {
+  if (!isRecord(value)) {
+    return invalidAnthropicCacheBreakpoint(
+      `Invalid anthropic.cacheBreakpoints[${index}]: expected { segmentIndex, cacheControl } object`,
+      { index, breakpoint: value }
+    );
+  }
+
+  const segmentIndex = value.segmentIndex;
+  if (typeof segmentIndex !== "number" || !Number.isInteger(segmentIndex) || segmentIndex < 0) {
+    return invalidAnthropicCacheBreakpoint(
+      `Invalid anthropic.cacheBreakpoints[${index}].segmentIndex: expected a non-negative integer`,
+      { index, segmentIndex }
+    );
+  }
+
+  const cacheControl = value.cacheControl;
+  if (!isRecord(cacheControl) || cacheControl.type !== "ephemeral") {
+    return invalidAnthropicCacheBreakpoint(
+      `Invalid anthropic.cacheBreakpoints[${index}].cacheControl: expected { type: 'ephemeral' }`,
+      { index, cacheControl }
+    );
+  }
+
+  const ttl = cacheControl.ttl;
+  if (ttl !== undefined && ttl !== "5m" && ttl !== "1h") {
+    return invalidAnthropicCacheBreakpoint(
+      `Invalid anthropic.cacheBreakpoints[${index}].cacheControl.ttl: expected '5m' or '1h'`,
+      { index, ttl }
+    );
+  }
+
+  return {
+    segmentIndex,
+    cacheControl: { type: "ephemeral", ...(ttl !== undefined ? { ttl } : {}) },
+  };
+}
+
+function readAnthropicMaxBreakpoints(
+  anthropicOptions: Record<string, unknown> | undefined
+): number {
+  const raw = anthropicOptions?.maxBreakpoints;
+  if (raw === undefined) return 3;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0 || raw > 4) {
+    return invalidAnthropicCacheBreakpoint(
+      "Invalid anthropic.maxBreakpoints: expected an integer between 0 and 4",
+      { maxBreakpoints: raw }
+    );
+  }
+  return raw;
 }
 
 function readAnthropicCacheBreakpoints(
   anthropicOptions: Record<string, unknown> | undefined,
   maxBreakpoints: number,
+  promptSegmentCount: number,
   keepLatest = false
 ): AnthropicCacheBreakpoint[] {
   const raw = anthropicOptions?.cacheBreakpoints;
-  if (!Array.isArray(raw) || maxBreakpoints <= 0) return [];
-  const valid = raw.filter(isAnthropicCacheBreakpoint);
-  return keepLatest ? valid.slice(-maxBreakpoints) : valid.slice(0, maxBreakpoints);
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    return invalidAnthropicCacheBreakpoint(
+      "Invalid anthropic.cacheBreakpoints: expected an array",
+      {
+        cacheBreakpoints: raw,
+      }
+    );
+  }
+
+  const breakpoints = raw.map((entry, index) => parseAnthropicCacheBreakpoint(entry, index));
+  if (breakpoints.length > 0 && promptSegmentCount === 0) {
+    return invalidAnthropicCacheBreakpoint(
+      "Invalid anthropic.cacheBreakpoints: promptSegments are required to place segment breakpoints",
+      { breakpointCount: breakpoints.length }
+    );
+  }
+
+  const seenSegmentIndices = new Set<number>();
+  for (const [index, breakpoint] of breakpoints.entries()) {
+    if (breakpoint.segmentIndex >= promptSegmentCount) {
+      return invalidAnthropicCacheBreakpoint(
+        `Invalid anthropic.cacheBreakpoints[${index}].segmentIndex: index is outside promptSegments`,
+        { index, segmentIndex: breakpoint.segmentIndex, promptSegmentCount }
+      );
+    }
+    if (seenSegmentIndices.has(breakpoint.segmentIndex)) {
+      return invalidAnthropicCacheBreakpoint(
+        `Invalid anthropic.cacheBreakpoints[${index}].segmentIndex: duplicate index`,
+        { index, segmentIndex: breakpoint.segmentIndex }
+      );
+    }
+    seenSegmentIndices.add(breakpoint.segmentIndex);
+  }
+
+  if (maxBreakpoints === 0) return [];
+  return keepLatest ? breakpoints.slice(-maxBreakpoints) : breakpoints.slice(0, maxBreakpoints);
 }
 
 /**
@@ -701,9 +788,9 @@ function buildGenerateParams(
   const anthropicOptions = isRecord(rawProviderOptions?.anthropic)
     ? rawProviderOptions.anthropic
     : undefined;
-  const anthropicCacheControl =
-    readAnthropicCacheControl(anthropicOptions) ??
-    (isAnthropic ? getRuntimeCacheControl(runtime) : undefined);
+  const anthropicCacheControl = isAnthropic
+    ? (readAnthropicCacheControl(anthropicOptions) ?? getRuntimeCacheControl(runtime))
+    : undefined;
   const anthropicCacheSystem = anthropicOptions?.cacheSystem !== false;
   const cacheSystemMessage =
     isAnthropic && anthropicCacheSystem
@@ -714,23 +801,13 @@ function buildGenerateParams(
   // Collect cacheBreakpoints for per-segment user-content injection.
   // Only used on the prompt-only path (no messages) together with promptSegments.
   // maxBreakpoints caps the number of slots used (Anthropic allows up to 3 user-content).
-  const requestedMaxBreakpoints =
-    typeof anthropicOptions?.maxBreakpoints === "number" &&
-    Number.isInteger(anthropicOptions.maxBreakpoints) &&
-    anthropicOptions.maxBreakpoints >= 0
-      ? anthropicOptions.maxBreakpoints
-      : 3;
+  const requestedMaxBreakpoints = isAnthropic ? readAnthropicMaxBreakpoints(anthropicOptions) : 0;
   const reservesToolsBreakpoint =
     isAnthropic &&
     anthropicCacheControl &&
     anthropicOptions?.cacheTools !== false &&
     Boolean(paramsWithAttachments.tools && Object.keys(paramsWithAttachments.tools).length > 0);
   const maxBreakpoints = Math.min(requestedMaxBreakpoints, reservesToolsBreakpoint ? 2 : 3);
-  const cacheBreakpoints = readAnthropicCacheBreakpoints(
-    anthropicOptions,
-    maxBreakpoints,
-    Boolean(reservesToolsBreakpoint)
-  );
   const promptSegments = Array.isArray(
     (paramsWithAttachments as { promptSegments?: unknown }).promptSegments
   )
@@ -740,6 +817,22 @@ function buildGenerateParams(
         }
       ).promptSegments ?? [])
     : [];
+  const cacheBreakpoints = isAnthropic
+    ? readAnthropicCacheBreakpoints(
+        anthropicOptions,
+        maxBreakpoints,
+        promptSegments.length,
+        Boolean(reservesToolsBreakpoint)
+      )
+    : [];
+  const segmentedUserContent: UserContent | undefined =
+    promptSegments.length > 0 && cacheBreakpoints.length > 0
+      ? [
+          ...buildSegmentedPromptUserContent(promptSegments, cacheBreakpoints),
+          ...buildUserContent(paramsWithAttachments, { includePrompt: false }),
+        ]
+      : undefined;
+  const promptOnlyUserContent = segmentedUserContent ?? userContent;
 
   let finalWireMessages = wireMessages;
   if (cacheSystemMessage && paramsWithAttachments.messages) {
@@ -753,8 +846,8 @@ function buildGenerateParams(
             ? appendUserContentToMessages(finalWireMessages, attachmentContent)
             : finalWireMessages,
         }
-      : userContent
-        ? { messages: [{ role: "user" as const, content: userContent }] }
+      : promptOnlyUserContent
+        ? { messages: [{ role: "user" as const, content: promptOnlyUserContent }] }
         : prompt !== undefined
           ? { prompt }
           : (() => {
@@ -763,7 +856,7 @@ function buildGenerateParams(
               );
             })()
     : shouldInjectMessageLevelCache && cacheSystemMessage
-      ? userContent || prompt !== undefined
+      ? promptOnlyUserContent || prompt !== undefined
         ? {
             messages: [
               cacheSystemMessage,
@@ -773,18 +866,15 @@ function buildGenerateParams(
                 // build multi-block user content so per-segment cache_control can
                 // be stamped on the last block of each stable run (up to three
                 // additional breakpoints under Anthropic's four-block cap).
-                content:
-                  promptSegments.length > 0 && cacheBreakpoints.length > 0 && !userContent
-                    ? buildSegmentedPromptUserContent(promptSegments, cacheBreakpoints)
-                    : (userContent ?? buildUserContent(paramsWithAttachments)),
+                content: promptOnlyUserContent ?? buildUserContent(paramsWithAttachments),
               },
             ],
           }
         : (() => {
             throw new Error("OpenRouter text generation requires prompt, messages, or attachments");
           })()
-      : userContent
-        ? { messages: [{ role: "user" as const, content: userContent }] }
+      : promptOnlyUserContent
+        ? { messages: [{ role: "user" as const, content: promptOnlyUserContent }] }
         : prompt !== undefined
           ? { prompt }
           : (() => {
@@ -805,7 +895,7 @@ function buildGenerateParams(
     ...(rawOpenrouterOptions ?? {}),
   };
 
-  // Strip local Anthropic cache options if we injected message-level cache
+  // Anthropic-local planner fields are consumed here and must never reach the wire.
   const wireAnthropicOptions = isAnthropic
     ? stripLocalAnthropicCacheOptions(anthropicOptions)
     : anthropicOptions;

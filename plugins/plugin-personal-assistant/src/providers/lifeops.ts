@@ -188,6 +188,31 @@ function summarizeActiveGoals(
   return lines;
 }
 
+const MAX_COMPLETED_TODAY_LINES = 6;
+
+/**
+ * "Completed today" context lines for the owner. Recap turns ("how did today
+ * go?") need the owner's finished items in view to lead with wins; the
+ * overview itself deliberately lists only open occurrences, which left recap
+ * replies claiming an empty day while completions sat in the store (#16935).
+ */
+function summarizeCompletedToday(
+  occurrences: Array<{ title: string; updatedAt: string }>,
+): string[] {
+  if (occurrences.length === 0) {
+    return [];
+  }
+  const shown = occurrences.slice(0, MAX_COMPLETED_TODAY_LINES);
+  const lines = [
+    "Owner completed today:",
+    ...shown.map((occurrence) => `- ${occurrence.title} (completed)`),
+  ];
+  if (occurrences.length > shown.length) {
+    lines.push(`- (+${occurrences.length - shown.length} more completed)`);
+  }
+  return lines;
+}
+
 function summarizeOccurrences(
   title: string,
   occurrences: Array<{ title: string; state: string }>,
@@ -402,6 +427,9 @@ export const lifeOpsProvider: Provider = {
         "Owner active items:",
         overview.owner.occurrences,
       );
+      const completedToday =
+        await service.listOwnerOccurrencesCompletedToday(now);
+      const completedTodayLines = summarizeCompletedToday(completedToday);
       const ownerGoalLines = summarizeActiveGoals(overview.owner.goals, now);
       const agentLines = summarizeOccurrences(
         "Agent ops:",
@@ -622,6 +650,10 @@ export const lifeOpsProvider: Provider = {
           "Use REMOTE_DESKTOP to start, list, check, end, or revoke a remote desktop session so the owner can connect from a phone. Requests like 'start a remote desktop session' or 'let me connect from my phone' belong here even if the action needs confirmation or a pairing step.",
           "Use VOICE_CALL for phone-call escalation or booking calls. These actions can draft or request confirmation first; they do not require the dial to happen on the first turn. Requests like 'if you get stuck in the browser or on my computer, call me and let me jump in to unblock it' belong here. Requests like 'call the dentist and reschedule my appointment' or 'phone my cable company about the outage' also belong to VOICE_CALL, not CALENDAR, OWNER_TODOS, or MESSAGE action=send_draft.",
           "When the owner is only making an observation or venting like 'my calendar has been crazy this quarter', 'I hate email', or 'I think I spend too much time on my phone', stay in REPLY instead of calling a LifeOps action unless they actually ask you to do something.",
+          "When the owner reports missing a reminder, step, or habit (once or repeatedly): acknowledge neutrally in one short clause with no shame, blame, streak, or discipline framing; offer ONE smaller version of the missed step (a few minutes, a partial batch) instead of re-proposing the full original task; and in that repair flow ASK before creating, rescheduling, or re-arming anything — never silently create a reminder or claim one was set.",
+          "When the owner gives a clear, unambiguous reminder ask with a date or deadline ('remind me to renew the registration by the 20th'), save it right away with a sensible plain default time (a day or two before a deadline, or the morning it is due) and confirm briefly — do not interrogate for exact times or add scaffolding, check-ins, or extra structure the owner did not ask for.",
+          "For an end-of-day recap or 'how did today go' ask: LEAD with what the owner completed today (listed under 'Owner completed today' below and in scheduled-item history), then frame still-open items neutrally as carryovers — never as failures — and ask before scheduling anything for tomorrow.",
+          "Reminder and scheduling confirmations to the owner must be plain everyday words: name the thing and the time ('I'll remind you the morning of the 27th'). Never expose internal ids, trigger kinds, cron/ISO timestamp formats, schema or field names, or storage details, and never describe a saved reminder as session-only, temporary, or at risk of being lost — saved reminders persist.",
           "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
           "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
           "Route examples: sleep/no-call windows -> CALENDAR; daily brief additions, missed-call repair, or group-chat handoff -> MESSAGE action=triage; 'if direct relaying gets messy here, suggest making a group chat handoff instead' -> MESSAGE action=triage; outbound Telegram/Signal/email/Discord/SMS drafts -> MESSAGE action=send_draft; subscription audits or cancellations -> OWNER_FINANCES; travel preference memory -> automatic owner profile extraction; portal upload or browser filing -> COMPUTER_USE; if the agent gets stuck and should phone the owner -> VOICE_CALL.",
@@ -642,6 +674,8 @@ export const lifeOpsProvider: Provider = {
             "Owner live reminders",
             overview.owner.summary.activeReminderCount,
           ),
+          formatCount("Owner completed today", completedToday.length),
+          ...completedTodayLines,
           ...ownerLines,
           ...accountLines,
           ...calendarLines,
@@ -659,6 +693,7 @@ export const lifeOpsProvider: Provider = {
         ].join("\n"),
         values: {
           ownerOpenOccurrences: overview.owner.summary.activeOccurrenceCount,
+          ownerCompletedToday: completedToday.length,
           ownerActiveGoals: overview.owner.summary.activeGoalCount,
           ownerActiveGoalTitles: overview.owner.goals
             .filter((goal) => goal.status === "active")

@@ -36,6 +36,7 @@ type LifecycleRaceFixture = {
 type InspectableRuntime = TestRuntime & {
   getPluginOwnership: (pluginName: string) => {
     registeredPlugin?: Plugin;
+    services: unknown[];
   } | null;
 };
 
@@ -285,7 +286,7 @@ function makeSyntheticConnectorPlugin(): Plugin {
 
 describe("skills-shaped plugin — 3 load/unload cycles", () => {
   it("runs 3 cycles and restores baseline state each time", async () => {
-    const runtime = createTestRuntime();
+    const runtime = createTestRuntime() as InspectableRuntime;
     const plugin = makeSyntheticSkillsPlugin();
 
     const baselineActions = runtime.actions.length;
@@ -301,6 +302,7 @@ describe("skills-shaped plugin — 3 load/unload cycles", () => {
         runtime.providers.some((p) => p.name === "ENABLED_SKILLS_PROVIDER"),
       ).toBe(true);
       expect(hasRoutePath(runtime.routes, "/api/skills/catalog")).toBe(true);
+      expect(runtime.getPluginOwnership(plugin.name)?.services).toEqual([]);
 
       await runtime.unloadPlugin("synthetic-skills-plugin");
 
