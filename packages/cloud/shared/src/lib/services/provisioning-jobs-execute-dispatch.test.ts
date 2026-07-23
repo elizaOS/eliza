@@ -79,9 +79,19 @@ function makeJob(
  * daemon's mid-retry behavior.
  */
 function harness(job: Job) {
-  const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
+  const ordinaryClaimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
     async (f: { type: string }) => (f.type === job.type ? [job] : []),
   );
+  const sharedClaimSpy = spyOn(
+    jobsRepository,
+    "claimPendingJobsWithinSharedRunningLimit",
+  ).mockImplementation(async (f: { type: string }) => (f.type === job.type ? [job] : []));
+  const claimSpy = {
+    mockRestore() {
+      ordinaryClaimSpy.mockRestore();
+      sharedClaimSpy.mockRestore();
+    },
+  };
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
   const updateStatusSpy = spyOn(jobsRepository, "updateStatus").mockResolvedValue(undefined);
   const updateSpy = spyOn(jobsRepository, "update").mockResolvedValue(undefined as never);
@@ -206,6 +216,30 @@ const AGENT_ARMS: Array<{
     },
   },
   {
+    name: "admin canary image",
+    type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+    data: {
+      operation: "upgrade",
+      rolloutId: "55555555-5555-4555-8555-555555555555",
+      actorUserId: USER,
+      targetOwnerUserId: USER,
+      decisionAt: "2026-06-20T00:00:00.000Z",
+      sourceImage: "ghcr.io/elizaos/eliza:production",
+      sourceDigest: `sha256:${"a".repeat(64)}`,
+      targetImage: `ghcr.io/elizaos/eliza-demo@sha256:${"b".repeat(64)}`,
+      targetDigest: `sha256:${"b".repeat(64)}`,
+    },
+    method: "executeAdminCanaryUpgrade",
+    success: {
+      success: true,
+      oldNodeId: "node-a",
+      oldContainerName: "c-old",
+      newNodeId: "node-b",
+      newContainerName: "c-new",
+      newDigest: `sha256:${"b".repeat(64)}`,
+    },
+  },
+  {
     name: "downgrade",
     type: JOB_TYPES.AGENT_DOWNGRADE,
     data: { dockerImage: "eliza/agent", fromDigest: "sha256:cur" },
@@ -262,8 +296,38 @@ describe("executeJob dispatch — success path per job type marks the job comple
   for (const arm of AGENT_ARMS) {
     test(`${arm.name}: transport success → completed with a result record, no attempt burned`, async () => {
       const ctx = harness(makeJob(arm.type, arm.data));
-      stub(arm.method, arm.success);
       const disarmGate = armSnapshotGateFor(arm.type);
+      let atomicAuditUpdates: Record<string, unknown> | undefined;
+      if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
+        const canarySpy = spyOn(
+          elizaSandboxService,
+          "executeAdminCanaryUpgrade",
+        ).mockImplementation(async (params) => {
+          const tx = {
+            update: () => ({
+              set: (updates: Record<string, unknown>) => {
+                atomicAuditUpdates = updates;
+                return {
+                  where: () => ({
+                    returning: async () => [{ id: ctx.job.id }],
+                  }),
+                };
+              },
+            }),
+          };
+          await params.onCutoverInTx(tx as never, {
+            oldNodeId: "node-a",
+            oldContainerName: "c-old",
+            newNodeId: "node-b",
+            newContainerName: "c-new",
+            newDigest: params.targetDigest,
+          });
+          return arm.success as never;
+        });
+        serviceSpies.push(canarySpy);
+      } else {
+        stub(arm.method, arm.success);
+      }
       try {
         const res = await run(arm.type);
         expect(res.claimed).toBe(1);
@@ -271,9 +335,20 @@ describe("executeJob dispatch — success path per job type marks the job comple
         expect(res.failed).toBe(0);
         expect(res.retried).toBe(0);
         const completed = completedCall(ctx);
-        expect(completed).toBeDefined();
-        expect(completed?.[2]?.result).toBeTruthy();
-        expect(completed?.[2]?.completed_at).toBeInstanceOf(Date);
+        if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
+          expect(completed).toBeUndefined();
+          expect(atomicAuditUpdates).toMatchObject({
+            status: "completed",
+            result_storage: "inline",
+            error: null,
+          });
+          expect(atomicAuditUpdates?.result).toBeTruthy();
+          expect(atomicAuditUpdates?.completed_at).toBeInstanceOf(Date);
+        } else {
+          expect(completed).toBeDefined();
+          expect(completed?.[2]?.result).toBeTruthy();
+          expect(completed?.[2]?.completed_at).toBeInstanceOf(Date);
+        }
         expect(ctx.incrementSpy).not.toHaveBeenCalled();
       } finally {
         disarmGate();

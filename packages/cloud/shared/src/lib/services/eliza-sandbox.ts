@@ -41,6 +41,12 @@ import { logger } from "../utils/logger";
 import { settleOffResponsePath } from "../utils/settle-off-response-path";
 import { withTimeout } from "../utils/with-timeout";
 import {
+  assertCanonicalSourceImage,
+  assertDemoSourceImage,
+  assertSha256Digest,
+  parseAdminCanaryDemoImage,
+} from "./admin-canary-image";
+import {
   computeStateHash,
   estimateDeltaBytes,
   incrementalChainDepth,
@@ -510,6 +516,44 @@ type TailnetIpReconcileResult =
   | { outcome: "container-dead" }
   | { outcome: "ip-unresolvable" }
   | { outcome: "unrepairable" };
+
+interface AdminCanaryImageExecutionPolicy {
+  operation: "upgrade" | "rollback";
+  targetOwnerUserId: string;
+  sourceImage: string;
+  sourceDigest: string;
+  targetImage: string;
+  targetDigest: string;
+  onCutoverInTx: (
+    tx: DbTransaction,
+    result: {
+      oldNodeId: string;
+      oldContainerName: string;
+      newNodeId: string;
+      newContainerName: string;
+      newDigest: string;
+    },
+  ) => Promise<void>;
+}
+
+interface ImageSwapResult {
+  success: boolean;
+  oldNodeId?: string;
+  oldContainerName?: string;
+  newNodeId?: string;
+  newContainerName?: string;
+  newDigest?: string | null;
+  error?: string;
+  /**
+   * True when a failed upgrade left the old container serving. The permanent
+   * failure writeback must not mark such a sandbox terminal because the proxy
+   * and orphan reconciler treat terminal rows as unavailable. Every blue
+   * provision, health, digest, runtime, snapshot, and swap failure occurs
+   * before cutover and tears down only blue; `false` is reserved for an agent
+   * whose old container was already not serving.
+   */
+  rolledBack?: boolean;
+}
 
 function digestPinnedImageRef(imageRef: string, digest: string): string {
   if (imageRef.includes("@sha256:")) return imageRef;
@@ -6110,6 +6154,56 @@ export class ElizaSandboxService {
     };
   }
 
+  /** Runs the ordinary same-repository fleet blue/green upgrade policy. */
+  async executeUpgrade(
+    agentId: string,
+    orgId: string,
+    toDigest: string,
+    dockerImage: string,
+    fromDigest: string | null,
+  ): Promise<ImageSwapResult> {
+    return await this.executeUpgradeWithPolicy(agentId, orgId, toDigest, dockerImage, fromDigest);
+  }
+
+  /**
+   * Executes the dedicated cross-repository canary policy. Callers must have
+   * already created an audited admin-canary job; the ordinary fleet method
+   * remains same-repository-only.
+   */
+  async executeAdminCanaryUpgrade(params: {
+    agentId: string;
+    organizationId: string;
+    targetOwnerUserId: string;
+    sourceImage: string;
+    sourceDigest: string;
+    targetImage: string;
+    targetDigest: string;
+    onCutoverInTx: AdminCanaryImageExecutionPolicy["onCutoverInTx"];
+  }): Promise<ImageSwapResult> {
+    assertCanonicalSourceImage(params.sourceImage, "sourceImage");
+    assertSha256Digest(params.sourceDigest, "sourceDigest");
+    const target = parseAdminCanaryDemoImage(params.targetImage);
+    if (target.digest !== params.targetDigest) {
+      return { success: false, error: "Canary target image and digest do not match" };
+    }
+    return await this.executeUpgradeWithPolicy(
+      params.agentId,
+      params.organizationId,
+      params.targetDigest,
+      params.targetImage,
+      params.sourceDigest,
+      {
+        operation: "upgrade",
+        targetOwnerUserId: params.targetOwnerUserId,
+        sourceImage: params.sourceImage,
+        sourceDigest: params.sourceDigest,
+        targetImage: params.targetImage,
+        targetDigest: params.targetDigest,
+        onCutoverInTx: params.onCutoverInTx,
+      },
+    );
+  }
+
   /**
    * Daemon-side handler for the `agent_upgrade` job: blue/green swap an
    * agent onto the currently-deployed image.
@@ -6131,42 +6225,17 @@ export class ElizaSandboxService {
    *      it. Already-in-flight HTTP responses on the old finish; websockets
    *      get a clean drop and reconnect to blue.
    */
-  async executeUpgrade(
+  private async executeUpgradeWithPolicy(
     agentId: string,
     orgId: string,
     toDigest: string,
     dockerImage: string,
     fromDigest: string | null,
-  ): Promise<{
-    success: boolean;
-    oldNodeId?: string;
-    oldContainerName?: string;
-    newNodeId?: string;
-    newContainerName?: string;
-    newDigest?: string | null;
-    error?: string;
-    /**
-     * True when this failure is ROLLBACK-SAFE: the OLD container was never torn
-     * down (or was confirmed alive) and is still serving traffic, so the upgrade
-     * failed WITHOUT taking the agent down. The permanent-failure writeback must
-     * NOT mark such a sandbox terminal — doing so makes the dedicated proxy
-     * reject live traffic (dedicated-agent-proxy.ts) and exposes the still-live
-     * container to the orphan reconciler (docker-node-workloads.ts). Undefined
-     * on success. `false` means the agent is genuinely not serving on the old
-     * container (e.g. it was already not running), so the terminal error
-     * writeback is correct.
-     *
-     * INVARIANT: every `success:false` path in executeUpgrade below returns
-     * before the atomic swap commits, so the OLD container is untouched — the
-     * blue/health/digest/runtime/snapshot/swap-failure paths all tear down ONLY
-     * the freshly-provisioned blue and leave old alive. The only genuinely-dead
-     * outcome is `Agent not running` (old already not serving); `Agent not
-     * found` is intercepted upstream by completeIfAgentGone and never reaches
-     * the writeback. See #15357 / lalalune's #15311 review.
-     */
-    rolledBack?: boolean;
-  }> {
-    const agent = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    adminCanary?: AdminCanaryImageExecutionPolicy,
+  ): Promise<ImageSwapResult> {
+    const agent = adminCanary
+      ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
+      : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
     if (agent.status !== "running") {
       // Genuinely-dead: the old container is not serving (status is not
@@ -6194,7 +6263,27 @@ export class ElizaSandboxService {
     // The reconciler already selects them by digest drift; the blue/green swap
     // re-provisions on the target image+digest, so moving a fleet-managed agent
     // to the current default is safe regardless of its current tag.
-    if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
+    if (
+      adminCanary &&
+      (adminCanary.operation !== "upgrade" ||
+        agent.user_id !== adminCanary.targetOwnerUserId ||
+        adminCanary.targetImage !== dockerImage ||
+        adminCanary.targetDigest !== toDigest ||
+        adminCanary.sourceDigest !== fromDigest ||
+        agent.docker_image !== adminCanary.sourceImage ||
+        agent.image_digest !== adminCanary.sourceDigest)
+    ) {
+      return {
+        success: false,
+        rolledBack: true,
+        error: "Agent does not match the audited canary source image pair",
+      };
+    }
+    if (
+      !adminCanary &&
+      agent.docker_image &&
+      imageRepo(agent.docker_image) !== imageRepo(dockerImage)
+    ) {
       // Refusal before any container work: old container is untouched and live.
       return {
         success: false,
@@ -6311,7 +6400,10 @@ export class ElizaSandboxService {
         error: "Blue provisioner returned non-docker metadata",
       };
     }
-    if (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest) {
+    if (
+      (adminCanary && !blueMeta.imageDigest) ||
+      (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest)
+    ) {
       await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
         logger.warn("[agent-sandbox] Failed to tear down blue after digest mismatch", {
           agentId,
@@ -6323,7 +6415,7 @@ export class ElizaSandboxService {
         rolledBack: true,
         oldNodeId,
         oldContainerName,
-        error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest}`,
+        error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest ?? "missing"}`,
       };
     }
 
@@ -6395,10 +6487,20 @@ export class ElizaSandboxService {
           // (#15358). Mirror the selection/pre-provision semantics — abandon
           // only on a real repo change; the digest/node/container/sandbox legs
           // above still detect every other concurrent mutation.
-          (current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
+          (adminCanary
+            ? current.user_id !== adminCanary.targetOwnerUserId ||
+              current.docker_image !== adminCanary.sourceImage
+            : current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
         ) {
           return false;
         }
+        const exactAdminCanaryWhere = adminCanary
+          ? sql`
+              AND user_id = ${adminCanary.targetOwnerUserId}
+              AND docker_image = ${adminCanary.sourceImage}
+              AND image_digest = ${adminCanary.sourceDigest}
+            `
+          : sql``;
         const result = await tx.execute<{ id: string }>(sql`
           UPDATE ${agentSandboxes}
           SET
@@ -6410,18 +6512,32 @@ export class ElizaSandboxService {
             bridge_port = ${blueMeta.bridgePort},
             web_ui_port = ${blueMeta.webUiPort},
             headscale_ip = ${blueMeta.headscaleIp ?? null},
+            docker_image = ${adminCanary ? adminCanary.targetImage : current.docker_image},
             image_digest = ${toDigest},
             previous_image_digest = ${fromDigest},
-            previous_docker_image = ${current.docker_image || dockerImage},
+            previous_docker_image = ${
+              adminCanary ? adminCanary.sourceImage : current.docker_image || dockerImage
+            },
             error_message = NULL,
             last_heartbeat_at = NOW(),
             updated_at = NOW()
           WHERE id = ${agentId}
             AND organization_id = ${orgId}
             AND status = 'running'
+            ${exactAdminCanaryWhere}
           RETURNING id
         `);
-        return result.rows.length === 1;
+        if (result.rows.length !== 1) return false;
+        if (adminCanary) {
+          await adminCanary.onCutoverInTx(tx, {
+            oldNodeId,
+            oldContainerName,
+            newNodeId: blueMeta.nodeId,
+            newContainerName: blueMeta.containerName,
+            newDigest: toDigest,
+          });
+        }
+        return true;
       });
       if (!swapped) {
         throw new Error("Agent changed during upgrade; abandoned stale swap");
@@ -6447,14 +6563,34 @@ export class ElizaSandboxService {
       };
     }
 
-    // Old container teardown is best-effort: traffic is already on blue.
-    await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    // Old container teardown is best-effort: traffic is already on blue and,
+    // for admin canaries, the success audit committed with the cutover.
+    try {
+      await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    } catch (err) {
+      // error-policy:J6 post-cutover cleanup must not rewrite a committed image swap.
+      logger.warn("[agent-sandbox] Failed to tear down old container after upgrade cutover", {
+        agentId,
+        oldNodeId,
+        oldContainerName,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     // The preserved live node (recorded pre-provision under
     // reclaimStaleVpnNode=false) is deleted BY ID only now, after the swap —
     // by-name would be ambiguous with blue sharing the hostname, and every
     // rolled-back path above deliberately leaves it untouched (#16565).
     if (blueMeta?.previousVpnNodeId) {
-      await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+      try {
+        await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+      } catch (err) {
+        // error-policy:J6 post-cutover VPN cleanup cannot invalidate committed traffic.
+        logger.warn("[agent-sandbox] Failed to remove old VPN node after upgrade cutover", {
+          agentId,
+          vpnNodeId: blueMeta.previousVpnNodeId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     logger.info("[agent-sandbox] Fleet upgrade completed", {
@@ -6475,6 +6611,55 @@ export class ElizaSandboxService {
       newContainerName: blueMeta.containerName,
       newDigest: toDigest,
     };
+  }
+
+  /** Runs the ordinary same-repository operator rollback policy. */
+  async executeDowngrade(
+    agentId: string,
+    orgId: string,
+    dockerImage: string,
+    fromDigest: string,
+  ): Promise<ImageSwapResult> {
+    return await this.executeDowngradeWithPolicy(agentId, orgId, dockerImage, fromDigest);
+  }
+
+  /**
+   * Reverts one completed admin canary using the exact prior pair recorded by
+   * its durable job. The pair is rechecked against primary state before any
+   * blue container is created and again in the atomic cutover CAS.
+   */
+  async executeAdminCanaryRollback(params: {
+    agentId: string;
+    organizationId: string;
+    targetOwnerUserId: string;
+    sourceImage: string;
+    sourceDigest: string;
+    targetImage: string;
+    targetDigest: string;
+    onCutoverInTx: AdminCanaryImageExecutionPolicy["onCutoverInTx"];
+  }): Promise<ImageSwapResult> {
+    assertDemoSourceImage(params.sourceImage, "sourceImage");
+    const source = parseAdminCanaryDemoImage(params.sourceImage);
+    if (source.digest !== params.sourceDigest) {
+      return { success: false, error: "Canary rollback source image and digest do not match" };
+    }
+    assertCanonicalSourceImage(params.targetImage, "targetImage");
+    assertSha256Digest(params.targetDigest, "targetDigest");
+    return await this.executeDowngradeWithPolicy(
+      params.agentId,
+      params.organizationId,
+      params.sourceImage,
+      params.sourceDigest,
+      {
+        operation: "rollback",
+        targetOwnerUserId: params.targetOwnerUserId,
+        sourceImage: params.sourceImage,
+        sourceDigest: params.sourceDigest,
+        targetImage: params.targetImage,
+        targetDigest: params.targetDigest,
+        onCutoverInTx: params.onCutoverInTx,
+      },
+    );
   }
 
   /**
@@ -6501,21 +6686,16 @@ export class ElizaSandboxService {
    * automatically (image-rollout-status reports `rollback` as a gated,
    * operator-approved action, not an automatic one).
    */
-  async executeDowngrade(
+  private async executeDowngradeWithPolicy(
     agentId: string,
     orgId: string,
     dockerImage: string,
     fromDigest: string,
-  ): Promise<{
-    success: boolean;
-    oldNodeId?: string;
-    oldContainerName?: string;
-    newNodeId?: string;
-    newContainerName?: string;
-    newDigest?: string | null;
-    error?: string;
-  }> {
-    const agent = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    adminCanary?: AdminCanaryImageExecutionPolicy,
+  ): Promise<ImageSwapResult> {
+    const agent = adminCanary
+      ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
+      : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
     if (agent.status !== "running") {
       return {
@@ -6532,13 +6712,33 @@ export class ElizaSandboxService {
     // Same fleet-managed-vs-custom distinction as the upgrade path (#15101):
     // a rollback of a default-family agent must not be refused just because its
     // tag differs from the target.
-    if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
+    if (
+      adminCanary &&
+      (adminCanary.operation !== "rollback" ||
+        agent.user_id !== adminCanary.targetOwnerUserId ||
+        adminCanary.sourceImage !== dockerImage ||
+        adminCanary.sourceDigest !== fromDigest ||
+        agent.docker_image !== adminCanary.sourceImage ||
+        agent.image_digest !== adminCanary.sourceDigest ||
+        agent.previous_docker_image !== adminCanary.targetImage ||
+        agent.previous_image_digest !== adminCanary.targetDigest)
+    ) {
+      return {
+        success: false,
+        error: "Agent does not match the audited canary rollback image pairs",
+      };
+    }
+    if (
+      !adminCanary &&
+      agent.docker_image &&
+      imageRepo(agent.docker_image) !== imageRepo(dockerImage)
+    ) {
       return {
         success: false,
         error: "Agent uses a custom docker image; refusing fleet rollback",
       };
     }
-    const toDigest = agent.previous_image_digest;
+    const toDigest = adminCanary?.targetDigest ?? agent.previous_image_digest;
     if (!toDigest) {
       return {
         success: false,
@@ -6572,7 +6772,9 @@ export class ElizaSandboxService {
       };
     }
 
-    const rollbackImage = agent.previous_docker_image || dockerImage;
+    const rollbackImage = adminCanary
+      ? adminCanary.targetImage
+      : agent.previous_docker_image || dockerImage;
     // Materialize at-rest-encrypted BYO secrets before container create (#11332).
     const rollbackEnv = await decryptAgentEnvVars(
       (agent.environment_vars as Record<string, string>) ?? {},
@@ -6638,7 +6840,10 @@ export class ElizaSandboxService {
         error: "Blue provisioner returned non-docker metadata",
       };
     }
-    if (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest) {
+    if (
+      (adminCanary && !blueMeta.imageDigest) ||
+      (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest)
+    ) {
       await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
         logger.warn("[agent-sandbox] Failed to tear down blue after rollback digest mismatch", {
           agentId,
@@ -6649,7 +6854,7 @@ export class ElizaSandboxService {
         success: false,
         oldNodeId,
         oldContainerName,
-        error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest}`,
+        error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest ?? "missing"}`,
       };
     }
 
@@ -6730,10 +6935,24 @@ export class ElizaSandboxService {
           // pin drift within the fleet repo (an empty or tag/digest-pinned
           // docker_image on the same repo is still the fleet image — #15101,
           // #15358). `dockerImage` here is the recorded rollback ref.
-          (current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
+          (adminCanary
+            ? current.user_id !== adminCanary.targetOwnerUserId ||
+              current.docker_image !== adminCanary.sourceImage ||
+              current.previous_docker_image !== adminCanary.targetImage ||
+              current.previous_image_digest !== adminCanary.targetDigest
+            : current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
         ) {
           return false;
         }
+        const exactAdminCanaryWhere = adminCanary
+          ? sql`
+              AND user_id = ${adminCanary.targetOwnerUserId}
+              AND docker_image = ${adminCanary.sourceImage}
+              AND image_digest = ${adminCanary.sourceDigest}
+              AND previous_docker_image = ${adminCanary.targetImage}
+              AND previous_image_digest = ${adminCanary.targetDigest}
+            `
+          : sql``;
         const result = await tx.execute<{ id: string }>(sql`
           UPDATE ${agentSandboxes}
           SET
@@ -6745,6 +6964,7 @@ export class ElizaSandboxService {
             bridge_port = ${blueMeta.bridgePort},
             web_ui_port = ${blueMeta.webUiPort},
             headscale_ip = ${blueMeta.headscaleIp ?? null},
+            docker_image = ${adminCanary ? adminCanary.targetImage : current.docker_image},
             image_digest = ${toDigest},
             previous_image_digest = NULL,
             previous_docker_image = NULL,
@@ -6753,9 +6973,20 @@ export class ElizaSandboxService {
           WHERE id = ${agentId}
             AND organization_id = ${orgId}
             AND status = 'running'
+            ${exactAdminCanaryWhere}
           RETURNING id
         `);
-        return result.rows.length === 1;
+        if (result.rows.length !== 1) return false;
+        if (adminCanary) {
+          await adminCanary.onCutoverInTx(tx, {
+            oldNodeId,
+            oldContainerName,
+            newNodeId: blueMeta.nodeId,
+            newContainerName: blueMeta.containerName,
+            newDigest: toDigest,
+          });
+        }
+        return true;
       });
       if (!swapped) {
         throw new Error("Agent changed during rollback; abandoned stale swap");
@@ -6783,11 +7014,31 @@ export class ElizaSandboxService {
       };
     }
 
-    // Old (post-upgrade) container teardown is best-effort: traffic is on blue.
-    await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    // Old (post-upgrade) container teardown is best-effort: traffic is on blue
+    // and the admin rollback audit, when applicable, is already committed.
+    try {
+      await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    } catch (err) {
+      // error-policy:J6 post-cutover cleanup must not rewrite a committed rollback.
+      logger.warn("[agent-sandbox] Failed to tear down old container after rollback cutover", {
+        agentId,
+        oldNodeId,
+        oldContainerName,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     // Same post-cutover, by-id-only deletion of the preserved node (#16565).
     if (blueMeta?.previousVpnNodeId) {
-      await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+      try {
+        await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+      } catch (err) {
+        // error-policy:J6 post-cutover VPN cleanup cannot invalidate committed traffic.
+        logger.warn("[agent-sandbox] Failed to remove old VPN node after rollback cutover", {
+          agentId,
+          vpnNodeId: blueMeta.previousVpnNodeId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     logger.info("[agent-sandbox] Fleet rollback completed", {

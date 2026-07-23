@@ -14,7 +14,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, type SQL, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -38,13 +38,25 @@ import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
 import { withTimeout } from "../utils/with-timeout";
+import {
+  ADMIN_CANARY_MAX_RUNNING_JOBS,
+  ADMIN_CANARY_MAX_TARGETS,
+  type AdminCanaryImageJobData,
+  type AdminCanaryImageJobResult,
+  type AdminCanaryPlannedTarget,
+  assertAdminCanaryImageJobData,
+  isAdminCanaryImageJobData,
+} from "./admin-canary-image";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
 import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
-import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
+import {
+  elizaAdminCanaryRolloutAdvisoryLockSql,
+  elizaProvisionAdvisoryLockSql,
+} from "./eliza-provision-lock";
 import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 import {
@@ -336,6 +348,20 @@ function agentUpgradeJobResultToRecord(result: AgentUpgradeJobResult): Record<st
   return { ...result };
 }
 
+function adminCanaryImageJobDataToRecord(data: AdminCanaryImageJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function adminCanaryImageJobResultToRecord(
+  result: AdminCanaryImageJobResult,
+): Record<string, unknown> {
+  return { ...result };
+}
+
+function jobAuditTimestamp(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
 function agentDowngradeJobDataToRecord(data: AgentDowngradeJobData): Record<string, unknown> {
   return { ...data };
 }
@@ -518,6 +544,14 @@ export function readAgentUpgradeJobData(job: Job): AgentUpgradeJobData {
   return job.data;
 }
 
+export function readAdminCanaryImageJobData(job: Job): AdminCanaryImageJobData {
+  if (!isAdminCanaryImageJobData(job.data)) {
+    throw new Error(`Invalid admin canary image job data for job ${job.id}`);
+  }
+  assertAdminCanaryImageJobData(job.data);
+  return job.data;
+}
+
 function isAgentDowngradeJobData(value: unknown): value is AgentDowngradeJobData {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -658,6 +692,14 @@ interface LifecycleSandboxRow {
   id: string;
   status: string;
   updated_at: Date | null;
+  user_id: string;
+  sandbox_id: string | null;
+  node_id: string | null;
+  container_name: string | null;
+  docker_image: string | null;
+  image_digest: string | null;
+  previous_docker_image: string | null;
+  previous_image_digest: string | null;
 }
 
 interface LifecycleJobOptions<TData extends object> {
@@ -784,6 +826,7 @@ const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
   JOB_TYPES.AGENT_WAKE,
   JOB_TYPES.AGENT_RESTART,
   JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
   JOB_TYPES.AGENT_DOWNGRADE,
 ]);
 /** Re-schedule delay for snapshot jobs claimed while the lane gate is off
@@ -903,6 +946,23 @@ class RetryableProvisionTransportError extends Error {
   }
 }
 
+const ADMIN_CANARY_CONFLICTING_JOB_TYPES: ProvisioningJobType[] = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_DELETE,
+  JOB_TYPES.AGENT_SUSPEND,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_DOWNGRADE,
+  JOB_TYPES.AGENT_SLEEP,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+];
+const SHARED_IMAGE_CHANGE_JOB_TYPES: ProvisioningJobType[] = [
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+];
+
 export class ProvisioningJobService {
   /**
    * Common path for the seven `enqueueAgent*Once` methods. Acquires the
@@ -959,6 +1019,14 @@ export class ProvisioningJobService {
         id: agentSandboxes.id,
         status: agentSandboxes.status,
         updated_at: agentSandboxes.updated_at,
+        user_id: agentSandboxes.user_id,
+        sandbox_id: agentSandboxes.sandbox_id,
+        node_id: agentSandboxes.node_id,
+        container_name: agentSandboxes.container_name,
+        docker_image: agentSandboxes.docker_image,
+        image_digest: agentSandboxes.image_digest,
+        previous_docker_image: agentSandboxes.previous_docker_image,
+        previous_image_digest: agentSandboxes.previous_image_digest,
       })
       .from(agentSandboxes)
       .where(
@@ -1474,6 +1542,184 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Atomically enqueue one explicit super-admin canary rollout. A single
+   * transaction owns the global rollout lock and every target's lifecycle lock,
+   * so a bad fifth target cannot leave four accepted jobs behind.
+   */
+  async enqueueAdminCanaryImageRollout(params: {
+    rolloutId: string;
+    actorUserId: string;
+    decisionAt: string;
+    targets: AdminCanaryPlannedTarget[];
+  }): Promise<Job[]> {
+    if (params.targets.length < 1 || params.targets.length > ADMIN_CANARY_MAX_TARGETS) {
+      throw new ApiError(
+        400,
+        "validation_error",
+        `Canary rollout must contain between 1 and ${ADMIN_CANARY_MAX_TARGETS} targets`,
+      );
+    }
+
+    const prepared = params.targets.map((target) => {
+      const data: AdminCanaryImageJobData = {
+        ...target,
+        rolloutId: params.rolloutId,
+        actorUserId: params.actorUserId,
+        userId: params.actorUserId,
+        decisionAt: params.decisionAt,
+      };
+      assertAdminCanaryImageJobData(data);
+      return data;
+    });
+    const uniqueTargets = new Set(
+      prepared.map((target) => `${target.organizationId}:${target.agentId}`),
+    );
+    if (uniqueTargets.size !== prepared.length) {
+      throw new ApiError(400, "validation_error", "Canary rollout contains duplicate targets");
+    }
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaAdminCanaryRolloutAdvisoryLockSql());
+
+      const [activeCanary] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        );
+      if (!activeCanary) {
+        throw new Error("Admin canary active-job query returned no aggregate row");
+      }
+      if (activeCanary.count > 0) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          "Another admin canary rollout is still pending or running",
+        );
+      }
+
+      const inserted: Job[] = [];
+      const ordered = [...prepared].sort((a, b) =>
+        `${a.organizationId}:${a.agentId}`.localeCompare(`${b.organizationId}:${b.agentId}`),
+      );
+      for (const data of ordered) {
+        const result = await this.enqueueLifecycleJobInTx<AdminCanaryImageJobData>(tx, {
+          jobType: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+          jobData: data,
+          toRecord: adminCanaryImageJobDataToRecord,
+          agentId: data.agentId,
+          organizationId: data.organizationId,
+          userId: data.actorUserId,
+          maxAttempts: 1,
+          estimatedDurationMs: 180_000,
+          logName: "agent_admin_canary_image",
+          logExtras: {
+            rolloutId: data.rolloutId,
+            operation: data.operation,
+            actorUserId: data.actorUserId,
+            sourceImage: data.sourceImage,
+            sourceDigest: data.sourceDigest,
+            targetImage: data.targetImage,
+            targetDigest: data.targetDigest,
+          },
+          validateSandbox: (sandbox) => {
+            if (
+              sandbox.status !== "running" ||
+              !sandbox.sandbox_id ||
+              !sandbox.node_id ||
+              !sandbox.container_name
+            ) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${data.agentId} is not a running dedicated sandbox`,
+              );
+            }
+            if (sandbox.user_id !== data.targetOwnerUserId) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${data.agentId} owner changed after preview`,
+              );
+            }
+            if (
+              !sandbox.docker_image ||
+              !sandbox.image_digest ||
+              sandbox.docker_image !== data.sourceImage ||
+              sandbox.image_digest !== data.sourceDigest
+            ) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${data.agentId} source image changed after preview`,
+              );
+            }
+            if (
+              data.operation === "rollback" &&
+              (!sandbox.previous_docker_image ||
+                !sandbox.previous_image_digest ||
+                sandbox.previous_docker_image !== data.targetImage ||
+                sandbox.previous_image_digest !== data.targetDigest)
+            ) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${data.agentId} rollback pair changed after preview`,
+              );
+            }
+          },
+          validateReuse: (existing) => {
+            throw new ApiError(
+              409,
+              "session_not_ready",
+              `Canary image job ${existing.id} is already active for agent ${data.agentId}`,
+              { conflictingJobId: existing.id },
+            );
+          },
+          beforeInsert: async (transaction) => {
+            const [conflict] = await transaction
+              .select({
+                id: jobs.id,
+                type: jobs.type,
+                status: jobs.status,
+              })
+              .from(jobs)
+              .where(
+                and(
+                  eq(jobs.organization_id, data.organizationId),
+                  eq(jobs.agent_id, data.agentId),
+                  inArray(jobs.type, ADMIN_CANARY_CONFLICTING_JOB_TYPES),
+                  sql`${jobs.status} IN ('pending', 'in_progress')`,
+                ),
+              )
+              .limit(1);
+            if (conflict) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${data.agentId} has conflicting ${conflict.type} job ${conflict.id}`,
+                {
+                  conflictingJobId: conflict.id,
+                  conflictingJobType: conflict.type,
+                  conflictingJobStatus: conflict.status,
+                },
+              );
+            }
+          },
+        });
+        if (!result.created) {
+          throw new Error(`Admin canary enqueue unexpectedly reused job ${result.job.id}`);
+        }
+        inserted.push(result.job);
+      }
+      return inserted;
+    });
+  }
+
+  /**
    * Enqueue an explicit agent rollback (downgrade) onto the agent's persisted
    * `previous_image_digest`. Unlike upgrade, this is never enqueued by the
    * reconciler — it's an operator/owner action after a bad upgrade. The
@@ -1926,10 +2172,20 @@ export class ProvisioningJobService {
     // Atomically claim pending jobs using FOR UPDATE SKIP LOCKED.
     // This prevents double-execution when overlapping cron runs race,
     // and respects scheduled_for so exponential backoff actually works.
-    const claimedJobs = await jobsRepository.claimPendingJobs({
-      type: jobType,
-      limit: batchSize,
-    });
+    const isSharedImageChange = SHARED_IMAGE_CHANGE_JOB_TYPES.includes(
+      jobType as ProvisioningJobType,
+    );
+    const claimedJobs = isSharedImageChange
+      ? await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+          type: jobType,
+          sharedTypes: SHARED_IMAGE_CHANGE_JOB_TYPES,
+          maxRunning: ADMIN_CANARY_MAX_RUNNING_JOBS,
+          limit: batchSize,
+        })
+      : await jobsRepository.claimPendingJobs({
+          type: jobType,
+          limit: batchSize,
+        });
 
     for (const job of claimedJobs) {
       result.claimed++;
@@ -2124,6 +2380,45 @@ export class ProvisioningJobService {
           );
         };
       }
+      case JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE: {
+        const data = readAdminCanaryImageJobData(job);
+        return async (tx) => {
+          const finishedAt = new Date();
+          const result: AdminCanaryImageJobResult = {
+            success: false,
+            jobId: job.id,
+            operation: data.operation,
+            rolloutId: data.rolloutId,
+            actorUserId: data.actorUserId,
+            decisionAt: data.decisionAt,
+            agentId: data.agentId,
+            organizationId: data.organizationId,
+            targetOwnerUserId: data.targetOwnerUserId,
+            sourceImage: data.sourceImage,
+            sourceDigest: data.sourceDigest,
+            targetImage: data.targetImage,
+            targetDigest: data.targetDigest,
+            startedAt: jobAuditTimestamp(job.started_at ?? job.updated_at),
+            finishedAt: finishedAt.toISOString(),
+            error: errorMsg,
+          };
+          await tx
+            .update(jobs)
+            .set({
+              result: adminCanaryImageJobResultToRecord(result),
+              result_storage: "inline",
+              completed_at: finishedAt,
+              updated_at: finishedAt,
+            })
+            .where(eq(jobs.id, job.id));
+          logger.warn("[provisioning-jobs] Persisted failed admin canary image audit", {
+            jobId: job.id,
+            rolloutId: data.rolloutId,
+            agentId: data.agentId,
+            operation: data.operation,
+          });
+        };
+      }
       // Apps / Product 2: a permanently failed deploy must flip the app off
       // `building`, or the deploy-status route (which echoes
       // `apps.deployment_status`) reports BUILDING forever — the CLI/dashboard
@@ -2242,6 +2537,9 @@ export class ProvisioningJobService {
         break;
       case JOB_TYPES.AGENT_UPGRADE:
         await this.executeAgentUpgrade(job);
+        break;
+      case JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE:
+        await this.executeAdminCanaryImage(job);
         break;
       case JOB_TYPES.AGENT_DOWNGRADE:
         await this.executeAgentDowngrade(job);
@@ -2722,6 +3020,133 @@ export class ProvisioningJobService {
       oldNodeId: jobResult.oldNodeId,
       newNodeId: jobResult.newNodeId,
       durationMs: jobResult.durationMs,
+    });
+  }
+
+  private async executeAdminCanaryImage(job: Job): Promise<void> {
+    const data = readAdminCanaryImageJobData(job);
+    if (data.organizationId !== job.organization_id || data.actorUserId !== job.user_id) {
+      throw new Error(`Admin canary audit identity mismatch for job ${job.id}`);
+    }
+    const startedAt = jobAuditTimestamp(job.started_at ?? job.updated_at);
+    let committedAudit: AdminCanaryImageJobResult | undefined;
+    const onCutoverInTx = async (
+      tx: DbTransaction,
+      cutover: {
+        oldNodeId: string;
+        oldContainerName: string;
+        newNodeId: string;
+        newContainerName: string;
+        newDigest: string;
+      },
+    ): Promise<void> => {
+      if (cutover.newDigest !== data.targetDigest) {
+        throw new Error(`Admin canary cutover digest mismatch for job ${job.id}`);
+      }
+      const finishedAt = new Date();
+      const jobResult: AdminCanaryImageJobResult = {
+        success: true,
+        jobId: job.id,
+        operation: data.operation,
+        rolloutId: data.rolloutId,
+        actorUserId: data.actorUserId,
+        decisionAt: data.decisionAt,
+        agentId: data.agentId,
+        organizationId: data.organizationId,
+        targetOwnerUserId: data.targetOwnerUserId,
+        sourceImage: data.sourceImage,
+        sourceDigest: data.sourceDigest,
+        targetImage: data.targetImage,
+        targetDigest: data.targetDigest,
+        startedAt,
+        finishedAt: finishedAt.toISOString(),
+        oldNodeId: cutover.oldNodeId,
+        oldContainerName: cutover.oldContainerName,
+        newNodeId: cutover.newNodeId,
+        newContainerName: cutover.newContainerName,
+      };
+      const [updated] = await tx
+        .update(jobs)
+        .set({
+          status: "completed",
+          result: adminCanaryImageJobResultToRecord(jobResult),
+          result_storage: "inline",
+          result_key: null,
+          error: null,
+          error_storage: "inline",
+          error_key: null,
+          completed_at: finishedAt,
+          updated_at: finishedAt,
+        })
+        .where(
+          and(
+            eq(jobs.id, job.id),
+            eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.organization_id, data.organizationId),
+            eq(jobs.agent_id, data.agentId),
+            eq(jobs.user_id, data.actorUserId),
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (!updated) {
+        throw new Error(`Admin canary job ${job.id} changed before atomic cutover audit`);
+      }
+      committedAudit = jobResult;
+    };
+
+    logger.info("[provisioning-jobs] Executing admin canary image change", {
+      jobId: job.id,
+      rolloutId: data.rolloutId,
+      actorUserId: data.actorUserId,
+      agentId: data.agentId,
+      organizationId: data.organizationId,
+      operation: data.operation,
+      sourceImage: data.sourceImage,
+      sourceDigest: data.sourceDigest,
+      targetImage: data.targetImage,
+      targetDigest: data.targetDigest,
+    });
+
+    const result =
+      data.operation === "upgrade"
+        ? await elizaSandboxService.executeAdminCanaryUpgrade({
+            agentId: data.agentId,
+            organizationId: data.organizationId,
+            targetOwnerUserId: data.targetOwnerUserId,
+            sourceImage: data.sourceImage,
+            sourceDigest: data.sourceDigest,
+            targetImage: data.targetImage,
+            targetDigest: data.targetDigest,
+            onCutoverInTx,
+          })
+        : await elizaSandboxService.executeAdminCanaryRollback({
+            agentId: data.agentId,
+            organizationId: data.organizationId,
+            targetOwnerUserId: data.targetOwnerUserId,
+            sourceImage: data.sourceImage,
+            sourceDigest: data.sourceDigest,
+            targetImage: data.targetImage,
+            targetDigest: data.targetDigest,
+            onCutoverInTx,
+          });
+
+    if (!result.success) {
+      throw new Error(result.error ?? "Admin canary image change failed");
+    }
+    if (!committedAudit) {
+      throw new Error(`Admin canary job ${job.id} cut over without a committed audit`);
+    }
+
+    logger.info("[provisioning-jobs] Admin canary image change completed", {
+      jobId: job.id,
+      rolloutId: data.rolloutId,
+      actorUserId: data.actorUserId,
+      agentId: data.agentId,
+      operation: data.operation,
+      targetImage: data.targetImage,
+      targetDigest: data.targetDigest,
+      durationMs: new Date(committedAudit.finishedAt).getTime() - new Date(startedAt).getTime(),
     });
   }
 
