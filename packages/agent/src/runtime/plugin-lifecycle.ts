@@ -149,6 +149,15 @@ const pluginMigrationsInFlight = new WeakMap<
   IDatabaseAdapter,
   Map<string, Promise<void>>
 >();
+type PluginLifecycleLane = {
+  tail: Promise<void>;
+  joinableRegistration: Promise<void> | null;
+  pendingOperations: number;
+};
+const pluginLifecycleLanes = new WeakMap<
+  AgentRuntime,
+  Map<string, PluginLifecycleLane>
+>();
 
 function getRuntimePrivateState(runtime: AgentRuntime): RuntimePrivateState {
   return runtime as AgentRuntime & RuntimePrivateState;
@@ -161,6 +170,94 @@ function getPluginOwnershipStore(
     runtime.__elizaPluginOwnership = new Map();
   }
   return runtime.__elizaPluginOwnership;
+}
+
+function getPluginLifecycleLane(
+  runtime: AgentRuntime,
+  pluginName: string,
+): {
+  lane: PluginLifecycleLane;
+  lanes: Map<string, PluginLifecycleLane>;
+} {
+  let lanes = pluginLifecycleLanes.get(runtime);
+  if (!lanes) {
+    lanes = new Map();
+    pluginLifecycleLanes.set(runtime, lanes);
+  }
+  let lane = lanes.get(pluginName);
+  if (!lane) {
+    lane = {
+      tail: Promise.resolve(),
+      joinableRegistration: null,
+      pendingOperations: 0,
+    };
+    lanes.set(pluginName, lane);
+  }
+  return { lane, lanes };
+}
+
+function enqueuePluginLifecycleOperation<T>(
+  runtime: AgentRuntime,
+  pluginName: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const { lane, lanes } = getPluginLifecycleLane(runtime, pluginName);
+  lane.pendingOperations += 1;
+  const result = lane.tail.then(operation);
+  lane.tail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  void lane.tail.then(() => {
+    lane.pendingOperations -= 1;
+    if (lane.pendingOperations === 0 && lanes.get(pluginName) === lane) {
+      lanes.delete(pluginName);
+    }
+    if (lanes.size === 0 && pluginLifecycleLanes.get(runtime) === lanes) {
+      pluginLifecycleLanes.delete(runtime);
+    }
+  });
+  return result;
+}
+
+function registerPluginOnce(
+  runtime: AgentRuntime,
+  pluginName: string,
+  register: () => Promise<void>,
+): Promise<void> {
+  const { lane } = getPluginLifecycleLane(runtime, pluginName);
+  if (lane.joinableRegistration) {
+    return lane.joinableRegistration;
+  }
+  const registration = enqueuePluginLifecycleOperation(
+    runtime,
+    pluginName,
+    register,
+  );
+  lane.joinableRegistration = registration;
+  void registration.then(
+    () => {
+      if (lane.joinableRegistration === registration) {
+        lane.joinableRegistration = null;
+      }
+    },
+    () => {
+      if (lane.joinableRegistration === registration) {
+        lane.joinableRegistration = null;
+      }
+    },
+  );
+  return registration;
+}
+
+function enqueuePluginLifecycleMutation<T>(
+  runtime: AgentRuntime,
+  pluginName: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const { lane } = getPluginLifecycleLane(runtime, pluginName);
+  lane.joinableRegistration = null;
+  return enqueuePluginLifecycleOperation(runtime, pluginName, operation);
 }
 
 function getOwnershipTarget(
@@ -282,6 +379,41 @@ function pushUniqueService(
     return;
   }
   items.push(next);
+}
+
+function snapshotPluginServiceClasses(
+  runtime: AgentRuntime,
+  plugin: Plugin,
+): Map<ServiceTypeName, Set<RuntimeServiceClass>> {
+  const privateState = getRuntimePrivateState(runtime);
+  const snapshot = new Map<ServiceTypeName, Set<RuntimeServiceClass>>();
+  for (const serviceClass of plugin.services ?? []) {
+    const serviceType = serviceClass.serviceType as ServiceTypeName;
+    snapshot.set(
+      serviceType,
+      new Set(privateState.serviceTypes.get(serviceType) ?? []),
+    );
+  }
+  return snapshot;
+}
+
+function trackPluginServiceClasses(
+  runtime: AgentRuntime,
+  ownership: RuntimePluginOwnership,
+  before: Map<ServiceTypeName, Set<RuntimeServiceClass>>,
+): void {
+  const privateState = getRuntimePrivateState(runtime);
+  for (const serviceClass of ownership.plugin.services ?? []) {
+    const serviceType = serviceClass.serviceType as ServiceTypeName;
+    const previousClasses = before.get(serviceType);
+    if (
+      !previousClasses?.has(serviceClass) &&
+      privateState.serviceTypes.get(serviceType)?.includes(serviceClass)
+    ) {
+      serviceClassOwners.set(serviceClass, ownership.pluginName);
+      pushUniqueService(ownership.services, { serviceType, serviceClass });
+    }
+  }
 }
 
 function createEmptyOwnership(plugin: Plugin): RuntimePluginOwnership {
@@ -736,12 +868,13 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
 
   const baseRegisterPlugin = runtime.registerPlugin.bind(runtime);
   const baseUnloadPlugin = runtime.unloadPlugin?.bind(runtime);
-  runtime.registerPlugin = (async (plugin: Plugin) => {
+  const registerPluginOperation = async (plugin: Plugin): Promise<void> => {
     if (runtime.plugins.some((registered) => registered.name === plugin.name)) {
       await baseRegisterPlugin(plugin);
       return;
     }
     let registeredHere = false;
+    const servicesBefore = snapshotPluginServiceClasses(runtime, plugin);
     try {
       // #12087 Item 1: gate this plugin's sensitive providers (SECRETS_STATUS,
       // walletPortfolio, shellHistory, …) at the moment it registers, not via a
@@ -761,6 +894,10 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       }
       await baseRegisterPlugin(plugin);
       registeredHere = runtime.plugins.includes(plugin);
+      const ownership = runtime.getPluginOwnership?.(plugin.name);
+      if (ownership) {
+        trackPluginServiceClasses(runtime, ownership, servicesBefore);
+      }
       await registerPluginViews(plugin);
       registerViewScopedActions(runtime, plugin.name, plugin.views ?? []);
     } catch (error) {
@@ -771,30 +908,31 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       }
       throw error;
     }
-  }) as typeof runtime.registerPlugin;
+  };
+  runtime.registerPlugin = ((plugin: Plugin) =>
+    registerPluginOnce(runtime, plugin.name, () =>
+      registerPluginOperation(plugin),
+    )) as typeof runtime.registerPlugin;
 
   if (baseUnloadPlugin) {
-    runtime.unloadPlugin = async (pluginName: string) => {
+    const unloadPluginOperation = async (pluginName: string) => {
       const ownership = await baseUnloadPlugin(pluginName);
       unregisterPluginViews(pluginName);
       unregisterViewScopedActions(runtime, pluginName);
       return ownership as RuntimePluginOwnership | null;
     };
-  }
+    runtime.unloadPlugin = (pluginName: string) =>
+      enqueuePluginLifecycleMutation(runtime, pluginName, () =>
+        unloadPluginOperation(pluginName),
+      );
 
-  const baseReloadPlugin = runtime.reloadPlugin?.bind(runtime);
-  if (baseReloadPlugin) {
-    runtime.reloadPlugin = async (plugin: Plugin) => {
-      unregisterPluginViews(plugin.name);
-      await baseReloadPlugin(plugin);
-      // #12087 Item 1: re-gate providers on reload (a reloaded plugin object has
-      // fresh, un-wrapped provider.get functions).
-      applyPluginRoleGating([plugin]);
-      await registerPluginViews(plugin);
-      // registerViewScopedActions reconciles: it unregisters this plugin's
-      // previous scoped actions before registering the reloaded set.
-      registerViewScopedActions(runtime, plugin.name, plugin.views ?? []);
-    };
+    if (runtime.reloadPlugin) {
+      runtime.reloadPlugin = (plugin: Plugin) =>
+        enqueuePluginLifecycleMutation(runtime, plugin.name, async () => {
+          await unloadPluginOperation(plugin.name);
+          await registerPluginOperation(plugin);
+        });
+    }
   }
 }
 
@@ -1005,7 +1143,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     }) as typeof privateState._runServiceStart;
   }
 
-  runtime.registerPlugin = (async (plugin: Plugin) => {
+  const registerPluginOperation = async (plugin: Plugin): Promise<void> => {
     if (runtime.plugins.some((registered) => registered.name === plugin.name)) {
       await originalRegisterPlugin(plugin);
       return;
@@ -1016,6 +1154,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
       ownership: createEmptyOwnership(plugin),
       adapterBefore: runtime.adapter,
     };
+    const servicesBefore = snapshotPluginServiceClasses(runtime, plugin);
 
     try {
       await migratePluginSchemasIfReady(runtime, plugin);
@@ -1034,6 +1173,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
         pluginsBefore,
         routesBefore,
       );
+      trackPluginServiceClasses(runtime, capture.ownership, servicesBefore);
       if (
         capture.ownership.registeredPlugin ||
         capture.ownership.actions.length > 0 ||
@@ -1061,6 +1201,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
         pluginsBefore,
         routesBefore,
       );
+      trackPluginServiceClasses(runtime, capture.ownership, servicesBefore);
       await teardownPluginOwnership(runtimeWithLifecycle, capture.ownership, {
         allowAdapterUnload: true,
         removeOwnership: true,
@@ -1068,9 +1209,15 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
       });
       throw error;
     }
-  }) as typeof runtime.registerPlugin;
+  };
+  runtime.registerPlugin = ((plugin: Plugin) =>
+    registerPluginOnce(runtime, plugin.name, () =>
+      registerPluginOperation(plugin),
+    )) as typeof runtime.registerPlugin;
 
-  runtimeWithLifecycle.unloadPlugin = async (pluginName: string) => {
+  const unloadPluginOperation = async (
+    pluginName: string,
+  ): Promise<RuntimePluginOwnership | null> => {
     const ownership =
       getPluginOwnershipStore(runtimeWithLifecycle).get(pluginName);
     if (!ownership) {
@@ -1082,19 +1229,16 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     });
     return ownership;
   };
-
-  runtimeWithLifecycle.reloadPlugin = async (plugin: Plugin) => {
-    const existingOwnership = getPluginOwnershipStore(runtimeWithLifecycle).get(
-      plugin.name,
+  runtimeWithLifecycle.unloadPlugin = (pluginName: string) =>
+    enqueuePluginLifecycleMutation(runtime, pluginName, () =>
+      unloadPluginOperation(pluginName),
     );
-    if (existingOwnership) {
-      unregisterPluginViews(plugin.name);
-      await teardownPluginOwnership(runtimeWithLifecycle, existingOwnership, {
-        removeOwnership: true,
-      });
-    }
-    await runtime.registerPlugin(plugin);
-  };
+
+  runtimeWithLifecycle.reloadPlugin = (plugin: Plugin) =>
+    enqueuePluginLifecycleMutation(runtime, plugin.name, async () => {
+      await unloadPluginOperation(plugin.name);
+      await registerPluginOperation(plugin);
+    });
 
   runtimeWithLifecycle.applyPluginConfig = async (
     pluginName: string,
