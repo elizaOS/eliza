@@ -148,7 +148,11 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves: "Verifies markets, positions, and orders.",
-      signals: ["Markets", "Orders"],
+      signals: [
+        "market utility controls show fixture data on load",
+        "market-BTC",
+        "position-BTC",
+      ],
     },
   ],
   "lifeops-live-test": [
@@ -194,7 +198,10 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves: "Verifies the Polymarket route shell.",
-      signals: ["Polymarket"],
+      signals: [
+        "market utility controls show fixture data on load",
+        "polymarket-root",
+      ],
     },
   ],
   wallet: [
