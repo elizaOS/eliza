@@ -833,6 +833,9 @@ export interface ChatGenerationResult {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    cachedInputTokens?: number;
     model?: string;
     provider?: string;
     isEstimated: boolean;
@@ -2384,6 +2387,15 @@ function buildChatUsage(
       promptTokens: capturedUsage.promptTokens,
       completionTokens: capturedUsage.completionTokens,
       totalTokens: capturedUsage.totalTokens,
+      ...(capturedUsage.cacheReadInputTokens !== undefined
+        ? { cacheReadInputTokens: capturedUsage.cacheReadInputTokens }
+        : {}),
+      ...(capturedUsage.cacheCreationInputTokens !== undefined
+        ? { cacheCreationInputTokens: capturedUsage.cacheCreationInputTokens }
+        : {}),
+      ...(capturedUsage.cachedInputTokens !== undefined
+        ? { cachedInputTokens: capturedUsage.cachedInputTokens }
+        : {}),
       ...(model ? { model } : {}),
       ...(capturedUsage.provider ? { provider: capturedUsage.provider } : {}),
       isEstimated: capturedUsage.isEstimated,

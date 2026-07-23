@@ -52,6 +52,7 @@ export async function getRelatedEntityIds(
 	if (!resolver?.getMemberEntityIds) {
 		return [entityId];
 	}
+	const getMemberEntityIds = resolver.getMemberEntityIds.bind(resolver);
 
 	const key = `${runtime.agentId}:${entityId}`;
 	const now = Date.now();
@@ -61,7 +62,7 @@ export async function getRelatedEntityIds(
 	}
 
 	const promise = (async () => {
-		const relatedEntityIds = await resolver.getMemberEntityIds(entityId);
+		const relatedEntityIds = await getMemberEntityIds(entityId);
 		const deduped = Array.from(new Set([entityId, ...relatedEntityIds]));
 		return deduped.length > 0 ? deduped : [entityId];
 	})();
