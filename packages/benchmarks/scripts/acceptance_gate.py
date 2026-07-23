@@ -104,15 +104,15 @@ GATE_PROVIDER = "cerebras"
 TIMEOUT_PRECHECK_S = 30
 TIMEOUT_CEREBRAS_SMOKE_S = 30
 TIMEOUT_AGENT_SMOKE_S = 120
-# A real single-task hermes_tblite leg measures ~316s end to end (hermes venv
-# boot + pinned dataset load + docker terminal sandbox + live agent loop), so
-# the old 240s budget killed healthy runs. 900s bounds a wedged lane while
-# leaving honest headroom for slower agent loops.
 # Campaign policy: no artificial task budgets anywhere an agent may still be
-# working — a leg ends when the rollout concludes. This is a last-resort
-# process guard far above any plausible runtime, not a deadline; the
-# orchestrator's liveness policy owns hang detection.
-TIMEOUT_BENCHMARK_RUN_S = 86400
+# working — a leg ends when its rollout concludes. Hang detection belongs to
+# the orchestrator's ProcessDeadlinePolicy (adapter wall caps for smoke
+# profiles, observed-progress silent timeouts for campaign profiles), one
+# layer below this guard. This constant only bounds a child that wedges
+# before that machinery arms: 4h is ~16x the slowest observed sanity leg
+# (~890s, openclaw on tblite broken-python) — far above any plausible
+# runtime without letting a dead process hold the gate for a day.
+TIMEOUT_BENCHMARK_RUN_S = 14400
 TIMEOUT_RANDOM_RUN_S = 120
 
 

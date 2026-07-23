@@ -3,27 +3,31 @@
  * outbound messages back into dashboard / REST conversations. Covers which relay
  * sources get a send handler, delivery into the matching conversation (including
  * an unknown dashboard-origin source routed via the default fallback), not
- * hijacking a real connector's own handler, and cross-conversation safety.
- * Deterministic against an in-memory runtime + server-state stub.
+ * hijacking a real connector's own handler, cross-conversation safety, and
+ * single-owner swarm delivery. Most cases use a deterministic state stand-in;
+ * transport ownership runs through AgentRuntime and InMemoryDatabaseAdapter.
  */
 import crypto from "node:crypto";
-import type {
-  Content,
-  IAgentRuntime,
-  Memory,
-  SendHandlerFunction,
-  TargetInfo,
-  UUID,
+import {
+  AgentRuntime,
+  ChannelType,
+  type Character,
+  type Content,
+  type IAgentRuntime,
+  InMemoryDatabaseAdapter,
+  type Memory,
+  type SendHandlerFunction,
+  type TargetInfo,
+  type UUID,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { handleSwarmSynthesis } from "../api/server-helpers-swarm.ts";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";
 import { registerClientChatSendHandler } from "./client-chat-sender.ts";
 
-/** A minimal AgentRuntime stand-in that mirrors the real send-handler routing:
- *  `registerSendHandler` records a handler AND a message connector (the runtime
- *  does both), and `sendMessageToTarget` dispatches to the registered handler or
- *  throws "No send handler registered" — exactly the failure the relay fix
- *  addresses. */
+/** A minimal AgentRuntime stand-in that mirrors the real send-handler routing.
+ * Public handlers are connector capabilities; internal handlers remain
+ * addressable by runtime relays without appearing in connector discovery. */
 function makeRuntime() {
   const handlers = new Map<string, SendHandlerFunction>();
   const connectors: Array<{ source: string }> = [];
@@ -33,6 +37,9 @@ function makeRuntime() {
     registerSendHandler(source: string, handler: SendHandlerFunction) {
       handlers.set(source, handler);
       connectors.push({ source });
+    },
+    registerInternalSendHandler(source: string, handler: SendHandlerFunction) {
+      handlers.set(source, handler);
     },
     getMessageConnectors() {
       return connectors;
@@ -95,14 +102,37 @@ const REQUIRED_RELAY_SOURCES = [
 ];
 
 describe("registerClientChatSendHandler — relay source coverage", () => {
-  it("registers a send handler for every dashboard/REST relay source", () => {
-    const { runtime, handlers } = makeRuntime();
+  it("registers every dashboard relay as an internal transport", () => {
+    const { runtime, handlers, connectors } = makeRuntime();
     const { state } = makeState([]);
     registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
 
     for (const source of REQUIRED_RELAY_SOURCES) {
       expect(handlers.has(source)).toBe(true);
     }
+    expect(connectors).toEqual([]);
+  });
+
+  it("keeps dashboard relays out of real runtime connector discovery", () => {
+    const runtime = new AgentRuntime({
+      character: {
+        name: "Dashboard Relay Test Agent",
+        bio: ["test"],
+        settings: {},
+      } as Character,
+      adapter: new InMemoryDatabaseAdapter(),
+      logLevel: "fatal",
+    });
+    const { state } = makeState([]);
+
+    registerClientChatSendHandler(runtime, state);
+
+    expect(
+      runtime
+        .getMessageConnectors()
+        .map((connector) => connector.source)
+        .filter((source) => REQUIRED_RELAY_SOURCES.includes(source)),
+    ).toEqual([]);
   });
 
   it("does NOT register the dead sources removed from the relay list", () => {
@@ -136,6 +166,23 @@ describe("registerClientChatSendHandler — delivery", () => {
     expect(broadcastWs.mock.calls[0]?.[0]).toMatchObject({
       conversationId: "c1",
     });
+  });
+
+  it("preserves distinct sends even when their text is identical", async () => {
+    const { runtime, created } = makeRuntime();
+    const { state, broadcastWs } = makeState([conv("c1", "room-1")]);
+    registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+
+    const target = {
+      source: "client_chat",
+      roomId: "room-1" as UUID,
+    };
+    await runtime.sendMessageToTarget(target, { text: "done" });
+    await runtime.sendMessageToTarget(target, { text: "done" });
+
+    expect(created).toHaveLength(2);
+    expect(created[0]?.id).not.toBe(created[1]?.id);
+    expect(broadcastWs).toHaveBeenCalledTimes(2);
   });
 
   it("delivers an UNKNOWN dashboard-origin source instead of dropping it", async () => {
@@ -175,6 +222,85 @@ describe("registerClientChatSendHandler — delivery", () => {
     // The dashboard deliver path never ran for the connector source.
     expect(created).toHaveLength(0);
     expect(broadcastWs).not.toHaveBeenCalled();
+  });
+});
+
+describe("swarm synthesis — dashboard transport ownership", () => {
+  it("persists and broadcasts once through the real runtime relay", async () => {
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({
+      character: {
+        name: "Dashboard Synthesis Test Agent",
+        bio: ["test"],
+        settings: {},
+      } as Character,
+      adapter,
+      logLevel: "fatal",
+    });
+    const roomId = crypto.randomUUID() as UUID;
+    const worldId = crypto.randomUUID() as UUID;
+    await runtime.createRooms([
+      {
+        id: roomId,
+        worldId,
+        source: "client_chat",
+        type: ChannelType.DM,
+      },
+    ]);
+    const conversation = conv("c1", roomId);
+    const { state, broadcastWs } = makeState([conversation], conversation.id);
+    state.runtime = runtime;
+    registerClientChatSendHandler(runtime, state);
+
+    try {
+      await handleSwarmSynthesis(
+        state,
+        {
+          tasks: [
+            {
+              sessionId: "pty-dashboard",
+              label: "dashboard task",
+              agentType: "codex",
+              originalTask: "inspect the repository",
+              status: "completed",
+              completionSummary: "done",
+              roomId,
+            },
+          ],
+          total: 1,
+          completed: 1,
+          stopped: 0,
+          errored: 0,
+        },
+        vi.fn(async () => {
+          throw new Error("dashboard fallback must not run");
+        }),
+      );
+
+      const persisted = await runtime.getMemories({
+        roomId,
+        tableName: "messages",
+      });
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0]?.content).toMatchObject({
+        text: "done",
+        source: "client_chat",
+      });
+      expect(broadcastWs).toHaveBeenCalledTimes(1);
+      expect(broadcastWs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "proactive-message",
+          conversationId: conversation.id,
+          message: expect.objectContaining({
+            text: "done",
+            source: "client_chat",
+          }),
+        }),
+      );
+    } finally {
+      await adapter.close();
+    }
   });
 });
 

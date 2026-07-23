@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DOCUMENTS_NAV_VOCABULARY } from "@elizaos/shared/views/shared-nav-targets";
 import { __matcherData, MATCHER_VIEW_IDS } from "@elizaos/shared/views/view-command-matcher";
 import { navIntentActionResult, resolveSharedNavIntent } from "./shared-nav-intent";
 
@@ -25,6 +26,34 @@ describe("resolveSharedNavIntent", () => {
     expect(intent?.reply).toMatch(/^Opening .+ for you\.$/);
   });
 
+  test.each([
+    ["en", "Knowledge", "open Knowledge"],
+    ["es", "Conocimiento", "abre Conocimiento"],
+    ["pt", "Conhecimento", "abra Conhecimento"],
+    ["ja", "ナレッジ", "ナレッジを開いて"],
+    ["ko", "지식", "지식을 열어"],
+    ["vi", "Tri thức", "mở Tri thức"],
+    ["zh-CN", "知识", "打开知识"],
+    ["tl", "Kaalaman", "buksan ang Kaalaman"],
+  ] as const)(
+    "%s Knowledge label %j emits the canonical documents handoff",
+    (locale, label, message) => {
+      expect(DOCUMENTS_NAV_VOCABULARY.localizedLabels[locale]).toBe(label);
+      const intent = resolveSharedNavIntent(message);
+      expect(intent).toEqual({
+        viewId: "documents",
+        label: "Knowledge",
+        reply: "Opening Knowledge for you.",
+      });
+      const result = navIntentActionResult(intent!);
+      expect(result.values).toEqual({
+        mode: "show",
+        viewId: "documents",
+        source: "agent",
+      });
+    },
+  );
+
   test("voice-change is a Settings › Voice deep-link", () => {
     for (const message of [
       "change my voice",
@@ -46,6 +75,21 @@ describe("resolveSharedNavIntent", () => {
     "I love your voice", // talking about voice, not changing it
     "can you explain how wallets work",
     "help me write an email", // help-verb, not a Help surface
+    "showcase knowledge",
+    "open knowledgebase",
+    "open knowledgeable",
+    "el conocimiento es poder",
+    "abre conocimientos avanzados",
+    "conhecimento é importante",
+    "abra conhecimentos gerais",
+    "ナレッジについて教えて",
+    "ナレッジワーカーを開いて",
+    "지식에 대해 설명해줘",
+    "지식인을 열어",
+    "tri thức rất quan trọng",
+    "知识就是力量",
+    "打开知识产权",
+    "mahalaga ang kaalaman",
     // The matcher resolves a bare "help" to its "help" id, but no Help surface
     // exists on any client, so the nav table omits it and the utterance falls
     // through to the normal LLM turn instead of navigating nowhere (#17032).

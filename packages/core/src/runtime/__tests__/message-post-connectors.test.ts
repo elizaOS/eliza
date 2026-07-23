@@ -154,6 +154,19 @@ describe("message and post connector registries", () => {
 		expect(legacyHandler).toHaveBeenCalledWith(runtime, target, content);
 	});
 
+	it("routes internal send handlers without advertising a message connector", async () => {
+		const runtime = makeRuntime();
+		const internalHandler = vi.fn(async () => undefined);
+		const target = makeTarget("dashboard-relay");
+		const content: Content = { text: "async result" };
+
+		runtime.registerInternalSendHandler("dashboard-relay", internalHandler);
+
+		expect(runtime.getMessageConnectors()).toEqual([]);
+		await runtime.sendMessageToTarget(target, content);
+		expect(internalHandler).toHaveBeenCalledWith(runtime, target, content);
+	});
+
 	it("does not route from untrusted content metadata accountId", async () => {
 		const runtime = makeRuntime();
 		const accountHandler = vi.fn(async () => undefined);

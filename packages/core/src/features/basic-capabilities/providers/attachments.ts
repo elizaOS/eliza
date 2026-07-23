@@ -68,17 +68,27 @@ function messageTextForAttachmentRelevance(message: Memory): string {
 		.join("\n");
 }
 
-function shouldRenderAttachmentPromptText(
-	message: Memory,
-	allAttachments: readonly Media[],
-): boolean {
-	if (allAttachments.length === 0) return false;
+/**
+ * The half of the render gate decidable from the current message alone —
+ * before any conversation-history fetch. When this is false the provider
+ * skips `listConversationAttachments` entirely (the room-history scan plus
+ * access-context resolution), which on a text-only turn was the single
+ * largest composeState provider wall.
+ */
+function couldRenderAttachmentPromptText(message: Memory): boolean {
 	if ((message.content.attachments ?? []).length > 0) return true;
 	if (message.content.source === MESSAGE_SOURCE_SUB_AGENT) return false;
 	const text = messageTextForAttachmentRelevance(message);
 	return (
 		ATTACHMENT_REFERENCE_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)
 	);
+}
+
+function shouldRenderAttachmentPromptText(
+	message: Memory,
+	allAttachments: readonly Media[],
+): boolean {
+	return allAttachments.length > 0 && couldRenderAttachmentPromptText(message);
 }
 
 export const attachmentsProvider: Provider = {
@@ -96,6 +106,19 @@ export const attachmentsProvider: Provider = {
 		message: Memory,
 	): Promise<ProviderResult> => {
 		try {
+			// Gate before fetch: when the message-side half of the render gate
+			// already fails (text-only turn with no attachment reference, or a
+			// sub-agent result turn), no fetch result could change the outcome —
+			// prompt text stays empty either way, so skip the history scan. The
+			// current message carries no attachments in this branch (own
+			// attachments pass the gate), so the empty data shape is exact.
+			if (!couldRenderAttachmentPromptText(message)) {
+				return {
+					values: { attachments: "" },
+					data: { attachments: [], visibleAttachments: [], omittedCount: 0 },
+					text: "",
+				};
+			}
 			const allAttachments = await listConversationAttachments(
 				runtime,
 				message,

@@ -17,7 +17,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
+import {
+  DOCUMENTS_NAV_VOCABULARY,
+  SHARED_NAV_TARGETS,
+  SHARED_NAV_UI_LOCALES,
+} from "@elizaos/shared/views/shared-nav-targets";
 import { describe, expect, it } from "vitest";
 import { withBuiltinShellViews } from "./hooks/useAvailableViews";
 
@@ -103,6 +107,38 @@ describe("shared-tier nav vocabulary contract", () => {
             `expected "${BUILTIN_NAV_PATHS[target.viewId]}"`,
         ).toBe(BUILTIN_NAV_PATHS[target.viewId]);
       }
+    }
+  });
+
+  it("routes the documents matcher id to the Knowledge builtin", () => {
+    expect(SHARED_NAV_TARGETS.documents).toEqual({
+      viewId: "documents",
+      label: "Knowledge",
+    });
+    expect(builtinById.get("documents")).toMatchObject({
+      id: "documents",
+      label: "Knowledge",
+      path: "/character/documents",
+    });
+  });
+
+  it("keeps the semantic vocabulary aligned with every shipped UI label", () => {
+    for (const locale of SHARED_NAV_UI_LOCALES) {
+      const catalogPath = resolve(
+        REPO_ROOT,
+        `packages/ui/src/i18n/locales/${locale}.json`,
+      );
+      const catalog: unknown = JSON.parse(readFileSync(catalogPath, "utf8"));
+      const label =
+        catalog !== null &&
+        typeof catalog === "object" &&
+        !Array.isArray(catalog)
+          ? Reflect.get(catalog, "nav.documents")
+          : undefined;
+      expect(
+        label,
+        `${locale} nav.documents drifted from the shared Knowledge routing vocabulary`,
+      ).toBe(DOCUMENTS_NAV_VOCABULARY.localizedLabels[locale]);
     }
   });
 

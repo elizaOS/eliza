@@ -129,7 +129,11 @@ export type {
   LifeOpsSocialHabitSummary,
 } from "@elizaos/shared";
 
-interface LifeOpsElizaClientMethods {
+// Exported for consumers that import `client` from the `@elizaos/ui/api`
+// subpath (headless chunks that must not touch the root barrel): the
+// `declare module "@elizaos/ui"` merge below only covers root-barrel
+// importers, so they re-type their client view with a Pick of this interface.
+export interface LifeOpsElizaClientMethods {
   getLifeOpsOverview(): Promise<LifeOpsOverview>;
   getLifeOpsPaymentsDashboard(data?: {
     windowDays?: number | null;

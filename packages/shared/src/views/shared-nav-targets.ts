@@ -22,6 +22,43 @@ export interface SharedNavTarget {
   label: string;
 }
 
+export const SHARED_NAV_UI_LOCALES = [
+  "en",
+  "es",
+  "pt",
+  "ja",
+  "ko",
+  "vi",
+  "zh-CN",
+  "tl",
+] as const;
+
+export type SharedNavUiLocale = (typeof SHARED_NAV_UI_LOCALES)[number];
+
+/** Labels and semantic aliases that resolve to one shared navigation target. */
+export interface SharedNavVocabulary extends SharedNavTarget {
+  localizedLabels: Readonly<Record<SharedNavUiLocale, string>>;
+  aliases: readonly string[];
+}
+
+const DOCUMENTS_LOCALIZED_LABELS = {
+  en: "Knowledge",
+  es: "Conocimiento",
+  pt: "Conhecimento",
+  ja: "ナレッジ",
+  ko: "지식",
+  vi: "Tri thức",
+  "zh-CN": "知识",
+  tl: "Kaalaman",
+} as const satisfies Readonly<Record<SharedNavUiLocale, string>>;
+
+export const DOCUMENTS_NAV_VOCABULARY = {
+  viewId: "documents",
+  label: DOCUMENTS_LOCALIZED_LABELS.en,
+  localizedLabels: DOCUMENTS_LOCALIZED_LABELS,
+  aliases: ["knowledge base", "knowledge hub"],
+} as const satisfies SharedNavVocabulary;
+
 export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
   settings: { viewId: "settings", label: "Settings" },
   // The builtin wallet surface registers as the "inventory" tab (TAB_PATHS
@@ -36,7 +73,10 @@ export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
   health: { viewId: "health", label: "Health" },
   todos: { viewId: "todos", label: "To-dos" },
   notes: { viewId: "notes", label: "Notes" },
-  documents: { viewId: "documents", label: "Documents" },
+  documents: {
+    viewId: DOCUMENTS_NAV_VOCABULARY.viewId,
+    label: DOCUMENTS_NAV_VOCABULARY.label,
+  },
   memories: { viewId: "memories", label: "Memories" },
   relationships: { viewId: "relationships", label: "Relationships" },
   background: { viewId: "background", label: "Background" },

@@ -43,12 +43,18 @@ function attachmentMemory(createdAt = 1): Memory {
 
 function makeRuntime(
 	recentMessages: Memory[],
-	options: { hasImageDescriptionModel?: boolean } = {},
+	options: {
+		hasImageDescriptionModel?: boolean;
+		onHistoryFetch?: () => void;
+	} = {},
 ): IAgentRuntime {
 	return {
 		agentId,
 		getConversationLength: () => 20,
-		getMemories: async () => recentMessages,
+		getMemories: async () => {
+			options.onHistoryFetch?.();
+			return recentMessages;
+		},
 		getRoom: async () => null,
 		getModel: (modelType: string) =>
 			options.hasImageDescriptionModel &&
@@ -108,14 +114,23 @@ function ownerPrivateAttachmentMemory(granted = false): Memory {
 }
 
 describe("attachmentsProvider", () => {
-	it("keeps stale room attachments out of unrelated prompt text", async () => {
+	it("keeps stale room attachments out of unrelated prompt text without fetching history", async () => {
+		// The render gate is decidable from the message alone here, so the
+		// provider must not pay the conversation-history scan at all — that scan
+		// was the largest composeState provider wall on text-only turns.
+		let historyFetches = 0;
 		const result = await attachmentsProvider.get(
-			makeRuntime([attachmentMemory()]),
+			makeRuntime([attachmentMemory()], {
+				onHistoryFetch: () => {
+					historyFetches += 1;
+				},
+			}),
 			makeMessage({ text: "can you try this?" }),
 		);
 
 		expect(result.text).toBe("");
-		expect(result.data?.visibleAttachments).toHaveLength(1);
+		expect(result.data?.visibleAttachments).toHaveLength(0);
+		expect(historyFetches).toBe(0);
 	});
 
 	it("renders attachment prompt text when the current message asks about a link", async () => {
@@ -142,8 +157,13 @@ describe("attachmentsProvider", () => {
 	});
 
 	it("does not inject stale room attachments into sub-agent result turns", async () => {
+		let historyFetches = 0;
 		const result = await attachmentsProvider.get(
-			makeRuntime([attachmentMemory()]),
+			makeRuntime([attachmentMemory()], {
+				onHistoryFetch: () => {
+					historyFetches += 1;
+				},
+			}),
 			makeMessage({
 				source: "sub_agent",
 				text: "[sub-agent: app-build (opencode) — task_complete]\nResult: https://example.test/apps/demo/",
@@ -151,7 +171,8 @@ describe("attachmentsProvider", () => {
 		);
 
 		expect(result.text).toBe("");
-		expect(result.data?.visibleAttachments).toHaveLength(1);
+		expect(result.data?.visibleAttachments).toHaveLength(0);
+		expect(historyFetches).toBe(0);
 	});
 
 	it("does not advertise an ATTACHMENT read for a failure-prose description without stored text", async () => {

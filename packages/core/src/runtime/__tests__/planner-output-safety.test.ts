@@ -61,6 +61,78 @@ describe("planner output user-visible safety", () => {
 		expect(output.toolCalls).toEqual([]);
 	});
 
+	it("preserves genuine JSON with a lowercase domain action and metadata", () => {
+		const json =
+			'{"action":"proceed","parameters":{"step":1},"status":"done","summary":"approved"}';
+		const output = parsePlannerOutput({
+			text: json,
+			toolCalls: [],
+		});
+
+		expect(output.messageToUser).toBe(json);
+		expect(output.toolCalls).toEqual([]);
+	});
+
+	it("unwraps nested reply scaffolds before projecting planner text", () => {
+		const output = parsePlannerOutput({
+			text: JSON.stringify({
+				response: JSON.stringify({
+					messageToUser: "I could not finish that. Please try again.",
+				}),
+			}),
+			toolCalls: [],
+		});
+
+		expect(output.messageToUser).toBe(
+			"I could not finish that. Please try again.",
+		);
+		expect(output.toolCalls).toEqual([]);
+	});
+
+	it("routes a fenced action envelope nested inside messageToUser without exposing it", () => {
+		const output = parsePlannerOutput(
+			JSON.stringify({
+				messageToUser:
+					'```json\n{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":"retry"}\n```',
+				toolCalls: [],
+			}),
+		);
+
+		expect(output.messageToUser).toBeUndefined();
+		expect(output.toolCalls).toEqual([
+			{
+				id: undefined,
+				name: "BROWSER",
+				params: { url: "https://example.com" },
+			},
+		]);
+	});
+
+	it("routes action records from a direct JSON array without exposing the batch", () => {
+		const output = parsePlannerOutput(
+			'[{"status":"queued"},{"action":"BROWSER","parameters":{"url":"https://example.com"}}]',
+		);
+
+		expect(output.messageToUser).toBeUndefined();
+		expect(output.toolCalls).toEqual([
+			{
+				id: undefined,
+				name: "BROWSER",
+				params: { url: "https://example.com" },
+			},
+		]);
+	});
+
+	it("drops a malformed action envelope emitted in the native text channel", () => {
+		const output = parsePlannerOutput({
+			text: '{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":',
+			toolCalls: [],
+		});
+
+		expect(output.messageToUser).toBeUndefined();
+		expect(output.toolCalls).toEqual([]);
+	});
+
 	it("preserves a form interaction marker with a JSON body as visible message text", () => {
 		const form =
 			'[FORM]\n{"title":"Connect Discord","fields":[{"name":"token","type":"secret"}]}\n[/FORM]';

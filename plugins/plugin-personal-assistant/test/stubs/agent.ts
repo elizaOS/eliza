@@ -8,6 +8,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+// The LifeOps route dispatcher rate-limits state-changing routes; re-export the
+// real limiter (self-contained, in-memory) so route e2e tests run the genuine
+// dispatch path instead of a bypass.
+export { checkRateLimit } from "../../../../packages/agent/src/api/rate-limiter.ts";
 export {
   createGlobalPauseStore,
   GLOBAL_PAUSE_SERVICE,
@@ -152,14 +156,10 @@ export function renderGroundedActionReply(args?: { text?: string }): string {
   return args?.text ?? "";
 }
 
-export function createIntegrationTelemetrySpan() {
-  return {
-    end: () => undefined,
-    recordException: () => undefined,
-    setAttribute: () => undefined,
-    setStatus: () => undefined,
-  };
-}
+// Integration telemetry is self-contained (only the core logger), so the test
+// lane runs the real span: route tests then exercise the genuine
+// success/failure bookkeeping instead of a shape-drifted fake.
+export { createIntegrationTelemetrySpan } from "../../../../packages/agent/src/diagnostics/integration-observability.ts";
 
 export function extractConversationMetadataFromRoom(): Record<string, unknown> {
   return {};
