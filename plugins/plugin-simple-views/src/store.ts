@@ -105,7 +105,14 @@ function isNodeErrorWithCode(
   error: unknown,
   code: string,
 ): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === code;
+  // Filesystem errors can cross plugin/VM realms, where `instanceof Error`
+  // does not preserve identity even though the Node error contract does.
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === code
+  );
 }
 
 function toStoreError(
