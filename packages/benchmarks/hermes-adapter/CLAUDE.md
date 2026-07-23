@@ -90,7 +90,8 @@ ruff check hermes_adapter tests
 ## Notes
 
 - Publishable client runs require a loopback OpenAI-compatible subscription gateway (`CLAUDE_SUBSCRIPTION_GATEWAY_URL` / `OPENAI_BASE_URL`) and its token (`CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN` / `OPENAI_API_KEY`).
-- hermes-agent must be checked out at `~/.eliza/agents/hermes-agent-src/` (default); override with `--repo-path`.
+- Two hermes-agent checkouts are required, at different revisions. The native client lane (`HermesClient`) imports `run_agent` from `~/.eliza/agents/hermes-agent-src/` (override with `--repo-path`); provision it with `benchmarks/lib/agent_install.py` (tracks upstream `main` — the pinned env revision below predates `AIAgent`'s `tool_progress_mode`/`register_tool(override=...)` API and fails the native health probe). The env lane (`env_runner.py`: `hermes_tblite`/`hermes_terminalbench_2`/`hermes_yc_bench`) verifies its own checkout at `packages/benchmark-data/source-audit/hermes-agent.git` (override with `HERMES_BENCH_REPO_PATH`) pinned to `PINNED_HERMES_ENV_REVISION`, plus a YC-Bench checkout at `packages/benchmark-data/source-audit/yc-bench` pinned to `PINNED_YC_BENCH_REVISION`.
+- The env-lane venv needs `atroposlib`; installing hermes-agent's `.[rl]` extra fails because pip's recursive submodule init hits a dead commit in upstream atropos (`bleuberi-repo`). Clone `NousResearch/atropos` at the extra's pinned revision without submodules and `pip install` it from the local path instead.
 - Publication gates consume `agent_runtime`, `native_runtime_class`, `native_runtime_api`, `tool_bridge_plugin`, `tool_bridge_api`, `transport`, and `publishable_native` from health/turn telemetry.
 - Results write to `<output_dir>/hermes_<env>_<timestamp>.json`.
 - Scored by `_score_from_hermes_env_json` in `registry/scores.py` (line 1504).

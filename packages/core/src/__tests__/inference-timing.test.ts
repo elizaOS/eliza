@@ -119,6 +119,18 @@ describe("exclusive inference flow breakdown", () => {
 					durationMs: 80,
 				},
 				{
+					name: "message:ingress:persistence",
+					startMs: 10,
+					endMs: 15,
+					durationMs: 5,
+				},
+				{
+					name: "message:lifecycle:run-started",
+					startMs: 15,
+					endMs: 20,
+					durationMs: 5,
+				},
+				{
 					name: "composeState",
 					startMs: 20,
 					endMs: 50,
@@ -167,6 +179,18 @@ describe("exclusive inference flow breakdown", () => {
 					durationMs: 2,
 				},
 				{
+					name: "message:delivery:persistence",
+					startMs: 85,
+					endMs: 88,
+					durationMs: 3,
+				},
+				{
+					name: "message:lifecycle:run-ended",
+					startMs: 88,
+					endMs: 90,
+					durationMs: 2,
+				},
+				{
 					name: "chat:response-finalization",
 					startMs: 90,
 					endMs: 95,
@@ -196,7 +220,16 @@ describe("exclusive inference flow breakdown", () => {
 		).toBe(2);
 		expect(
 			flow.stages.find((stage) => stage.stage === "planner-overhead")?.totalMs,
+		).toBeUndefined();
+		expect(
+			flow.stages.find((stage) => stage.stage === "message-ingress")?.totalMs,
 		).toBe(5);
+		expect(
+			flow.stages.find((stage) => stage.stage === "message-delivery")?.totalMs,
+		).toBe(3);
+		expect(
+			flow.stages.find((stage) => stage.stage === "message-lifecycle")?.totalMs,
+		).toBe(7);
 		expect(
 			flow.stages.find((stage) => stage.stage === "unattributed")?.totalMs,
 		).toBe(15);

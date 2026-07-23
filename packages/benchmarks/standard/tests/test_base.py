@@ -11,6 +11,7 @@ import pytest
 from benchmarks.standard._base import (
     BenchmarkResult,
     ChatMessage,
+    ENDPOINT_ENV_CHAIN,
     GenerationConfig,
     GenerationResult,
     HarnessClient,
@@ -22,8 +23,76 @@ from benchmarks.standard._base import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_endpoint_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Endpoint resolution reads operator env; strip it so each test states
+    exactly which overrides are set (campaign shells export all three)."""
+
+    for name in ENDPOINT_ENV_CHAIN:
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_resolve_endpoint_prefers_explicit_url() -> None:
     assert resolve_endpoint(model_endpoint="http://x/v1", provider="openai") == "http://x/v1"
+
+
+def test_resolve_endpoint_explicit_url_beats_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://elizacloud.ai/api/v1")
+    assert resolve_endpoint(model_endpoint="http://x/v1", provider="cerebras") == "http://x/v1"
+
+
+def test_resolve_endpoint_env_chain_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://bench.example/v1")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai-env.example/v1")
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://cerebras-env.example/v1")
+    assert (
+        resolve_endpoint(model_endpoint=None, provider="cerebras")
+        == "https://bench.example/v1"
+    )
+    monkeypatch.delenv("BENCHMARK_BASE_URL")
+    assert (
+        resolve_endpoint(model_endpoint=None, provider="cerebras")
+        == "https://openai-env.example/v1"
+    )
+    monkeypatch.delenv("OPENAI_BASE_URL")
+    assert (
+        resolve_endpoint(model_endpoint=None, provider="cerebras")
+        == "https://cerebras-env.example/v1"
+    )
+    monkeypatch.delenv("CEREBRAS_BASE_URL")
+    assert (
+        resolve_endpoint(model_endpoint=None, provider="cerebras")
+        == PROVIDER_BASE_URLS["cerebras"]
+    )
+
+
+def test_resolve_endpoint_env_beats_provider_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://elizacloud.ai/api/v1")
+    assert (
+        resolve_endpoint(model_endpoint=None, provider="cerebras")
+        == "https://elizacloud.ai/api/v1"
+    )
+
+
+def test_resolve_endpoint_env_resolves_without_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://elizacloud.ai/api/v1")
+    assert (
+        resolve_endpoint(model_endpoint=None, provider=None)
+        == "https://elizacloud.ai/api/v1"
+    )
+
+
+def test_resolve_endpoint_ignores_blank_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "   ")
+    monkeypatch.setenv("OPENAI_BASE_URL", "")
+    assert (
+        resolve_endpoint(model_endpoint=None, provider="openai")
+        == PROVIDER_BASE_URLS["openai"]
+    )
 
 
 def test_resolve_endpoint_uses_provider_map() -> None:

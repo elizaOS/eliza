@@ -1,9 +1,10 @@
 /**
  * Workflow domain methods — status, workflow CRUD.
  *
- * All routes hit `/api/workflow/*` on the local agent server.
- * The workflow CRUD routes are served by the workflow plugin itself
- * but exposed through the same base URL via the plugin's route registration.
+ * All routes hit `/api/workflow/*`, served by plugin-workflow's route
+ * registration. Requests go through `workflowSurfaceClient` so a mobile device
+ * whose bundled runtime cannot host plugin-workflow serves the surface from its
+ * linked Cloud agent instead of dead-ending on a 404.
  */
 
 import { ElizaClient } from "./client-base";
@@ -18,6 +19,7 @@ import type {
   WorkflowRevision,
   WorkflowStatusResponse,
 } from "./client-types-chat";
+import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 // ---------------------------------------------------------------------------
 // Declaration merging
@@ -75,14 +77,16 @@ declare module "./client-base" {
 ElizaClient.prototype.getWorkflowStatus = async function (
   this: ElizaClient,
 ): Promise<WorkflowStatusResponse> {
-  return this.fetch<WorkflowStatusResponse>("/api/workflow/status");
+  return workflowSurfaceClient(this).fetch<WorkflowStatusResponse>(
+    "/api/workflow/status",
+  );
 };
 
 ElizaClient.prototype.getWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
 ): Promise<WorkflowDefinition> {
-  return this.fetch<WorkflowDefinition>(
+  return workflowSurfaceClient(this).fetch<WorkflowDefinition>(
     `/api/workflow/workflows/${encodeURIComponent(id)}`,
   );
 };
@@ -90,9 +94,9 @@ ElizaClient.prototype.getWorkflowDefinition = async function (
 ElizaClient.prototype.listWorkflowDefinitions = async function (
   this: ElizaClient,
 ): Promise<WorkflowDefinition[]> {
-  const res = await this.fetch<{ workflows: WorkflowDefinition[] }>(
-    "/api/workflow/workflows",
-  );
+  const res = await workflowSurfaceClient(this).fetch<{
+    workflows: WorkflowDefinition[];
+  }>("/api/workflow/workflows");
   return res.workflows ?? [];
 };
 
@@ -100,10 +104,13 @@ ElizaClient.prototype.createWorkflowDefinition = async function (
   this: ElizaClient,
   request: WorkflowDefinitionWriteRequest,
 ): Promise<WorkflowDefinition> {
-  return this.fetch<WorkflowDefinition>("/api/workflow/workflows", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  return workflowSurfaceClient(this).fetch<WorkflowDefinition>(
+    "/api/workflow/workflows",
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+  );
 };
 
 ElizaClient.prototype.updateWorkflowDefinition = async function (
@@ -111,7 +118,7 @@ ElizaClient.prototype.updateWorkflowDefinition = async function (
   id: string,
   request: WorkflowDefinitionWriteRequest,
 ): Promise<WorkflowDefinition> {
-  return this.fetch<WorkflowDefinition>(
+  return workflowSurfaceClient(this).fetch<WorkflowDefinition>(
     `/api/workflow/workflows/${encodeURIComponent(id)}`,
     {
       method: "PUT",
@@ -130,7 +137,7 @@ ElizaClient.prototype.generateWorkflowDefinition = async function (
   // timeout is far too aggressive and surfaces as
   // "Request timed out after 10000ms" in the Automations UI even when
   // the backend would have succeeded a few seconds later.
-  return this.fetch<WorkflowDefinitionGenerateResponse>(
+  return workflowSurfaceClient(this).fetch<WorkflowDefinitionGenerateResponse>(
     "/api/workflow/workflows/generate",
     {
       method: "POST",
@@ -148,7 +155,7 @@ ElizaClient.prototype.resolveWorkflowClarification = async function (
   // it still runs validateAndRepair + a deploy round-trip. Reuse the same
   // generous timeout as the generate call so a slow workflow write does not
   // surface as a misleading "Request timed out" toast.
-  return this.fetch<WorkflowDefinitionGenerateResponse>(
+  return workflowSurfaceClient(this).fetch<WorkflowDefinitionGenerateResponse>(
     "/api/workflow/workflows/resolve-clarification",
     {
       method: "POST",
@@ -162,7 +169,7 @@ ElizaClient.prototype.activateWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
 ): Promise<WorkflowDefinition> {
-  return this.fetch<WorkflowDefinition>(
+  return workflowSurfaceClient(this).fetch<WorkflowDefinition>(
     `/api/workflow/workflows/${encodeURIComponent(id)}/activate`,
     {
       method: "POST",
@@ -174,7 +181,7 @@ ElizaClient.prototype.deactivateWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
 ): Promise<WorkflowDefinition> {
-  return this.fetch<WorkflowDefinition>(
+  return workflowSurfaceClient(this).fetch<WorkflowDefinition>(
     `/api/workflow/workflows/${encodeURIComponent(id)}/deactivate`,
     { method: "POST" },
   );
@@ -184,7 +191,7 @@ ElizaClient.prototype.deleteWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
 ): Promise<{ ok: boolean }> {
-  return this.fetch<{ ok: boolean }>(
+  return workflowSurfaceClient(this).fetch<{ ok: boolean }>(
     `/api/workflow/workflows/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
@@ -194,7 +201,7 @@ ElizaClient.prototype.runWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
 ): Promise<WorkflowExecution> {
-  const result = await this.fetch<{
+  const result = await workflowSurfaceClient(this).fetch<{
     execution?: WorkflowExecution;
   }>(
     `/api/workflow/workflows/${encodeURIComponent(id)}/run`,
@@ -218,7 +225,9 @@ ElizaClient.prototype.getWorkflowExecutions = async function (
   id: string,
   limit = 10,
 ): Promise<WorkflowExecution[]> {
-  const result = await this.fetch<{ executions?: WorkflowExecution[] }>(
+  const result = await workflowSurfaceClient(this).fetch<{
+    executions?: WorkflowExecution[];
+  }>(
     `/api/workflow/workflows/${encodeURIComponent(id)}/executions?limit=${limit}`,
   );
   return result.executions ?? [];
@@ -228,7 +237,7 @@ ElizaClient.prototype.getWorkflowExecution = async function (
   this: ElizaClient,
   id: string,
 ): Promise<WorkflowExecution> {
-  const result = await this.fetch<{
+  const result = await workflowSurfaceClient(this).fetch<{
     execution?: WorkflowExecution;
   }>(`/api/workflow/executions/${encodeURIComponent(id)}`);
   if (!result.execution) {
@@ -244,7 +253,7 @@ ElizaClient.prototype.getWorkflowEvaluationSamples = async function (
   id: string,
   limit = 10,
 ): Promise<WorkflowEvaluationSuite> {
-  return this.fetch<WorkflowEvaluationSuite>(
+  return workflowSurfaceClient(this).fetch<WorkflowEvaluationSuite>(
     `/api/workflow/workflows/${encodeURIComponent(
       id,
     )}/evaluation-samples?limit=${limit}`,
@@ -259,7 +268,7 @@ ElizaClient.prototype.getWorkflowRevisions = async function (
   currentVersionId: string | null;
   revisions: WorkflowRevision[];
 }> {
-  const result = await this.fetch<{
+  const result = await workflowSurfaceClient(this).fetch<{
     currentVersionId?: string | null;
     revisions?: WorkflowRevision[];
   }>(
@@ -276,7 +285,7 @@ ElizaClient.prototype.restoreWorkflowRevision = async function (
   id: string,
   versionId: string,
 ): Promise<WorkflowDefinition> {
-  return this.fetch<WorkflowDefinition>(
+  return workflowSurfaceClient(this).fetch<WorkflowDefinition>(
     `/api/workflow/workflows/${encodeURIComponent(id)}/revisions/${encodeURIComponent(
       versionId,
     )}/restore`,

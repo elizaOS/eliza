@@ -14,6 +14,11 @@ harness coverage, costs, and integration status.
 | `CERTIFICATION.md` | 4-harness certification pass record (2026-05-28): what was upgraded, what was posted, and what remains partial with blockers noted. |
 | `BLOCKER_RESOLUTION.md` | Root-cause analysis and fixes for the three systemic infrastructure gaps (Docker daemon, missing Python deps, Node version) that previously blocked benchmark runs. |
 | `SMITHERS_INTEGRATION.md` | Architecture of the Smithers harness adapter: how `SmithersClient` bridges Python orchestration to the Bun-based `OpenAIAgent`, including GEPA prompt-optimization wiring. |
+| `ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md` | Operator runbook for the coding-agent / orchestrator validation loop: remote-GPU setup, calibration and readiness gates, and the code-agent comparison matrix. |
+| `MEETING_VOICE_BENCHMARK_MATRIX.md` | Research matrix (#13352) of external meeting/speech/voice-assistant benchmarks: which are covered by elizaOS, which need legal or infra review, and where an adapter should land. |
+| `MEETING_VOICE_REGISTRY.md` | Maps the #12502 meeting-voice lanes to concrete registry ids and CI lanes, with rationale for low-level lab probes that are not a single scored benchmark. |
+| `VOICEBENCH_COVERAGE.md` | Coverage contract (#13360) mapping public VoiceBench subsets to elizaOS support status and evidence requirements — not a score report. |
+| `HITL_MULTI_CODEX_RUNBOOK.md` | Credential-gated (HITL) runbook for running the suite against gpt-5.5 through the Codex harness with N authenticated accounts, rotating turns, and packaging a human-reviewed scorecard. |
 
 ## How it is used
 

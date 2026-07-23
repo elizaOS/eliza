@@ -181,7 +181,24 @@ interface RawPlannerOutput {
 	completed?: unknown;
 }
 
+/**
+ * Public planner-loop entry: runs the iteration loop, then enforces the
+ * tool-turn reply guarantee — a turn that executed real tool work must end
+ * with a user-facing reply, not silence or the generic handled-step
+ * placeholder. Read/list-then-summarize turns ended replyless live when the
+ * evaluator emitted junk (a tool-call literal, non-JSON) after a successful
+ * tool ran; the post-pass converts that into ONE forced no-tools synthesis
+ * call grounded in the tool results (#16935). Deliberate silence
+ * (STOP/IGNORE, suppressPlannerReply) is flagged by the loop and respected.
+ */
 export async function runPlannerLoop(
+	params: PlannerLoopParams,
+): Promise<PlannerLoopResult> {
+	const result = await runPlannerLoopIterations(params);
+	return ensureToolTurnFinalMessage(params, result);
+}
+
+async function runPlannerLoopIterations(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const plannerContext = normalizePlannerContext(params.context);
@@ -786,6 +803,9 @@ export async function runPlannerLoop(
 							: preferredFinalMessageFromToolOrModel(trajectory, finalMessage),
 						trajectory,
 					),
+					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
+					// not (the model tried to answer and failed to carry text).
+					...(hasReplyCall ? {} : { endedWithDeliberateSilence: true }),
 				};
 			}
 
@@ -917,6 +937,7 @@ export async function runPlannerLoop(
 			return {
 				status: "finished",
 				trajectory,
+				...(suppressReply ? { endedWithDeliberateSilence: true } : {}),
 				finalMessage: suppressReply
 					? ""
 					: userSafeFinalMessage(
@@ -2962,6 +2983,8 @@ async function finishWithForcedSynthesis(params: {
 	trajectory: PlannerTrajectory;
 	iteration: number;
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
+	/** Overrides the repeated-call framing when a caller forces synthesis for a different reason. */
+	instruction?: string;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
 	trajectory.context = appendContextEvent(trajectory.context, {
@@ -2970,10 +2993,11 @@ async function finishWithForcedSynthesis(params: {
 		source: "planner-loop",
 		createdAt: Date.now(),
 		content:
+			params.instruction ??
 			"Tool gathering for this turn is complete and the same call was repeated " +
-			"without new results. Do not call any tool. Write the final answer to the " +
-			"user now from the tool results already in this trajectory; if they do not " +
-			"contain the answer, say plainly what you found and what was missing.",
+				"without new results. Do not call any tool. Write the final answer to the " +
+				"user now from the tool results already in this trajectory; if they do not " +
+				"contain the answer, say plainly what you found and what was missing.",
 	});
 	const synthOutput = await callPlanner({
 		runtime: loop.runtime,
@@ -3072,6 +3096,80 @@ function latestToolResultText(
 		}
 	}
 	return undefined;
+}
+
+function hasSuccessfulNonTerminalToolStep(
+	trajectory: PlannerTrajectory,
+): boolean {
+	return trajectory.steps.some(
+		(step) =>
+			step.toolCall !== undefined &&
+			!isTerminalToolCall(step.toolCall) &&
+			step.result?.success === true,
+	);
+}
+
+/**
+ * Tool-turn reply guarantee (post-pass of {@link runPlannerLoop}). A finished
+ * turn that executed at least one successful non-terminal tool but carries no
+ * usable final message — undefined, blank, or the handled-step placeholder —
+ * gets ONE forced no-tools synthesis call so the user receives a reply
+ * grounded in the tool results instead of silence. Deliberate silence
+ * (`endedWithDeliberateSilence`) and coding mode (which owns its own
+ * deterministic summary fallback) are exempt. Synthesis is best-effort: a
+ * model failure here keeps the original result rather than discarding the
+ * completed tool work.
+ */
+async function ensureToolTurnFinalMessage(
+	params: PlannerLoopParams,
+	result: PlannerLoopResult,
+): Promise<PlannerLoopResult> {
+	if (result.status !== "finished") return result;
+	if (result.endedWithDeliberateSilence) return result;
+	if (isCodingFullSurfaceMode()) return result;
+	const message = result.finalMessage;
+	const unusable =
+		message === undefined ||
+		message.trim() === "" ||
+		message === HANDLED_STEP_FALLBACK_MESSAGE;
+	if (!unusable) return result;
+	if (!hasSuccessfulNonTerminalToolStep(result.trajectory)) return result;
+	const iteration = result.trajectory.steps.length + 1;
+	try {
+		const synthesized = await finishWithForcedSynthesis({
+			loop: params,
+			config: mergeChainingLoopConfig(params.config),
+			trajectory: result.trajectory,
+			iteration,
+			instruction:
+				"Tool work for this turn is complete but no user-facing reply was produced. " +
+				"Do not call any tool. Write the final answer to the user now from the tool " +
+				"results already in this trajectory; if they do not contain the answer, say " +
+				"plainly what you found and what was missing.",
+		});
+		const finalMessage = synthesized.finalMessage;
+		const synthesizedUsable =
+			finalMessage !== undefined &&
+			finalMessage.trim() !== "" &&
+			finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE;
+		params.runtime.logger?.warn?.(
+			{ iteration, synthesizedUsable },
+			"[planner-loop] tool work finished without a usable reply; forced a no-tools synthesis pass",
+		);
+		return synthesizedUsable
+			? { ...result, trajectory: synthesized.trajectory, finalMessage }
+			: result;
+	} catch (err) {
+		// error-policy:J4 explicit user-facing degrade — the synthesis pass is a
+		// best-effort upgrade of an already-finished turn; a model failure here
+		// must not discard the completed tool work, so the original result ships
+		// and the failure is logged for diagnosis.
+		params.runtime.logger?.warn?.(
+			{ err: err instanceof Error ? err.message : String(err) },
+			"[planner-loop] forced synthesis pass failed; keeping the original planner result",
+		);
+		return result;
+	}
 }
 
 /**
@@ -3745,8 +3843,16 @@ function userSafeFinalMessage(
 	if (latest && !isUnsafeUserVisibleText(latest)) {
 		return latest;
 	}
-	return candidate ? "I handled the available step." : undefined;
+	return candidate ? HANDLED_STEP_FALLBACK_MESSAGE : undefined;
 }
+
+/**
+ * Last-ditch placeholder `userSafeFinalMessage` emits when the planner's
+ * candidate text was unsafe and no tool exposed user-facing text. The
+ * tool-turn reply guarantee treats it as "no usable reply" and synthesizes a
+ * grounded one instead of shipping this non-answer after real tool work.
+ */
+export const HANDLED_STEP_FALLBACK_MESSAGE = "I handled the available step.";
 
 // Canonical TASKS/spawn-arg vocabulary. A planner that hallucinates its own
 // tool-call arguments into messageToUser leaks a JSON object like

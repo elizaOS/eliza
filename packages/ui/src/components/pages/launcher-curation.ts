@@ -42,6 +42,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "settings",
   "wallet",
   "tasks",
+  "simple-calendar",
+  "notes",
   "automations",
   "my-apps",
   "browser",
@@ -57,6 +59,7 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "memories",
   "feed",
   "stream",
+  "pendant-transcript",
 ];
 
 /** Developer-gated launcher surfaces, in display order. Shown on the same
@@ -78,11 +81,13 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
  * Early-stage surfaces forced to `preview` kind for the launcher regardless of
  * how their views are declared: hidden from the default grid, shown only when
  * the Preview toggle is on. Keeps the out-of-the-box launcher to the everyday
- * core (feed/stream/relationships are not there yet).
+ * core (feed/stream/the pendant transcript are not there yet). Routes stay
+ * addressable — this gates the tile, not the view.
  */
 export const LAUNCHER_PREVIEW_IDS: ReadonlySet<string> = new Set([
   "feed",
   "stream",
+  "pendant-transcript",
 ]);
 
 /**
@@ -119,6 +124,12 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   // `chat` is the home/primary surface, not a launcher tile — a Chat tile is
   // pure redundancy next to the always-present home chat (#14479).
   "chat",
+  // The Eliza Cloud Applications studio (`cloud-apps`, registered by
+  // `@elizaos/app` on native shells). My Apps is the ONE apps destination in
+  // the launcher: the studio is reached from the My Apps view's Eliza Cloud
+  // row and by the /cloud-apps deep link, so a second tile next to My Apps
+  // would double one destination.
+  "cloud-apps",
   // Removed apps.
   "companion",
   "model-tester",
@@ -238,15 +249,16 @@ function preferenceScore(entry: ViewEntry): number {
 }
 
 /**
- * Launcher tiles that back an Eliza Cloud surface and must not appear unless the
- * user is signed into cloud. `cloud-apps` (the Cloud Applications dashboard,
- * registered by `@elizaos/app`'s cloud-apps-view) is `viewKind: "release"`, so
- * without this gate it shows as an "Apps" tile even when cloud is
- * disconnected. (#10725)
+ * Launcher tiles that back an Eliza Cloud surface and must not appear unless
+ * the user is signed into cloud (#10725). The Cloud Applications studio
+ * (`cloud-apps`) needs no entry here: it never tiles at all
+ * (LAUNCHER_HIDDEN_IDS) — My Apps owns its entry point and applies the same
+ * signed-in gate to that row.
  */
 export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set([
-  "cloud-apps",
   "cloud",
+  "notes",
+  "simple-calendar",
 ]);
 
 export interface CurateLauncherOptions {

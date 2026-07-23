@@ -7,7 +7,7 @@ Each lane drives the frozen 10-scenario sample through one shared agent at the
 lane's concurrency N; the report carries every lane's metrics plus the
 interference deltas (mean task score @N minus @1). ``perfect``/``wrong`` are the
 hermetic no-key oracles used for smoke and CI; live harnesses need provider
-keys and (for eliza) the server usage-buffer fix — see ``harness.py``.
+keys — see ``harness.py``.
 """
 
 from __future__ import annotations

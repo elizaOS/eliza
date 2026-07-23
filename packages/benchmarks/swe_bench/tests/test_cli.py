@@ -621,7 +621,12 @@ def test_opencode_command_uses_stdin_and_cerebras_model(
     assert "--dangerously-skip-permissions" in cmd
 
 
-def test_opencode_config_registers_cerebras_openai_compatible() -> None:
+def test_opencode_config_registers_cerebras_openai_compatible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key in ("CEREBRAS_BASE_URL", "BENCHMARK_BASE_URL", "OPENAI_BASE_URL"):
+        monkeypatch.delenv(key, raising=False)
+
     config = _opencode_config_content("cerebras-bench/gpt-oss-120b")
     parsed = __import__("json").loads(config)
 
@@ -630,6 +635,46 @@ def test_opencode_config_registers_cerebras_openai_compatible() -> None:
     assert provider["options"]["baseURL"] == "https://api.cerebras.ai/v1"
     assert provider["models"]["gpt-oss-120b"]["reasoning"] is False
     assert parsed["model"] == "cerebras-bench/gpt-oss-120b"
+
+
+def _config_base_url(model_name: str = "cerebras-bench/gemma-4-31b") -> str:
+    parsed = __import__("json").loads(_opencode_config_content(model_name))
+    return parsed["provider"]["cerebras-bench"]["options"]["baseURL"]
+
+
+def test_opencode_config_honors_cerebras_base_url_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://elizacloud.ai/api/v1")
+    # Lower-precedence overrides must not win over CEREBRAS_BASE_URL.
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://benchmark.example/v1")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai.example/v1")
+
+    assert _config_base_url() == "https://elizacloud.ai/api/v1"
+
+
+def test_opencode_config_falls_back_to_benchmark_then_openai_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CEREBRAS_BASE_URL", raising=False)
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://benchmark.example/v1")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai.example/v1")
+    assert _config_base_url() == "https://benchmark.example/v1"
+
+    monkeypatch.delenv("BENCHMARK_BASE_URL")
+    assert _config_base_url() == "https://openai.example/v1"
+
+
+def test_opencode_config_ignores_blank_base_url_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Whitespace-only exports (e.g. `export CEREBRAS_BASE_URL=`) count as unset
+    # rather than producing an empty baseURL that breaks the SDK client.
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "")
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "   ")
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    assert _config_base_url() == "https://api.cerebras.ai/v1"
 
 
 @pytest.mark.asyncio

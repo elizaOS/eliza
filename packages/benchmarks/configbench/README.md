@@ -6,7 +6,7 @@ A comprehensive benchmark for testing ElizaOS **built-in secrets** (`@elizaos/co
 
 ```bash
 # Run with deterministic handlers only (no LLM required)
-cd benchmarks/configbench
+cd packages/benchmarks/configbench
 bun run src/index.ts
 
 # Run with Eliza LLM agent (requires a configured LLM provider key)

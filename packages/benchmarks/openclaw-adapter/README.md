@@ -97,7 +97,7 @@ disables bootstrap/skills and denies every non-benchmark tool.
 |---|---|---|
 | `binary_path` | resolved from `OPENCLAW_BIN`, the install manifest, or `PATH` | path to the `openclaw` Node binary |
 | `provider` | `"cerebras"` | provider prefix injected as `<provider>/<model>` when `model` has no slash |
-| `model` | `"gpt-oss-120b"` | model id passed via `--model` |
+| `model` | `"gemma-4-31b"` | model id passed via `--model` |
 | `api_key_env` | `"CEREBRAS_API_KEY"` | env var read for the OpenAI-compatible API key |
 | `base_url` | `None` | loopback OpenAI-compatible gateway URL required by the native publication path |
 | `base_url_env` | `"CEREBRAS_BASE_URL"` | env var read for the OpenAI-compatible base URL |

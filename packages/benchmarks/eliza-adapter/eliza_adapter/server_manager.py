@@ -165,8 +165,16 @@ def _normalize_model_env(env: dict[str, str]) -> None:
         or model_is_cerebras
         or not env.get("OPENAI_API_KEY", "").strip()
     ):
+        # Operator-set base URLs win over the hardcoded provider endpoint so
+        # traffic can be routed through an OpenAI-compatible proxy (e.g. the
+        # Eliza Cloud gateway). A pre-set OPENAI_BASE_URL is never clobbered
+        # with the hardcoded default — the literal is only a last resort when
+        # no override is present anywhere in the environment.
         cerebras_base_url = (
-            env.get("CEREBRAS_BASE_URL", "").strip() or "https://api.cerebras.ai/v1"
+            env.get("CEREBRAS_BASE_URL", "").strip()
+            or env.get("BENCHMARK_BASE_URL", "").strip()
+            or env.get("OPENAI_BASE_URL", "").strip()
+            or "https://api.cerebras.ai/v1"
         )
         if provider == "cerebras" or model_is_cerebras:
             env["ELIZA_PROVIDER"] = "cerebras"

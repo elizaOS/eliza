@@ -379,23 +379,62 @@ class HarnessClient:
         )
 
 
+# Operator env overrides for the OpenAI-compatible base URL, highest priority
+# first. Campaign runs route ALL traffic through a proxy (e.g. the Eliza Cloud
+# OpenAI-compatible gateway) by exporting one of these; the hardcoded
+# ``PROVIDER_BASE_URLS`` entry is only a fallback when nothing is exported.
+# An explicit ``--model-endpoint`` (or per-run ``extra.model_endpoint``) still
+# outranks the env so a single run can be pointed elsewhere deliberately.
+ENDPOINT_ENV_CHAIN: tuple[str, ...] = (
+    "BENCHMARK_BASE_URL",
+    "OPENAI_BASE_URL",
+    "CEREBRAS_BASE_URL",
+)
+
+
+def _endpoint_from_env() -> tuple[str, str] | None:
+    """Return ``(env_var_name, url)`` for the first set override, else None."""
+
+    for name in ENDPOINT_ENV_CHAIN:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return name, value
+    return None
+
+
 def resolve_endpoint(
     *,
     model_endpoint: str | None,
     provider: str | None,
 ) -> str:
-    """Resolve the endpoint URL from either an explicit ``--model-endpoint``
-    or a known provider name. Raises ``ValueError`` when neither resolves.
+    """Resolve the endpoint URL every client (candidate and judge) talks to.
+
+    Priority: explicit ``--model-endpoint`` > operator env overrides
+    (``BENCHMARK_BASE_URL`` > ``OPENAI_BASE_URL`` > ``CEREBRAS_BASE_URL``) >
+    the ``PROVIDER_BASE_URLS`` default for ``--provider``. Raises
+    ``ValueError`` when nothing resolves. The env layer exists so proxy-routed
+    campaigns never silently fall through to a provider's public API.
     """
 
     if model_endpoint and model_endpoint.strip():
         return model_endpoint.strip()
+    env_override = _endpoint_from_env()
+    if env_override is not None:
+        name, url = env_override
+        log.info(
+            "resolve_endpoint: honoring %s=%s over provider default for %r",
+            name,
+            url,
+            provider,
+        )
+        return url
     if provider:
         url = PROVIDER_BASE_URLS.get(provider.strip().lower())
         if url:
             return url
     raise ValueError(
-        "Either --model-endpoint <url> or a known --provider must be supplied"
+        "Either --model-endpoint <url>, a base-URL env override "
+        f"({', '.join(ENDPOINT_ENV_CHAIN)}), or a known --provider must be supplied"
     )
 
 

@@ -103,6 +103,38 @@ type RenderTelemetryIssue = {
   severity?: string;
 };
 
+type SmokeSimpleViewsNote = {
+  id: string;
+  title: string;
+  body: string;
+  color: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SmokeSimpleViewsEvent = {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  notes: string;
+  color: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function isSmokeRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function smokeString(
+  record: Record<string, unknown>,
+  key: string,
+  fallback = "",
+): string {
+  return typeof record[key] === "string" ? record[key] : fallback;
+}
+
 function issueMessage(error: Error): string {
   return error.stack || error.message || String(error);
 }
@@ -1809,6 +1841,45 @@ function smokeDatabaseQuery(sql: string) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  let simpleViewsRevision = 4;
+  let simpleViewsSelectedDate = "2026-07-22";
+  let simpleViewsNotes: SmokeSimpleViewsNote[] = [
+    {
+      id: "note-launch",
+      title: "Launch checklist",
+      body: "Cloud agent, phone, and deck are ready.",
+      color: "yellow",
+      createdAt: SMOKE_GENERATED_AT,
+      updatedAt: SMOKE_GENERATED_AT,
+    },
+    {
+      id: "note-follow-up",
+      title: "Follow up",
+      body: "Share the demo recording with the team.",
+      color: "green",
+      createdAt: SMOKE_GENERATED_AT,
+      updatedAt: SMOKE_GENERATED_AT,
+    },
+  ];
+  let simpleViewsEvents: SmokeSimpleViewsEvent[] = [
+    {
+      id: "event-demo",
+      title: "Light Phone demo",
+      date: "2026-07-22",
+      time: "15:00",
+      notes: "Show Cloud chat, Notes, and Calendar.",
+      color: "rose",
+      createdAt: SMOKE_GENERATED_AT,
+      updatedAt: SMOKE_GENERATED_AT,
+    },
+  ];
+  const simpleViewsSnapshot = () => ({
+    revision: simpleViewsRevision,
+    selectedDate: simpleViewsSelectedDate,
+    notes: simpleViewsNotes,
+    events: simpleViewsEvents,
+  });
+
   // Answer with a stamp that carries NO commit/label/builtAt, so the BuildBadge
   // (#14174) — whose toLabel() needs one of those to produce a label — renders
   // nothing. A 200 keeps the browser from logging a build-info.json 404 (which
@@ -1958,6 +2029,140 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       }),
     });
   });
+
+  await page.route("**/api/simple-views/state", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: simpleViewsSnapshot(),
+      }),
+    });
+  });
+
+  await page.route(
+    /\/api\/views\/(?:notes|simple-calendar)\/interact$/,
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const payload: unknown = route.request().postDataJSON();
+      if (!isSmokeRecord(payload) || typeof payload.capability !== "string") {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Invalid Simple Views interaction." }),
+        });
+        return;
+      }
+      const params = isSmokeRecord(payload.params) ? payload.params : {};
+      const now = new Date(
+        Date.parse(SMOKE_GENERATED_AT) + (simpleViewsRevision + 1) * 1_000,
+      ).toISOString();
+
+      if (payload.capability === "create-note") {
+        simpleViewsNotes = [
+          {
+            id: `note-smoke-${simpleViewsRevision + 1}`,
+            title: smokeString(params, "title", "Smoke note"),
+            body: smokeString(params, "body"),
+            color: smokeString(params, "color", "yellow"),
+            createdAt: now,
+            updatedAt: now,
+          },
+          ...simpleViewsNotes,
+        ];
+      } else if (payload.capability === "update-note") {
+        const id = smokeString(params, "id");
+        simpleViewsNotes = simpleViewsNotes.map((note) =>
+          note.id === id
+            ? {
+                ...note,
+                title: smokeString(params, "title", note.title),
+                body: smokeString(params, "body", note.body),
+                color: smokeString(params, "color", note.color),
+                updatedAt: now,
+              }
+            : note,
+        );
+      } else if (payload.capability === "delete-note") {
+        const id = smokeString(params, "id");
+        simpleViewsNotes = simpleViewsNotes.filter((note) => note.id !== id);
+      } else if (payload.capability === "clear-notes") {
+        simpleViewsNotes = [];
+      } else if (payload.capability === "select-calendar-date") {
+        simpleViewsSelectedDate = smokeString(
+          params,
+          "date",
+          simpleViewsSelectedDate,
+        );
+      } else if (payload.capability === "create-calendar-event") {
+        simpleViewsEvents = [
+          {
+            id: `event-smoke-${simpleViewsRevision + 1}`,
+            title: smokeString(params, "title", "Smoke event"),
+            date: smokeString(params, "date", simpleViewsSelectedDate),
+            time: smokeString(params, "time", "09:00"),
+            notes: smokeString(params, "notes"),
+            color: smokeString(params, "color", "green"),
+            createdAt: now,
+            updatedAt: now,
+          },
+          ...simpleViewsEvents,
+        ];
+      } else if (payload.capability === "update-calendar-event") {
+        const id = smokeString(params, "id");
+        simpleViewsEvents = simpleViewsEvents.map((event) =>
+          event.id === id
+            ? {
+                ...event,
+                title: smokeString(params, "title", event.title),
+                date: smokeString(params, "date", event.date),
+                time: smokeString(params, "time", event.time),
+                notes: smokeString(params, "notes", event.notes),
+                color: smokeString(params, "color", event.color),
+                updatedAt: now,
+              }
+            : event,
+        );
+      } else if (payload.capability === "delete-calendar-event") {
+        const id = smokeString(params, "id");
+        simpleViewsEvents = simpleViewsEvents.filter(
+          (event) => event.id !== id,
+        );
+      } else {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: `Unsupported Simple Views interaction: ${payload.capability}`,
+          }),
+        });
+        return;
+      }
+
+      simpleViewsRevision += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          requestId: `simple-views-smoke-${simpleViewsRevision}`,
+          success: true,
+          result: {
+            success: true,
+            text: `Handled ${payload.capability}.`,
+            state: simpleViewsSnapshot(),
+          },
+        }),
+      });
+    },
+  );
 
   // The Transcripts view (client.listTranscripts) hits this on mount; the
   // keyless loopback stack answers 501 for unimplemented endpoints, which surface

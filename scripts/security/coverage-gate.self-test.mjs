@@ -75,6 +75,7 @@ function runGate({
   lcov,
   enforce = true,
   threshold = 50,
+  floorEnabled = true,
   excluded = "",
 }) {
   const changedArgument = changed
@@ -91,6 +92,8 @@ function runGate({
       `changed=${changedArgument}`,
       "-v",
       `threshold=${threshold}`,
+      "-v",
+      `floor_enabled=${floorEnabled ? 1 : 0}`,
       "-v",
       `excluded=${excludedArgument}`,
       "-f",
@@ -155,6 +158,10 @@ try {
     assert.match(result.stdout, /100\.00% packages\/demo\/src\/covered\.ts/);
     assert.match(result.stdout, /MISSING: packages\/demo\/src\/missing\.ts/);
     assert.match(result.stdout, /changed source missing from LCOV/);
+    // The MISSING verdict must carry its remediation text — an unexplained
+    // failure is the tooling defect this hint was added to fix.
+    assert.match(result.stdout, /How to fix: a MISSING file was changed/);
+    assert.match(result.stdout, /coverage-lcov-excluded\.txt/);
   });
 
   assertGate("prefers the longest matching changed path", () => {
@@ -217,6 +224,19 @@ try {
       );
     },
   );
+  assertGate("disabled floor reports low coverage without failing", () => {
+    const src = "packages/core/src/services/message.ts";
+    const lcov = writeLcov(dir, src, 100, 7);
+    const result = runGate({
+      changed: src,
+      lcov,
+      floorEnabled: false,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /7\.00% packages\/core\/src\/services\/message\.ts/);
+    assert.match(result.stdout, /threshold: disabled/);
+    assert.doesNotMatch(result.stdout, /BELOW:/);
+  });
   assertGate(
     "union-merges complementary isolated Bun hits before comparing logical lanes",
     () => {
@@ -292,6 +312,13 @@ try {
         result.stdout,
         /BELOW: packages\/agent\/src\/runtime\/eliza\.ts/,
       );
+      // The BELOW verdict must carry its remediation text, quoting the active
+      // threshold and the changed-tests-only rule.
+      assert.match(
+        result.stdout,
+        /How to fix: every BELOW file needs >=50% of its lines/,
+      );
+      assert.match(result.stdout, /unit tests CHANGED in this PR/);
     },
   );
 

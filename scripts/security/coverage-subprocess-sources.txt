@@ -4,6 +4,7 @@
 # expected in the parent Bun process's LCOV report. Keep this list narrow: plain
 # importable modules belong in normal in-process coverage.
 packages/core/scripts/provider-latency-report.ts
+packages/agent/scripts/cerebras-chat-flow-latency.ts
 packages/eliza-hub/deployment/hetzner-staging/scripts/backup-evidence.mjs
 packages/eliza-hub/deployment/hetzner-staging/scripts/database-evidence.mjs
 packages/eliza-hub/deployment/hetzner-staging/scripts/image-provenance-evidence.mjs
@@ -46,6 +47,11 @@ packages/cloud/shared/scripts/run-bun-tests.mjs
 # Smithers workflow execution is exercised inside fresh Bun/Node workers so its
 # dedicated-pipe and runtime-module behavior match production.
 plugins/plugin-workflow/src/services/smithers-runtime.ts
+
+# Docker dependency collectors are command entrypoints exercised through their
+# real spawned-process manifest tests; importing them would execute the command.
+packages/app-core/scripts/collect-docker-runtime-deps.mjs
+packages/app-core/scripts/link-docker-local-app-packages.mjs
 
 # Workflow policy checker: both contract validation modes are process
 # entrypoints because importing the module immediately reads workflow files.
