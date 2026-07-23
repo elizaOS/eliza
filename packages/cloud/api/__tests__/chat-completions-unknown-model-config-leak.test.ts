@@ -27,6 +27,7 @@ import * as inferenceAuthContextActual from "@/lib/services/inference-auth-conte
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
 import * as billingLedgerActual from "@/lib/services/inference-billing-ledger";
 import * as modelCatalogActual from "@/lib/services/model-catalog";
+import * as organizationAdmissionActual from "@/lib/services/organization-inference-admission";
 import * as creditReservationActual from "@/lib/utils/credit-reservation";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
@@ -129,6 +130,16 @@ mock.module("@/lib/services/ai-billing", () => ({
   }),
 }));
 
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...organizationAdmissionActual,
+  admitOrganizationInference: async () => ({
+    reservation: null,
+    settle: async () => null,
+    settleUnknown: async () => null,
+    markProviderDispatched: async () => undefined,
+  }),
+}));
+
 mock.module("@/lib/utils/credit-reservation", () => ({
   ...creditReservationActual,
   createCreditReservationSettler: () => async () => null,
@@ -165,6 +176,10 @@ afterAll(() => {
     () => billingLedgerActual,
   );
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module(
+    "@/lib/services/organization-inference-admission",
+    () => organizationAdmissionActual,
+  );
   mock.module("@/lib/utils/credit-reservation", () => creditReservationActual);
 });
 

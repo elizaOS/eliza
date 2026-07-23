@@ -27,6 +27,10 @@ import {
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  enforceOrgRateLimit,
+  OrgRateLimitCacheNotReadyError,
+} from "@/lib/middleware/rate-limit";
+import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -65,13 +69,29 @@ import {
   normalizeUsage,
   recordUsageAnalytics,
 } from "@/lib/services/ai-billing";
+import {
+  AiPricingCacheUnavailableError,
+  AiPricingCacheWarmingError,
+} from "@/lib/services/ai-pricing/cache";
 import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions";
 import { appCreditsService } from "@/lib/services/app-credits";
+import {
+  admitAppInferenceCacheOnly,
+  assertInferenceAppAffiliateSupported,
+  InferenceAppAffiliateUnsupportedError,
+} from "@/lib/services/app-inference-admission";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
-import type { CreditReconciliationResult } from "@/lib/services/credits";
+import type {
+  CreditReconciliationResult,
+  CreditReservation,
+} from "@/lib/services/credits";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import {
+  isKnownPreDispatchProviderConfigurationError,
+  isKnownUnacceptedProviderError,
+} from "@/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
@@ -507,10 +527,11 @@ function anthropicError(
   type: string,
   message: string,
   status: number,
+  headers?: HeadersInit,
 ): Response {
   return Response.json(
     { type: "error", error: { type, message } },
-    { status: status as 400 },
+    { status: status as 400, headers },
   );
 }
 
@@ -527,7 +548,12 @@ function modelNotAvailableMessage(model: string): string {
 }
 
 const app = new Hono<AppEnv>();
-app.use("*", rateLimit(RateLimitPresets.RELAXED));
+app.use(
+  "*",
+  rateLimit(RateLimitPresets.RELAXED, {
+    bindingName: "CHAT_ROUTE_RATE_LIMITER",
+  }),
+);
 
 app.post("/", async (c) => {
   const startTime = Date.now();
@@ -539,27 +565,43 @@ app.post("/", async (c) => {
       ? withGatewayPreforwardTelemetry(response, traceId, preforwardTiming)
       : response;
   const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
-  // Workers ExecutionContext for off-response-path billing (#8759 / #15414).
-  // Hono's `executionCtx` getter THROWS outside a Worker (tests, node) — fall
-  // back to undefined so settleOffResponsePath runs the chain inline there.
+  // Workers ExecutionContext retains post-response accounting. Hono throws
+  // outside a Worker, where local tools keep their synchronous compatibility.
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   try {
-    executionCtx = c.executionCtx;
+    const candidate = c.executionCtx;
+    executionCtx =
+      typeof candidate?.waitUntil === "function" ? candidate : undefined;
   } catch {
+    // error-policy:J4 local Hono hosts have no Workers execution context; an
+    // enabled Worker configuration fails closed immediately below.
     executionCtx = undefined;
+  }
+  if (!executionCtx && c.env?.INFERENCE_DEFERRED_ADMISSION === "true") {
+    logger.error(
+      "[Messages] Worker execution context is unavailable for cache-only inference",
+    );
+    return anthropicError(
+      "api_error",
+      "Inference authorization is warming. Retry shortly.",
+      503,
+    );
   }
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
     | null = null;
+  let settleUnknownReservation:
+    | (() => Promise<CreditReconciliationResult | null>)
+    | null = null;
+  let markProviderDispatched: (() => Promise<void>) | undefined;
+  let billingReservation: CreditReservation | undefined;
 
   let user: { id: string; organization_id: string };
   let apiKey: { id: string } | null = null;
-  // #9899 fast-path: collapse auth + org + suspension into ONE KV read for the
-  // API-key inference path (this is the eliza-code / anthropic-proxy route, which
-  // previously did serial auth + a separate apiKeyId lookup + an uncached
-  // moderation Postgres read = ~2.5x slower than /v1/chat/completions). Mirrors
-  // that route's resolver; falls to the authoritative serial path for
-  // JWT/cookie/wallet creds or a cold cache.
+  // Collapse auth + org + suspension into one cache decision for API-key and
+  // Steward-session inference. Cold Workers schedule authoritative hydration
+  // and return a retryable response; wallet proofs stay on the non-Worker path
+  // because their timestamped signatures are not reusable cache identities.
   let moderationAlreadyChecked = false;
   try {
     const resolution = await resolveInferenceAuthContext(c.req.raw, {
@@ -581,16 +623,32 @@ app.post("/", async (c) => {
         403,
       );
     }
+    if (resolution.kind === "rejected") {
+      return anthropicError(
+        resolution.status === 403 ? "permission_error" : "authentication_error",
+        resolution.status === 403
+          ? "Account or organization access is disabled."
+          : "Authentication required.",
+        resolution.status,
+      );
+    }
     if (resolution.kind === "authorized") {
       user = {
         id: resolution.ctx.userId,
         organization_id: resolution.ctx.orgId,
       };
-      apiKey = { id: resolution.ctx.apiKeyId };
+      apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       // The resolver already verified not-suspended (cache hit = at populate;
       // origin miss = just now), so the synchronous moderation read is skipped.
       moderationAlreadyChecked = true;
     } else {
+      if (executionCtx) {
+        return anthropicError(
+          "authentication_error",
+          "Authentication required.",
+          401,
+        );
+      }
       const auth = await requireUserOrApiKeyWithOrg(c);
       user = { id: auth.id, organization_id: auth.organization_id };
       // Workers auth shim does not surface the apiKey row; attribution by
@@ -603,6 +661,49 @@ app.post("/", async (c) => {
   }
   const tAuth = performance.now();
 
+  let orgRateLimited: Response | null;
+  try {
+    orgRateLimited = await enforceOrgRateLimit(
+      user.organization_id,
+      "completions",
+      {
+        cacheOnly: Boolean(executionCtx),
+        executionCtx,
+      },
+    );
+  } catch (error) {
+    // error-policy:J1 preserve the Anthropic error envelope while the
+    // cache-only policy hydrates off path.
+    if (error instanceof OrgRateLimitCacheNotReadyError) {
+      return anthropicError(
+        "api_error",
+        "Rate-limit authorization cache is warming. Retry shortly.",
+        503,
+        { "Retry-After": "1" },
+      );
+    }
+    throw error;
+  }
+  if (orgRateLimited) {
+    const headers = new Headers(orgRateLimited.headers);
+    headers.delete("Content-Type");
+    headers.delete("Content-Length");
+    if (orgRateLimited.status === 429) {
+      return anthropicError(
+        "rate_limit_error",
+        "Organization rate limit exceeded.",
+        429,
+        headers,
+      );
+    }
+    return anthropicError(
+      "api_error",
+      "Rate-limit authorization is unavailable. Retry shortly.",
+      503,
+      headers,
+    );
+  }
+
   const requestedAppId = c.req.header("X-App-Id");
   let appId: string | null = null;
   let useAppCredits = false;
@@ -610,11 +711,28 @@ app.post("/", async (c) => {
     Awaited<ReturnType<typeof appsService.getById>>
   > | null = null;
   if (requestedAppId) {
-    monetizedApp =
-      (await appsService.getAuthorizedMonetizedAppForUser(
-        requestedAppId,
-        user,
-      )) ?? null;
+    if (executionCtx) {
+      const appResolution =
+        await appsService.getAuthorizedMonetizedAppForUserCacheOnly(
+          requestedAppId,
+          user,
+          { executionCtx },
+        );
+      if (appResolution.kind !== "ready") {
+        return anthropicError(
+          "api_error",
+          "Application authorization cache is warming. Retry shortly.",
+          503,
+        );
+      }
+      monetizedApp = appResolution.app;
+    } else {
+      monetizedApp =
+        (await appsService.getAuthorizedMonetizedAppForUser(
+          requestedAppId,
+          user,
+        )) ?? null;
+    }
     appId = monetizedApp?.id ?? null;
     useAppCredits = Boolean(monetizedApp?.monetization_enabled);
   }
@@ -648,10 +766,26 @@ app.post("/", async (c) => {
   const normalizedModel = normalizeModelName(model);
   const systemPrompt = normalizeSystemPrompt(request.system);
 
-  if (
-    !moderationAlreadyChecked &&
-    (await contentModerationService.shouldBlockUser(user.id))
-  ) {
+  let shouldBlockUser = false;
+  if (!moderationAlreadyChecked) {
+    if (executionCtx) {
+      const moderationResolution =
+        await contentModerationService.shouldBlockUserCacheOnly(user.id, {
+          executionCtx,
+        });
+      if (moderationResolution.kind !== "ready") {
+        return anthropicError(
+          "api_error",
+          "Moderation authorization cache is warming. Retry shortly.",
+          503,
+        );
+      }
+      shouldBlockUser = moderationResolution.blocked;
+    } else {
+      shouldBlockUser = await contentModerationService.shouldBlockUser(user.id);
+    }
+  }
+  if (shouldBlockUser) {
     return anthropicError(
       "permission_error",
       "Your account has been suspended due to policy violations.",
@@ -665,7 +799,7 @@ app.post("/", async (c) => {
   if (lastUserMessage) {
     const content = getMessageContentForEstimate(lastUserMessage);
     if (content) {
-      contentModerationService.moderateInBackground(
+      const moderationTask = contentModerationService.moderateInBackground(
         content,
         user.id,
         undefined,
@@ -676,6 +810,7 @@ app.post("/", async (c) => {
           });
         },
       );
+      executionCtx?.waitUntil(moderationTask);
     }
   }
 
@@ -715,42 +850,87 @@ app.post("/", async (c) => {
   const tBeforeReserve = performance.now();
 
   if (useAppCredits && appId && monetizedApp) {
-    const { totalCost } = await calculateCost(
-      normalizedModel,
-      provider,
-      estimatedInputTokens,
-      estimatedOutputTokens,
-      billingSource,
-    );
     // #10423: prefer the request-stable key (Idempotency-Key/X-Request-Id via
     // the bootstrap ALS) so a client retry of the SAME request dedupes the
     // creator-earnings legs; a fresh uuid per invocation would never match.
     const idempotencyKey = getRequestIdempotencyKey() ?? crypto.randomUUID();
 
     try {
-      const reservation = await appCreditsService.reserveInferenceCredits({
-        appId,
-        userId: user.id,
-        estimatedBaseCost: totalCost,
-        description: `Messages API: ${model}`,
-        idempotencyKey,
-        metadata: {
+      assertInferenceAppAffiliateSupported(appId, affiliateCode);
+      const { totalCost } = await calculateCost(
+        normalizedModel,
+        provider,
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        billingSource,
+        executionCtx ? { cacheOnly: true, executionCtx } : undefined,
+      );
+      const metadata = {
+        model,
+        provider,
+        billingSource,
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        streaming: Boolean(request.stream),
+      };
+      if (executionCtx) {
+        const admission = await admitAppInferenceCacheOnly({
+          appId,
+          app: monetizedApp,
+          userId: user.id,
+          organizationId: user.organization_id,
+          estimatedBaseCostUsd: totalCost,
+          description: `Messages API: ${model}`,
+          idempotencyKey,
+          metadata,
+          requestId,
           model,
           provider,
           billingSource,
-          estimatedInputTokens,
-          estimatedOutputTokens,
-          streaming: Boolean(request.stream),
-        },
-        app: monetizedApp,
-      });
-      settleReservation = createCreditReservationSettler(reservation);
+          affiliateCode,
+          executionCtx,
+        });
+        settleReservation = admission.settle;
+        settleUnknownReservation = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+      } else {
+        const reservation = await appCreditsService.reserveInferenceCredits({
+          appId,
+          userId: user.id,
+          estimatedBaseCost: totalCost,
+          description: `Messages API: ${model}`,
+          idempotencyKey,
+          metadata,
+          app: monetizedApp,
+        });
+        const settle = createCreditReservationSettler(reservation);
+        settleReservation = settle;
+        settleUnknownReservation = () => settle(reservation.reservedAmount);
+      }
     } catch (error) {
+      if (error instanceof InferenceAppAffiliateUnsupportedError) {
+        return anthropicError(
+          "invalid_request_error",
+          "App monetization and affiliate attribution cannot be combined.",
+          400,
+        );
+      }
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
           "rate_limit_error",
           `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
           429,
+        );
+      }
+      if (
+        error instanceof InferenceBalanceCacheWarmingError ||
+        error instanceof AiPricingCacheWarmingError ||
+        error instanceof AiPricingCacheUnavailableError
+      ) {
+        return anthropicError(
+          "api_error",
+          "Billing authorization is warming. Retry shortly.",
+          503,
         );
       }
 
@@ -776,6 +956,9 @@ app.post("/", async (c) => {
         executionCtx,
       });
       settleReservation = admission.settle;
+      settleUnknownReservation = admission.settleUnknown;
+      markProviderDispatched = admission.markProviderDispatched;
+      billingReservation = admission.reservation;
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
@@ -796,9 +979,9 @@ app.post("/", async (c) => {
     }
   }
 
-  if (!settleReservation) {
+  if (!settleReservation || !settleUnknownReservation) {
     throw new Error(
-      "[Messages API] inference admission did not return a settler",
+      "[Messages API] inference admission did not return terminal settlers",
     );
   }
   const tAfterReserve = performance.now();
@@ -865,10 +1048,13 @@ app.post("/", async (c) => {
           c.req.raw.signal,
           routeTimeoutMs,
           settleReservation,
+          settleUnknownReservation,
+          billingReservation,
           billingSource,
           requestId,
           executionCtx,
           gatewayHandoffTelemetry,
+          markProviderDispatched,
         )
       : await handleNonStream(
           model,
@@ -885,17 +1071,29 @@ app.post("/", async (c) => {
           c.req.raw.signal,
           routeTimeoutMs,
           settleReservation,
+          settleUnknownReservation,
+          billingReservation,
           billingSource,
           requestId,
           executionCtx,
           gatewayHandoffTelemetry,
+          markProviderDispatched,
         );
     if (!preforwardTiming) {
       throw new Error("[Messages API] gateway handoff timing was not captured");
     }
     return attachPreforwardTelemetry(preforwardResponse);
   } catch (error) {
-    await settleReservation?.(0);
+    await settleOffResponsePath(executionCtx, async () => {
+      if (
+        gatewayHandoffAt === undefined ||
+        isProviderConfigurationError(error)
+      ) {
+        await settleReservation?.(0);
+      } else {
+        await settleUnknownReservation?.();
+      }
+    });
     const message = error instanceof Error ? error.message : String(error);
     // A provider-configuration failure (unknown model / unconfigured gateway)
     // carries internal setup guidance in its message — return a clean,
@@ -958,6 +1156,8 @@ async function handleNonStream(
   settleReservation: (
     actualCost: number,
   ) => Promise<CreditReconciliationResult | null>,
+  settleUnknownReservation: () => Promise<CreditReconciliationResult | null>,
+  billingReservation: CreditReservation | undefined,
   billingSource: PricingBillingSource,
   // Stable per-request id → the getAffiliateEarningsSourceId dedupe key. Without
   // it billUsage falls back to legacy_<uuid> and a retry double-accrues cashable
@@ -965,8 +1165,10 @@ async function handleNonStream(
   requestId: string,
   executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
   gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
+  markProviderDispatched?: () => Promise<void>,
 ) {
   const provider = getProviderFromModel(model);
+  let providerInvocationStarted = false;
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
@@ -985,6 +1187,8 @@ async function handleNonStream(
       gatewayHandoffTelemetry,
       (options: Parameters<typeof generateText>[0]) => generateText(options),
     );
+    await markProviderDispatched?.();
+    providerInvocationStarted = true;
     const result = await invokeGenerateText({
       model: languageModel,
       system: systemPrompt,
@@ -997,7 +1201,6 @@ async function handleNonStream(
       ...(toolChoice ? { toolChoice } : {}),
       ...cotOptions,
     });
-
     // Token counts for the Anthropic-compatible response come straight from the
     // model's reported usage, so the entire billing/settlement chain below can
     // run off the response path without changing the bytes the client receives.
@@ -1023,6 +1226,7 @@ async function handleNonStream(
             requestId,
           },
           result.usage,
+          billingReservation,
         );
         await settleReservation(billing.totalCost);
 
@@ -1045,21 +1249,21 @@ async function handleNonStream(
           outputTokens: billing.outputTokens,
         });
       } catch (billingError) {
-        // Deferred billing failed after the response was already sent: release
-        // the held reservation so credit isn't stuck, and log. The settler is
-        // first-call-wins idempotent, so this can never double-refund.
+        // Provider usage exists, so a billing failure settles conservatively to
+        // the admitted estimate. First-call-wins preserves an actual settlement
+        // if billing completed before a later analytics failure.
         try {
-          await settleReservation(0);
-        } catch (releaseError) {
+          await settleUnknownReservation();
+        } catch (settlementError) {
           logger.error(
-            "[Messages API] failed to release reservation after deferred billing failure",
+            "[Messages API] failed to settle unknown cost after deferred billing failure",
             {
               requestId,
               organizationId: user.organization_id,
               error:
-                releaseError instanceof Error
-                  ? releaseError.message
-                  : String(releaseError),
+                settlementError instanceof Error
+                  ? settlementError.message
+                  : String(settlementError),
             },
           );
         }
@@ -1118,7 +1322,17 @@ async function handleNonStream(
       },
     });
   } catch (error) {
-    await settleReservation(0);
+    const settlement =
+      !providerInvocationStarted ||
+      isKnownPreDispatchProviderConfigurationError(error) ||
+      isKnownUnacceptedProviderError(error)
+        ? settleReservation(0)
+        : // A transport failure, timeout, or provider 5xx after dispatch does
+          // not prove that the provider performed no work.
+          settleUnknownReservation();
+    await settleOffResponsePath(executionCtx, async () => {
+      await settlement;
+    });
     throw error;
   }
 }
@@ -1142,6 +1356,32 @@ function firstNumber(...values: unknown[]): number | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * True when the SDK's finish usage carries at least one provider-reported
+ * token count (an explicit zero counts as reported). Mirrors the
+ * chat-completions `hasReportedUsageTokens` guard so a stream that finished
+ * WITHOUT reporting usage is distinguishable from a legitimate zero-token
+ * report and never settles delivered output at $0.
+ */
+function hasReportedFinishUsage(usage: unknown): boolean {
+  const record = (usage ?? {}) as {
+    inputTokens?: number;
+    promptTokens?: number;
+    outputTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+  return (
+    firstNumber(
+      record.inputTokens,
+      record.promptTokens,
+      record.outputTokens,
+      record.completionTokens,
+      record.totalTokens,
+    ) !== undefined
+  );
 }
 
 function summarizeFinishedStepUsage(
@@ -1207,9 +1447,10 @@ function summarizeFinishedStepUsage(
  * The SDK reports no exact usage on abort (no `finish` part arrives), so the
  * delivered output is billed from the accumulated text-delta text via
  * `estimateTokens`, floored by any finished-step usage the SDK did report —
- * the same best-available measure the chat completions route uses. Falls back
- * to a full refund only when the partial billing itself fails (the settler is
- * first-call-wins idempotent, so that fallback can never double-refund).
+ * the same best-available measure the chat completions route uses. If partial
+ * billing itself fails, the conservative unknown-cost terminal charges the
+ * admitted estimate. The settler remains first-call-wins, so a racing callback
+ * cannot replace a known actual settlement.
  */
 async function settleStreamingAbortReservation(params: {
   model: string;
@@ -1225,6 +1466,8 @@ async function settleStreamingAbortReservation(params: {
   settleReservation: (
     actualCost: number,
   ) => Promise<CreditReconciliationResult | null>;
+  settleUnknownReservation: () => Promise<CreditReconciliationResult | null>;
+  billingReservation?: CreditReservation;
 }): Promise<CreditReconciliationResult | null> {
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
   const deliveredOutputTokens = estimateTokens(params.deliveredText);
@@ -1260,6 +1503,7 @@ async function settleStreamingAbortReservation(params: {
         cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
         cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
       },
+      params.billingReservation,
     );
     const reconciliation = await params.settleReservation(billing.totalCost);
 
@@ -1296,13 +1540,13 @@ async function settleStreamingAbortReservation(params: {
     return reconciliation;
   } catch (error) {
     logger.error(
-      "[Messages API] Stream abort partial settlement failed; refunding reservation",
+      "[Messages API] Stream abort partial settlement failed; settling admitted estimate",
       {
         model: params.model,
         error: error instanceof Error ? error.message : String(error),
       },
     );
-    return await params.settleReservation(0);
+    return await params.settleUnknownReservation();
   }
 }
 
@@ -1329,6 +1573,8 @@ async function handleStream(
   settleReservation: (
     actualCost: number,
   ) => Promise<CreditReconciliationResult | null>,
+  settleUnknownReservation: () => Promise<CreditReconciliationResult | null>,
+  billingReservation: CreditReservation | undefined,
   billingSource: PricingBillingSource,
   // Stable per-request id → the getAffiliateEarningsSourceId dedupe key. Without
   // it billUsage falls back to legacy_<uuid> and a retry double-accrues cashable
@@ -1336,10 +1582,12 @@ async function handleStream(
   requestId: string,
   executionCtx?: { waitUntil(promise: Promise<unknown>): void },
   gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
+  markProviderDispatched?: () => Promise<void>,
 ) {
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let deliveredText = "";
+  let providerOutputObserved = false;
   let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
     null;
 
@@ -1364,6 +1612,12 @@ async function handleStream(
 
   const refundStreamingReservationOnce = () =>
     settleStreamingOnce(async () => await settleReservation(0));
+  const settleUnknownStreamingReservationOnce = () =>
+    settleStreamingOnce(async () => await settleUnknownReservation());
+  const settleStreamingProviderFailureOnce = (error: unknown) =>
+    providerOutputObserved || !isKnownUnacceptedProviderError(error)
+      ? settleUnknownStreamingReservationOnce()
+      : refundStreamingReservationOnce();
 
   const settleStreamingAbortOnce = (
     steps: readonly FinishedStepUsageSource[],
@@ -1382,6 +1636,8 @@ async function handleStream(
           deliveredText,
           steps,
           settleReservation,
+          settleUnknownReservation,
+          billingReservation,
         }),
     );
 
@@ -1401,6 +1657,7 @@ async function handleStream(
     gatewayHandoffTelemetry,
     (options: Parameters<typeof streamText>[0]) => streamText(options),
   );
+  await markProviderDispatched?.();
   const result = invokeStreamText({
     model: languageModel,
     system: systemPrompt,
@@ -1426,6 +1683,21 @@ async function handleStream(
     // non-Worker callers) the chain is awaited inline exactly as before.
     onFinish: async ({ text, totalUsage }) => {
       const settlement = settleStreamingOnce(async () => {
+        // A finished stream whose provider reported NO usage cannot prove its
+        // cost — billing the empty record would settle delivered output at $0,
+        // reading "not reported" as "free". Retain the admitted estimate
+        // instead (mirrors /v1/chat's falsy-usage guard). An explicit all-zero
+        // usage report still bills normally below, and provably-rejected work
+        // still reaches zero through onError/the stream backstop, which win
+        // this first-call-wins settler.
+        if (!hasReportedFinishUsage(totalUsage)) {
+          const reconciliation = await settleUnknownReservation();
+          logger.error(
+            "[Messages API] Stream finished without reported usage; settled admitted estimate",
+            { model },
+          );
+          return reconciliation;
+        }
         try {
           const billing = await billUsage(
             {
@@ -1439,6 +1711,7 @@ async function handleStream(
               requestId,
             },
             totalUsage,
+            billingReservation,
           );
           const reconciliation = await settleReservation(billing.totalCost);
 
@@ -1463,7 +1736,7 @@ async function handleStream(
 
           return reconciliation;
         } catch (error) {
-          const reconciliation = await settleReservation(0);
+          const reconciliation = await settleUnknownReservation();
           logger.error("[Messages API] onFinish billing error", {
             error: error instanceof Error ? error.message : String(error),
           });
@@ -1479,22 +1752,26 @@ async function handleStream(
     // the disconnect. Settle to that partial cost instead (#11513); provider
     // errors below still refund in full.
     onAbort: async ({ steps }) => {
-      await settleStreamingAbortOnce(steps);
+      const settlement = settleStreamingAbortOnce(steps);
+      await settleOffResponsePath(executionCtx, async () => {
+        await settlement;
+      });
       logger.info("[Messages API] Stream aborted before completion", {
         model,
         estimatedInputTokens,
         deliveredOutputTokens: estimateTokens(deliveredText),
       });
     },
-    // A provider error during streaming (e.g. cerebras 429/5xx) fires onError —
-    // NOT onFinish or onAbort. Without this the upfront credit reservation is
-    // never reconciled and the user is billed for zero output. Mirrors the
-    // non-streaming error path's settleReservation(0); the settlement is
-    // single-flighted (and the settler idempotent) so this cannot double-refund.
+    // A pre-output provider rejection is known-zero. Once text was delivered,
+    // exact usage is unavailable and the admitted estimate is retained instead.
+    // Settlement remains single-flighted across the stream backstop below.
     onError: async ({ error }: { error: unknown }) => {
-      await refundStreamingReservationOnce();
+      const settlement = settleStreamingProviderFailureOnce(error);
+      await settleOffResponsePath(executionCtx, async () => {
+        await settlement;
+      });
       logger.error(
-        "[Messages API] Stream provider error — reservation refunded",
+        "[Messages API] Stream provider error — reservation settled",
         {
           model,
           error: error instanceof Error ? error.message : String(error),
@@ -1619,6 +1896,7 @@ async function handleStream(
 
             case "text-delta": {
               const index = ensureTextBlock(part.id);
+              if (part.text.length > 0) providerOutputObserved = true;
               controller.enqueue(
                 sse("content_block_delta", {
                   type: "content_block_delta",
@@ -1636,12 +1914,14 @@ async function handleStream(
             }
 
             case "tool-input-start": {
+              providerOutputObserved = true;
               sawToolCalls = true;
               ensureToolBlock(part.id, part.toolName);
               break;
             }
 
             case "tool-input-delta": {
+              providerOutputObserved = true;
               const state = blockState.get(part.id);
               if (state) {
                 state.sawInputDelta = true;
@@ -1665,6 +1945,7 @@ async function handleStream(
             }
 
             case "tool-call": {
+              providerOutputObserved = true;
               sawToolCalls = true;
               const index = ensureToolBlock(part.toolCallId, part.toolName);
               const state = blockState.get(part.toolCallId);
@@ -1735,45 +2016,67 @@ async function handleStream(
         // onAbort. Settle the reservation here too so the upfront hold is never
         // leaked (a permanent overcharge). When the request signal is aborted
         // this is the client-abort path, so settle to the delivered partial
-        // cost (#11513) instead of refunding the full hold; otherwise it is a
-        // provider failure and the hold is released to 0. Settlement is
-        // single-flighted, so this cannot double-bill or double-refund if
-        // onAbort/onError already won the race. Mirrors the
+        // cost (#11513) instead of refunding the full hold. A provider failure
+        // before output is known-zero; after output it retains the admitted
+        // estimate because exact terminal usage is unavailable. Settlement is
+        // single-flighted, so this cannot double-bill if onAbort/onError already
+        // won the race. Mirrors the
         // /v1/chat/completions backstop.
         const streamAborted = abortSignal?.aborted === true;
-        if (streamAborted) {
-          await settleStreamingAbortOnce([]);
-        } else {
-          await refundStreamingReservationOnce();
-        }
+        const settlement = streamAborted
+          ? settleStreamingAbortOnce([])
+          : settleStreamingProviderFailureOnce(error);
+        await settleOffResponsePath(executionCtx, async () => {
+          await settlement;
+        });
         const message = error instanceof Error ? error.message : String(error);
         // Same provider-configuration redaction as the non-streaming path: a
         // GatewayError's internal setup guidance must not reach the caller in
         // the terminal SSE error event (#13913).
+        let terminalEvent: Record<string, unknown>;
         if (isProviderConfigurationError(error)) {
           logger.error("[Messages API] Stream provider configuration error", {
             error: message,
           });
-          controller.enqueue(
-            sse("error", {
-              type: "error",
-              error: {
-                type: "invalid_request_error",
-                message: modelNotAvailableMessage(model),
-              },
-            }),
-          );
+          terminalEvent = {
+            type: "error",
+            error: {
+              type: "invalid_request_error",
+              message: modelNotAvailableMessage(model),
+            },
+          };
         } else {
           logger.error("[Messages API] Stream error", { error: message });
-          controller.enqueue(
-            sse("error", {
-              type: "error",
-              error: { type: "api_error", message },
-            }),
+          terminalEvent = {
+            type: "error",
+            error: { type: "api_error", message },
+          };
+        }
+        try {
+          controller.enqueue(sse("error", terminalEvent));
+        } catch (enqueueError) {
+          // The stream was already torn down (client disconnected / controller
+          // closed) — fall back to erroring it so the runtime cleans up.
+          // Mirrors the /v1/chat/completions terminal-chunk guard; settlement
+          // above has already run either way.
+          logger.error(
+            "[Messages API] Failed to emit terminal stream error event",
+            {
+              error:
+                enqueueError instanceof Error
+                  ? enqueueError.message
+                  : String(enqueueError),
+            },
           );
+          controller.error(error);
         }
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // error-policy:J6 best-effort teardown — the controller is already
+          // closed or errored when the terminal-chunk guard above fired.
+        }
       }
     },
   });

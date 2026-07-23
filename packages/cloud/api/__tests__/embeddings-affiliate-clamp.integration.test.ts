@@ -55,6 +55,7 @@ import { Hono } from "hono";
 import { closeDatabaseConnectionsForTests, dbRead, dbWrite } from "@/db/client";
 // Via cloud-shared so `drizzle-kit` (its devDependency) resolves at runtime.
 import { pushSchema } from "@/db/push-schema-for-tests";
+import { affiliatePayoutOutbox } from "@/db/schemas/affiliate-payout-outbox";
 import { affiliateCodes } from "@/db/schemas/affiliates";
 import { aiPricingEntries } from "@/db/schemas/ai-pricing";
 import { creditTransactions } from "@/db/schemas/credit-transactions";
@@ -70,11 +71,15 @@ import { users } from "@/db/schemas/users";
 import * as realAuth from "@/lib/auth/workers-hono-auth";
 import * as realRateLimit from "@/lib/middleware/rate-limit";
 import { PLATFORM_MARKUP_MULTIPLIER } from "@/lib/pricing";
+import { processAffiliatePayoutBySource } from "@/lib/services/affiliate-payout-outbox";
+import { reserveCredits } from "@/lib/services/ai-billing";
 import * as realAutoTopUp from "@/lib/services/auto-top-up";
 import * as realEmail from "@/lib/services/email";
 import * as realInferenceAuth from "@/lib/services/inference-auth-context";
+import * as realAdmission from "@/lib/services/organization-inference-admission";
 import * as realUsage from "@/lib/services/usage";
 import * as realWaifu from "@/lib/services/waifu-webhook";
+import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ENV = {
@@ -121,8 +126,13 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 }));
 
 const resolveInferenceAuthContext = mock(async () => ({
-  kind: "slow_path" as const,
-  reason: "non_api_key",
+  kind: "authorized" as const,
+  source: "cache" as const,
+  ctx: {
+    userId: authUserId,
+    orgId: authOrgId,
+    apiKeyId: null,
+  },
 }));
 mock.module("@/lib/services/inference-auth-context", () => ({
   ...realInferenceAuth,
@@ -132,6 +142,37 @@ mock.module("@/lib/services/inference-auth-context", () => ({
 mock.module("@/lib/middleware/rate-limit", () => ({
   ...realRateLimit,
   enforceOrgRateLimit: mock(async () => null),
+}));
+
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...realAdmission,
+  admitOrganizationInference: async (
+    params: realAdmission.OrganizationInferenceAdmissionParams,
+  ) => {
+    const reservation = await reserveCredits(
+      {
+        ...params.context,
+        affiliateCode: params.affiliateCode ?? undefined,
+      },
+      params.estimatedInputTokens,
+      params.estimatedOutputTokens,
+    );
+    const settle = createCreditReservationSettler(reservation);
+    return {
+      mode: "synchronous_reservation",
+      settle,
+      settleUnknown: () => settle(reservation.reservedAmount),
+      affiliateAttribution: reservation.affiliateAttribution ?? null,
+      reservation: {
+        reservedAmount: reservation.reservedAmount,
+        reservationTransactionId: reservation.reservationTransactionId,
+        affiliateAttribution: reservation.affiliateAttribution ?? null,
+        affiliatePayoutSourceId: reservation.affiliatePayoutSourceId ?? null,
+        reconcile: async (actualCostUsd: number) =>
+          (await settle(actualCostUsd)) ?? undefined,
+      },
+    };
+  },
 }));
 
 mock.module("@/lib/providers/language-model", () => ({
@@ -199,6 +240,10 @@ afterAll(async () => {
   mock.module("@/lib/auth/workers-hono-auth", () => realAuth);
   mock.module("@/lib/services/inference-auth-context", () => realInferenceAuth);
   mock.module("@/lib/middleware/rate-limit", () => realRateLimit);
+  mock.module(
+    "@/lib/services/organization-inference-admission",
+    () => realAdmission,
+  );
   mock.module("@/lib/services/usage", () => realUsage);
   mock.module("@/lib/services/email", () => realEmail);
   mock.module("@/lib/services/waifu-webhook", () => realWaifu);
@@ -319,6 +364,22 @@ async function affiliateAvailableBalance(userId: string): Promise<number> {
   return Number(row?.available_balance ?? 0);
 }
 
+async function processAffiliatePayouts(
+  userId: string,
+): Promise<Array<{ amount: string; sourceId: string }>> {
+  const rows = await dbRead
+    .select({
+      amount: affiliatePayoutOutbox.amount,
+      sourceId: affiliatePayoutOutbox.source_id,
+    })
+    .from(affiliatePayoutOutbox)
+    .where(eq(affiliatePayoutOutbox.affiliate_user_id, userId));
+  for (const row of rows) {
+    await processAffiliatePayoutBySource(row.sourceId);
+  }
+  return rows;
+}
+
 async function affiliateEarningLedger(userId: string) {
   return dbRead.query.redeemableEarningsLedger.findMany({
     where: eq(redeemableEarningsLedger.user_id, userId),
@@ -336,6 +397,7 @@ beforeAll(async () => {
       users,
       creditTransactions,
       affiliateCodes,
+      affiliatePayoutOutbox,
       aiPricingEntries,
       earningsSourceEnum,
       ledgerEntryTypeEnum,
@@ -426,7 +488,14 @@ describe("POST /v1/embeddings — affiliate markup is reserved upfront (#12017)"
       4,
     );
 
-    // Affiliate earned the markup — fully collected, fully paid: $1.20.
+    // Settlement durably hands the collected markup to the asynchronous payout
+    // worker; processing that intent credits exactly one redeemable ledger row.
+    const payouts = await processAffiliatePayouts(affiliateUserId);
+    expect(payouts).toHaveLength(1);
+    expect(Number(payouts[0].amount)).toBeCloseTo(
+      EST_TOTAL * (AFFILIATE_MULTIPLIER - 1),
+      4,
+    );
     expect(await affiliateAvailableBalance(affiliateUserId)).toBeCloseTo(
       EST_TOTAL * (AFFILIATE_MULTIPLIER - 1),
       4,
@@ -435,13 +504,13 @@ describe("POST /v1/embeddings — affiliate markup is reserved upfront (#12017)"
     expect(ledger).toHaveLength(1);
     expect(ledger[0].entry_type).toBe("earning");
     expect(ledger[0].earnings_source).toBe("affiliate");
-    // #11588: dedupe sourceId is keyed by the server-generated requestId. The
-    // ledger stores it normalized to a deterministic UUID and preserves the
-    // original in metadata.original_source_id.
+    // The payout source is keyed by the server-generated request id. The
+    // ledger normalizes it to a deterministic UUID and preserves the original
+    // affiliate identity in metadata.original_source_id.
     expect(
       (ledger[0].metadata as { original_source_id?: string })
         .original_source_id,
-    ).toStartWith("ai_billing:usage:");
+    ).toStartWith("ai_billing:affiliate:");
   });
 
   test("uncollectable overage above the base cost → affiliate paid 0 (clamp is live on this route)", async () => {
@@ -485,7 +554,11 @@ describe("POST /v1/embeddings — affiliate markup is reserved upfront (#12017)"
     await Promise.all(scheduled);
 
     expect(await orgBalance(orgId)).toBeCloseTo(0.01, 4);
-    // Earnings == collected markup — never preAffiliateTotalCost × markup%.
+    // The asynchronous intent contains only the collected markup — never
+    // preAffiliateTotalCost × markup%.
+    const payouts = await processAffiliatePayouts(affiliateUserId);
+    expect(payouts).toHaveLength(1);
+    expect(Number(payouts[0].amount)).toBeCloseTo(collectedMarkup, 4);
     expect(await affiliateAvailableBalance(affiliateUserId)).toBeCloseTo(
       collectedMarkup,
       4,

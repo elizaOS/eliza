@@ -100,6 +100,7 @@ beforeAll(async () => {
         name text NOT NULL,
         slug text NOT NULL,
         credit_balance numeric(12,6) NOT NULL DEFAULT '0',
+        balance_revision bigint NOT NULL DEFAULT 0,
         settings jsonb DEFAULT '{}',
         stripe_customer_id text,
         billing_email text,
@@ -140,7 +141,9 @@ beforeAll(async () => {
     }
   } catch (error) {
     pgliteReady = false;
-    console.warn("[credits-deduct-guard] PGlite unavailable, skipping DB cases:", error);
+    throw new Error("[credits-deduct-guard] PGlite initialization failed", {
+      cause: error,
+    });
   }
 }, PGLITE_TIMEOUT);
 
@@ -295,6 +298,37 @@ describe("reserveAndDeductCredits — atomic debit", () => {
 
       // One debit row per successful charge — no phantom or duplicate debits.
       expect(await listDebits()).toHaveLength(3);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a concurrent keyed first call claims the ledger identity before moving the balance",
+    async () => {
+      if (!pgliteReady) return;
+      const idempotencyKey = `inference-debit:${ORG_ID}:request-race`;
+
+      const results = await Promise.all(
+        Array.from({ length: 16 }, () =>
+          creditsService.reserveAndDeductCredits({
+            organizationId: ORG_ID,
+            amount: 3,
+            description: "same logical inference charge",
+            metadata: { requestId: "request-race", user_id: USER_ID },
+            stripePaymentIntentId: idempotencyKey,
+          }),
+        ),
+      );
+
+      expect(results.every((result) => result.success)).toBe(true);
+      const transactionIds = new Set(results.map((result) => result.transaction?.id));
+      expect(transactionIds.size).toBe(1);
+      expect(transactionIds.has(undefined)).toBe(false);
+      expect(results.every((result) => result.newBalance === 7)).toBe(true);
+      expect(await readBalance()).toBe(7);
+
+      const debits = await listDebits();
+      expect(debits).toEqual([{ amount: -3, type: "debit" }]);
     },
     PGLITE_TIMEOUT,
   );

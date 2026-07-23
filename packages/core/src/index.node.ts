@@ -225,6 +225,12 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export {
+	__resetDirectActionRoutingRulesForTests,
+	type DirectActionRoutingRule,
+	getDirectActionRoutingRules,
+	registerDirectActionRoutingRule,
+} from "./runtime/direct-action-routing";
 export * from "./runtime/execute-planned-tool-call";
 export {
 	detectLocaleFromText,

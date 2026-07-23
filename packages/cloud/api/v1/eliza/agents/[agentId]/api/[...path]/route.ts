@@ -12,7 +12,10 @@
  */
 import { type Context, Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
+import {
+  resolveSharedAgent,
+  resolveSharedRuntimeWorkerRequestContext,
+} from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestAuthMe,
   sharedRestCharacter,
@@ -67,11 +70,70 @@ app.options("/", (c) =>
 );
 
 app.get("/", async (c) => {
+  const path = shellPath(c);
+  if (path === "character") {
+    const worker = resolveSharedRuntimeWorkerRequestContext(c);
+    if ("error" in worker) {
+      return json(
+        c,
+        {
+          success: false,
+          error: worker.error,
+          code: worker.code,
+          retryable: worker.retryable,
+        },
+        worker.status,
+      );
+    }
+    const characterAgent = await resolveSharedAgent(c, {
+      cacheOnly: true,
+      executionCtx: worker.executionCtx,
+    });
+    if ("error" in characterAgent) {
+      return json(
+        c,
+        {
+          success: false,
+          error: characterAgent.error,
+          ...(characterAgent.status === 503 ? { retryable: true } : {}),
+        },
+        characterAgent.status,
+      );
+    }
+    try {
+      return json(
+        c,
+        await sharedRestCharacter(
+          characterAgent.agent,
+          characterAgent.agentName,
+          worker.executionCtx,
+        ),
+      );
+    } catch (error) {
+      // error-policy:J1 the HTTP boundary preserves a cache miss as retryable
+      // unavailability; it must not become an opaque 500 or trigger a fallback.
+      if (
+        error instanceof Error &&
+        error.name === "SharedRuntimeCacheWarmingError"
+      ) {
+        return json(
+          c,
+          {
+            success: false,
+            error: error.message,
+            code: "shared_runtime_cache_warming",
+            retryable: true,
+          },
+          503,
+        );
+      }
+      throw error;
+    }
+  }
   const r = await resolveSharedAgent(c);
   if ("error" in r) {
     return json(c, { success: false, error: r.error }, r.status);
   }
-  const path = shellPath(c);
   // The app's workflow clients use the full-runtime compatibility paths. A
   // shared agent cannot serve them, so surface the same typed capability gate
   // as the canonical `/workflows` proxy instead of an unrelated shell 404.
@@ -95,13 +157,6 @@ app.get("/", async (c) => {
       // key (resolveSharedAgent validated it), so report the authed machine
       // identity instead of 404'ing into "server_unavailable".
       return json(c, sharedRestAuthMe(r.agentId, r.agentName));
-    case "character":
-      // The exact character the shared turn answers as (reuses
-      // buildSharedRuntimeCharacter via the service).
-      return json(
-        c,
-        await sharedRestCharacter(r.agentId, r.orgId, r.agentName, r.agent),
-      );
     default:
       // Genuinely-unknown shell endpoint — don't mask it with a default.
       return json(

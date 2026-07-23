@@ -6,16 +6,12 @@ interface AuthErrorBody {
   error: {
     message: string;
     type: string;
+    code: string;
   };
 }
 
 interface NotFoundBody {
   success: false;
-  error: string;
-  code: string;
-}
-
-interface RateLimitErrorBody {
   error: string;
   code: string;
 }
@@ -59,8 +55,9 @@ describe("chat-only inference application", () => {
     const body = (await response.json()) as AuthErrorBody;
     expect(body).toEqual({
       error: {
-        message: "Authentication required",
+        message: "Authentication required.",
         type: "authentication_error",
+        code: "authentication_required",
       },
     });
   });
@@ -104,7 +101,14 @@ describe("chat-only inference application", () => {
     });
   });
 
-  test("fails closed when production rate limiting is explicitly misconfigured", async () => {
+  test("uses native limiters when Railway Redis is unavailable in production", async () => {
+    const nativeKeys: string[] = [];
+    const nativeLimiter = {
+      async limit({ key }: { key: string }) {
+        nativeKeys.push(key);
+        return { success: true };
+      },
+    };
     const response = await createInferenceApp().fetch(
       new Request("https://api.elizacloud.ai/api/v1/chat/completions", {
         method: "POST",
@@ -119,15 +123,21 @@ describe("chat-only inference application", () => {
         ENVIRONMENT: "production",
         NODE_ENV: "production",
         REDIS_RATE_LIMITING: "true",
+        GLOBAL_RATE_LIMITER: nativeLimiter,
+        CHAT_ROUTE_RATE_LIMITER: nativeLimiter,
       },
       executionCtx,
     );
 
-    expect(response.status).toBe(503);
-    const body = (await response.json()) as RateLimitErrorBody;
+    expect(response.status).toBe(401);
+    expect(nativeKeys).toHaveLength(2);
+    const body = (await response.json()) as AuthErrorBody;
     expect(body).toEqual({
-      error: "Rate limiting misconfigured",
-      code: "RATE_LIMIT_UNAVAILABLE",
+      error: {
+        message: "Authentication required.",
+        type: "authentication_error",
+        code: "authentication_required",
+      },
     });
   });
 });

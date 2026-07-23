@@ -13,8 +13,14 @@
 
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
+// This benchmark measures the STAGED cache-on auth path. The flag is
+// default-off in every checked-in environment (wrangler.toml) until #17093
+// lands a strongly consistent revocation boundary; enabling it here exercises
+// the gated single-cache-read contract without changing any shipped default.
+const originalAuthCacheFlag = process.env.INFERENCE_AUTH_CACHE_ENABLED;
+process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
 
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 let authChainCalls = 0;
 let moderationCalls = 0;
@@ -76,6 +82,16 @@ beforeEach(async () => {
 
 afterEach(() => {
   mock.restore();
+});
+
+// Cloud-shared test files can share one bun process; leaving the staged flag
+// enabled would silently flip later files onto the cache-on path.
+afterAll(() => {
+  if (originalAuthCacheFlag === undefined) {
+    delete process.env.INFERENCE_AUTH_CACHE_ENABLED;
+  } else {
+    process.env.INFERENCE_AUTH_CACHE_ENABLED = originalAuthCacheFlag;
+  }
 });
 
 describe("inference hot-path benchmark", () => {

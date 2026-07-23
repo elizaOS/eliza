@@ -30,6 +30,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { getCloudAuthToken } from "./api/client-cloud";
 import {
   type ActiveViewLayout,
   createNavigateViewHandler,
@@ -51,13 +52,13 @@ import {
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
+import { AgentAuthGateSurface } from "./components/auth/AgentAuthGateSurface";
 import {
-  CloudHostedAgentAuthNotice,
   CloudPairRelay,
   getCloudPairTokenFromLocation,
   isElizaCloudHostedLocation,
+  resolveCloudHostedAgentUrl,
 } from "./components/auth/CloudPairRelay";
-import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
@@ -134,6 +135,7 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "./state";
+import { shouldShowCloudAgentReauthNotice } from "./state/agent-session-recovery";
 import {
   useChatComposer,
   useChatInputRef,
@@ -156,6 +158,7 @@ import { shellHistory } from "./surface-realm-channel";
 import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
+import { openExternalUrl } from "./utils/openExternalUrl";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -2234,12 +2237,14 @@ function AppContent() {
   // session is still valid. Rather than dead-end at the agent's internal
   // password wall (a credential no cloud user has), transparently re-run the
   // pairing exchange to refresh the credential. Only fires for a cloud-managed
-  // dedicated agent WITH a valid cloud session; otherwise stays "idle" and the
-  // wall renders exactly as before.
+  // dedicated agent WITH a valid cloud session. Managed native failures retain
+  // their classification (reauth, retry, or management); self-hosted failures
+  // retain the password wall.
   const agentSessionRecoveryStatus = useAgentSessionRecovery({
     active: authState.phase === "unauthenticated",
     reason:
       authState.phase === "unauthenticated" ? authState.reason : undefined,
+    onRecovered: refetchAuth,
   });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
@@ -2254,6 +2259,49 @@ function AppContent() {
   const contextMenu = useContextMenu();
   const cloudPairToken = getCloudPairTokenFromLocation();
   const isElizaCloudHosted = isElizaCloudHostedLocation();
+  const activeAgentProfile = useAppSelector((s) => s.activeAgentProfile);
+  const handleCloudLogin = useAppSelector((s) => s.handleCloudLogin);
+  const showCloudAgentReauthNotice = shouldShowCloudAgentReauthNotice({
+    isHostedLocation: isElizaCloudHosted,
+    isNative,
+    activeServer: activeAgentProfile,
+    recoveryStatus:
+      agentSessionRecoveryStatus === "idle" ||
+      agentSessionRecoveryStatus === "recovering"
+        ? null
+        : agentSessionRecoveryStatus,
+  });
+  const nativeCloudRecoveryMode =
+    agentSessionRecoveryStatus === "cloud-retry-required"
+      ? "retry"
+      : agentSessionRecoveryStatus === "cloud-manage-required"
+        ? "manage"
+        : "reauth";
+  const recoverManagedNativeAgent = useCallback(async () => {
+    if (nativeCloudRecoveryMode === "retry") {
+      window.location.reload();
+      return;
+    }
+    if (nativeCloudRecoveryMode === "manage") {
+      await openExternalUrl(resolveCloudHostedAgentUrl());
+      return;
+    }
+    const rejectedCloudToken = getCloudAuthToken();
+    await handleCloudLogin(null, {
+      requireClientAuth: true,
+      forceReauth: true,
+    });
+    const refreshedCloudToken = getCloudAuthToken();
+    if (!refreshedCloudToken || refreshedCloudToken === rejectedCloudToken) {
+      throw new Error(
+        "Eliza Cloud sign-in did not complete. Please try again.",
+      );
+    }
+    window.location.reload();
+  }, [handleCloudLogin, nativeCloudRecoveryMode]);
+  const retryManagedNativeAgent = useCallback(async () => {
+    window.location.reload();
+  }, []);
 
   useSecretsManagerShortcut();
 
@@ -2805,9 +2853,10 @@ function AppContent() {
     if (authState.phase === "unauthenticated") {
       // #15132: a stale post-upgrade agent credential with a valid cloud session
       // is recoverable, so hold the startup surface while the re-pair runs (it
-      // ends in a full-page navigation to `/pair`) instead of flashing the
-      // password wall. Recovery drops back to "idle" if it can't proceed, and
-      // the wall renders then.
+      // navigates through `/pair` on web or installs the bearer in-process on
+      // native) instead of flashing the password wall. Managed failures expose
+      // an actionable Cloud recovery surface; only self-hosted failures render
+      // the owner-password form.
       if (agentSessionRecoveryStatus === "recovering") {
         return (
           <BugReportProvider value={bugReport}>
@@ -2816,17 +2865,13 @@ function AppContent() {
           </BugReportProvider>
         );
       }
-      if (isElizaCloudHosted) {
-        return (
-          <BugReportProvider value={bugReport}>
-            <CloudHostedAgentAuthNotice />
-            <BugReportModal />
-          </BugReportProvider>
-        );
-      }
       return (
         <BugReportProvider value={bugReport}>
-          <LoginView
+          <AgentAuthGateSurface
+            showCloudReauth={showCloudAgentReauthNotice}
+            nativeRecoveryMode={nativeCloudRecoveryMode}
+            onNativeReauth={isNative ? recoverManagedNativeAgent : undefined}
+            onNativeRetry={isNative ? retryManagedNativeAgent : undefined}
             onLoginSuccess={() => {
               // A successful owner-password login proves this is an existing,
               // initialized backend. Clear the stale unauthenticated browser's

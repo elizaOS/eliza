@@ -654,6 +654,7 @@ export function useCloudState({
       const hasRequiredClientAuth = () =>
         !options.requireClientAuth || Boolean(getCloudAuthToken(client));
       if (
+        !options.forceReauth &&
         isCloudStatusAuthenticated(
           elizaCloudConnected,
           elizaCloudStatusReason,
@@ -673,6 +674,15 @@ export function useCloudState({
       setElizaCloudLoginError(null);
       setElizaCloudLoginFallbackUrl(null);
       elizaCloudPreferDisconnectedUntilLoginRef.current = false;
+      if (options.forceReauth) {
+        // An opaque device-code credential has no local expiry metadata, so it
+        // normally counts as usable. Once Cloud rejects it, however, retaining
+        // it would let both the cached-status and Steward-token branches
+        // resolve without opening a real sign-in, then reload into the same
+        // rejected session. Drain only the canonical Cloud credential here;
+        // `client` may hold the separate agent bearer needed by the proxy.
+        clearStoredStewardToken();
+      }
       let resolveLoginCompletion: () => void = () => {};
       let loginCompletionResolved = false;
       const loginCompletion = new Promise<void>((resolve) => {
@@ -817,7 +827,11 @@ export function useCloudState({
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,
         );
-        if (alreadyAuthenticated && hasRequiredClientAuth()) {
+        if (
+          !options.forceReauth &&
+          alreadyAuthenticated &&
+          hasRequiredClientAuth()
+        ) {
           closePrePoppedWindow();
           await pollCloudCredits();
           await loadWalletConfig().catch((err: unknown) => {

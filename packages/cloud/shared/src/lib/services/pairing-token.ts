@@ -1,8 +1,14 @@
-// Coordinates cloud service pairing token behavior behind route handlers.
-import { agentPairingTokensRepository } from "../../db/repositories/agent-pairing-tokens";
+/**
+ * Mints and validates browser or authenticated-native agent pairing tokens
+ * behind the Cloud route boundary.
+ */
+import {
+  type AgentPairingToken,
+  agentPairingTokensRepository,
+} from "../../db/repositories/agent-pairing-tokens";
 import { getAlternateDomainOrigins } from "./pairing-token-domains";
 
-interface PairingToken {
+export interface PairingToken {
   userId: string;
   orgId: string;
   agentId: string;
@@ -11,6 +17,23 @@ interface PairingToken {
   expiresAt: number;
   createdAt: number;
 }
+
+export interface AuthenticatedNativePairingBinding {
+  userId: string;
+  orgId: string;
+  agentId: string;
+  expectedOrigin: string;
+}
+
+export type AuthenticatedNativePairingClaim =
+  | {
+      status: "claimed";
+      pairingToken: PairingToken;
+      apiKey: string;
+      agentName: string | null;
+    }
+  | { status: "invalid" }
+  | { status: "sandbox-credential-unavailable" };
 
 const TOKEN_EXPIRY_MS = 60_000; // 60 seconds
 
@@ -49,6 +72,31 @@ function createPairingToken(): string {
   return base64UrlEncode(bytes);
 }
 
+function normalizeHttpOrigin(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    // error-policy:J3 malformed external origin input fails closed.
+    return null;
+  }
+}
+
+function toPairingToken(row: AgentPairingToken): PairingToken {
+  return {
+    userId: row.user_id,
+    orgId: row.organization_id,
+    agentId: row.agent_id,
+    instanceUrl: row.instance_url,
+    expectedOrigin: row.expected_origin,
+    expiresAt: row.expires_at.getTime(),
+    createdAt: row.created_at.getTime(),
+  };
+}
+
 class PairingTokenService {
   async generateToken(
     userId: string,
@@ -78,18 +126,15 @@ class PairingTokenService {
       return null;
     }
 
-    let normalizedOrigin: string;
-    try {
-      normalizedOrigin = new URL(expectedOrigin).origin;
-    } catch {
+    const normalizedOrigin = normalizeHttpOrigin(expectedOrigin);
+    if (!normalizedOrigin) {
       return null;
     }
 
+    const tokenHash = await hashToken(token);
+
     // Try the exact origin first
-    let row = await agentPairingTokensRepository.consumeValidToken(
-      await hashToken(token),
-      normalizedOrigin,
-    );
+    let row = await agentPairingTokensRepository.consumeValidToken(tokenHash, normalizedOrigin);
 
     // If no match, try each alternate domain in the same alias group. The
     // dashboard may rewrite the agent URL between any two aliased domains
@@ -97,10 +142,7 @@ class PairingTokenService {
     // one is stored as `expected_origin` for a given token row.
     if (!row) {
       for (const alternateOrigin of getAlternateDomainOrigins(normalizedOrigin)) {
-        row = await agentPairingTokensRepository.consumeValidToken(
-          await hashToken(token),
-          alternateOrigin,
-        );
+        row = await agentPairingTokensRepository.consumeValidToken(tokenHash, alternateOrigin);
         if (row) break;
       }
     }
@@ -109,14 +151,42 @@ class PairingTokenService {
       return null;
     }
 
+    return toPairingToken(row);
+  }
+
+  /**
+   * Claim the explicit native exchange. Unlike the browser relay, native
+   * WebViews may omit Origin, so the Cloud bearer identity and the origin
+   * carried by the authenticated mint response are part of the atomic claim.
+   * This path intentionally uses the exact minted origin; browser-only domain
+   * alias compatibility remains confined to validateToken().
+   */
+  async claimAuthenticatedNativeToken(
+    token: string,
+    binding: AuthenticatedNativePairingBinding,
+  ): Promise<AuthenticatedNativePairingClaim> {
+    const normalizedOrigin = normalizeHttpOrigin(binding.expectedOrigin);
+    if (!normalizedOrigin) {
+      return { status: "invalid" };
+    }
+
+    const claim = await agentPairingTokensRepository.consumeValidAuthenticatedToken(
+      await hashToken(token),
+      {
+        userId: binding.userId,
+        organizationId: binding.orgId,
+        agentId: binding.agentId,
+        expectedOrigin: normalizedOrigin,
+      },
+    );
+
+    if (claim.status !== "claimed") return claim;
+
     return {
-      userId: row.user_id,
-      orgId: row.organization_id,
-      agentId: row.agent_id,
-      instanceUrl: row.instance_url,
-      expectedOrigin: row.expected_origin,
-      expiresAt: row.expires_at.getTime(),
-      createdAt: row.created_at.getTime(),
+      status: "claimed",
+      pairingToken: toPairingToken(claim.token),
+      apiKey: claim.apiKey,
+      agentName: claim.agentName,
     };
   }
 }
@@ -129,5 +199,3 @@ export function getPairingTokenService(): PairingTokenService {
   }
   return instance;
 }
-
-export type { PairingToken };

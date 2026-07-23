@@ -89,6 +89,10 @@ import {
 	type MessageHistoryCompactionTelemetry,
 } from "../runtime/conversation-compaction-hook";
 import {
+	type DirectActionRoutingRule,
+	getDirectActionRoutingRules,
+} from "../runtime/direct-action-routing";
+import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
 	runEvaluator,
@@ -2868,7 +2872,7 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			"current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there." +
+			'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
 			// Only the chat-recall context renders the agent's own prior turns;
 			// the tool-planner context deliberately omits them (stale-answer
 			// hazard), so this grounding sentence would be false there.
@@ -3024,11 +3028,234 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-// Shared with the planner-path REPLY guard; the detector lives in a leaf
-// module so the action can import it without pulling in this service.
-import { replyClaimsCompletedSideEffect } from "./message/side-effect-claims.ts";
+// Shared with the planner-path REPLY guard and the planned-reply egress
+// guard; the detectors live in a leaf module so the action can import them
+// without pulling in this service.
+import {
+	replyClaimsCompletedSideEffect,
+	replyClaimsEmptyTrackedWorkState,
+} from "./message/side-effect-claims.ts";
 
-export { replyClaimsCompletedSideEffect };
+export { replyClaimsCompletedSideEffect, replyClaimsEmptyTrackedWorkState };
+
+export interface EligibleDirectActionRoute {
+	rule: DirectActionRoutingRule;
+	action: Action;
+}
+
+/**
+ * Resolve plugin-owned direct routes against the real execution surface for
+ * this actor and turn. Context adjacency is deliberately insufficient:
+ * CHOOSE_OPTION declares `tasks`, for example, but it neither owns tracked
+ * work nor carries a read capability. Name + required tags + the shared action
+ * gate + connector policy + validate() must all agree before core forces a
+ * simple response into planning.
+ */
+export async function resolveEligibleDirectActionRoutes(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	userRoles?: readonly RoleGateRole[];
+}): Promise<EligibleDirectActionRoute[]> {
+	const messageText = getUserMessageText(args.message)?.trim() ?? "";
+	if (!messageText) return [];
+	const actionsByName = new Map(
+		(args.runtime.actions ?? []).map((action) => [
+			normalizeActionIdentifier(action.name),
+			action,
+		]),
+	);
+	const found: EligibleDirectActionRoute[] = [];
+	const seen = new Set<string>();
+	for (const rule of getDirectActionRoutingRules(args.runtime)) {
+		if (!rule.matches(messageText)) continue;
+		const requiredTags = new Set(
+			rule.requiredActionTags.map((tag) => tag.trim().toLowerCase()),
+		);
+		for (const actionName of rule.actionNames) {
+			const action = actionsByName.get(normalizeActionIdentifier(actionName));
+			if (!action) continue;
+			const actionTags = new Set(
+				(action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
+			);
+			if (![...requiredTags].every((tag) => actionTags.has(tag))) continue;
+			const key = normalizeActionIdentifier(action.name);
+			if (
+				seen.has(key) ||
+				!canActionRun(action, {
+					message: args.message,
+					activeContexts: mergeAgentContexts(rule.contexts, action.contexts),
+					userRoles: args.userRoles,
+				})
+			) {
+				continue;
+			}
+			try {
+				const accountPolicy = await evaluateConnectorAccountPolicies(
+					args.runtime,
+					action,
+					{ message: args.message },
+				);
+				if (
+					!accountPolicy.allowed ||
+					!(await action.validate(args.runtime, args.message, args.state))
+				) {
+					continue;
+				}
+			} catch (error) {
+				// error-policy:J4 explicit user-facing degrade — a route whose
+				// availability check fails stays unavailable for this turn; the
+				// unchanged Stage-1 answer remains the visible fallback.
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						route: rule.id,
+						action: action.name,
+						error,
+					},
+					"Skipping direct action route whose availability check failed",
+				);
+				continue;
+			}
+			seen.add(key);
+			found.push({ rule, action });
+		}
+	}
+	return found;
+}
+
+export type PlannedReplyClaimKind =
+	| "completed_side_effect"
+	| "empty_tracked_state";
+
+const MUTATING_CAPABILITY_TAGS = new Set([
+	"capability:write",
+	"capability:update",
+	"capability:delete",
+	"capability:schedule",
+	"capability:send",
+]);
+const MUTATING_OPERATION =
+	/\b(?:create|add|set|save|schedule|write|update|edit|delete|remove|cancel|complete|finish|snooze|send|block|unblock|connect|disconnect|revoke|approve|dismiss|acknowledge|reopen)\b/iu;
+
+function actionResultOperation(result: ActionResult): string {
+	const data = result.data;
+	return ["action", "operation", "op", "subaction"]
+		.map((key) => data?.[key])
+		.filter((value): value is string => typeof value === "string")
+		.join(" ");
+}
+
+/**
+ * A successful action result grounds only the capability it actually proves.
+ * Empty tracked-work claims require a `resource:tracked-work` read action.
+ * Completion claims require a mutation-capable action; mixed read/write
+ * umbrellas additionally need a mutating operation in their result payload.
+ * Both claim kinds require the final reply to be the action-owned canonical
+ * `userFacingText`; this binds the claim to that receipt instead of allowing
+ * an unrelated successful action to validate planner-authored text.
+ */
+export function plannedReplyHasClaimGroundingReceipt(args: {
+	kind: PlannedReplyClaimKind;
+	reply: string;
+	results: readonly ActionResult[];
+	actions: readonly Action[];
+}): boolean {
+	const actionsByName = new Map(
+		args.actions.map((action) => [
+			normalizeActionIdentifier(action.name),
+			action,
+		]),
+	);
+	return args.results.some((result) => {
+		if (result.success !== true) return false;
+		const canonicalUserFacingText = result.userFacingText?.trim();
+		if (
+			result.verifiedUserFacing !== true ||
+			!canonicalUserFacingText ||
+			canonicalUserFacingText !== args.reply.trim()
+		) {
+			return false;
+		}
+		const actionName =
+			typeof result.data?.actionName === "string" ? result.data.actionName : "";
+		const action = actionsByName.get(normalizeActionIdentifier(actionName));
+		if (!action) return false;
+		const tags = new Set(
+			(action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
+		);
+		if (args.kind === "empty_tracked_state") {
+			return tags.has("resource:tracked-work") && tags.has("capability:read");
+		}
+		const mutating = [...MUTATING_CAPABILITY_TAGS].some((tag) => tags.has(tag));
+		if (!mutating) return false;
+		return (
+			!tags.has("capability:read") ||
+			MUTATING_OPERATION.test(actionResultOperation(result))
+		);
+	});
+}
+
+/** Egress decision for a planner-composed final reply (see below). */
+export type PlannedReplyEgressDecision =
+	| { verdict: "allow" }
+	| {
+			verdict: "reject";
+			kind: PlannedReplyClaimKind;
+			fallbackReply: string;
+	  };
+
+/**
+ * Final planned replies may assert only state proven by a matching action
+ * receipt from this trajectory. Rejection degrades to an honest statement at
+ * this boundary; it never starts a second planner trajectory, which would lose
+ * the first trajectory's results and could replay a partially-applied effect.
+ */
+export function evaluatePlannedReplyEgress(args: {
+	reply: string;
+	actionResults: readonly ActionResult[];
+	actions: readonly Action[];
+}): PlannedReplyEgressDecision {
+	const reply = args.reply.trim();
+	if (!reply) return { verdict: "allow" };
+	if (replyClaimsCompletedSideEffect(reply)) {
+		if (
+			plannedReplyHasClaimGroundingReceipt({
+				kind: "completed_side_effect",
+				reply,
+				results: args.actionResults,
+				actions: args.actions,
+			})
+		) {
+			return { verdict: "allow" };
+		}
+		return {
+			verdict: "reject",
+			kind: "completed_side_effect",
+			fallbackReply:
+				"I couldn't verify that the requested change was completed, so I won't claim it was. Want me to try again?",
+		};
+	}
+	if (replyClaimsEmptyTrackedWorkState(reply)) {
+		if (
+			plannedReplyHasClaimGroundingReceipt({
+				kind: "empty_tracked_state",
+				reply,
+				results: args.actionResults,
+				actions: args.actions,
+			})
+		) {
+			return { verdict: "allow" };
+		}
+		return {
+			verdict: "reject",
+			kind: "empty_tracked_state",
+			fallbackReply:
+				"I wasn't able to check your tracked tasks and notes just now, so I can't give you an accurate picture of the day. Want me to try again?",
+		};
+	}
+	return { verdict: "allow" };
+}
 
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
@@ -3104,6 +3331,54 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				clearReply: true,
 				debug: ["transcription mode active — reply suppressed, turn recorded"],
 			}),
+		},
+		{
+			name: "core.direct_registered_capability_request",
+			description:
+				"Promotes a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
+			priority: 15,
+			shouldRun: ({ message, messageHandler, runtime }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				if (isSubAgentCompletionArtifact(message)) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const text = getUserMessageText(message)?.trim() ?? "";
+				return (
+					text.length > 0 &&
+					getDirectActionRoutingRules(runtime).some((rule) =>
+						rule.matches(text),
+					)
+				);
+			},
+			evaluate: async ({ message, state, runtime, userRoles }) => {
+				const routes = await resolveEligibleDirectActionRoutes({
+					runtime,
+					message,
+					state,
+					userRoles,
+				});
+				if (routes.length === 0) return undefined;
+				const candidateActions = uniqueActionNames(
+					routes.map(({ action }) => action.name),
+				);
+				const contexts = mergeAgentContexts(
+					...routes.map(({ rule }) => rule.contexts),
+				);
+				return {
+					requiresTool: true,
+					addContexts: contexts,
+					addCandidateActions: candidateActions,
+					// A deterministic read route must not emit Stage-1's speculative
+					// answer or a progress bubble before the real action responds.
+					clearReply: true,
+					debug: [
+						`current request matched executable direct route(s): ${routes.map(({ rule }) => rule.id).join(", ")} -> ${candidateActions.join(", ")}`,
+					],
+				};
+			},
 		},
 		{
 			name: "core.simple_registered_action_request",
@@ -3214,6 +3489,42 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					reply: "On it.",
 					debug: [
 						`simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
+					],
+				};
+			},
+		},
+		{
+			name: "core.simple_empty_tracked_state_claim",
+			description:
+				"Replaces an empty tracked-work claim with an honest unavailable state when a declared recap route has no executable reader.",
+			priority: 30,
+			shouldRun: ({ message, messageHandler, runtime }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				if (!replyClaimsEmptyTrackedWorkState(reply)) return false;
+				const text = getUserMessageText(message)?.trim();
+				return (
+					Boolean(text) &&
+					getDirectActionRoutingRules(runtime).some((rule) =>
+						rule.matches(text ?? ""),
+					)
+				);
+			},
+			evaluate: () => {
+				return {
+					requiresTool: false,
+					reply:
+						"I wasn't able to check your tracked tasks and notes just now, so I can't give you an accurate picture of the day. Want me to try again?",
+					debug: [
+						"blocked an empty tracked-work assertion because the declared read route was unavailable",
 					],
 				};
 			},
@@ -6294,8 +6605,8 @@ function collectPreviousActionResults(
 				? { verifiedUserFacing: step.result.verifiedUserFacing }
 				: {}),
 			data: {
-				actionName,
 				...actionData,
+				actionName,
 			},
 			...(values ? { values } : {}),
 			...(error !== undefined ? { error } : {}),
@@ -7139,6 +7450,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						state: args.state,
 						messageHandler,
 						availableContexts,
+						userRoles: [senderRole],
 						evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 					}),
 				);
@@ -7585,12 +7897,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
 			: undefined;
 
-		let plannerResult: PlannerLoopResult;
-		try {
-			plannerResult = await timeInferenceSpan("message:planner", () =>
+		const invokePlannerLoop = (
+			loopContext: typeof plannerContextAfterEarlyReply,
+		) =>
+			timeInferenceSpan("message:planner", () =>
 				runPlannerLoop({
 					runtime: plannerRuntime,
-					context: plannerContextAfterEarlyReply,
+					context: loopContext,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
 					requireNonTerminalToolCall,
@@ -7641,7 +7954,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								executeV5PlannedToolCall({
 									runtime: args.runtime,
 									toolCall,
-									plannerContext: plannerContextAfterEarlyReply,
+									plannerContext: loopContext,
 									executorCtx: buildV5ExecutorContext({
 										message: args.message,
 										state: plannerState,
@@ -7677,6 +7990,10 @@ export async function runV5MessageRuntimeStage1(args: {
 						),
 				}),
 			);
+
+		let plannerResult: PlannerLoopResult;
+		try {
+			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
 			const fallbackResult = await runDeterministicPlannerFallback({
 				runtime: args.runtime,
@@ -7729,6 +8046,34 @@ export async function runV5MessageRuntimeStage1(args: {
 			} else {
 				plannerResult = fallbackResult;
 			}
+		}
+
+		// The planner's terminal prose may ship without executing REPLY. Validate
+		// state assertions against capability-specific results from this same
+		// trajectory; rejection fails closed here and never starts a fresh loop
+		// that could discard results or replay a partial side effect.
+		const egressActionResults = collectPreviousActionResults(
+			plannerResult.trajectory,
+			exposedPlannerActions,
+		);
+		const plannedReplyEgressDecision = evaluatePlannedReplyEgress({
+			reply: String(plannerResult.finalMessage ?? ""),
+			actionResults: egressActionResults,
+			actions: args.runtime.actions,
+		});
+		if (plannedReplyEgressDecision.verdict === "reject") {
+			args.runtime.logger?.warn?.(
+				{
+					src: "service:message",
+					agentId: args.runtime.agentId,
+					kind: plannedReplyEgressDecision.kind,
+				},
+				"[message] replaced a planned reply whose state claim lacked a matching action receipt",
+			);
+			plannerResult = {
+				...plannerResult,
+				finalMessage: plannedReplyEgressDecision.fallbackReply,
+			};
 		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
@@ -9334,6 +9679,83 @@ async function _composeContinuationDecisionState(
  */
 export class DefaultMessageService implements IMessageService {
 	/**
+	 * Rooms (keyed `${agentId}:${roomId}`) holding a reply that has been handed
+	 * to the delivery callback but whose response-memory row is not yet stored
+	 * (the simple-path deliver-then-persist window). A follow-up turn triggered
+	 * by that delivery must not compose its prompt until the reply row exists,
+	 * or RECENT_MESSAGES silently omits the reply the user is answering —
+	 * `processMessage` awaits these barriers before any composition. Barriers
+	 * always settle (resolve, never reject) whether the persist succeeds or
+	 * fails; a persist failure propagates in the owning turn, never to the
+	 * waiting turn. Same-room turns otherwise still run concurrently — turn
+	 * preemption (`turnControllers.abortTurn` fired from a later message's
+	 * Stage-1 field evaluators) depends on that, so this is deliberately a
+	 * narrow persistence barrier, not per-room handler serialization.
+	 */
+	private readonly pendingReplyPersists = new Map<string, Set<Promise<void>>>();
+
+	private pendingReplyPersistKey(runtime: IAgentRuntime, roomId: UUID): string {
+		return `${runtime.agentId}:${roomId}`;
+	}
+
+	/**
+	 * Register a delivered-reply persistence barrier. Must be called BEFORE the
+	 * delivery callback fires: the instant the reply reaches the client a
+	 * follow-up can arrive, and its compose must find this barrier already
+	 * pending. Returns the release fn; call it once the persist settles
+	 * (success or failure). Constraint for callback authors: a delivery
+	 * callback must never await a same-room `handleMessage` to completion —
+	 * that turn waits on a barrier this turn only releases after the callback
+	 * returns. Fire-and-forget from a callback is fine.
+	 */
+	private registerPendingReplyPersist(
+		runtime: IAgentRuntime,
+		roomId: UUID,
+	): () => void {
+		const key = this.pendingReplyPersistKey(runtime, roomId);
+		let release: (() => void) | undefined;
+		const barrier = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let barriers = this.pendingReplyPersists.get(key);
+		if (!barriers) {
+			barriers = new Set();
+			this.pendingReplyPersists.set(key, barriers);
+		}
+		barriers.add(barrier);
+		return () => {
+			release?.();
+			const set = this.pendingReplyPersists.get(key);
+			if (set) {
+				set.delete(barrier);
+				if (set.size === 0) {
+					this.pendingReplyPersists.delete(key);
+				}
+			}
+		};
+	}
+
+	/**
+	 * Wait until every reply already handed to a delivery callback for this
+	 * room has finished persisting. Snapshot semantics: only barriers pending
+	 * at call time are awaited — exactly the causal set for a follow-up
+	 * reacting to a delivered reply. Rooms with no pending barrier (the
+	 * overwhelmingly common case) return without awaiting anything.
+	 */
+	private async awaitDeliveredReplyPersistence(
+		runtime: IAgentRuntime,
+		roomId: UUID,
+	): Promise<void> {
+		const barriers = this.pendingReplyPersists.get(
+			this.pendingReplyPersistKey(runtime, roomId),
+		);
+		if (!barriers || barriers.size === 0) return;
+		await timeInferenceSpan("message:compose:reply-persist-barrier", () =>
+			Promise.all([...barriers]),
+		);
+	}
+
+	/**
 	 * Main message handling entry point
 	 */
 	async handleMessage(
@@ -10018,6 +10440,13 @@ export class DefaultMessageService implements IMessageService {
 		startTime: number,
 		opts: ResolvedMessageOptions,
 	): Promise<MessageProcessingResult> {
+		// A reply already handed to a delivery callback for this room may still
+		// be persisting (deliver-then-persist fast path). Composing now would
+		// read RECENT_MESSAGES without the reply this message may be answering,
+		// so wait for those persists to settle first. Same room only, a few
+		// hundred ms worst case, and a no-op when nothing is pending.
+		await this.awaitDeliveredReplyPersistence(runtime, message.roomId);
+
 		const agentResponses = latestResponseIds.get(runtime.agentId);
 		if (!agentResponses) throw new Error("Agent responses map not found");
 
@@ -10863,8 +11292,17 @@ export class DefaultMessageService implements IMessageService {
 			if (responseContent) {
 				const deliverableResponseContent = responseContent;
 				if (mode === "simple") {
-					// Keep content hooks and DB write before delivery so the wire
-					// response and stored memory match. Do not put MESSAGE_SENT
+					// Keep content hooks before delivery so the wire response carries
+					// their edits. The response-memory DB write runs AFTER the
+					// callback: it is the largest post-LLM cost on this path
+					// (~250-440ms measured via the message:delivery:persistence
+					// InferenceTiming span) and the user must not wait on it. The
+					// persist is still awaited before this turn proceeds, so
+					// everything downstream in THIS turn (MESSAGE_SENT, post-turn
+					// evaluators, followUp) observes the stored reply — and a
+					// CONCURRENT same-room turn started off this delivery waits on
+					// the pendingReplyPersists barrier before composing, so its
+					// RECENT_MESSAGES read observes it too. Do not put MESSAGE_SENT
 					// handlers or post-turn evaluators before the callback; they are
 					// side effects and must not stall user-visible streaming.
 					await timeInferenceSpan("message:delivery:hooks", () =>
@@ -10880,44 +11318,89 @@ export class DefaultMessageService implements IMessageService {
 							}),
 						),
 					);
-					if (responseMessages.length > 0) {
-						for (const responseMemory of responseMessages) {
-							if (
-								responseMemory.id &&
-								persistedEarlyReplyIds.has(responseMemory.id)
-							) {
-								continue;
-							}
-							responseMemory.content = deliverableResponseContent;
-							if (shouldSkipResponseMemoryPersistence(responseMemory)) {
-								runtime.logger.debug(
-									{ src: "service:message", memoryId: responseMemory.id },
-									"Skipping transient response memory persistence",
-								);
-								continue;
-							}
-							runtime.logger.debug(
-								{ src: "service:message", memoryId: responseMemory.id },
-								"Saving response to memory",
-							);
-							await timeInferenceSpan("message:delivery:persistence", () =>
-								runtime.createMemory(responseMemory, "messages"),
-							);
-
-							detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
-								this.emitMessageSent(
-									runtime,
-									responseMemory,
-									message.content.source ?? "messageHandler",
+					// Registered BEFORE the callback fires so a follow-up prompted
+					// by this delivery always finds the barrier pending; released
+					// (never rejected) in the finally once the persist settles.
+					const releaseReplyPersistBarrier = this.registerPendingReplyPersist(
+						runtime,
+						message.roomId,
+					);
+					try {
+						// Settled-result handling instead of catch blocks: a delivery
+						// failure must not skip the persist, and callers classify the
+						// raw delivery error by identity (TURN_ABORTED / generation-
+						// timeout checks at the conversation route), so both failures
+						// are rethrown UNCHANGED after both operations settle.
+						let deliveryOutcome: PromiseSettledResult<unknown> = {
+							status: "fulfilled",
+							value: undefined,
+						};
+						if (callback) {
+							[deliveryOutcome] = await Promise.allSettled([
+								timeInferenceSpan("message:delivery:callback", () =>
+									callback(deliverableResponseContent),
 								),
-							);
+							]);
+							if (deliveryOutcome.status === "fulfilled") {
+								markInference(INFERENCE_MARKS.replyDelivered);
+							}
 						}
-					}
-					if (callback) {
-						await timeInferenceSpan("message:delivery:callback", () =>
-							callback(deliverableResponseContent),
-						);
-						markInference(INFERENCE_MARKS.replyDelivered);
+						const [persistOutcome] = await Promise.allSettled([
+							(async () => {
+								for (const responseMemory of responseMessages) {
+									if (
+										responseMemory.id &&
+										persistedEarlyReplyIds.has(responseMemory.id)
+									) {
+										continue;
+									}
+									responseMemory.content = deliverableResponseContent;
+									if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+										runtime.logger.debug(
+											{ src: "service:message", memoryId: responseMemory.id },
+											"Skipping transient response memory persistence",
+										);
+										continue;
+									}
+									runtime.logger.debug(
+										{ src: "service:message", memoryId: responseMemory.id },
+										"Saving response to memory",
+									);
+									await timeInferenceSpan("message:delivery:persistence", () =>
+										runtime.createMemory(responseMemory, "messages"),
+									);
+
+									detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+										this.emitMessageSent(
+											runtime,
+											responseMemory,
+											message.content.source ?? "messageHandler",
+										),
+									);
+								}
+							})(),
+						]);
+						if (persistOutcome.status === "rejected") {
+							// The persist failure (data loss) outranks the delivery
+							// failure for propagation; the held delivery failure is
+							// reported so it is never silently superseded.
+							if (deliveryOutcome.status === "rejected") {
+								runtime.reportError(
+									"MessageService.simpleDeliveryCallback",
+									deliveryOutcome.reason,
+									{
+										agentId: runtime.agentId,
+										roomId: message.roomId,
+									},
+								);
+							}
+							throw persistOutcome.reason;
+						}
+						if (deliveryOutcome.status === "rejected") {
+							throw deliveryOutcome.reason;
+						}
+					} finally {
+						releaseReplyPersistBarrier();
 					}
 				}
 			}

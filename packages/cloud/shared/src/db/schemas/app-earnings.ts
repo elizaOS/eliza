@@ -107,6 +107,11 @@ export const appEarningsTransactions = pgTable(
       .where(
         sql`${table.type} = 'withdrawal' AND (${table.metadata} ->> 'idempotencyKey') IS NOT NULL`,
       ),
+    creator_shadow_idempotency_unique: uniqueIndex(
+      "app_earnings_tx_creator_shadow_idempotency_uidx",
+    )
+      .on(sql`(${table.metadata} ->> 'redeemableLedgerEntryId')`)
+      .where(sql`(${table.metadata} ->> 'redeemableLedgerEntryId') IS NOT NULL`),
   }),
 );
 

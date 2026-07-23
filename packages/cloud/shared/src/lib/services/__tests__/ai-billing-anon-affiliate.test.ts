@@ -29,11 +29,12 @@ mock.module("../../pricing", () => ({
 
 // Active affiliate code (10% markup) owned by AFFILIATE_USER by default.
 const AFFILIATE_USER = "00000000-0000-4000-8000-00000000aff1";
+const AFFILIATE_CODE_ID = "00000000-0000-4000-8000-00000000a001";
 let affiliateUserId = AFFILIATE_USER;
 mock.module("../../../db/repositories/affiliates", () => ({
   affiliatesRepository: {
     getAffiliateCodeByCode: mock(async () => ({
-      id: "aff-code-1",
+      id: AFFILIATE_CODE_ID,
       user_id: affiliateUserId,
       markup_percent: "10",
       is_active: true,
@@ -41,10 +42,14 @@ mock.module("../../../db/repositories/affiliates", () => ({
   },
 }));
 
-// Spy the cashable-earnings write — the thing that must NOT fire for anon.
-const addEarnings = mock(async () => ({ ledgerId: "l1" }));
-mock.module("../redeemable-earnings", () => ({
-  redeemableEarningsService: { addEarnings },
+// The outbox processor is the post-settlement cashable-earnings boundary.
+const processAffiliatePayoutBySource = mock(async () => ({
+  processed: true,
+  ledgerEntryId: "00000000-0000-4000-8000-00000000fee1",
+}));
+mock.module("../affiliate-payout-outbox", () => ({
+  AFFILIATE_PAYOUT_CONTRACT_VERSION: 1,
+  processAffiliatePayoutBySource,
 }));
 
 const reserve = mock(async (params: unknown) => ({
@@ -78,35 +83,54 @@ const BASE = {
 
 beforeEach(() => {
   affiliateUserId = AFFILIATE_USER;
-  addEarnings.mockClear();
+  processAffiliatePayoutBySource.mockClear();
   reserve.mockClear();
 });
+
+const ATTRIBUTION = {
+  affiliateCodeId: AFFILIATE_CODE_ID,
+  affiliateUserId: AFFILIATE_USER,
+  affiliateCode: "PARTNER10",
+  markupPercent: 0.1,
+};
+
+function payoutReservation(
+  sourceId: string,
+  reconcile = mock(async (actualCost: number) => ({
+    reservedAmount: actualCost,
+    actualCost,
+    reservationTransactionId: "reservation-1",
+    settlementTransactionIds: [],
+    adjustmentType: "none" as const,
+  })),
+) {
+  return {
+    reservedAmount: 1,
+    reservationTransactionId: "reservation-1",
+    affiliateAttribution: ATTRIBUTION,
+    affiliatePayoutSourceId: sourceId,
+    reconcile,
+  };
+}
 
 describe("billUsage affiliate earnings guard (#10853)", () => {
   test("anonymous request with an affiliate code mints NO affiliate earnings", async () => {
     const result = await billUsage({ ...BASE, organizationId: "anonymous" }, USAGE);
 
     // The load-bearing assertion: no cashable earnings created for a $0 request.
-    expect(addEarnings).not.toHaveBeenCalled();
+    expect(processAffiliatePayoutBySource).not.toHaveBeenCalled();
     // And the affiliate markup was not layered onto the (uncollected) cost.
     expect(result.totalCost).toBeCloseTo(0.3, 6);
   });
 
-  test("a real paying org with collected settlement STILL credits the affiliate (regression)", async () => {
+  test("a real paying org settles the payout-aware reservation without projecting inline", async () => {
     const result = await billUsage(
       { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
       USAGE,
+      payoutReservation("ai_billing:affiliate:paying-org"),
     );
 
-    expect(addEarnings).toHaveBeenCalledTimes(1);
-    const arg = addEarnings.mock.calls[0][0] as {
-      userId: string;
-      amount: number;
-      source: string;
-    };
-    expect(arg.userId).toBe(AFFILIATE_USER);
-    expect(arg.source).toBe("affiliate");
-    expect(arg.amount).toBeCloseTo(0.3 * 0.1, 6); // 10% of the $0.30 cost
+    expect(processAffiliatePayoutBySource).not.toHaveBeenCalled();
     // Affiliate markup was layered onto the charged cost for the paying org.
     expect(result.totalCost).toBeCloseTo(0.3 + 0.03, 6);
   });
@@ -119,7 +143,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
       USAGE,
     );
 
-    expect(addEarnings).not.toHaveBeenCalled();
+    expect(processAffiliatePayoutBySource).not.toHaveBeenCalled();
     expect(result.totalCost).toBeCloseTo(0.3, 6);
   });
 
@@ -136,15 +160,42 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
       { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
       USAGE,
       {
+        ...payoutReservation("ai_billing:affiliate:uncollected", reconcile),
         reservedAmount: 0.3,
-        reservationTransactionId: "reservation-1",
         reconcile,
       },
     );
 
     expect(result.totalCost).toBeCloseTo(0.33, 6);
     expect(reconcile).toHaveBeenCalledWith(result.totalCost);
-    expect(addEarnings).not.toHaveBeenCalled();
+    expect(processAffiliatePayoutBySource).not.toHaveBeenCalled();
+  });
+
+  test("partially collected affiliate markup remains on the durable settlement path", async () => {
+    const reconcile = mock(async (actualCost: number) => ({
+      reservedAmount: 0.315,
+      actualCost,
+      reservationTransactionId: "reservation-partial-1",
+      settlementTransactionIds: [],
+      adjustmentType: "uncollected_overage" as const,
+    }));
+
+    const result = await billUsage(
+      {
+        ...BASE,
+        organizationId: "00000000-0000-4000-8000-0000000000org",
+        requestId: "req-partial-affiliate",
+      },
+      USAGE,
+      {
+        ...payoutReservation("ai_billing:affiliate:req-partial-affiliate", reconcile),
+        reservedAmount: 0.315,
+        reservationTransactionId: "reservation-partial-1",
+      },
+    );
+
+    expect(result.totalCost).toBeCloseTo(0.33, 6);
+    expect(processAffiliatePayoutBySource).not.toHaveBeenCalled();
   });
 
   test("flat billing uncollectable overage does not mint affiliate earnings", async () => {
@@ -160,6 +211,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
       { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
       { totalCost: 1, baseTotalCost: 1 / 1.2, platformMarkup: 1 - 1 / 1.2 },
       {
+        ...payoutReservation("ai_billing:affiliate:flat-uncollected", reconcile),
         reservedAmount: 1,
         reservationTransactionId: "reservation-flat-1",
         reconcile,
@@ -168,7 +220,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
 
     expect(result.totalCost).toBeCloseTo(1.1, 6);
     expect(reconcile).toHaveBeenCalledWith(result.totalCost);
-    expect(addEarnings).not.toHaveBeenCalled();
+    expect(processAffiliatePayoutBySource).not.toHaveBeenCalled();
   });
 
   test("pre-request reservation includes affiliate markup so payout is backed upfront", async () => {
@@ -179,8 +231,17 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
     );
 
     expect(reserve).toHaveBeenCalledTimes(1);
-    const arg = reserve.mock.calls[0][0] as { estimatedCostMultiplier?: number };
+    const arg = reserve.mock.calls[0][0] as {
+      estimatedCostMultiplier?: number;
+      metadata?: {
+        affiliatePayout?: {
+          sourceId?: string;
+          attribution?: typeof ATTRIBUTION;
+        };
+      };
+    };
     expect(arg.estimatedCostMultiplier).toBeCloseTo(1.1, 6);
+    expect(arg.metadata?.affiliatePayout?.attribution).toEqual(ATTRIBUTION);
   });
 
   test("self-referral does not inflate the pre-request reservation", async () => {
@@ -196,7 +257,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
     expect(arg.estimatedCostMultiplier).toBeUndefined();
   });
 
-  test("paying org affiliate earnings use deterministic request sourceId for dedupe", async () => {
+  test("paying org affiliate settlement accepts the deterministic request source id", async () => {
     await billUsage(
       {
         ...BASE,
@@ -204,6 +265,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
         requestId: "req-affiliate-1",
       },
       USAGE,
+      payoutReservation("ai_billing:affiliate:req-affiliate-1"),
     );
     await billUsage(
       {
@@ -212,20 +274,24 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
         requestId: "req-affiliate-1",
       },
       USAGE,
+      payoutReservation("ai_billing:affiliate:req-affiliate-1"),
     );
 
-    expect(addEarnings).toHaveBeenCalledTimes(2);
-    const first = addEarnings.mock.calls[0][0] as {
-      sourceId: string;
-      dedupeBySourceId: boolean;
-    };
-    const second = addEarnings.mock.calls[1][0] as {
-      sourceId: string;
-      dedupeBySourceId: boolean;
-    };
-    expect(first.sourceId).toBe("ai_billing:usage:req-affiliate-1");
-    expect(second.sourceId).toBe(first.sourceId);
-    expect(first.dedupeBySourceId).toBe(true);
-    expect(second.dedupeBySourceId).toBe(true);
+    expect(processAffiliatePayoutBySource).not.toHaveBeenCalled();
+  });
+
+  test("affiliate ledger projection cannot add latency or fail the model response", async () => {
+    processAffiliatePayoutBySource.mockRejectedValueOnce(new Error("earnings ledger unavailable"));
+    const result = await billUsage(
+      {
+        ...BASE,
+        organizationId: "00000000-0000-4000-8000-0000000000org",
+        requestId: "req-affiliate-retry",
+      },
+      USAGE,
+      payoutReservation("ai_billing:affiliate:req-affiliate-retry"),
+    );
+    expect(result.totalCost).toBeCloseTo(0.33, 6);
+    expect(processAffiliatePayoutBySource).not.toHaveBeenCalled();
   });
 });

@@ -11,6 +11,7 @@
  * - Support streaming and non-streaming responses
  */
 
+import Decimal from "decimal.js";
 import { affiliatesRepository } from "../../db/repositories/affiliates";
 import type { UsageRecord } from "../../db/repositories/usage-records";
 import {
@@ -21,6 +22,11 @@ import {
   PLATFORM_MARKUP_MULTIPLIER,
 } from "../pricing";
 import { logger } from "../utils/logger";
+import {
+  type AffiliateBillingAttribution,
+  isAffiliateBillingAttribution,
+} from "./affiliate-billing-attribution";
+import { AFFILIATE_PAYOUT_CONTRACT_VERSION } from "./affiliate-payout-outbox";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
 import {
   type CreditReconciliationResult,
@@ -29,7 +35,6 @@ import {
   InsufficientCreditsError,
 } from "./credits";
 import { generationsService } from "./generations";
-import { redeemableEarningsService } from "./redeemable-earnings";
 import { usageService } from "./usage";
 
 // ============================================================================
@@ -64,6 +69,11 @@ export interface BillingContext {
   metadata?: Record<string, unknown>;
   description?: string;
   affiliateCode?: string | null;
+  /**
+   * Immutable affiliate policy captured from cache before provider dispatch.
+   * Explicit null means the admission decision found no billable affiliate.
+   */
+  affiliateAttribution?: AffiliateBillingAttribution | null;
 }
 
 export interface BillingResult {
@@ -87,36 +97,82 @@ export interface FlatBillingCost {
   platformMarkup: number;
 }
 
-function getAffiliateEarningsSourceId(
-  context: BillingContext,
-  operation: "usage" | "flat",
-): string {
+export function getAffiliatePayoutSourceId(context: BillingContext): string {
   const requestId = context.requestId?.trim();
   if (requestId) {
-    return `ai_billing:${operation}:${requestId}`;
+    return `ai_billing:affiliate:${requestId}`;
   }
-  return `legacy_${crypto.randomUUID()}`;
+  return `ai_billing:affiliate:${crypto.randomUUID()}`;
 }
 
-type AffiliateCodeRecord = NonNullable<
-  Awaited<ReturnType<typeof affiliatesRepository.getAffiliateCodeByCode>>
->;
-
 interface BillableAffiliate {
-  affiliate: AffiliateCodeRecord;
+  attribution: AffiliateBillingAttribution;
   markupPercent: number;
+}
+
+function affiliatePayoutMetadata(
+  context: BillingContext,
+  affiliate: BillableAffiliate | null,
+  sourceId: string | null,
+): Record<string, unknown> | undefined {
+  const metadata = context.metadata ?? {};
+  if (!affiliate || !sourceId) {
+    return Object.keys(metadata).length > 0 ? metadata : undefined;
+  }
+  return {
+    ...metadata,
+    affiliatePayout: {
+      version: AFFILIATE_PAYOUT_CONTRACT_VERSION,
+      sourceId,
+      attribution: affiliate.attribution,
+      model: context.model,
+    },
+  };
+}
+
+export class AffiliateBillingAttributionError extends Error {
+  constructor(message: string) {
+    super(`Invalid affiliate billing attribution: ${message}`);
+    this.name = "AffiliateBillingAttributionError";
+  }
+}
+
+function validatePinnedAffiliate(
+  context: BillingContext,
+  attribution: AffiliateBillingAttribution,
+): BillableAffiliate {
+  if (!isAffiliateBillingAttribution(attribution)) {
+    throw new AffiliateBillingAttributionError("required fields are malformed");
+  }
+  if (context.organizationId === "anonymous") {
+    throw new AffiliateBillingAttributionError("anonymous work cannot carry a cashable payout");
+  }
+  if (attribution.affiliateUserId === context.userId) {
+    throw new AffiliateBillingAttributionError("self-referral reached the billing contract");
+  }
+  return { attribution, markupPercent: attribution.markupPercent };
 }
 
 async function resolveBillableAffiliate(
   context: BillingContext,
 ): Promise<BillableAffiliate | null> {
+  if (Object.hasOwn(context, "affiliateAttribution")) {
+    return context.affiliateAttribution
+      ? validatePinnedAffiliate(context, context.affiliateAttribution)
+      : null;
+  }
   if (!context.affiliateCode || context.organizationId === "anonymous") return null;
   const affiliate = await affiliatesRepository.getAffiliateCodeByCode(context.affiliateCode);
   if (!affiliate?.is_active) return null;
   if (affiliate.user_id === context.userId) return null;
   const markupPercent = Number(affiliate.markup_percent) / 100;
   if (!Number.isFinite(markupPercent) || markupPercent <= 0) return null;
-  return { affiliate, markupPercent };
+  return validatePinnedAffiliate(context, {
+    affiliateCodeId: affiliate.id,
+    affiliateUserId: affiliate.user_id,
+    affiliateCode: context.affiliateCode,
+    markupPercent,
+  });
 }
 
 function collectedTotalCost(
@@ -141,6 +197,53 @@ function collectedAffiliateEarnings(params: {
   const collected = collectedTotalCost(params.totalCost, params.reservation, params.reconciliation);
   const collectedMarkup = Math.max(0, collected - params.preAffiliateTotalCost);
   return Math.min(params.nominalEarnings, collectedMarkup);
+}
+
+function isRedeemableAffiliateAmount(amount: number): boolean {
+  const decimal = new Decimal(amount);
+  if (!decimal.isFinite() || decimal.isNegative()) {
+    throw new AffiliateBillingAttributionError("computed payout amount is malformed");
+  }
+  return decimal.toDecimalPlaces(4).gt(0);
+}
+
+export class AffiliateBillingReservationRequiredError extends Error {
+  constructor() {
+    super("Affiliate billing requires a payout-aware credit reservation");
+    this.name = "AffiliateBillingReservationRequiredError";
+  }
+}
+
+function contextWithReservationAffiliate(
+  context: BillingContext,
+  reservation: CreditReservation | undefined,
+): BillingContext {
+  if (reservation && Object.hasOwn(reservation, "affiliateAttribution")) {
+    return {
+      ...context,
+      affiliateAttribution: reservation.affiliateAttribution ?? null,
+    };
+  }
+  return context;
+}
+
+function requireAffiliatePayoutSource(
+  affiliate: BillableAffiliate,
+  reservation: CreditReservation | undefined,
+): string {
+  const sourceId = reservation?.affiliatePayoutSourceId?.trim();
+  const pinned = reservation?.affiliateAttribution;
+  if (
+    !sourceId ||
+    !pinned ||
+    pinned.affiliateCodeId !== affiliate.attribution.affiliateCodeId ||
+    pinned.affiliateUserId !== affiliate.attribution.affiliateUserId ||
+    pinned.affiliateCode !== affiliate.attribution.affiliateCode ||
+    pinned.markupPercent !== affiliate.attribution.markupPercent
+  ) {
+    throw new AffiliateBillingReservationRequiredError();
+  }
+  return sourceId;
 }
 
 // ============================================================================
@@ -218,8 +321,9 @@ export async function reserveCredits(
   const provider = context.provider ?? getProviderFromModel(context.model);
   const normalizedModel = normalizeModelName(context.model);
   const affiliate = await resolveBillableAffiliate(context);
-
-  return await creditsService.reserve({
+  const affiliatePayoutSourceId = affiliate ? getAffiliatePayoutSourceId(context) : null;
+  const metadata = affiliatePayoutMetadata(context, affiliate, affiliatePayoutSourceId);
+  const reservation = await creditsService.reserve({
     organizationId: context.organizationId,
     model: normalizedModel,
     provider,
@@ -227,9 +331,58 @@ export async function reserveCredits(
     estimatedInputTokens,
     estimatedOutputTokens,
     ...(affiliate && { estimatedCostMultiplier: 1 + affiliate.markupPercent }),
+    metadata: {
+      ...(metadata ?? {}),
+      ...(context.requestId && { requestId: context.requestId }),
+    },
+    ...(context.requestId && {
+      idempotencyKey: `inference-gate:${context.requestId}`,
+    }),
     userId: context.userId,
     description: context.description ?? `AI request: ${context.model}`,
   });
+  return {
+    ...reservation,
+    affiliateAttribution: affiliate?.attribution ?? null,
+    affiliatePayoutSourceId,
+  };
+}
+
+/**
+ * Reserve a provider-priced flat operation with the same pinned affiliate
+ * contract used by token-priced inference. The fixed amount is pre-affiliate.
+ */
+export async function reserveFlatUsageCredits(
+  context: BillingContext,
+  cost: FlatBillingCost,
+  options?: { idempotencyKey?: string },
+): Promise<CreditReservation> {
+  const preAffiliateCost = new Decimal(cost.totalCost);
+  if (!preAffiliateCost.isFinite() || !preAffiliateCost.gt(0)) {
+    throw new Error("Flat billing reservation cost must be positive and finite");
+  }
+  const affiliate = await resolveBillableAffiliate(context);
+  const affiliatePayoutSourceId = affiliate ? getAffiliatePayoutSourceId(context) : null;
+  const reservedAmount = preAffiliateCost
+    .times(affiliate ? new Decimal(affiliate.markupPercent).plus(1) : 1)
+    .toNumber();
+  const metadata = affiliatePayoutMetadata(context, affiliate, affiliatePayoutSourceId);
+  const reservation = await creditsService.reserve({
+    organizationId: context.organizationId,
+    userId: context.userId,
+    description: context.description ?? `AI request: ${context.model}`,
+    amount: reservedAmount,
+    model: normalizeModelName(context.model),
+    provider: context.provider ?? getProviderFromModel(context.model),
+    billingSource: context.billingSource,
+    ...(metadata && { metadata }),
+    ...(options?.idempotencyKey && { idempotencyKey: options.idempotencyKey }),
+  });
+  return {
+    ...reservation,
+    affiliateAttribution: affiliate?.attribution ?? null,
+    affiliatePayoutSourceId,
+  };
 }
 
 /**
@@ -294,7 +447,9 @@ export async function billUsage(
   let platformMarkup = totalCost - baseTotalCost;
 
   const preAffiliateTotalCost = totalCost;
-  const affiliate = await resolveBillableAffiliate(context);
+  const affiliate = await resolveBillableAffiliate(
+    contextWithReservationAffiliate(context, reservation),
+  );
   const affiliateMarkupPercent = affiliate?.markupPercent ?? 0;
   const affiliateEarnings = preAffiliateTotalCost * affiliateMarkupPercent;
 
@@ -330,30 +485,8 @@ export async function billUsage(
       reconciliation,
     });
 
-    if (payableEarnings > 0) {
-      const sourceId = getAffiliateEarningsSourceId(context, "usage");
-
-      await redeemableEarningsService
-        .addEarnings({
-          userId: affiliate.affiliate.user_id,
-          amount: payableEarnings,
-          source: "affiliate",
-          sourceId,
-          description: `Affiliate markup earnings from model: ${context.model}`,
-          metadata: {
-            appId: null,
-            model: context.model,
-            tokens: totalTokens,
-          },
-          dedupeBySourceId: true,
-        })
-        .catch((err) => {
-          logger.error("[AI Billing] Failed to add affiliate earnings", {
-            error: err instanceof Error ? err.message : String(err),
-            affiliateId: affiliate.affiliate.id,
-            amount: payableEarnings,
-          });
-        });
+    if (isRedeemableAffiliateAmount(payableEarnings)) {
+      requireAffiliatePayoutSource(affiliate, reservation);
     }
   }
 
@@ -382,10 +515,10 @@ export async function billFlatUsage(
   const platformMarkup = cost.platformMarkup;
   let inputCost = totalCost;
   const outputCost = 0;
-  const provider = context.provider ?? getProviderFromModel(context.model);
-
   const preAffiliateTotalCost = totalCost;
-  const affiliate = await resolveBillableAffiliate(context);
+  const affiliate = await resolveBillableAffiliate(
+    contextWithReservationAffiliate(context, reservation),
+  );
   const affiliateEarnings = affiliate ? preAffiliateTotalCost * affiliate.markupPercent : 0;
 
   if (affiliateEarnings > 0) {
@@ -412,31 +545,8 @@ export async function billFlatUsage(
       reconciliation,
     });
 
-    if (payableEarnings > 0) {
-      const sourceId = getAffiliateEarningsSourceId(context, "flat");
-
-      await redeemableEarningsService
-        .addEarnings({
-          userId: affiliate.affiliate.user_id,
-          amount: payableEarnings,
-          source: "affiliate",
-          sourceId,
-          description: `Affiliate markup earnings from model: ${context.model}`,
-          metadata: {
-            appId: null,
-            model: context.model,
-            provider,
-            flatOperation: true,
-          },
-          dedupeBySourceId: true,
-        })
-        .catch((err) => {
-          logger.error("[AI Billing] Failed to add flat-operation affiliate earnings", {
-            error: err instanceof Error ? err.message : String(err),
-            affiliateId: affiliate.affiliate.id,
-            amount: payableEarnings,
-          });
-        });
+    if (isRedeemableAffiliateAmount(payableEarnings)) {
+      requireAffiliatePayoutSource(affiliate, reservation);
     }
   }
 

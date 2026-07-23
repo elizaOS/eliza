@@ -20,9 +20,19 @@ const requireAuthOrApiKeyWithOrg = mock(async () => ({
   apiKey: null,
 }));
 const assertSafeForPublicUse = mock(async () => undefined);
-const reserveCredits = mock(async () => ({
+const payoutAwareReservation = {
+  reservedAmount: 0.0012,
+  reservationTransactionId: "reservation-1",
+  affiliateAttribution: {
+    affiliateCodeId: "00000000-0000-4000-8000-000000000010",
+    affiliateUserId: "00000000-0000-4000-8000-000000000011",
+    affiliateCode: "PARTNER",
+    markupPercent: 0.2,
+  },
+  affiliatePayoutSourceId: "ai_billing:affiliate:voice-tts-test",
   reconcile: async () => undefined,
-}));
+};
+const reserveCredits = mock(async () => payoutAwareReservation);
 const billUsage = mock(async (..._args: unknown[]) => ({
   totalCost: 0.001,
   baseTotalCost: 0.001,
@@ -143,6 +153,7 @@ mock.module("@/lib/services/ai-pricing", () => ({
 
 mock.module("@/lib/services/ai-billing", () => ({
   billFlatUsage: billUsage,
+  reserveFlatUsageCredits: reserveCredits,
 }));
 
 mock.module("@/lib/services/credits", () => {
@@ -151,7 +162,6 @@ mock.module("@/lib/services/credits", () => {
   }
   return {
     InsufficientCreditsError,
-    creditsService: { reserve: reserveCredits },
   };
 });
 
@@ -279,6 +289,7 @@ describe("POST /api/v1/voice/tts provider selection", () => {
       provider: "cartesia",
       billingSource: "elevenlabs",
     });
+    expect(billUsage.mock.calls[0]?.[2]).toBe(payoutAwareReservation);
     await Promise.resolve();
     expect(createUsage.mock.calls[0]?.[0]).toMatchObject({
       provider: "cartesia",
@@ -467,11 +478,16 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(response.status).toBe(200);
     expect(reserveCredits).toHaveBeenCalledTimes(1);
     const keyedArgs = reserveCredits.mock.calls[0] as unknown as
-      | [Record<string, unknown>]
+      | [
+          Record<string, unknown>,
+          Record<string, unknown>,
+          { idempotencyKey?: string } | undefined,
+        ]
       | undefined;
-    expect(keyedArgs?.[0]).toMatchObject({
+    expect(keyedArgs?.[2]).toMatchObject({
       idempotencyKey: "utt-abc",
     });
+    expect(keyedArgs?.[0].requestId).toBe("voice-tts:org-1:utt-abc");
   });
 
   test("without the header the reservation stays unkeyed (behavior unchanged)", async () => {
@@ -481,9 +497,13 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     });
     expect(response.status).toBe(200);
     const unkeyedArgs = reserveCredits.mock.calls[0] as unknown as
-      | [Record<string, unknown>]
+      | [
+          Record<string, unknown>,
+          Record<string, unknown>,
+          { idempotencyKey?: string } | undefined,
+        ]
       | undefined;
-    expect("idempotencyKey" in (unkeyedArgs?.[0] ?? {})).toBe(false);
+    expect(unkeyedArgs?.[2]).toBeUndefined();
   });
 
   test("rejects an invalid body and an over-long text before any reservation", async () => {

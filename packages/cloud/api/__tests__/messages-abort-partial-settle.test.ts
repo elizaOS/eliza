@@ -20,14 +20,15 @@
  *      signal aborted, enqueue/iteration throw racing ahead of onAbort).
  *   3. onAbort + the catch backstop racing each other single-flight the
  *      settlement (billed and recorded exactly once).
- *   4. A provider error (no client abort) still refunds the hold in full and
- *      bills nothing.
+ *   4. An explicit provider 4xx rejection refunds in full, while ambiguous
+ *      transport/5xx failures and errors after a delta retain the estimate.
  *
  * `streamText`, `getLanguageModel`, and the billing boundary are mocked at the
  * module seam; the settler and reservation math are real.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { APICallError } from "ai";
 
 // Spread the real module so other test files importing from "ai" are not
 // stranded by the process-wide registry replacement; restore in afterAll.
@@ -154,7 +155,11 @@ const REQUEST = {
 /** Invoke handleStream with the test's settler and a fixed request shape. */
 function callStreaming(
   settleReservation: (actualCost: number) => Promise<unknown> | unknown,
-  options: { estimatedInputTokens?: number; signal?: AbortSignal } = {},
+  options: {
+    estimatedInputTokens?: number;
+    signal?: AbortSignal;
+    settleUnknownReservation?: () => Promise<unknown> | unknown;
+  } = {},
 ) {
   return handleStream(
     MODEL,
@@ -172,6 +177,8 @@ function callStreaming(
     options.signal,
     30_000,
     settleReservation as never,
+    (options.settleUnknownReservation ?? (async () => null)) as never,
+    undefined,
     "gateway" as never,
     "req-test-abort",
   );
@@ -317,8 +324,54 @@ describe("streaming messages — client abort settles delivered usage (#11513)",
   });
 });
 
-describe("streaming messages — provider failure still refunds in full", () => {
-  test("fullStream error without a client abort releases the reservation to 0 and bills nothing", async () => {
+describe("streaming messages — finished stream without reported usage", () => {
+  test("onFinish with an empty usage record settles the admitted estimate, not $0", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    let onFinishPromise: Promise<unknown> | undefined;
+
+    streamTextImpl = (config) => {
+      const onFinish = config.onFinish as
+        | ((event: { text: string; totalUsage: unknown }) => Promise<unknown>)
+        | undefined;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-start", id: "text-1" };
+          yield { type: "text-delta", id: "text-1", text: "delivered reply" };
+          yield {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+          };
+          // SDK contract: onFinish fires after the stream completes; a provider
+          // that never reported usage hands it an empty record.
+          onFinishPromise = Promise.resolve(
+            onFinish?.({ text: "delivered reply", totalUsage: {} }),
+          );
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      settleUnknownReservation: () => settle(ledger.hold),
+    });
+    const body = await res.text();
+    expect(onFinishPromise).toBeDefined();
+    await onFinishPromise;
+
+    // Delivered output with unreported usage retains the admitted estimate —
+    // "not reported" must never settle as "free".
+    expect(body).toContain("delivered reply");
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(recordUsageAnalytics).not.toHaveBeenCalled();
+  });
+});
+
+describe("streaming messages — provider failure terminal settlement", () => {
+  test("ambiguous fullStream failure without output settles the admitted estimate", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);
     expect(ledger.balance).toBe(100 - 0.015);
@@ -329,22 +382,69 @@ describe("streaming messages — provider failure still refunds in full", () => 
       })(),
     });
 
-    const res = await callStreaming(settle);
+    const res = await callStreaming(settle, {
+      settleUnknownReservation: () => settle(ledger.hold),
+    });
     const body = await res.text();
 
     expect(ledger.reconcileCalls).toBe(1);
-    expect(ledger.actualCosts).toEqual([0]);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
     expect(billUsage).not.toHaveBeenCalled();
     expect(recordUsageAnalytics).not.toHaveBeenCalled();
     expect(body).toContain('"type":"error"');
+  });
+
+  test("provider error after a delivered delta settles the admitted estimate", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const err = new Error("provider stream failed after output");
+    let onErrorPromise: Promise<unknown> | undefined;
+
+    streamTextImpl = (config) => {
+      const onError = config.onError as
+        | ((event: { error: unknown }) => Promise<unknown>)
+        | undefined;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-start", id: "text-1" };
+          yield {
+            type: "text-delta",
+            id: "text-1",
+            text: "delivered before failure",
+          };
+          onErrorPromise = Promise.resolve(onError?.({ error: err }));
+          await onErrorPromise;
+          yield { type: "error", error: err };
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      settleUnknownReservation: () => settle(ledger.hold),
+    });
+    const body = await res.text();
+    await onErrorPromise;
+
+    expect(body).toContain("delivered before failure");
+    expect(body).toContain('"type":"error"');
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
+    expect(billUsage).not.toHaveBeenCalled();
   });
 
   test("onError provider failure releases the reservation to 0", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);
 
-    const err = new Error("provider returned 429");
+    const err = new APICallError({
+      message: "provider returned 429",
+      url: "https://provider.example/v1/messages",
+      requestBodyValues: {},
+      statusCode: 429,
+      isRetryable: true,
+    });
     let onErrorPromise: Promise<unknown> | undefined;
     streamTextImpl = (config) => {
       const onError = config.onError as

@@ -235,8 +235,9 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
         timeout: 20_000,
         env,
       });
-      expect(defaultRun.status).toBe(0);
-      expect(`${defaultRun.stdout ?? ""}${defaultRun.stderr ?? ""}`).toContain("1 pass");
+      const defaultOutput = `${defaultRun.stdout ?? ""}${defaultRun.stderr ?? ""}`;
+      expect(defaultRun.status, defaultOutput).toBe(0);
+      expect(defaultOutput).toContain("1 pass");
 
       for (const overrideArgs of [["--timeout", "50"], ["--timeout=50"]]) {
         const overrideRun = spawnSync("node", [wrapperPath, probePath, ...overrideArgs], {

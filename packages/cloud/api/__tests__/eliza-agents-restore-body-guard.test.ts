@@ -81,6 +81,8 @@ const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 let pgliteReady = true;
 let closeDb: (() => Promise<void>) | undefined;
 let app: Hono<AppEnv>;
+let bridgeHandlePost: typeof import("../v1/eliza/agents/[agentId]/bridge/route").__agentBridgeTestHooks.handlePost;
+let streamHandlePost: typeof import("../v1/eliza/agents/[agentId]/stream/route").__agentStreamTestHooks.handlePost;
 
 beforeAll(async () => {
   try {
@@ -165,12 +167,16 @@ beforeAll(async () => {
     const restoreRoute = (
       await import("../v1/eliza/agents/[agentId]/restore/route")
     ).default;
-    const bridgeRoute = (
-      await import("../v1/eliza/agents/[agentId]/bridge/route")
-    ).default;
-    const streamRoute = (
-      await import("../v1/eliza/agents/[agentId]/stream/route")
-    ).default;
+    const bridgeModule = await import(
+      "../v1/eliza/agents/[agentId]/bridge/route"
+    );
+    const streamModule = await import(
+      "../v1/eliza/agents/[agentId]/stream/route"
+    );
+    const bridgeRoute = bridgeModule.default;
+    const streamRoute = streamModule.default;
+    bridgeHandlePost = bridgeModule.__agentBridgeTestHooks.handlePost;
+    streamHandlePost = streamModule.__agentStreamTestHooks.handlePost;
     app = new Hono<AppEnv>();
     app.route("/api/v1/eliza/agents/:agentId/restore", restoreRoute);
     app.route("/api/v1/eliza/agents/:agentId/bridge", bridgeRoute);
@@ -200,6 +206,21 @@ function post(path: string, body?: BodyInit, contentType = "application/json") {
     ENV,
   );
 }
+
+function directHandlerRequest(body?: BodyInit): Request {
+  return new Request("http://test.local", {
+    method: "POST",
+    headers:
+      body === undefined ? undefined : { "Content-Type": "application/json" },
+    ...(body === undefined ? {} : { body }),
+  });
+}
+
+const directHandlerScope = {
+  agent: {},
+  namespace: {},
+  executionCtx: {},
+} as never;
 
 describe("POST /api/v1/eliza/agents/:agentId/restore — body + ownership guards", () => {
   test("bodyless restore-latest with no backups is a typed 404, not a 500", async () => {
@@ -296,7 +317,11 @@ describe("POST /bridge and /stream — malformed body guards", () => {
   test("bodyless bridge call is a typed 400, not a 500", async () => {
     expect(pgliteReady).toBe(true);
 
-    const res = await post(`/api/v1/eliza/agents/${AGENT_A}/bridge`);
+    const res = await bridgeHandlePost(
+      directHandlerRequest(),
+      { params: Promise.resolve({ agentId: AGENT_A }) },
+      directHandlerScope,
+    );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { success: boolean; error: string };
     expect(body.success).toBe(false);
@@ -306,14 +331,22 @@ describe("POST /bridge and /stream — malformed body guards", () => {
   test("malformed bridge body is a typed 400", async () => {
     expect(pgliteReady).toBe(true);
 
-    const res = await post(`/api/v1/eliza/agents/${AGENT_A}/bridge`, "{nope");
+    const res = await bridgeHandlePost(
+      directHandlerRequest("{nope"),
+      { params: Promise.resolve({ agentId: AGENT_A }) },
+      directHandlerScope,
+    );
     expect(res.status).toBe(400);
   });
 
   test("bodyless stream call is a typed 400, not a 500", async () => {
     expect(pgliteReady).toBe(true);
 
-    const res = await post(`/api/v1/eliza/agents/${AGENT_A}/stream`);
+    const res = await streamHandlePost(
+      directHandlerRequest(),
+      { params: Promise.resolve({ agentId: AGENT_A }) },
+      directHandlerScope,
+    );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Invalid JSON body");
@@ -322,9 +355,10 @@ describe("POST /bridge and /stream — malformed body guards", () => {
   test("valid-JSON invalid-schema bridge body still returns the zod 400 (guard is parse-only)", async () => {
     expect(pgliteReady).toBe(true);
 
-    const res = await post(
-      `/api/v1/eliza/agents/${AGENT_A}/bridge`,
-      JSON.stringify({ method: "message.send" }),
+    const res = await bridgeHandlePost(
+      directHandlerRequest(JSON.stringify({ method: "message.send" })),
+      { params: Promise.resolve({ agentId: AGENT_A }) },
+      directHandlerScope,
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };

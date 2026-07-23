@@ -4,12 +4,14 @@
  * re-run on every hot-path pricing lookup. Regression guard for the prod
  * latency issue where the failing fetch ran 2x per chat request.
  */
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
 import {
   __clearPersistedPricingCache,
+  AiPricingCacheUnavailableError,
   getCachedExternalEntries,
   getCachedPersistedEntries,
+  getCachedTextPricingRates,
 } from "./cache";
 import type { PreparedPricingEntry } from "./types";
 
@@ -152,4 +154,30 @@ test("persisted: concurrent rejection is shared and a later request retries", as
   }
   expect(calls).toBe(1);
   await expect(getCachedPersistedEntries("reject", async () => [])).resolves.toEqual([]);
+});
+
+test("cache-only token pricing without a Worker lifetime is explicitly unavailable", async () => {
+  __clearPersistedPricingCache();
+  const loader = mock(async () => ({
+    inputUnitPrice: 0.000001,
+    outputUnitPrice: 0.000004,
+  }));
+
+  await expect(
+    getCachedTextPricingRates("worker-lifetime-required", { input: true, output: true }, loader, {
+      cacheOnly: true,
+    }),
+  ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+  expect(loader).not.toHaveBeenCalled();
+});
+
+test("canonical token pricing rejects an incomplete required rate instead of fabricating zero", async () => {
+  __clearPersistedPricingCache();
+
+  await expect(
+    getCachedTextPricingRates("missing-output-rate", { input: true, output: true }, async () => ({
+      inputUnitPrice: 0.000001,
+      outputUnitPrice: null,
+    })),
+  ).rejects.toThrow("invalid or incomplete token rates");
 });

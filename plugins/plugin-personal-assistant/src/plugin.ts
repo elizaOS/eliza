@@ -19,6 +19,7 @@ import {
   type Plugin,
   promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
+  registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
   registerSendPolicy,
   type ShortcutDefinition,
@@ -105,6 +106,7 @@ import {
 } from "./followup/index.js";
 import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
+import { createTrackedWorkRecapDirectRoutingRule } from "./lifeops/briefing/direct-routing.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import {
   createChannelRegistry,
@@ -979,6 +981,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     registerCandidateActionBackstopRule(
       runtime,
       createScheduledTaskCandidateBackstopRule(),
+    );
+    registerDirectActionRoutingRule(
+      runtime,
+      createTrackedWorkRecapDirectRoutingRule(),
     );
 
     // First-party adapters backed by LifeOps services. Gmail and X replace the

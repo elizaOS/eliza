@@ -101,6 +101,12 @@ export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-polic
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export {
+	__resetDirectActionRoutingRulesForTests,
+	type DirectActionRoutingRule,
+	getDirectActionRoutingRules,
+	registerDirectActionRoutingRule,
+} from "./runtime/direct-action-routing";
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";

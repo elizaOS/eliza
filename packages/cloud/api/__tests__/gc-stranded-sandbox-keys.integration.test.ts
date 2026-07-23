@@ -12,6 +12,7 @@ const OLD_ORPHAN = "00000000-0000-4000-8000-0000000000c1";
 const LIVE_SANDBOX = "00000000-0000-4000-8000-0000000000c2";
 const YOUNG_ORPHAN = "00000000-0000-4000-8000-0000000000c3";
 const CRON_SECRET = "integration-cron-secret";
+const PGLITE_TIMEOUT_MS = 60_000;
 
 let dbWrite: typeof import("@/db/helpers").dbWrite;
 let closeDatabaseConnectionsForTests: typeof import("@/db/client").closeDatabaseConnectionsForTests;
@@ -46,13 +47,13 @@ beforeAll(async () => {
       deleted_at timestamp
     )
   `);
-});
+}, PGLITE_TIMEOUT_MS);
 
 afterAll(async () => {
   await dbWrite.execute(sql`DROP TABLE IF EXISTS api_keys`);
   await dbWrite.execute(sql`DROP TABLE IF EXISTS agent_sandboxes`);
   await closeDatabaseConnectionsForTests();
-});
+}, PGLITE_TIMEOUT_MS);
 
 async function insertKey(sandboxId: string, age: "old" | "young") {
   await dbWrite.execute(sql`

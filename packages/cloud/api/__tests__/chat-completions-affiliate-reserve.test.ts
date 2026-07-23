@@ -47,6 +47,7 @@ const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
 const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
 const AFFILIATE_USER = "00000000-0000-4000-8000-00000000aff1";
+const AFFILIATE_CODE_ID = "00000000-0000-4000-8000-00000000aff2";
 
 const BASE_COST = 0.1; // deterministic base+platform cost from calculateCost
 const COST_BUFFER = 1.5; // credits.ts default (CREDIT_COST_BUFFER unset)
@@ -120,7 +121,7 @@ mock.module("@/lib/services/content-moderation", () => ({
 
 // Affiliate lookup: attacker-set 1000% markup owned by AFFILIATE_USER.
 const getAffiliateCodeByCode = mock(async () => ({
-  id: "aff-code-1",
+  id: AFFILIATE_CODE_ID,
   user_id: AFFILIATE_USER,
   markup_percent: "1000",
   is_active: true,

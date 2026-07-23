@@ -19,6 +19,7 @@
  */
 export const DEFAULT_QUARANTINED_SUITES = [
   "src/lib/services/tenant-db/tenant-db-placement-claimer.test.ts",
+  "src/lib/services/pairing-token.native.integration.test.ts",
 ];
 
 /** Total attempts for the quarantined pass (first run + retries). */

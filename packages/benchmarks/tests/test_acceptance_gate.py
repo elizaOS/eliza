@@ -1,20 +1,22 @@
 """Tests for ``scripts/acceptance_gate.py``.
 
 The acceptance gate spawns the orchestrator and calls the provider over
-HTTP. These tests mock both so we never spend real quota or launch a
-real benchmark process; the provider-forwarder tests instead run the
-REAL forwarder against a local upstream stub that stands in for the
-remote cloud proxy, so the loopback relay, per-lane bearer swap, and
-teardown are exercised over genuine sockets. The module is loaded by
-path so the tests don't depend on ``scripts/`` being a package.
+HTTP. Provider calls and benchmark work never spend real quota here. The
+timeout test does cross the real OS process boundary, while the provider
+forwarder tests run the real relay against a local upstream stub so socket
+routing, bearer replacement, and teardown are exercised. The module is
+loaded by path so the tests don't depend on ``scripts/`` being a package.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -198,6 +200,82 @@ def test_cerebras_smoke_fails_on_non_200(monkeypatch: pytest.MonkeyPatch) -> Non
     result = gate._step_cerebras_smoke()
     assert result.passed is False
     assert "non-200" in (result.error or "")
+
+
+def test_cerebras_smoke_does_not_retry_free_text_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test-123")
+    calls = 0
+
+    def _warming_response(**kwargs: Any) -> tuple[int, None, str]:
+        nonlocal calls
+        calls += 1
+        return 503, None, '{"error":"billing authorization warming"}'
+
+    monkeypatch.setattr(gate, "_cerebras_chat", _warming_response)
+    result = gate._step_cerebras_smoke()
+
+    assert result.passed is False
+    assert calls == 1
+    assert "non-200" in (result.error or "")
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator process boundary
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-group regression")
+def test_outer_timeout_terminates_separately_sessioned_grandchild(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    grandchild_pid_path = tmp_path / "grandchild.pid"
+    grandchild_script = (
+        "import os, time\n"
+        "from pathlib import Path\n"
+        f"Path({str(grandchild_pid_path)!r}).write_text(str(os.getpid()))\n"
+        "time.sleep(30)\n"
+    )
+    parent_script = (
+        "import subprocess, sys, time\n"
+        f"subprocess.Popen([sys.executable, '-c', {grandchild_script!r}], "
+        "start_new_session=True)\n"
+        "time.sleep(30)\n"
+    )
+    unrelated = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+    )
+    monkeypatch.setattr(gate, "PROCESS_TERMINATION_GRACE_S", 0.1)
+    try:
+        returncode, _stdout, stderr = gate._run_subprocess_with_timeout(
+            [sys.executable, "-c", parent_script],
+            cwd=str(tmp_path),
+            timeout_s=0.5,
+        )
+        assert returncode == -1
+        assert "timed out after 0.5s" in stderr
+        assert grandchild_pid_path.exists()
+
+        grandchild_pid = int(grandchild_pid_path.read_text())
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            status = subprocess.run(
+                ["ps", "-o", "stat=", "-p", str(grandchild_pid)],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout.strip()
+            if not status or status.startswith("Z"):
+                break
+            time.sleep(0.02)
+        assert not status or status.startswith("Z")
+        assert unrelated.poll() is None
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
 
 
 # ---------------------------------------------------------------------------

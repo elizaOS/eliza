@@ -17,6 +17,8 @@ const mockCloudToken = vi.fn<() => string | null>();
 const mockActiveServer = vi.fn();
 const mockBootConfig = vi.fn(() => ({ cloudApiBase: "https://elizacloud.ai" }));
 const mockRunRecovery = vi.fn();
+const mockSetAgentToken = vi.fn();
+const mockIsAuthenticated = vi.fn(() => false);
 // Silent cookie->session recovery for the returning-PWA dead-end. Default:
 // no cookie (returns null) so pre-existing cases keep their old behavior.
 const mockEnsureCloudSession = vi.fn<() => Promise<string | null>>(async () =>
@@ -39,8 +41,14 @@ vi.mock("../config/boot-config", () => ({
 vi.mock("../state/agent-session-recovery-runner", () => ({
   runAgentSessionRecovery: (...args: unknown[]) => mockRunRecovery(...args),
 }));
+vi.mock("../api", () => ({
+  client: { setToken: (token: string) => mockSetAgentToken(token) },
+}));
 vi.mock("../state/cloud-session-refresh-for-repair", () => ({
   ensureCloudSessionForRepair: () => mockEnsureCloudSession(),
+}));
+vi.mock("./useAuthStatus", () => ({
+  useIsAuthenticated: () => mockIsAuthenticated(),
 }));
 const mockClearStalePairCredentialsForAgent = vi.fn();
 vi.mock("../state/cloud-pair-token", () => ({
@@ -59,11 +67,13 @@ function Probe(props: {
   active: boolean;
   reason?: "remote_auth_required" | "remote_password_not_configured";
   onStatus: (s: string) => void;
+  onRecovered?: () => void;
 }) {
   const status = useAgentSessionRecovery({
     active: props.active,
     reason: props.reason,
     navigate: STABLE_NAVIGATE,
+    onRecovered: props.onRecovered,
   });
   props.onStatus(status);
   return null;
@@ -83,6 +93,7 @@ afterEach(() => {
   vi.clearAllMocks();
   // Restore the default "no cookie" behavior after clearAllMocks wipes it.
   mockEnsureCloudSession.mockImplementation(async () => Promise.resolve(null));
+  mockIsAuthenticated.mockReturnValue(false);
 });
 
 describe("useAgentSessionRecovery", () => {
@@ -159,6 +170,81 @@ describe("useAgentSessionRecovery", () => {
     );
   });
 
+  it("immediately re-probes auth after native pairing installs the fresh bearer", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+    const onRecovered = vi.fn();
+
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onRecovered={onRecovered}
+        onStatus={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(1));
+    const deps = mockRunRecovery.mock.calls[0][0] as {
+      onPairedInProcess?: (apiToken: string) => Promise<void>;
+    };
+    await deps.onPairedInProcess?.("fresh-agent-bearer");
+    expect(mockSetAgentToken).toHaveBeenCalledWith("fresh-agent-bearer");
+    expect(onRecovered).toHaveBeenCalledOnce();
+  });
+
+  it("does not re-pair again when the native auth re-probe transiently leaves the unauthenticated state", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+    const onRecovered = vi.fn();
+    const statuses: string[] = [];
+
+    const view = render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onRecovered={onRecovered}
+        onStatus={(status) => statuses.push(status)}
+      />,
+    );
+
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(1));
+    const deps = mockRunRecovery.mock.calls[0][0] as {
+      onPairedInProcess?: (apiToken: string) => Promise<void>;
+    };
+    await deps.onPairedInProcess?.("fresh-agent-bearer");
+    expect(onRecovered).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <Probe
+        active={false}
+        reason={undefined}
+        onRecovered={onRecovered}
+        onStatus={(status) => statuses.push(status)}
+      />,
+    );
+    await waitFor(() => expect(statuses.at(-1)).toBe("idle"));
+
+    view.rerender(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onRecovered={onRecovered}
+        onStatus={(status) => statuses.push(status)}
+      />,
+    );
+    await waitFor(() => expect(statuses.at(-1)).toBe("cloud-retry-required"));
+    expect(mockRunRecovery).toHaveBeenCalledTimes(1);
+  });
+
   it("stays idle (wall) when there is no cloud session AND no recoverable cookie", async () => {
     mockCloudToken.mockReturnValue(null);
     mockActiveServer.mockReturnValue(cloudServer("agent-1"));
@@ -176,6 +262,28 @@ describe("useAgentSessionRecovery", () => {
     await waitFor(() => {
       // Ends on idle so the notice/wall renders honestly.
       expect(statuses[statuses.length - 1]).toBe("idle");
+    });
+    expect(mockRunRecovery).not.toHaveBeenCalled();
+  });
+
+  it("shows Cloud reauth when a managed native target has no recoverable session", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue(null);
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(s) => statuses.push(s)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses[statuses.length - 1]).toBe("cloud-reauth-required");
     });
     expect(mockRunRecovery).not.toHaveBeenCalled();
   });
@@ -243,7 +351,7 @@ describe("useAgentSessionRecovery", () => {
     expect(mockRunRecovery).not.toHaveBeenCalled();
   });
 
-  it("drops back to idle (wall) when recovery fails", async () => {
+  it("drops back to idle (wall) when browser recovery fails", async () => {
     mockCloudToken.mockReturnValue("steward.jwt.token");
     mockActiveServer.mockReturnValue(cloudServer("agent-1"));
     mockRunRecovery.mockResolvedValue({
@@ -265,6 +373,134 @@ describe("useAgentSessionRecovery", () => {
       // Ended back on idle so the wall renders.
       expect(statuses[statuses.length - 1]).toBe("idle");
     });
+  });
+
+  it("routes a failed managed-native recovery to Cloud reauth, never the wall", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockResolvedValue({
+      ok: false,
+      reason: "unauthorized",
+      message: "no",
+    });
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(s) => statuses.push(s)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses[statuses.length - 1]).toBe("cloud-reauth-required");
+    });
+  });
+
+  it("keeps Cloud auth and offers retry after a transient native recovery failure", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("still-valid.steward.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockResolvedValue({
+      ok: false,
+      reason: "error",
+      message: "network unavailable",
+    });
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(status) => statuses.push(status)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses[statuses.length - 1]).toBe("cloud-retry-required");
+    });
+    expect(mockRunRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes account or agent action failures to Cloud management", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("still-valid.steward.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockResolvedValue({
+      ok: false,
+      reason: "manage-required",
+      message: "Insufficient credits",
+    });
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(status) => statuses.push(status)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses[statuses.length - 1]).toBe("cloud-manage-required");
+    });
+  });
+
+  it("keeps the owner-password wall for a native self-hosted target", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue({
+      kind: "remote" as const,
+      id: "remote:vps",
+      label: "VPS",
+      apiBase: "https://box.example.com",
+    });
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(s) => statuses.push(s)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses[statuses.length - 1]).toBe("idle");
+    });
+    expect(mockRunRecovery).not.toHaveBeenCalled();
+  });
+
+  it("routes resolver-ineligible managed agents to Cloud management without a reload retry loop", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("still-valid.steward.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_password_not_configured"
+        onStatus={(status) => statuses.push(status)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses[statuses.length - 1]).toBe("cloud-manage-required");
+    });
+    expect(mockRunRecovery).not.toHaveBeenCalled();
   });
 
   it("does not attempt recovery for the password-not-configured wall", async () => {

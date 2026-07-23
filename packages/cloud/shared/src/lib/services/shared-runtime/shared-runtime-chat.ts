@@ -9,9 +9,13 @@
 import crypto from "node:crypto";
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { UserCharacter } from "../../../db/repositories/characters";
-import { InsufficientCreditsError as InsufficientCreditsApiError } from "../../api/errors";
+import {
+  InsufficientCreditsError as InsufficientCreditsApiError,
+  RateLimitError,
+} from "../../api/errors";
 import { cache } from "../../cache/client";
 import { CacheTTL } from "../../cache/keys";
+import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
 import { getProviderFromModel } from "../../pricing";
 import { logger } from "../../utils/logger";
 import { settleOffResponsePath } from "../../utils/settle-off-response-path";
@@ -24,9 +28,14 @@ import {
   recordUsageAnalytics,
 } from "../ai-billing";
 import { aiBillingRecordsService } from "../ai-billing-records";
-import type { CreditReconciliationResult } from "../credits";
+import type { CreditReconciliationResult, CreditReservation } from "../credits";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import { isInferenceAdmissionDispatchMarkError } from "../inference-admission-gate";
 import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
+import {
+  isKnownPreDispatchProviderConfigurationError,
+  isKnownUnacceptedProviderError,
+} from "../inference-provider-outcome";
 import { admitOrganizationInference } from "../organization-inference-admission";
 import {
   type RunSharedAgentTurnResult,
@@ -134,17 +143,32 @@ async function characterFor(
 ): Promise<SharedAgentCharacter> {
   const config = record(agent.agent_config) ?? {};
   const configuredCharacter = record(config.character) ?? config;
-  const linked = agent.character_id
-    ? options.cacheOnly
-      ? await cache.get<UserCharacter>(`character:data:${agent.character_id}`)
-      : await import("../../../db/repositories/characters").then(({ userCharactersRepository }) =>
+  let linked: UserCharacter | null | undefined;
+  if (agent.character_id) {
+    if (options.cacheOnly) {
+      try {
+        linked = await cache.get<UserCharacter>(`character:data:${agent.character_id}`);
+      } catch {
+        // error-policy:J4 a cache dependency failure cannot fall through to
+        // the linked-character repository on an inference request.
+        throw new SharedRuntimeCacheWarmingError("Character cache is unavailable. Retry shortly.");
+      }
+    } else {
+      linked = await import("../../../db/repositories/characters").then(
+        ({ userCharactersRepository }) =>
           userCharactersRepository.findByIdInOrganization(
             agent.character_id!,
             agent.organization_id,
           ),
-        )
-    : undefined;
+      );
+    }
+  }
   if (options.cacheOnly && agent.character_id && !linked) {
+    if (!options.executionCtx) {
+      throw new SharedRuntimeCacheWarmingError(
+        "Character cache context is unavailable. Retry shortly.",
+      );
+    }
     const characterId = agent.character_id;
     const hydration = import("../../../db/repositories/characters")
       .then(({ userCharactersRepository }) =>
@@ -164,8 +188,7 @@ async function characterFor(
           error: error instanceof Error ? error.message : String(error),
         });
       });
-    if (options.executionCtx) options.executionCtx.waitUntil(hydration);
-    else void hydration;
+    options.executionCtx.waitUntil(hydration);
     throw new SharedRuntimeCacheWarmingError("Character cache is warming. Retry shortly.");
   }
   if (linked && linked.organization_id !== agent.organization_id) {
@@ -239,7 +262,10 @@ interface BillingTurn {
   };
   idempotencyKey: string;
   estimatedInputTokens: number;
+  reservation?: CreditReservation;
   settle(actualCost: number): Promise<CreditReconciliationResult | null>;
+  settleUnknown(): Promise<CreditReconciliationResult | null>;
+  markProviderDispatched?(): Promise<void>;
 }
 
 async function admitTurn(
@@ -268,10 +294,37 @@ async function admitTurn(
       channelId: roomId,
       executionTier: agent.execution_tier,
       idempotencyKey,
-      prompt: text,
       runtime: "shared",
     },
   };
+  let rateLimited: Response | null;
+  try {
+    rateLimited = await enforceOrgRateLimit(agent.organization_id, "completions", {
+      cacheOnly: Boolean(executionCtx),
+      executionCtx,
+    });
+  } catch (error) {
+    // error-policy:J1 the shared-runtime boundary keeps policy hydration off
+    // the response path and exposes a single retryable cache-warming signal.
+    if (error instanceof OrgRateLimitCacheNotReadyError) {
+      throw new SharedRuntimeCacheWarmingError(
+        "Rate-limit authorization cache is warming. Retry shortly.",
+      );
+    }
+    throw error;
+  }
+  if (rateLimited) {
+    if (rateLimited.status === 429) {
+      const retryAfterValue = Number.parseInt(rateLimited.headers.get("Retry-After") ?? "", 10);
+      throw new RateLimitError(
+        "Organization rate limit exceeded.",
+        Number.isFinite(retryAfterValue) ? retryAfterValue : undefined,
+      );
+    }
+    throw new SharedRuntimeCacheWarmingError(
+      "Rate-limit authorization is unavailable. Retry shortly.",
+    );
+  }
   let admission: Awaited<ReturnType<typeof admitOrganizationInference>>;
   try {
     admission = await admitOrganizationInference({
@@ -292,7 +345,10 @@ async function admitTurn(
     context,
     idempotencyKey,
     estimatedInputTokens,
+    reservation: admission.reservation,
     settle: admission.settle,
+    settleUnknown: admission.settleUnknown,
+    markProviderDispatched: admission.markProviderDispatched,
   };
 }
 
@@ -307,6 +363,7 @@ async function finishBilling(
     const result = await billUsage(
       billing.context,
       billingUsage(reply, usage, billing.estimatedInputTokens),
+      billing.reservation,
     );
     const reconciliation = await billing.settle(result.totalCost);
     const record = await recordUsageAnalytics(billing.context, result, {
@@ -324,15 +381,16 @@ async function finishBilling(
       });
     }
   } catch (error) {
-    // error-policy:J1 the reply may already be delivered. The settler releases
-    // pre-meter admission at zero or retries the first observed actual cost.
+    // error-policy:J1 the reply may already be delivered, so an unavailable
+    // meter is not evidence of zero provider work. Preserve the admitted
+    // estimate unless an earlier actual-cost settlement already won.
     try {
-      await billing.settle(0);
+      await billing.settleUnknown();
     } catch (settleError) {
       // error-policy:J7 a settler that already failed (the deferred settler
       // replays its first settlement promise) must not mask the original
       // billing error below or escape as an unhandled waitUntil rejection.
-      logger.warn("[SharedRuntimeChatService] zero-settle after billing failure also failed", {
+      logger.warn("[SharedRuntimeChatService] unknown-settle after billing failure also failed", {
         agentId: agent.id,
         error: settleError instanceof Error ? settleError.message : String(settleError),
       });
@@ -342,6 +400,62 @@ async function finishBilling(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+async function settleAmbiguousProviderWork(
+  agent: AgentSandbox,
+  billing: BillingTurn,
+  reason: string,
+): Promise<void> {
+  try {
+    await billing.settleUnknown();
+  } catch (error) {
+    // error-policy:J7 the original turn/stream failure remains the user-facing
+    // boundary; the still-held admission lease preserves the monetary failure
+    // for a later keyed retry or reconciliation.
+    logger.error("[SharedRuntimeChatService] ambiguous provider settlement failed", {
+      agentId: agent.id,
+      reason,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function settleAmbiguousProviderWorkOffPath(
+  agent: AgentSandbox,
+  billing: BillingTurn | null,
+  executionCtx: BridgeExecutionContext | undefined,
+  reason: string,
+): Promise<void> {
+  if (!billing) return Promise.resolve();
+  return settleOffResponsePath(executionCtx, () =>
+    settleAmbiguousProviderWork(agent, billing, reason),
+  );
+}
+
+function isProvablyZeroProviderFailure(error: unknown): boolean {
+  return (
+    isInferenceAdmissionDispatchMarkError(error) ||
+    isKnownPreDispatchProviderConfigurationError(error) ||
+    isKnownUnacceptedProviderError(error)
+  );
+}
+
+function settleFailedProviderWorkOffPath(
+  agent: AgentSandbox,
+  billing: BillingTurn | null,
+  executionCtx: BridgeExecutionContext | undefined,
+  error: unknown,
+  reason: string,
+  providerOutputObserved = false,
+): Promise<void> {
+  if (!billing) return Promise.resolve();
+  if (!providerOutputObserved && isProvablyZeroProviderFailure(error)) {
+    return settleOffResponsePath(executionCtx, async () => {
+      await billing.settle(0);
+    });
+  }
+  return settleAmbiguousProviderWorkOffPath(agent, billing, executionCtx, reason);
 }
 
 function sseError(message: string): Response {
@@ -359,8 +473,11 @@ export class SharedRuntimeChatService {
     return await loadHistory(agentId, channelId(agentId, { roomId }), store);
   }
 
-  async getCharacter(agent: AgentSandbox): Promise<SharedAgentCharacter> {
-    return await characterFor(agent, { cacheOnly: false });
+  async getCharacter(
+    agent: AgentSandbox,
+    executionCtx: BridgeExecutionContext,
+  ): Promise<SharedAgentCharacter> {
+    return await characterFor(agent, { cacheOnly: true, executionCtx });
   }
 
   async bridge(
@@ -423,13 +540,29 @@ export class SharedRuntimeChatService {
       throw error;
     }
 
-    let turnCompleted = false;
+    let turn: RunSharedAgentTurnResult;
     try {
-      const turn: RunSharedAgentTurnResult = await runSharedAgentTurn({
+      turn = await runSharedAgentTurn({
         character,
         history,
         message: text,
+        onProviderDispatch: billing?.markProviderDispatched,
       });
+    } catch (error) {
+      await settleFailedProviderWorkOffPath(
+        agent,
+        billing,
+        options.executionCtx,
+        error,
+        "bridge provider invocation failed",
+      );
+      throw error;
+    }
+
+    let turnCompleted = false;
+    let turnIsProvablyFree = false;
+    try {
+      turnIsProvablyFree = turn.degraded || Boolean(turn.navIntent);
       if (turn.degraded) {
         await billing?.settle(0);
       } else {
@@ -459,7 +592,18 @@ export class SharedRuntimeChatService {
       turnCompleted = true;
       return response;
     } finally {
-      if (!turnCompleted) await billing?.settle(0);
+      if (!turnCompleted) {
+        if (turnIsProvablyFree) {
+          await billing?.settle(0);
+        } else {
+          await settleAmbiguousProviderWorkOffPath(
+            agent,
+            billing,
+            options.executionCtx,
+            "bridge turn failed after admission",
+          );
+        }
+      }
     }
   }
 
@@ -491,11 +635,24 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
-    const turn = await runSharedAgentTurnStream({
-      character,
-      history,
-      message: text,
-    });
+    let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
+    try {
+      turn = await runSharedAgentTurnStream({
+        character,
+        history,
+        message: text,
+        onProviderDispatch: billing?.markProviderDispatched,
+      });
+    } catch (error) {
+      await settleFailedProviderWorkOffPath(
+        agent,
+        billing,
+        options.executionCtx,
+        error,
+        "stream setup failed after admission",
+      );
+      throw error;
+    }
     if (turn.degraded) {
       await billing?.settle(0);
       return new Response(turn.reply ?? "", {
@@ -503,7 +660,12 @@ export class SharedRuntimeChatService {
       });
     }
     if (!turn.parts) {
-      await billing?.settle(0);
+      await settleAmbiguousProviderWorkOffPath(
+        agent,
+        billing,
+        options.executionCtx,
+        "stream returned without a provider body",
+      );
       return sseError("Shared runtime stream did not start");
     }
 
@@ -513,6 +675,7 @@ export class SharedRuntimeChatService {
       start: async (controller) => {
         let reply = "";
         let finished = false;
+        let terminalSettlementStarted = false;
         try {
           for await (const part of turn.parts!) {
             if (part.type === "text-delta") {
@@ -529,7 +692,13 @@ export class SharedRuntimeChatService {
             if (!finalReply) {
               // An empty completion is a failed turn: never fabricate, persist,
               // or bill a placeholder reply (repo policy: throw, never fabricate).
-              await billing?.settle(0);
+              terminalSettlementStarted = true;
+              await settleAmbiguousProviderWorkOffPath(
+                agent,
+                billing,
+                options.executionCtx,
+                "provider completed without visible output",
+              );
               controller.enqueue(
                 encoder.encode(
                   `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream produced an empty reply" })}\n\n`,
@@ -553,8 +722,10 @@ export class SharedRuntimeChatService {
               options.historyStore,
             );
             if (turn.navIntent) {
+              terminalSettlementStarted = true;
               await billing?.settle(0);
             } else if (billing) {
+              terminalSettlementStarted = true;
               await settleOffResponsePath(options.executionCtx, () =>
                 finishBilling(agent, billing, finalReply, text, part.usage),
               );
@@ -569,7 +740,13 @@ export class SharedRuntimeChatService {
             controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(done)}\n\n`));
           }
           if (!finished) {
-            await billing?.settle(0);
+            terminalSettlementStarted = true;
+            await settleAmbiguousProviderWorkOffPath(
+              agent,
+              billing,
+              options.executionCtx,
+              "provider stream ended without completion",
+            );
             controller.enqueue(
               encoder.encode(
                 `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
@@ -578,7 +755,17 @@ export class SharedRuntimeChatService {
           }
         } catch (error) {
           // error-policy:J1 partial SSE cannot become an HTTP error.
-          await billing?.settle(0);
+          if (!terminalSettlementStarted) {
+            terminalSettlementStarted = true;
+            await settleFailedProviderWorkOffPath(
+              agent,
+              billing,
+              options.executionCtx,
+              error,
+              "provider stream failed after dispatch",
+              reply.length > 0,
+            );
+          }
           logger.warn("[SharedRuntimeChatService] stream failed", {
             agentId: agent.id,
             error: error instanceof Error ? error.message : String(error),

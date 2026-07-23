@@ -23,9 +23,9 @@
  *      inline (no-executionCtx) fallback path.
  *   4. Abort mid-stream with an executionCtx still records the delivered
  *      partial usage (the abort settle path is unchanged by the deferral).
- *   5. A deferred billing failure logs and releases the reservation, but never
- *      breaks the already-sent response (stream already ended with
- *      message_stop; non-stream already returned 200 with provider usage).
+ *   5. A deferred billing failure logs and conservatively settles the admitted
+ *      estimate, but never breaks the already-sent response (stream already
+ *      ended with message_stop; non-stream already returned provider usage).
  *   6. A stray late onError racing a deferred onFinish cannot double-settle
  *      (the settlement promise is cached synchronously inside onFinish).
  *
@@ -35,6 +35,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { APICallError } from "ai";
 
 // Spread the real module so other test files importing from "ai" are not
 // stranded by the process-wide registry replacement; restore in afterAll.
@@ -256,6 +257,7 @@ function callStreaming(
       capture(): void;
       emit(): void;
     };
+    settleUnknownReservation?: () => Promise<unknown> | unknown;
   } = {},
 ) {
   return handleStream(
@@ -274,6 +276,8 @@ function callStreaming(
     options.signal,
     30_000,
     settleReservation as never,
+    (options.settleUnknownReservation ?? (async () => null)) as never,
+    undefined,
     "gateway" as never,
     "req-test-offpath",
     options.executionCtx,
@@ -290,6 +294,7 @@ function callNonStreaming(
       capture(): void;
       emit(): void;
     };
+    settleUnknownReservation?: () => Promise<unknown> | unknown;
   } = {},
 ) {
   return handleNonStream(
@@ -307,6 +312,8 @@ function callNonStreaming(
     undefined,
     30_000,
     settleReservation as never,
+    (options.settleUnknownReservation ?? (async () => null)) as never,
+    undefined,
     "gateway" as never,
     "req-test-offpath",
     options.executionCtx,
@@ -558,11 +565,11 @@ describe("messages route preforward telemetry", () => {
     expect(ledger.reconcileCalls).toBe(1);
   });
 
-  test("synchronous provider errors retain timing and release the reservation", async () => {
+  test("ambiguous provider failures retain timing and the admitted estimate", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     routeReservation = ledger.reservation;
     generateTextImpl = () => {
-      throw new Error("provider setup failed");
+      throw new Error("provider connection reset");
     };
 
     const response = await postMessages();
@@ -574,7 +581,7 @@ describe("messages route preforward telemetry", () => {
     expect(response.headers.get("Server-Timing")).toContain(
       "gateway_preforward;dur=",
     );
-    expect(ledger.actualCosts).toEqual([0]);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
   });
 
   test("suspended and malformed requests stop before reserve/provider dispatch", async () => {
@@ -763,7 +770,7 @@ describe("streaming messages — billing settles OFF the response path (waitUnti
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
   });
 
-  test("deferred billing failure releases the reservation and never breaks the already-sent stream", async () => {
+  test("deferred billing failure settles the admitted estimate and never breaks the already-sent stream", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);
     billUsageError = new Error("billing backend down");
@@ -776,6 +783,7 @@ describe("streaming messages — billing settles OFF the response path (waitUnti
           waitUntilPromises.push(promise);
         },
       },
+      settleUnknownReservation: () => settle(ledger.hold),
     });
     const body = await res.text();
 
@@ -784,11 +792,11 @@ describe("streaming messages — billing settles OFF the response path (waitUnti
     expect(body).toContain('"type":"message_stop"');
     expect(body).not.toContain('"type":"error"');
 
-    // The deferred chain's failure branch released the hold (settle(0)).
+    // Provider output was delivered, so unknown usage retains the admitted hold.
     await Promise.all(waitUntilPromises);
     expect(ledger.reconcileCalls).toBe(1);
-    expect(ledger.actualCosts).toEqual([0]);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
   });
 });
 
@@ -835,6 +843,42 @@ describe("non-stream messages — billing settles OFF the response path (#15414 
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
   });
 
+  test("a post-provider response failure cannot override an already-started actual settlement", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const settleUnknown = mock(() => settle(ledger.hold));
+    const result = {
+      text: TEXT,
+      usage: USAGE,
+      finishReason: "stop",
+      rawFinishReason: "stop",
+    } as Record<string, unknown>;
+    Object.defineProperty(result, "toolCalls", {
+      get() {
+        throw new Error("response projection failed");
+      },
+    });
+    generateTextImpl = () => result;
+
+    const waitUntilPromises: Promise<unknown>[] = [];
+    await expect(
+      callNonStreaming(settle, {
+        executionCtx: {
+          waitUntil(promise: Promise<unknown>) {
+            waitUntilPromises.push(promise);
+          },
+        },
+        settleUnknownReservation: settleUnknown,
+      }),
+    ).rejects.toThrow("response projection failed");
+    await Promise.all(waitUntilPromises);
+
+    expect(settleUnknown).toHaveBeenCalledTimes(1);
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - EXPECTED_COST, 10);
+  });
+
   test("deferred chain bills with EXACTLY the same args as the inline (no-executionCtx) path", async () => {
     const waitUntilPromises: Promise<unknown>[] = [];
     sdkFaithfulGeneration();
@@ -868,7 +912,7 @@ describe("non-stream messages — billing settles OFF the response path (#15414 
     expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
   });
 
-  test("deferred billing failure releases the reservation but the 200 with provider usage already went out", async () => {
+  test("deferred billing failure settles the admitted estimate after the provider response", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);
     billUsageError = new Error("billing backend down");
@@ -881,6 +925,7 @@ describe("non-stream messages — billing settles OFF the response path (#15414 
           waitUntilPromises.push(promise);
         },
       },
+      settleUnknownReservation: () => settle(ledger.hold),
     });
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
@@ -890,13 +935,14 @@ describe("non-stream messages — billing settles OFF the response path (#15414 
     expect(json.usage.output_tokens).toBe(USAGE.outputTokens);
 
     await Promise.all(waitUntilPromises);
-    // The failure branch released the hold instead of stranding it.
+    // The response proves provider work occurred, so unknown usage keeps the
+    // conservative admitted estimate instead of fabricating a zero-cost result.
     expect(ledger.reconcileCalls).toBe(1);
-    expect(ledger.actualCosts).toEqual([0]);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
   });
 
-  test("provider error before any response still refunds inline and rethrows (path unchanged)", async () => {
+  test("transport failure before a response conservatively retains the estimate", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);
     generateTextImpl = () => {
@@ -905,13 +951,31 @@ describe("non-stream messages — billing settles OFF the response path (#15414 
 
     await expect(
       callNonStreaming(settle, {
-        executionCtx: {
-          waitUntil() {
-            throw new Error("waitUntil must not be reached on this path");
-          },
-        },
+        settleUnknownReservation: () => settle(ledger.hold),
       }),
     ).rejects.toThrow("provider exploded");
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
+    expect(billUsage).not.toHaveBeenCalled();
+  });
+
+  test("an explicit provider 4xx rejection refunds because no work was accepted", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    generateTextImpl = () => {
+      throw new APICallError({
+        message: "provider rejected request",
+        url: "https://provider.example/v1/messages",
+        requestBodyValues: {},
+        statusCode: 400,
+      });
+    };
+
+    await expect(callNonStreaming(settle)).rejects.toThrow(
+      "provider rejected request",
+    );
 
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.actualCosts).toEqual([0]);

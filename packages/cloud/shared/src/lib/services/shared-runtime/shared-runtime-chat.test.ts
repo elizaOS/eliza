@@ -8,19 +8,48 @@
 process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { APICallError } from "ai";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
+let turnError: Error | null;
+let streamTurnError: Error | null;
 let admissionError: Error | null;
 let billError: Error | null;
 let billingGate: Promise<void> | null;
 let releaseBilling = () => {};
 const settleCalls: number[] = [];
+let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
+const payoutAwareReservation = {
+  reservedAmount: 0.01,
+  reservationTransactionId: "reservation-1",
+  affiliateAttribution: {
+    affiliateCodeId: "00000000-0000-4000-8000-000000000010",
+    affiliateUserId: "00000000-0000-4000-8000-000000000011",
+    affiliateCode: "PARTNER",
+    markupPercent: 0.2,
+  },
+  affiliatePayoutSourceId: "ai_billing:affiliate:shared-runtime-test",
+  reconcile: async () => undefined,
+};
 
-mock.module("../organization-inference-admission", () => ({
-  admitOrganizationInference: async (params: {
+class TestOrgRateLimitCacheNotReadyError extends Error {}
+let orgRateLimitResult: Response | null = null;
+let orgRateLimitError: Error | null = null;
+const enforceOrgRateLimit = mock(async () => {
+  if (orgRateLimitError) throw orgRateLimitError;
+  return orgRateLimitResult;
+});
+mock.module("../../middleware/rate-limit", () => ({
+  enforceOrgRateLimit,
+  OrgRateLimitCacheNotReadyError: TestOrgRateLimitCacheNotReadyError,
+}));
+
+const admitOrganizationInference = mock(
+  async (params: {
+    context?: { metadata?: Record<string, unknown> };
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   }) => {
     if (admissionError) throw admissionError;
@@ -31,8 +60,16 @@ mock.module("../organization-inference-admission", () => ({
         settleCalls.push(cost);
         return null;
       },
+      settleUnknown: async () => {
+        settleUnknownCalls++;
+        return null;
+      },
+      reservation: payoutAwareReservation,
     };
   },
+);
+mock.module("../organization-inference-admission", () => ({
+  admitOrganizationInference,
 }));
 mock.module("../ai-billing", () => ({
   estimateInputTokens: () => 12,
@@ -69,8 +106,14 @@ mock.module("../../../db/repositories/characters", () => ({
 }));
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
-  runSharedAgentTurn: async () => turn,
-  runSharedAgentTurnStream: async () => streamTurn,
+  runSharedAgentTurn: async () => {
+    if (turnError) throw turnError;
+    return turn;
+  },
+  runSharedAgentTurnStream: async () => {
+    if (streamTurnError) throw streamTurnError;
+    return streamTurn;
+  },
 }));
 
 // Sibling suites in the same bun process mock ../../cache/client globally with
@@ -106,6 +149,7 @@ mock.module("../../cache/client", () => ({
 }));
 
 const { InsufficientCreditsError } = await import("../ai-billing");
+const { InferenceAdmissionDispatchMarkError } = await import("../inference-admission-gate");
 const { SharedRuntimeChatService } = await import("./shared-runtime-chat");
 
 const agent = {
@@ -150,10 +194,17 @@ function harness() {
 
 beforeEach(() => {
   settleCalls.length = 0;
+  settleUnknownCalls = 0;
   billCalls.length = 0;
   admissionError = null;
   billError = null;
+  turnError = null;
+  streamTurnError = null;
   characterReads = 0;
+  enforceOrgRateLimit.mockClear();
+  admitOrganizationInference.mockClear();
+  orgRateLimitResult = null;
+  orgRateLimitError = null;
   billingGate = null;
   releaseBilling = () => {};
   turn = {
@@ -177,6 +228,17 @@ beforeEach(() => {
     })(),
   };
 });
+
+function wrappedProviderError(statusCode: number): Error {
+  return new Error("shared turn failed", {
+    cause: new APICallError({
+      message: `provider returned ${statusCode}`,
+      url: "https://provider.example/v1/chat/completions",
+      requestBodyValues: {},
+      statusCode,
+    }),
+  });
+}
 
 describe("SharedRuntimeChatService", () => {
   test("handles status, unknown methods, and invalid message input", async () => {
@@ -204,13 +266,54 @@ describe("SharedRuntimeChatService", () => {
     });
     const response = await service.bridge(agent, rpc, h);
     expect(response.result?.text).toBe("hello back");
+    expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
+      cacheOnly: true,
+      executionCtx: h.executionCtx,
+    });
+    const admissionContext = admitOrganizationInference.mock.calls[0]?.[0].context;
+    expect(admissionContext?.metadata).toMatchObject({
+      agentId: agent.id,
+      channelId: expect.any(String),
+      runtime: "shared",
+    });
+    expect(admissionContext?.metadata).not.toHaveProperty("prompt");
+    expect(JSON.stringify(admissionContext)).not.toContain("hello");
     expect(h.history()).toHaveLength(2);
     expect(h.background).toHaveLength(2);
     expect(settleCalls).toHaveLength(0);
     releaseBilling();
     await Promise.all(h.background);
     expect(billCalls).toHaveLength(1);
+    expect((billCalls[0] as unknown[])[2]).toBe(payoutAwareReservation);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    orgRateLimitResult = Response.json(
+      { error: "Too many requests", code: "rate_limit_exceeded" },
+      { status: 429, headers: { "Retry-After": "31" } },
+    );
+
+    await expect(service.bridge(agent, rpc, h)).rejects.toMatchObject({
+      name: "RateLimitError",
+      retryAfter: 31,
+    });
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(settleCalls).toEqual([]);
+
+    enforceOrgRateLimit.mockClear();
+    orgRateLimitResult = null;
+    orgRateLimitError = new TestOrgRateLimitCacheNotReadyError("warming");
+    await expect(service.bridge(agent, rpc, h)).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+    });
+    expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
+      cacheOnly: true,
+      executionCtx: h.executionCtx,
+    });
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
   });
 
   test("cold linked character returns warming while hydration stays off path", async () => {
@@ -231,7 +334,25 @@ describe("SharedRuntimeChatService", () => {
     expect(characterReads).toBe(1);
   });
 
-  test("degraded and failed turns release admission at zero", async () => {
+  test("cache-only character miss requires waitUntil before repository hydration", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const linkedAgent = {
+      ...agent,
+      character_id: "00000000-0000-4000-8000-000000000098",
+    };
+
+    await expect(
+      service.bridge(linkedAgent, rpc, { historyStore: h.historyStore }),
+    ).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+      message: "Character cache context is unavailable. Retry shortly.",
+    });
+    expect(characterReads).toBe(0);
+    expect(h.background).toHaveLength(0);
+  });
+
+  test("degraded turns release zero while ambiguous post-dispatch failures retain the estimate", async () => {
     const service = new SharedRuntimeChatService();
     turn = {
       degraded: true,
@@ -250,16 +371,39 @@ describe("SharedRuntimeChatService", () => {
       },
     };
     await expect(service.bridge(agent, rpc, harness())).rejects.toThrow("turn failed");
-    expect(settleCalls.at(-1)).toBe(0);
+    expect(settleUnknownCalls).toBe(1);
   });
 
-  test("billing failure is contained and retries settlement without changing cost", async () => {
+  test("settles zero for pre-provider failures and retains ambiguous provider failures", async () => {
+    const service = new SharedRuntimeChatService();
+    turnError = new Error("shared turn failed", {
+      cause: new InferenceAdmissionDispatchMarkError("dispatch acknowledgement remained ambiguous"),
+    });
+    await expect(service.bridge(agent, rpc, harness())).rejects.toThrow("shared turn failed");
+    expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
+    turnError = wrappedProviderError(422);
+    await expect(service.bridge(agent, rpc, harness())).rejects.toThrow("shared turn failed");
+    expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
+    turnError = wrappedProviderError(503);
+    await expect(service.bridge(agent, rpc, harness())).rejects.toThrow("shared turn failed");
+    expect(settleCalls).toEqual([]);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("billing failure after a delivered reply conservatively settles unknown usage", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
     billError = new Error("meter unavailable");
     await service.bridge(agent, rpc, h);
     await Promise.all(h.background);
-    expect(settleCalls).toEqual([0]);
+    expect(settleCalls).toEqual([]);
+    expect(settleUnknownCalls).toBe(1);
   });
 
   test("translates insufficient admission to the bridge credit code", async () => {
@@ -280,13 +424,15 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
-  test("stream error and no-parts paths settle zero and emit terminal errors", async () => {
+  test("stream error and no-parts paths conservatively settle unknown usage", async () => {
     const service = new SharedRuntimeChatService();
     streamTurn = { degraded: false };
     expect(await (await service.stream(agent, rpc, harness())).text()).toContain("did not start");
-    expect(settleCalls).toEqual([0]);
+    expect(settleCalls).toEqual([]);
+    expect(settleUnknownCalls).toBe(1);
 
     settleCalls.length = 0;
+    settleUnknownCalls = 0;
     streamTurn = {
       degraded: false,
       parts: (async function* () {
@@ -296,6 +442,30 @@ describe("SharedRuntimeChatService", () => {
     expect(await (await service.stream(agent, rpc, harness())).text()).toContain(
       "Shared runtime stream failed",
     );
+    expect(settleCalls).toEqual([]);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("stream refunds a pre-output rejection but not a rejection after bytes", async () => {
+    const service = new SharedRuntimeChatService();
+    streamTurnError = wrappedProviderError(400);
+    await expect(service.stream(agent, rpc, harness())).rejects.toThrow("shared turn failed");
     expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
+    streamTurnError = null;
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial" };
+        throw wrappedProviderError(400);
+      })(),
+    };
+    expect(await (await service.stream(agent, rpc, harness())).text()).toContain(
+      "Shared runtime stream failed",
+    );
+    expect(settleCalls).toEqual([]);
+    expect(settleUnknownCalls).toBe(1);
   });
 });

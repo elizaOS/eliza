@@ -20,3 +20,13 @@ export function isHotPathCachesEnabled(env: EnvLike = getCloudAwareEnv()): boole
   const flag = env.INFERENCE_HOT_PATH_CACHES;
   return typeof flag === "string" && flag.trim() === "true";
 }
+
+/**
+ * Positive authorization caches require a strongly consistent revocation
+ * boundary. Keep them independently disabled while the less-sensitive
+ * pricing, catalog, and rate-limit caches are rolled out.
+ */
+export function isInferenceAuthCacheEnabled(env: EnvLike = getCloudAwareEnv()): boolean {
+  const flag = env.INFERENCE_AUTH_CACHE_ENABLED;
+  return typeof flag === "string" && flag.trim() === "true";
+}
