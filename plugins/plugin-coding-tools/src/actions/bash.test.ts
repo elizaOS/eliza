@@ -57,6 +57,36 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+async function createRecursiveDeleteCommand(): Promise<{
+  command: string;
+  target: string;
+}> {
+  const target = await fs.mkdtemp(
+    path.join(os.tmpdir(), "coding-tools-destructive-gate-"),
+  );
+  const quotedTarget =
+    process.platform === "win32"
+      ? `'${target.replaceAll("'", "''")}'`
+      : `'${target.replaceAll("'", "'\\''")}'`;
+  return {
+    target,
+    command:
+      process.platform === "win32"
+        ? `Remove-Item -LiteralPath ${quotedTarget} -Recurse -Force`
+        : `rm -rf ${quotedTarget}`,
+  };
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    // error-policy:J3 filesystem probe; a missing path is the explicit signal.
+    return false;
+  }
+}
+
 interface RuntimeOptions {
   blockedPaths?: string;
   shellTimeoutMs?: number;
@@ -1943,37 +1973,44 @@ describe("platform-aware canned resource commands", () => {
 
 describe("destructive-bulk confirm gate", () => {
   it("blocks an unconfirmed recursive delete with needs_confirmation", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
-    const result = await shellAction.handler?.(
-      runtime,
-      makeMessage(undefined, "clean up the old projects"),
-      undefined,
-      { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
-    );
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("needs_confirmation");
-    expect(result.text).toContain("confirm=true");
-    const data = result.data as Record<string, unknown> | undefined;
-    expect(data?.destructive_reason).toBe("recursive delete");
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean up the old projects"),
+        undefined,
+        { command },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.text).toContain("confirm=true");
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.destructive_reason).toBe("recursive delete");
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
   });
 
   it("runs the same command when confirm=true", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
       runtime,
       makeMessage(undefined, "yes do it"),
       undefined,
       {
-        command: "rm -rf /tmp/coding-tools-gate-test-nonexistent",
+        command,
         confirm: true,
       },
     );
-    // The path does not exist; rm -rf exits 0 on nonexistent targets — the
-    // point is the gate let it through to real execution.
     expect(result.success).toBe(true);
+    expect(await pathExists(target)).toBe(false);
   });
 
   it("is exempt on the coding sub-agent path (task briefs carry confirmation)", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
     process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
     try {
       const { runtime } = await makeRuntime();
@@ -1981,15 +2018,18 @@ describe("destructive-bulk confirm gate", () => {
         runtime,
         makeMessage(undefined, "build step"),
         undefined,
-        { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+        { command },
       );
       expect(result.success).toBe(true);
+      expect(await pathExists(target)).toBe(false);
     } finally {
       delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      await fs.rm(target, { recursive: true, force: true });
     }
   });
 
   it("honors the ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0 escape hatch", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
     process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM = "0";
     try {
       const { runtime } = await makeRuntime();
@@ -1997,11 +2037,13 @@ describe("destructive-bulk confirm gate", () => {
         runtime,
         makeMessage(undefined, "clean up"),
         undefined,
-        { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+        { command },
       );
       expect(result.success).toBe(true);
+      expect(await pathExists(target)).toBe(false);
     } finally {
       delete process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM;
+      await fs.rm(target, { recursive: true, force: true });
     }
   });
 
@@ -2011,7 +2053,7 @@ describe("destructive-bulk confirm gate", () => {
       runtime,
       makeMessage(undefined, "whats here"),
       undefined,
-      { command: "ls /tmp" },
+      { command: 'node -e "process.exit(0)"' },
     );
     expect(result.success).toBe(true);
   });
