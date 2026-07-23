@@ -40,6 +40,10 @@ export default defineConfig({
     include: [
       "src/lib/services/__tests__/direct-wallet-payments.integration.test.ts",
       "src/lib/utils/default-eliza-character.test.ts",
+      // Imports from "vitest"; must be listed or the changed-file coverage
+      // lane filters against include, matches nothing, and hard-fails with
+      // "No test files found" for any PR touching it.
+      "src/lib/services/headscale-client.test.ts",
     ],
     environment: "node",
     // PGlite's WASM worker outlives Vitest's fork shutdown grace even after
