@@ -462,6 +462,25 @@ const DB_LIVENESS_RESTART_BUDGET = 3;
 const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
 const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
 const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
+/**
+ * Hydration budgets (#16639): the worker heap died buffering unbounded
+ * snapshot bodies (`res.json()` retained everything, then a re-stringify
+ * doubled it). The raw budget is enforced WHILE streaming — bytes past it are
+ * never retained — and the expanded file budgets are validated before the
+ * payload is persisted. Env-overridable for staging soak.
+ */
+const SNAPSHOT_MAX_RAW_BYTES = (() => {
+  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 256 * 1024 * 1024;
+})();
+const SNAPSHOT_MAX_FILES = (() => {
+  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 5_000;
+})();
+const SNAPSHOT_MAX_EXPANDED_BYTES = (() => {
+  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 384 * 1024 * 1024;
+})();
 const SNAPSHOT_RESTORE_TIMEOUT_MS = 120_000;
 const UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS = 30_000;
 // Hard cap on the container+VPN teardown during agent delete. The underlying
@@ -491,6 +510,102 @@ function digestPinnedImageRef(imageRef: string, digest: string): string {
   const lastSlash = imageRef.lastIndexOf("/");
   const withoutTag = lastColon > lastSlash ? imageRef.slice(0, lastColon) : imageRef;
   return `${withoutTag}@${digest}`;
+}
+
+/**
+ * Stream a Response body, enforcing a hard byte budget (#16639): the read is
+ * aborted the moment the counted bytes exceed the budget, so an oversized
+ * snapshot can never be retained in memory. Fail-closed with an explicit,
+ * observable error.
+ */
+export async function readBodyWithinBudget(res: Response, maxBytes: number): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    if (Buffer.byteLength(text, "utf-8") > maxBytes) {
+      throw new Error(
+        `Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`,
+      );
+    }
+    return text;
+  }
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        received += value.byteLength;
+        if (received > maxBytes) {
+          throw new Error(
+            `Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`,
+          );
+        }
+        chunks.push(value);
+      }
+    }
+  } finally {
+    // Release the connection whether we finished or bailed over budget.
+    reader.cancel().catch(() => {});
+  }
+  return Buffer.concat(chunks).toString("utf-8");
+}
+
+/**
+ * Validate the parsed snapshot's expanded budgets BEFORE it is persisted
+ * (#16639): total file count and summed content bytes across the legacy
+ * `workspaceFiles` map and the durable manifest files. Fail-closed — a
+ * payload over budget is rejected outright, never partially restored.
+ */
+export function assertSnapshotExpandedBudgets(stateData: AgentBackupStateData): void {
+  let files = 0;
+  let expandedBytes = 0;
+  const workspace = stateData.workspaceFiles ?? {};
+  for (const content of Object.values(workspace)) {
+    files += 1;
+    expandedBytes += typeof content === "string" ? Buffer.byteLength(content, "utf-8") : 0;
+  }
+  const components = stateData.manifest?.components;
+  if (components) {
+    const fileSets = [
+      components.database?.pglite,
+      components.media,
+      components.vault,
+      components.stateFiles,
+    ];
+    for (const fileSet of fileSets) {
+      for (const entry of fileSet?.files ?? []) {
+        files += 1;
+        // `size` is the declared decoded size; the base64 payload is the
+        // retained one — count the larger of the two so a lying manifest
+        // cannot under-declare.
+        const decoded =
+          typeof entry.bytesBase64 === "string"
+            ? Math.floor((entry.bytesBase64.length * 3) / 4)
+            : 0;
+        expandedBytes += Math.max(typeof entry.size === "number" ? entry.size : 0, decoded);
+      }
+    }
+    const configFile = components.character?.configFile;
+    if (configFile) {
+      files += 1;
+      expandedBytes +=
+        typeof configFile.bytesBase64 === "string"
+          ? Math.floor((configFile.bytesBase64.length * 3) / 4)
+          : 0;
+    }
+  }
+  if (files > SNAPSHOT_MAX_FILES) {
+    throw new Error(
+      `Snapshot exceeds the file budget (${files} > ${SNAPSHOT_MAX_FILES}) — refusing to retain it`,
+    );
+  }
+  if (expandedBytes > SNAPSHOT_MAX_EXPANDED_BYTES) {
+    throw new Error(
+      `Snapshot exceeds the expanded byte budget (${expandedBytes} > ${SNAPSHOT_MAX_EXPANDED_BYTES}) — refusing to retain it`,
+    );
+  }
 }
 
 function isDockerSandboxMetadata(value: unknown): value is DockerSandboxMetadata {
@@ -6703,8 +6818,19 @@ export class ElizaSandboxService {
       throw new Error(`Snapshot fetch failed: HTTP ${res.status}`);
     }
 
-    const stateData = (await res.json()) as AgentBackupStateData;
-    const sizeBytes = Buffer.byteLength(JSON.stringify(stateData), "utf-8");
+    // Bounded hydration (#16639): stream and count — bytes past the raw
+    // budget are never retained (fail-closed, no partial restore), and the
+    // measured size comes from the counted stream instead of a re-stringify
+    // that used to double peak memory.
+    const raw = await readBodyWithinBudget(res, SNAPSHOT_MAX_RAW_BYTES);
+    let stateData: AgentBackupStateData;
+    try {
+      stateData = JSON.parse(raw) as AgentBackupStateData;
+    } catch {
+      throw new Error("Snapshot payload is not valid JSON — refusing partial restore");
+    }
+    assertSnapshotExpandedBudgets(stateData);
+    const sizeBytes = Buffer.byteLength(raw, "utf-8");
 
     return {
       stateData,

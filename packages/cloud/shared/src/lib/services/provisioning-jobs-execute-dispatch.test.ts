@@ -243,11 +243,27 @@ const AGENT_ARMS: Array<{
   },
 ];
 
+/** #16639: the dispatch suite exercises the snapshot EXECUTION path, which
+ *  the fail-closed lane belt short-circuits unless the gate is exactly
+ *  enabled. Arm it per snapshot case (never module-wide — composed suites
+ *  share the process env); the gate itself is pinned in
+ *  provisioning-jobs-snapshot-gate.test.ts. */
+function armSnapshotGateFor(type: string): () => void {
+  if (type !== JOB_TYPES.AGENT_SNAPSHOT) return () => {};
+  const prev = process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
+  process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = "true";
+  return () => {
+    if (prev === undefined) delete process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
+    else process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = prev;
+  };
+}
+
 describe("executeJob dispatch — success path per job type marks the job completed", () => {
   for (const arm of AGENT_ARMS) {
     test(`${arm.name}: transport success → completed with a result record, no attempt burned`, async () => {
       const ctx = harness(makeJob(arm.type, arm.data));
       stub(arm.method, arm.success);
+      const disarmGate = armSnapshotGateFor(arm.type);
       try {
         const res = await run(arm.type);
         expect(res.claimed).toBe(1);
@@ -260,6 +276,7 @@ describe("executeJob dispatch — success path per job type marks the job comple
         expect(completed?.[2]?.completed_at).toBeInstanceOf(Date);
         expect(ctx.incrementSpy).not.toHaveBeenCalled();
       } finally {
+        disarmGate();
         ctx.claimSpy.mockRestore();
         ctx.recoverSpy.mockRestore();
         ctx.updateStatusSpy.mockRestore();
@@ -300,6 +317,7 @@ describe("executeJob dispatch — failure path per job type retries (increments 
     test(`${arm.name}: transport failure → not completed, one attempt burned`, async () => {
       const ctx = harness(makeJob(arm.type, arm.data));
       stub(arm.method, { success: false, error: `${arm.name} transport boom` });
+      const disarmGate = armSnapshotGateFor(arm.type);
       try {
         const res = await run(arm.type);
         expect(res.claimed).toBe(1);
@@ -309,6 +327,7 @@ describe("executeJob dispatch — failure path per job type retries (increments 
         expect(ctx.incrementSpy.mock.calls[0]?.[0]).toBe(ctx.job.id);
         expect(completedCall(ctx)).toBeUndefined();
       } finally {
+        disarmGate();
         ctx.claimSpy.mockRestore();
         ctx.recoverSpy.mockRestore();
         ctx.updateStatusSpy.mockRestore();
@@ -376,6 +395,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("auto snapshot of a stopped agent → completed-as-skipped, no retry", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" }));
+    const disarmGate = armSnapshotGateFor(JOB_TYPES.AGENT_SNAPSHOT);
     stub("executeSnapshot", { success: false, error: "Sandbox is not running" });
     try {
       const res = await run(JOB_TYPES.AGENT_SNAPSHOT);
@@ -387,6 +407,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       });
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
+      disarmGate();
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();
       ctx.updateStatusSpy.mockRestore();
