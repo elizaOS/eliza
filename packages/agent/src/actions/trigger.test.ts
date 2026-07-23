@@ -59,10 +59,12 @@ function makeRuntime(opts: { enableAutonomy: boolean }): {
         ? { getAutonomousRoomId: () => AUTONOMY_ROOM_ID }
         : null,
     getTasks: vi.fn(async () => [] as Task[]),
+    getTask: vi.fn(async () => null),
     createTask: vi.fn(async (task: CreatedTask) => {
       createdTasks.push(task);
       return stringToUuid(`created-${createdTasks.length}`);
     }),
+    updateTask: vi.fn(async () => undefined),
   } as unknown as IAgentRuntime;
   return { runtime, createdTasks };
 }
@@ -298,6 +300,63 @@ describe("TRIGGER create — workflow triggers", () => {
       "wf-1",
     );
     expect(createdTasks[0].roomId).toBe(AUTONOMY_ROOM_ID);
+  });
+
+  it("creates a valid cron trigger", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: true });
+    const result = await create(runtime, {
+      instructions: "run the report workflow",
+      workflowId: "wf-1",
+      cronExpression: "0 9 * * 1-5",
+    });
+
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger).toMatchObject({
+      triggerType: "cron",
+      cronExpression: "0 9 * * 1-5",
+    });
+  });
+
+  it("rejects an invalid cron expression without creating a task", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: true });
+    const result = await create(runtime, {
+      instructions: "run the report workflow",
+      workflowId: "wf-1",
+      triggerType: "cron",
+      cronExpression: "not a cron",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("INVALID_CRON");
+    expect(createdTasks).toHaveLength(0);
+  });
+});
+
+describe("TRIGGER lifecycle", () => {
+  it("resolves a task UUID and accepts a string boolean when toggling", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    await create(runtime, { instructions: "drink water", delaySeconds: 90 });
+    const taskId = stringToUuid("existing-trigger-task");
+    vi.mocked(runtime.getTask).mockResolvedValue({
+      id: taskId,
+      name: createdTasks[0].name,
+      tags: createdTasks[0].tags,
+      metadata: createdTasks[0].metadata,
+    } as Task);
+
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("enable my reminder"),
+      undefined,
+      { parameters: { action: "toggle", taskId, enabled: "yes" } },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.data?.enabled).toBe(true);
+    expect(runtime.updateTask).toHaveBeenCalledWith(
+      taskId,
+      expect.objectContaining({ metadata: expect.any(Object) }),
+    );
   });
 });
 
