@@ -3217,44 +3217,22 @@ export class ElizaSandboxService {
    * RUNNING container still holds the pool-org key and every inference reply is
    * the "key isn't authorized" fallback. This:
    *
-   *   1. mints a NEW `agent-sandbox:<claimedRowId>` inference key scoped to the
-   *      CLAIMING user's org (via `apiKeysService.createForAgent`, whose
-   *      revoke-by-name first clears any PRIOR key bound to the claimed row's
-   *      own id). The pool-org key the container BOOTED with is a DIFFERENT
-   *      name — `agent-sandbox:<poolRowId>`, minted when the pool entry was
-   *      provisioned under the pool row's id — so this mint alone can never
-   *      touch it (#17066 review);
-   *   2. persists the new key onto the claimed row's env
-   *      (`ELIZAOS_CLOUD_API_KEY`) so a later container restart boots already
-   *      re-credentialed;
-   *   3. pushes it onto the LIVE container via its own authenticated
+   *   1. mints a NEW `agent-sandbox:<claimed-row-id>` inference key scoped to
+   *      the claiming user's org;
+   *   2. persists that key onto the claimed row's env (`ELIZAOS_CLOUD_API_KEY`)
+   *      so restart recovery is always possible;
+   *   3. revokes the old `agent-sandbox:<pool-row-id>` credential;
+   *   4. pushes the replacement onto the live container via its authenticated
    *      `POST /api/cloud/login/persist` route with `forceInferenceEnabled`,
-   *      swapping the running cloud credential in-memory with NO restart, and
-   *      VERIFIES the swap when the container echoes an
-   *      `appliedKeyFingerprint` (sha-256 prefix of the key the runtime
-   *      actually resolves post-swap): a mismatch throws — transport acceptance
-   *      alone must not report a re-credential the process didn't apply. Older
-   *      container images that don't echo a fingerprint return
-   *      `verified: false` (pushed, unverified) rather than failing the claim;
-   *   4. after a successful push, REVOKES the pool-org boot key by the pool
-   *      row id the claim carried out of its transaction
-   *      (`rec.warm_pool_row_id`), so no usable sentinel-org credential
-   *      survives a completed re-key. Revocation is best-effort teardown: the
-   *      push already succeeded, so a revoke failure is surfaced via the
-   *      stable `warm_pool.pool_key_revoke_failed` event instead of failing
-   *      the claim. On the push-FAILURE branch the pool key is deliberately
-   *      left in place (the container's relay may still be signing with it);
-   *      it dies with the container's next restart re-credential.
+   *      and requires a fingerprint attestation from runtime-resolved state.
    *
    * Secret handling: the plaintext key rides only in the authed TLS-internal
    * (tailnet) PUT body `fetchAgentApi` uses; it is NEVER logged — the return
    * carries only booleans + a short safe prefix, and the fingerprint exchange
    * carries a sha-256 prefix, never key material.
    *
-   * Bounded (10s) and NON-FATAL by contract: the CALLER treats a failure as
-   * "claim still succeeds, the container re-credentials from the row's env on
-   * the next restart" and logs the stable `warm_pool.key_push_failed` event.
-   * Throws on the transport/HTTP failure so the caller can attach context.
+   * A transport or attestation failure throws. The caller must enqueue restart
+   * recovery and must not report the claimed agent as ready.
    */
   async pushClaimedWarmContainerInferenceKey(
     rec: Pick<
@@ -3270,8 +3248,8 @@ export class ElizaSandboxService {
       | "web_ui_port"
       | "headscale_ip"
       | "sandbox_id"
-    > & { warm_pool_row_id?: string },
-  ): Promise<{ pushed: boolean; verified?: boolean; keyPrefix?: string }> {
+    > & { warm_pool_row_id: string },
+  ): Promise<{ pushed: boolean; keyPrefix?: string }> {
     // Guard: never re-key a row that is (still) owned by the sentinel pool org.
     // The caller invokes this ONLY after a successful claim, when the row is
     // the user's, but a defensive check here means a pool-org row can never be
@@ -3279,11 +3257,13 @@ export class ElizaSandboxService {
     if (rec.organization_id === WARM_POOL_ORG_ID) {
       throw new Error("Refusing warm-claim key push for a sentinel-pool-org row (not claimed)");
     }
+    if (!rec.warm_pool_row_id) {
+      throw new Error("Warm-claim key push requires the source agent-sandbox pool row id");
+    }
 
-    // 1. Mint a user-org-scoped inference key for this sandbox. createForAgent
-    //    is idempotent for the CLAIMED row's own key name (revokes any prior
-    //    `agent-sandbox:<rec.id>` key first); the pool BOOT key lives under the
-    //    deleted pool row's name and is revoked in step 4.
+    // The source pool credential is named after the pool row, not the claimed
+    // user row. Its identity must cross the claim transaction so this handoff
+    // can revoke the correct credential.
     const { plainKey } = await apiKeysService.createForAgent({
       organizationId: rec.organization_id,
       userId: rec.user_id,
@@ -3308,7 +3288,11 @@ export class ElizaSandboxService {
       environment_vars: nextEnv,
     });
 
-    // 3. Push onto the LIVE container. Use a rec whose env already carries the
+    // The replacement is durable before the boot credential is revoked. From
+    // this point any live-push failure is repaired by restarting from row env.
+    await apiKeysService.revokeForAgent(rec.warm_pool_row_id);
+
+    // Push onto the LIVE container. Use a rec whose env already carries the
     //    NEW ELIZA_API_TOKEN transport auth (unchanged by the re-key) so
     //    fetchAgentApi authenticates correctly.
     const res = await this.fetchAgentApi(
@@ -3328,58 +3312,20 @@ export class ElizaSandboxService {
       throw new Error(`Warm-claim key push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
     }
 
-    // 3b. Verify the swap when the container echoes what its runtime NOW
-    //     resolves. HTTP 200 alone attests transport acceptance; the F0 bug
-    //     class is precisely "control plane believed, process didn't", so a
-    //     fingerprint mismatch (a stale key still shadowing via a resolution
-    //     layer the persist couldn't rewrite) must fail loudly, not report
-    //     pushed. Absence of the field is an older container image — the push
-    //     stands, flagged unverified.
-    const responseBody = (await res.json().catch(() => null)) as {
+    const responseBody = (await res.json()) as {
+      ok?: unknown;
       appliedKeyFingerprint?: unknown;
-    } | null;
+    };
     const echoedFingerprint =
-      typeof responseBody?.appliedKeyFingerprint === "string"
+      typeof responseBody.appliedKeyFingerprint === "string"
         ? responseBody.appliedKeyFingerprint
         : undefined;
-    let verified: boolean | undefined;
-    if (echoedFingerprint !== undefined) {
-      const expected = await warmClaimKeyFingerprint(plainKey);
-      if (echoedFingerprint !== expected) {
-        throw new Error(
-          "Warm-claim key push applied at transport but the container resolves a DIFFERENT cloud key (fingerprint mismatch) — a stale credential is shadowing the swap",
-        );
-      }
-      verified = true;
-    } else {
-      verified = false;
+    const expectedFingerprint = await warmClaimKeyFingerprint(plainKey);
+    if (responseBody.ok !== true || echoedFingerprint !== expectedFingerprint) {
+      throw new Error("Warm-claim key push was not attested by the running runtime");
     }
 
-    // 4. The push landed: revoke the pool-org key the container BOOTED with.
-    //    It is named for the pool row deleted by the claim
-    //    (`agent-sandbox:<warm_pool_row_id>`), so the step-1 mint could not
-    //    touch it; without this it survives as an active sentinel-org
-    //    credential bound to a row that no longer exists. Ordered AFTER the
-    //    successful push so the running container is never left signing with
-    //    a just-revoked key on the push-failure branch.
-    if (rec.warm_pool_row_id) {
-      try {
-        await apiKeysService.revokeForAgent(rec.warm_pool_row_id);
-      } catch (revokeErr) {
-        // error-policy:J6 best-effort teardown — the re-key itself succeeded;
-        // a failed revoke of the now-unused pool boot key must not fail the
-        // claim. Surfaced via a stable event so a persistently broken revoke
-        // path is observable and the stranded key can be reaped by hand.
-        logger.warn("[agent-sandbox] Warm-claim pool boot key revoke failed", {
-          event: "warm_pool.pool_key_revoke_failed",
-          agentId: rec.id,
-          poolRowId: rec.warm_pool_row_id,
-          error: revokeErr instanceof Error ? revokeErr.message : String(revokeErr),
-        });
-      }
-    }
-
-    return { pushed: true, verified, keyPrefix: safeKeyPrefix(plainKey) };
+    return { pushed: true, keyPrefix: safeKeyPrefix(plainKey) };
   }
 
   // Bridge

@@ -9,11 +9,10 @@
  *   - after applying the routing, `isCloudInferenceSelectedInConfig` is true;
  *   - the write is additive (existing serviceRouting fields survive);
  *   - it does not clobber unrelated config keys.
- * [sol-warmpool-keypush]
  */
 
-import { describe, expect, test } from "bun:test";
 import { isCloudInferenceSelectedInConfig } from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import { applyCloudProxyTextRouting } from "../../src/routes/cloud-routes";
 
 describe("applyCloudProxyTextRouting", () => {
