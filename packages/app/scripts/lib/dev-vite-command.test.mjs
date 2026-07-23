@@ -4,6 +4,8 @@
  */
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -13,10 +15,14 @@ const appDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
+const repoRoot = path.resolve(appDir, "../..");
 const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
+const appPackage = JSON.parse(
+  readFileSync(path.join(appDir, "package.json"), "utf8"),
+);
 
 describe("development Vite process commands", () => {
-  it("runs the shared server through Node without changing Vite arguments", () => {
+  it("runs the shared server through Node with source import support", () => {
     assert.deepEqual(
       resolveViteCommand({ appDir, nodePath: "/usr/local/bin/node" }),
       {
@@ -50,6 +56,40 @@ describe("development Vite process commands", () => {
         args: ["--import", "tsx", viteCli, "--port", "2138"],
       },
     );
+  });
+
+  it("keeps direct package dev commands on Node with source import support", () => {
+    assert.equal(
+      appPackage.scripts.dev,
+      "node --import tsx ./node_modules/vite/bin/vite.js",
+    );
+    assert.equal(
+      appPackage.scripts["dev:chat-harness"],
+      "ELIZA_CHAT_UI_HARNESS=1 node --import tsx ./node_modules/vite/bin/vite.js",
+    );
+  });
+
+  it("loads source-conditioned NodeNext workspace packages", () => {
+    const viteCommand = resolveViteCommand({
+      appDir,
+      nodePath: "node",
+    });
+    const result = spawnSync(
+      viteCommand.command,
+      [
+        "--conditions=eliza-source",
+        ...viteCommand.args.slice(0, 2),
+        "--input-type=module",
+        "--eval",
+        'await import("@elizaos/cloud-routing")',
+      ],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
   });
 
   it("fails before spawning when Node or the Vite CLI is unavailable", () => {
