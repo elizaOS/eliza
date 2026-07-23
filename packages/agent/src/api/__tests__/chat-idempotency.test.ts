@@ -10,12 +10,21 @@
  * an idempotency key are completely unaffected.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  type AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  stringToUuid,
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __getChatDedupeTtlMsForTests,
   __resetChatDedupeForTests,
+  getChatMessageIdOutcome,
   isDuplicateChatMessage,
   normalizeClientMessageId,
+  persistExactConversationMemory,
+  setChatMessageIdOutcome,
 } from "../chat-routes.ts";
 
 const OLD_ARRIVAL_TTL_MS = 30_000;
@@ -76,6 +85,58 @@ describe("isDuplicateChatMessage", () => {
     expect(isDuplicateChatMessage(SCOPE, "msg-b", now)).toBe(true);
   });
 
+  it("replays only the durable outcome bound to the exact key", () => {
+    const now = 3_250_000;
+    expect(isDuplicateChatMessage(SCOPE, "turn-a", now)).toBe(false);
+    expect(isDuplicateChatMessage(SCOPE, "turn-b", now + 1)).toBe(false);
+
+    const outcome = {
+      text: "reply b",
+      agentName: "Eliza",
+      messageId: stringToUuid("reply-b"),
+      transcriptVisibility: "internal" as const,
+      thought: "reasoning",
+      usage: {
+        promptTokens: 4,
+        completionTokens: 2,
+        totalTokens: 6,
+        isEstimated: false,
+        llmCalls: 1,
+      },
+      actionResults: [{ actionName: "VIEWS", success: true }],
+      failureKind: "no_provider" as const,
+      accountConnect: { providers: ["openai-codex" as const] },
+      localInference: { status: "ready" },
+    };
+    setChatMessageIdOutcome(SCOPE, "turn-b", outcome);
+    outcome.actionResults[0].success = false;
+    expect(getChatMessageIdOutcome(SCOPE, "turn-a")).toBeNull();
+    expect(getChatMessageIdOutcome(SCOPE, "turn-b")).toEqual({
+      text: "reply b",
+      agentName: "Eliza",
+      messageId: stringToUuid("reply-b"),
+      transcriptVisibility: "internal",
+      thought: "reasoning",
+      usage: {
+        promptTokens: 4,
+        completionTokens: 2,
+        totalTokens: 6,
+        isEstimated: false,
+        llmCalls: 1,
+      },
+      actionResults: [{ actionName: "VIEWS", success: true }],
+      failureKind: "no_provider",
+      accountConnect: { providers: ["openai-codex"] },
+      localInference: { status: "ready" },
+    });
+
+    setChatMessageIdOutcome(SCOPE, "unknown", {
+      text: "must not attach",
+      agentName: "Eliza",
+    });
+    expect(getChatMessageIdOutcome(SCOPE, "unknown")).toBeNull();
+  });
+
   it("covers the long-turn reconnect retry window that exceeded the old 30s arrival TTL", () => {
     const now = 3_500_000;
     const retryAfterLongTurn =
@@ -127,5 +188,59 @@ describe("isDuplicateChatMessage", () => {
     expect(isDuplicateChatMessage(SCOPE, "old", start + TTL_MS + 2)).toBe(
       false,
     );
+  });
+});
+
+describe("persistExactConversationMemory", () => {
+  it("recognizes a committed row after the storage acknowledgement is lost", async () => {
+    const memory = createMessageMemory({
+      id: stringToUuid("ack-lost-memory"),
+      entityId: stringToUuid("ack-lost-user"),
+      agentId: stringToUuid("ack-lost-agent"),
+      roomId: stringToUuid("ack-lost-room"),
+      content: {
+        text: "exact payload",
+        source: "api",
+        channelType: ChannelType.DM,
+      },
+    });
+    let stored: typeof memory | undefined;
+    const runtime = {
+      getMemoriesByIds: vi.fn(async () => (stored ? [stored] : [])),
+      createMemory: vi.fn(async () => {
+        stored = memory;
+        throw new Error("commit acknowledgement lost");
+      }),
+    } as unknown as AgentRuntime;
+
+    await expect(
+      persistExactConversationMemory(runtime, memory),
+    ).resolves.toMatchObject({ id: memory.id, content: memory.content });
+    expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an existing id whose stored ownership or content differs", async () => {
+    const memory = createMessageMemory({
+      id: stringToUuid("conflicting-memory"),
+      entityId: stringToUuid("conflicting-user"),
+      agentId: stringToUuid("conflicting-agent"),
+      roomId: stringToUuid("conflicting-room"),
+      content: { text: "expected", channelType: ChannelType.DM },
+    });
+    const runtime = {
+      getMemoriesByIds: vi.fn(async () => [
+        {
+          ...memory,
+          agentId: stringToUuid("different-agent"),
+          content: { ...memory.content, text: "different" },
+        },
+      ]),
+      createMemory: vi.fn(),
+    } as unknown as AgentRuntime;
+
+    await expect(
+      persistExactConversationMemory(runtime, memory),
+    ).rejects.toThrow("already bound to different content");
+    expect(runtime.createMemory).not.toHaveBeenCalled();
   });
 });
