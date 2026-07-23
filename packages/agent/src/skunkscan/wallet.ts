@@ -242,6 +242,7 @@ const {
   smartMoney,
   strategy,
   conviction,
+  alpha,
   investigationReplay,
   evidenceRecords,
   assessment,
@@ -303,6 +304,7 @@ transactionRisk:
 smartMoney,
 strategy,
 conviction,
+alpha,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
