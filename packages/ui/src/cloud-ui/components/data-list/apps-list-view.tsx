@@ -1,5 +1,5 @@
 /**
- * List view of cloud apps with per-item status and quick actions.
+ * List view of published projects with per-item status and quick actions.
  */
 import {
   Activity,
@@ -127,14 +127,14 @@ export function AppsListView({
                 items={[
                   {
                     asChild: true,
-                    label: "Manage App",
+                    label: "Manage Publication",
                     className: "cursor-pointer",
                     child: renderAppLink({
                       app,
                       children: (
                         <>
                           <Settings className="mr-2 h-4 w-4" />
-                          Manage App
+                          Manage Publication
                         </>
                       ),
                     }),
@@ -166,7 +166,7 @@ export function AppsListView({
                     : []),
                   { type: "separator" },
                   {
-                    label: "Delete App",
+                    label: "Delete Publication",
                     icon: deletingId === app.id ? Loader2 : Trash2,
                     disabled: deletingId === app.id,
                     className:

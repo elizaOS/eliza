@@ -1,6 +1,6 @@
 # Projects ⇄ Apps consolidation — research report + implementation plan
 
-**Status:** research + plan (no implementation yet). **Date:** 2026-07-23.
+**Status:** implemented in the working tree. **Date:** 2026-07-23.
 **Directive:** consolidate "My Apps" into Projects. Every project is publishable;
 publishing is available only when connected to Eliza Cloud; a published project
 shows a tag and exposes all of its app info (URL, affiliate, payments,
@@ -22,7 +22,7 @@ The Cloud product docs already state the split we want to formalize: *"Use a
 **project** for deployable product workspace state… Use the **Cloud app** `id`
 when calling app-scoped APIs"* (`packages/docs/cloud/apps.mdx`).
 
-What is missing is everything around that seam:
+At the start of this work, everything around that seam was missing:
 
 - Three separate user surfaces (**My Apps**, **Projects/tasks**, the native
   **Cloud Apps studio**) present fragments of one lifecycle as three products.
@@ -32,7 +32,7 @@ What is missing is everything around that seam:
   the binding only happens as a side effect of coding-task spawns.
 - No agent-facing project CRUD at all (no action, provider, or HTTP create).
 
-The plan: make **Project the one durable user-facing object**. "Published" is a
+The implementation makes **Project the one durable user-facing object**. "Published" is a
 *state* of a project (its `cloudAppId` is set and the Cloud record is active),
 not a different object. The launcher gets **one Projects tile**; the Projects
 surface owns creation, coding activity, run/stop, and a Cloud-gated **Publish**
@@ -115,13 +115,14 @@ created *by the agent in chat*, not from the console
   (`app-frontend-deployments.ts:79-132`), and container deploy (production-gated
   behind `APPS_DEPLOY_ENABLED` + org allowlist, `apps/[id]/deploy/route.ts:35-82`).
 
-### 2.4 What's already in flight on this branch
+### 2.4 Implementation status
 
-Uncommitted, presentational-only groundwork: "Tasks"→"Projects" retitle
-(view, widget, `titleForTab`), Cloud Apps studio de-tiled from the launcher
-(`LAUNCHER_HIDDEN_IDS`), My Apps as the single launcher apps destination with a
-gated Cloud Apps row. No data-model or routing changes. This is P0 of the plan
-below, already done.
+P0–P5 are implemented in this working tree: the project registry is wired into
+creation and coding-task dispatch, Projects is the single creator surface,
+publishing and publication management live in project detail, agent verbs cover
+the same lifecycle, and creator-facing terminology is consolidated. Stable
+Cloud API/DB/SDK nouns remain `apps`, bare `/apps` remains the launcher runtime,
+and `/apps/my-apps` plus `/cloud-apps` remain compatibility redirects.
 
 ---
 
@@ -194,7 +195,7 @@ ProjectRecord (unchanged storage: <stateDir>/projects.json)
   did not author — no local directory, no workspace) are *not* projects. They
   are "Installed" items: launchable, stoppable, uninstallable. They keep living
   in the launcher grid and get a compact "Installed" section on the Projects
-  surface (recommendation; see Open question 1).
+  surface (implemented decision; see §8).
 
 ### 4.3 The Projects surface (one tile)
 
@@ -244,7 +245,7 @@ everything the studio detail shows today, reusing the existing components from
 | Status + URL(s) | `app-overview.tsx` info rows | `apps` row, `production_url`, `deriveAppPublicUrl` (`app-url.ts:28-36`) |
 | Hosting versions + rollback | `app-frontend-hosting.tsx` | `/api/v1/apps/:id/frontend*` |
 | Domains (subdomain, custom, buy) | `app-domains.tsx`, `BuyDomainCard` | `/api/v1/apps/:id/domains*` |
-| Monetization (markup, purchase share, review gate) | `app-monetization-settings.tsx` | `GET/PUT …/monetization`, `POST …/review` |
+| Monetization (markup and review gate; historical purchase revenue is read-only) | `app-monetization-settings.tsx` | `GET/PUT …/monetization`, `POST …/review` |
 | Earnings + withdraw | `app-earnings-dashboard.tsx`, `withdraw-dialog.tsx` | `GET …/earnings`, `POST …/earnings/withdraw` |
 | Analytics (requests, visitors, logs) | `app-analytics.tsx` | `GET …/analytics*` |
 | Users | `app-users.tsx` | `GET …/users` |
@@ -326,13 +327,14 @@ evidence bar (screenshots desktop+mobile, video, logs, real-LLM trajectories
 where agent behavior changes). File lists name the load-bearing touchpoints,
 not every ripple.
 
-### P0 — label groundwork (already in the working tree)
+### P0 — label groundwork
 
 "Tasks"→"Projects" retitles; `cloud-apps` de-tiled; My Apps as the single apps
 destination with the gated Cloud Apps row. Files: `TasksPageView.tsx`,
 `orchestrator-task-widget.tsx`, `navigation/index.ts`, `MyAppsView.tsx`,
 `launcher-curation.ts`, `cloud-apps-view.ts` + their tests and
-`launcher-cloud-gating.spec.ts`. **Action: commit and PR this as-is.**
+`launcher-cloud-gating.spec.ts`. Implemented as part of the consolidated
+P0–P5 working tree.
 
 ### P1 — make the project registry real (backend seams, no UI change)
 
@@ -467,28 +469,26 @@ Invariants preserved: `projects.json` stays file-based/atomic/pre-boot
   (`NativeAppsStudio` mounts them in a `MemoryRouter`); the risk is auth
   context differences — verify `steward` session flows on both.
 - **Stranded Cloud features.** Purchase-share / per-app credit pools are
-  partially stranded (#8253); the panel must not present dead controls as
-  live. Lead with markup + hosting + domains; show purchase share only where
-  the backend actually credits it.
+  partially stranded (#8253), so the panel does not present purchase-share
+  controls as live. It leads with markup + hosting + domains and keeps actual
+  historical purchase earnings read-only.
 - **Test surface churn.** The launcher/Playwright/route-case tests pin today's
   topology tightly; each phase updates them in the same PR (never skipped).
 - **Deep links.** `eliza://apps/deploy` and `/cloud-apps` must keep resolving
   through every phase.
 
-## 8. Open questions (need a product ruling)
+## 8. Product decisions implemented
 
-1. **Installed third-party packages**: compact "Installed" section on the
-   Projects surface (recommended — one destination) vs. launcher-grid only?
-2. **`my-apps` tab id**: keep as redirect alias indefinitely (recommended —
-   telemetry continuity) or retire after one release?
-3. **Cloud web console** (`elizacloud.ai` dashboard): adopt the same
-   "published projects" vocabulary in this pass, or defer? (The console
-   already redirected its apps studio away, so the blast radius is nav copy.)
-4. **Unpublish semantics**: `is_active:false` keep-binding (recommended) vs.
-   delete-and-unbind?
-5. **Marketplace naming**: does the consumer-facing marketplace keep calling
-   published projects "apps"? (Creator-side copy says "published project";
-   consumer-side may still say "app".)
+1. **Installed third-party packages** use a compact Installed section on the
+   Projects surface and remain distinct from creator-owned projects.
+2. **`my-apps` tab id** remains a redirect alias for telemetry and saved-link
+   continuity; bare `/apps` remains the launcher runtime.
+3. **Cloud creator copy** uses "published projects"; stable API, DB, SDK, and
+   action names retain `apps`.
+4. **Unpublish semantics** are `is_active:false` with the project binding kept,
+   so republish can reactivate the same Cloud record.
+5. **Marketplace naming** may continue to call the consumer artifact an app;
+   creator-owned objects are projects and their hosted state is a publication.
 
 ## 9. Source research
 

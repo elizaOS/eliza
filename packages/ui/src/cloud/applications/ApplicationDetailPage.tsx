@@ -66,7 +66,7 @@ export default function ApplicationDetailPage() {
     return (
       <DashboardLoadingState
         label={t("cloud.apps.detail.loading", {
-          defaultValue: "Loading app",
+          defaultValue: "Loading published project",
         })}
       />
     );
@@ -79,7 +79,7 @@ export default function ApplicationDetailPage() {
           error instanceof Error
             ? error.message
             : t("cloud.apps.detail.errorFailedLoad", {
-                defaultValue: "Failed to load app",
+                defaultValue: "Failed to load published project",
               })
         }
       />

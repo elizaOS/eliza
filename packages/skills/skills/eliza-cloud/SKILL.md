@@ -161,7 +161,7 @@ surface underneath them.
 | `unpublish this project` | `UNPUBLISH_PROJECT` → `/api/v1/apps/{id}` | PATCH `is_active:false` |
 | `list my projects` | `LIST_PROJECTS` → `/api/projects` | GET |
 | `show me project X` | `GET_PROJECT` → `/api/projects` | GET |
-| `make this the active project` | `SET_ACTIVE_PROJECT` → `/api/projects/switch` | POST |
+| `make this the active project` | `SET_ACTIVE_PROJECT` → `/api/projects/{id}/activate` | POST |
 | `show my published projects` | `/api/v1/apps` | GET |
 | `rename the publication` / `change Cloud config` | `/api/v1/apps/{id}` | PATCH |
 | `delete the published artifact` | `/api/v1/apps/{id}` | DELETE |

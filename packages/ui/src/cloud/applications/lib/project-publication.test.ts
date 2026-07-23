@@ -160,6 +160,59 @@ describe("loadProjectPublication", () => {
     });
   });
 
+  it("recognizes an intentionally external active publication by app_url", async () => {
+    const app = makeApp({
+      app_url: "https://external.example.com/product",
+      deployment_status: "draft",
+      production_url: null,
+    });
+
+    await expect(
+      loadProjectPublication(app.id, dependencies(app, frontend())),
+    ).resolves.toMatchObject({
+      status: "published",
+      liveMode: "external",
+      publicUrl: "https://external.example.com/product",
+    });
+  });
+
+  it("does not relabel a stale managed URL as an external publication", async () => {
+    const managedUrl = "https://project.sites.elizacloud.ai";
+    const app = makeApp({ app_url: managedUrl });
+
+    const result = await loadProjectPublication(
+      app.id,
+      dependencies(
+        app,
+        frontend({
+          active_deployment_id: "missing-deployment",
+          public_url: managedUrl,
+          deployments: [],
+        }),
+      ),
+    );
+
+    expect(result.status).toBe("error");
+    expect(result.liveMode).toBeUndefined();
+  });
+
+  it("does not relabel a regressed container URL as an external publication", async () => {
+    const containerUrl = "https://project.apps.elizacloud.ai";
+    const app = makeApp({
+      app_url: containerUrl,
+      production_url: containerUrl,
+      deployment_status: "failed",
+    });
+
+    const result = await loadProjectPublication(
+      app.id,
+      dependencies(app, frontend({ public_url: null })),
+    );
+
+    expect(result.status).toBe("error");
+    expect(result.liveMode).toBeUndefined();
+  });
+
   it("keeps an inactive app unpublished while retaining its management data", async () => {
     const app = makeApp({ is_active: false });
     const result = await loadProjectPublication(

@@ -26,6 +26,12 @@ import {
   promoteSubactionsToActions,
 } from "@elizaos/core";
 
+export {
+  getProjectAction,
+  listProjectsAction,
+  setActiveProjectAction,
+} from "./actions/projects.js";
+export { activeProjectProvider } from "./providers/active-project.js";
 // Register coding-agent HTTP routes with the runtime route registry.
 // Re-exporting the registration sentinel (rather than a side-effect-only
 // `import "./register-routes.js"`) keeps Bun.build's node-target
@@ -61,31 +67,25 @@ export {
   sanitizeCompletionRelay,
   stripToolTranscript,
 } from "./services/transcript-sanitizer.js";
-export {
+
+import {
   getProjectAction,
   listProjectsAction,
   setActiveProjectAction,
 } from "./actions/projects.js";
-export { activeProjectProvider } from "./providers/active-project.js";
-
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
 } from "./actions/sandbox-stub.js";
-import {
-  getProjectAction,
-  listProjectsAction,
-  setActiveProjectAction,
-} from "./actions/projects.js";
 import { tasksAction } from "./actions/tasks.js";
 import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 import { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
+import { activeProjectProvider } from "./providers/active-project.js";
 import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
 import { availableAgentsProvider } from "./providers/available-agents.js";
 import { codingSessionChangesProvider } from "./providers/coding-session-changes.js";
-import { activeProjectProvider } from "./providers/active-project.js";
 import { AcpService } from "./services/acp-service.js";
 import {
   createActiveSessionForwardHandler,

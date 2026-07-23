@@ -4,9 +4,10 @@
  * `AppMonetizationSettings` review gate: a draft app must be submitted for
  * review before monetization can be enabled, an approved app renders an enabled
  * toggle with no submit button, and a rejected/pending app stays gated (with
- * resubmission offered). A legacy enabled-but-unapproved app can always be
- * turned OFF — never trapped ON. The api-client, `sonner`, i18n provider, and
- * native nav are doubled; the component renders for real.
+ * resubmission offered). Purchase-share controls stay hidden while that credit
+ * pool is not a spendable production path. A legacy enabled-but-unapproved app
+ * can always be turned OFF — never trapped ON. The api-client, `sonner`, i18n
+ * provider, and native nav are doubled; the component renders for real.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -201,7 +202,6 @@ describe("AppMonetizationSettings review gate", () => {
         json: {
           monetizationEnabled: true,
           inferenceMarkupPercentage: 25,
-          purchaseSharePercentage: 10,
         },
       }),
     );
@@ -251,7 +251,6 @@ describe("AppMonetizationSettings review gate", () => {
         json: {
           monetizationEnabled: false,
           inferenceMarkupPercentage: 25,
-          purchaseSharePercentage: 10,
         },
       }),
     );
@@ -280,6 +279,8 @@ describe("AppMonetizationSettings review gate", () => {
     expect(
       screen.queryByRole("button", { name: "Submit for review" }),
     ).toBeNull();
+    expect(screen.queryByText("Purchase Share")).toBeNull();
+    expect(screen.queryByText(/credit purchases/i)).toBeNull();
   });
 
   it("keeps the toggle gated on a rejected app and offers resubmission", async () => {

@@ -43,6 +43,7 @@ export interface ProjectAppIdentity {
 export interface ProjectPublicationApp extends ProjectAppIdentity {
   isActive: boolean;
   deploymentStatus: AppDeploymentStatus;
+  appUrl: string;
   productionUrl: string | null;
 }
 
@@ -251,6 +252,12 @@ export function readProjectPublicationApp(
     ...identity,
     isActive: app.is_active,
     deploymentStatus,
+    appUrl: nonEmptyString(
+      app,
+      "app_url",
+      "CLOUD_APP_RESPONSE_INVALID",
+      "app.app_url",
+    ),
     productionUrl: nullableString(
       app,
       "production_url",

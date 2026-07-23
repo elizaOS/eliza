@@ -28,7 +28,7 @@ export interface ProjectPublicationSnapshot {
   app?: App;
   publicUrl?: string;
   activeDeploymentId?: string;
-  liveMode?: "managed-frontend" | "container";
+  liveMode?: "managed-frontend" | "container" | "external";
   error?: string;
   staleBinding?: boolean;
 }
@@ -78,9 +78,9 @@ function initialSnapshot(
 /**
  * Resolve the publication from authoritative Cloud reads.
  *
- * `is_active` alone is not enough: a managed frontend must have both an active
- * deployment and its operator-provided system URL, while a container must have
- * reached `deployed` with a production URL.
+ * `is_active` alone is not enough to render a usable publication URL. Managed
+ * hosting needs an active deployment, containers need a deployed production
+ * URL, and intentionally external projects use their validated `app_url`.
  */
 export async function loadProjectPublication(
   cloudAppId: string,
@@ -92,6 +92,7 @@ export async function loadProjectPublication(
   ]);
   const managedUrl = cleanPublicationUrl(frontend.public_url);
   const containerUrl = cleanPublicationUrl(app.production_url);
+  const configuredAppUrl = cleanPublicationUrl(app.app_url);
   const activeFrontend = frontend.active_deployment_id
     ? frontend.deployments.find(
         (deployment) =>
@@ -103,27 +104,34 @@ export async function loadProjectPublication(
   const containerLive = Boolean(
     app.deployment_status === "deployed" && containerUrl,
   );
+  const externalUrl =
+    configuredAppUrl &&
+    configuredAppUrl !== managedUrl &&
+    configuredAppUrl !== containerUrl
+      ? configuredAppUrl
+      : null;
   const liveMode = managedFrontendLive
     ? "managed-frontend"
     : containerLive
       ? "container"
-      : undefined;
+      : externalUrl
+        ? "external"
+        : undefined;
   const publicUrl =
     liveMode === "managed-frontend"
       ? (managedUrl ?? undefined)
       : liveMode === "container"
         ? (containerUrl ?? undefined)
-        : (managedUrl ??
-          containerUrl ??
-          cleanPublicationUrl(app.app_url) ??
-          undefined);
+        : liveMode === "external"
+          ? (externalUrl ?? undefined)
+          : (managedUrl ?? containerUrl ?? externalUrl ?? undefined);
 
   if (app.is_active && !liveMode) {
     return {
       status: "error",
       app,
       error:
-        "The Cloud record is active, but no verified managed-frontend or container URL is live.",
+        "The Cloud record is active, but it has no valid managed, container, or external publication URL.",
       ...(publicUrl ? { publicUrl } : {}),
     };
   }

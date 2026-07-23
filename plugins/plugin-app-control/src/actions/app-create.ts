@@ -797,16 +797,33 @@ async function editExistingApp({
 		return { success: false, text };
 	}
 
-	// Pre-edit snapshot so the edit can be rolled back via VIEWS rollback (#8915).
-	await snapshotAppWorkdir(runtime, workdir, app.name, false, originRoomId);
+	// Editing an installed app is still project work. Register by canonical
+	// localPath before dispatch so repeated edits reuse the same durable Project
+	// and the orchestrator can isolate task state, memory, and Cloud ownership.
+	const project = upsertProject({
+		name: app.displayName,
+		localPath: workdir,
+	});
+	setActiveProject(project.id);
+	const projectWorkdir = project.localPath;
 
-	const prompt = buildEditPrompt(intent, app, workdir);
+	// Pre-edit snapshot so the edit can be rolled back via VIEWS rollback (#8915).
+	await snapshotAppWorkdir(
+		runtime,
+		projectWorkdir,
+		app.name,
+		false,
+		originRoomId,
+	);
+
+	const prompt = buildEditPrompt(intent, app, projectWorkdir);
 	const dispatch = await dispatchCodingAgent({
 		runtime,
 		prompt,
 		label: `edit-app:${app.name}`,
-		workdir,
+		workdir: projectWorkdir,
 		appName: app.name,
+		projectId: project.id,
 		originRoomId,
 		callback,
 	});
@@ -822,10 +839,10 @@ async function editExistingApp({
 	}
 
 	const task = dispatch.agents[0];
-	const text = `Started an edit task for project ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification will run when the task completes.`;
+	const text = `Started an edit task for project ${app.displayName} at ${projectWorkdir}. Task session ${task.sessionId} is ${task.status}; verification will run when the task completes.`;
 	await callback?.({ text });
 	logger.info(
-		`[plugin-app-control] APP/create edit appName=${app.name} workdir=${workdir} session=${task.sessionId}`,
+		`[plugin-app-control] APP/create edit appName=${app.name} workdir=${projectWorkdir} projectId=${project.id} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
@@ -834,13 +851,15 @@ async function editExistingApp({
 			mode: "create",
 			subMode: "edit",
 			name: app.name,
-			workdir,
+			workdir: projectWorkdir,
+			projectId: project.id,
 			taskStatus: task.status,
 			taskSessionId: task.sessionId,
 		},
 		data: {
 			app,
-			workdir,
+			workdir: projectWorkdir,
+			projectId: project.id,
 			task,
 			agents: dispatch.agents,
 			suppressActionResultClipboard: true,

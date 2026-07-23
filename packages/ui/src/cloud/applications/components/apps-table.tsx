@@ -79,11 +79,11 @@ export function AppsTable({ apps }: { apps: App[] }) {
         toast.success(
           deletedIds.length === 1
             ? t("cloud.apps.toast.deleteSuccess", {
-                defaultValue: "App deleted successfully",
+                defaultValue: "Publication deleted",
               })
             : t("cloud.apps.toast.deleteManySuccess", {
                 count: deletedIds.length,
-                defaultValue: "{{count}} apps deleted",
+                defaultValue: "{{count}} publications deleted",
               }),
         );
       }
@@ -93,7 +93,7 @@ export function AppsTable({ apps }: { apps: App[] }) {
         toast.error(
           t("cloud.apps.toast.deleteSomeFailed", {
             count: failed.length,
-            defaultValue: "Failed to delete {{count}} app(s)",
+            defaultValue: "Failed to delete {{count}} publications",
           }),
           {
             description:
@@ -166,10 +166,10 @@ export function AppsTable({ apps }: { apps: App[] }) {
           dialogCount > 1
             ? t("cloud.apps.deleteDialog.titleMany", {
                 count: dialogCount,
-                defaultValue: "Delete {{count}} Apps",
+                defaultValue: "Delete {{count}} Publications",
               })
             : t("cloud.apps.deleteDialog.title", {
-                defaultValue: "Delete App",
+                defaultValue: "Delete Publication",
               })
         }
         description={
@@ -181,7 +181,7 @@ export function AppsTable({ apps }: { apps: App[] }) {
               {dialogCount > 1
                 ? t("cloud.apps.deleteDialog.manyApps", {
                     count: dialogCount,
-                    defaultValue: "{{count}} apps",
+                    defaultValue: "{{count}} publications",
                   })
                 : `"${deleteTargets?.[0]?.name}"`}
             </span>

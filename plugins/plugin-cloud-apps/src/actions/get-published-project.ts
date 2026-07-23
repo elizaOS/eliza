@@ -2,9 +2,9 @@
  * Reads the complete live publication state for one local Project.
  *
  * The registry owns only the binding; Cloud remains authoritative for active
- * state, hosting URL, analytics, and earnings. The action therefore fetches
- * every field live and reports an active row without a verified URL as an
- * error, never as a healthy published state.
+ * state, publication URL, analytics, and earnings. Managed and container URLs
+ * take precedence, while an intentionally external project can publish through
+ * its validated `app_url`.
  */
 
 import type {
@@ -149,17 +149,24 @@ export const getPublishedProjectAction: Action = {
               deployment.status === "active",
           )
         : null;
-      const managedUrl = activeFrontend ? cleanUrl(frontend.publicUrl) : null;
+      const managedCandidateUrl = cleanUrl(frontend.publicUrl);
+      const containerCandidateUrl = cleanUrl(app.productionUrl);
+      const managedUrl = activeFrontend ? managedCandidateUrl : null;
       const containerUrl =
-        app.deploymentStatus === "deployed"
-          ? cleanUrl(app.productionUrl)
+        app.deploymentStatus === "deployed" ? containerCandidateUrl : null;
+      const configuredAppUrl = cleanUrl(app.appUrl);
+      const externalUrl =
+        configuredAppUrl &&
+        configuredAppUrl !== managedCandidateUrl &&
+        configuredAppUrl !== containerCandidateUrl
+          ? configuredAppUrl
           : null;
-      const publicUrl = managedUrl ?? containerUrl;
+      const publicUrl = managedUrl ?? containerUrl ?? externalUrl;
       const earnings = readProjectEarnings(earningsResponse);
       const published = app.isActive && publicUrl !== null;
 
       if (app.isActive && !publicUrl) {
-        const reply = `"${project.name}" has an active Cloud record, but Cloud did not return a live managed-frontend or container URL. It is not safe to call this project published.`;
+        const reply = `"${project.name}" has an active Cloud record, but Cloud did not return a valid managed, container, or external publication URL. It is not safe to call this project published.`;
         await callback?.({ text: reply, actions: [ACTION] });
         return {
           success: false,
@@ -222,7 +229,9 @@ export const getPublishedProjectAction: Action = {
             ? "managed-frontend"
             : containerUrl
               ? "container"
-              : null,
+              : externalUrl
+                ? "external"
+                : null,
           analytics: analytics.totalStats,
           earnings,
         },

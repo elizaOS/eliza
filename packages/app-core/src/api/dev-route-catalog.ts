@@ -240,11 +240,11 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
-    // My Apps is the canonical `/apps` destination (mirrors TAB_PATHS in
-    // packages/ui/src/navigation; the launcher grid lives at `/views`).
+    // This telemetry id remains a deep-link alias while Projects owns the
+    // creator workflow and bare `/apps` keeps the launcher runtime.
     tabId: "my-apps",
-    path: "/apps",
-    label: "My Apps",
+    path: "/apps/my-apps",
+    label: "Projects (legacy alias)",
     group: "Apps",
     visibility: "all",
     featureFlag: "VITE_ENABLE_APPS",

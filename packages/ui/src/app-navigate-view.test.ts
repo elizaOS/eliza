@@ -88,8 +88,8 @@ describe("App navigate-view shell handler", () => {
     expect(directTabForNavigateView({ viewPath: "/views" }, "/views")).toBe(
       "views",
     );
-    // `/apps` is a Projects alias (the launcher grid is `/views`), so it has no
-    // direct-tab fast path and resolves through the normal path→tab lookup.
+    // Bare `/apps` owns the launcher runtime, but it has no direct-tab fast
+    // path and therefore resolves through the normal path→tab lookup.
     expect(directTabForNavigateView({ viewPath: "/apps" }, "/apps")).toBeNull();
     expect(
       directTabForNavigateView(

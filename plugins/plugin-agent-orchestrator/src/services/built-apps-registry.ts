@@ -195,8 +195,7 @@ export async function registerBuiltApp(
   return withRegistryLock(runtime, async () => {
     const existing = asRecordList(await runtime.getCache(BUILT_APPS_CACHE_KEY));
     const previous = existing.find(
-      (entry) =>
-        entry.target === record.target && entry.slug === record.slug,
+      (entry) => entry.target === record.target && entry.slug === record.slug,
     );
     const nextRecord =
       record.projectId || !previous?.projectId

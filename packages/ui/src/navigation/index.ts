@@ -387,8 +387,8 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   experience: "/character/experience",
   "character-skills": "/character/skills",
   memories: "/apps/memories",
-  // Retained route id for telemetry and saved links. Both this path and the
-  // historical bare `/apps` management path resolve to Projects.
+  // Retained route id for telemetry and saved links; bare `/apps` remains the
+  // launcher runtime and is intentionally unrelated to project management.
   "my-apps": "/apps/my-apps",
   rolodex: "/rolodex",
   runtime: "/apps/runtime",

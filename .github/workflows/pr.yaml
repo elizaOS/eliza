@@ -1,8 +1,8 @@
-name: PR Title Check
+name: PR Evidence Check
 
 # Cancel previous runs for the same PR
 concurrency:
-  group: pr-title-check-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: pr-evidence-check-${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 on:
@@ -44,37 +44,3 @@ jobs:
             --labels "$PR_LABELS" \
             --changed-files-file "$RUNNER_TEMP/pr-changed-files.txt" \
             --added-files-file "$RUNNER_TEMP/pr-added-files.txt"
-
-  check-pr-title:
-    runs-on: ubuntu-latest
-
-    # The failure-path `gh pr comment` (GraphQL addComment) needs PR write;
-    # the workflow-level default grants only contents: read, which made the
-    # reporting step crash with "Resource not accessible by integration".
-    permissions:
-      contents: read
-      pull-requests: write
-
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-
-      - name: Validate PR title
-        id: validate
-        run: |
-          PR_TITLE=$(jq -r .pull_request.title "$GITHUB_EVENT_PATH")
-          echo "PR Title: $PR_TITLE"
-          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|release)(\([a-zA-Z0-9-]+\))?:\ .+ ]]; then
-            echo "PR title does not match the required pattern."
-            exit 1
-          fi
-
-      - name: Set status
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "❌ PR title does not match the required pattern. Please use one of these formats:
-          - 'type: description' (e.g., 'feat: add new feature')
-          - 'type(scope): description' (e.g., 'chore(core): update dependencies')
-          Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert, release"

@@ -189,7 +189,11 @@ export function DashboardPageWrapper({
 }
 
 export function AppsPageWrapper({ children }: DashboardRoutePageWrapperProps) {
-  return <DashboardRoutePage title="My Apps">{children}</DashboardRoutePage>;
+  return (
+    <DashboardRoutePage title="Published Projects">
+      {children}
+    </DashboardRoutePage>
+  );
 }
 
 export function ContainersPageWrapper({

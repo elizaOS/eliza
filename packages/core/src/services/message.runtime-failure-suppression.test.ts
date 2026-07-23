@@ -85,6 +85,7 @@ function makeFailingRuntime(room: Room): IAgentRuntime {
 			error: vi.fn(),
 			trace: vi.fn(),
 		} as unknown as IAgentRuntime["logger"],
+		reportError: vi.fn(),
 		getSetting: vi.fn(() => undefined),
 		getService: vi.fn(() => null),
 		getModel: vi.fn(() => async () => {

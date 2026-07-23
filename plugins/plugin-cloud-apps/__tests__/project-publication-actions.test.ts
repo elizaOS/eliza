@@ -385,6 +385,67 @@ describe("project publication reads", () => {
     });
   });
 
+  it("GET_PUBLISHED_PROJECT recognizes an active external app_url without managed hosting", async () => {
+    installCloudState({
+      app_url: "https://external.example.com/proof",
+      is_active: true,
+      deployment_status: "draft",
+      production_url: null,
+    });
+    setListAppFrontendDeployments(() =>
+      Promise.resolve({
+        success: true,
+        active_deployment_id: null,
+        public_url: null,
+        deployments: [],
+      }),
+    );
+    registerProject({ bound: true });
+
+    const result = await getPublishedProjectAction.handler(
+      memoryRuntime(),
+      makeMessage("how is my project doing?"),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      published: true,
+      publicUrl: "https://external.example.com/proof",
+      hosting: "external",
+    });
+  });
+
+  it("GET_PUBLISHED_PROJECT rejects a stale managed URL instead of relabeling it external", async () => {
+    const managedUrl = "https://proof-project.frontends.test";
+    installCloudState({
+      app_url: managedUrl,
+      is_active: true,
+      deployment_status: "draft",
+      production_url: null,
+    });
+    setListAppFrontendDeployments(() =>
+      Promise.resolve({
+        success: true,
+        active_deployment_id: null,
+        public_url: managedUrl,
+        deployments: [],
+      }),
+    );
+    registerProject({ bound: true });
+
+    const result = await getPublishedProjectAction.handler(
+      memoryRuntime(),
+      makeMessage("how is my project doing?"),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      reason: "active_without_live_url",
+      published: false,
+      state: "error",
+    });
+  });
+
   it("GET_APP_ANALYTICS resolves the active project and returns exact Cloud totals", async () => {
     registerProject({ bound: true });
     const result = await getAppAnalyticsAction.handler(

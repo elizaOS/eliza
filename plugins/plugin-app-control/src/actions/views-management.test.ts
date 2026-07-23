@@ -3422,9 +3422,12 @@ describe("view management actions", () => {
 
 	it("keeps an APP edit task in its chat room with bounded verification retries", async () => {
 		const repo = createRepoFixture();
+		const stateDir = mkdtempSync(path.join(tmpdir(), "app-edit-projects-"));
+		vi.stubEnv("ELIZA_STATE_DIR", stateDir);
 		try {
 			const pluginDir = path.join(repo.pluginsDir, "plugin-proof-app");
 			mkdirSync(pluginDir, { recursive: true });
+			const projectWorkdir = realpathSync(pluginDir);
 			const { runtime, codingHandler } = createRuntime();
 			const appClient = {
 				listInstalledApps: vi.fn(async () => [
@@ -3456,7 +3459,8 @@ describe("view management actions", () => {
 				mode: "create",
 				subMode: "edit",
 				name: "proof-app",
-				workdir: pluginDir,
+				workdir: projectWorkdir,
+				projectId: expect.any(String),
 			});
 			expect(codingHandler).toHaveBeenCalledTimes(1);
 			expect(codingHandler.mock.calls[0][1]).toMatchObject({
@@ -3471,7 +3475,8 @@ describe("view management actions", () => {
 				trajectoryLinkSource: "plugin-app-control:app-create",
 			});
 			expect(handlerOptions.parameters).toMatchObject({
-				workdir: pluginDir,
+				projectId: result.values?.projectId,
+				workdir: projectWorkdir,
 				lockWorkdir: true,
 				keepAliveAfterComplete: true,
 				maxRetries: 2,
@@ -3480,14 +3485,30 @@ describe("view management actions", () => {
 					service: "app-verification",
 					method: "verifyApp",
 					params: {
-						workdir: pluginDir,
+						workdir: projectWorkdir,
 						appName: "proof-app",
 						profile: "full",
 					},
 				},
 			});
+
+			const persisted = JSON.parse(
+				readFileSync(path.join(stateDir, "projects.json"), "utf8"),
+			) as {
+				activeProjectId: string;
+				projects: Array<{ id: string; name: string; localPath: string }>;
+			};
+			expect(persisted.activeProjectId).toBe(result.values?.projectId);
+			expect(persisted.projects).toContainEqual(
+				expect.objectContaining({
+					id: result.values?.projectId,
+					name: "Proof App",
+					localPath: projectWorkdir,
+				}),
+			);
 		} finally {
 			repo.cleanup();
+			rmSync(stateDir, { recursive: true, force: true });
 		}
 	});
 

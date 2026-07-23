@@ -19,6 +19,7 @@ import {
   type WorkflowService,
 } from "../../../../plugins/plugin-workflow/src/services/index.ts";
 import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
+import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/context.ts";
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
@@ -268,6 +269,11 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
     const { embedded, service } = await workflowServices(runtime);
     await embedded.deleteWorkflow(WORKFLOW_ID).catch(() => undefined);
     await embedded.createWorkflow(workflowDefinition);
+    if (!ctx.primaryUserId) return "scenario primary user was not available";
+    const ownerTag = await embedded.getOrCreateTag(
+      await getUserTagName(runtime, ctx.primaryUserId),
+    );
+    await embedded.updateWorkflowTags(WORKFLOW_ID, [ownerTag.id]);
     const execution = await embedded.executeWorkflow(WORKFLOW_ID);
     seededExecutionId = execution.id;
     const saved = await service.getWorkflow(WORKFLOW_ID);

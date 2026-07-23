@@ -38,14 +38,14 @@ export default function ApplicationsPage() {
         <DashboardStatGrid data-onboarding="apps-stats">
           <DashboardStatCard
             label={t("cloud.apps.stat.totalApps", {
-              defaultValue: "Total Apps",
+              defaultValue: "Published Projects",
             })}
             value={apps.length}
             icon={<Grid3x3 className="h-5 w-5 text-muted" />}
           />
           <DashboardStatCard
             label={t("cloud.apps.stat.activeApps", {
-              defaultValue: "Active Apps",
+              defaultValue: "Active Published Projects",
             })}
             value={activeCount}
             icon={<Activity className="h-5 w-5 text-green-500" />}
@@ -73,17 +73,17 @@ export default function ApplicationsPage() {
               error instanceof Error
                 ? error.message
                 : t("cloud.apps.error.load", {
-                    defaultValue: "Failed to load apps",
+                    defaultValue: "Failed to load published projects",
                   })
             }
           />
         ) : apps.length === 0 ? (
-          // Apps are created BY the agent (chat: "build me an app…"), never
-          // from the console — the dashboard only manages what exists.
+          // Projects originate with the agent or local workspace; this
+          // compatibility list only manages publications that already exist.
           <AppsEmptyState
             description={t("cloud.apps.emptyAgentHint", {
               defaultValue:
-                "Ask your Eliza agent to build and deploy an app — it will show up here to manage, monetize, and share.",
+                "Ask your Eliza agent to build and publish a project — it will show up here to manage, monetize, and share.",
             })}
           />
         ) : (

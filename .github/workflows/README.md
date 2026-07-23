@@ -12,7 +12,7 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
 | `quality.yml` | PR to main, push main/develop, manual | Extended format, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
-| `pr.yaml` | PR opened/edited | PR title validation |
+| `pr.yaml` | PR opened/edited | PR evidence validation |
 | `release-orchestrator.yml` | Manual on protected `develop` | Sole full-cohort npm/GitHub Release entry; exact-SHA gate before distribution fan-out |
 | `release.yaml` | Reusable call only | Exact-SHA transactional npm, tag, and GitHub release |
 | `release-candidate-pr.yml` | PRs changing release authority | Credential-free candidate plus real local transport receipts |

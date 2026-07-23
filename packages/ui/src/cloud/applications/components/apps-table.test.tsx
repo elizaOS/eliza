@@ -88,7 +88,7 @@ describe("AppsTable bulk delete", () => {
 
     await user.click(screen.getByRole("button", { name: /Delete selected/ }));
     // Bulk confirm dialog.
-    expect(screen.getByText("Delete 2 Apps")).toBeTruthy();
+    expect(screen.getByText("Delete 2 Publications")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
@@ -127,7 +127,7 @@ describe("AppsTable bulk delete", () => {
     // Row action menus are per-app; open Gamma's and pick Delete.
     const menus = screen.getAllByRole("button", { name: /open actions/i });
     await user.click(menus[menus.length - 1]);
-    await user.click(await screen.findByText("Delete App"));
+    await user.click(await screen.findByText("Delete Publication"));
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {

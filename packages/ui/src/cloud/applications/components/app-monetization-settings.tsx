@@ -1,7 +1,8 @@
 /**
  * Application detail — Monetization tab.
  * GET/PUT `/api/v1/apps/:id/monetization` go through the typed `api` client.
- * Reuses the shared `EarningsSimulator` + `RevenueFlowDiagram` from cloud-ui.
+ * Only inference markup is editable here because app-credit purchase-share
+ * pools are not a spendable production revenue path.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,10 +20,6 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import {
-  EarningsSimulator,
-  RevenueFlowDiagram,
-} from "../../../cloud-ui/components/monetization";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,7 +49,6 @@ import { openCloudConsoleRouteExternally } from "../lib/native-cloud-nav";
 interface MonetizationSettings {
   monetizationEnabled: boolean;
   inferenceMarkupPercentage: number;
-  purchaseSharePercentage: number;
   platformOffsetAmount: number;
   totalCreatorEarnings: number;
 }
@@ -96,7 +92,6 @@ export function AppMonetizationSettings({
   const [settings, setSettings] = useState<MonetizationSettings>({
     monetizationEnabled: false,
     inferenceMarkupPercentage: 0,
-    purchaseSharePercentage: 10,
     platformOffsetAmount: 1,
     totalCreatorEarnings: 0,
   });
@@ -165,7 +160,6 @@ export function AppMonetizationSettings({
         json: {
           monetizationEnabled: settings.monetizationEnabled,
           inferenceMarkupPercentage: settings.inferenceMarkupPercentage,
-          purchaseSharePercentage: settings.purchaseSharePercentage,
         },
       });
       setServerMonetizationEnabled(settings.monetizationEnabled);
@@ -214,7 +208,6 @@ export function AppMonetizationSettings({
           json: {
             monetizationEnabled: enabled,
             inferenceMarkupPercentage: settings.inferenceMarkupPercentage,
-            purchaseSharePercentage: settings.purchaseSharePercentage,
           },
         },
       );
@@ -411,11 +404,11 @@ export function AppMonetizationSettings({
                 {settings.monetizationEnabled
                   ? t("cloud.monetization.activeDesc", {
                       defaultValue:
-                        "Earning from inference markups and credit purchases. Users pay project-specific credits.",
+                        "Earning from inference markup on published-project usage.",
                     })
                   : t("cloud.monetization.enableDesc", {
                       defaultValue:
-                        "Start earning from your published project. You'll earn from inference markups and credit purchases.",
+                        "Start earning from inference markup on your published project.",
                     })}
               </p>
               {settings.totalCreatorEarnings > 0 && (
@@ -512,68 +505,6 @@ export function AppMonetizationSettings({
               </div>
             </div>
 
-            <div className="h-px bg-surface" />
-
-            {/* Purchase Share */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-txt">
-                    {t("cloud.monetization.purchaseShare", {
-                      defaultValue: "Purchase Share",
-                    })}
-                  </span>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Info className="h-3.5 w-3.5 text-neutral-500" />
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="right"
-                      className="max-w-[200px] bg-card border-border text-txt"
-                    >
-                      {t("cloud.monetization.purchaseShareTooltip", {
-                        defaultValue:
-                          "Your cut of credit purchases after platform fee.",
-                      })}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <span className="text-lg font-mono font-semibold text-txt-strong">
-                  {settings.purchaseSharePercentage}%
-                </span>
-              </div>
-              <Slider
-                value={[settings.purchaseSharePercentage]}
-                onValueChange={([value]) =>
-                  updateSetting("purchaseSharePercentage", value)
-                }
-                min={0}
-                max={50}
-                step={5}
-                className="w-full"
-              />
-              <div className="flex gap-1.5 flex-wrap">
-                {[0, 10, 20, 30, 50].map((preset) => (
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    key={preset}
-                    className={cn(
-                      "px-2.5 py-1 text-xs rounded-sm transition-colors",
-                      settings.purchaseSharePercentage === preset
-                        ? "bg-muted text-txt border border-border"
-                        : "bg-surface text-neutral-400 hover:bg-bg-hover border border-transparent",
-                    )}
-                    onClick={() =>
-                      updateSetting("purchaseSharePercentage", preset)
-                    }
-                  >
-                    {preset}%
-                  </Button>
-                ))}
-              </div>
-            </div>
-
             {/* Save Button */}
             <div className="pt-2">
               <Button
@@ -592,19 +523,7 @@ export function AppMonetizationSettings({
               </Button>
             </div>
           </div>
-
-          {/* Revenue Flow Diagram */}
-          <RevenueFlowDiagram
-            markupPercentage={settings.inferenceMarkupPercentage}
-            purchaseSharePercentage={settings.purchaseSharePercentage}
-          />
         </div>
-
-        {/* Earnings Simulator */}
-        <EarningsSimulator
-          markupPercentage={settings.inferenceMarkupPercentage}
-          purchaseSharePercentage={settings.purchaseSharePercentage}
-        />
 
         {/* Self-Host CTA — closes the loop: app earns → fund refills → container stays alive */}
         {settings.monetizationEnabled && <SelfHostCTA />}
@@ -628,28 +547,16 @@ export function AppMonetizationSettings({
             <div className="text-neutral-400 space-y-3 text-left text-sm">
               <ul className="list-disc list-inside space-y-1">
                 <li>
-                  {t("cloud.monetization.enableDialogPoint1", {
-                    defaultValue:
-                      "Pay project-specific credits (separate balance)",
-                  })}
-                </li>
-                <li>
                   {t("cloud.monetization.enableDialogPoint2", {
                     defaultValue:
                       "See inference costs with your markup applied",
-                  })}
-                </li>
-                <li>
-                  {t("cloud.monetization.enableDialogPoint3", {
-                    defaultValue:
-                      "Purchase credits that contribute to your earnings",
                   })}
                 </li>
               </ul>
               <p className="pt-2 text-txt">
                 {t("cloud.monetization.enableDialogNote", {
                   defaultValue:
-                    "You can adjust markup and purchase share after enabling.",
+                    "You can adjust inference markup after enabling.",
                 })}
               </p>
             </div>

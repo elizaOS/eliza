@@ -247,8 +247,7 @@ export function AppEarningsDashboard({
           ) : (
             <>
               <p className="text-neutral-500 text-sm mb-4">
-                Enable monetization to start earning from your published
-                project
+                Enable monetization to start earning from your published project
               </p>
               <Button
                 onClick={() => {

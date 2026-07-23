@@ -62,8 +62,8 @@ export {
   useProjectPublication,
 } from "./lib/project-publication";
 
-/** Stable surface label + URL path slugs for the Applications surface. */
-export const APPLICATIONS_SURFACE_LABEL = "Applications";
+/** Stable creator label plus the unchanged Cloud wire-route slugs. */
+export const APPLICATIONS_SURFACE_LABEL = "Published Projects";
 export const APPLICATIONS_LIST_ROUTE_PATH = "dashboard/apps";
 export const APPLICATIONS_DETAIL_ROUTE_PATH = "dashboard/apps/:id";
 

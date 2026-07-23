@@ -1232,6 +1232,15 @@ export const getEntityDetails = throwingExport("getEntityDetails");
 export const splitChunks = throwingExport("splitChunks");
 export const createMessageMemory = throwingExport("createMessageMemory");
 export const executePlannedToolCall = throwingExport("executePlannedToolCall");
+// Project registry persistence is a Node-side concern. Cloud action modules
+// are bundled for registration, but an accidental Worker execution must fail
+// observably instead of reading or mutating a nonexistent local state file.
+export const bindProjectCloudApp = throwingExport("bindProjectCloudApp");
+export const unbindProjectCloudApp = throwingExport("unbindProjectCloudApp");
+export const getProjectById = throwingExport("getProjectById");
+export const readProjectRegistryOrThrow = throwingExport(
+  "readProjectRegistryOrThrow",
+);
 
 /**
  * Host-bridge setters (core `account-pool-bridge.ts`). The real
@@ -1621,6 +1630,10 @@ export default {
   splitChunks,
   createMessageMemory,
   executePlannedToolCall,
+  bindProjectCloudApp,
+  unbindProjectCloudApp,
+  getProjectById,
+  readProjectRegistryOrThrow,
   buildCanonicalSystemPrompt,
   resolveEffectiveSystemPrompt,
   renderChatMessagesForPrompt,

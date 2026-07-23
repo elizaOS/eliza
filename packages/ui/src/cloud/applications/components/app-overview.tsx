@@ -7,6 +7,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  AlertCircle,
   ChevronRight,
   Coins,
   ExternalLink,
@@ -49,10 +50,11 @@ import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-import type { App } from "../lib/apps";
+import type { App, AppDeployCapability } from "../lib/apps";
 import {
   deployApp,
   deployRepoUrlFromApp,
+  getAppDeployCapability,
   getLatestAppDeployment,
   regenerateAppApiKey,
   validateDeployAppInput,
@@ -67,6 +69,20 @@ interface AppOverviewProps {
 
 const DEPLOY_STATUS_POLL_INTERVAL_MS = 3_000;
 const DEPLOY_STATUS_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
+
+type DeployCapabilityState =
+  | { status: "loading" }
+  | { status: "ready"; value: AppDeployCapability }
+  | { status: "error"; message: string };
+
+type MonetizationSummaryState =
+  | { status: "loading" }
+  | {
+      status: "ready";
+      enabled: boolean;
+      totalCreatorEarnings: number;
+    }
+  | { status: "error"; message?: string; invalidResponse?: boolean };
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -85,16 +101,19 @@ export function AppOverview({
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [isPollingDeployment, setIsPollingDeployment] = useState(false);
+  const [deployCapability, setDeployCapability] =
+    useState<DeployCapabilityState>({ status: "loading" });
+  const [deployCapabilityRevision, setDeployCapabilityRevision] = useState(0);
+  const [monetizationSummary, setMonetizationSummary] =
+    useState<MonetizationSummaryState>({ status: "loading" });
+  const [monetizationSummaryRevision, setMonetizationSummaryRevision] =
+    useState(0);
   const [deployRepoUrl, setDeployRepoUrl] = useState(() =>
     deployRepoUrlFromApp(app),
   );
   const [deployRef, setDeployRef] = useState("");
   const [deployDockerfile, setDeployDockerfile] = useState("");
   const [deployInputError, setDeployInputError] = useState<string | null>(null);
-  const [monetizationEnabled, setMonetizationEnabled] = useState<
-    boolean | null
-  >(null);
-  const [totalEarnings, setTotalEarnings] = useState<number | null>(null);
   const hideApiKeyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deploymentPollInFlightRef = useRef(false);
   const mountedRef = useRef(true);
@@ -120,6 +139,31 @@ export function AppOverview({
     const repoUrl = deployRepoUrlFromApp(app);
     setDeployRepoUrl((current) => current || repoUrl);
   }, [app]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: organization id remounts capability state and revision is an explicit retry token.
+  useEffect(() => {
+    let current = true;
+    setDeployCapability({ status: "loading" });
+    void getAppDeployCapability()
+      .then((value) => {
+        if (current) setDeployCapability({ status: "ready", value });
+      })
+      .catch((error: unknown) => {
+        // error-policy:J4 capability failures hide the mutation form and render
+        // a retryable error instead of discovering the gate after submission.
+        if (!current) return;
+        setDeployCapability({
+          status: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Container availability could not be checked",
+        });
+      });
+    return () => {
+      current = false;
+    };
+  }, [app.organization_id, deployCapabilityRevision]);
 
   useEffect(() => {
     return () => {
@@ -207,8 +251,10 @@ export function AppOverview({
     }
   }, [app.deployment_status, pollLatestDeployment]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is an explicit retry token.
   useEffect(() => {
     let cancelled = false;
+    setMonetizationSummary({ status: "loading" });
     void api<{
       success?: boolean;
       monetization?: {
@@ -218,18 +264,37 @@ export function AppOverview({
     }>(`/api/v1/apps/${app.id}/monetization`)
       .then((data) => {
         if (cancelled) return;
-        if (data.success && data.monetization) {
-          setMonetizationEnabled(data.monetization.monetizationEnabled);
-          setTotalEarnings(data.monetization.totalCreatorEarnings);
+        if (
+          data.success !== true ||
+          !data.monetization ||
+          typeof data.monetization.monetizationEnabled !== "boolean" ||
+          typeof data.monetization.totalCreatorEarnings !== "number"
+        ) {
+          setMonetizationSummary({
+            status: "error",
+            invalidResponse: true,
+          });
+          return;
         }
+        setMonetizationSummary({
+          status: "ready",
+          enabled: data.monetization.monetizationEnabled,
+          totalCreatorEarnings: data.monetization.totalCreatorEarnings,
+        });
       })
-      .catch(() => {
-        // Monetization summary is non-critical; leave the card hidden.
+      .catch((error: unknown) => {
+        // error-policy:J4 this duplicate summary stays visible as unavailable;
+        // the full Monetization tab remains the recovery/management boundary.
+        if (cancelled) return;
+        setMonetizationSummary({
+          status: "error",
+          message: error instanceof Error ? error.message : undefined,
+        });
       });
     return () => {
       cancelled = true;
     };
-  }, [app.id]);
+  }, [app.id, monetizationSummaryRevision]);
 
   async function handleRegenerateApiKey(): Promise<void> {
     setIsRegenerating(true);
@@ -258,6 +323,12 @@ export function AppOverview({
     event: FormEvent<HTMLFormElement>,
   ): Promise<void> {
     event.preventDefault();
+    if (
+      deployCapability.status !== "ready" ||
+      !deployCapability.value.enabled
+    ) {
+      return;
+    }
     const validation = validateDeployAppInput({
       repoUrl: deployRepoUrl,
       ref: deployRef,
@@ -404,106 +475,167 @@ export function AppOverview({
             })}
           </h3>
         </div>
-        <p className="text-xs text-neutral-500">
-          {deploymentInProgress || isPollingDeployment
-            ? t("cloud.apps.overview.deployBuilding", {
-                defaultValue: "A deployment is in progress…",
-              })
-            : app.deployment_status === "deployed"
-              ? t("cloud.apps.overview.deployLive", {
-                  defaultValue:
-                    "Your project is live. Redeploy to push the latest build.",
-                })
-              : t("cloud.apps.overview.deployDraft", {
-                  defaultValue:
-                    "Mobile and desktop builds request a cloud build from a repository commit. Local source bundles, images, zips, tars, and artifacts are not uploaded.",
-                })}
-        </p>
-        <form
-          className="grid gap-3 md:grid-cols-[1fr_1fr_auto]"
-          onSubmit={handleDeploy}
-        >
-          <label className="space-y-1.5" htmlFor={deployRepoInputId}>
-            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
-              {t("cloud.apps.overview.deployRepoUrl", {
-                defaultValue: "Repository URL",
-              })}
-            </span>
-            <Input
-              id={deployRepoInputId}
-              value={deployRepoUrl}
-              onChange={(event) => setDeployRepoUrl(event.target.value)}
-              placeholder="https://github.com/org/app.git"
-              density="compact"
-              hasError={Boolean(deployInputError)}
-              className="border-border bg-surface text-txt placeholder:text-neutral-600"
-            />
-          </label>
-          <label className="space-y-1.5" htmlFor={deployRefInputId}>
-            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
-              {t("cloud.apps.overview.deployCommitSha", {
-                defaultValue: "Commit SHA",
-              })}
-            </span>
-            <Input
-              id={deployRefInputId}
-              value={deployRef}
-              onChange={(event) => setDeployRef(event.target.value)}
-              placeholder="40-character SHA"
-              density="compact"
-              hasError={Boolean(deployInputError)}
-              className="font-mono border-border bg-surface text-txt placeholder:text-neutral-600"
-            />
-          </label>
-          <div className="flex items-end">
+        {deployCapability.status === "loading" ? (
+          <div
+            className="flex min-h-11 items-center gap-2 text-xs text-neutral-500"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            {t("cloud.apps.overview.deployCapabilityLoading", {
+              defaultValue: "Checking container availability…",
+            })}
+          </div>
+        ) : deployCapability.status === "error" ? (
+          <div
+            className="flex flex-col gap-3 border border-destructive/40 bg-destructive/10 p-3 sm:flex-row sm:items-center sm:justify-between"
+            role="alert"
+          >
+            <div className="flex min-w-0 items-start gap-2">
+              <AlertCircle
+                className="mt-0.5 h-4 w-4 shrink-0 text-destructive"
+                aria-hidden
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-txt">
+                  {t("cloud.apps.overview.deployCapabilityError", {
+                    defaultValue: "Container availability could not be checked",
+                  })}
+                </p>
+                <p className="mt-1 break-words text-xs text-neutral-500">
+                  {deployCapability.message}
+                </p>
+              </div>
+            </div>
             <Button
-              variant="ghost"
-              type="submit"
-              disabled={deploymentButtonDisabled}
-              className="h-9 w-full min-w-28 text-xs text-neutral-200 bg-surface hover:bg-bg-hover flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
+              variant="outline"
+              type="button"
+              size="sm"
+              className="min-h-11 shrink-0"
+              onClick={() =>
+                setDeployCapabilityRevision((revision) => revision + 1)
+              }
             >
-              {isDeploying || isPollingDeployment || deploymentInProgress ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Rocket className="h-3 w-3" />
-              )}
-              {deploymentInProgress || isPollingDeployment
-                ? t("cloud.apps.overview.deploying", {
-                    defaultValue: "Deploying",
-                  })
-                : app.deployment_status === "deployed"
-                  ? t("cloud.apps.overview.redeploy", {
-                      defaultValue: "Redeploy",
-                    })
-                  : t("cloud.apps.overview.deploy", {
-                      defaultValue: "Deploy",
-                    })}
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              {t("common.retry", { defaultValue: "Retry" })}
             </Button>
           </div>
-          <label
-            className="space-y-1.5 md:col-span-2"
-            htmlFor={deployDockerfileInputId}
+        ) : !deployCapability.value.enabled ? (
+          <div
+            className="flex min-h-11 items-center gap-2 border border-border bg-surface p-3 text-xs text-neutral-500"
+            data-testid="container-deploy-unavailable"
           >
-            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
-              {t("cloud.apps.overview.deployDockerfile", {
-                defaultValue: "Dockerfile path",
-              })}
-            </span>
-            <Input
-              id={deployDockerfileInputId}
-              value={deployDockerfile}
-              onChange={(event) => setDeployDockerfile(event.target.value)}
-              placeholder="Dockerfile"
-              density="compact"
-              hasError={Boolean(deployInputError)}
-              className="border-border bg-surface text-txt placeholder:text-neutral-600"
-            />
-          </label>
-        </form>
-        {deployInputError && (
-          <p className="text-xs text-red-300" role="alert">
-            {deployInputError}
-          </p>
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
+            {t("cloud.apps.overview.deployCapabilityUnavailable", {
+              defaultValue: "Available when enabled for your organization.",
+            })}
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-neutral-500">
+              {deploymentInProgress || isPollingDeployment
+                ? t("cloud.apps.overview.deployBuilding", {
+                    defaultValue: "A deployment is in progress…",
+                  })
+                : app.deployment_status === "deployed"
+                  ? t("cloud.apps.overview.deployLive", {
+                      defaultValue:
+                        "Your project is live. Redeploy to push the latest build.",
+                    })
+                  : t("cloud.apps.overview.deployDraft", {
+                      defaultValue:
+                        "Mobile and desktop builds request a cloud build from a repository commit. Local source bundles, images, zips, tars, and artifacts are not uploaded.",
+                    })}
+            </p>
+            <form
+              className="grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+              onSubmit={handleDeploy}
+            >
+              <label className="space-y-1.5" htmlFor={deployRepoInputId}>
+                <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+                  {t("cloud.apps.overview.deployRepoUrl", {
+                    defaultValue: "Repository URL",
+                  })}
+                </span>
+                <Input
+                  id={deployRepoInputId}
+                  value={deployRepoUrl}
+                  onChange={(event) => setDeployRepoUrl(event.target.value)}
+                  placeholder="https://github.com/org/project.git"
+                  density="compact"
+                  hasError={Boolean(deployInputError)}
+                  className="border-border bg-surface text-txt placeholder:text-neutral-600"
+                />
+              </label>
+              <label className="space-y-1.5" htmlFor={deployRefInputId}>
+                <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+                  {t("cloud.apps.overview.deployCommitSha", {
+                    defaultValue: "Commit SHA",
+                  })}
+                </span>
+                <Input
+                  id={deployRefInputId}
+                  value={deployRef}
+                  onChange={(event) => setDeployRef(event.target.value)}
+                  placeholder="40-character SHA"
+                  density="compact"
+                  hasError={Boolean(deployInputError)}
+                  className="font-mono border-border bg-surface text-txt placeholder:text-neutral-600"
+                />
+              </label>
+              <div className="flex items-end">
+                <Button
+                  variant="ghost"
+                  type="submit"
+                  disabled={deploymentButtonDisabled}
+                  className="h-9 w-full min-w-28 text-xs text-neutral-200 bg-surface hover:bg-bg-hover flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
+                >
+                  {isDeploying ||
+                  isPollingDeployment ||
+                  deploymentInProgress ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Rocket className="h-3 w-3" />
+                  )}
+                  {deploymentInProgress || isPollingDeployment
+                    ? t("cloud.apps.overview.deploying", {
+                        defaultValue: "Deploying",
+                      })
+                    : app.deployment_status === "deployed"
+                      ? t("cloud.apps.overview.redeploy", {
+                          defaultValue: "Redeploy",
+                        })
+                      : t("cloud.apps.overview.deploy", {
+                          defaultValue: "Deploy",
+                        })}
+                </Button>
+              </div>
+              <label
+                className="space-y-1.5 md:col-span-2"
+                htmlFor={deployDockerfileInputId}
+              >
+                <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+                  {t("cloud.apps.overview.deployDockerfile", {
+                    defaultValue: "Dockerfile path",
+                  })}
+                </span>
+                <Input
+                  id={deployDockerfileInputId}
+                  value={deployDockerfile}
+                  onChange={(event) => setDeployDockerfile(event.target.value)}
+                  placeholder="Dockerfile"
+                  density="compact"
+                  hasError={Boolean(deployInputError)}
+                  className="border-border bg-surface text-txt placeholder:text-neutral-600"
+                />
+              </label>
+            </form>
+            {deployInputError && (
+              <p className="text-xs text-red-300" role="alert">
+                {deployInputError}
+              </p>
+            )}
+          </>
         )}
       </div>
 
@@ -543,7 +675,7 @@ export function AppOverview({
                   <AlertDialogDescription>
                     {t("cloud.apps.overview.regenBody", {
                       defaultValue:
-                        "This will immediately invalidate your current API key. Your app will stop working until you update it with the new key.",
+                        "This immediately invalidates the current API key. Your published project will stop working until you update it with the new key.",
                     })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -597,7 +729,7 @@ export function AppOverview({
           <p className="text-xs text-neutral-500">
             {t("cloud.apps.overview.apiKeyHint", {
               defaultValue:
-                "Use this key to authenticate API requests from your app.",
+                "Use this key to authenticate server-side API requests from your published project.",
             })}
           </p>
         </div>
@@ -607,7 +739,7 @@ export function AppOverview({
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Globe className="h-4 w-4 text-muted" />
             {t("cloud.apps.overview.appInformation", {
-              defaultValue: "App Information",
+              defaultValue: "Published Project Information",
             })}
           </h3>
 
@@ -662,55 +794,96 @@ export function AppOverview({
       </div>
 
       {/* Monetization Card */}
-      {monetizationEnabled !== null && (
-        <div className="bg-card rounded-sm p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-sm bg-surface">
-                <Coins className="h-5 w-5 text-muted" />
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-txt">Monetization</h3>
-                <p className="text-xs text-neutral-500">
-                  {monetizationEnabled
-                    ? totalEarnings && totalEarnings > 0
-                      ? `$${totalEarnings.toFixed(2)} earned`
-                      : "Enabled, no earnings yet"
-                    : "Enable to earn from app usage"}
-                </p>
-              </div>
+      <div className="bg-card rounded-sm p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="p-2 rounded-sm bg-surface">
+              <Coins className="h-5 w-5 text-muted" />
             </div>
-            <div className="flex items-center gap-3">
+            <div className="min-w-0">
+              <h3 className="text-sm font-medium text-txt">Monetization</h3>
+              <p
+                className="text-xs text-neutral-500"
+                role={
+                  monetizationSummary.status === "error" ? "alert" : undefined
+                }
+              >
+                {monetizationSummary.status === "loading"
+                  ? t("cloud.apps.overview.monetizationSummaryLoading", {
+                      defaultValue: "Loading monetization summary…",
+                    })
+                  : monetizationSummary.status === "error"
+                    ? monetizationSummary.invalidResponse
+                      ? t("cloud.apps.overview.monetizationSummaryInvalid", {
+                          defaultValue:
+                            "Cloud returned an invalid monetization summary response.",
+                        })
+                      : (monetizationSummary.message ??
+                        t(
+                          "cloud.apps.overview.monetizationSummaryUnavailable",
+                          {
+                            defaultValue:
+                              "Monetization summary is unavailable.",
+                          },
+                        ))
+                    : monetizationSummary.enabled
+                      ? monetizationSummary.totalCreatorEarnings > 0
+                        ? `$${monetizationSummary.totalCreatorEarnings.toFixed(2)} earned`
+                        : "Enabled, no earnings yet"
+                      : "Enable to earn from project usage"}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {monetizationSummary.status === "loading" ? (
+              <Loader2
+                className="h-4 w-4 animate-spin text-muted"
+                aria-hidden
+              />
+            ) : monetizationSummary.status === "error" ? (
+              <Button
+                variant="outline"
+                type="button"
+                size="sm"
+                className="min-h-11"
+                onClick={() =>
+                  setMonetizationSummaryRevision((revision) => revision + 1)
+                }
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                {t("common.retry", { defaultValue: "Retry" })}
+              </Button>
+            ) : (
               <Badge
                 className={cn(
-                  monetizationEnabled
+                  monetizationSummary.enabled
                     ? "bg-green-500/20 text-green-400 border-green-500/30"
                     : "bg-surface text-muted border-border",
                 )}
               >
-                {monetizationEnabled ? "Enabled" : "Disabled"}
+                {monetizationSummary.enabled ? "Enabled" : "Disabled"}
               </Badge>
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => {
-                  if (onNavigateTab) {
-                    onNavigateTab("monetization");
-                    return;
-                  }
-                  navigate(`/dashboard/apps/${app.id}?tab=monetization`);
-                }}
-                aria-label={t("cloud.apps.tab.monetize", {
-                  defaultValue: "Monetize",
-                })}
-                className="p-2 hover:bg-bg-hover rounded-sm transition-colors"
-              >
-                <ChevronRight className="h-4 w-4 text-neutral-400" />
-              </Button>
-            </div>
+            )}
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                if (onNavigateTab) {
+                  onNavigateTab("monetization");
+                  return;
+                }
+                navigate(`/dashboard/apps/${app.id}?tab=monetization`);
+              }}
+              aria-label={t("cloud.apps.tab.monetize", {
+                defaultValue: "Monetize",
+              })}
+              className="p-2 hover:bg-bg-hover rounded-sm transition-colors"
+            >
+              <ChevronRight className="h-4 w-4 text-neutral-400" />
+            </Button>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Allowed Origins */}
       <div className="bg-card rounded-sm p-4 space-y-3">
