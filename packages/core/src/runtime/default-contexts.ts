@@ -66,10 +66,14 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 		{
 			id: "documents",
 			label: "Documents",
+			// "delete" must stay in both descriptions: the DOCUMENT action owns
+			// document deletion, and a Stage-1 inventory that only advertises
+			// save/search/recall makes models refuse "delete that document" as
+			// unsupported instead of classifying into this context (#16942).
 			description:
-				"Read, write, edit, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, or to search and recall prior documents and uploaded files.",
+				"Read, write, edit, delete, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, to search and recall prior documents and uploaded files, or to remove a stored document.",
 			descriptionCompressed:
-				"Stored documents/notes/uploads: save, search, recall",
+				"Stored documents/notes/uploads: save, search, recall, delete",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			subcontexts: ["knowledge", "research"],
