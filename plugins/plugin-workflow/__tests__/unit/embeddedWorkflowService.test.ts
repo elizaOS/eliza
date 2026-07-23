@@ -591,12 +591,15 @@ describe('EmbeddedWorkflowService', () => {
       }
     `;
 
-    const proc = Bun.spawn([process.execPath, '-e', script], {
-      cwd: pluginRoot,
-      env: { ...process.env, WORKFLOW_DIAGNOSTICS_ENABLED: 'false' },
-      stdout: 'ignore',
-      stderr: 'pipe',
-    });
+    const proc = Bun.spawn(
+      [process.execPath, '--conditions=eliza-source', '-e', script],
+      {
+        cwd: pluginRoot,
+        env: { ...process.env, WORKFLOW_DIAGNOSTICS_ENABLED: 'false' },
+        stdout: 'ignore',
+        stderr: 'pipe',
+      },
+    );
     const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
 
     expect(stderr).not.toContain('HTTP Request node requires');
@@ -741,16 +744,19 @@ describe('EmbeddedWorkflowService', () => {
     `;
 
     try {
-      const proc = Bun.spawn([process.execPath, '-e', script], {
-        cwd: pluginRoot,
-        env: {
-          ...process.env,
-          WORKFLOW_CODE_RESULT_PATH: resultPath,
-          WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
+      const proc = Bun.spawn(
+      [process.execPath, '--conditions=eliza-source', '-e', script],
+        {
+          cwd: pluginRoot,
+          env: {
+            ...process.env,
+            WORKFLOW_CODE_RESULT_PATH: resultPath,
+            WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
+          },
+          stdout: 'ignore',
+          stderr: 'pipe',
         },
-        stdout: 'ignore',
-        stderr: 'pipe',
-      });
+      );
       const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
 
       expect(stderr).toBe('');
@@ -887,16 +893,19 @@ describe('EmbeddedWorkflowService', () => {
       }
     `;
     try {
-      const proc = Bun.spawn([process.execPath, '-e', script], {
-        cwd: pluginRoot,
-        env: {
-          ...process.env,
-          WORKFLOW_SMITHERS_RESULT_PATH: resultPath,
-          WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
+      const proc = Bun.spawn(
+      [process.execPath, '--conditions=eliza-source', '-e', script],
+        {
+          cwd: pluginRoot,
+          env: {
+            ...process.env,
+            WORKFLOW_SMITHERS_RESULT_PATH: resultPath,
+            WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
+          },
+          stdout: 'ignore',
+          stderr: 'pipe',
         },
-        stdout: 'ignore',
-        stderr: 'pipe',
-      });
+      );
       const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
 
       expect(stderr).toBe('');
@@ -964,16 +973,19 @@ describe('EmbeddedWorkflowService', () => {
       }
     `;
     try {
-      const proc = Bun.spawn([process.execPath, '-e', script], {
-        cwd: pluginRoot,
-        env: {
-          ...process.env,
-          WORKFLOW_WEBHOOK_RESULT_PATH: resultPath,
-          WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
+      const proc = Bun.spawn(
+      [process.execPath, '--conditions=eliza-source', '-e', script],
+        {
+          cwd: pluginRoot,
+          env: {
+            ...process.env,
+            WORKFLOW_WEBHOOK_RESULT_PATH: resultPath,
+            WORKFLOW_DIAGNOSTICS_ENABLED: 'false',
+          },
+          stdout: 'ignore',
+          stderr: 'pipe',
         },
-        stdout: 'ignore',
-        stderr: 'pipe',
-      });
+      );
       const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
 
       expect(stderr).toBe('');
