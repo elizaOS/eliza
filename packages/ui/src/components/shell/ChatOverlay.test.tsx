@@ -1392,6 +1392,23 @@ describe("ChatOverlay", () => {
     expect(row?.className).toContain("w-full");
   });
 
+  it("fades the expanded transcript under the grabber without masking its scroller", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const fade = screen.getByTestId("chat-thread-top-fade");
+    const viewport = screen.getByTestId("chat-thread-scroll");
+    expect(fade.className).toContain("pointer-events-none");
+    expect(fade.className).toContain("absolute");
+    expect(fade.className).toContain("inset-x-px");
+    expect(fade.className).toContain("top-px");
+    expect(fade.className).toContain("z-[1]");
+    expect(fade.className).not.toContain("z-20");
+    expect(fade.style.backgroundImage).toContain("linear-gradient");
+    expect(viewport.style.maskImage).toBe("");
+    expect(viewport.style.webkitMaskImage).toBe("");
+  });
+
   it("closes the sheet on Escape", () => {
     render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
