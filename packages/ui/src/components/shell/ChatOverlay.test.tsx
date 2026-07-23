@@ -128,6 +128,7 @@ function makeController(
     responding: false,
     turnStatus: null,
     recording: false,
+    analyser: null,
     transcript: "",
     transcriptionMode: false,
     // Required ShellController surface the overlay reads unconditionally — the
@@ -784,9 +785,8 @@ describe("ChatOverlay", () => {
     expect(grabber.className).toContain("before:bottom-0");
   });
 
-  // #14331: the waveform pulses whenever capture is hot, but only turns orange
-  // when its own conversation mode is active. Transcription belongs to the
-  // adjacent mic and must not recolor this separate control.
+  // #14331: the waveform reflects only spoken-conversation capture. Dedicated
+  // transcription replaces it with the neutral activity presentation below.
   describe("waveform + pill pulse while capture is hot (#14331)", () => {
     it("does not pulse the mic while idle (neutral resting, no motion)", () => {
       render(<ChatOverlay controller={makeController()} />);
@@ -801,20 +801,15 @@ describe("ChatOverlay", () => {
       expect(waveform.className).toContain("animate-pulse");
       expect(waveform.className).toContain("motion-reduce:animate-none");
       expect(waveform.className).toContain("text-accent");
+      expect(waveform.className).toContain("hover:text-accent");
     });
 
-    it.each([
-      ["recording", { recording: true }],
-      ["transcribing", { transcriptionMode: true }],
-    ] as const)(
-      "keeps the pulsing waveform neutral while %s",
-      (_label, override) => {
-        render(<ChatOverlay controller={makeController(override)} />);
-        const waveform = screen.getByTestId("chat-composer-mic");
-        expect(waveform.className).toContain("animate-pulse");
-        expect(waveform.className).not.toContain("text-accent");
-      },
-    );
+    it("keeps the pulsing waveform neutral during push-to-talk recording", () => {
+      render(<ChatOverlay controller={makeController({ recording: true })} />);
+      const waveform = screen.getByTestId("chat-composer-mic");
+      expect(waveform.className).toContain("animate-pulse");
+      expect(waveform.className).not.toContain("text-accent");
+    });
 
     it("drops the pulse the moment the capture predicate clears", () => {
       const { rerender } = render(
@@ -1207,8 +1202,8 @@ describe("ChatOverlay", () => {
   it("renders composer controls icon-only — no capsule/border/fill, accent when active (#10711)", () => {
     // Resting: the +, transcribe, and voice controls carry only the icon — no
     // round capsule, no border, no translucent white fill. The visible box is
-    // 40px with a 20px mark (the "icons slightly too big" fix); the invisible
-    // before-overlay pads the pointer target back out to 44×44 (WCAG 2.5.5).
+    // 40px with a 20px mark (the "icons slightly too big" fix); the shared
+    // Button primitive raises the real box to 44×44 on coarse pointers.
     const { unmount } = render(<ChatOverlay controller={makeController()} />);
     for (const id of [
       "chat-composer-plus",
@@ -1225,8 +1220,10 @@ describe("ChatOverlay", () => {
       expect(cls).not.toContain("h-11");
       // The tighter 20px glyph (down from 22px)…
       expect(cls).toContain("[&_svg]:size-5");
-      // …with the hit target padded back to ≥44px by the invisible overlay.
-      expect(cls).toContain("before:-inset-0.5");
+      // …with a non-overlapping real 44px target on touch hardware.
+      expect(cls).toContain("pointer-coarse:min-h-touch");
+      expect(cls).toContain("pointer-coarse:min-w-touch");
+      expect(cls).not.toContain("before:-inset-0.5");
     }
     unmount();
 
@@ -1963,8 +1960,14 @@ describe("ChatOverlay", () => {
     expect(panel.parentElement?.style.maxWidth).toBe("768px");
     expect(bar?.className).toContain("flex");
     expect(bar?.className).not.toContain("flex-wrap");
+    expect(bar?.className).toContain("gap-[clamp(0.125rem,1.25vw,0.5rem)]");
+    expect(bar?.className).toContain("px-[clamp(0.25rem,1.5vw,0.5rem)]");
+    expect(bar?.className).toContain("py-[clamp(0.125rem,0.75dvh,0.375rem)]");
     expect(input.className).toContain("flex-1");
     expect(input.className).not.toContain("basis-full");
+    expect(
+      screen.getByTestId("chat-composer-trailing-controls").className,
+    ).toContain("gap-0");
   });
 
   it("renders no prompt-suggestion chips while the strip is flagged off", () => {
@@ -2453,16 +2456,17 @@ describe("ChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 
-  it("shows the transcribe (mic-glyph) button beside the voice control at rest — ChatGPT arrangement", () => {
-    // Resting composer: BOTH controls are always available — the mic glyph
-    // starts a transcription/dictation session, the waveform glyph next to it
-    // is the spoken conversation. (Previously transcribe only appeared once a
-    // voice session was already live.)
+  it("keeps spoken conversation before the rightmost transcription mic at rest", () => {
+    // Resting composer: both controls stay available, with spoken conversation
+    // first and dictation rightmost so that mic can morph directly into Stop.
     render(<ChatOverlay controller={makeController()} />);
-    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+    const voice = screen.getByTestId("chat-composer-mic");
     const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe).toBeTruthy();
     expect(transcribe.getAttribute("aria-label")).toBe("start transcription");
+    expect(
+      voice.compareDocumentPosition(transcribe) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("resting transcribe tap starts a transcription session", () => {
@@ -2498,7 +2502,8 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Both controls present in voice mode; the mic stays the master control.
+    // Idle dictation and spoken-conversation controls remain independently
+    // available when neither mode owns capture.
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
     expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
     expect(
@@ -2506,95 +2511,90 @@ describe("ChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("shows the transcribe button (as stop) while transcribing, alongside the status badge (#10699)", () => {
+  it("gives active transcription the full lane plus one Stop control", () => {
     render(
       <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
+          responding: true,
+          canSend: false,
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
-    const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe).toBeTruthy();
-    expect(transcribe.getAttribute("aria-label")).toBe("stop transcription");
+    expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
+    expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
+    expect(
+      screen
+        .getByTestId("chat-composer-mic-activity")
+        .querySelectorAll("span[style]").length,
+    ).toBe(15);
+
+    const stopTranscription = screen.getByTestId(
+      "chat-composer-transcription-stop",
+    );
+    expect(stopTranscription.getAttribute("aria-label")).toBe(
+      "stop transcription",
+    );
+    // A stopped agent blocks delivery, not finalization back into the draft.
+    expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
+    expect(
+      screen
+        .getByTestId("chat-composer-trailing-controls")
+        .contains(stopTranscription),
+    ).toBe(true);
+    expect(screen.queryByTestId("chat-composer-transcribe-status")).toBeNull();
   });
 
-  it("clicking the transcribe button toggles transcription mode (#10699)", () => {
-    const toggleTranscriptionMode = vi.fn();
+  it("an empty finalization never sends and ignores a second in-flight tap", async () => {
+    let releaseDrain: (() => void) | null = null;
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseDrain = resolve;
+        }),
+    );
     render(
       <ChatOverlay
         controller={makeController({
-          handsFree: true,
-          recording: true,
+          transcriptionMode: true,
+          send,
           toggleTranscriptionMode,
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.click(screen.getByTestId("chat-composer-transcribe"));
+    const stopTranscription = screen.getByTestId(
+      "chat-composer-transcription-stop",
+    );
+    fireEvent.click(stopTranscription);
+    fireEvent.click(stopTranscription);
     expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
-  });
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByTestId("chat-composer-mic-activity")
+        .getAttribute("aria-label"),
+    ).toBe("Finishing transcription");
+    expect(
+      screen
+        .getByTestId("chat-composer-transcription-stop")
+        .getAttribute("aria-label"),
+    ).toBe("finishing transcription");
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
 
-  it("keeps the waveform pressed but visually neutral while the mic transcribes", () => {
-    render(
-      <ChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          toggleTranscriptionMode: vi.fn(),
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    const waveform = screen.getByTestId("chat-composer-mic");
-    expect(waveform.getAttribute("aria-pressed")).toBe("true");
-    expect(waveform.className).toContain("animate-pulse");
-    expect(waveform.className).toContain("text-muted-strong");
-    expect(waveform.className).not.toContain("text-accent");
-  });
-
-  it("a mic tap while transcribing ends transcription, never starts a conversation", () => {
-    const stopTranscriptionAndMic = vi.fn();
-    const toggleHandsFree = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          stopTranscriptionAndMic,
-          toggleHandsFree,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    // The mic is the master voice control: a tap ends transcription AND the mic
-    // (stopTranscriptionAndMic → finished transcript drops into the composer);
-    // it must NOT open a hands-free conversation.
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    expect(toggleHandsFree).not.toHaveBeenCalled();
-  });
-
-  it("a mic tap ends transcription even while a reply is in flight (#9880 inline reply)", () => {
-    // A wake-word inline reply during transcription flips `responding` true
-    // while `handsFree` is false (the transcript layer paused it). The mic —
-    // labeled "stop transcription" — must still turn the session off; gating
-    // the OFF path on `responding` left a lit, dead mic button until the reply
-    // finished.
-    const stopTranscriptionAndMic = vi.fn();
-    const toggleHandsFree = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          recording: true,
-          responding: true,
-          handsFree: false,
-          stopTranscriptionAndMic,
-          toggleHandsFree,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    expect(toggleHandsFree).not.toHaveBeenCalled();
+    await act(async () => {
+      releaseDrain?.();
+    });
   });
 
   it("the audio-unlock chip works while the sheet is open (not swallowed as an outside tap)", () => {
@@ -2626,36 +2626,6 @@ describe("ChatOverlay", () => {
     expect(unlockAudio).toHaveBeenCalledTimes(1);
     // The sheet must stay open — the chip tap is not an outside collapse.
     expect(sheet.getAttribute("data-variant")).toBe("open");
-  });
-
-  it("does not enter push-to-talk on a long press while transcribing", () => {
-    vi.useFakeTimers();
-    try {
-      const stopTranscriptionAndMic = vi.fn();
-      const startRecording = vi.fn();
-      render(
-        <ChatOverlay
-          controller={makeController({
-            transcriptionMode: true,
-            stopTranscriptionAndMic,
-            startRecording,
-          } as unknown as Partial<ShellController>)}
-        />,
-      );
-
-      const mic = screen.getByTestId("chat-composer-mic");
-      fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
-      act(() => {
-        vi.advanceTimersByTime(250);
-      });
-      fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
-      fireEvent.click(mic);
-
-      expect(startRecording).not.toHaveBeenCalled();
-      expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("push-to-talk dictates into the composer on release; the label matches (never 'send')", () => {
