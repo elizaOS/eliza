@@ -29,6 +29,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
+      # Match deployed runtime semantics: production keeps trajectory persistence
+      # opt-in, so diagnostic file flushes cannot inflate the request hot path.
+      NODE_ENV: production
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       ELIZA_CEREBRAS_CHAT_MODEL: gemma-4-31b
       ELIZA_CEREBRAS_CHAT_SAMPLES: ${{ inputs.samples }}
