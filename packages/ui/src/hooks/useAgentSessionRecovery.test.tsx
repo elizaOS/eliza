@@ -42,6 +42,11 @@ vi.mock("../state/agent-session-recovery-runner", () => ({
 vi.mock("../state/cloud-session-refresh-for-repair", () => ({
   ensureCloudSessionForRepair: () => mockEnsureCloudSession(),
 }));
+const mockClearStalePairCredentialsForAgent = vi.fn();
+vi.mock("../state/cloud-pair-token", () => ({
+  clearStalePairCredentialsForAgent: (agentId: string) =>
+    mockClearStalePairCredentialsForAgent(agentId),
+}));
 
 import { useAgentSessionRecovery } from "./useAgentSessionRecovery";
 
@@ -106,6 +111,26 @@ describe("useAgentSessionRecovery", () => {
       cloudApiBase: "https://elizacloud.ai",
       cloudToken: "steward.jwt.token",
     });
+  });
+
+  it("opts into an agent-scoped purge after the adopted bearer was rejected", async () => {
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+
+    render(
+      <Probe active reason="remote_auth_required" onStatus={() => {}} />,
+    );
+
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(1));
+    const deps = mockRunRecovery.mock.calls[0][0] as {
+      clearStalePairCredentials?: () => void;
+    };
+    expect(deps.clearStalePairCredentials).toEqual(expect.any(Function));
+    deps.clearStalePairCredentials?.();
+    expect(mockClearStalePairCredentialsForAgent).toHaveBeenCalledWith(
+      "agent-1",
+    );
   });
 
   it("uses in-process pairing on native so the WebView stays on the app origin", async () => {

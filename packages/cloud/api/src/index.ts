@@ -18,6 +18,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
+let inferenceAppPromise: Promise<Hono<AppEnv>> | undefined;
+const CHAT_COMPLETIONS_PATH = "/api/v1/chat/completions";
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
@@ -46,6 +48,56 @@ type AgentDomainBindings = Pick<
 async function getApp(): Promise<Hono<AppEnv>> {
   appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
   return appPromise;
+}
+
+async function getInferenceApp(): Promise<Hono<AppEnv>> {
+  inferenceAppPromise ??= import("./inference-app").then((m) =>
+    m.createInferenceApp(),
+  );
+  return inferenceAppPromise;
+}
+
+export function isThinInferenceEnabled(
+  env: Pick<AppEnv["Bindings"], "THIN_INFERENCE_ENTRY_ENABLED">,
+): boolean {
+  return env.THIN_INFERENCE_ENTRY_ENABLED === "true";
+}
+
+export function isCanonicalInferencePath(pathname: string): boolean {
+  return pathname === CHAT_COMPLETIONS_PATH;
+}
+
+async function dispatchInference(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  if (
+    !isThinInferenceEnabled(env) ||
+    !isCanonicalInferencePath(new URL(request.url).pathname)
+  ) {
+    return null;
+  }
+
+  const dispatchStartedAt = performance.now();
+  const moduleWasInitialized = Boolean(inferenceAppPromise);
+  const app = await getInferenceApp();
+  const moduleInitMs = performance.now() - dispatchStartedAt;
+  const response = await app.fetch(request, env, ctx);
+  const dispatchMs = performance.now() - dispatchStartedAt;
+
+  response.headers.set("X-Eliza-Inference-Path", "thin");
+  response.headers.append(
+    "Server-Timing",
+    `entry_dispatch;dur=${dispatchMs.toFixed(1)}`,
+  );
+  if (!moduleWasInitialized) {
+    response.headers.append(
+      "Server-Timing",
+      `inference_module_init;dur=${moduleInitMs.toFixed(1)}`,
+    );
+  }
+  return response;
 }
 
 function healthResponse(env: AppEnv["Bindings"]): Response {
@@ -358,6 +410,8 @@ export default {
         frontendAliasApiTarget.toString(),
         createFrontendAliasProxyInit(request, url),
       );
+      const inferenceResponse = await dispatchInference(apiRequest, env, ctx);
+      if (inferenceResponse) return inferenceResponse;
       return (await getApp()).fetch(apiRequest, env, ctx);
     }
 
@@ -383,6 +437,9 @@ export default {
       return healthResponse(env);
     }
 
+    const inferenceResponse = await dispatchInference(request, env, ctx);
+    if (inferenceResponse) return inferenceResponse;
+
     // OpenAI-compat prefix rewrite. Dedicated agents whose cloud base/embedding
     // URL got stamped as the bare host (`https://api.elizacloud.ai`) hit
     // `/v1/embeddings` / `/embeddings` (and would for `/chat/completions`),
@@ -399,11 +456,14 @@ export default {
     ) {
       const rewrittenUrl = new URL(url);
       rewrittenUrl.pathname = p.startsWith("/v1/") ? `/api${p}` : `/api/v1${p}`;
-      return (await getApp()).fetch(
-        new Request(rewrittenUrl, request),
+      const rewrittenRequest = new Request(rewrittenUrl, request);
+      const rewrittenInferenceResponse = await dispatchInference(
+        rewrittenRequest,
         env,
         ctx,
       );
+      if (rewrittenInferenceResponse) return rewrittenInferenceResponse;
+      return (await getApp()).fetch(rewrittenRequest, env, ctx);
     }
 
     return (await getApp()).fetch(request, env, ctx);

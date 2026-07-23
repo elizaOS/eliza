@@ -22,6 +22,11 @@ export interface Bindings {
    * names (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /**
+   * Routes chat completions through the lazy chat-only Worker application.
+   * Default off provides an immediate rollback to the monolithic router.
+   */
+  THIN_INFERENCE_ENTRY_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;

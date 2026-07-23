@@ -25,6 +25,7 @@ import {
 } from "../state/agent-session-recovery";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import { ensureCloudSessionForRepair } from "../state/cloud-session-refresh-for-repair";
+import { clearStalePairCredentialsForAgent } from "../state/cloud-pair-token";
 import { loadPersistedActiveServer } from "../state/persistence";
 
 export type AgentSessionRecoveryStatus =
@@ -118,6 +119,8 @@ export function useAgentSessionRecovery(
         agentId: decision.agentId,
         cloudToken,
         consumeRedirectInProcess: shouldConsumePairRedirectInProcess(),
+        clearStalePairCredentials: () =>
+          clearStalePairCredentialsForAgent(decision.agentId),
         onPairedInProcess: async (apiToken) => {
           const { client } = await import("../api");
           client.setToken(apiToken);
