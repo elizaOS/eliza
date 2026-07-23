@@ -1,9 +1,11 @@
 # coverage-gate.awk
 #
 # Parses LCOV output and computes per-file line coverage. Compares against a
-# changed-files list and prints a summary. Exit code is non-zero only when
-# enforcement is enabled (COVERAGE_GATE_ENFORCE=1) and any changed file is
-# missing from the LCOV report or below the threshold (default 70%).
+# changed-files list and prints a summary. Callers may disable the percentage
+# floor with `floor_enabled=0` while retaining the same per-file diagnostics.
+# Exit code is non-zero only when enforcement is enabled
+# (COVERAGE_GATE_ENFORCE=1) and any changed file is missing from the LCOV report
+# or below an enabled threshold (default 70%).
 #
 # Usage:
 #   awk -v changed="$CHANGED_FILES" -v threshold=70 \
@@ -19,6 +21,7 @@
 
 BEGIN {
   if (threshold == "") threshold = 70
+  if (floor_enabled == "") floor_enabled = 1
   if (changed == "") changed = ""
   # Split changed files into a lookup table.
   n = split(changed, parts, "\n")
@@ -118,7 +121,7 @@ END {
       changed_count++
       changed_sum += file_pct[f]
       printf "  %6.2f%% %s\n", file_pct[f], f
-      if (file_pct[f] + 0 < threshold + 0) below[f] = file_pct[f]
+      if (floor_enabled && file_pct[f] + 0 < threshold + 0) below[f] = file_pct[f]
     }
   }
 
@@ -126,8 +129,13 @@ END {
     print "no changed files matched the LCOV report"
   } else {
     avg = changed_sum / changed_count
-    printf "\nchanged files: %d, mean coverage: %.2f%%, threshold: %d%%\n", \
-      changed_count, avg, threshold
+    if (floor_enabled) {
+      printf "\nchanged files: %d, mean coverage: %.2f%%, threshold: %d%%\n", \
+        changed_count, avg, threshold
+    } else {
+      printf "\nchanged files: %d, mean coverage: %.2f%%, threshold: disabled\n", \
+        changed_count, avg
+    }
   }
 
   fail = missing_count > 0

@@ -131,7 +131,7 @@ const SETUP = "Setup Bun workspace";
 const RUN_BUN = "Run changed Bun tests with coverage";
 const RUN_VITEST = "Run changed Vitest tests with coverage";
 const RUN_NODE = "Run changed registered Node self-tests";
-const GATE = "Apply coverage gate (enforced)";
+const GATE = "Report changed-file coverage";
 const REQUIRE_TESTS = "Require changed tests for changed source";
 
 test("self-check: the expression evaluator handles the workflow subset", () => {

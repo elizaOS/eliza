@@ -99,6 +99,23 @@ describe("resolveEffectiveMuteState", () => {
 		).toEqual({ muted: true, scope: "room", roomId: ROOM_ID });
 	});
 
+	it("reuses a preloaded primary room for room and world mute checks", async () => {
+		const primaryRoom = room(ROOM_ID);
+		const { runtime } = makeRuntime({
+			worlds: [world()],
+		});
+		runtime.getRoom = async () => {
+			throw new Error("primary room must not be fetched again");
+		};
+		expect(
+			await resolveEffectiveMuteState(runtime, {
+				roomIds: [ROOM_ID],
+				primaryRoom,
+				primaryParticipantState: "MUTED",
+			}),
+		).toEqual({ muted: true, scope: "room", roomId: ROOM_ID });
+	});
+
 	it("keeps a timed mute active before its ISO expiry", async () => {
 		const untilIso = new Date(Date.now() + 60_000).toISOString();
 		const { runtime } = makeRuntime({
