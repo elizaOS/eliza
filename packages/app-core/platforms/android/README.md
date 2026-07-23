@@ -18,6 +18,37 @@ hosting target. Produces a release AAB at
 For local Pixel smoke tests, `android-cloud-debug` produces a debug APK
 under `packages/app-core/platforms/android/app/build/outputs/apk/debug/`.
 
+Release AAB auditing uses Google's standalone bundletool JAR. The canonical
+build downloads bundletool 1.18.3 into a temporary cache and verifies its
+pinned SHA-256 before execution. To supply a pre-provisioned official JAR
+instead, point the build at it:
+
+```bash
+export ELIZA_ANDROID_BUNDLETOOL_JAR=/absolute/path/bundletool-all-1.18.3.jar
+bun run build:android:cloud
+```
+
+The release build fails closed when bundletool cannot be downloaded, either
+downloaded or configured JAR has the wrong checksum, the configured JAR is
+missing, or bundletool cannot validate the bundle. The post-build audit decodes
+the merged manifest for every AAB module and scans every
+`<module>/dex/classes*.dex` entry. This keeps stripped permissions, components,
+private LP3 actions, policy classes, and policy markers out of the Play
+artifact. Every packaged `.dex` is scanned — including one smuggled outside a
+module `dex/` directory — and cloud artifacts additionally reject any `.dex`
+or banned native library under `assets/`. APK targets continue to use AAPT for
+their badging and manifest checks. Every Cloud `bundleRelease` Gradle task
+audits its exact final output, including the signed bundle produced by release
+automation; the Gradle finalizer resolves the audit CLI from
+`ELIZA_MOBILE_AUDIT_SCRIPT` (set by the orchestrator, so npm-packages /
+white-label layouts work) and falls back to the repo-relative script path for
+direct `./gradlew` runs from a source checkout. An already-built Cloud bundle
+can be audited directly with:
+
+```bash
+node packages/app-core/scripts/run-mobile-build.mjs android-cloud-audit /absolute/path/app-release.aab
+```
+
 What this target deliberately does **not** ship:
 
 - No on-device agent runtime — `assets/agent/` is not staged, and no
