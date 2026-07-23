@@ -15,7 +15,8 @@
  *       the PILL, with per-step geometry sampling (monotonic height, pill
  *       crossfade, edge-to-edge box, fixed-width text column). Detent rules:
  *       pill nudge springs back · pill drag past half-morph rests at INPUT ·
- *       short input pull springs back · pill tap → HALF · grabber tap → INPUT.
+ *       short input pull springs back · pill tap → INPUT (no keyboard) ·
+ *       grabber tap steps INPUT → HALF → INPUT.
  *       Full matrix: CHAT_SHEET_STATE_MATRIX.md.
  *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
  *       streamed growth remains pinned, reading-scrollback is not yanked, and
@@ -963,7 +964,7 @@ async function runContinuumSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-continuum-back-to-pill`);
 
-  // -- Detent rules: pill tap → HALF; open + grabber tap → INPUT -------------
+  // -- Detent rules: pill tap → INPUT (no keyboard); grabber taps step -------
   if (pointer === "mouse") {
     await p.getByTestId("chat-pill").click();
   } else {
@@ -971,12 +972,19 @@ async function runContinuumSuite(p, pointer, tag) {
   }
   await p.waitForTimeout(SETTLE);
   assert(
-    (await detent(p)) === "half",
-    `[${tag}-continuum] pill tap opens straight to HALF`,
+    (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
+    `[${tag}-continuum] pill tap steps ONE state to the INPUT bar (never the thread detent)`,
   );
-  // The pill tap also focused the composer (keyboard up), so the FIRST grabber
-  // tap dismisses the keyboard and keeps the sheet at its detent; the SECOND
-  // collapses to the input bar — the designed two-step.
+  // The pill tap must NOT raise the keyboard: the composer stays unfocused
+  // until the user taps it deliberately.
+  assert(
+    (await p.evaluate(
+      () => document.activeElement?.getAttribute("data-testid"),
+    )) !== "chat-composer-textarea",
+    `[${tag}-continuum] pill tap leaves the keyboard down (composer unfocused)`,
+  );
+  // Grabber taps then step the disclosure: INPUT → HALF reveals the thread; a
+  // tap on the open sheet (no keyboard up) collapses back to INPUT.
   const grabberTap = async () => {
     if (pointer === "mouse") await p.getByTestId("chat-sheet-grabber").click();
     else await touchTap(p, testIdSelector("chat-sheet-grabber"));
@@ -985,12 +993,12 @@ async function runContinuumSuite(p, pointer, tag) {
   await grabberTap();
   assert(
     (await detent(p)) === "half",
-    `[${tag}-continuum] first grabber tap (keyboard up) dismisses the keyboard, stays HALF`,
+    `[${tag}-continuum] grabber tap from INPUT reveals the thread at HALF`,
   );
   await grabberTap();
   assert(
     (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
-    `[${tag}-continuum] second grabber tap collapses the open sheet to INPUT`,
+    `[${tag}-continuum] grabber tap on the open sheet collapses to INPUT`,
   );
   await snap(p, `${tag}-continuum-final-input`);
 }
@@ -2763,7 +2771,7 @@ try {
 
   // PILL: pull DOWN from the input collapses the whole chat into a small pill at
   // the bottom (input hidden). Slow-drag and flick both pill it; the composer
-  // stays mounted but hidden + inert. (A pill TAP opens the chat — see PILL-TAP.)
+  // stays mounted but hidden + inert. (A pill TAP re-forms the input — see PILL-TAP.)
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2811,12 +2819,12 @@ try {
     await p.close();
   }
 
-  // ── PILL TAP opens the chat to HALF (regression for the reported bug): a real
-  // TAP (pointerdown+up, no move) routes through the gesture's onDrag(0) → onTap
-  // path. It must open the chat in ONE tap straight to the HALF detent (the
-  // conversation is visible) — NOT blink to a bare input bar that needs a second
-  // tap. Assert the detent is half/open AND the content actually formed (opacity
-  // ~1), not just a detent label with a stuck-at-0 morph.
+  // ── PILL TAP steps ONE state to the INPUT bar: a real TAP (pointerdown+up,
+  // no move) routes through the gesture's onDrag(0) → onTap path. It must form
+  // the bare input bar — never jump to a thread detent, never raise the
+  // keyboard (thread reveal is the grabber tap; keyboard is the composer tap).
+  // Assert the detent is collapsed AND the input actually formed (opacity ~1),
+  // not just a detent label with a stuck-at-0 morph (the old "bad state").
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2834,14 +2842,19 @@ try {
       .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
     assert(
       openedOpacity > 0.9,
-      `PILL-TAP: tap animates pill → chat, content fully formed (opacity ${openedOpacity})`,
+      `PILL-TAP: tap animates pill → input, content fully formed (opacity ${openedOpacity})`,
     );
     assert(
-      (await detent(p)) === "half",
-      `PILL-TAP: a SINGLE tap opens the chat to half (got ${await detent(p)})`,
+      (await detent(p)) === "collapsed",
+      `PILL-TAP: a tap steps to the INPUT bar, not a thread detent (got ${await detent(p)})`,
     );
-    assert((await variant(p)) === "open", "PILL-TAP: the chat is open after one tap");
-    await snap(p, "state-pill-tap-opened");
+    assert(
+      (await p.evaluate(
+        () => document.activeElement?.getAttribute("data-testid"),
+      )) !== "chat-composer-textarea",
+      "PILL-TAP: the tap does not raise the keyboard (composer unfocused)",
+    );
+    await snap(p, "state-pill-tap-input");
     await p.close();
   }
 

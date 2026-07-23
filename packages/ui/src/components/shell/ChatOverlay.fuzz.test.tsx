@@ -695,26 +695,25 @@ describe("ChatOverlay — seeded random fuzz", () => {
   }
 });
 
-// ── The two reported bugs, pinned ────────────────────────────────────────────
-describe("ChatOverlay — bug (a): a single pill tap opens to half", () => {
-  it("ONE tap on the pill opens the chat to half (no blink-back, no second tap)", () => {
+// ── The reported bugs, pinned ────────────────────────────────────────────────
+describe("ChatOverlay — pill tap steps ONE state to the input bar", () => {
+  it("ONE tap on the pill forms the INPUT bar — never the thread, never the keyboard", () => {
     render(<ChatOverlay controller={makeController()} />);
     gotoPill();
     tap(pill(), 400); // a single tap
-    expect(detentOf()).toBe("half");
-    expect(variantOf()).toBe("open");
-    expect(document.activeElement).toBe(input()); // keyboard raised on first tap
-    assertInvariants("bug-a-single-tap");
+    expect(detentOf()).toBe("collapsed");
+    // No keyboard pop and no half jump: the thread reveal (grabber tap) and
+    // composer focus (composer tap) are each their own deliberate gesture.
+    expect(document.activeElement).not.toBe(input());
+    assertInvariants("pill-tap-single-step");
   });
 
-  it("repeated open/collapse via the pill always reaches half on the very next tap", () => {
+  it("repeated collapse/tap cycles always land back on the input bar", () => {
     render(<ChatOverlay controller={makeController()} />);
     for (let i = 0; i < 5; i++) {
       gotoPill();
       tap(pill(), 400);
-      expect(detentOf(), `cycle ${i}`).toBe("half");
-      // back to the pill for the next cycle
-      flickDown(grabber() as Element);
+      expect(detentOf(), `cycle ${i}`).toBe("collapsed");
     }
   });
 });
@@ -802,11 +801,14 @@ describe("ChatOverlay — bug (b): keyboard dismiss restores prior state", () =>
     assertInvariants("bug-b-grabber-input");
   });
 
-  it("pill tap → half, then dismissing the keyboard keeps the chat open at half", () => {
+  it("pill tap → input → grabber tap → half; a keyboard dismiss keeps the deliberate open", () => {
     render(<ChatOverlay controller={makeController()} />);
     gotoPill();
-    tap(pill(), 400); // opens to half + raises keyboard (bug a)
+    tap(pill(), 400); // step 1: form the input bar (no keyboard, no thread)
+    expect(detentOf()).toBe("collapsed");
+    tap(grabber() as Element, 180); // step 2: reveal the thread
     expect(detentOf()).toBe("half");
+    focusReal(); // step 3: composer tap raises the keyboard
     fireEvent.pointerDown(document.body); // dismiss keyboard
     expect(detentOf()).toBe("half"); // deliberate open survives (bug b)
     assertInvariants("bug-ab-pill-then-dismiss");

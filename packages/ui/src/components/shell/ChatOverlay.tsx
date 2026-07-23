@@ -752,6 +752,20 @@ function PillHandle({
           onOpen();
         }
       }}
+      // A touch tap opens the INPUT bar in the pointerup that precedes this
+      // touchend — by the time the browser dispatches its compat mouse events
+      // (mousedown/click), the composer textarea has already formed under the
+      // same coordinates, and the synthetic click would focus it and pop the
+      // keyboard the pill tap deliberately leaves down. preventDefault() on
+      // touchend suppresses the compat sequence; the gesture itself runs on
+      // pointer events and is unaffected. Unconditional: a touchend only
+      // reaches this handle when the touch STARTED on it (touch events retarget
+      // to their touchstart element), i.e. while it was the pilled handle —
+      // the render that formed the input has already flipped `pilled` false by
+      // the time this fires, so the prop cannot gate it.
+      onTouchEnd={(e) => {
+        if (e.cancelable) e.preventDefault();
+      }}
       {...binding}
       tabIndex={pilled ? undefined : -1}
       aria-hidden={pilled ? undefined : true}
@@ -4129,61 +4143,25 @@ export function ChatOverlay({
   // openProgress → 1 directly so the open never depends on that effect's timing.
   const openFromPill = React.useCallback(() => {
     draggingRef.current = false;
-    // A pill tap OPENS the chat. With a conversation to show, go straight to the
-    // HALF detent — a tap reveals the thread/loader exactly like a flick-up, so a
-    // SINGLE tap always opens the chat (never the old "tap lands on a bare input
-    // bar, tap again to actually open" two-step). Mark it deliberately open so
-    // dismissing the keyboard then KEEPS it at half (preFocusCollapsedRef gates
-    // that). With no thread yet, there's nothing to open into — just form the
-    // bare input bar, and treat a later keyboard dismiss as a re-collapse.
-    if (hasRevealableThread) {
-      goToDetent("half");
-      preFocusCollapsedRef.current = false;
-    } else {
-      setMode("input");
-      preFocusCollapsedRef.current = true;
-      detentHaptic();
-    }
+    // A pill tap steps ONE state up the continuum: it forms the bare input bar,
+    // nothing more. It must NOT jump to a thread detent and must NOT raise the
+    // keyboard — revealing the thread (grabber tap) and focusing the composer
+    // (composer tap) are each their own deliberate next gesture, so the sheet
+    // never lurches taller or pops a keyboard the user didn't ask for. Because
+    // nothing is focused, a later keyboard dismiss reads as a re-collapse.
+    setMode("input");
+    preFocusCollapsedRef.current = true;
+    detentHaptic();
     if (reduce) {
       stopOpenProgressAnimation();
       openProgress.set(1);
     } else animateOpenProgress(1);
-    // Raise the keyboard on the SAME tap that opens the pill. While pilled, the
-    // composer content is `inert`, and React only clears that on the next
-    // render — too late for iOS WebKit, which honors focus() only synchronously
-    // inside the originating user gesture AND only on a non-inert element. So
-    // clear inert imperatively now and focus immediately; otherwise the first
-    // tap opens a composer that silently refuses keyboard input until a second
-    // tap (the reported "chat input doesn't accept text on iOS" bug). Suppress
-    // the focus→expand: the target detent is already set above, and letting
-    // expand run would clobber preFocusCollapsedRef with the (pre-render, still
-    // pilled) sheet state and treat this deliberate open as a re-collapse.
-    contentRef.current?.removeAttribute("inert");
-    suppressExpandOnFocusRef.current = true;
     // A stale thread-focus intent (queued by an earlier maximize/settle whose
-    // sheetOpen edge never consumed it) would fire on THIS open's sheetOpen
-    // flip and steal focus from the composer the very tap just focused —
-    // breaking the grabber's two-step keyboard dismiss. This open's focus
-    // target is explicitly the composer, so void any queued intent.
+    // sheetOpen edge never consumed it) would fire on the NEXT open and steal
+    // focus the user never requested — this tap's endpoint is the unfocused
+    // input bar, so void any queued intent.
     focusThreadRef.current = false;
-    inputRef.current?.focus();
-    // If the synchronous focus did NOT land (blocked by the platform), disarm
-    // the suppress flag now — a stranded flag would silently swallow the next
-    // genuine focus→expand.
-    if (
-      typeof document !== "undefined" &&
-      document.activeElement !== inputRef.current
-    ) {
-      suppressExpandOnFocusRef.current = false;
-    }
-  }, [
-    openProgress,
-    reduce,
-    hasRevealableThread,
-    goToDetent,
-    stopOpenProgressAnimation,
-    animateOpenProgress,
-  ]);
+  }, [openProgress, reduce, stopOpenProgressAnimation, animateOpenProgress]);
 
   // --- Pull gesture --------------------------------------------------------
   // The grabber is the draggable handle. A live drag sets the threadHeight motion
@@ -4689,7 +4667,8 @@ export function ChatOverlay({
       // INPUT → PILL: collapse the input away into a pill at the bottom.
       collapseToPill();
     },
-    // A tap (no drag) on the handle. A tap on the PILL brings the input back.
+    // A tap (no drag) on the handle. A tap on the PILL brings the input back —
+    // one step only: no thread detent, no keyboard (openFromPill).
     // When OPEN, the grabber acts as a disclosure toggle: tap once to close.
     // When COLLAPSED, tap opens the thread or its loader; thread-less chats focus
     // the composer because there is nothing above the input to reveal.
