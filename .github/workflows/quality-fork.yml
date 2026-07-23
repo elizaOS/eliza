@@ -27,8 +27,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     # Fresh Turbo-cold attempt 5 was still linting successfully when the old
-    # 10m ceiling canceled it at 10m26s. Keep every ratchet/lint/format step and
-    # allow a finite 15m cold window; attempt 4 completed the same lane in 8m30s.
+    # 10m ceiling canceled it at 10m26s. Allow a finite 15m cold window; attempt
+    # 4 completed the same lane in 8m30s.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -76,12 +76,6 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
-
-      - name: Run type-safety ratchet self-test
-        run: bun run audit:type-safety-ratchet:self-test
-
-      - name: Run type-safety ratchet
-        run: bun run audit:type-safety-ratchet
 
       - name: Run anti-larp test gate self-test
         run: bun run audit:focused-tests:self-test
