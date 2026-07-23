@@ -3275,7 +3275,13 @@ export class ElizaSandboxService {
       organizationId: rec.organization_id,
       userId: rec.user_id,
     });
-    if (!body) return { pushed: false };
+    if (!body) {
+      // A blank minted key or missing org is a broken mint pipeline. Reporting
+      // `pushed: false` here would let the caller advertise an un-re-keyed
+      // container as ready — the exact failure class this handoff exists to
+      // prevent — so it fails closed like every other handoff fault.
+      throw new Error("Warm-claim key push has no usable minted key/org for the claimed row");
+    }
 
     // 2. Persist the new key onto the row env so a restart boots re-credentialed.
     const currentEnv = (rec.environment_vars as Record<string, string> | null) ?? {};
