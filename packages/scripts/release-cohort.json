@@ -128,6 +128,7 @@
     "@elizaos/plugin-screenshare",
     "@elizaos/plugin-shell",
     "@elizaos/plugin-signal",
+    "@elizaos/plugin-simple-views",
     "@elizaos/plugin-slack",
     "@elizaos/plugin-sql",
     "@elizaos/plugin-streaming",
