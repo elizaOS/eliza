@@ -37,7 +37,6 @@ const publicPathPrefixes = [
   // (CONTAINERS_BOOTSTRAP_SECRET) before any work, so it must bypass the session
   // gate or it 401s before its own secret check runs.
   "/api/v1/admin/docker-nodes/bootstrap-callback",
-  "/api/auth/pair",
   "/api/auth/cli-session",
   "/api/v1/cli-auth",
   "/api/auth/siwe",
@@ -177,6 +176,12 @@ function isPublicOutOfBandTokenPath(pathname: string): boolean {
 }
 
 export function isPublicPath(pathname: string): boolean {
+  // The browser pair relay is public because its one-time token is
+  // origin-bound by the route. Native pairing is a distinct authenticated
+  // sibling and must still pass through this global auth boundary.
+  if (pathname === "/api/auth/pair" || pathname === "/api/auth/pair/") {
+    return true;
+  }
   if (pathname === "/api/v1/oauth/callback") return true;
   if (/^\/api\/v1\/oauth\/[^/]+\/callback\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/generate-image\/?$/.test(pathname)) return true;

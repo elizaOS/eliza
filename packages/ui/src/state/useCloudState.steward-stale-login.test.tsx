@@ -18,6 +18,9 @@ import { useCloudState } from "./useCloudState";
 const STEWARD_TOKEN_KEY = "steward_session_token";
 const NOT_MOUNTED_ERROR = /Steward login surface is not mounted/;
 const DEVICE_CODE_SENTINEL = "device-code-flow-reached";
+const globalWithPlatform = globalThis as typeof globalThis & {
+  Capacitor?: { isNativePlatform?: () => boolean };
+};
 
 /** Build a minimal (unsigned) JWT whose payload carries the given `exp`. */
 function makeJwt(expSecondsFromNow: number | null): string {
@@ -84,6 +87,7 @@ describe("useCloudState — handleCloudLogin with a stale Steward token and no l
   afterEach(() => {
     globalThis.fetch = realFetch;
     localStorage.clear();
+    delete globalWithPlatform.Capacitor;
     vi.restoreAllMocks();
   });
 
@@ -191,6 +195,30 @@ describe("useCloudState — handleCloudLogin with a stale Steward token and no l
     });
 
     expect(deviceCodeCalls()).toBe(0);
+  });
+
+  it("forces native reauthentication after Cloud rejects an opaque device-code token", async () => {
+    globalWithPlatform.Capacitor = {
+      isNativePlatform: () => true,
+    };
+    localStorage.setItem(STEWARD_TOKEN_KEY, "revoked-opaque-device-code-token");
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+        forceReauth: true,
+      });
+    });
+
+    expect(deviceCodeCalls()).toBe(1);
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
   it("a still-usable stored token keeps the Steward short-circuit (no device-code call)", async () => {

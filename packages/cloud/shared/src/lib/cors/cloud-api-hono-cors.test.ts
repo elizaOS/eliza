@@ -20,6 +20,7 @@ function appWithCors() {
   app.get("/ping", (c) => c.json({ ok: true }));
   app.post("/ping", (c) => c.json({ ok: true }));
   app.post("/api/auth/pair", (c) => c.json({ ok: true }));
+  app.post("/api/auth/pair/native", (c) => c.json({ ok: true }));
   app.get("/api/v1/models", (c) => c.json({ ok: true }));
   app.post("/api/v1/chat/completions", (c) => {
     c.header("Access-Control-Expose-Headers", "PAYMENT-REQUIRED, Payment-Required");
@@ -102,6 +103,9 @@ describe("isPublicTokenApiPath", () => {
   test("recognizes explicit public token API paths", () => {
     expect(isPublicTokenApiPath("/api/v1/chat/completions")).toBe(true);
     expect(isPublicTokenApiPath("/api/auth/pair")).toBe(true);
+    // Native pairing carries a user/org Cloud bearer and must remain limited
+    // to first-party app origins rather than the wildcard token-API policy.
+    expect(isPublicTokenApiPath("/api/auth/pair/native")).toBe(false);
     expect(isPublicTokenApiPath("/api/v1/app-credits/balance")).toBe(true);
     expect(isPublicTokenApiPath("/api/v1/models/openai/gpt-oss-120b")).toBe(true);
     expect(isPublicTokenApiPath("/api/v1/twilio/connect")).toBe(false);
@@ -173,6 +177,15 @@ describe("corsMiddleware — Eliza app WebView origin (credentialed SSE)", () =>
     expect(allowHeaders).toContain("traceparent");
     expect(allowHeaders).toContain("x-eliza-trace-id");
   });
+
+  test("allows the authenticated native pair exchange from Capacitor", async () => {
+    const res = await req("OPTIONS", "capacitor://localhost", true, "/api/auth/pair/native");
+    expect(res.headers.get("access-control-allow-origin")).toBe("capacitor://localhost");
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    expect((res.headers.get("access-control-allow-headers") || "").toLowerCase()).toContain(
+      "authorization",
+    );
+  });
 });
 
 describe("corsMiddleware — third-party app origins (open, NO credentials)", () => {
@@ -209,6 +222,16 @@ describe("corsMiddleware — third-party app origins (open, NO credentials)", ()
 
   test("does not allow wildcard CORS on session-capable non-public paths", async () => {
     const res = await req("OPTIONS", "https://malicious.apps.elizacloud.ai", true, "/ping");
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("does not expose native pairing to third-party browser origins", async () => {
+    const res = await req(
+      "OPTIONS",
+      "https://malicious.apps.elizacloud.ai",
+      true,
+      "/api/auth/pair/native",
+    );
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 
