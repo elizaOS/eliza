@@ -283,6 +283,27 @@ describe("parseConversationMessageEvent", () => {
     expect(parsed?.actionCallbackHistory).toEqual(["a", "b"]);
   });
 
+  it("accepts only the internal transcript visibility value", () => {
+    expect(
+      parseConversationMessageEvent({
+        id: "m1",
+        role: "assistant",
+        text: "diagnostic",
+        timestamp: 10,
+        transcriptVisibility: "internal",
+      })?.transcriptVisibility,
+    ).toBe("internal");
+    expect(
+      parseConversationMessageEvent({
+        id: "m2",
+        role: "assistant",
+        text: "visible",
+        timestamp: 11,
+        transcriptVisibility: "hidden",
+      })?.transcriptVisibility,
+    ).toBeUndefined();
+  });
+
   it("validates reactions (drops empty emoji / non-positive count) and users", () => {
     const parsed = parseConversationMessageEvent({
       id: "m1",

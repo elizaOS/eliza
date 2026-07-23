@@ -2567,6 +2567,77 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("stamps an exact internal VIEWS diagnostic before simple delivery", async () => {
+		const inventory = ["available_views:", "  type: gui", "  count: 0"].join(
+			"\n",
+		);
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["VIEWS"],
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Inspect available views.",
+				toolCalls: [
+					{
+						id: "views-list-1",
+						name: "VIEWS",
+						args: { action: "list" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Return the tool result.",
+				messageToUser: inventory,
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "List available views.",
+				parameters: [
+					{
+						name: "action",
+						description: "View operation",
+						required: true,
+						schema: { type: "string", enum: ["list"] },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: async () => ({
+					success: true,
+					text: inventory,
+					transcriptVisibility: "internal",
+					data: { views: [] },
+				}),
+			},
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what apps are available?",
+				mentionContext: { isMention: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") return;
+		expect(result.result.responseContent?.transcriptVisibility).toBe(
+			"internal",
+		);
+		expect(result.result.responseContent?.text).toContain("available_views:");
+		expect(
+			result.result.responseMessages[0]?.content.transcriptVisibility,
+		).toBe("internal");
+	});
+
 	it("routes progress-only coding delegation replies through the planner", () => {
 		const routed = messageHandlerFromFieldResult(
 			{

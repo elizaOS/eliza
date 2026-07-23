@@ -27,6 +27,79 @@ describe("shouldKeepConversationMessage", () => {
     expect(shouldKeepConversationMessage(msg({ text: "hi" }))).toBe(true);
   });
 
+  it("drops explicitly internal assistant turns before considering media", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: "available_views:\nviews[1]{id}: notes",
+          transcriptVisibility: "internal",
+          attachments: [
+            { id: "a", url: "/api/media/x.png", contentType: "image" },
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("drops a preserved legacy inventory only when callback history matches", () => {
+    const inventory =
+      "available_views:\nviews[1]{id,label}: notes,Notes\nsubviews[0]:";
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: inventory,
+          actionCallbackHistory: [
+            "available_views:",
+            "views[1]{id,label}: notes,Notes",
+            "subviews[0]:",
+          ],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: inventory,
+          actionCallbackHistory: ["I found Notes."],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("drops the complete legacy TOON envelope without callback history", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: [
+            "available_views:",
+            "views[1]{id,label,type,path,available}:",
+            "  notes,Notes,gui,/notes,true",
+          ].join("\n"),
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("drops an empty legacy inventory without a views table", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: ["available_views:", "  type: gui", "  count: 0"].join("\n"),
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps ordinary prose that mentions available views", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: "available_views: Notes and Calendar are ready to use.",
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it("drops empty assistant turns with no media or blocks", () => {
     expect(shouldKeepConversationMessage(msg({ text: "  " }))).toBe(false);
   });

@@ -16,6 +16,8 @@
  *   - The route delegates to the same `generateChatResponse` that
  *     `/v1/chat/completions` uses, so model-routing (incl. local-inference
  *     handlers registered via `runtime.registerModel`) is shared.
+ *   - Compatibility transports never expose assistant turns explicitly
+ *     marked internal, while ordinary visible summaries remain unchanged.
  *   - `AgentRuntime.useModel(TEXT_LARGE)` dispatches to handlers
  *     registered via `runtime.registerModel` — the layer-2 check from the
  *     issue. Confirms the suspected "useModel doesn't fire the registered
@@ -127,17 +129,32 @@ function parseResponseBody(record: MockResponseRecord): unknown {
   }
 }
 
+function parseSseJsonFrames(record: MockResponseRecord): unknown[] {
+  return record.writes
+    .join("")
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => line.slice("data: ".length).trim())
+    .filter((data) => data && data !== "[DONE]")
+    .map((data) => JSON.parse(data) as unknown);
+}
+
 type MessageService = NonNullable<AgentRuntime["messageService"]>;
 
-function createMessageService(reply: string): MessageService {
+function createMessageService(
+  reply: string,
+  transcriptVisibility?: "internal",
+): MessageService {
+  const content = {
+    text: reply,
+    ...(transcriptVisibility ? { transcriptVisibility } : {}),
+  };
   return {
     async handleMessage(_runtime, _message, _callback, _options) {
       return {
         didRespond: true,
-        responseContent: { text: reply },
-        responseMessages: [
-          { id: stringToUuid("reply-msg"), content: { text: reply } },
-        ],
+        responseContent: content,
+        responseMessages: [{ id: stringToUuid("reply-msg"), content }],
       };
     },
     shouldRespond: () => ({
@@ -175,11 +192,18 @@ function createRuntime(
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     emitEvent: vi.fn(async () => undefined),
+    reportError: vi.fn(),
     drainChatPreHandlers: vi.fn(async () => null),
     ...overrides,
   };
   return runtime as unknown as AgentRuntime;
 }
+
+const INTERNAL_VIEWS_TEXT = [
+  "available_views:",
+  "views[1]{id,path}:",
+  "notes,/notes",
+].join("\n");
 
 function createCtx(opts: {
   method: string;
@@ -480,6 +504,161 @@ describe("POST /api/agents/:id/message (issue #7680)", () => {
     });
     expect(await patch.invoke()).toBe(true);
     expect(patch.record.status).toBe(403);
+  });
+});
+
+describe("compatibility transport transcript visibility", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns empty OpenAI-compatible non-streaming content for an internal turn", async () => {
+    const agentId = stringToUuid("openai-internal-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createMessageService(INTERNAL_VIEWS_TEXT, "internal"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        messages: [{ role: "user", content: "List the views" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const body = parseResponseBody(record) as {
+      choices: Array<{ message: { content: string } }>;
+    };
+    expect(body.choices[0]?.message.content).toBe("");
+    expect(JSON.stringify(body)).not.toContain("available_views");
+  });
+
+  it("does not emit an OpenAI-compatible content delta or fallback for an internal turn", async () => {
+    const agentId = stringToUuid("openai-stream-internal-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createMessageService(INTERNAL_VIEWS_TEXT, "internal"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "List the views" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const frames = parseSseJsonFrames(record) as Array<{
+      choices?: Array<{ delta?: { content?: string } }>;
+    }>;
+    expect(
+      frames.flatMap((frame) =>
+        (frame.choices ?? []).flatMap((choice) =>
+          choice.delta?.content === undefined ? [] : [choice.delta.content],
+        ),
+      ),
+    ).toEqual([]);
+    expect(JSON.stringify(frames)).not.toContain("available_views");
+  });
+
+  it("returns empty Anthropic-compatible non-streaming content for an internal turn", async () => {
+    const agentId = stringToUuid("anthropic-internal-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createMessageService(INTERNAL_VIEWS_TEXT, "internal"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        messages: [{ role: "user", content: "List the views" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const body = parseResponseBody(record) as {
+      content: Array<{ type: string; text: string }>;
+    };
+    expect(body.content).toEqual([{ type: "text", text: "" }]);
+    expect(JSON.stringify(body)).not.toContain("available_views");
+  });
+
+  it("does not emit an Anthropic-compatible text delta or fallback for an internal turn", async () => {
+    const agentId = stringToUuid("anthropic-stream-internal-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createMessageService(INTERNAL_VIEWS_TEXT, "internal"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        stream: true,
+        messages: [{ role: "user", content: "List the views" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const frames = parseSseJsonFrames(record) as Array<{
+      type?: string;
+      delta?: { text?: string };
+    }>;
+    expect(
+      frames.filter((frame) => frame.type === "content_block_delta"),
+    ).toEqual([]);
+    expect(JSON.stringify(frames)).not.toContain("available_views");
+  });
+
+  it("returns an empty response from /api/agents/:id/message for an internal turn", async () => {
+    const agentId = stringToUuid("agent-message-internal-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createMessageService(INTERNAL_VIEWS_TEXT, "internal"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: `/api/agents/${agentId}/message`,
+      body: { userId: "user-1", text: "List the views" },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const body = parseResponseBody(record) as { response: string };
+    expect(body.response).toBe("");
+    expect(JSON.stringify(body)).not.toContain("available_views");
+  });
+
+  it("preserves a distinct visible summary instead of suppressing the whole turn", async () => {
+    const agentId = stringToUuid("agent-message-visible-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createMessageService(
+        "Notes and Calendar are ready to use.",
+      ),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: `/api/agents/${agentId}/message`,
+      body: { userId: "user-1", text: "List the views" },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    expect(parseResponseBody(record)).toMatchObject({
+      response: "Notes and Calendar are ready to use.",
+    });
   });
 });
 

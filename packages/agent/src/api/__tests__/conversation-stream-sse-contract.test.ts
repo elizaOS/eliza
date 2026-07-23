@@ -337,6 +337,38 @@ function createViewShortcutMessageService(): NonNullable<
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
+function createPersistedCallbackMessageService(
+  messageId: UUID,
+): NonNullable<AgentRuntime["messageService"]> {
+  const text = "Calendar is ready.";
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text });
+      return {
+        didRespond: true,
+        responseContent: { text },
+        responseMessages: [
+          {
+            id: messageId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: { text },
+            createdAt: Date.now(),
+          },
+        ],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "persisted-callback-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
 function createState(
   messageServiceOverride?: NonNullable<AgentRuntime["messageService"]>,
 ): {
@@ -775,6 +807,26 @@ describe("conversation stream SSE contract (#10712)", () => {
         },
       ],
     });
+  });
+
+  it("uses this turn's exact persisted response id instead of a room-latest guess", async () => {
+    const responseId = stringToUuid("persisted-callback-response") as UUID;
+    const { ctx, record } = createCtx(
+      createPersistedCallbackMessageService(responseId),
+    );
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(ctx);
+
+    const done = parseSsePayloads(record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: "Calendar is ready.",
+      messageId: responseId,
+    });
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
   });
 
   it("delivers a post-SSE-init failure as a structured SSE error frame, not an HTTP error", async () => {

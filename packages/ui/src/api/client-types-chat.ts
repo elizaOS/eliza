@@ -305,6 +305,8 @@ export interface ConversationMessage {
   role: "user" | "assistant";
   text: string;
   timestamp: number;
+  /** Machine-only assistant output excluded from the rendered transcript. */
+  transcriptVisibility?: "internal";
   /** Structured content blocks (A2UI). When present, `text` is the fallback. */
   blocks?: ContentBlock[];
   /**

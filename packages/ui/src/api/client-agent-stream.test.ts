@@ -88,6 +88,36 @@ describe("ElizaClient agent streaming transport", () => {
     });
   });
 
+  it("surfaces internal transcript visibility from the terminal done event", async () => {
+    const encoder = new TextEncoder();
+    const read = vi.fn().mockResolvedValueOnce({
+      done: false,
+      value: encoder.encode(
+        'data: {"type":"done","fullText":"available_views:\\nviews[1]{id}: notes","agentName":"Eliza","transcriptVisibility":"internal"}\n\n',
+      ),
+    });
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel: vi.fn(async () => {}) }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "what views are available?",
+      vi.fn(),
+    );
+
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.text).toContain("available_views:");
+  });
+
   it("surfaces done event action results for page handoffs", async () => {
     const encoder = new TextEncoder();
     const read = vi.fn().mockResolvedValueOnce({

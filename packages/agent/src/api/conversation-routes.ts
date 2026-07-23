@@ -1029,7 +1029,10 @@ export function buildPersistedAssistantContent(
   result:
     | Pick<
         ChatGenerationResult,
-        "actionCallbackHistory" | "responseContent" | "responseMessages"
+        | "actionCallbackHistory"
+        | "responseContent"
+        | "responseMessages"
+        | "transcriptVisibility"
       >
     | null
     | undefined,
@@ -1051,18 +1054,64 @@ export function buildPersistedAssistantContent(
   const actionCallbackHistory = normalizeActionCallbackHistory(
     result?.actionCallbackHistory,
   );
+  const transcriptVisibility =
+    result?.transcriptVisibility === "internal"
+      ? ("internal" as const)
+      : undefined;
+  const persistedResponseMessageContent = responseMessageContent
+    ? { ...responseMessageContent }
+    : {};
+  const persistedResponseContent = responseContent
+    ? { ...responseContent }
+    : {};
+  delete persistedResponseMessageContent.transcriptVisibility;
+  delete persistedResponseContent.transcriptVisibility;
 
   return responseContent || responseMessageContent
     ? {
-        ...(responseMessageContent ?? {}),
-        ...(responseContent ?? {}),
+        ...persistedResponseMessageContent,
+        ...persistedResponseContent,
         text,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       }
     : {
         text,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       };
+}
+
+function resolvePersistedResponseMessageId(
+  result: ChatGenerationResult,
+  resolvedText: string,
+): UUID | null {
+  const expectedText = resolvedText.trim();
+  if (!expectedText) {
+    return null;
+  }
+  const expectsInternal = result.transcriptVisibility === "internal";
+
+  for (
+    let index = (result.responseMessages?.length ?? 0) - 1;
+    index >= 0;
+    index -= 1
+  ) {
+    const responseMessage = result.responseMessages?.[index];
+    const messageId = validateUuid(responseMessage?.id);
+    const content = responseMessage?.content;
+    if (
+      !messageId ||
+      (content?.transcriptVisibility === "internal") !== expectsInternal ||
+      typeof content?.text !== "string" ||
+      content.text.trim() !== expectedText
+    ) {
+      continue;
+    }
+    return messageId;
+  }
+
+  return null;
 }
 
 export async function persistRecentAssistantActionCallbackHistory(
@@ -1312,6 +1361,7 @@ type ConversationRouteMessageRecord = {
   role: "assistant" | "user";
   text: string;
   timestamp: number;
+  transcriptVisibility?: "internal";
   attachments?: SerializedMessageAttachment[];
   source?: string;
   actionName?: string;
@@ -1736,7 +1786,11 @@ export async function handleConversationRoutes(
           ? conversationsByRoomId.get(roomId)
           : undefined;
         if (!roomId || !conversation) return [];
-        const text = (memory.content as { text?: unknown } | undefined)?.text;
+        const content = memory.content as
+          | { text?: unknown; transcriptVisibility?: unknown }
+          | undefined;
+        if (content?.transcriptVisibility === "internal") return [];
+        const text = content?.text;
         if (typeof text !== "string") return [];
         const rawText = text.trim();
         if (!rawText || !memory.id) return [];
@@ -2040,6 +2094,10 @@ export async function handleConversationRoutes(
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
+          const transcriptVisibility =
+            content.transcriptVisibility === "internal"
+              ? ("internal" as const)
+              : undefined;
           // The failed assistant turn carries its classification on the live
           // result (`content.failureKind`) or, for synthetic fallbacks, on
           // `metadata.chatFailureKind` (markSyntheticChatFailureContent). Round
@@ -2071,9 +2129,11 @@ export async function handleConversationRoutes(
             actionCallbackHistory,
           );
           const text =
-            role === "assistant"
-              ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
-              : rawText;
+            transcriptVisibility === "internal"
+              ? ""
+              : role === "assistant"
+                ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
+                : rawText;
           const attachments = selectAttachmentsForViewer(
             m,
             viewerAccessContext,
@@ -2090,6 +2150,7 @@ export async function handleConversationRoutes(
             role,
             text,
             timestamp: m.createdAt ?? 0,
+            ...(transcriptVisibility ? { transcriptVisibility } : {}),
             ...(attachments ? { attachments } : {}),
             ...(topics && topics.length > 0 ? { topics } : {}),
             source: normalizedSource,
@@ -2887,7 +2948,11 @@ export async function handleConversationRoutes(
             state.logBuffer,
             runtime,
           );
-          if (!streamedText && resolvedText) {
+          if (
+            !streamedText &&
+            resolvedText &&
+            result.transcriptVisibility !== "internal"
+          ) {
             for (const chunk of chunkVisibleTextForSse(resolvedText)) {
               if (disconnectTracker.isAborted()) break;
               streamedText += chunk;
@@ -2895,6 +2960,8 @@ export async function handleConversationRoutes(
               await new Promise((resolve) => setTimeout(resolve, 60));
             }
           }
+          const visibleResolvedText =
+            result.transcriptVisibility === "internal" ? "" : resolvedText;
           // Resolve the durable assistant-memory id BEFORE emitting `done` so
           // the client can swap its optimistic temp-resp-* bubble to the
           // persisted id, and the proactive-message WS echo then reconciles by
@@ -2932,10 +2999,13 @@ export async function handleConversationRoutes(
           );
           writeSseJson(res, {
             type: "done",
-            fullText: resolvedText,
+            fullText: visibleResolvedText,
             agentName: result.agentName,
             ...(persistedAssistantId
               ? { messageId: persistedAssistantId }
+              : {}),
+            ...(result.transcriptVisibility
+              ? { transcriptVisibility: result.transcriptVisibility }
               : {}),
             ...(result.thought ? { thought: result.thought } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
@@ -3409,8 +3479,11 @@ export async function handleConversationRoutes(
           connectionDescriptor,
         );
         json(res, {
-          text: resolvedText,
+          text: result.transcriptVisibility === "internal" ? "" : resolvedText,
           agentName: result.agentName,
+          ...(result.transcriptVisibility
+            ? { transcriptVisibility: result.transcriptVisibility }
+            : {}),
           ...(result.actionResults?.length
             ? { actionResults: result.actionResults }
             : {}),

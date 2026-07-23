@@ -95,6 +95,9 @@ export interface Content {
 	/** The main text content visible to users */
 	text?: string;
 
+	/** Excludes machine-only content from user-facing conversation transcripts. */
+	transcriptVisibility?: "internal";
+
 	/**
 	 * Optional callback merge hint for streaming UIs.
 	 * `replace` keeps the pre-callback prefix and swaps the callback suffix;

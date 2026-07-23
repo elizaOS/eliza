@@ -1766,6 +1766,7 @@ function createV5ReplyStrategyResult(args: {
 	thought: string;
 	mode?: StrategyMode;
 	attachments?: Media[];
+	transcriptVisibility?: "internal";
 	/**
 	 * Provenance for the humanness voice gate (#14873): `true` when `text` is
 	 * the model's own composed reply (Stage-1 `replyText`, the Stage-1 ack), so
@@ -1786,6 +1787,9 @@ function createV5ReplyStrategyResult(args: {
 		responseId: args.responseId,
 		...(args.agentVoiced === true ? { agentVoiced: true } : {}),
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
+		...(args.transcriptVisibility
+			? { transcriptVisibility: args.transcriptVisibility }
+			: {}),
 	};
 
 	return {
@@ -1803,6 +1807,47 @@ function createV5ReplyStrategyResult(args: {
 		state: args.state,
 		mode: args.mode ?? "simple",
 	};
+}
+
+/**
+ * Bind an internal transcript marker only to the exact action diagnostic that
+ * became the selected reply. A distinct evaluator or sub-planner summary stays
+ * visible even when it follows an internal tool result.
+ */
+export function resolveActionResultTranscriptVisibility(
+	text: string,
+	actionResults: readonly ActionResult[] | undefined,
+): "internal" | undefined {
+	const canonicalize = (value: string) =>
+		value
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.join("\n")
+			.trim();
+	const selected = canonicalize(text);
+	if (!selected) return undefined;
+	return actionResults?.some((result) => {
+		if (result.transcriptVisibility !== "internal") return false;
+		const candidates = typeof result.text === "string" ? [result.text] : [];
+		const subSteps =
+			result.data &&
+			typeof result.data === "object" &&
+			Array.isArray(result.data.subSteps)
+				? result.data.subSteps
+				: [];
+		const terminalSubStep = subSteps.at(-1);
+		if (
+			terminalSubStep &&
+			typeof terminalSubStep === "object" &&
+			"internalTranscriptText" in terminalSubStep &&
+			typeof terminalSubStep.internalTranscriptText === "string"
+		) {
+			candidates.push(terminalSubStep.internalTranscriptText);
+		}
+		return candidates.some((candidate) => canonicalize(candidate) === selected);
+	})
+		? "internal"
+		: undefined;
 }
 
 function asProviderRecord(value: unknown):
@@ -6296,6 +6341,7 @@ interface SubPlannerSubStep {
 	action: string;
 	success: boolean;
 	summary?: string;
+	internalTranscriptText?: string;
 	error?: string;
 }
 
@@ -6330,6 +6376,10 @@ function collectSubPlannerSubSteps(
 			action: step.toolCall.name,
 			success: result.success,
 			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
+			...(result.transcriptVisibility === "internal" &&
+			typeof result.text === "string"
+				? { internalTranscriptText: result.text }
+				: {}),
 			...(errorText ? { error: truncateSubStepText(errorText) } : {}),
 		});
 	}
@@ -6365,6 +6415,11 @@ export function subPlannerResultToPlannerToolResult(
 		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
 	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
+	const internalTerminalPayload =
+		lastStep?.result?.transcriptVisibility === "internal" &&
+		typeof lastStep.result.text === "string" &&
+		typeof userFacingText === "string" &&
+		lastStep.result.text.trim() === userFacingText.trim();
 
 	// Aggregate every executed sub-step, not just the terminal one, so the
 	// parent planner's next turn can see which operations already succeeded and
@@ -6398,7 +6453,8 @@ export function subPlannerResultToPlannerToolResult(
 		// sees the completed steps. Falls back to the user-facing text when the
 		// sub-planner executed no discrete steps.
 		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
-		userFacingText,
+		transcriptVisibility: lastStep?.result?.transcriptVisibility,
+		...(internalTerminalPayload ? {} : { userFacingText }),
 		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
@@ -6551,6 +6607,9 @@ function collectPreviousActionResults(
 			results.push({
 				success: step.result.success,
 				...(step.result.text !== undefined ? { text: step.result.text } : {}),
+				...(step.result.transcriptVisibility !== undefined
+					? { transcriptVisibility: step.result.transcriptVisibility }
+					: {}),
 				...(step.result.userFacingText !== undefined
 					? { userFacingText: step.result.userFacingText }
 					: {}),
@@ -6598,6 +6657,9 @@ function collectPreviousActionResults(
 		results.push({
 			success: step.result.success,
 			...(step.result.text !== undefined ? { text: step.result.text } : {}),
+			...(step.result.transcriptVisibility !== undefined
+				? { transcriptVisibility: step.result.transcriptVisibility }
+				: {}),
 			...(step.result.userFacingText !== undefined
 				? { userFacingText: step.result.userFacingText }
 				: {}),
@@ -8181,6 +8243,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedText &&
 			stageOneAck.length > 0 &&
 			effectiveReplyText === stageOneAck;
+		const transcriptVisibility = resolveActionResultTranscriptVisibility(
+			plannedTextRaw || effectiveReplyText,
+			actionResults,
+		);
 
 		return {
 			kind: "planned_reply",
@@ -8196,6 +8262,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								plannerResult.trajectory.steps.at(-1)?.thought ??
 								messageHandler.thought,
 							agentVoiced: effectiveReplyIsModelVoice,
+							...(transcriptVisibility ? { transcriptVisibility } : {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					}
@@ -9294,6 +9361,9 @@ export function wrapSingleTurnVisibleCallback(
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
 	const deliver = async (response: Content, actionName?: string) => {
+		if (response.transcriptVisibility === "internal") {
+			return [];
+		}
 		// Shared post-model, pre-channel sanitization (#15888): every visible
 		// delivery — action callbacks, early replies, simple replies, terminal
 		// content — funnels through this wrap, so stripping leaked machine
@@ -9325,6 +9395,9 @@ export function wrapSingleTurnVisibleCallback(
 		response: Content,
 		actionName?: string,
 	): Promise<Content> => {
+		if (response.transcriptVisibility === "internal") {
+			return response;
+		}
 		if (!shouldRewriteActionCallback(response, actionName)) {
 			return response;
 		}

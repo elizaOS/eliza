@@ -848,6 +848,9 @@ export interface ActionResult {
 	/** Optional text description of the result */
 	text?: string;
 
+	/** Marks raw machine-only output that must not render as assistant prose. */
+	transcriptVisibility?: "internal";
+
 	/**
 	 * Optional clean user-facing answer. When set, the planner-loop's
 	 * terminal-FINISH fallback uses this as the reply shown to the user

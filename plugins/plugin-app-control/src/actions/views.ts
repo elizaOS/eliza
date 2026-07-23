@@ -2589,7 +2589,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 				switch (effectiveMode) {
 					case "list":
-						return runViewsList({ client, viewType, callback });
+						return runViewsList({ client, viewType });
 
 					case "current": {
 						const currentView = await client.getCurrentView();
