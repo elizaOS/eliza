@@ -248,6 +248,162 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(result.finalMessage).not.toContain("Both notes were updated");
 	});
 
+	it("keeps a later confirmation actionable when continueChain ends after an earlier failure", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+				.mockResolvedValueOnce(
+					plannerToolCall("send-b", "SEND", {
+						to: "owner@example.com",
+						text: "Project B update",
+					}),
+				),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "note-a-conflict",
+					text: failureA,
+					userFacingText: failureA,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					continueChain: false,
+					text: "Confirm B.",
+					userFacingText: "Confirm B.",
+					data: { requiresConfirmation: true },
+				}),
+			evaluate: vi.fn().mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE",
+				thought: "The unrelated note update failed.",
+			}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Confirm B.");
+	});
+
+	it("keeps a later confirmation actionable over evaluator FINISH prose", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+				.mockResolvedValueOnce(
+					plannerToolCall("send-b", "SEND", {
+						to: "owner@example.com",
+						text: "Project B update",
+					}),
+				),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "note-a-conflict",
+					text: failureA,
+					userFacingText: failureA,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Confirm B.",
+					userFacingText: "Confirm B.",
+					data: { requiresConfirmation: true },
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "The unrelated note update failed.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "The send needs approval.",
+					messageToUser: "Project B was sent.",
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Confirm B.");
+		expect(result.finalMessage).not.toContain("was sent");
+	});
+
+	it("does not let an older confirmation hide a newer failed operation", async () => {
+		const newestFailure = "Project C tests failed.";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+				.mockResolvedValueOnce(
+					plannerToolCall("send-b", "SEND", {
+						to: "owner@example.com",
+						text: "Project B update",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-c", "SHELL", {
+						command: "pnpm test",
+						cwd: "/workspace/project-c",
+					}),
+				),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Note A was updated.",
+					userFacingText: "Note A was updated.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Confirm B.",
+					userFacingText: "Confirm B.",
+					data: { requiresConfirmation: true },
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					error: "project-c-failure",
+					text: newestFailure,
+					userFacingText: newestFailure,
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Ask for confirmation.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Run the final project test.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "All operations are complete.",
+					messageToUser: "Everything completed.",
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(newestFailure);
+		expect(result.finalMessage).not.toContain("Confirm B.");
+	});
+
 	it("keeps a failed SHELL operation authoritative over coding terminal prose", async () => {
 		await withCodingFullSurface(async () => {
 			const runtime = {

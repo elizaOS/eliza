@@ -3164,9 +3164,66 @@ function terminalMessageWithFailureAuthority(
 ): string | undefined {
 	const unresolvedFailure =
 		latestUnresolvedFailedNonTerminalToolStep(trajectory);
-	return unresolvedFailure
-		? groundedFailedToolMessage(unresolvedFailure)
-		: candidate;
+	if (!unresolvedFailure) return candidate;
+
+	const pendingInteraction = latestActionablePendingInteractionAfter(
+		trajectory,
+		unresolvedFailure,
+	);
+	if (pendingInteraction) {
+		// Terminal planner output can carry a structured form that is richer than
+		// the action's fallback prose. Otherwise surface the action-owned prompt,
+		// not an evaluator summary that can conceal the pending confirmation.
+		if (
+			candidate === pendingInteraction ||
+			isStructuredInteractionPayload(candidate)
+		) {
+			return candidate;
+		}
+		return pendingInteraction;
+	}
+
+	return groundedFailedToolMessage(unresolvedFailure);
+}
+
+/**
+ * A pending interaction temporarily owns the terminal reply only when it is
+ * the latest non-terminal result after the unresolved failure. A later tool
+ * result means the pause has been superseded, so stale or hostile marker data
+ * cannot mask the newer operation's outcome.
+ */
+function latestActionablePendingInteractionAfter(
+	trajectory: PlannerTrajectory,
+	unresolvedFailure: PlannerStep,
+): string | undefined {
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	const failureIndex = steps.lastIndexOf(unresolvedFailure);
+	if (failureIndex < 0) return undefined;
+
+	for (let index = steps.length - 1; index > failureIndex; index--) {
+		const step = steps[index];
+		if (!step?.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
+			continue;
+		}
+		if (
+			!hasAwaitingUserInputMarker(step.result) &&
+			!hasRequiresConfirmationMarker(step.result)
+		) {
+			return undefined;
+		}
+		const pendingMessage = sanitizePlannerMessage(
+			step.result.userFacingText ?? step.result.text,
+		);
+		return pendingMessage && !isUnsafeUserVisibleText(pendingMessage)
+			? pendingMessage
+			: undefined;
+	}
+
+	return undefined;
+}
+
+function isStructuredInteractionPayload(value: string | undefined): boolean {
+	return /^\s*\[(?:FORM|CHOICE)\]/i.test(value ?? "");
 }
 
 function plannerToolOperationKey(toolCall: PlannerToolCall): string {
