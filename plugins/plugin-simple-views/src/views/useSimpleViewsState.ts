@@ -33,7 +33,7 @@ export interface SimpleViewsState {
 function errorMessage(cause: unknown): string {
   return cause instanceof Error && cause.message.trim()
     ? cause.message
-    : "Simple Views could not reach the local agent.";
+    : "Simple Views could not reach your agent.";
 }
 
 export function useSimpleViewsState(): SimpleViewsState {
