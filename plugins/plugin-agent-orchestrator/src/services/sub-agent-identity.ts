@@ -19,6 +19,10 @@ import {
   renderCoAuthorTrailer,
   resolveGitIdentityConfig,
 } from "./git-identity-env.js";
+import {
+  createOwnedArtifactRecord,
+  type OrchestratorOwnedArtifact,
+} from "./orchestrator-artifact-ownership.js";
 
 /** The instruction files each coding backend reads from its working directory. */
 const IDENTITY_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
@@ -270,7 +274,7 @@ already pinned via the environment — do not run \`git config user.name/email\`
 export async function writeWorkspaceIdentity(
   workdir: string,
   opts: SubAgentIdentityOptions = {},
-): Promise<void> {
+): Promise<OrchestratorOwnedArtifact[]> {
   // Resolve the configured co-author trailer once, from the same config surface
   // the spawn env reads, so the manual instruction and the pinned GIT_* env
   // always describe the same identity. Undefined when unconfigured.
@@ -291,7 +295,7 @@ export async function writeWorkspaceIdentity(
       // manuals the load-bearing identity fix (pinned GIT_AUTHOR_*/GIT_COMMITTER_*
       // env from buildEnv) still applies; a non-repo-dirtying trailer mechanism
       // for these (e.g. an out-of-tree commit.template) is a follow-up.
-      return;
+      return [];
     }
     const manual = buildSubAgentIdentityMd({ ...opts, coAuthorTrailer });
     await Promise.all(
@@ -302,6 +306,15 @@ export async function writeWorkspaceIdentity(
     logger.debug(
       `[sub-agent-identity] scaffolded operating manual into bare workspace ${workdir}`,
     );
+    return IDENTITY_FILENAMES.flatMap((name) => {
+      const record = createOwnedArtifactRecord(
+        workdir,
+        name,
+        manual,
+        "identity-scaffold",
+      );
+      return record ? [record] : [];
+    });
   } catch (err) {
     // error-policy:J7 identity scaffold is best-effort; a failure warns and must
     // not abort the spawn — a missing manual only degrades context.
@@ -309,5 +322,6 @@ export async function writeWorkspaceIdentity(
       { error: err },
       `[sub-agent-identity] could not scaffold identity into ${workdir}`,
     );
+    return [];
   }
 }
