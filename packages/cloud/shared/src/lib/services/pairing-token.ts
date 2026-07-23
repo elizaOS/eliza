@@ -25,6 +25,16 @@ export interface AuthenticatedNativePairingBinding {
   expectedOrigin: string;
 }
 
+export type AuthenticatedNativePairingClaim =
+  | {
+      status: "claimed";
+      pairingToken: PairingToken;
+      apiKey: string;
+      agentName: string | null;
+    }
+  | { status: "invalid" }
+  | { status: "sandbox-credential-unavailable" };
+
 const TOKEN_EXPIRY_MS = 60_000; // 60 seconds
 
 async function hashToken(token: string): Promise<string> {
@@ -145,22 +155,22 @@ class PairingTokenService {
   }
 
   /**
-   * Validate the explicit native exchange. Unlike the browser relay, native
+   * Claim the explicit native exchange. Unlike the browser relay, native
    * WebViews may omit Origin, so the Cloud bearer identity and the origin
    * carried by the authenticated mint response are part of the atomic claim.
    * This path intentionally uses the exact minted origin; browser-only domain
    * alias compatibility remains confined to validateToken().
    */
-  async validateAuthenticatedNativeToken(
+  async claimAuthenticatedNativeToken(
     token: string,
     binding: AuthenticatedNativePairingBinding,
-  ): Promise<PairingToken | null> {
+  ): Promise<AuthenticatedNativePairingClaim> {
     const normalizedOrigin = normalizeHttpOrigin(binding.expectedOrigin);
     if (!normalizedOrigin) {
-      return null;
+      return { status: "invalid" };
     }
 
-    const row = await agentPairingTokensRepository.consumeValidAuthenticatedToken(
+    const claim = await agentPairingTokensRepository.consumeValidAuthenticatedToken(
       await hashToken(token),
       {
         userId: binding.userId,
@@ -170,7 +180,14 @@ class PairingTokenService {
       },
     );
 
-    return row ? toPairingToken(row) : null;
+    if (claim.status !== "claimed") return claim;
+
+    return {
+      status: "claimed",
+      pairingToken: toPairingToken(claim.token),
+      apiKey: claim.apiKey,
+      agentName: claim.agentName,
+    };
   }
 }
 

@@ -27,9 +27,8 @@ const requireAuthOrApiKeyWithOrg = mock(async () => {
   };
 });
 const findByIdAndOrg = mock();
-const findByIdAndOrgForWrite = mock();
 const validateToken = mock();
-const validateAuthenticatedNativeToken = mock();
+const claimAuthenticatedNativeToken = mock();
 const loggerError = mock(() => undefined);
 
 mock.module("@/lib/auth", () => ({
@@ -39,14 +38,13 @@ mock.module("@/lib/auth", () => ({
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
     findByIdAndOrg,
-    findByIdAndOrgForWrite,
   },
 }));
 
 mock.module("@/lib/services/pairing-token", () => ({
   getPairingTokenService: () => ({
     validateToken,
-    validateAuthenticatedNativeToken,
+    claimAuthenticatedNativeToken,
   }),
 }));
 
@@ -136,12 +134,15 @@ describe("Cloud pairing route", () => {
     loggerError.mockClear();
     findByIdAndOrg.mockReset();
     findByIdAndOrg.mockResolvedValue(sandbox);
-    findByIdAndOrgForWrite.mockReset();
-    findByIdAndOrgForWrite.mockResolvedValue(sandbox);
     validateToken.mockReset();
     validateToken.mockResolvedValue(pairingToken);
-    validateAuthenticatedNativeToken.mockReset();
-    validateAuthenticatedNativeToken.mockResolvedValue(pairingToken);
+    claimAuthenticatedNativeToken.mockReset();
+    claimAuthenticatedNativeToken.mockResolvedValue({
+      status: "claimed",
+      pairingToken,
+      apiKey: "agent-api-token",
+      agentName: "Native agent",
+    });
   });
 
   test("keeps the public browser exchange Origin-bound and compatible", async () => {
@@ -157,7 +158,7 @@ describe("Cloud pairing route", () => {
 
     expect(response.status).toBe(200);
     expect(validateToken).toHaveBeenCalledWith(TOKEN, EXPECTED_ORIGIN);
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
+    expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
       message: "Paired successfully",
       apiKey: "agent-api-token",
@@ -179,7 +180,7 @@ describe("Cloud pairing route", () => {
       TOKEN,
       "https://wrong-agent.elizacloud.ai",
     );
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
+    expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
   });
 
   test("requires an explicit Cloud bearer for the native exchange", async () => {
@@ -191,7 +192,7 @@ describe("Cloud pairing route", () => {
 
     expect(response.status).toBe(401);
     expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
+    expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
   });
 
   test("returns 401 for an invalid bearer", async () => {
@@ -200,7 +201,7 @@ describe("Cloud pairing route", () => {
     const response = await postNative();
 
     expect(response.status).toBe(401);
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
+    expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
   });
 
   test("accepts the bearer API key returned by native device-code login", async () => {
@@ -209,7 +210,7 @@ describe("Cloud pairing route", () => {
     const response = await postNative();
 
     expect(response.status).toBe(200);
-    expect(validateAuthenticatedNativeToken).toHaveBeenCalledTimes(1);
+    expect(claimAuthenticatedNativeToken).toHaveBeenCalledTimes(1);
     expect(observedUser).toBe(authenticatedUser);
     expect(observedAuthMethod).toBe("api_key");
   });
@@ -229,22 +230,16 @@ describe("Cloud pairing route", () => {
     }
 
     expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
+    expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
   });
 
   test("pairs natively without an Origin header using all bearer bindings", async () => {
-    findByIdAndOrgForWrite.mockResolvedValueOnce({
-      ...sandbox,
-      environment_vars: { ELIZA_API_TOKEN: "  agent-api-token  " },
-    });
-
     const response = await postNative();
 
     expect(response.status).toBe(200);
     expect(observedUser).toBe(authenticatedUser);
     expect(observedAuthMethod).toBe("session");
-    expect(findByIdAndOrgForWrite).toHaveBeenCalledWith(AGENT_ID, ORG_ID);
-    expect(validateAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
+    expect(claimAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
       userId: USER_ID,
       orgId: ORG_ID,
       agentId: AGENT_ID,
@@ -258,9 +253,8 @@ describe("Cloud pairing route", () => {
   });
 
   test("does not consume a one-time token when the sandbox API key is missing", async () => {
-    findByIdAndOrgForWrite.mockResolvedValueOnce({
-      ...sandbox,
-      environment_vars: {},
+    claimAuthenticatedNativeToken.mockResolvedValueOnce({
+      status: "sandbox-credential-unavailable",
     });
 
     const response = await postNative();
@@ -269,7 +263,6 @@ describe("Cloud pairing route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Pairing failed",
     });
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
     expect(loggerError).toHaveBeenCalledWith(
       "[auth/pair/native] sandbox API token unavailable",
       {
@@ -280,15 +273,13 @@ describe("Cloud pairing route", () => {
   });
 
   test("does not consume a one-time token when the sandbox API key is blank", async () => {
-    findByIdAndOrgForWrite.mockResolvedValueOnce({
-      ...sandbox,
-      environment_vars: { ELIZA_API_TOKEN: " \t " },
+    claimAuthenticatedNativeToken.mockResolvedValueOnce({
+      status: "sandbox-credential-unavailable",
     });
 
     const response = await postNative();
 
     expect(response.status).toBe(500);
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
   });
 
   test("ignores a Capacitor Origin header and still enforces the minted origin", async () => {
@@ -297,7 +288,7 @@ describe("Cloud pairing route", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(validateAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
+    expect(claimAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
       userId: USER_ID,
       orgId: ORG_ID,
       agentId: AGENT_ID,
@@ -327,8 +318,7 @@ describe("Cloud pairing route", () => {
       expect(response.status).toBe(400);
     }
 
-    expect(findByIdAndOrgForWrite).not.toHaveBeenCalled();
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
+    expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
   });
 
   test("checks current organization ownership before consuming the token", async () => {
@@ -336,13 +326,19 @@ describe("Cloud pairing route", () => {
       id: USER_ID,
       organization_id: OTHER_ORG_ID,
     };
-    findByIdAndOrgForWrite.mockResolvedValue(undefined);
+    claimAuthenticatedNativeToken.mockResolvedValueOnce({
+      status: "invalid",
+    });
 
     const response = await postNative();
 
     expect(response.status).toBe(401);
-    expect(findByIdAndOrgForWrite).toHaveBeenCalledWith(AGENT_ID, OTHER_ORG_ID);
-    expect(validateAuthenticatedNativeToken).not.toHaveBeenCalled();
+    expect(claimAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
+      userId: USER_ID,
+      orgId: OTHER_ORG_ID,
+      agentId: AGENT_ID,
+      expectedOrigin: EXPECTED_ORIGIN,
+    });
   });
 
   test("returns one generic failure for a wrong user or origin binding", async () => {
@@ -350,7 +346,9 @@ describe("Cloud pairing route", () => {
       id: OTHER_USER_ID,
       organization_id: ORG_ID,
     };
-    validateAuthenticatedNativeToken.mockResolvedValue(null);
+    claimAuthenticatedNativeToken.mockResolvedValue({
+      status: "invalid",
+    });
 
     const response = await postNative({
       token: TOKEN,
@@ -362,7 +360,7 @@ describe("Cloud pairing route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Invalid or expired pairing code",
     });
-    expect(validateAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
+    expect(claimAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
       userId: OTHER_USER_ID,
       orgId: ORG_ID,
       agentId: AGENT_ID,

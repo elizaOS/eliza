@@ -49,14 +49,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeAgentApiToken(environmentVars: unknown): string | null {
-  if (!isRecord(environmentVars)) return null;
-  const token = environmentVars.ELIZA_API_TOKEN;
-  if (typeof token !== "string") return null;
-  const trimmed = token.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
 app.post("/", async (c) => {
   try {
     // error-policy:J3 malformed JSON is expected client input; the null
@@ -166,45 +158,29 @@ app.post("/native", async (c) => {
       return c.json({ error: "Invalid native pairing request" }, 400);
     }
 
-    // Confirm current tenant ownership before the one-time token is consumed.
-    const sandbox = await agentSandboxesRepository.findByIdAndOrgForWrite(
+    const tokenService = getPairingTokenService();
+    const claim = await tokenService.claimAuthenticatedNativeToken(token, {
+      userId: auth.user.id,
+      orgId: auth.user.organization_id,
       agentId,
-      auth.user.organization_id,
-    );
-    if (!sandbox) {
-      return c.json({ error: "Invalid or expired pairing code" }, 401);
-    }
-
-    // A one-time token must remain retryable when the sandbox credential is
-    // broken. Validate the writer-read row before the consuming token call.
-    const apiKey = normalizeAgentApiToken(sandbox.environment_vars);
-    if (!apiKey) {
+      expectedOrigin,
+    });
+    if (claim.status === "sandbox-credential-unavailable") {
       logger.error("[auth/pair/native] sandbox API token unavailable", {
         agentId,
         organizationId: auth.user.organization_id,
       });
       return c.json({ error: "Pairing failed" }, 500);
     }
-
-    const tokenService = getPairingTokenService();
-    const pairingToken = await tokenService.validateAuthenticatedNativeToken(
-      token,
-      {
-        userId: auth.user.id,
-        orgId: auth.user.organization_id,
-        agentId,
-        expectedOrigin,
-      },
-    );
-    if (!pairingToken) {
+    if (claim.status === "invalid") {
       return c.json({ error: "Invalid or expired pairing code" }, 401);
     }
 
     return c.json(
       {
         message: "Paired successfully",
-        apiKey,
-        agentName: sandbox.agent_name ?? "Agent",
+        apiKey: claim.apiKey,
+        agentName: claim.agentName ?? "Agent",
       },
       200,
       { "Cache-Control": "no-store, no-cache, must-revalidate" },

@@ -2,9 +2,9 @@
  * Persists one-time agent pairing tokens and performs their atomic,
  * identity-bound consumption through the shared database boundary.
  */
-import { and, eq, exists, gt, isNull, lt } from "drizzle-orm";
+import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
-import { dbRead, dbWrite } from "../helpers";
+import { dbRead, dbWrite, writeTransaction } from "../helpers";
 import {
   type AgentPairingToken,
   agentPairingTokens,
@@ -20,6 +20,16 @@ export interface AuthenticatedPairingTokenBinding {
   agentId: string;
   expectedOrigin: string;
 }
+
+export type AuthenticatedPairingTokenClaim =
+  | {
+      status: "claimed";
+      token: AgentPairingToken;
+      apiKey: string;
+      agentName: string | null;
+    }
+  | { status: "invalid" }
+  | { status: "sandbox-credential-unavailable" };
 
 export class AgentPairingTokensRepository {
   async create(data: NewAgentPairingToken): Promise<AgentPairingToken> {
@@ -59,47 +69,80 @@ export class AgentPairingTokensRepository {
   }
 
   /**
-   * Atomically consume a native pairing token only when every authenticated
-   * binding still matches. Keeping identity, tenant, agent, origin, expiry,
-   * and single-use checks in one UPDATE prevents a failed cross-tenant or
-   * wrong-origin attempt from burning the rightful owner's token.
+   * Claim a native pairing token and the matching sandbox credential from one
+   * locked database snapshot. Locking both rows closes the ownership-transfer
+   * and credential-rotation gap between checking the sandbox and consuming the
+   * token, while leaving a token unused when its sandbox credential is broken.
    */
   async consumeValidAuthenticatedToken(
     tokenHash: string,
     binding: AuthenticatedPairingTokenBinding,
-  ): Promise<AgentPairingToken | undefined> {
+  ): Promise<AuthenticatedPairingTokenClaim> {
     await ensureAgentSandboxSchema();
 
-    const now = new Date();
-
-    const [row] = await dbWrite
-      .update(agentPairingTokens)
-      .set({ used_at: now })
-      .where(
-        and(
-          eq(agentPairingTokens.token_hash, tokenHash),
-          eq(agentPairingTokens.user_id, binding.userId),
-          eq(agentPairingTokens.organization_id, binding.organizationId),
-          eq(agentPairingTokens.agent_id, binding.agentId),
-          eq(agentPairingTokens.expected_origin, binding.expectedOrigin),
-          isNull(agentPairingTokens.used_at),
-          gt(agentPairingTokens.expires_at, now),
-          exists(
-            dbWrite
-              .select({ id: agentSandboxes.id })
-              .from(agentSandboxes)
-              .where(
-                and(
-                  eq(agentSandboxes.id, binding.agentId),
-                  eq(agentSandboxes.organization_id, binding.organizationId),
-                ),
-              ),
+    return writeTransaction(async (tx) => {
+      const observedAt = new Date();
+      const [token] = await tx
+        .select()
+        .from(agentPairingTokens)
+        .where(
+          and(
+            eq(agentPairingTokens.token_hash, tokenHash),
+            eq(agentPairingTokens.user_id, binding.userId),
+            eq(agentPairingTokens.organization_id, binding.organizationId),
+            eq(agentPairingTokens.agent_id, binding.agentId),
+            eq(agentPairingTokens.expected_origin, binding.expectedOrigin),
+            isNull(agentPairingTokens.used_at),
+            gt(agentPairingTokens.expires_at, observedAt),
           ),
-        ),
-      )
-      .returning();
+        )
+        .limit(1)
+        .for("update");
+      if (!token) return { status: "invalid" };
 
-    return row;
+      const [sandbox] = await tx
+        .select({
+          agentName: agentSandboxes.agent_name,
+          environmentVars: agentSandboxes.environment_vars,
+        })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, binding.agentId),
+            eq(agentSandboxes.organization_id, binding.organizationId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!sandbox) return { status: "invalid" };
+
+      const rawApiKey = sandbox.environmentVars?.ELIZA_API_TOKEN;
+      const apiKey = typeof rawApiKey === "string" ? rawApiKey.trim() : "";
+      if (!apiKey) {
+        return { status: "sandbox-credential-unavailable" };
+      }
+
+      const claimedAt = new Date();
+      const [claimedToken] = await tx
+        .update(agentPairingTokens)
+        .set({ used_at: claimedAt })
+        .where(
+          and(
+            eq(agentPairingTokens.id, token.id),
+            isNull(agentPairingTokens.used_at),
+            gt(agentPairingTokens.expires_at, claimedAt),
+          ),
+        )
+        .returning();
+      if (!claimedToken) return { status: "invalid" };
+
+      return {
+        status: "claimed",
+        token: claimedToken,
+        apiKey,
+        agentName: sandbox.agentName,
+      };
+    });
   }
 
   async deleteExpired(): Promise<number> {

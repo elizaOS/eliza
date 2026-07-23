@@ -29,7 +29,9 @@ beforeAll(async () => {
   await dbWrite.execute(`
     CREATE TABLE IF NOT EXISTS agent_sandboxes (
       id uuid PRIMARY KEY,
-      organization_id uuid NOT NULL
+      organization_id uuid NOT NULL,
+      agent_name text,
+      environment_vars jsonb NOT NULL DEFAULT '{}'::jsonb
     )
   `);
   await dbWrite.execute(`
@@ -58,8 +60,13 @@ beforeEach(async () => {
   await dbWrite.execute("DELETE FROM agent_pairing_tokens");
   await dbWrite.execute("DELETE FROM agent_sandboxes");
   await dbWrite.execute(
-    `INSERT INTO agent_sandboxes (id, organization_id)
-     VALUES ('${AGENT_ID}', '${ORG_ID}')`,
+    `INSERT INTO agent_sandboxes (id, organization_id, agent_name, environment_vars)
+     VALUES (
+       '${AGENT_ID}',
+       '${ORG_ID}',
+       'Native agent',
+       '{"ELIZA_API_TOKEN":"agent-api-token"}'::jsonb
+     )`,
   );
 });
 
@@ -105,18 +112,23 @@ describe("authenticated native pairing token claim", () => {
 
     for (const binding of mismatches) {
       await expect(
-        pairingTokenService.validateAuthenticatedNativeToken(token, binding),
-      ).resolves.toBeNull();
+        pairingTokenService.claimAuthenticatedNativeToken(token, binding),
+      ).resolves.toEqual({ status: "invalid" });
       expect(await readOnlyRow()).toMatchObject({ used_at: null });
     }
 
     await expect(
-      pairingTokenService.validateAuthenticatedNativeToken(token, correctBinding),
+      pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding),
     ).resolves.toMatchObject({
-      userId: USER_ID,
-      orgId: ORG_ID,
-      agentId: AGENT_ID,
-      expectedOrigin: EXPECTED_ORIGIN,
+      status: "claimed",
+      apiKey: "agent-api-token",
+      agentName: "Native agent",
+      pairingToken: {
+        userId: USER_ID,
+        orgId: ORG_ID,
+        agentId: AGENT_ID,
+        expectedOrigin: EXPECTED_ORIGIN,
+      },
     });
     expect((await readOnlyRow()).used_at).not.toBeNull();
   });
@@ -130,8 +142,8 @@ describe("authenticated native pairing token claim", () => {
     );
 
     await expect(
-      pairingTokenService.validateAuthenticatedNativeToken(token, correctBinding),
-    ).resolves.toBeNull();
+      pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding),
+    ).resolves.toEqual({ status: "invalid" });
     expect(await readOnlyRow()).toMatchObject({ used_at: null });
 
     await dbWrite.execute(
@@ -140,17 +152,49 @@ describe("authenticated native pairing token claim", () => {
        WHERE id = '${AGENT_ID}'`,
     );
     await expect(
-      pairingTokenService.validateAuthenticatedNativeToken(token, correctBinding),
-    ).resolves.toMatchObject({ agentId: AGENT_ID });
+      pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding),
+    ).resolves.toMatchObject({
+      status: "claimed",
+      pairingToken: { agentId: AGENT_ID },
+    });
+  });
+
+  test("a missing sandbox credential leaves the locked token retryable", async () => {
+    const token = await mint();
+    await dbWrite.execute(
+      `UPDATE agent_sandboxes
+       SET environment_vars = '{}'::jsonb
+       WHERE id = '${AGENT_ID}'`,
+    );
+
+    await expect(
+      pairingTokenService.claimAuthenticatedNativeToken("A".repeat(43), correctBinding),
+    ).resolves.toEqual({ status: "invalid" });
+    await expect(
+      pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding),
+    ).resolves.toEqual({ status: "sandbox-credential-unavailable" });
+    expect(await readOnlyRow()).toMatchObject({ used_at: null });
+
+    await dbWrite.execute(
+      `UPDATE agent_sandboxes
+       SET environment_vars = '{"ELIZA_API_TOKEN":"rotated-api-token"}'::jsonb
+       WHERE id = '${AGENT_ID}'`,
+    );
+    await expect(
+      pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding),
+    ).resolves.toMatchObject({
+      status: "claimed",
+      apiKey: "rotated-api-token",
+    });
   });
 
   test("rejects malformed and expired candidates without marking them used", async () => {
     await expect(
-      pairingTokenService.validateAuthenticatedNativeToken("malformed", {
+      pairingTokenService.claimAuthenticatedNativeToken("malformed", {
         ...correctBinding,
         expectedOrigin: "javascript:alert(1)",
       }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ status: "invalid" });
 
     const token = await mint();
     await dbWrite.execute(
@@ -158,33 +202,33 @@ describe("authenticated native pairing token claim", () => {
     );
 
     await expect(
-      pairingTokenService.validateAuthenticatedNativeToken(token, correctBinding),
-    ).resolves.toBeNull();
+      pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding),
+    ).resolves.toEqual({ status: "invalid" });
     expect(await readOnlyRow()).toMatchObject({ used_at: null });
   });
 
   test("a successful claim is single-use", async () => {
     const token = await mint();
 
-    const first = await pairingTokenService.validateAuthenticatedNativeToken(token, correctBinding);
-    const replay = await pairingTokenService.validateAuthenticatedNativeToken(
-      token,
-      correctBinding,
-    );
+    const first = await pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding);
+    const replay = await pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding);
 
-    expect(first).toMatchObject({ agentId: AGENT_ID });
-    expect(replay).toBeNull();
+    expect(first).toMatchObject({
+      status: "claimed",
+      pairingToken: { agentId: AGENT_ID },
+    });
+    expect(replay).toEqual({ status: "invalid" });
   });
 
   test("two concurrent valid claims have exactly one winner", async () => {
     const token = await mint();
 
     const results = await Promise.all([
-      pairingTokenService.validateAuthenticatedNativeToken(token, correctBinding),
-      pairingTokenService.validateAuthenticatedNativeToken(token, correctBinding),
+      pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding),
+      pairingTokenService.claimAuthenticatedNativeToken(token, correctBinding),
     ]);
 
-    expect(results.filter((result) => result !== null)).toHaveLength(1);
-    expect(results.filter((result) => result === null)).toHaveLength(1);
+    expect(results.filter((result) => result.status === "claimed")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "invalid")).toHaveLength(1);
   });
 });
