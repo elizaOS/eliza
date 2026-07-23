@@ -29,6 +29,7 @@ import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
+	type JSONSchema,
 	ModelType,
 	type PromptSegment,
 	type ResponseSkeleton,
@@ -417,21 +418,23 @@ async function runPlannerLoopIterations(
 			// in `parsePlannerOutput` falls back to `raw.text`, but in native mode
 			// `text` can be a pre-tool thought rather than a final answer — too
 			// ambiguous to drive the gate. We therefore probe `raw.messageToUser`
-			// directly here; native-mode returns won't have that key, so the gate
-			// stays inert in that path.
+			// directly here; native-mode returns won't have that key, so the
+			// planner-reply gate stays inert in that path (the action-owned
+			// `turnComplete` path still applies).
 			const explicit = plannerOutput.raw.messageToUser;
 			lastPlannerExplicitMessageToUser =
 				typeof explicit === "string" && explicit.trim().length > 0
 					? explicit
 					: undefined;
-			// Capture the planner's explicit `completed` boolean when present.
-			// Any non-boolean (string "false", number, null, missing) is treated
-			// as "unspecified" and does not influence the gate — only an actual
-			// `false` boolean blocks. This keeps backward compat with planner
-			// outputs that don't carry the field.
-			const completedRaw = plannerOutput.raw.completed;
-			lastPlannerExplicitCompleted =
-				typeof completedRaw === "boolean" ? completedRaw : undefined;
+			// Capture the planner's explicit completion signal when present.
+			// `parsePlannerOutput` derives it lane-appropriately: the JSON lane's
+			// top-level `completed` boolean, or — in native mode, where the
+			// provider envelope has no such field — the reserved
+			// `eliza_turn_scope` tool argument (#17034). Anything unspecified is
+			// "no opinion" and does not influence the gate — only an explicit
+			// "not complete" blocks. This keeps backward compat with planner
+			// outputs that don't carry either signal.
+			lastPlannerExplicitCompleted = plannerOutput.completed;
 
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
@@ -1338,10 +1341,110 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	return tools;
 }
 
+/**
+ * Reserved native tool argument carrying the planner's turn-scope declaration
+ * (#17034). Native function-calling envelopes have no side channel for the
+ * planner schema's top-level `completed` boolean, which left the
+ * `tryGateEvaluator` "planner said the turn is incomplete" veto structurally
+ * inert on exactly the lane the action-owned `turnComplete` gate targets — a
+ * sequential multi-op request could be truncated after its first terminal
+ * action result. Every exposed tool schema therefore accepts this optional
+ * enum (`withTurnScopeToolArg`), the planner sets it per call, and
+ * `parsePlannerOutput` lifts it into the parse result's `completed` field
+ * while stripping the argument so no action handler ever sees it. Absence
+ * keeps the pre-#17034 behavior (gate eligible); only an explicit
+ * "more_work_pending" vetoes, mirroring the JSON lane where only
+ * `completed: false` blocks.
+ */
+export const TURN_SCOPE_ARG = "eliza_turn_scope";
+export const TURN_SCOPE_FINAL = "final";
+export const TURN_SCOPE_MORE_WORK_PENDING = "more_work_pending";
+
+const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
+	type: "string",
+	enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+	description:
+		`"${TURN_SCOPE_FINAL}" when this batch of tool calls is everything the ` +
+		`user's request needs this turn; "${TURN_SCOPE_MORE_WORK_PENDING}" when ` +
+		"further tool calls will follow after these results. Stripped before " +
+		"the tool runs.",
+};
+
+/**
+ * Expose the reserved turn-scope argument on every native tool schema so the
+ * model has a structured channel for the JSON lane's `completed` signal.
+ * Non-mutating; only object-shaped parameter schemas are extended, and a
+ * schema that already declares the reserved name is left untouched so a
+ * (namespaced, implausible) genuine parameter can never be overwritten.
+ */
+export function withTurnScopeToolArg(
+	tools: ToolDefinition[] | undefined,
+): ToolDefinition[] | undefined {
+	if (!tools) return tools;
+	return tools.map((tool) => {
+		const parameters = tool.parameters;
+		if (
+			!parameters ||
+			typeof parameters !== "object" ||
+			(parameters.type !== undefined && parameters.type !== "object")
+		) {
+			return tool;
+		}
+		const properties = parameters.properties ?? {};
+		if (properties[TURN_SCOPE_ARG] !== undefined) return tool;
+		return {
+			...tool,
+			parameters: {
+				...parameters,
+				properties: {
+					...properties,
+					[TURN_SCOPE_ARG]: TURN_SCOPE_ARG_SCHEMA,
+				},
+			},
+		};
+	});
+}
+
+/**
+ * Strip the reserved turn-scope argument from every call and fold the
+ * declarations into one turn-level completion signal. Any
+ * "more_work_pending" in the batch wins — the planner told us at least one
+ * more round is coming — otherwise a positive "final" is captured; unknown
+ * values strip silently and carry no opinion.
+ */
+function extractTurnScopeSignal(calls: PlannerToolCall[]): {
+	toolCalls: PlannerToolCall[];
+	completed: boolean | undefined;
+} {
+	let sawPending = false;
+	let sawFinal = false;
+	const toolCalls = calls.map((call) => {
+		const value = call.params?.[TURN_SCOPE_ARG];
+		if (value === undefined) return call;
+		if (value === TURN_SCOPE_MORE_WORK_PENDING) sawPending = true;
+		else if (value === TURN_SCOPE_FINAL) sawFinal = true;
+		const { [TURN_SCOPE_ARG]: _scope, ...params } = call.params as Record<
+			string,
+			unknown
+		>;
+		return { ...call, params };
+	});
+	return {
+		toolCalls,
+		completed: sawPending ? false : sawFinal ? true : undefined,
+	};
+}
+
 export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	thought?: string;
 	toolCalls: PlannerToolCall[];
 	messageToUser?: string;
+	/**
+	 * Lane-appropriate planner completion signal: the JSON lane's top-level
+	 * `completed` boolean, or the folded native `eliza_turn_scope` tool-arg
+	 * declarations. `undefined` means the planner expressed no opinion.
+	 */
+	completed?: boolean;
 	raw: Record<string, unknown>;
 } {
 	if (typeof raw === "string") {
@@ -1381,7 +1484,10 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	) {
 		textRecoveredCalls = mergeToolCalls(textRecoveredCalls, embeddedToolCalls);
 	}
-	const toolCalls = mergeToolCalls(nativeToolCalls, textRecoveredCalls);
+	const merged = extractTurnScopeSignal(
+		mergeToolCalls(nativeToolCalls, textRecoveredCalls),
+	);
+	const toolCalls = merged.toolCalls;
 
 	return {
 		toolCalls,
@@ -1396,6 +1502,7 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 					? controlText.messageToUser
 					: text,
 		thought: controlText?.thought,
+		completed: merged.completed ?? controlText?.completed,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
@@ -1432,6 +1539,7 @@ function parseJsonPlannerOutput(raw: string): {
 	thought?: string;
 	toolCalls: PlannerToolCall[];
 	messageToUser?: string;
+	completed?: boolean;
 	raw: Record<string, unknown>;
 } {
 	const trimmed = raw.trim();
@@ -1443,9 +1551,11 @@ function parseJsonPlannerOutput(raw: string): {
 		// Non-JSON output: a weak model emitted prose and/or `<tool_call>` markup
 		// instead of the planner envelope. Recover the call it meant to make and
 		// strip the markup from the user-facing text instead of leaking it.
+		const recovered = extractTurnScopeSignal(recoverEmbeddedToolCalls(trimmed));
 		return {
-			toolCalls: recoverEmbeddedToolCalls(trimmed),
+			toolCalls: recovered.toolCalls,
 			messageToUser: sanitizePlannerMessage(trimmed),
+			completed: recovered.completed,
 			raw: { text: trimmed },
 		};
 	}
@@ -1472,10 +1582,17 @@ function parseJsonPlannerOutput(raw: string): {
 	if (resolvedCalls.length === 0) {
 		resolvedCalls = recoverEmbeddedToolCalls(trimmed);
 	}
+	const scoped = extractTurnScopeSignal(resolvedCalls);
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
-		toolCalls: resolvedCalls,
+		toolCalls: scoped.toolCalls,
 		messageToUser,
+		// The envelope's explicit top-level `completed` boolean is the JSON
+		// lane's first-class signal and outranks any per-call scope argument.
+		completed:
+			typeof parsed.completed === "boolean"
+				? parsed.completed
+				: scoped.completed,
 		raw: parsed as Record<string, unknown>,
 	};
 }
@@ -1635,7 +1752,11 @@ async function callPlanner(params: {
 		},
 	};
 	if (hasTools) {
-		modelParams.tools = params.tools;
+		// Every native tool schema gains the reserved `eliza_turn_scope`
+		// argument so the planner can declare turn scope where the provider
+		// envelope has no `completed` field (#17034); `parsePlannerOutput`
+		// strips it before dispatch.
+		modelParams.tools = withTurnScopeToolArg(params.tools);
 		// Force a native tool call. With actions exposed directly as tools,
 		// every viable planner outcome —
 		// invoking an action, calling REPLY for a final message, or terminating
@@ -3759,12 +3880,15 @@ function diagnosticFailureReason(
  *   5. The selected reply is not a tool/function-syntax leak (the evaluator's
  *      own prompt rules say leaked syntax should force CONTINUE; we honor the
  *      same constraint by reusing `isUnsafeUserVisibleText`).
- *   6. The planner did NOT explicitly set `completed: false` on this output.
- *      When that flag is present and false, the planner is signaling that
- *      this turn's tool calls do not yet achieve the goal (read-then-act,
- *      multi-step deploy, verification pending) — and `messageToUser` is
- *      a pre-tool intent rather than a final answer. We fall through to
- *      the full evaluator so it can decide CONTINUE vs FINISH from the
+ *   6. The planner did NOT explicitly declare the turn incomplete on this
+ *      output — the JSON lane's top-level `completed: false`, or the native
+ *      lane's reserved `eliza_turn_scope: "more_work_pending"` tool argument
+ *      (#17034), both folded into `parsePlannerOutput().completed`. When
+ *      present and false, the planner is signaling that this turn's tool
+ *      calls do not yet achieve the goal (read-then-act, multi-step deploy,
+ *      verification pending) — and neither a pre-tool `messageToUser` nor an
+ *      action's own `turnComplete` may end the turn early. We fall through
+ *      to the full evaluator so it can decide CONTINUE vs FINISH from the
  *      actual tool result rather than synthesizing a FINISH the planner
  *      explicitly disclaimed. Absent or `true` preserves the gate's
  *      original behavior (backward compat).
@@ -3783,8 +3907,10 @@ function diagnosticFailureReason(
  * the planner committed a `messageToUser` field at plan-time. Native-mode
  * native-tool-call returns without that field remain ambiguous; actions that
  * truly own a single-operation turn can instead set `turnComplete:true` after
- * execution. The gate requires both a drained queue and exactly one executed
- * tool, so it never replaces the evaluator on a native parallel-call batch.
+ * execution, and the native planner retains a veto over that path via
+ * `eliza_turn_scope: "more_work_pending"` (#17034). The gate requires both a
+ * drained queue and exactly one executed tool, so it never replaces the
+ * evaluator on a native parallel-call batch.
  */
 type GatedEvaluatorDecision = {
 	output: EvaluatorOutput;
