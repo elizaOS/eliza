@@ -44,6 +44,19 @@ export function usesWebsearchSyntax(value: string): boolean {
   return value.includes('"') || /(^|\s)-(?=\S)/.test(value) || /(^|\s)or(?=\s|$)/i.test(value);
 }
 
+/**
+ * Plugin schemas may migrate before the core SQL schema during boot. Search
+ * objects are a post-migration optimization and must wait for their table
+ * instead of turning an otherwise valid early plugin migration into a crash.
+ */
+export async function messageSearchTableExists(db: DrizzleDatabase): Promise<boolean> {
+  const result = await db.execute(sql`
+    SELECT to_regclass('memories') AS table_name
+  `);
+  const row = result.rows[0] as { table_name?: unknown } | undefined;
+  return typeof row?.table_name === "string";
+}
+
 // Accent-folding map: each accented Latin letter → its ASCII base. `from` and
 // `to` are equal length; the three trailing chars in `from` (straight/curly
 // apostrophe, backtick) have no `to` counterpart and are therefore deleted by
