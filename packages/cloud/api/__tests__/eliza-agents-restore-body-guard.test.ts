@@ -60,7 +60,10 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   apiKeyScopeHashPrefix: mock(async () => null),
   sessionScopeHashPrefix: mock(async () => null),
   requireUserOrApiKeyWithOrgLookup: mock(
-    async (_c: unknown, lookup: (organizationId: string) => Promise<unknown>) => ({
+    async (
+      _c: unknown,
+      lookup: (organizationId: string) => Promise<unknown>,
+    ) => ({
       user: {
         id: USER_A,
         email: "owner@test.test",
