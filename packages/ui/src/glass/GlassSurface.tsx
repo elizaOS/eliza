@@ -236,7 +236,7 @@ export function useNativeGlassAnchor(
       unsubscribe?.();
       teardown();
     };
-  }, [wantNative, interactive, ref, regionId]);
+  }, [wantNative, enabled, available, interactive, ref, regionId]);
 
   return nativeLive && backdropActive ? "native" : cssGlassTier();
 }
