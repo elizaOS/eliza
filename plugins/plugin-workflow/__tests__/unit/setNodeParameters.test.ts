@@ -20,8 +20,12 @@ function workflow(parameters: Record<string, unknown>, type = 'workflows-nodes-b
 }
 
 function assignments(definition: WorkflowDefinition): Array<Record<string, unknown>> {
+  const node = definition.nodes[0];
+  if (!node) {
+    throw new Error('workflow definition has no nodes');
+  }
   return (
-    definition.nodes[0].parameters.assignments as {
+    node.parameters.assignments as {
       assignments: Array<Record<string, unknown>>;
     }
   ).assignments;
