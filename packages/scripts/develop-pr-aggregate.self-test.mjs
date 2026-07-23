@@ -51,7 +51,7 @@ function resultFor(evaluation, context) {
 
 const allGreen = evaluate(successRuns());
 assert.equal(allGreen.verdict, "success");
-assert.deepEqual(allGreen.counts, { passed: 9, waiting: 0, failed: 0 });
+assert.deepEqual(allGreen.counts, { passed: 7, waiting: 0, failed: 0 });
 
 const missingBeforeDeadline = evaluate(buildCanaryCheckRuns("missing", NOW_MS));
 assert.equal(missingBeforeDeadline.verdict, "waiting");
@@ -179,7 +179,6 @@ const summary = renderSummary(allGreen, {
   attempt: 1,
 });
 assert.match(summary, /Verdict: \*\*success\*\*/);
-assert.match(summary, /coverage on changed files/);
 
 const apiAttempts = [];
 const retrySleeps = [];

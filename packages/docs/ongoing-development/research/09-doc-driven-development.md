@@ -88,8 +88,7 @@ and repointing CI scratch paths.
   provisioning doc; `lifeops-benchmark-history.yml:95-141` **executes a script
   at a deleted path** — the workflow is broken on every run;
   `vault-ci.yaml:52` carries a stale "committed evidence files exceed
-  MAX_PATH" comment; `package.json:105` (`audit:test-realness:evidence`)
-  writes reports into the deleted dir;
+  MAX_PATH" comment;
   `packages/app/scripts/lib/issue-evidence.mjs:16-21` defaults all
   `capture:ios-sim`-family output into it.
 - Dead links, failing CI today: `node scripts/check-markdown-links.mjs`

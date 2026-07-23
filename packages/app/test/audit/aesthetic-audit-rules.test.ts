@@ -624,8 +624,7 @@ describe("minimalism baseline parse/build (#9950 update path)", () => {
   });
 
   it("the COMMITTED baseline file parses (spec-load integrity)", () => {
-    // The changed-file coverage lane runs Vitest from the repository root,
-    // while the package command runs it from packages/app.
+    // Support both root and package-scoped Vitest invocation.
     const packageRoot = existsSync(path.join(process.cwd(), "packages/app"))
       ? path.join(process.cwd(), "packages/app")
       : process.cwd();

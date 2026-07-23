@@ -7,13 +7,8 @@
  * anywhere — a vacuous skip on the crypto-payments money path. This config
  * runs it for real against in-process PGlite.
  *
- * `default-eliza-character.test.ts` is also listed: it imports from "vitest",
- * so the changed-file coverage lane (run-changed-vitest-coverage.mjs) routes
- * it through this config whenever a PR touches it. Vitest treats CLI file
- * arguments as filters against `include`, so a file absent from `include` can
- * never match — the lane exits "No test files found" (code 1) and hard-fails
- * the coverage gate for any PR touching that test. It already runs under the
- * bun lane; double execution is the only cost of listing it here.
+ * `default-eliza-character.test.ts` is also listed because it imports from
+ * "vitest" and exercises the same Vitest-specific configuration.
  *
  * Do NOT set `passWithNoTests`: if the include glob ever matches nothing, the
  * lane must red rather than silently pass.

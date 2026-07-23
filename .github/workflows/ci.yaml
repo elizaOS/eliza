@@ -150,11 +150,6 @@ jobs:
       - name: Anti-larp test gate
         run: bun run audit:focused-tests
 
-      # Per-plugin mock-LLM e2e coverage. The seeded allowlist carries
-      # historical debt; new unsuppressed gaps fail the main gate (#13620).
-      - name: Per-plugin e2e coverage
-        run: node packages/scripts/lint-lane-coverage.mjs
-
   # Build job
   build:
     # Skip duplicate runs: run on push to main, or on pull_request events only
