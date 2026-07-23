@@ -390,6 +390,53 @@ describe("SimpleViewsStore", () => {
     });
     expect(() => store.snapshot()).toThrow("not valid JSON");
   });
+
+  it("shares one typed failure across concurrent non-Eliza filesystem errors", async () => {
+    const filePath = await temporaryStateFile();
+    await fs.mkdir(filePath, { recursive: true });
+    const first = new SimpleViewsStore({ filePath });
+    const second = new SimpleViewsStore({ filePath });
+
+    const results = await Promise.allSettled([
+      first.initialize(),
+      second.initialize(),
+    ]);
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        status: "rejected",
+        reason: expect.objectContaining({
+          code: "SIMPLE_VIEWS_STORE_LOAD_FAILED",
+          cause: expect.objectContaining({ code: "EISDIR" }),
+        }),
+      }),
+      expect.objectContaining({
+        status: "rejected",
+        reason: expect.objectContaining({
+          code: "SIMPLE_VIEWS_STORE_LOAD_FAILED",
+          cause: expect.objectContaining({ code: "EISDIR" }),
+        }),
+      }),
+    ]);
+    if (
+      results[0]?.status !== "rejected" ||
+      results[1]?.status !== "rejected"
+    ) {
+      throw new Error("Both shared-store initializers must reject.");
+    }
+    expect(results[0].reason).toBe(results[1].reason);
+    expect(first.getStatus()).toMatchObject({
+      phase: "error",
+      error: { code: "SIMPLE_VIEWS_STORE_LOAD_FAILED" },
+    });
+    expect(second.getStatus()).toMatchObject({
+      phase: "error",
+      error: { code: "SIMPLE_VIEWS_STORE_LOAD_FAILED" },
+    });
+
+    await first.stop();
+    await second.stop();
+  });
 });
 
 describe("Simple Views capabilities", () => {
@@ -527,6 +574,51 @@ describe("Simple Views capabilities", () => {
     ).rejects.toMatchObject({
       code: "SIMPLE_VIEWS_UNKNOWN_CAPABILITY",
     });
+  });
+
+  it("bounds planner summaries while retaining an explicit omitted-item marker", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const timestamp = "2026-07-16T12:00:00.000Z";
+    const noteExcerpt = "n".repeat(160);
+    const eventExcerpt = "e".repeat(160);
+    await service.store.transact((draft) => {
+      draft.notes = Array.from({ length: 22 }, (_, index) => ({
+        id: `planner-note-${index}`,
+        title: `Planner note ${index}`,
+        body: `${noteExcerpt}-note-tail-${index}`,
+        color: "yellow" as const,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }));
+      draft.events = Array.from({ length: 22 }, (_, index) => ({
+        id: `planner-event-${index}`,
+        title: `Planner event ${index}`,
+        date: "2026-07-16",
+        time: "09:00",
+        notes: `${eventExcerpt}-event-tail-${index}`,
+        color: "green" as const,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }));
+    });
+
+    const notesResult = await interact("get-notes", {}, service);
+    expect(notesResult.text.split("\n")).toHaveLength(21);
+    expect(notesResult.text).toContain(`Planner note 0: ${noteExcerpt}`);
+    expect(notesResult.text).not.toContain("-note-tail-");
+    expect(notesResult.text).not.toContain("Planner note 20:");
+    expect(notesResult.text).toContain("2 more notes not shown.");
+
+    const eventsResult = await interact("get-calendar-state", {}, service);
+    expect(eventsResult.text.split("\n")).toHaveLength(21);
+    expect(eventsResult.text).toContain(
+      `2026-07-16 09:00 - Planner event 0: ${eventExcerpt}`,
+    );
+    expect(eventsResult.text).not.toContain("-event-tail-");
+    expect(eventsResult.text).not.toContain("Planner event 20:");
+    expect(eventsResult.text).toContain("2 more events not shown.");
+
+    await service.stop();
   });
 });
 

@@ -113,13 +113,14 @@ export function AgentAction({
   children,
   disabled,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & {
   agentId: string;
   agentLabel: string;
   agentGroup: string;
   agentStatus?: string;
   variant?: "primary" | "secondary" | "quiet";
   compact?: boolean;
+  onClick?: () => void;
 }) {
   const control = useAgentElement<HTMLButtonElement>({
     id: agentId,
@@ -128,7 +129,7 @@ export function AgentAction({
     group: agentGroup,
     status: agentStatus,
     onActivate: () => {
-      if (!disabled) onClick?.({} as never);
+      if (!disabled) onClick?.();
     },
   });
   const variantStyle: CSSProperties =

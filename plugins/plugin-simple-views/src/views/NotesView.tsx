@@ -20,6 +20,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { StickyColor, StickyNote as StickyNoteModel } from "../types.js";
@@ -186,6 +187,7 @@ export function NotesView() {
   const [body, setBody] = useState("");
   const [color, setColor] = useState<StickyColor>("yellow");
   const [confirmClear, setConfirmClear] = useState(false);
+  const clearConfirmationRevision = useRef(snapshot?.revision);
 
   const editingNote = useMemo(
     () => notes.find((note) => note.id === editingId) ?? null,
@@ -202,6 +204,12 @@ export function NotesView() {
   useEffect(() => {
     if (editingId && snapshot && !editingNote) resetComposer();
   }, [editingId, editingNote, resetComposer, snapshot]);
+
+  useEffect(() => {
+    if (clearConfirmationRevision.current === snapshot?.revision) return;
+    clearConfirmationRevision.current = snapshot?.revision;
+    setConfirmClear(false);
+  }, [snapshot?.revision]);
 
   const editNote = useCallback((note: StickyNoteModel) => {
     setEditingId(note.id);

@@ -38,6 +38,9 @@ const EXPECTED_FAILURE_CODES = new Set([
   "SIMPLE_VIEWS_STORE_UNAVAILABLE",
 ]);
 
+const PLANNER_SUMMARY_ITEM_LIMIT = 20;
+const PLANNER_SUMMARY_EXCERPT_LENGTH = 160;
+
 function paramsRecord(value: unknown): Record<string, unknown> {
   if (value === undefined) return {};
   if (!isRecord(value)) {
@@ -87,7 +90,16 @@ function withoutId(params: Record<string, unknown>): Record<string, unknown> {
 
 function summarizeNotes(notes: StickyNote[]): string {
   if (notes.length === 0) return "No sticky notes yet.";
-  return notes.map((note) => `${note.title}: ${note.body}`).join("\n");
+  const visible = notes
+    .slice(0, PLANNER_SUMMARY_ITEM_LIMIT)
+    .map(
+      (note) =>
+        `${note.title}: ${note.body.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`,
+    );
+  if (notes.length > visible.length) {
+    visible.push(`${notes.length - visible.length} more notes not shown.`);
+  }
+  return visible.join("\n");
 }
 
 function summarizeEvents(events: SimpleCalendarEvent[], date?: string): string {
@@ -96,14 +108,20 @@ function summarizeEvents(events: SimpleCalendarEvent[], date?: string): string {
       ? `No Simple Calendar events for ${date}.`
       : "No Simple Calendar events yet.";
   }
-  return events
+  const visible = events
+    .slice(0, PLANNER_SUMMARY_ITEM_LIMIT)
     .map(
       (event) =>
         `${event.date} ${event.time} - ${event.title}${
-          event.notes.length > 0 ? `: ${event.notes}` : ""
+          event.notes.length > 0
+            ? `: ${event.notes.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
+            : ""
         }`,
-    )
-    .join("\n");
+    );
+  if (events.length > visible.length) {
+    visible.push(`${events.length - visible.length} more events not shown.`);
+  }
+  return visible.join("\n");
 }
 
 function normalizedLookup(value: string): string {

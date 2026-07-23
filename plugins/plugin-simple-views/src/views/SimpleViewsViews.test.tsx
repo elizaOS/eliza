@@ -15,9 +15,15 @@ import type { SimpleViewsSnapshot, StickyNote } from "../types.js";
 import type { SimpleViewsState } from "./useSimpleViewsState.js";
 
 const stateHook = vi.hoisted(() => vi.fn());
+const agentSurface = vi.hoisted(() => ({
+  registrations: [] as Array<{ id: string; onActivate?: () => void }>,
+}));
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+  useAgentElement: (registration: { id: string; onActivate?: () => void }) => {
+    agentSurface.registrations.push(registration);
+    return { ref: { current: null }, agentProps: {} };
+  },
 }));
 
 vi.mock("./useSimpleViewsState.js", () => ({
@@ -26,6 +32,7 @@ vi.mock("./useSimpleViewsState.js", () => ({
 
 import { NotesView } from "./NotesView.js";
 import { SimpleCalendarView } from "./SimpleCalendarView.js";
+import { AgentAction } from "./viewPrimitives.js";
 
 function snapshot(
   revision: number,
@@ -60,7 +67,10 @@ function hookState(
   };
 }
 
-beforeEach(() => stateHook.mockReset());
+beforeEach(() => {
+  stateHook.mockReset();
+  agentSurface.registrations.length = 0;
+});
 afterEach(cleanup);
 
 describe("Simple Views state labels", () => {
@@ -197,6 +207,53 @@ describe("Notes direct interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm clear" }));
     await waitFor(() => expect(mutate).toHaveBeenCalledWith("clear-notes"));
+  });
+
+  it("disarms clear confirmation when the authoritative revision changes", async () => {
+    const initial = snapshot(4);
+    initial.notes = [stickyNote()];
+    stateHook.mockReturnValue(hookState({ snapshot: initial }));
+    const view = render(<NotesView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("button", { name: "Confirm clear" })).toBeTruthy();
+
+    const updated = snapshot(5);
+    updated.notes = [stickyNote({ body: "Changed by the agent" })];
+    stateHook.mockReturnValue(hookState({ snapshot: updated }));
+    view.rerender(<NotesView />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy(),
+    );
+    expect(screen.queryByRole("button", { name: "Confirm clear" })).toBeNull();
+  });
+});
+
+describe("AgentAction activation", () => {
+  it("invokes the registered callback without fabricating an event", () => {
+    const onClick = vi.fn();
+    render(
+      <AgentAction
+        agentId="test-action"
+        agentLabel="Test action"
+        agentGroup="test"
+        onClick={onClick}
+      >
+        Run
+      </AgentAction>,
+    );
+    const registration = agentSurface.registrations.find(
+      (candidate) => candidate.id === "test-action",
+    );
+    if (!registration?.onActivate) {
+      throw new Error("Agent activation callback was not registered.");
+    }
+
+    registration.onActivate();
+
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(onClick).toHaveBeenCalledWith();
   });
 });
 
