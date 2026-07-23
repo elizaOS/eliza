@@ -36,8 +36,10 @@ runs:
         done
         # dlopen probe: catches a glibc/loader mismatch between the hosted
         # build image and this host with a crisp error instead of a confusing
-        # failure deep inside the first smoke.
-        bun -e "require('bun:ffi').dlopen('$LIB', {}); console.log('dlopen OK');"
+        # failure deep inside the first smoke. bun:ffi requires at least one
+        # bound symbol, so bind the ABI-version getter — which also proves the
+        # artifact speaks the expected contract.
+        bun -e "const { dlopen, FFIType } = require('bun:ffi'); const lib = dlopen('$LIB', { eliza_inference_abi_version: { args: [], returns: FFIType.cstring } }); console.log('dlopen OK — fused ABI v' + lib.symbols.eliza_inference_abi_version());"
         echo "ELIZA_INFERENCE_LIBRARY=$LIB" >> "$GITHUB_ENV"
         echo "ELIZA_INFERENCE_LIB_DIR=${{ inputs.fused-lib-dir }}" >> "$GITHUB_ENV"
         echo "fused lib OK: $LIB"
