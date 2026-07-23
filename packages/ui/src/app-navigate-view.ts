@@ -65,8 +65,12 @@ export type DesktopBridgeRequest = <T>(options: {
 
 export function pathForNavigateViewDetail(
   detail: NavigateViewDetail,
+  views: readonly ViewRegistryEntry[] = [],
 ): string | null {
-  return detail.viewPath ?? (detail.viewId ? `/apps/${detail.viewId}` : null);
+  if (detail.viewPath) return detail.viewPath;
+  if (!detail.viewId) return null;
+  const entry = desktopEntryForDetail(views, detail.viewId);
+  return entry?.path ?? `/apps/${detail.viewId}`;
 }
 
 export function directTabForNavigateView(
@@ -98,7 +102,7 @@ export function navigateBrowserPath(path: string): void {
 }
 
 export function desktopEntryForDetail(
-  views: ViewRegistryEntry[],
+  views: readonly ViewRegistryEntry[],
   viewId: string,
 ): ViewRegistryEntry | undefined {
   return views.find((view) => view.id === viewId);
@@ -186,7 +190,10 @@ export function createNavigateViewHandler({
       navigatePath("/views");
       return;
     }
-    const path = pathForNavigateViewDetail(detail);
+    const path = pathForNavigateViewDetail(
+      detail,
+      availableViewsForDesktopTabs,
+    );
     if (!path) return;
     setViewLayout?.(null);
     const directTab = directTabForNavigateView(detail, path);
