@@ -57,6 +57,11 @@ jobs:
       - name: Generate source-mode keyword data
         run: node packages/shared/scripts/generate-keywords.mjs
 
+      - name: Build core dist
+        # plugin-openai's tsconfig maps @elizaos/core to packages/core/dist/node,
+        # so the benchmark import graph needs the built core on a fresh runner.
+        run: bun run --cwd packages/core build
+
       - name: Validate benchmark helpers
         run: bunx vitest run packages/agent/scripts/cerebras-chat-flow-latency.test.ts --coverage.enabled=false
 
