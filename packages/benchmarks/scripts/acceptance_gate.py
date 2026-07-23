@@ -590,24 +590,13 @@ def _step_cerebras_smoke() -> GateStepResult:
     prompt = "Reply with the single word: PONG"
 
     request_start = _now_ms()
-    # The cloud proxy's billing-authorization cache goes cold between runs and
-    # answers the first request with a transient 503 "… warming. Retry
-    # shortly."; an immediate retry succeeds. Retrying only that exact shape
-    # keeps the smoke honest — any other failure still fails on attempt one.
-    attempts = 0
-    while True:
-        attempts += 1
-        status, parsed, raw = _cerebras_chat(
-            api_key=api_key,
-            base_url=base_url,
-            model=model,
-            prompt=prompt,
-            timeout_s=TIMEOUT_CEREBRAS_SMOKE_S,
-        )
-        if status == 503 and "warming" in raw.lower() and attempts < 6:
-            time.sleep(5.0 * attempts)
-            continue
-        break
+    status, parsed, raw = _cerebras_chat(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        prompt=prompt,
+        timeout_s=TIMEOUT_CEREBRAS_SMOKE_S,
+    )
     request_ms = _now_ms() - request_start
 
     details: dict[str, Any] = {
