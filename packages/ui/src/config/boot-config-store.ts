@@ -163,9 +163,12 @@ export interface AppBootConfig {
   };
   /**
    * Prefer the instant shared cloud tier during first-run, then hand off to a
-   * dedicated agent in the background. Default off: first-run cloud creation
-   * should bind the user's dedicated agent directly unless a host explicitly
-   * opts into the shared-tier experiment.
+   * dedicated agent in the background. Default ON (the #15518 decision and the
+   * packages/shared copy of this config agree): a fresh signup must get a
+   * usable chat in seconds from the shared runtime while the dedicated
+   * container boots behind it. `false` is the dedicated-direct kill-switch for
+   * hosts that explicitly want to block on the dedicated boot (measured
+   * 90s+ on staging, minutes under node pressure) instead.
    */
   preferSharedCloudTier?: boolean;
   /** Character catalog data — replaces cross-package import of catalog.json. */
@@ -186,7 +189,7 @@ export interface AppBootConfig {
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
   cloudApiBase: "https://elizacloud.ai",
-  preferSharedCloudTier: false,
+  preferSharedCloudTier: true,
 };
 
 // ---------------------------------------------------------------------------
