@@ -107,7 +107,6 @@ html.eliza-electrobun-macos-titlebar [data-shell-scroll-region="true"] {
 }
 
 /* First-run full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
-/* biome-ignore format: preserving the descendant boundary keeps formatter releases from disagreeing on this compound selector. */
 html.eliza-electrobun-macos-titlebar.eliza-electrobun-frameless
   .first-run-screen
   canvas {
