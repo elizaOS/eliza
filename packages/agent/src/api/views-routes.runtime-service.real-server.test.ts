@@ -4,9 +4,18 @@
  * routes, while the planner action uses the same registered stateful view.
  */
 
+import { promises as fs } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { type Action, type IAgentRuntime, Service } from "@elizaos/core";
+import { simpleViewsPlugin } from "@elizaos/plugin-simple-views/plugin";
+import {
+  SIMPLE_VIEWS_SERVICE_TYPE,
+  SimpleViewsService,
+} from "@elizaos/plugin-simple-views/service";
+import { SimpleViewsStore } from "@elizaos/plugin-simple-views/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearActiveViewContext } from "../runtime/view-action-affinity.ts";
 import {
@@ -91,13 +100,12 @@ function errorResponder(
   jsonResponder(res, { error: message }, status);
 }
 
-function makeRuntime(service: RuntimeOwnedRecordsService): IAgentRuntime {
+function makeRuntime(services: ReadonlyMap<string, Service>): IAgentRuntime {
   const actions: Action[] = [];
   return {
     agentId: "runtime-owner",
     actions,
-    getService: (serviceType: string) =>
-      serviceType === SERVICE_TYPE ? service : null,
+    getService: (serviceType: string) => services.get(serviceType) ?? null,
     emitEvent: async () => {},
     registerAction: (action: Action) => {
       if (!actions.some((candidate) => candidate.name === action.name)) {
@@ -166,6 +174,8 @@ async function getJson(
 }
 
 let server: http.Server | null = null;
+let simpleViewsService: SimpleViewsService | null = null;
+let simpleViewsStateDirectory: string | null = null;
 
 beforeEach(async () => {
   clearCurrentViewState();
@@ -176,6 +186,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   unregisterPluginViews(TEST_PLUGIN);
+  unregisterPluginViews(simpleViewsPlugin.name);
   clearCurrentViewState();
   clearActiveViewContext();
   setViewsBroadcastWs(null);
@@ -189,12 +200,20 @@ afterEach(async () => {
     );
     server = null;
   }
+  if (simpleViewsService) {
+    await simpleViewsService.stop();
+    simpleViewsService = null;
+  }
+  if (simpleViewsStateDirectory) {
+    await fs.rm(simpleViewsStateDirectory, { recursive: true, force: true });
+    simpleViewsStateDirectory = null;
+  }
 });
 
 describe("runtime-owned view interactions over the real HTTP route", () => {
   it("keeps CRUD on one runtime service across interact, activate, and planner paths", async () => {
     const service = new RuntimeOwnedRecordsService();
-    const runtime = makeRuntime(service);
+    const runtime = makeRuntime(new Map([[SERVICE_TYPE, service]]));
     const scopedAction = {
       name: "VIEW_RUNTIME_OWNED_RECORDS_DELETE_ACTIVE",
       description: "Delete the active runtime-owned record.",
@@ -427,5 +446,170 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     await expect(action.handler(runtime, {} as never)).rejects.toThrow(
       "No active record.",
     );
+  });
+});
+
+describe("Simple Views plugin over the real HTTP route", () => {
+  it("keeps Notes and Calendar CRUD on the registered filesystem-backed service", async () => {
+    simpleViewsStateDirectory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "simple-views-real-http-"),
+    );
+    let id = 0;
+    let timestamp = Date.parse("2026-07-22T12:00:00.000Z");
+    simpleViewsService = new SimpleViewsService(undefined, {
+      store: new SimpleViewsStore({
+        filePath: path.join(
+          simpleViewsStateDirectory,
+          "simple-views",
+          "state.json",
+        ),
+      }),
+      createId: (kind) => `${kind}-http-${++id}`,
+      now: () => new Date(timestamp++),
+    });
+    await simpleViewsService.initialize();
+    const runtime = makeRuntime(
+      new Map([[SIMPLE_VIEWS_SERVICE_TYPE, simpleViewsService]]),
+    );
+
+    await registerPluginViews(simpleViewsPlugin, process.cwd(), runtime);
+    const started = await startViewsServer(runtime);
+    server = started.server;
+
+    const catalogue = await getJson(started.baseUrl, "/api/views");
+    expect(catalogue.views).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "notes", label: "Notes" }),
+        expect.objectContaining({
+          id: "simple-calendar",
+          label: "Calendar",
+        }),
+      ]),
+    );
+
+    const createdNote = await postJson(
+      started.baseUrl,
+      "/api/views/notes/interact",
+      {
+        capability: "create-note",
+        params: {
+          title: "HTTP proof",
+          body: "Created through the production view route",
+          color: "green",
+        },
+      },
+    );
+    expect(createdNote).toMatchObject({
+      success: true,
+      result: {
+        success: true,
+        state: {
+          revision: 1,
+          notes: [{ id: "note-http-1", title: "HTTP proof" }],
+        },
+      },
+    });
+
+    const updatedNote = await postJson(
+      started.baseUrl,
+      "/api/views/notes/interact",
+      {
+        capability: "update-note",
+        params: {
+          id: "note-http-1",
+          title: "HTTP proof complete",
+          body: "Updated through the same runtime-owned service",
+        },
+      },
+    );
+    expect(updatedNote).toMatchObject({
+      success: true,
+      result: {
+        success: true,
+        state: {
+          revision: 2,
+          notes: [{ title: "HTTP proof complete", color: "green" }],
+        },
+      },
+    });
+
+    const createdEvent = await postJson(
+      started.baseUrl,
+      "/api/views/simple-calendar/interact",
+      {
+        capability: "create-calendar-event",
+        params: {
+          title: "Route review",
+          date: "2026-07-23",
+          time: "09:30",
+          notes: "Shares state with Notes in one service",
+          color: "rose",
+        },
+      },
+    );
+    expect(createdEvent).toMatchObject({
+      success: true,
+      result: {
+        success: true,
+        state: {
+          revision: 3,
+          events: [{ id: "event-http-2", title: "Route review" }],
+        },
+      },
+    });
+
+    const selectedDate = await postJson(
+      started.baseUrl,
+      "/api/views/simple-calendar/interact",
+      {
+        capability: "select-calendar-date",
+        params: { date: "2026-07-23" },
+      },
+    );
+    expect(selectedDate).toMatchObject({
+      success: true,
+      result: {
+        success: true,
+        state: { revision: 4, selectedDate: "2026-07-23" },
+      },
+    });
+
+    const notes = await postJson(started.baseUrl, "/api/views/notes/interact", {
+      capability: "get-notes",
+    });
+    expect(notes).toMatchObject({
+      success: true,
+      result: {
+        success: true,
+        state: {
+          revision: 4,
+          notes: [{ title: "HTTP proof complete" }],
+          events: [{ title: "Route review" }],
+        },
+      },
+    });
+
+    const deletedNote = await postJson(
+      started.baseUrl,
+      "/api/views/notes/interact",
+      {
+        capability: "delete-note",
+        params: { id: "note-http-1" },
+      },
+    );
+    expect(deletedNote).toMatchObject({
+      success: true,
+      result: {
+        success: true,
+        state: { revision: 5, notes: [], events: [{ title: "Route review" }] },
+      },
+    });
+
+    expect(simpleViewsService.snapshot()).toMatchObject({
+      revision: 5,
+      selectedDate: "2026-07-23",
+      notes: [],
+      events: [{ id: "event-http-2", title: "Route review" }],
+    });
   });
 });

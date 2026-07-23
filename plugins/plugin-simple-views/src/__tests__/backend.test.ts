@@ -7,6 +7,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { runInNewContext } from "node:vm";
 import {
   AgentRuntime,
   createCharacter,
@@ -17,7 +18,7 @@ import {
   Service,
   stringToUuid,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { interact, serverInteract } from "../interact.js";
 import { simpleViewsRoutes } from "../routes.js";
 import { SIMPLE_VIEWS_SERVICE_TYPE, SimpleViewsService } from "../service.js";
@@ -33,6 +34,7 @@ function testAgentId(seed: string): ReturnType<typeof stringToUuid> {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(testRuntimes.splice(0).map((runtime) => runtime.stop()));
   await Promise.all(
     temporaryDirectories
@@ -168,6 +170,40 @@ async function invokeRoute(
 }
 
 describe("SimpleViewsStore", () => {
+  it("creates a missing state document on a real-filesystem first boot", async () => {
+    const filePath = await temporaryStateFile();
+    const store = new SimpleViewsStore({ filePath });
+
+    await store.initialize();
+
+    expect(store.getStatus()).toMatchObject({ phase: "ready", revision: 0 });
+    expect(JSON.parse(await fs.readFile(filePath, "utf8"))).toMatchObject({
+      schemaVersion: 1,
+      revision: 0,
+      notes: [],
+      events: [],
+    });
+    await store.stop();
+  });
+
+  it("recognizes first-boot ENOENT errors from another VM realm", async () => {
+    const filePath = await temporaryStateFile();
+    const crossRealmError: unknown = runInNewContext(
+      'Object.assign(new Error("missing"), { code: "ENOENT" })',
+    );
+    const readFile = vi
+      .spyOn(fs, "readFile")
+      .mockRejectedValueOnce(crossRealmError);
+    const store = new SimpleViewsStore({ filePath });
+
+    await store.initialize();
+
+    expect(readFile).toHaveBeenCalledWith(filePath, "utf8");
+    expect(store.getStatus()).toMatchObject({ phase: "ready", revision: 0 });
+    expect(await fs.readFile(filePath, "utf8")).toContain('"schemaVersion": 1');
+    await store.stop();
+  });
+
   it("uses the runtime's local calendar day instead of the UTC day", () => {
     expect(todayDateKey(new Date(2026, 6, 16, 23, 30))).toBe("2026-07-16");
   });
