@@ -108,6 +108,7 @@ _CONTROL_CONTEXT_KEYS = {
     "agent_id",
     "tools",
     "tool_choice",
+    "capture_stop",
     "benchmark_workspace_path",
 }
 
@@ -718,6 +719,15 @@ class OpenClawClient:
                 "CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN", ""
             ).strip()
         state_dir = self._turn_state_dir()
+        # ``capture_stop`` is the caller-declared env-owned tool contract: the
+        # benchmark env executes captured calls itself and replays real results
+        # on the next send_message, so the embedded loop must end after the
+        # first tool batch. Without it, OpenClaw iterates on the bridge's
+        # placeholder acknowledgements — one billed completion per fake round
+        # (~90 observed per tblite turn) ending in a non-deliverable
+        # length-stop. Default off: ack-loop benchmarks (orchestrator
+        # lifecycle) score reply text the model writes after seeing the ack.
+        capture_stop = bool(ctx.get("capture_stop")) and bool(runtime_tools)
         runtime = prepare_native_runtime(
             tools=runtime_tools,
             model=self.model,
@@ -728,6 +738,7 @@ class OpenClawClient:
             thinking_level=thinking_level,
             system_prompt=native_system_prompt,
             state_dir=state_dir,
+            capture_stop=capture_stop,
         )
         self._active_native_runtime = runtime
         argv = self.build_argv(text, context)
@@ -954,7 +965,7 @@ class OpenClawClient:
                     benchmark_workspace is not None
                     and runtime.workspace_dir.resolve() != benchmark_workspace
                 ),
-                "capture_stop_after_scored_action": False,
+                "capture_stop_after_scored_action": capture_stop,
                 "native_session_evidence": session_evidence.status,
                 "native_session_sha256": session_evidence.session_sha256,
                 "native_session_terminal_stop_reason": (

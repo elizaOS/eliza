@@ -871,6 +871,58 @@ def test_native_turn_applies_per_turn_generation_parameters(
     assert len(meta["tool_schema_sha256"]) == 64
 
 
+def test_env_owned_tool_contract_enables_capture_stop(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``capture_stop`` in context generates a terminating bridge plugin and
+    is attested in provenance; without tools the flag stays inert."""
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+    plugin_sources: list[str] = []
+
+    def _fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        del argv
+        env = dict(kwargs.get("env") or {})
+        plugin_path = (
+            Path(env["OPENCLAW_STATE_DIR"]) / "benchmark-tool-bridge" / "index.mjs"
+        )
+        plugin_sources.append(
+            plugin_path.read_text(encoding="utf-8") if plugin_path.is_file() else ""
+        )
+        return _fake_completed(stdout=json.dumps({"reply": "ok"}), rc=0)
+
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "lookup",
+            "description": "Look up one record.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        },
+    }
+    with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
+        tooled = client.send_message(
+            "find the orchid",
+            context={"tools": [tool], "capture_stop": True},
+        )
+        toolless = client.send_message(
+            "just reply",
+            context={"capture_stop": True},
+        )
+
+    tooled_meta = tooled.params["_meta"]["openclaw_adapter"]
+    assert tooled_meta["capture_stop_after_scored_action"] is True
+    assert 'const captureStop = true;' in plugin_sources[0]
+    assert "terminate: true" in plugin_sources[0]
+    toolless_meta = toolless.params["_meta"]["openclaw_adapter"]
+    assert toolless_meta["capture_stop_after_scored_action"] is False
+
+
 def test_native_turn_loads_system_prompt_once_through_agents_md(
     client: OpenClawClient,
     monkeypatch: pytest.MonkeyPatch,

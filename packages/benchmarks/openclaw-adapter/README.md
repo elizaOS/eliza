@@ -37,6 +37,16 @@ turn prompt exactly once. The synthetic lifecycle target is not dispatched;
 each call receives the shared neutral `{captured: true, effect:
 "not_executed", sequence, tool: "TASKS"}` result.
 
+Callers whose benchmark env executes captured calls itself — the hermes-native
+env proxy speaks one chat-completions step per turn and replays real tool
+results on the next request — declare `context["capture_stop"] = True`. The
+generated plugin then marks every result as terminating deferred external
+work, so the embedded loop ends after the first captured tool batch instead of
+iterating on placeholder acknowledgements (one billed completion per fake
+round) and the terminal `toolUse` turn still classifies as a delivered,
+publishable trajectory. The default (off) preserves the ack-loop contract for
+benchmarks that score reply text written after the acknowledgement.
+
 Publishable runs must use a loopback completion URL. The token appears only as
 an environment reference in generated config. Per-turn telemetry proves the
 runtime, transport, native plugin bridge, config hash, provider, and model; the
