@@ -6,15 +6,18 @@
  * and updated asynchronously as a recoverable reporting/backup mirror.
  */
 
-import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
+import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeHistoryStore } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+// The agent row crosses the Durable Object boundary as JSON, so its Drizzle
+// `Date` columns arrive as ISO strings; `handle` rehydrates them before any
+// service consumes the row (the CONVERSATIONS-500 defect class).
 type ConversationRequest =
-  | { operation: "bridge"; agent: AgentSandbox; rpc: BridgeRequest }
-  | { operation: "stream"; agent: AgentSandbox; rpc: BridgeRequest }
+  | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
   | { operation: "history"; agentId: string; roomId: string };
 
 interface StoredConversation {
@@ -22,11 +25,42 @@ interface StoredConversation {
   channelId: string;
   history: SharedTurnMessage[];
   dirty: boolean;
-  version?: number;
+  version: number;
 }
 
 const CONVERSATION_KEY = "conversation";
 const RETRY_DELAY_MS = 30_000;
+
+/**
+ * SQLite-backed Durable Object storage rejects values over 2 MiB. History is
+ * count-capped upstream (MAX_HISTORY_MESSAGES) but individual message text is
+ * unbounded, so trim oldest turns — and as a last resort truncate the sole
+ * remaining message — to keep the snapshot storable; otherwise every
+ * subsequent save would throw and wedge the room.
+ */
+const MAX_SNAPSHOT_BYTES = 1_500_000;
+
+function snapshotBytes(history: SharedTurnMessage[]): number {
+  return new TextEncoder().encode(JSON.stringify(history)).length;
+}
+
+function boundSnapshotHistory(
+  history: SharedTurnMessage[],
+): SharedTurnMessage[] {
+  let bounded = history;
+  while (bounded.length > 1 && snapshotBytes(bounded) > MAX_SNAPSHOT_BYTES) {
+    bounded = bounded.slice(1);
+  }
+  if (bounded.length === 1 && snapshotBytes(bounded) > MAX_SNAPSHOT_BYTES) {
+    // Slice by code units at a quarter of the byte budget: UTF-8 expands a
+    // code unit to at most ~3 bytes, so the result stays well under the cap.
+    const only = bounded[0];
+    bounded = [
+      { ...only, content: only.content.slice(0, MAX_SNAPSHOT_BYTES / 4) },
+    ];
+  }
+  return bounded;
+}
 
 class ConversationCacheWarmingError extends Error {
   constructor() {
@@ -112,13 +146,39 @@ export class SharedRuntimeConversation {
   ): Promise<void> {
     try {
       await this.runWithBindings(async () => {
-        const { sharedRuntimeHistoryRepository } = await import(
-          "@/db/repositories/shared-runtime-history"
+        const [{ sharedRuntimeHistoryRepository }, { MAX_HISTORY_MESSAGES }] =
+          await Promise.all([
+            import("@/db/repositories/shared-runtime-history"),
+            import("@/lib/services/shared-runtime/shared-runtime-chat"),
+          ]);
+        // Non-destructive mirror: uncoordinated writers (the Node daemon's
+        // patron-chat job, inbound gateway turns) still upsert this row
+        // directly, so a blind overwrite would permanently erase their turns.
+        // Union by message identity keeps Postgres a superset; the Durable
+        // Object copy stays authoritative for the turns it ran.
+        const existing = await sharedRuntimeHistoryRepository.get(
+          snapshot.agentId,
+          snapshot.channelId,
         );
+        const identity = (message: SharedTurnMessage) =>
+          `${message.role}\u0000${message.createdAt ?? ""}\u0000${message.content}`;
+        const seen = new Set(snapshot.history.map(identity));
+        const external = existing.filter(
+          (message) =>
+            (message?.role === "user" || message?.role === "assistant") &&
+            typeof message?.content === "string" &&
+            message.content.trim().length > 0 &&
+            !seen.has(identity(message)),
+        );
+        const merged = external.length
+          ? [...snapshot.history, ...external]
+              .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+              .slice(-MAX_HISTORY_MESSAGES)
+          : snapshot.history;
         await sharedRuntimeHistoryRepository.upsert(
           snapshot.agentId,
           snapshot.channelId,
-          snapshot.history,
+          merged,
         );
       });
       const current =
@@ -127,7 +187,7 @@ export class SharedRuntimeConversation {
         current?.dirty &&
         current.agentId === snapshot.agentId &&
         current.channelId === snapshot.channelId &&
-        (current.version ?? 0) === (snapshot.version ?? 0)
+        current.version === snapshot.version
       ) {
         this.conversation = { ...current, dirty: false };
         await this.state.storage.put(CONVERSATION_KEY, this.conversation);
@@ -162,12 +222,15 @@ export class SharedRuntimeConversation {
         const snapshot: StoredConversation = {
           agentId,
           channelId,
-          history,
+          history: boundSnapshotHistory(history),
           dirty: true,
           version: (this.conversation?.version ?? 0) + 1,
         };
-        this.conversation = snapshot;
+        // Durable write FIRST: adopting the snapshot before a failed put would
+        // leave phantom turns in the in-memory prompt window that were never
+        // persisted or mirrored.
         await this.state.storage.put(CONVERSATION_KEY, snapshot);
+        this.conversation = snapshot;
         this.scheduleMirror(snapshot);
       },
     };
@@ -191,24 +254,25 @@ export class SharedRuntimeConversation {
     }
 
     return await this.runWithBindings(async () => {
-      const { sharedRuntimeChatService } = await import(
-        "@/lib/services/shared-runtime/shared-runtime-chat"
-      );
+      const [{ sharedRuntimeChatService }, { rehydrateCachedAgentDates }] =
+        await Promise.all([
+          import("@/lib/services/shared-runtime/shared-runtime-chat"),
+          import("@/lib/services/shared-runtime/cached-agent-dates"),
+        ]);
+      const agent = rehydrateCachedAgentDates(payload.agent);
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
       if (payload.operation === "stream") {
-        return await sharedRuntimeChatService.stream(
-          payload.agent,
-          payload.rpc,
-          { executionCtx, historyStore },
-        );
+        return await sharedRuntimeChatService.stream(agent, payload.rpc, {
+          executionCtx,
+          historyStore,
+        });
       }
-      const result = await sharedRuntimeChatService.bridge(
-        payload.agent,
-        payload.rpc,
-        { executionCtx, historyStore },
-      );
+      const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
+        executionCtx,
+        historyStore,
+      });
       return Response.json(result);
     });
   }
@@ -266,8 +330,10 @@ export class SharedRuntimeConversation {
       const response = await this.handle(request);
       return this.releaseWhenConsumed(response, release);
     } catch (error) {
-      // error-policy:J1 the Durable Object transport boundary translates only
-      // cache warming; every other failure remains observable to Workers.
+      // error-policy:J1 the Durable Object transport boundary translates cache
+      // warming and credit insufficiency into structured responses (class
+      // identity cannot survive the stub fetch boundary); every other failure
+      // remains observable to Workers.
       release();
       if (
         error instanceof ConversationCacheWarmingError ||
@@ -281,7 +347,19 @@ export class SharedRuntimeConversation {
             code: "conversation_cache_warming",
             retryable: true,
           },
-          { status: 503 },
+          { status: 503, headers: { "Retry-After": "1" } },
+        );
+      }
+      const { InsufficientCreditsError } = await import("@/lib/api/errors");
+      if (error instanceof InsufficientCreditsError) {
+        return Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "insufficient_credits",
+            retryable: false,
+          },
+          { status: 402 },
         );
       }
       throw error;

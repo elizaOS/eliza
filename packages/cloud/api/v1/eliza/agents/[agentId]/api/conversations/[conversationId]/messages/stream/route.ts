@@ -9,11 +9,16 @@ import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
+  type CachedAgentSandbox,
+  rehydrateCachedAgentDates,
+} from "@/lib/services/shared-runtime/cached-agent-dates";
+import {
   type CanonicalScopedStreamRequest,
   handleCanonicalScopedAgentStream,
 } from "@/lib/services/shared-runtime/canonical-scoped-stream";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -86,27 +91,54 @@ async function resolveAgentScope(
       };
     }
     const cacheKey = CacheKeys.sharedAgentScope.voice(orgId, userId, agentId);
-    let agent = await cache.get<AgentSandbox>(cacheKey);
-    if (!agent) {
+    // The voice scope cache stores either the serialized agent row or a
+    // negative sentinel. Recording the negative outcome is what lets the
+    // cache-only warming state converge: an entry that can never be written
+    // (mismatched user, dedicated tier, not found) would otherwise loop the
+    // retryable 503 forever. This route serves the SHARED tier only, so a
+    // known-negative is a definitive 404.
+    const cachedScope = await cache.get<
+      CachedAgentSandbox | { unresolvable: true }
+    >(cacheKey);
+    const knownNegative =
+      cachedScope != null &&
+      (cachedScope as { unresolvable?: boolean }).unresolvable === true;
+    let agent: AgentSandbox | null =
+      cachedScope && !knownNegative
+        ? // Restore the Date contract lost to the cache's JSON round-trip
+          // before any consumer reads a timestamp column.
+          rehydrateCachedAgentDates(cachedScope as CachedAgentSandbox)
+        : null;
+    if (!agent && !knownNegative) {
       const hydrate = async () => {
         const authoritative = orgId
           ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId)
           : undefined;
-        if (
-          authoritative &&
+        const eligible =
+          authoritative != null &&
           authoritative.user_id === userId &&
-          authoritative.execution_tier === "shared"
-        ) {
-          await cache.set(
-            cacheKey,
-            authoritative,
-            CacheTTL.sharedAgentScope.resolve,
-          );
-        }
+          authoritative.execution_tier === "shared";
+        await cache.set(
+          cacheKey,
+          eligible ? authoritative : { unresolvable: true },
+          CacheTTL.sharedAgentScope.resolve,
+        );
+        // The DO-mode cache stores only shared-tier rows; the inline path
+        // keeps the legacy permissive return (the user gate below still 404s
+        // a mismatched caller, and the bridge routes tiers itself).
         return authoritative;
       };
       if (c.env?.SHARED_RUNTIME_CONVERSATIONS) {
-        const hydration = hydrate().then(() => undefined);
+        const hydration = hydrate()
+          .then(() => undefined)
+          .catch((error) => {
+            // error-policy:J7 the cold fill is deliberately off the response
+            // path; the retry stays fail-closed until a fill lands.
+            logger.warn("[voice-scope] background hydration failed", {
+              agentId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
         if (executionCtx) executionCtx.waitUntil(hydration);
         else void hydration;
         return {

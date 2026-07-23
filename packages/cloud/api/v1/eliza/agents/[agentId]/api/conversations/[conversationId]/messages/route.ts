@@ -39,9 +39,30 @@ app.get("/", async (c) => {
   }
   const conversationId = c.req.param("conversationId") ?? r.agentId;
   const namespace = c.env?.SHARED_RUNTIME_CONVERSATIONS;
-  const body = namespace
-    ? await sharedRestMessagesGet(r.agentId, conversationId, namespace)
-    : await sharedRestMessagesGet(r.agentId, conversationId);
+  let body: Awaited<ReturnType<typeof sharedRestMessagesGet>>;
+  try {
+    body = namespace
+      ? await sharedRestMessagesGet(r.agentId, conversationId, namespace)
+      : await sharedRestMessagesGet(r.agentId, conversationId);
+  } catch (error) {
+    // error-policy:J1 a cold/evicted conversation object is a retryable
+    // warming state, not an unhandled 500 — the most common cold read is
+    // opening an existing chat after eviction.
+    if (
+      error instanceof Error &&
+      error.name === "SharedRuntimeCacheWarmingError"
+    ) {
+      return applyCorsHeaders(
+        Response.json(
+          { success: false, error: error.message, retryable: true },
+          { status: 503, headers: { "Retry-After": "1" } },
+        ),
+        CORS_METHODS,
+        origin,
+      );
+    }
+    throw error;
+  }
   return applyCorsHeaders(Response.json(body), CORS_METHODS, origin);
 });
 

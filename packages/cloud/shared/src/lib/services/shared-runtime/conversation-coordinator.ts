@@ -7,23 +7,31 @@
 
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
+import { InsufficientCreditsError } from "../../api/errors";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
+import { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
 
 export interface SharedConversationCoordinatorOptions {
   namespace?: RuntimeDurableObjectNamespace;
   executionCtx?: BridgeExecutionContext;
 }
 
+/**
+ * One normalization for the Durable Object instance name. Turn dispatch and
+ * history reads MUST agree — a whitespace/empty variant addressing a second
+ * object would migrate the same Postgres row twice and serve a frozen copy.
+ * Mirrors the room precedence in shared-runtime-chat's `channelId`.
+ */
+function coordinatorRoom(roomId?: unknown, userId?: unknown): string {
+  const room = typeof roomId === "string" && roomId.trim() ? roomId.trim() : undefined;
+  const user = typeof userId === "string" && userId.trim() ? userId.trim() : undefined;
+  return room ?? user ?? "default";
+}
+
 function coordinatorName(agentId: string, rpc: BridgeRequest): string {
-  const roomId =
-    typeof rpc.params?.roomId === "string" && rpc.params.roomId.trim()
-      ? rpc.params.roomId.trim()
-      : typeof rpc.params?.userId === "string" && rpc.params.userId.trim()
-        ? rpc.params.userId.trim()
-        : "default";
-  return `${agentId}:${roomId}`;
+  return `${agentId}:${coordinatorRoom(rpc.params?.roomId, rpc.params?.userId)}`;
 }
 
 function coordinatorStub(
@@ -31,27 +39,30 @@ function coordinatorStub(
   agentId: string,
   roomId: string,
 ) {
-  return namespace.getByName(`${agentId}:${roomId}`);
+  return namespace.getByName(`${agentId}:${coordinatorRoom(roomId)}`);
 }
 
 async function requireCoordinatorResponse(response: Response, surface: string): Promise<Response> {
   if (response.ok) return response;
-  if (response.status === 503) {
-    // error-policy:J3 a malformed internal error body remains an explicit
-    // retryable failure rather than fabricating a successful response.
+  // error-policy:J3 a malformed internal error body remains an explicit typed
+  // failure rather than fabricating a successful response.
+  const readErrorMessage = async (): Promise<string | null> => {
     const body = (await response
       .clone()
       .json()
-      .catch(() => null)) as {
-      error?: unknown;
-    } | null;
-    const error = new Error(
-      typeof body?.error === "string"
-        ? body.error
-        : "Shared runtime cache is warming. Retry shortly.",
+      .catch(() => null)) as { error?: unknown } | null;
+    return typeof body?.error === "string" ? body.error : null;
+  };
+  if (response.status === 503) {
+    throw new SharedRuntimeCacheWarmingError(
+      (await readErrorMessage()) ?? "Shared runtime cache is warming. Retry shortly.",
     );
-    error.name = "SharedRuntimeCacheWarmingError";
-    throw error;
+  }
+  // The Durable Object encodes insufficiency as a structured 402 (class
+  // identity cannot survive its fetch boundary); rehydrate the typed error so
+  // route/stream callers translate it to their canonical 402 instead of a 500.
+  if (response.status === 402) {
+    throw new InsufficientCreditsError((await readErrorMessage()) ?? "Insufficient credits");
   }
   throw new Error(`[shared-runtime] ${surface} coordinator failed (${response.status})`);
 }

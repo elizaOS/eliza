@@ -22,7 +22,9 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { ApiError } from "../api/errors";
 import { type CacheBackendKind, cache } from "../cache/client";
+import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
@@ -321,27 +323,50 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = "unavailable";
     }
 
-    if (options.cacheOnly) {
-      trace.authoritative = "not_run";
-      trace.result = "warming";
-      if (cacheAvailable && options.executionCtx) {
-        const hydration = resolveInferenceAuthContext(req, {
-          traceId: options.traceId,
-          executionCtx: options.executionCtx,
-          cacheOnly: false,
-        })
-          .then(() => undefined)
-          .catch((error) => {
-            // error-policy:J7 the cold authoritative fill is deliberately
-            // detached from inference; the retry stays fail-closed on failure.
-            logger.warn("[InferenceAuth] background hydration failed", {
-              traceId: boundedTraceId(options.traceId),
-              error: error instanceof Error ? error.message : String(error),
+    // Cache-only mode returns the retryable warming state ONLY when that state
+    // can converge: the cache must be reachable (the file invariant says cache
+    // failure authorizes from the database, and no fill could land anyway) and
+    // the credential must not be a known-rejected one (an invalid/revoked key
+    // can never acquire a positive entry, so warming would loop forever — the
+    // authoritative chain below produces the precise 401/403 instead; the
+    // marker never SERVES a rejection, so its staleness is harmless).
+    if (options.cacheOnly && cacheAvailable) {
+      const rejected = await cache
+        .get<{ rejectedAtMs: number }>(CacheKeys.inference.authRejected(keyHash))
+        .catch(() => null);
+      if (!rejected) {
+        trace.authoritative = "not_run";
+        trace.result = "warming";
+        if (options.executionCtx) {
+          const hydration = resolveInferenceAuthContext(req, {
+            traceId: options.traceId,
+            executionCtx: options.executionCtx,
+            cacheOnly: false,
+          })
+            .then(() => undefined)
+            .catch(async (error) => {
+              // error-policy:J7 the cold authoritative fill is deliberately
+              // detached from inference; the retry stays fail-closed on failure.
+              // A definite credential rejection is recorded so the next
+              // cache-only request converges to the authoritative 401/403.
+              if (error instanceof ApiError && error.status < 500) {
+                await cache
+                  .set(
+                    CacheKeys.inference.authRejected(keyHash),
+                    { rejectedAtMs: Date.now() },
+                    CacheTTL.inference.authRejected,
+                  )
+                  .catch(() => undefined);
+              }
+              logger.warn("[InferenceAuth] background hydration failed", {
+                traceId: boundedTraceId(options.traceId),
+                error: error instanceof Error ? error.message : String(error),
+              });
             });
-          });
-        options.executionCtx.waitUntil(hydration);
+          options.executionCtx.waitUntil(hydration);
+        }
+        return { kind: "warming" };
       }
-      return { kind: "warming" };
     }
 
     trace.authoritative = "error";

@@ -236,6 +236,8 @@ __hono_app.post("/", async (c) => {
   try {
     executionCtx = c.executionCtx;
   } catch {
+    // error-policy:J3 environment probe — Hono's executionCtx getter throws
+    // outside a Worker; an absent ctx is the explicit "settle inline" signal.
     executionCtx = undefined;
   }
   const scope = await resolveSharedAgent(c, {
@@ -246,7 +248,7 @@ __hono_app.post("/", async (c) => {
     return applyCorsHeaders(
       Response.json(
         { success: false, error: scope.error, retryable: true },
-        { status: 503 },
+        { status: 503, headers: { "Retry-After": "1" } },
       ),
       CORS_METHODS,
     );

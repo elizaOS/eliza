@@ -38,8 +38,9 @@ import {
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { navIntentActionResult } from "./shared-nav-intent";
+import { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
 
-const MAX_HISTORY_MESSAGES = 40;
+export const MAX_HISTORY_MESSAGES = 40;
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 
 export type BridgeExecutionContext = {
@@ -56,12 +57,7 @@ export interface SharedRuntimeChatOptions {
   historyStore?: SharedRuntimeHistoryStore;
 }
 
-export class SharedRuntimeCacheWarmingError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SharedRuntimeCacheWarmingError";
-  }
-}
+export { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -330,7 +326,17 @@ async function finishBilling(
   } catch (error) {
     // error-policy:J1 the reply may already be delivered. The settler releases
     // pre-meter admission at zero or retries the first observed actual cost.
-    await billing.settle(0);
+    try {
+      await billing.settle(0);
+    } catch (settleError) {
+      // error-policy:J7 a settler that already failed (the deferred settler
+      // replays its first settlement promise) must not mask the original
+      // billing error below or escape as an unhandled waitUntil rejection.
+      logger.warn("[SharedRuntimeChatService] zero-settle after billing failure also failed", {
+        agentId: agent.id,
+        error: settleError instanceof Error ? settleError.message : String(settleError),
+      });
+    }
     logger.error("[SharedRuntimeChatService] billing failed", {
       agentId: agent.id,
       error: error instanceof Error ? error.message : String(error),
@@ -519,7 +525,18 @@ export class SharedRuntimeChatService {
               continue;
             }
             finished = true;
-            const finalReply = part.text.trim() || reply.trim() || "…";
+            const finalReply = part.text.trim() || reply.trim();
+            if (!finalReply) {
+              // An empty completion is a failed turn: never fabricate, persist,
+              // or bill a placeholder reply (repo policy: throw, never fabricate).
+              await billing?.settle(0);
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream produced an empty reply" })}\n\n`,
+                ),
+              );
+              continue;
+            }
             const sentAt = Date.now();
             await saveHistory(
               agent.id,

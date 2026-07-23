@@ -7,14 +7,14 @@
 
 import { beforeEach, expect, mock, test } from "bun:test";
 
-const reserveCredits = mock(async () => {
-  throw new Error("synchronous reservation must not run");
-});
+const reserveCredits = mock(async () => ({ reservationId: "res-1" }));
 const writePendingInferenceCharge = mock(async () => true);
 const optimisticSettle = mock(async () => null);
 const deferredSettle = mock(async () => null);
 let gateBalance = 50;
 let eligible = true;
+let optimisticEnabled = true;
+let orgRefused = false;
 
 mock.module("../pricing", () => ({
   normalizeModelName: (model: string) => model,
@@ -46,7 +46,7 @@ mock.module("./inference-billing-fast-path", () => ({
   createOptimisticDebitSettler: () => optimisticSettle,
   getGateBalanceUsd: async () => gateBalance,
   isOptimisticBackstopAvailable: () => true,
-  isOptimisticBillingEnabled: () => true,
+  isOptimisticBillingEnabled: () => optimisticEnabled,
   isOptimisticEligible: () => eligible,
   resolveSafeBalanceThresholdUsd: () => 5,
   writePendingInferenceCharge,
@@ -59,7 +59,7 @@ mock.module("./inference-billing-ledger", () => ({
 mock.module("./inference-billing-deferred", () => ({
   createDeferredAdmissionSettler: () => deferredSettle,
   isDeferredAdmissionEnabled: () => true,
-  isOrgAdmissionRefused: () => false,
+  isOrgAdmissionRefused: () => orgRefused,
 }));
 
 const { admitOrganizationInference } = await import("./organization-inference-admission");
@@ -67,8 +67,28 @@ const { admitOrganizationInference } = await import("./organization-inference-ad
 beforeEach(() => {
   gateBalance = 50;
   eligible = true;
+  optimisticEnabled = true;
+  orgRefused = false;
   reserveCredits.mockClear();
 });
+
+function admissionParams(suffix: string, background: Promise<unknown>[]) {
+  return {
+    context: {
+      organizationId: `org-${suffix}`,
+      userId: `user-${suffix}`,
+      model: "cerebras:gpt-oss-120b",
+      provider: "cerebras",
+      billingSource: "bitrouter",
+      requestId: `request-${suffix}`,
+    },
+    estimatedInputTokens: 100,
+    estimatedOutputTokens: 50,
+    executionCtx: {
+      waitUntil: (promise: Promise<unknown>) => background.push(promise),
+    },
+  };
+}
 
 test("warm deferred admission schedules the ledger and skips reserveCredits", async () => {
   const background: Promise<unknown>[] = [];
@@ -97,32 +117,39 @@ test("warm deferred admission schedules the ledger and skips reserveCredits", as
   expect(deferredSettle).toHaveBeenCalledWith(0.01);
 });
 
-test("cached low balance rejects without falling through to a database reserve", async () => {
-  gateBalance = 0.001;
+test("ineligible cached balance falls back to the synchronous reserve (threshold is not a service floor)", async () => {
+  gateBalance = 4.99;
   eligible = false;
   const background: Promise<unknown>[] = [];
 
-  await expect(
-    admitOrganizationInference({
-      context: {
-        organizationId: "org-low",
-        userId: "user-low",
-        model: "cerebras:gpt-oss-120b",
-        provider: "cerebras",
-        billingSource: "bitrouter",
-        requestId: "request-low",
-      },
-      estimatedInputTokens: 100,
-      estimatedOutputTokens: 50,
-      executionCtx: {
-        waitUntil: (promise) => background.push(promise),
-      },
-    }),
-  ).rejects.toMatchObject({
-    name: "InsufficientCreditsError",
-    available: 0.001,
-    reason: "cached_balance_gate",
-  });
+  const admission = await admitOrganizationInference(admissionParams("low", background));
+
+  // A funded org below SAFE_BALANCE_THRESHOLD must still be served through the
+  // fail-closed Postgres reservation — the reserve, not a cached hint, is the
+  // authoritative producer of the real 402.
+  expect(admission.mode).toBe("synchronous_reservation");
   expect(background).toHaveLength(0);
-  expect(reserveCredits).not.toHaveBeenCalled();
+  expect(reserveCredits).toHaveBeenCalledTimes(1);
+});
+
+test("optimistic billing disabled falls back to the synchronous reserve on Workers too", async () => {
+  optimisticEnabled = false;
+  const background: Promise<unknown>[] = [];
+
+  const admission = await admitOrganizationInference(admissionParams("off", background));
+
+  // Flag rollback must restore the documented OFF semantics (sync reserve),
+  // never a permanent fake-"warming" 503.
+  expect(admission.mode).toBe("synchronous_reservation");
+  expect(reserveCredits).toHaveBeenCalledTimes(1);
+});
+
+test("a recently refused org skips the deferred path and re-proves via the reserve", async () => {
+  orgRefused = true;
+  const background: Promise<unknown>[] = [];
+
+  const admission = await admitOrganizationInference(admissionParams("refused", background));
+
+  expect(admission.mode).toBe("synchronous_reservation");
+  expect(reserveCredits).toHaveBeenCalledTimes(1);
 });

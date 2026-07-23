@@ -11,17 +11,17 @@
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import type { BillingContext } from "./ai-billing";
-import { InsufficientCreditsError, reserveCredits } from "./ai-billing";
+import { reserveCredits } from "./ai-billing";
 import type { CreditReconciliationResult } from "./credits";
 import {
   createDeferredAdmissionSettler,
   type DeferredAdmissionOutcome,
   isDeferredAdmissionEnabled,
+  isOrgAdmissionRefused,
 } from "./inference-billing-deferred";
 import {
   createOptimisticDebitSettler,
   getGateBalanceUsd,
-  InferenceBalanceCacheWarmingError,
   isOptimisticBackstopAvailable,
   isOptimisticBillingEnabled,
   isOptimisticEligible,
@@ -90,9 +90,9 @@ export async function admitOrganizationInference(
   const workerHotPath = typeof params.executionCtx?.waitUntil === "function";
   const optimisticAllowed = isOptimisticBillingEnabled() && (params.affiliateCode ?? null) === null;
   if (!optimisticAllowed) {
-    if (workerHotPath && (params.affiliateCode ?? null) === null) {
-      throw new InferenceBalanceCacheWarmingError();
-    }
+    // Optimistic billing OFF (or affiliate-marked) means the operator chose the
+    // synchronous-reserve semantics everywhere, Workers included. Failing the
+    // request instead would turn the standard flag rollback into an outage.
     return await reserveSynchronously(params);
   }
 
@@ -110,8 +110,13 @@ export async function admitOrganizationInference(
     isDeferredAdmissionEnabled() &&
     workerHotPath &&
     (useDbLedger || isOptimisticBackstopAvailable());
-  if (workerHotPath && !canDefer) {
-    throw new InferenceBalanceCacheWarmingError();
+
+  // A recently refused org skips the deferred fast path entirely (mirrors the
+  // chat/completions envelope): the synchronous reserve is the authoritative
+  // 402 producer, and the blocklist keeps a drained org from farming the
+  // deferred window while its balance hint is stale.
+  if (canDefer && isOrgAdmissionRefused(params.context.organizationId)) {
+    return await reserveSynchronously(params);
   }
 
   const balanceUsd = await getGateBalanceUsd(params.context.organizationId, {
@@ -127,9 +132,10 @@ export async function admitOrganizationInference(
       estimatedCostUsd,
     })
   ) {
-    if (canDefer) {
-      throw new InsufficientCreditsError(estimatedCostUsd, balanceUsd, "cached_balance_gate");
-    }
+    // SAFE_BALANCE_THRESHOLD is a "skip the sync reserve" bar, not a
+    // service-eligibility floor: a funded org below it must still be served
+    // through the fail-closed Postgres reservation (which produces the real
+    // 402 when the balance genuinely cannot cover the request).
     return await reserveSynchronously(params);
   }
 

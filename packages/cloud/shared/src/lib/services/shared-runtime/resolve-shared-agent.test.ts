@@ -213,6 +213,74 @@ describe("resolveSharedAgent", () => {
     expect(validateApiKey).not.toHaveBeenCalled();
   });
 
+  test("cache-only converges for a non-shared agent: negative entry routes retries to the authoritative 404", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({
+        execution_tier: "dedicated-lazy",
+        status: "running",
+        bridge_url: "https://agent.example.test",
+      }),
+    );
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+
+    // The retry must NOT loop the warming 503: the stored negative entry sends
+    // it through the inline authoritative gate, which produces the real 404.
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, { cacheOnly: true }),
+    ).resolves.toEqual({ error: "Not a shared-runtime agent", status: 404 });
+  });
+
+  test("cache-only converges for a bootstrap-window dedicated agent: retry is served authoritatively", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({ execution_tier: "dedicated-lazy", status: "provisioning" }),
+    );
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, { cacheOnly: true }),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+  });
+
+  test("cache-only converges for a rejected credential: retry surfaces the authoritative 401", async () => {
+    const { AuthenticationError } = await import("../../api/cloud-worker-errors");
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(async () => {
+      throw AuthenticationError("Invalid or expired API key");
+    });
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, { cacheOnly: true }),
+    ).rejects.toMatchObject({ message: "Invalid or expired API key" });
+
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(
+      async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
+        user: { organization_id: "org-1", steward_id: "steward-user-1" },
+        orgLookupResult: await lookup("org-1"),
+      }),
+    );
+  });
+
   test("allows a dedicated agent only during its first bootstrap window", async () => {
     findByIdAndOrg.mockResolvedValue(
       agent({
@@ -315,14 +383,18 @@ describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
     expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
   });
 
-  test("a dedicated-bootstrap agent is never cached (time-sensitive eligibility)", async () => {
+  test("a dedicated-bootstrap agent never caches a positive scope (time-sensitive eligibility)", async () => {
     findByIdAndOrg.mockResolvedValue(
       agent({ execution_tier: "dedicated-lazy", status: "provisioning" }),
     );
 
     await resolveSharedAgent(apiKeyContext("agent-1") as never);
-    // Served (bootstrap window) but NOT written to the scope cache.
-    expect(cacheSet).not.toHaveBeenCalled();
+    // Served (bootstrap window). The only cache write allowed is the NEGATIVE
+    // marker — it routes later requests to the authoritative gate (where the
+    // time-sensitive window is re-evaluated) and can never serve a stale scope.
+    for (const call of cacheSet.mock.calls as unknown[][]) {
+      expect(call[1]).toMatchObject({ unresolvable: true });
+    }
   });
 
   test("a request carrying NEITHER an api key nor a session never touches the scope cache", async () => {
