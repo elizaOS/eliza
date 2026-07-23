@@ -2,6 +2,7 @@
  * Regression coverage for launch-audit input validation: these routes used to
  * let malformed JSON escape as a 500 from req.json(). They should fail closed
  * as caller-error 400s before provider, billing, or API-key side effects.
+ * The chat case traverses its real authorization and admission boundary.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";

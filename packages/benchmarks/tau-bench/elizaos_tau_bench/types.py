@@ -41,6 +41,10 @@ class TaskRunResult:
     scenario_note: str = ""
     judge_passed: Optional[bool] = None  # only when outputs are present
     judge_explanation: str = ""
+    judge_mode: Optional[str] = None  # "llm" | "substring" | "none-required"
+    # True when the opt-in heuristic replaced a failed LLM judge — a degraded
+    # verdict must stay distinguishable from a healthy one in report.json.
+    judge_degraded: bool = False
     r_actions: Optional[float] = None
     r_outputs: Optional[float] = None
     num_turns: int = 0
@@ -87,6 +91,7 @@ class BenchmarkReport:
             "completed_rollouts": self.completed_rollouts,
             "workload_sha256": self.workload_sha256,
             "avg_reward": self.avg_reward,
+            "judge_degraded_rollouts": sum(1 for r in self.results if r.judge_degraded),
             "pass_k": {
                 k: {"k": v.k, "num_tasks": v.num_tasks, "pass_hat_k": v.pass_hat_k}
                 for k, v in self.pass_k.items()
@@ -102,6 +107,8 @@ class BenchmarkReport:
                         "success": r.success,
                         "judge_passed": r.judge_passed,
                         "judge_explanation": r.judge_explanation,
+                        "judge_mode": r.judge_mode,
+                        "judge_degraded": r.judge_degraded,
                         "r_actions": r.r_actions,
                         "r_outputs": r.r_outputs,
                         "num_turns": r.num_turns,
@@ -163,6 +170,10 @@ class TauBenchConfig:
     use_llm_judge: bool = True
     judge_model: str = "gpt-4o-mini"
     judge_provider: str = "openai"
+    # Opt-in only: when the LLM judge fails, degrade to the substring heuristic
+    # instead of raising. Degraded trials are marked in report.json; the
+    # default (False) fails the run — a broken judge must never look healthy.
+    judge_allow_heuristic_fallback: bool = False
 
     # IO
     output_dir: str = "./benchmark_results/tau-bench"
@@ -194,6 +205,7 @@ class TauBenchConfig:
             "use_llm_judge": self.use_llm_judge,
             "judge_model": self.judge_model,
             "judge_provider": self.judge_provider,
+            "judge_allow_heuristic_fallback": self.judge_allow_heuristic_fallback,
             "output_dir": self.output_dir,
             "seed": self.seed,
             "max_concurrency": self.max_concurrency,

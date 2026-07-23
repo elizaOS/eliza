@@ -1,7 +1,11 @@
 /**
- * WALLET home widget. A glanceable, chromeless tile on the ember home field
- * showing crypto **unit prices only** - never the amount held or the holding
- * value (#10706). Tapping opens the wallet view.
+ * Wallet price surface. A glanceable, chromeless tile showing crypto **unit
+ * prices only** - never the amount held or the holding value (#10706).
+ * Tapping opens the wallet view. Originally the `wallet.balance` home
+ * resident; the home spec demoted that card (NOTIFICATIONS-WIDGETS-SYSTEM.md
+ * §B/§E item 3) and this component now renders on the routed wallet section
+ * root (`WalletSectionNav`), with material balance deltas arriving as
+ * producer-side notifications instead (#16943).
  *
  * Three states keep loading, unavailable data, and confirmed holdings distinct.
  * Once balances and prices load, the widget shows either the top-3 held tokens

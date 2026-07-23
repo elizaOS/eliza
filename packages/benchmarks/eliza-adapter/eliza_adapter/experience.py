@@ -1,7 +1,6 @@
 """Experience benchmark runner backed by the eliza benchmark server.
 
-Mirrors ``elizaos_experience_bench.eliza_runner.ElizaAgentExperienceRunner``
-but routes the per-task LLM call through the eliza TS bridge instead of
+Routes the per-task LLM call through the eliza TS bridge instead of
 binding a model plugin into a Python AgentRuntime.
 
 The benchmark's deterministic pieces stay Python-side:

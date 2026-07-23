@@ -3343,3 +3343,127 @@ describe("verified widget payloads stay pure in the combine path", () => {
 		expect(result.finalMessage).toBe(widget);
 	});
 });
+
+describe("tool-turn reply guarantee (#16935)", () => {
+	// A read tool succeeds (no userFacingText), the evaluator FINISHes with a
+	// serialized tool-call literal as its "reply" — the exact live shape that
+	// ended read-then-summarize turns replyless. The post-pass must spend ONE
+	// extra no-tools model call and ship its grounded prose instead.
+	it("synthesizes a final reply when tool work finished without a usable message", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "call-1", name: "LOOKUP", arguments: { query: "today" } },
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "You finished two things today: the receipts and Jordan's reply.",
+				}),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "2 history entries.",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "call:OWNER_TODOS_REVIEW{action:review}",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe(
+			"You finished two things today: the receipts and Jordan's reply.",
+		);
+	});
+
+	it("does not synthesize after a deliberate IGNORE terminal", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "call-1", name: "LOOKUP", arguments: { query: "today" } },
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ id: "call-2", name: "IGNORE", arguments: {} }],
+				}),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "2 history entries.",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "CONTINUE" as const,
+			thought: "More to do.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.endedWithDeliberateSilence).toBe(true);
+		// No third model call: silence was the model's decision, not a defect.
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps the original result when the synthesis pass itself fails", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "call-1", name: "LOOKUP", arguments: { query: "today" } },
+					],
+				})
+				.mockRejectedValueOnce(new Error("provider 500")),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "2 history entries.",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "call:OWNER_TODOS_REVIEW{action:review}",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({ err: "provider 500" }),
+			expect.stringContaining("forced synthesis pass failed"),
+		);
+	});
+});

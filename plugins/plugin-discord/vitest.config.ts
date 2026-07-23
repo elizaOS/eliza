@@ -1,9 +1,8 @@
 /**
  * Vitest config for the Discord plugin's unit tests. Extends the repo's shared
  * base config so workspace packages (@elizaos/core, shared, logger, …) resolve
- * from SOURCE — required by lanes that run before any workspace build (the
- * changed-file coverage gate builds nothing) and harmless when dists exist.
- * Adds source aliases for the plugin's own unbuilt workspace deps on top.
+ * from source without requiring a workspace build. Adds source aliases for the
+ * plugin's own unbuilt workspace dependencies.
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,10 +59,7 @@ export default defineConfig({
 		root: pluginRoot,
 		coverage: {
 			...baseConfig.test?.coverage,
-			// This plugin's sources live at the package root (service.ts,
-			// discord-commands.ts, …), not under src/ — the base include of
-			// "src/**/*.ts" collects nothing here, which reads to the changed-file
-			// coverage gate as "changed source missing from LCOV".
+			// This plugin's sources live at the package root rather than src/.
 			include: ["**/*.ts"],
 			exclude: [
 				"**/*.test.ts",

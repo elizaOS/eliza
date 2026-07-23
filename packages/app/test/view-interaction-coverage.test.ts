@@ -148,7 +148,11 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves: "Verifies markets, positions, and orders.",
-      signals: ["Markets", "Orders"],
+      signals: [
+        "market utility controls show fixture data on load",
+        "market-BTC",
+        "position-BTC",
+      ],
     },
   ],
   "lifeops-live-test": [
@@ -182,6 +186,17 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
+  notes: [
+    {
+      spec: "plugins/plugin-simple-views/src/views/simple-views.e2e.test.tsx",
+      proves:
+        "Creates, edits, and preserves a note through the real Notes surface and filesystem-backed service.",
+      signals: [
+        "creates, edits, and preserves a note while creating an event across view switches",
+        "Demo briefing ready",
+      ],
+    },
+  ],
   phone: [
     {
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
@@ -194,7 +209,10 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves: "Verifies the Polymarket route shell.",
-      signals: ["Polymarket"],
+      signals: [
+        "market utility controls show fixture data on load",
+        "polymarket-root",
+      ],
     },
   ],
   wallet: [
@@ -265,6 +283,17 @@ const GUI_INTERACTION_OWNERS: Readonly<
       proves:
         "Exercises host start/open/copy/stop, remote connect, capability refresh, and request payloads.",
       signals: ["host lifecycle", "capability refresh", "screen-token-1"],
+    },
+  ],
+  "simple-calendar": [
+    {
+      spec: "plugins/plugin-simple-views/src/views/simple-views.e2e.test.tsx",
+      proves:
+        "Creates a calendar event through the real Calendar surface and verifies persistence across a view switch.",
+      signals: [
+        "creates, edits, and preserves a note while creating an event across view switches",
+        "Create calendar event",
+      ],
     },
   ],
   "task-coordinator": [
@@ -398,7 +427,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(28);
+    expect(visualCases.length).toBe(30);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

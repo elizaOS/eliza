@@ -41,17 +41,21 @@ describe("processPendingJobs — lane scoping", () => {
     }
   });
 
-  test("default (no jobTypes) claims + recovers every JOB_TYPES entry — unchanged behavior", async () => {
+  test("default (no jobTypes) claims + recovers every JOB_TYPES entry except the gated snapshot lane", async () => {
     const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
     const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    // #16639: the memory-intensive agent_snapshot lane is fail-closed by
+    // default — it joins the loop only under the explicit env gate (covered
+    // in provisioning-jobs-snapshot-gate.test.ts).
+    const expected = Object.values(JOB_TYPES).filter((t) => t !== JOB_TYPES.AGENT_SNAPSHOT);
     try {
       await provisioningJobService.processPendingJobs(1);
 
       const claimedTypes = claimSpy.mock.calls.map((c) => c[0].type);
-      expect(new Set(claimedTypes)).toEqual(new Set(Object.values(JOB_TYPES)));
+      expect(new Set(claimedTypes)).toEqual(new Set(expected));
       // Count is derived from JOB_TYPES, not hardcoded: CONTAINER_STOP (#8342)
       // grows this from 18 to 19, and a literal would break the moment it lands.
-      expect(claimedTypes.length).toBe(Object.values(JOB_TYPES).length);
+      expect(claimedTypes.length).toBe(expected.length);
     } finally {
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
@@ -67,7 +71,11 @@ describe("processPendingJobs — lane scoping", () => {
       });
 
       const claimedTypes = claimSpy.mock.calls.map((c) => c[0].type);
-      expect(new Set(claimedTypes)).toEqual(new Set(AGENT_JOB_TYPES));
+      // Claim excludes the gated snapshot lane (#16639); the stale sweep
+      // below still covers it (DB-only flip, no hydration).
+      expect(new Set(claimedTypes)).toEqual(
+        new Set(AGENT_JOB_TYPES.filter((t) => t !== JOB_TYPES.AGENT_SNAPSHOT)),
+      );
       for (const appsType of APPS_JOB_TYPES) {
         expect(claimedTypes).not.toContain(appsType);
       }
@@ -106,7 +114,11 @@ describe("processPendingJobs — lane scoping", () => {
       await provisioningJobService.recoverInterruptedJobsOnStartup(startedBefore, AGENT_JOB_TYPES);
 
       const recoveredTypes = recoverSpy.mock.calls.map((c) => c[0].type);
-      expect(new Set(recoveredTypes)).toEqual(new Set(AGENT_JOB_TYPES));
+      // Startup recovery excludes the gated snapshot lane (#16639): a restart
+      // must not resurrect snapshot jobs before operators re-enable them.
+      expect(new Set(recoveredTypes)).toEqual(
+        new Set(AGENT_JOB_TYPES.filter((t) => t !== JOB_TYPES.AGENT_SNAPSHOT)),
+      );
       for (const appsType of APPS_JOB_TYPES) {
         expect(recoveredTypes).not.toContain(appsType);
       }

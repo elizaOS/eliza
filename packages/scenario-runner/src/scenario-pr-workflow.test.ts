@@ -585,9 +585,8 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicScenarioReadme).toContain(
       "runtime currently removes `UPDATE_ENTITY`",
     );
-    expect(scenarioExecutor).toContain(
-      "../../../plugins/plugin-app-control/src/index.ts",
-    );
+    expect(scenarioExecutor).toContain('@elizaos/plugin-app-control"');
+    expect(scenarioExecutor).not.toContain("../../../plugins/");
     expect(scenarioExecutor).toContain(
       "actions: [\n        mod.appAction,\n        mod.backgroundAction,\n        mod.viewsAction,\n        mod.settingsAction,\n      ]",
     );

@@ -1,13 +1,13 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations conversationid messages route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { InsufficientCreditsError } from "@/lib/api/errors";
-import type { BridgeExecutionContext } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
+import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -38,13 +38,46 @@ app.get("/", async (c) => {
     );
   }
   const conversationId = c.req.param("conversationId") ?? r.agentId;
-  const body = await sharedRestMessagesGet(r.agentId, conversationId);
+  const namespace = c.env?.SHARED_RUNTIME_CONVERSATIONS;
+  let body: Awaited<ReturnType<typeof sharedRestMessagesGet>>;
+  try {
+    body = namespace
+      ? await sharedRestMessagesGet(r.agentId, conversationId, namespace)
+      : await sharedRestMessagesGet(r.agentId, conversationId);
+  } catch (error) {
+    // error-policy:J1 a cold/evicted conversation object is a retryable
+    // warming state, not an unhandled 500 — the most common cold read is
+    // opening an existing chat after eviction.
+    if (
+      error instanceof Error &&
+      error.name === "SharedRuntimeCacheWarmingError"
+    ) {
+      return applyCorsHeaders(
+        Response.json(
+          { success: false, error: error.message, retryable: true },
+          { status: 503, headers: { "Retry-After": "1" } },
+        ),
+        CORS_METHODS,
+        origin,
+      );
+    }
+    throw error;
+  }
   return applyCorsHeaders(Response.json(body), CORS_METHODS, origin);
 });
 
 app.post("/", async (c) => {
   const origin = c.req.header("origin");
-  const r = await resolveSharedAgent(c);
+  let executionCtx: BridgeExecutionContext | undefined;
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    executionCtx = undefined;
+  }
+  const r = await resolveSharedAgent(c, {
+    cacheOnly: Boolean(c.env?.SHARED_RUNTIME_CONVERSATIONS),
+    executionCtx,
+  });
   if ("error" in r) {
     return applyCorsHeaders(
       Response.json({ success: false, error: r.error }, { status: r.status }),
@@ -74,22 +107,28 @@ app.post("/", async (c) => {
   // tail off the response path via waitUntil. Hono's executionCtx getter
   // THROWS outside a Worker (tests, Node) — degrade to undefined there so the
   // turn settles inline, preserving fully-synchronous behavior.
-  let executionCtx: BridgeExecutionContext | undefined;
-  try {
-    executionCtx = c.executionCtx;
-  } catch {
-    executionCtx = undefined;
-  }
   let result: { text: string; agentName: string };
   try {
-    result = await sharedRestMessageSend(
-      r.agentId,
-      r.orgId,
-      conversationId,
-      text,
-      r.agentName,
-      executionCtx,
-    );
+    const namespace = c.env?.SHARED_RUNTIME_CONVERSATIONS;
+    result = namespace
+      ? await sharedRestMessageSend(
+          r.agentId,
+          r.orgId,
+          conversationId,
+          text,
+          r.agentName,
+          executionCtx,
+          r.agent,
+          namespace,
+        )
+      : await sharedRestMessageSend(
+          r.agentId,
+          r.orgId,
+          conversationId,
+          text,
+          r.agentName,
+          executionCtx,
+        );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.
     // Insufficient credits is a PERMANENT condition until the org tops up —

@@ -1,7 +1,8 @@
 /**
  * Resolves the Node-backed Vite subprocess used by app development entrypoints.
- * Central validation keeps the dashboard and shared-worktree launch paths in
- * sync while leaving process lifecycle ownership with their orchestrators.
+ * The tsx loader lets source-conditioned workspace packages retain NodeNext
+ * specifiers while central validation keeps dashboard and shared-worktree
+ * launch paths in sync.
  */
 
 import { existsSync } from "node:fs";
@@ -21,7 +22,7 @@ export function resolveViteCommand({
   if (!existsSync(viteCli)) {
     throw new Error(`Vite CLI not found at ${viteCli}. Run bun install first.`);
   }
-  const args = [viteCli];
+  const args = ["--import", "tsx", viteCli];
   if (force) args.push("--force");
   if (port !== undefined) args.push("--port", String(port));
   return { command: nodePath, args };

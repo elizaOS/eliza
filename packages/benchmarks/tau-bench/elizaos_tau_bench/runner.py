@@ -281,9 +281,14 @@ class TauBenchRunner:
                 if "r_outputs" in sub:
                     r_outputs = float(sub["r_outputs"])
 
-        # LLM judge — only consulted when outputs are required.
+        # LLM judge — only consulted when outputs are required. A judge-LLM
+        # failure raises out of here (JudgeUnavailableError) unless the
+        # operator opted into the heuristic degrade, which is recorded
+        # per-trial so degraded verdicts stay visible in report.json.
         judge_passed: Optional[bool] = None
         judge_expl = ""
+        judge_mode: Optional[str] = None
+        judge_degraded = False
         outputs_required = list(task.outputs or [])
         if outputs_required:
             agent_messages = self._extract_agent_messages(run.messages)
@@ -293,9 +298,12 @@ class TauBenchRunner:
                 model=self.config.judge_model,
                 provider=self.config.judge_provider,
                 use_llm=self.config.use_llm_judge,
+                allow_heuristic_fallback=self.config.judge_allow_heuristic_fallback,
             )
             judge_passed = judge.satisfied
             judge_expl = judge.explanation
+            judge_mode = judge.mode
+            judge_degraded = judge.degraded
 
         # Final success: upstream reward + (if outputs present) judge pass.
         success = run.reward >= 1.0
@@ -324,6 +332,8 @@ class TauBenchRunner:
             scenario_note=scenario_note,
             judge_passed=judge_passed,
             judge_explanation=judge_expl,
+            judge_mode=judge_mode,
+            judge_degraded=judge_degraded,
             r_actions=r_actions,
             r_outputs=r_outputs,
             num_turns=run.num_turns,

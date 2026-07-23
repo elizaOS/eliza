@@ -44,7 +44,7 @@ pytest packages/benchmarks/tau-bench/ -v
 | --- | --- |
 | `elizaos_tau_bench/cli.py` | CLI entrypoint (`python -m elizaos_tau_bench`) |
 | `elizaos_tau_bench/runner.py` | Main execution loop (TauBenchRunner) |
-| `elizaos_tau_bench/judge.py` | LLM judge (gpt-4o-mini, falls back to substring) |
+| `elizaos_tau_bench/judge.py` | LLM judge (gpt-4o-mini; a judge failure aborts the run unless `--judge-allow-heuristic-fallback` opts into a marked degrade) |
 | `elizaos_tau_bench/pass_k.py` | Unbiased pass^k estimator |
 | `elizaos_tau_bench/types.py` | TauBenchConfig, TauBenchReport DTOs |
 | `elizaos_tau_bench/upstream/` | Vendored sierra-research/tau-bench source (MIT) |
@@ -58,6 +58,10 @@ pytest packages/benchmarks/tau-bench/ -v
 - Scored by `_score_from_taubench_json` in `registry/scores.py`.
 - Required env vars: `OPENAI_API_KEY` (agent + user simulator + judge by default). Override
   each component's provider with `--agent-provider`, `--user-provider`, `--judge-provider`.
+- Every LLM call (agent, user simulator, judge) resolves its endpoint as
+  `TAU_BENCH_OPENAI_BASE_URL` > `BENCHMARK_BASE_URL` > `OPENAI_BASE_URL`
+  (> `CEREBRAS_BASE_URL` for provider=cerebras) before falling back to the provider's
+  default API — pre-set operator env is never overridden, so proxy routing works.
 - Full retail + airline data is fetched lazily into `~/.cache/elizaos_tau_bench/` on first run.
   Set `TAU_BENCH_DATA_DIR` to a pre-populated path, or `TAU_BENCH_DATA_MODE=smoke` to use only
   compact fixtures.

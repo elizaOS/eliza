@@ -26,6 +26,7 @@ import {
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/shared";
 import { readStringOption } from "../params.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 export type ModelSwitchTarget = "local" | "cloud";
 
@@ -60,7 +61,7 @@ async function defaultSwitchModel(request: {
 		`http://127.0.0.1:${port}/api/runtime/model-switch`,
 		{
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: createViewsRequestHeaders(),
 			body: JSON.stringify(request),
 			// Local activation waits for the model load, which can take a while on
 			// first switch — give the route more headroom than a plain API call.

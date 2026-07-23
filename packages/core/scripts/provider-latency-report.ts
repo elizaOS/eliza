@@ -8,6 +8,7 @@
  * time and observed concurrency.
  */
 import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 import {
 	InferenceTurnTimer,
 	runWithInferenceTiming,
@@ -178,7 +179,12 @@ async function main(): Promise<void> {
 			effectiveParallelism: distribution(concurrencySamples),
 			providers,
 		};
-		process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+		const serialized = `${JSON.stringify(output, null, 2)}\n`;
+		const reportPath = process.env.ELIZA_PROVIDER_LATENCY_REPORT;
+		if (reportPath) {
+			await writeFile(reportPath, serialized, "utf8");
+		}
+		process.stdout.write(serialized);
 	} finally {
 		await cleanup();
 	}

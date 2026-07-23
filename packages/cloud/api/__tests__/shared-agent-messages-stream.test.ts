@@ -107,6 +107,26 @@ function postStream(body: unknown, origin?: string) {
   });
 }
 
+function postWorkerStream(body: unknown, namespace: object) {
+  return streamRoute.request(
+    "/",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer user-api-key",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+    { SHARED_RUNTIME_CONVERSATIONS: namespace } as never,
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as never,
+  );
+}
+
 function postVoiceServiceStream(body: unknown) {
   return voiceServiceApp.request(
     `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
@@ -162,6 +182,29 @@ describe("shared agent messages/stream", () => {
     expect(call[1]).toBe(ORG);
     expect(call[2].method).toBe("message.send");
     expect(call[2].params).toMatchObject({ text: "say hi", roomId: AGENT });
+  });
+
+  test("Worker production path uses the conversation Durable Object without the legacy bridge", async () => {
+    const fetch = mock(
+      async () =>
+        new Response(
+          'event: chunk\ndata: {"text":"cached"}\n\nevent: done\ndata: {"text":"cached"}\n\n',
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+    );
+    const namespace = {
+      getByName: mock(() => ({ fetch })),
+    };
+
+    const res = await postWorkerStream({ text: "say hi" }, namespace);
+
+    expect(res.status).toBe(200);
+    await expect(res.text()).resolves.toContain('"cached"');
+    expect(resolveSharedAgent.mock.calls[0]?.[1]).toMatchObject({
+      cacheOnly: true,
+    });
+    expect(namespace.getByName).toHaveBeenCalledWith(`${AGENT}:${AGENT}`);
+    expect(bridgeStream).not.toHaveBeenCalled();
   });
 
   test("voice service credential resolves the scoped agent and persists to the requested conversation", async () => {

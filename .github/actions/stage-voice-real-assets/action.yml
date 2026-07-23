@@ -1,0 +1,138 @@
+name: Stage real voice assets
+description: >-
+  Self-provision the real-voice asset set on a runner: verify the fused
+  libelizainference build (downloaded as a workflow artifact) and stage the
+  pinned eliza-1-2b voice bundle regions from Hugging Face into the canonical
+  $HOME/.eliza/local-inference/models/eliza-1-2b.bundle cache. Every file is
+  sha256-pinned; a present-and-matching file is never re-downloaded, so the
+  first run per host pays ~2.5 GB once and later runs download nothing. Multiple
+  runner slots share one host $HOME, so the whole staging section runs under an
+  flock. Exports the ELIZA_* env the real-voice suites consume. Any missing or
+  drifted artifact is a hard step failure — the lane never green-skips.
+
+inputs:
+  fused-lib-dir:
+    description: Directory containing the fused libelizainference.so artifact
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Verify fused library artifact
+      shell: bash
+      run: |
+        set -euo pipefail
+        LIB="${{ inputs.fused-lib-dir }}/libelizainference.so"
+        if [ ! -f "$LIB" ]; then
+          echo "::error title=Fused lib artifact missing::$LIB not found — the voice-fused-build job must have uploaded it."
+          exit 1
+        fi
+        # The acoustic suites need the Kokoro + speaker + diarizer + VAD ABI.
+        for sym in eliza_inference_kokoro_load eliza_inference_speaker_open eliza_inference_diariz_open eliza_inference_vad_open eliza_inference_asr_transcribe; do
+          if ! nm -D "$LIB" | grep -q "$sym"; then
+            echo "::error title=Fused lib incomplete::$LIB does not export $sym"
+            exit 1
+          fi
+        done
+        # dlopen probe: catches a glibc/loader mismatch between the hosted
+        # build image and this host with a crisp error instead of a confusing
+        # failure deep inside the first smoke. bun:ffi requires at least one
+        # bound symbol, so bind the ABI-version getter — which also proves the
+        # artifact speaks the expected contract.
+        bun -e "const { dlopen, FFIType } = require('bun:ffi'); const lib = dlopen('$LIB', { eliza_inference_abi_version: { args: [], returns: FFIType.cstring } }); console.log('dlopen OK — fused ABI v' + lib.symbols.eliza_inference_abi_version());"
+        echo "ELIZA_INFERENCE_LIBRARY=$LIB" >> "$GITHUB_ENV"
+        echo "ELIZA_INFERENCE_LIB_DIR=${{ inputs.fused-lib-dir }}" >> "$GITHUB_ENV"
+        echo "fused lib OK: $LIB"
+        file "$LIB" || true
+
+    - name: Stage pinned eliza-1-2b voice bundle (sha256-verified, host-cached)
+      shell: bash
+      run: |
+        set -euo pipefail
+        BUNDLE="$HOME/.eliza/local-inference/models/eliza-1-2b.bundle"
+        mkdir -p "$BUNDLE"
+        LOCK="$HOME/.eliza/local-inference/.voice-bundle-staging.lock"
+        mkdir -p "$(dirname "$LOCK")"
+
+        # HF paths follow the Gemma-4 tier rename (bundles/2b -> bundles/e2b,
+        # HF commit d4898c8108da, 2026-07-03). Content is pinned by sha256, so a
+        # future repo restructure fails this step loudly instead of silently
+        # staging different weights.
+        BASE="https://huggingface.co/elizaos/eliza-1/resolve/main"
+
+        stage() {
+          local rel="$1" remote="$2" sha="$3"
+          local dest="$BUNDLE/$rel"
+          if [ -f "$dest" ]; then
+            local actual
+            actual="$(sha256sum "$dest" | awk '{print $1}')"
+            if [ "$actual" = "$sha" ]; then
+              echo "cached  $rel"
+              return 0
+            fi
+            echo "sha drift for $rel (have $actual, want $sha) — re-downloading"
+            rm -f "$dest"
+          fi
+          mkdir -p "$(dirname "$dest")"
+          echo "fetch   $rel  <-  $remote"
+          curl -fL --retry 5 --retry-delay 5 "$BASE/$remote?download=true" -o "$dest.tmp"
+          local actual
+          actual="$(sha256sum "$dest.tmp" | awk '{print $1}')"
+          if [ "$actual" != "$sha" ]; then
+            echo "::error title=Voice asset sha mismatch::$remote expected $sha got $actual"
+            rm -f "$dest.tmp"
+            exit 1
+          fi
+          mv "$dest.tmp" "$dest"
+        }
+
+        # Serialize across runner slots on the same host (they share $HOME).
+        exec 9>"$LOCK"
+        flock 9
+
+        # Fused ASR (decoder head + audio projector — asr-real-smoke contract).
+        stage asr/eliza-1-asr.gguf          bundles/e2b/asr/eliza-1-asr.gguf          bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971
+        stage asr/eliza-1-asr-mmproj.gguf   bundles/e2b/asr/eliza-1-asr-mmproj.gguf   41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d
+        # VAD (fused vad_open loads the GGUF; the ggml.bin is the legacy
+        # silero-vad-cpp artifact some probes still look for).
+        stage vad/silero-vad-v5.gguf        bundles/e2b/vad/silero-vad-v5.gguf        d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995
+        stage vad/silero-vad-v5.1.2.ggml.bin voice/vad/silero-vad-v5.1.2.ggml.bin     29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf
+        # Kokoro TTS (the product on-device engine) + the full voice-pack set
+        # the keyless corpus (#9577) draws from.
+        stage tts/kokoro/kokoro-82m-v1_0.gguf bundles/e2b/tts/kokoro/kokoro-82m-v1_0.gguf 165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c
+        stage tts/kokoro/voices/af_bella.bin    bundles/e2b/tts/kokoro/voices/af_bella.bin    f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b
+        stage tts/kokoro/voices/af_nicole.bin   bundles/e2b/tts/kokoro/voices/af_nicole.bin   cd2191ab31b914ed7b318416b0e4440fdf392ddad9106a060819aa600a64f59a
+        stage tts/kokoro/voices/af_sarah.bin    bundles/e2b/tts/kokoro/voices/af_sarah.bin    4409fbc125afabacc615d94db5398d847006a737b0247d6892b7a9a0007a2f0a
+        stage tts/kokoro/voices/af_sky.bin      bundles/e2b/tts/kokoro/voices/af_sky.bin      4435255c9744f3f31659e0d714ab7689bf65d9e77ec1cce060f083912614f0b9
+        stage tts/kokoro/voices/am_adam.bin     bundles/e2b/tts/kokoro/voices/am_adam.bin     162b035ed91cfc48b6046982184c645f72edcdd1b82843347f605d7bf7b15716
+        stage tts/kokoro/voices/am_michael.bin  bundles/e2b/tts/kokoro/voices/am_michael.bin  1d1f21dd8da39c30705cd4c75d039d265e9bc4a2a93ed09bc9e1b1225eb95ba1
+        stage tts/kokoro/voices/bf_emma.bin     bundles/e2b/tts/kokoro/voices/bf_emma.bin     669fe0647f9dd04fcab92f1439a40eeb4c8b4ab1f82e4996fe3d918ce4a63b73
+        stage tts/kokoro/voices/bf_isabella.bin bundles/e2b/tts/kokoro/voices/bf_isabella.bin 3754352c4aaa46d17f27654ab7518d65b62ad6163a0f55a5f4330c2da2c4e94f
+        stage tts/kokoro/voices/bm_george.bin   bundles/e2b/tts/kokoro/voices/bm_george.bin   c4b235a4c1f2cd3b939fed08b899ce9385638b763f7b73a59616c4fc9bd6c9bc
+        stage tts/kokoro/voices/bm_lewis.bin    bundles/e2b/tts/kokoro/voices/bm_lewis.bin    b8f671cef828c30e66fdf0b0756a76bba58f6bb3398cbbf27058642acbcedb97
+        # OmniVoice tts region + default preset — real-voice-stack's LOCAL TTS
+        # row loads the bundle "tts" region, which scans for these GGUFs.
+        stage tts/omnivoice-base-Q4_K_M.gguf      bundles/e2b/tts/omnivoice-base-Q4_K_M.gguf      4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6
+        stage tts/omnivoice-tokenizer-Q4_K_M.gguf bundles/e2b/tts/omnivoice-tokenizer-Q4_K_M.gguf 988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d
+        stage cache/voice-preset-default.bin      bundles/e2b/cache/voice-preset-default.bin      f59ebfd5b188e350eaa4a2cb9d2cb234f052124a49247a6d20360c4f7c63bdc9
+        # Speaker encoder + diarizer. The current fused IFGO reader requires the
+        # epoch-2 bake (#11377); the legacy epoch-less GGUF stays staged for the
+        # compat probes that still list it.
+        stage speaker/wespeaker-resnet34-lm.gguf voice/speaker-encoder/wespeaker-resnet34-lm.gguf ad066730b125f61a305c949f7f196d23681f387f3e3f916be7a4cd003aae6ae3
+        stage diariz/pyannote-segmentation-3.0-ifgo-epoch2.gguf voice/diarizer/pyannote-segmentation-3.0-ifgo-epoch2.gguf 100a5dbfd480b0cd6b0e01f0a9974ba836412721dfa0e36b7c1bb5a041abfbde
+        stage diariz/pyannote-segmentation-3.0.gguf voice/diarizer/pyannote-segmentation-3.0.gguf 30983eba41c0a99ab7eada564739ae8be74faeb21a31da759c870b5173cbd8a5
+
+        flock -u 9
+
+        {
+          echo "ELIZA_ASR_BUNDLE=$BUNDLE"
+          echo "ELIZA_KOKORO_MODEL_DIR=$BUNDLE/tts/kokoro"
+          echo "ELIZA_KOKORO_DEFAULT_VOICE_ID=af_bella"
+          echo "ELIZA_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
+          echo "ELIZA_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0-ifgo-epoch2.gguf"
+          echo "ELIZA_TEST_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
+          echo "ELIZA_TEST_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0-ifgo-epoch2.gguf"
+          echo "ELIZA_VOICE_REAL_MODEL_DIR=$BUNDLE"
+        } >> "$GITHUB_ENV"
+
+        find "$BUNDLE" -type f -printf '%P %s bytes\n' | sort

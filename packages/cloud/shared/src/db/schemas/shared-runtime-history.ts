@@ -5,6 +5,8 @@ import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core
 export type SharedRuntimeHistoryMessage = {
   role: "user" | "assistant";
   content: string;
+  /** Epoch-ms timestamp; used to order turns merged from concurrent writers. */
+  createdAt?: number;
 };
 
 /**

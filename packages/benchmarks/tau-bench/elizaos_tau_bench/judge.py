@@ -9,13 +9,19 @@ the agent's transcript.
 
 The judge is only consulted when ``task.outputs`` is non-empty; otherwise the
 upstream data-hash check is sufficient.
+
+A judge that cannot produce an LLM verdict must never silently substitute the
+substring heuristic: a broken judge fabricating healthy-looking scores is a
+"not loaded reads as zero" failure. LLM-judge failures raise
+``JudgeUnavailableError`` unless the operator explicitly opted into the
+heuristic degrade, in which case the result is marked ``degraded`` and the
+runner records that in report.json.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -23,11 +29,24 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+class JudgeUnavailableError(RuntimeError):
+    """The LLM judge was requested but could not produce a verdict.
+
+    Raised so a broken judge fails the run instead of silently degrading to
+    the substring heuristic and publishing fabricated scores.
+    """
+
+
 @dataclass
 class JudgeResult:
     satisfied: bool
     explanation: str
     per_output: dict[str, bool]
+    # How the verdict was produced: "llm", "substring", or "none-required".
+    mode: str = "llm"
+    # True only when the opt-in heuristic replaced a *failed* LLM judge; an
+    # explicitly configured substring judge (use_llm=False) is not degraded.
+    degraded: bool = False
 
 
 _SYSTEM_PROMPT = (
@@ -52,15 +71,16 @@ Reply with a single JSON object: {{"per_output": {{"<output>": true|false, ...}}
 
 
 def _fallback_substring_check(outputs: list[str], agent_messages: list[str]) -> JudgeResult:
-    """Upstream-style substring check, used when no judge LLM is available."""
+    """Upstream-style substring check, used only when explicitly configured."""
     haystack = " ".join(m.lower().replace(",", "") for m in agent_messages)
     per: dict[str, bool] = {}
     for o in outputs:
         per[o] = o.lower() in haystack
     return JudgeResult(
         satisfied=all(per.values()),
-        explanation="Substring fallback (no LLM judge)",
+        explanation="Substring check (LLM judge disabled by config)",
         per_output=per,
+        mode="substring",
     )
 
 
@@ -88,20 +108,34 @@ def judge_outputs_satisfied(
     model: str = "gpt-4o-mini",
     provider: str = "openai",
     use_llm: bool = True,
+    allow_heuristic_fallback: bool = False,
 ) -> JudgeResult:
-    """Return whether each required output is satisfied in the agent's messages."""
+    """Return whether each required output is satisfied in the agent's messages.
+
+    With ``use_llm=True`` (the default), an LLM-judge failure raises
+    ``JudgeUnavailableError`` unless ``allow_heuristic_fallback`` is set, in
+    which case the substring heuristic is used and the result is explicitly
+    marked ``degraded=True`` so the report never looks healthy by accident.
+    """
     if not outputs:
-        return JudgeResult(satisfied=True, explanation="No outputs required", per_output={})
+        return JudgeResult(
+            satisfied=True, explanation="No outputs required", per_output={}, mode="none-required"
+        )
 
     if not use_llm:
         return _fallback_substring_check(outputs, agent_messages)
 
-    # Check API key availability — fall back if missing
-    if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-        logger.warning(
-            "Judge LLM requested but OPENAI_API_KEY missing; using substring fallback"
-        )
-        return _fallback_substring_check(outputs, agent_messages)
+    def _degrade_or_raise(reason: str, cause: Exception | None) -> JudgeResult:
+        if not allow_heuristic_fallback:
+            raise JudgeUnavailableError(reason) from cause
+        # error-policy:J4 operator explicitly opted into the heuristic degrade
+        # (--judge-allow-heuristic-fallback); the verdict is marked
+        # degraded=True and surfaced per-trial in report.json, never healthy.
+        logger.warning("Judge degraded to substring heuristic: %s", reason)
+        fallback = _fallback_substring_check(outputs, agent_messages)
+        fallback.degraded = True
+        fallback.explanation = f"DEGRADED substring fallback — {reason}"
+        return fallback
 
     try:
         import elizaos_tau_bench.model_client as model_client
@@ -117,13 +151,18 @@ def judge_outputs_satisfied(
         )
         content = res.choices[0].message.content or ""
     except Exception as e:
-        logger.warning("Judge LLM call failed (%s); using substring fallback", e)
-        return _fallback_substring_check(outputs, agent_messages)
+        # error-policy:J2 translate any judge-backend failure (missing key,
+        # unreachable proxy, provider error) into the typed judge error — or
+        # the opt-in degraded verdict — with the original failure as cause.
+        return _degrade_or_raise(
+            f"judge LLM call failed (provider={provider}, model={model}): {e}", e
+        )
 
     parsed = _parse_json_object(content)
     if not parsed or "per_output" not in parsed:
-        logger.warning("Judge LLM returned unparseable response: %s", content[:200])
-        return _fallback_substring_check(outputs, agent_messages)
+        return _degrade_or_raise(
+            f"judge LLM returned unparseable response: {content[:200]!r}", None
+        )
 
     per_raw = parsed.get("per_output") or {}
     per: dict[str, bool] = {}
@@ -136,7 +175,9 @@ def judge_outputs_satisfied(
         per[o] = bool(v)
 
     explanation = str(parsed.get("explanation", ""))
-    return JudgeResult(satisfied=all(per.values()), explanation=explanation, per_output=per)
+    return JudgeResult(
+        satisfied=all(per.values()), explanation=explanation, per_output=per, mode="llm"
+    )
 
 
-__all__ = ["JudgeResult", "judge_outputs_satisfied"]
+__all__ = ["JudgeResult", "JudgeUnavailableError", "judge_outputs_satisfied"]

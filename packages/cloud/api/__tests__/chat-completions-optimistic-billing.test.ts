@@ -422,6 +422,7 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     );
     expect(authResolveOptions).toHaveLength(1);
     expect(authResolveOptions[0]?.executionCtx).toBeDefined();
+    expect(authResolveOptions[0]?.cacheOnly).toBe(true);
     expect(response.headers.get("X-Eliza-Auth-Trace")).toContain(
       "result=authorized_cache",
     );

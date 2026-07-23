@@ -188,6 +188,36 @@ async function __hono_POST(
             orgId: user.organization_id,
             poolNodeId: claimed.node_id,
           });
+          // Post-claim character apply: the pool container booted GENERIC (no
+          // ELIZA_AGENT_CHARACTER_JSON), so push the user's character onto the
+          // live runtime via the container's PUT /api/character. Bounded (10s)
+          // and NON-FATAL: on failure the claim still succeeds (the row's
+          // agent_config applies on the next container restart) and
+          // `warm_pool.character_push_failed` keeps the miss observable.
+          try {
+            const push =
+              await elizaSandboxService.pushClaimedWarmContainerCharacter(
+                claimed,
+              );
+            if (push.pushed) {
+              logger.info("[agent-api] Warm pool character push applied", {
+                agentId,
+                orgId: user.organization_id,
+                agentName: push.agentName,
+              });
+            }
+          } catch (pushErr) {
+            logger.warn(
+              "[agent-api] Warm pool character push failed; claim kept (character applies on next restart)",
+              {
+                event: "warm_pool.character_push_failed",
+                agentId,
+                orgId: user.organization_id,
+                error:
+                  pushErr instanceof Error ? pushErr.message : String(pushErr),
+              },
+            );
+          }
           return applyCorsHeaders(
             Response.json({
               success: true,

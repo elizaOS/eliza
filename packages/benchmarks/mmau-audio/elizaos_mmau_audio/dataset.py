@@ -35,6 +35,13 @@ logger = logging.getLogger(__name__)
 
 FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "smoke.jsonl"
 
+# Upstream MMAU repos publish to a moving main branch; these pins name the
+# exact corpus a score was computed over (1k test-mini / 9k test).
+PINNED_HF_REVISIONS: dict[str, str] = {
+    "gamma-lab-umd/MMAU-test-mini": "ccd9696c0111ea7060827598f310558df0b71b0a",
+    "gamma-lab-umd/MMAU-test": "8e835a9f64ed6c703b3c9ddb6d423d9ab697061e",
+}
+
 EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
     (
         "distractor",
@@ -72,11 +79,19 @@ class MMAUDataset:
         *,
         fixture_path: Path | None = None,
         hf_repo: str = "gamma-lab-umd/MMAU-test-mini",
+        hf_revision: str | None = None,
         split: MMAUSplit = MMAUSplit.TEST_MINI,
         categories: Iterable[MMAUCategory] = MMAU_CATEGORIES,
     ) -> None:
         self.fixture_path = fixture_path or FIXTURE_PATH
         self.hf_repo = hf_repo
+        # Scores must name an exact corpus; the known upstream repos publish
+        # to a moving main branch, so pin them unless the caller overrides.
+        self.hf_revision = (
+            hf_revision
+            if hf_revision is not None
+            else PINNED_HF_REVISIONS.get(hf_repo)
+        )
         self.split = split
         self.categories = tuple(categories)
         self.samples: list[MMAUSample] = []
@@ -129,6 +144,7 @@ class MMAUDataset:
         stream = load_dataset(
             self.hf_repo,
             split=_hf_split_name(self.split),
+            revision=self.hf_revision,
             streaming=max_samples is None,
         )
         try:

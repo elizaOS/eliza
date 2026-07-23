@@ -10,13 +10,30 @@ ADHD/ADD/Asperger's/autism, neurotypical people, and elderly people with no ther
 language and no special rails. The guiding constraint is **minimize additional
 scope**: fix, test, and verify what exists; prefer deleting over adding.
 
-Doctrine adopted for the home surface: **date+time, weather, and notifications are
-GOOD. A wallet widget is GOOD** (BTC/SOL/ETH prices by default; top-3 held when the
-user holds tokens; ~3 trending otherwise). **Everything else is scrutinized for
-removal.** Decision: the resting home becomes exactly time/weather + notification
-center + wallet; the LifeOps attention cards (calendar, todos, needs-response,
-goals, sleep) stay because they *are* the MVP and already self-hide when idle;
-seven non-MVP widgets are removed from the home slot.
+Doctrine adopted for the home surface at the time of this audit: **date+time,
+weather, and notifications are GOOD. A wallet widget is GOOD** (BTC/SOL/ETH
+prices by default; top-3 held when the user holds tokens; ~3 trending
+otherwise). **Everything else is scrutinized for removal.** Decision: the
+resting home becomes exactly time/weather + notification center + wallet; the
+LifeOps attention cards (calendar, todos, needs-response, goals, sleep) stay
+because they *are* the MVP and already self-hide when idle; seven non-MVP
+widgets are removed from the home slot.
+
+> **Superseded on wallet-on-home (status update, 2026-07-23).** The ratified
+> home spec (`docs/design/NOTIFICATIONS-WIDGETS-SYSTEM.md` §B "Explicitly NOT
+> residents" / §E item 3; decided in #14560, landed in #14669) **demoted
+> `wallet.balance` off the home surface**: a balance is state, not change, so
+> it fails the two-second "what changed?" rule. The resting home is exactly
+> time/weather (+ notifications when present); `run-home-screen-e2e.mjs`
+> (`assertQuietHome`) enforces it in CI, so the "no test asserting the sparse
+> resting state" gap below is closed. The wallet respec below (BTC/SOL/ETH
+> default, top-3 held, visibility-gated 60s refresh, price-only #10706) was
+> implemented as specced but now renders on the **routed wallet section root**
+> (`WalletSectionNav`, `/wallet`), and a material balance delta arrives as a
+> **producer-side notification** — a structural `kind: "watcher"`
+> ScheduledTask on the scheduling spine
+> (`packages/agent/src/runtime/wallet-balance-delta.ts`). Both compensations
+> landed in #16943. Everything else in this audit stands.
 
 ## Current state
 
@@ -81,7 +98,7 @@ plugin-snapshot enable/disable is honored per declaration `visibility`
 - **`workflow.running` is permanent chrome** — system automations always exist, so the "attention-driven, self-pruning" home model (`packages/ui/src/widgets/HOME_CONTENT_TAXONOMY.md`) is violated by design.
 - **Weather is US-only and can silently go stale**: °F hardcoded, 12-hour clock hardcoded in the time tile, no revalidation while mounted, dead "Enable location" copy with no tap affordance (`DefaultHomeWidgets.tsx:96-105`), city line unreachable.
 - **Poll fan-out**: with all widgets active the home sustains ~9 concurrent pollers (5–60 s cadences) ≈ one request every ~2 s, plus 3 parallel calls/15 s from the sidebar accounts widget when the chat rail is open. The ranking itself is cheap and render-storm-guarded (`WidgetHost.render-storm.test.tsx`, `#9304` stability machinery at `WidgetHost.tsx:330-355`).
-- Test coverage of the *composition* is real (`HomeScreen.test.tsx`, `DefaultHomeWidgets.test.tsx`, `useWeather.test.ts`, per-widget tests, `__e2e__/run-home-screen-e2e.mjs`), but there is **no test asserting the sparse resting state** (a healthy account with nothing urgent sees only time/weather + wallet).
+- Test coverage of the *composition* is real (`HomeScreen.test.tsx`, `DefaultHomeWidgets.test.tsx`, `useWeather.test.ts`, per-widget tests, `__e2e__/run-home-screen-e2e.mjs`), but at audit time there was **no test asserting the sparse resting state**. *(Closed: `assertQuietHome` in `run-home-screen-e2e.mjs` now asserts the quiet home is exactly time/weather with the demoted wallet card absent — see the status update above.)*
 
 ## Design considerations
 
@@ -151,15 +168,18 @@ wherever the component remains mounted (P1).
 2. **P0 — Respec the wallet widget to doctrine**: always visible; top-3 held (≥$1, priced)
    when holdings exist, else BTC/SOL/ETH snapshots; visibility-gated 60 s refresh; keep
    price-only invariant. Uses only existing `market-overview` + `getWalletBalances`.
+   *(Done as specced — but mounted on the routed `/wallet` section root, not home,
+   per the superseding spec; see the status update above.)*
 3. **P1 — Fix the keepers' correctness**: locale-aware temperature unit + hour cycle,
    weather revalidation while mounted, remove the dead city line or populate it, actionable
    unavailable state.
 4. **P1 — Gate the `AppRunsWidget` poll on document visibility** where it remains (chat
    sidebar), matching every other widget.
 5. **P1 — Prove the sparse resting state**: extend the home e2e + `audit:app` loop with a
-   "healthy quiet account" fixture asserting exactly time/weather + wallet render (+
+   "healthy quiet account" fixture asserting exactly time/weather render (+
    notification center only when notifications exist), and that each keeper appears when
-   its data demands attention and disappears after.
+   its data demands attention and disappears after. *(Done: `assertQuietHome` in
+   `run-home-screen-e2e.mjs`; wallet is asserted absent per the superseding spec.)*
 6. **Done in #14349 — Retire the frontpage breadth mandate (#9143)**: deleted
    `default-home-widget-sink-optins.ts` and relaxed `widget-coverage.test.ts` from
    "every app plugin must be frontpage-aware" to "declared widgets must resolve", removing

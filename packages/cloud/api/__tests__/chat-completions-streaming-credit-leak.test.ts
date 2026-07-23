@@ -1,5 +1,6 @@
 /**
  * Money-leak reproduction tests for POST /api/v1/chat/completions streaming.
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * A credit reservation is a ~1.5x upfront hold that MUST be settled — either to
  * actual usage (success) or released to 0 (failure). When the AI SDK hits a

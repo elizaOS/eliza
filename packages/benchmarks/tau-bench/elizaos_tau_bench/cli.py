@@ -120,6 +120,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-llm-judge", action="store_true", help="Disable LLM judge (use substring).")
     p.add_argument("--judge-model", default="gpt-4o-mini")
     p.add_argument("--judge-provider", default="openai")
+    p.add_argument(
+        "--judge-allow-heuristic-fallback",
+        action="store_true",
+        help="If the LLM judge fails, degrade to the substring heuristic instead of "
+        "failing the run. Degraded trials are marked judge_degraded=true in "
+        "report.json. Without this flag a judge failure aborts the run.",
+    )
 
     # IO
     p.add_argument("--output-dir", default=None)
@@ -167,6 +174,7 @@ def build_config(args: argparse.Namespace) -> TauBenchConfig:
         use_llm_judge=not args.no_llm_judge,
         judge_model=args.judge_model,
         judge_provider=args.judge_provider,
+        judge_allow_heuristic_fallback=args.judge_allow_heuristic_fallback,
         output_dir=output_dir,
         seed=args.seed,
         verbose=args.verbose,

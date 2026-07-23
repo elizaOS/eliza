@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -136,6 +137,9 @@ def write_manifest(installed: InstalledAgent) -> None:
     os.replace(tmp, path)
 
 
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
+
 def _clone_or_update_source(
     *,
     repo_dir: Path,
@@ -144,25 +148,38 @@ def _clone_or_update_source(
     force: bool,
     context: str,
 ) -> str:
+    # `git clone -b` only accepts branch/tag names, so a commit-sha ref must
+    # clone the default branch first and then fetch the sha explicitly
+    # (GitHub serves reachable-sha fetches). This makes installs pinnable to
+    # an exact revision instead of a moving branch.
+    ref_is_sha = bool(_COMMIT_SHA_RE.fullmatch(ref.lower()))
     if repo_dir.exists() and force:
         shutil.rmtree(repo_dir)
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     if not repo_dir.exists():
-        _run(
-            [
-                "git",
-                "clone",
-                "--filter=blob:none",
-                "--single-branch",
-                "--depth",
-                "1",
-                "-b",
-                ref,
-                git_url,
-                str(repo_dir),
-            ],
-            context=f"git clone {context} ref={ref}",
-        )
+        clone_cmd = [
+            "git",
+            "clone",
+            "--filter=blob:none",
+            "--single-branch",
+            "--depth",
+            "1",
+        ]
+        if not ref_is_sha:
+            clone_cmd.extend(["-b", ref])
+        clone_cmd.extend([git_url, str(repo_dir)])
+        _run(clone_cmd, context=f"git clone {context} ref={ref}")
+        if ref_is_sha:
+            _run(
+                ["git", "fetch", "--depth", "1", "origin", ref],
+                cwd=repo_dir,
+                context=f"git fetch {context} ref={ref}",
+            )
+            _run(
+                ["git", "checkout", "FETCH_HEAD"],
+                cwd=repo_dir,
+                context=f"git checkout {context} ref={ref}",
+            )
     else:
         _run(["git", "fetch", "--depth", "1", "origin", ref], cwd=repo_dir, context=f"git fetch {context}")
         _run(["git", "checkout", "FETCH_HEAD"], cwd=repo_dir, context=f"git checkout {context} ref={ref}")
@@ -173,7 +190,7 @@ def _clone_or_update_source(
 
 
 def install_openclaw(version: str = "latest", force: bool = False) -> InstalledAgent:
-    """Install OpenClaw from npm into ``$ELIZA_AGENTS_ROOT/openclaw/<version>/``.
+    """Install OpenClaw from npm into ``$ELIZA_AGENTS_ROOT/openclaw/v<version>/``.
 
     The published ``openclaw`` package ships a built binary at
     ``node_modules/.bin/openclaw`` once installed via npm. The source repo
@@ -194,7 +211,10 @@ def install_openclaw(version: str = "latest", force: bool = False) -> InstalledA
     else:
         resolved_version = version
 
-    prefix = AGENT_ROOT / "openclaw" / resolved_version
+    # The "v" prefix matches openclaw_adapter.client's DEFAULT_BINARY_FALLBACK
+    # (~/.eliza/agents/openclaw/v<version>/...), so an install remains
+    # resolvable even when the manifest is absent or deleted.
+    prefix = AGENT_ROOT / "openclaw" / f"v{resolved_version}"
     binary = prefix / "node_modules" / ".bin" / "openclaw"
 
     if not force:
@@ -273,11 +293,27 @@ def install_hermes(ref: str = "main", force: bool = False) -> InstalledAgent:
         context="hermes-agent",
     )
 
-    _run(
-        [HERMES_VENV_PYTHON, "-m", "venv", ".venv"],
-        cwd=repo_dir,
-        context=f"{HERMES_VENV_PYTHON} -m venv .venv",
-    )
+    try:
+        _run(
+            [HERMES_VENV_PYTHON, "-m", "venv", ".venv"],
+            cwd=repo_dir,
+            context=f"{HERMES_VENV_PYTHON} -m venv .venv",
+        )
+    except AgentInstallError as venv_error:
+        # error-policy:J2 Debian/Ubuntu hosts without python3-venv have no
+        # ensurepip, so stdlib venv creation fails there; virtualenv bundles
+        # pip and produces the same .venv/bin/python layout. Re-raise with the
+        # stdlib failure as cause when no fallback exists.
+        virtualenv = shutil.which("virtualenv")
+        if virtualenv is None:
+            raise AgentInstallError(
+                f"venv creation failed and no virtualenv fallback is on PATH: {venv_error}"
+            ) from venv_error
+        _run(
+            [virtualenv, "-p", HERMES_VENV_PYTHON, ".venv"],
+            cwd=repo_dir,
+            context=f"virtualenv -p {HERMES_VENV_PYTHON} .venv (stdlib venv had no ensurepip)",
+        )
 
     if not venv_python.exists():
         raise AgentInstallError(

@@ -32,6 +32,7 @@ import type {
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { isRestrictedPlatform } from "./views-platform.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 import {
 	deleteSnapshotRecord,
 	findSnapshotRecord,
@@ -69,7 +70,7 @@ async function reregisterPluginFromWorkdir(
 			`http://127.0.0.1:${port}/api/plugins/load-from-directory`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ directory: workdir }),
 				signal: AbortSignal.timeout(30_000),
 			},

@@ -6,8 +6,18 @@
 
 import * as http from "node:http";
 import { Socket } from "node:net";
-import { ModelType } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { addLogListener, type LogEntry, ModelType } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The logger freezes its level at module init and the repo test setup defaults
+// LOG_LEVEL to "error", which would gate the info-level tts lines (and their
+// listener delivery) off. vi.hoisted runs before the imports above evaluate,
+// so the logger initializes at "info" — the production default the
+// ELIZA_TTS_DEBUG diagnostic is documented against.
+vi.hoisted(() => {
+	process.env.LOG_LEVEL = "info";
+});
+
 import type { CompatRuntimeState } from "./compat-helpers";
 import {
 	handleLocalInferenceTtsRoute,
@@ -255,5 +265,119 @@ describe("local inference TTS route", () => {
 
 		expect(aborted).toBe(true);
 		expect(out.bodyBuffer().length).toBe(0);
+	});
+});
+
+// #16347: with ELIZA_TTS_DEBUG set the route traces `server:local-tts:*`
+// through the real structured logger; entries observed via the listener
+// stream, silent when the flag is unset.
+describe("ELIZA_TTS_DEBUG tracing on /api/tts/local-inference", () => {
+	const prevFlag = process.env.ELIZA_TTS_DEBUG;
+	let entries: LogEntry[] = [];
+	let unsubscribe: (() => void) | null = null;
+
+	const ttsLines = () =>
+		entries.filter((entry) => entry.msg.includes("[eliza][tts]"));
+
+	const listen = () => {
+		entries = [];
+		unsubscribe?.();
+		unsubscribe = addLogListener((entry) => entries.push(entry));
+	};
+
+	afterEach(() => {
+		unsubscribe?.();
+		unsubscribe = null;
+		if (prevFlag === undefined) delete process.env.ELIZA_TTS_DEBUG;
+		else process.env.ELIZA_TTS_DEBUG = prevFlag;
+	});
+
+	it("traces request and success phases on a successful synthesis", async () => {
+		process.env.ELIZA_TTS_DEBUG = "1";
+		listen();
+		const useModel = vi.fn().mockResolvedValue(wavBytes());
+		const state: CompatRuntimeState = {
+			current: { useModel } as unknown as CompatRuntimeState["current"],
+		};
+		const out = fakeRes();
+
+		await handleLocalInferenceTtsRoute(
+			fakeReq({ text: "Trace this line", voiceId: "narrator" }),
+			out.res,
+			state,
+		);
+
+		expect(out.status()).toBe(200);
+		const msgs = ttsLines().map((entry) => entry.msg);
+		expect(
+			msgs.some((m) => m.includes("[eliza][tts] server:local-tts:request")),
+		).toBe(true);
+		expect(
+			msgs.some((m) => m.includes("[eliza][tts] server:local-tts:success")),
+		).toBe(true);
+		expect(msgs.some((m) => m.includes("Trace this line"))).toBe(true);
+		expect(msgs.some((m) => m.includes("narrator"))).toBe(true);
+	});
+
+	it("traces a reject phase when synthesis fails", async () => {
+		process.env.ELIZA_TTS_DEBUG = "1";
+		listen();
+		const useModel = vi.fn().mockRejectedValue(new Error("kokoro exploded"));
+		const state: CompatRuntimeState = {
+			current: { useModel } as unknown as CompatRuntimeState["current"],
+		};
+		const out = fakeRes();
+
+		await handleLocalInferenceTtsRoute(
+			fakeReq({ text: "Hello" }),
+			out.res,
+			state,
+		);
+
+		expect(out.res.statusCode).toBe(502);
+		const reject = ttsLines().find((entry) =>
+			entry.msg.includes("server:local-tts:reject"),
+		);
+		expect(reject).toBeDefined();
+		expect(reject?.msg).toContain("synthesis_failed");
+		expect(reject?.msg).toContain("kokoro exploded");
+	});
+
+	it("traces a reject phase when the runtime is unavailable", async () => {
+		process.env.ELIZA_TTS_DEBUG = "1";
+		listen();
+		const state: CompatRuntimeState = { current: null };
+		const out = fakeRes();
+
+		await handleLocalInferenceTtsRoute(
+			fakeReq({ text: "Hello" }),
+			out.res,
+			state,
+		);
+
+		expect(out.res.statusCode).toBe(503);
+		const reject = ttsLines().find((entry) =>
+			entry.msg.includes("server:local-tts:reject"),
+		);
+		expect(reject?.msg).toContain("runtime_unavailable");
+	});
+
+	it("stays silent when the flag is unset", async () => {
+		delete process.env.ELIZA_TTS_DEBUG;
+		listen();
+		const useModel = vi.fn().mockResolvedValue(wavBytes());
+		const state: CompatRuntimeState = {
+			current: { useModel } as unknown as CompatRuntimeState["current"],
+		};
+		const out = fakeRes();
+
+		await handleLocalInferenceTtsRoute(
+			fakeReq({ text: "Quiet run" }),
+			out.res,
+			state,
+		);
+
+		expect(out.status()).toBe(200);
+		expect(ttsLines()).toHaveLength(0);
 	});
 });

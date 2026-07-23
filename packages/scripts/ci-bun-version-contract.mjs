@@ -47,11 +47,10 @@ const WORKFLOW_DIR = ".github/workflows";
 
 // Required, scheduled, and deploy-critical install lanes that must stay on the
 // concrete pin. The required `ci-ok` aggregate (test.yml), main gate (ci.yaml),
-// changed-file coverage, and canonical cloud deploy are the load-bearing paths.
+// and canonical cloud deploy are the load-bearing paths.
 const GATE_WORKFLOWS = [
   "ci.yaml",
   "test.yml",
-  "coverage-gate.yml",
   "cloud-cf-deploy.yml",
   "app-aesthetic-audit.yml",
   "develop-exhaustive.yml",

@@ -116,7 +116,7 @@ describe("createWorkerDeepgramFluxFactory", () => {
     stubFetch();
     const factory = createWorkerDeepgramFluxFactory();
     const _socket = factory({
-      url: "wss://api.deepgram.com/v1/listen?encoding=linear16&channels=1&model=flux",
+      url: "wss://api.deepgram.com/v1/listen?encoding=linear16&channels=1&model=flux&mip_opt_out=true",
       headers: { Authorization: "Token dg" },
     }) as unknown as {
       addEventListener(t: string, l: (e: unknown) => void): void;
@@ -130,6 +130,7 @@ describe("createWorkerDeepgramFluxFactory", () => {
     // channels stripped; the mono-inferring params preserved.
     expect(upgrade.httpUrl).not.toContain("channels=");
     expect(upgrade.httpUrl).toContain("encoding=linear16");
+    expect(upgrade.httpUrl).toContain("mip_opt_out=true");
     expect(upgrade.headers.Authorization).toBe("Token dg");
     expect(upgrade.headers.Upgrade).toBe("websocket");
   });

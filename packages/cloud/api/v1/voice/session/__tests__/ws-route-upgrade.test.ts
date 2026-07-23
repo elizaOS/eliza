@@ -125,8 +125,8 @@ mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, redisFactoryStub);
 // NOTE: we do NOT mock `../lib/session`. Mocking VoiceSession would clobber it
 // for ws-lifecycle.test.ts (which constructs the REAL VoiceSession and runs
 // earlier in the shared, non-isolated coverage lane). We therefore also do NOT
-// invoke the route's `buildSession` closure below — constructing a real
-// VoiceSession needs live providers. ws/route coverage stays >50% without it.
+// invoke the route's `buildSession` closure below because constructing a real
+// VoiceSession requires live providers that are outside this route contract.
 const wsRoute = (await import("../ws/route")).default;
 
 const baseEnv = {

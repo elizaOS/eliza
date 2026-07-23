@@ -96,6 +96,14 @@ name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615302"
 simple = { limit = 200, period = 60 }
 
+[[durable_objects.bindings]]
+name = "SHARED_RUNTIME_CONVERSATIONS"
+class_name = "SharedRuntimeConversation"
+
+[[migrations]]
+tag = "shared-runtime-conversations-v1"
+new_sqlite_classes = ["SharedRuntimeConversation"]
+
 # Exact organization limits and non-native route limits use Railway TCP Redis
 # via REDIS_URL (in-Worker SocketRedis, RESP2 over cloudflare:sockets). The
 # global flood backstop and chat API-key gate above use Cloudflare's local
@@ -315,6 +323,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 [env.staging]
 name = "eliza-cloud-api-staging"
 workers_dev = false
+
 # Smart Placement soak (#15513): run this Worker near the origins it fetches
 # (api.cerebras.ai / api.openai.com) instead of near the caller — the measured
 # Worker->origin hop is ~500ms of every inference call's TTFT. Staging-only
@@ -482,6 +491,10 @@ id = "ef65eb94c74144a3a3848ad1945571fb"
 binding = "CACHE_KV"
 id = "f7e24faaff734e7c8cd8e12b093c3571"
 
+[[env.staging.durable_objects.bindings]]
+name = "SHARED_RUNTIME_CONVERSATIONS"
+class_name = "SharedRuntimeConversation"
+
 [[env.staging.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615311"
@@ -494,6 +507,7 @@ simple = { limit = 200, period = 60 }
 
 [env.production]
 name = "eliza-cloud-api-prod"
+
 # Smart Placement (#15513, prod leg): staging soak showed mode=smart applied
 # cleanly but staging traffic is too thin for Cloudflare's placement analyzer
 # to ever qualify it — prod volume is what it learns from. Fail-safe by
@@ -661,6 +675,10 @@ id = "9f59e4ec65f048f7b87e29e7b9c5d728"
 [[env.production.kv_namespaces]]
 binding = "CACHE_KV"
 id = "1dafabf1293d4b6b97f61c5cc22d6fec"
+
+[[env.production.durable_objects.bindings]]
+name = "SHARED_RUNTIME_CONVERSATIONS"
+class_name = "SharedRuntimeConversation"
 
 [[env.production.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"

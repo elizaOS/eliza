@@ -24,6 +24,10 @@
  */
 import { spawnSync } from "node:child_process";
 import { statSync } from "node:fs";
+import {
+  type OrchestratorOwnedArtifact,
+  ownedArtifactStillMatches,
+} from "./orchestrator-artifact-ownership.js";
 
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
@@ -122,6 +126,8 @@ export interface CompletionResidualsInput {
     summary: string;
   }>;
   residualRisks?: readonly string[];
+  /** Files the orchestrator wrote and can verify by content fingerprint. */
+  orchestratorOwnedArtifacts?: readonly OrchestratorOwnedArtifact[];
 }
 
 interface GitProbe {
@@ -149,6 +155,39 @@ function cap(items: string[]): string[] {
   return items.slice(0, MAX_RESIDUAL_PATHS);
 }
 
+function porcelainPaths(line: string): string[] {
+  const rawPath = line.slice(3).trim();
+  if (!rawPath) return [];
+  const renameParts = rawPath.split(" -> ");
+  return renameParts.length > 1
+    ? renameParts.map((part) => part.trim()).filter(Boolean)
+    : [rawPath];
+}
+
+function isOrchestratorOwnedDirtyLine(
+  line: string,
+  workdir: string,
+  artifactsByPath: ReadonlyMap<string, OrchestratorOwnedArtifact>,
+): boolean {
+  if (!line.startsWith("?? ")) return false;
+  const paths = porcelainPaths(line);
+  return (
+    paths.length > 0 &&
+    paths.every((path) => {
+      const artifact = artifactsByPath.get(path);
+      return artifact ? ownedArtifactStillMatches(workdir, artifact) : false;
+    })
+  );
+}
+
+function ownedArtifactsByPath(
+  artifacts: readonly OrchestratorOwnedArtifact[],
+): Map<string, OrchestratorOwnedArtifact> {
+  return new Map(
+    artifacts.map((artifact) => [artifact.path, artifact] as const),
+  );
+}
+
 /**
  * Run every applicable residuals leg and aggregate the verdict. Purely
  * deterministic — no model call, no network; the only side effects are the
@@ -160,6 +199,9 @@ export async function collectCompletionResiduals(
   const checkedAt = Date.now();
   const residuals: CompletionResidual[] = [];
   const workdir = input.workdir?.trim() || undefined;
+  const orchestratorOwnedArtifacts = ownedArtifactsByPath(
+    input.orchestratorOwnedArtifacts ?? [],
+  );
 
   // Envelope legs apply regardless of workspace presence: a self-reported
   // failing test contradicts "done" even for a Q&A task.
@@ -294,7 +336,15 @@ export async function collectCompletionResiduals(
     const dirty = status.stdout
       .split("\n")
       .map((line) => line.trimEnd())
-      .filter((line) => line.length > 0);
+      .filter((line) => line.length > 0)
+      .filter(
+        (line) =>
+          !isOrchestratorOwnedDirtyLine(
+            line,
+            workdir,
+            orchestratorOwnedArtifacts,
+          ),
+      );
     if (dirty.length > 0) {
       residuals.push({
         kind: "uncommitted_changes",

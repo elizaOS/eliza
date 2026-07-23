@@ -12,6 +12,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 const requireUserOrApiKeyWithOrgLookup = mock(
   async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
@@ -181,6 +182,105 @@ describe("resolveSharedAgent", () => {
     expect(findByIdAndOrg).toHaveBeenCalledWith("agent-1", "org-1");
   });
 
+  test("cache-only miss warms in waitUntil and performs no inline DB hydration", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toEqual({
+      error: "Agent authorization cache is warming. Retry shortly.",
+      status: 503,
+    });
+    expect(waited).toHaveLength(1);
+    await waited[0];
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    cacheStore.set(
+      CacheKeys.apiKey.validation(
+        createHash("sha256").update("eliza_testkey").digest("hex").substring(0, 16),
+      ),
+      { is_active: true, organization_id: "org-1", expires_at: null },
+    );
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+      }),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    expect(validateApiKey).not.toHaveBeenCalled();
+  });
+
+  test("cache-only converges for a non-shared agent: negative entry routes retries to the authoritative 404", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({
+        execution_tier: "dedicated-lazy",
+        status: "running",
+        bridge_url: "https://agent.example.test",
+      }),
+    );
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+
+    // The retry must NOT loop the warming 503: the stored negative entry sends
+    // it through the inline authoritative gate, which produces the real 404.
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, { cacheOnly: true }),
+    ).resolves.toEqual({ error: "Not a shared-runtime agent", status: 404 });
+  });
+
+  test("cache-only converges for a bootstrap-window dedicated agent: retry is served authoritatively", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({ execution_tier: "dedicated-lazy", status: "provisioning" }),
+    );
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, { cacheOnly: true }),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+  });
+
+  test("cache-only converges for a rejected credential: retry surfaces the authoritative 401", async () => {
+    const { AuthenticationError } = await import("../../api/cloud-worker-errors");
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(async () => {
+      throw AuthenticationError("Invalid or expired API key");
+    });
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, { cacheOnly: true }),
+    ).rejects.toMatchObject({ message: "Invalid or expired API key" });
+
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(
+      async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
+        user: { organization_id: "org-1", steward_id: "steward-user-1" },
+        orgLookupResult: await lookup("org-1"),
+      }),
+    );
+  });
+
   test("allows a dedicated agent only during its first bootstrap window", async () => {
     findByIdAndOrg.mockResolvedValue(
       agent({
@@ -283,14 +383,18 @@ describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
     expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
   });
 
-  test("a dedicated-bootstrap agent is never cached (time-sensitive eligibility)", async () => {
+  test("a dedicated-bootstrap agent never caches a positive scope (time-sensitive eligibility)", async () => {
     findByIdAndOrg.mockResolvedValue(
       agent({ execution_tier: "dedicated-lazy", status: "provisioning" }),
     );
 
     await resolveSharedAgent(apiKeyContext("agent-1") as never);
-    // Served (bootstrap window) but NOT written to the scope cache.
-    expect(cacheSet).not.toHaveBeenCalled();
+    // Served (bootstrap window). The only cache write allowed is the NEGATIVE
+    // marker — it routes later requests to the authoritative gate (where the
+    // time-sensitive window is re-evaluated) and can never serve a stale scope.
+    for (const call of cacheSet.mock.calls as unknown[][]) {
+      expect(call[1]).toMatchObject({ unresolvable: true });
+    }
   });
 
   test("a request carrying NEITHER an api key nor a session never touches the scope cache", async () => {
@@ -321,8 +425,19 @@ describe("resolveSharedAgent sliding TTL (COLDPATH-FIX-2026-07-22)", () => {
     requireUserOrApiKeyWithOrgLookup.mockClear();
     findByIdAndOrg.mockClear();
 
-    // Second hit within the cap: served from cache AND refreshes the TTL.
-    const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    cacheStore.set(
+      CacheKeys.apiKey.validation(
+        createHash("sha256").update("eliza_testkey").digest("hex").substring(0, 16),
+      ),
+      { is_active: true, organization_id: "org-1", expires_at: null },
+    );
+    const background: Promise<unknown>[] = [];
+    // Second hit within the cap: served from cache AND refreshes the TTL under
+    // the Worker lifetime contract.
+    const result = await resolveSharedAgent(apiKeyContext("agent-1") as never, {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (promise) => background.push(promise) },
+    });
     expect(result).toMatchObject({ agentId: "agent-1", orgId: "org-1" });
     // No cold DB waves on the hit.
     expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
@@ -331,6 +446,8 @@ describe("resolveSharedAgent sliding TTL (COLDPATH-FIX-2026-07-22)", () => {
     expect(cacheSet).toHaveBeenCalledTimes(1);
     const [, refreshedValue, ttlSeconds] = cacheSet.mock.calls[0];
     expect(ttlSeconds).toBe(CacheTTL.sharedAgentScope.resolve);
+    expect(background).toHaveLength(1);
+    await Promise.all(background);
     // firstWrittenAtMs is PRESERVED across the refresh so the cap still bounds it.
     expect((refreshedValue as { firstWrittenAtMs: number }).firstWrittenAtMs).toBe(
       firstWrittenAtMs,

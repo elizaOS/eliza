@@ -42,7 +42,12 @@ logger = logging.getLogger(__name__)
 _VENDORED_UPSTREAM_DATA = (
     Path(__file__).resolve().parent / "upstream" / "data" / "processed"
 )
-_UPSTREAM_REPO = "https://raw.githubusercontent.com/xingyaoww/mint-bench/main"
+# Pinned so a fetched corpus names an exact upstream revision instead of a
+# moving branch; override with MINT_UPSTREAM_REF for a newer snapshot.
+_UPSTREAM_REF = os.environ.get(
+    "MINT_UPSTREAM_REF", "3f7f12c10bf763be1e6dbdeb42feb57624121f61"
+)
+_UPSTREAM_REPO = f"https://raw.githubusercontent.com/xingyaoww/mint-bench/{_UPSTREAM_REF}"
 _UPSTREAM_PROCESSED_BASE_URL = f"{_UPSTREAM_REPO}/data/processed"
 _FETCH_TIMEOUT_SECONDS = 60
 

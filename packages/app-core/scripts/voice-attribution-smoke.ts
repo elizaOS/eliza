@@ -88,12 +88,15 @@ function firstExisting(...parts: string[]): string | null {
 }
 const M = {
   vad: firstExisting(
-    "silero-vad-v5.1.2.ggml.bin",
+    // The fused vad_open region loader scans for *.gguf only (it names
+    // silero-vad-v5.gguf in its diagnostic), so the GGUF must win over the
+    // legacy silero-vad-cpp .ggml.bin artifact when both are staged.
     "silero-vad-v5.gguf",
-    "vad/silero-vad-v5.1.2.ggml.bin",
     "vad/silero-vad-v5.gguf",
+    "bundles/e2b/vad/silero-vad-v5.gguf",
+    "silero-vad-v5.1.2.ggml.bin",
+    "vad/silero-vad-v5.1.2.ggml.bin",
     "voice/vad/silero-vad-v5.1.2.ggml.bin",
-    "bundles/2b/vad/silero-vad-v5.gguf",
   ),
   enc: firstExisting(
     "wespeaker-resnet34-lm.gguf",

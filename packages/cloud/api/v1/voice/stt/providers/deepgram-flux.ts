@@ -4,7 +4,8 @@
  * module owns only Flux connection setup, chunk validation, protocol event
  * mapping, and deterministic cleanup. Deepgram's semantic turn detector is the
  * only turn boundary source here, so callers must not layer local VAD decisions
- * onto these events.
+ * onto these events. Every provider URL opts out of Deepgram's Model Improvement
+ * Partnership; the privacy invariant is intentionally not runtime-configurable.
  */
 
 export const DEEPGRAM_FLUX_LISTEN_URL = "wss://api.deepgram.com/v2/listen";
@@ -22,6 +23,7 @@ const DEFAULT_EAGER_EOT_THRESHOLD = 0.35;
 const DEFAULT_EOT_THRESHOLD = 0.9;
 const DEFAULT_EOT_TIMEOUT_MS = 5_000;
 const DEFAULT_CLOSE_CODE = 1000;
+const DEFAULT_MIP_OPT_OUT = true;
 
 export type DeepgramFluxMetricName =
   | "deepgram_flux_connected"
@@ -56,6 +58,7 @@ export type DeepgramFluxConfig = {
   eagerEotThreshold: number;
   eotThreshold: number;
   eotTimeoutMs: number;
+  mipOptOut: true;
 };
 
 export type DeepgramFluxTransportRequest = {
@@ -226,6 +229,7 @@ export function resolveDeepgramFluxConfig(
       500,
       10_000,
     ),
+    mipOptOut: DEFAULT_MIP_OPT_OUT,
   };
 }
 
@@ -238,6 +242,7 @@ export function buildDeepgramFluxListenUrl(config: DeepgramFluxConfig): string {
   url.searchParams.set("eager_eot_threshold", String(config.eagerEotThreshold));
   url.searchParams.set("eot_threshold", String(config.eotThreshold));
   url.searchParams.set("eot_timeout_ms", String(config.eotTimeoutMs));
+  url.searchParams.set("mip_opt_out", String(config.mipOptOut));
   return url.toString();
 }
 

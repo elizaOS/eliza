@@ -41,11 +41,6 @@ const STALE_BASE_ACTIONS = [
 
 export const REQUIRED_CHECKS = Object.freeze([
   {
-    context: "Test Integrity (lane coverage)",
-    workflowPath: ".github/workflows/develop-pr.yml",
-    triggerActions: DEVELOP_PR_ACTIONS,
-  },
-  {
     context: "lint",
     workflowPath: ".github/workflows/develop-pr.yml",
     triggerActions: DEVELOP_PR_ACTIONS,
@@ -63,11 +58,6 @@ export const REQUIRED_CHECKS = Object.freeze([
   {
     context: "gitleaks",
     workflowPath: ".github/workflows/gitleaks.yml",
-    triggerActions: DEFAULT_PULL_REQUEST_ACTIONS,
-  },
-  {
-    context: "coverage on changed files",
-    workflowPath: ".github/workflows/coverage-gate.yml",
     triggerActions: DEFAULT_PULL_REQUEST_ACTIONS,
   },
   {

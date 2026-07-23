@@ -251,7 +251,7 @@ const SYSTEM_VIEW_METRIC_BUDGETS: Record<
   Record<AuditViewportName, AestheticMetricBudget>
 > = {
   "builtin-chat": viewportBudgets(
-    budget(520, 34, 0.34),
+    budget(520, 34, 0.31),
     budget(560, 36, 0.28),
     budget(240, 24, 0.46),
     budget(360, 28, 0.42),

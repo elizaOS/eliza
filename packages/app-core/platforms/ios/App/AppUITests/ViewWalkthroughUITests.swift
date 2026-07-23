@@ -38,7 +38,7 @@ final class ViewWalkthroughUITests: XCTestCase {
     private static let legs: [ViewLeg] = [
         ViewLeg(tile: "Settings", anyOf: ["Settings"], forbidden: []),
         ViewLeg(tile: "Wallet", anyOf: ["Wallet"], forbidden: []),
-        ViewLeg(tile: "Tasks", anyOf: ["Tasks"], forbidden: []),
+        ViewLeg(tile: "Projects", anyOf: ["Projects"], forbidden: []),
         ViewLeg(tile: "Character", anyOf: ["Character"], forbidden: []),
         ViewLeg(tile: "Relationships", anyOf: ["Relationships"], forbidden: []),
         ViewLeg(tile: "Knowledge", anyOf: ["Knowledge"], forbidden: []),

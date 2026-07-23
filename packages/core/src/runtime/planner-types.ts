@@ -165,6 +165,13 @@ export interface PlannerLoopResult {
 	trajectory: PlannerTrajectory;
 	evaluator?: EvaluatorOutput;
 	finalMessage?: string;
+	/**
+	 * Marks a turn whose empty `finalMessage` is a designed outcome — the
+	 * planner ended on STOP/IGNORE or a `suppressPlannerReply` terminal action —
+	 * so the tool-turn reply guarantee (`runPlannerLoop`'s post-pass) never
+	 * "fixes" deliberate silence into a synthesized reply.
+	 */
+	endedWithDeliberateSilence?: boolean;
 }
 
 export interface PlannerLoopParams {
