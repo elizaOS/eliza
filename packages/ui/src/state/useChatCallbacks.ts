@@ -224,7 +224,7 @@ async function resolveRestoredConversationWithMessages(
 /**
  * Hydrate the app's single active conversation on boot.
  *
- * INVARIANT: the ContinuousChatOverlay is mounted over EVERY surface, so the
+ * INVARIANT: the ChatOverlay is mounted over EVERY surface, so the
  * chat must ALWAYS end up with an active, greeted conversation — never an empty
  * thread — regardless of which route the shell launched on. So when the server
  * has zero conversations this ALWAYS creates one with a bootstrap greeting (it

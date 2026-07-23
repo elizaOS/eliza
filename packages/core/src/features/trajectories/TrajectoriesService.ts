@@ -2394,7 +2394,7 @@ export class TrajectoriesService extends Service {
 		}
 		if (options.search) {
 			// Single-pass escape so LIKE-wildcard escapes do not introduce
-			// unescaped backslashes (CodeQL js/incomplete-sanitization).
+			// unescaped backslashes.
 			const escaped = options.search.replace(/[\\'%_]/g, (ch) => {
 				if (ch === "'") return "''";
 				if (ch === "\\") return "\\\\";

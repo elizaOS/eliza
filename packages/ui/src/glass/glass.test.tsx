@@ -92,7 +92,7 @@ describe("glass tokens", () => {
   });
 
   it("exposes the chat-sheet material as tokens the overlay consumes", () => {
-    // ContinuousChatOverlay renders its frosted panel from these exact tokens
+    // ChatOverlay renders its frosted panel from these exact tokens
     // (not a hand-rolled inline recipe), so the chat sheet is a genuine
     // liquid-glass SYSTEM surface. If either drifts, the overlay drifts with it.
     expect(GLASS_SHEET_FILL).toBe(

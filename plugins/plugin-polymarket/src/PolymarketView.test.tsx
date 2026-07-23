@@ -203,9 +203,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
-  document.documentElement.style.removeProperty(
-    "--eliza-continuous-chat-clearance",
-  );
+  document.documentElement.style.removeProperty("--eliza-chat-clearance");
 });
 
 function mockMobileBottomComposerClearance(): () => void {
@@ -231,10 +229,7 @@ function mockMobileBottomComposerClearance(): () => void {
       dispatchEvent: vi.fn(),
     })),
   });
-  document.documentElement.style.setProperty(
-    "--eliza-continuous-chat-clearance",
-    "96px",
-  );
+  document.documentElement.style.setProperty("--eliza-chat-clearance", "96px");
   return () => {
     if (originalInnerWidth) {
       Object.defineProperty(window, "innerWidth", originalInnerWidth);
@@ -243,9 +238,7 @@ function mockMobileBottomComposerClearance(): () => void {
       configurable: true,
       value: originalMatchMedia,
     });
-    document.documentElement.style.removeProperty(
-      "--eliza-continuous-chat-clearance",
-    );
+    document.documentElement.style.removeProperty("--eliza-chat-clearance");
   };
 }
 

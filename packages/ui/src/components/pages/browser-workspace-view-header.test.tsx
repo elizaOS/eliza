@@ -108,8 +108,8 @@ describe("BrowserWorkspaceView uniform header (#13596)", () => {
     });
 
     it("keeps the empty bridge actions clear of the continuous chat composer", () => {
-      expect(source).toContain("--eliza-continuous-chat-clearance");
-      expect(source).toContain("--eliza-continuous-chat-side-clearance");
+      expect(source).toContain("--eliza-chat-clearance");
+      expect(source).toContain("--eliza-chat-side-clearance");
     });
   });
 });

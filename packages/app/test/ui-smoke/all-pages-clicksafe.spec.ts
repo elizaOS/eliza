@@ -1577,7 +1577,7 @@ async function clickSafeAllowlist(
   const legacyHeaderToggle = page.getByTestId("header-tasks-events-toggle");
   const clickedLegacyHeaderToggle = await clickIfVisible(legacyHeaderToggle);
   if (clickedLegacyHeaderToggle) {
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 60_000,
     });
   } else {

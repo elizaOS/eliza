@@ -1,7 +1,7 @@
 /**
  * In-chat tutorial conductor (headless). While the tutorial service is active
  * it seeds one assistant turn per script step into the SAME live transcript
- * the floating `ContinuousChatOverlay` renders, narrates each turn through the
+ * the floating `ChatOverlay` renders, narrates each turn through the
  * app's real voice engine, and auto-advances when the cheap observation for
  * the current step fires (a real user message, a live voice transcript, the
  * Settings tab, a fresh conversation). Nothing is locked or dimmed: the user

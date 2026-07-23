@@ -53,7 +53,7 @@ import {
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
 } from "../utils/cloud-agent-base";
-import { getElizaApiBase } from "../utils/eliza-globals";
+import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import {
   detectExistingFirstRunConnection,
   type ExistingFirstRunProbeResult,
@@ -830,7 +830,17 @@ export async function runRestoringSession(
   // gate will use), so start the /api/auth/me probe now — it overlaps the
   // polling/hydration phases instead of serializing after first paint. See
   // primeAuthStatusProbe for why a mid-boot 503 outcome is discarded.
-  primeAuthStatusProbe();
+  // Skip the prime for a credential-less remote/cloud restore: /api/auth/me
+  // cannot answer authoritatively without a bearer token, and the poll phase
+  // may route that restore to pairing-required (which never mounts the shell,
+  // so the post-paint hook — which covers every painted path — never fires).
+  if (
+    restoredActiveServer.kind === "local" ||
+    restoredActiveServer.accessToken ||
+    getElizaApiToken()
+  ) {
+    primeAuthStatusProbe();
+  }
 
   ctxRef.current = {
     persistedActiveServer,

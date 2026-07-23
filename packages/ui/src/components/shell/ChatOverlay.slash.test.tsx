@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
-import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
+import { ChatOverlay } from "./ChatOverlay";
 import type { ShellController } from "./useShellController";
 
 beforeAll(() => {
@@ -145,7 +145,7 @@ function renderOverlay(
   slash: SlashCommandController,
   controller = makeController(),
 ) {
-  render(<ContinuousChatOverlay controller={controller} slash={slash} />);
+  render(<ChatOverlay controller={controller} slash={slash} />);
   expect(
     (screen.getByLabelText("message") as HTMLTextAreaElement).placeholder,
   ).toBe("Ask Eliza");
@@ -155,7 +155,7 @@ function renderOverlay(
   };
 }
 
-describe("ContinuousChatOverlay slash commands", () => {
+describe("ChatOverlay slash commands", () => {
   it("opens the menu listing commands when the draft starts with /", () => {
     const { input } = renderOverlay(makeSlash());
     fireEvent.change(input, { target: { value: "/" } });
@@ -314,7 +314,7 @@ describe("ContinuousChatOverlay slash commands", () => {
   });
 
   it("renders no menu when no slash controller is provided", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "/settings" },
     });

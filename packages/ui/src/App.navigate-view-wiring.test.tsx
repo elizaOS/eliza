@@ -661,12 +661,12 @@ describe("App navigate-view event wiring", () => {
     expect(
       container
         .querySelector('[data-shell-content-region="true"]')
-        ?.className.includes("pb-[var(--eliza-continuous-chat-clearance"),
+        ?.className.includes("pb-[var(--eliza-chat-clearance"),
     ).toBe(true);
     expect(
       container
         .querySelector('[data-shell-content-region="true"]')
-        ?.className.includes("pe-[var(--eliza-continuous-chat-side-clearance"),
+        ?.className.includes("pe-[var(--eliza-chat-side-clearance"),
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();

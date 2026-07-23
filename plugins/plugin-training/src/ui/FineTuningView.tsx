@@ -2300,10 +2300,10 @@ export function FineTuningDashboard({
     <ContentLayout contentHeader={contentHeader}>
       <div
         data-testid="fine-tuning-view"
-        className="chat-native-scrollbar eliza-continuous-chat-scroll space-y-4 overflow-y-auto pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1rem)]"
+        className="chat-native-scrollbar eliza-chat-scroll space-y-4 overflow-y-auto pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1rem)]"
         style={{
           maxHeight:
-            "calc(100dvh - var(--eliza-mobile-nav-offset, 0px) - max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) - var(--eliza-continuous-chat-clearance, 5.25rem) - 3rem)",
+            "calc(100dvh - var(--eliza-mobile-nav-offset, 0px) - max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) - var(--eliza-chat-clearance, 5.25rem) - 3rem)",
         }}
       >
         <section className="px-2 py-2">

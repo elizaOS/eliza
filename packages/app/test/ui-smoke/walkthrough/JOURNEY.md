@@ -35,14 +35,14 @@ journey.
 - Install page diagnostics before navigation and fail on unhandled `pageerror`,
   unexpected `console.error`, and unexpected `5xx` responses.
 - Prefer stable selectors already used by smoke tests:
-  - Chat overlay: `[data-testid="continuous-chat-overlay"]`
+  - Chat overlay: `[data-testid="chat-overlay"]`
   - Chat sheet: `[data-testid="chat-sheet"]`
   - Chat grabber: `[data-testid="chat-sheet-grabber"]`
   - Composer: `[data-testid="chat-composer-textarea"]`
   - Send: `[data-testid="chat-composer-action"]`
   - Chat thread lines: `[data-testid="thread-line"]`
   - First-run setup: assert the shell overlay plus
-    `[data-testid="continuous-chat-overlay"]`; runtime choices use
+    `[data-testid="chat-overlay"]`; runtime choices use
     `[data-testid="choice-__first_run__:runtime:<id>"]`, the provider step uses
     `[data-testid="choice-__first_run__:provider:<id>"]`, and the
     completion gate remains
@@ -80,7 +80,7 @@ journey.
 ## Open Surface Decision
 
 The web `/chat` route is overlay-only. The desktop-only full `ChatView` owns the
-per-message copy/edit/delete rail; `ContinuousChatOverlay` currently supports
+per-message copy/edit/delete rail; `ChatOverlay` currently supports
 long-press/tap transcript copy but not the full rail. Step 11 through step 14
 must choose one of these paths before automation:
 
@@ -96,13 +96,13 @@ and named in the final evidence.
 
 | Step | Action | Expected state | Required assertions | Capture |
 | --- | --- | --- | --- | --- |
-| 1 | Cold app launch | The app shell loads from `/` without first-run completion. A warming/startup surface renders, then the home + chat transcript first-run choices appear. | No page errors; no unexpected `console.error`; no unexpected `5xx`; `[data-testid="continuous-chat-overlay"]` + transcript runtime choices visible within 20s when first-run is incomplete. | `01-cold-launch.png` |
+| 1 | Cold app launch | The app shell loads from `/` without first-run completion. A warming/startup surface renders, then the home + chat transcript first-run choices appear. | No page errors; no unexpected `console.error`; no unexpected `5xx`; `[data-testid="chat-overlay"]` + transcript runtime choices visible within 20s when first-run is incomplete. | `01-cold-launch.png` |
 | 2 | Onboarding | The chat transcript owns runtime/provider setup. | Runtime prompt visible; `choice-__first_run__:runtime:cloud`, `:local`, and `:remote` visible (no `:other`). | `02-onboarding-runtime.png` |
 | 3 | Agent provisioning | Choosing the selected runtime leads to a provisioning or ready state; the app does not stay stuck on waking/provisioning copy. | Status changes are observed through the real startup/provisioning selectors used by existing smoke tests; ready route eventually exposes the chat composer. | `03-provisioning-ready.png` |
 | 4 | Send + receive voice | Voice input can populate the composer, a message can be sent, the assistant reply renders, and TTS endpoint wiring is exercised when enabled. | STT transcript appears in `[data-testid="chat-composer-textarea"]`; stream POST body includes the transcript; assistant `[data-testid="thread-line"]` appears; TTS mock records assistant text + voice/model payload. | `04-voice-round-trip.png` |
 | 5 | Type to navigate to Character view | A chat command switches the active route to the character editor. | Composer sends the command; navigation reaches `/character`; `[data-testid="character-editor-view"]` visible. | `05-chat-navigate-character.png` |
 | 6 | Edit character | The Personality panel opens, the `About Me` field accepts a unique text edit, Save persists it, and reload reads the same value back. | `Open Personality` button visible; `About Me` textbox or placeholder `Describe who your agent is` visible; `PUT /api/character` observed in live mode; reload shows the unique value. | `06-character-edit-persist.png` |
-| 7 | Pull chat up / maximize | The overlay opens from rest to a full-height detent. | `[data-testid="continuous-chat-overlay"]` has `data-open="true"`; `[data-testid="chat-sheet"]` reaches `data-detent="full"` and, when the maximize control is used, `data-maximized="true"`. | `07-chat-full-detent.png` |
+| 7 | Pull chat up / maximize | The overlay opens from rest to a full-height detent. | `[data-testid="chat-overlay"]` has `data-open="true"`; `[data-testid="chat-sheet"]` reaches `data-detent="full"` and, when the maximize control is used, `data-maximized="true"`. | `07-chat-full-detent.png` |
 | 8 | New chat | A fresh conversation is created without losing the prior thread. | New conversation control or API call creates a new conversation; prior conversation remains selectable through the conversation surface/API; composer is empty for the new thread. | `08-new-chat.png` |
 | 9 | Press home | The app exits full chat and returns to the home/dashboard surface with the chat collapsed. | URL or shell state indicates home/dashboard; chat overlay no longer has `data-open="true"` or `chat-sheet` returns to collapsed/pill. | `09-home-from-chat.png` |
 | 10 | Swipe back to last chat | Conversation navigation restores the previous thread and scroll position. | Previous user and assistant `[data-testid="thread-line"]` entries are visible after switching; scroll offset is within an asserted tolerance of the saved value. | `10-restore-last-chat.png` |
@@ -149,9 +149,9 @@ the real backend agent + model and writes the trajectory to
 
 | Step | Action | Expected state | Required assertions | Capture |
 | --- | --- | --- | --- | --- |
-| 01 | Cold app launch | `/` loads with first-run incomplete; the chat transcript renders first-run choices over the app shell. | No page error / no `console.error` / no 5xx; `continuous-chat-overlay` + transcript choices visible ≤20s; removed `first-run-chat`/`startup-first-run-background` absent. | `01-cold-launch.png` |
+| 01 | Cold app launch | `/` loads with first-run incomplete; the chat transcript renders first-run choices over the app shell. | No page error / no `console.error` / no 5xx; `chat-overlay` + transcript choices visible ≤20s; removed `first-run-chat`/`startup-first-run-background` absent. | `01-cold-launch.png` |
 | 02 | Onboarding runtime choice | The chat transcript asks how the agent should run. | Runtime prompt visible; `choice-__first_run__:runtime:cloud` / `:local` / `:remote` visible (no `:other`). | `02-onboarding-runtime.png` |
-| 03 | Choose runtime → tutorial → ready | Picking Local advances to the provider step, then provisioning, then the tutorial-or-skip CHOICE flips first-run complete. | `choice-__first_run__:runtime:local` → `choice-__first_run__:provider:on-device` → `choice-__first_run__:tutorial:skip`; first-run flips complete; `continuous-chat-overlay` + `chat-composer-textarea` reachable. | `03-provisioning-ready.png` |
+| 03 | Choose runtime → tutorial → ready | Picking Local advances to the provider step, then provisioning, then the tutorial-or-skip CHOICE flips first-run complete. | `choice-__first_run__:runtime:local` → `choice-__first_run__:provider:on-device` → `choice-__first_run__:tutorial:skip`; first-run flips complete; `chat-overlay` + `chat-composer-textarea` reachable. | `03-provisioning-ready.png` |
 | 04 | Chat-native tutorial | The `/tutorial` launcher starts the in-chat tour. | `tutorial-launcher` visible; welcome turn + `choice-__tutorial__:next:welcome` in the transcript; all six steps walked (send-message via a real composer send). | `04-tutorial.png` |
 | 05 | Typed tutorial commands | "restart tutorial" / "stop tutorial" typed in the composer drive the tour. | fresh welcome turn after restart; `Tutorial stopped` acknowledgment after stop. | `05-tutorial-commands.png` |
 | 06 | Open settings | The Settings shell opens. | `settings-shell` visible; "Models & Providers" section opened. | `06-settings-open.png` |
@@ -162,7 +162,7 @@ the real backend agent + model and writes the trajectory to
 | 11 | Edit character personality | Personality panel opens; About Me edited. | field filled; **live-persist**: `PUT /api/character` + reload read-back matches. | `11-character-edit.png` |
 | 12 | Start a new chat | Fresh conversation; composer empty. | new conversation created; composer value empty for the new thread. | `12-new-chat.png` |
 | 13 | Return home from chat | Home/dashboard shows, chat collapsed. | `widget-host-home` / `home-launcher-surface` visible; overlay not `data-open=true`. | `13-home-from-chat.png` |
-| 14 | Restore the conversation | Reopening chat restores the prior thread. | `continuous-chat-overlay` visible; prior `thread-line` restored. | `14-restore-chat.png` |
+| 14 | Restore the conversation | Reopening chat restores the prior thread. | `chat-overlay` visible; prior `thread-line` restored. | `14-restore-chat.png` |
 | 15 | Copy a message | A message exposes selectable/copyable text. | `data-chat-selectable="true"` (or message text) captured. | `15-copy-message.png` |
 | 16 | Paste large text → attachment | Large paste collapses to a `pasted-text.md` chip. | clipboard paste event dispatched; `pasted-text.md` chip visible; composer value stays short. | `16-paste-large.png` |
 | 17 | Clear the draft | Draft cleared, no pending chip. | composer value empty. | `17-clear-draft.png` |
@@ -171,6 +171,6 @@ the real backend agent + model and writes the trajectory to
 | 20 | Focus the composer | Clicking the composer focuses it. | `document.activeElement` is the composer textarea. | `20-input-focused.png` |
 | 21 | Open the view launcher | Launcher grid shows. | `launcher` visible; ≥1 `launcher-tile-*`. | `21-launcher.png` |
 | 22 | Launch a view | A tile launches a real view. | first tile clicked; URL leaves `/views`. | `22-launch-view.png` |
-| 23 | Open chat over the view | Focusing the composer opens chat over the launched view without remounting it. | composer reachable over the view; `continuous-chat-overlay` present; route still on the view. | `23-chat-over-view.png` |
+| 23 | Open chat over the view | Focusing the composer opens chat over the launched view without remounting it. | composer reachable over the view; `chat-overlay` present; route still on the view. | `23-chat-over-view.png` |
 | 24 | Edit a setting (persist + read-back) | A settings toggle changes and persists. | Capabilities → `capability-wallet` `aria-checked` flips; **live-persist**: `PUT /api/config` + reload read-back. | `24-settings-edit.png` |
 | 25 | Back to dashboard | App returns home; no diagnostics accumulated. | home surface visible; gate (page/console errors + 5xx) clean over the whole journey. | `25-dashboard-rest.png` |

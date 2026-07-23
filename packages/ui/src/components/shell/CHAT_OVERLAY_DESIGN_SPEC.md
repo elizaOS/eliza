@@ -1,6 +1,6 @@
 # ChatOverlay — liquid-glass system surface (design spec)
 
-The design spec for `ContinuousChatOverlay.tsx` as a **liquid-glass system
+The design spec for `ChatOverlay.tsx` as a **liquid-glass system
 surface**: hierarchy, materials, contrast, motion, focus, scrolling, resize,
 reduced-motion, and keyboard/touch. The detent/gesture state machine — the
 resting states, transition table, and gesture vocabulary — is the companion

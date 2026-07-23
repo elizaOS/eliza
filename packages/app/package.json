@@ -114,6 +114,7 @@
     "build:android:chat-harness": "ELIZA_CHAT_UI_HARNESS=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android",
     "build:android:cloud": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:cloud:debug": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
+    "build:android:lp3-cloud:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:system": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-system",
     "preflight:android:sideload": "node scripts/mobile-release-preflight.mjs --platform=android --sideload",
     "preflight:android:store": "node scripts/mobile-release-preflight.mjs --platform=android --store",

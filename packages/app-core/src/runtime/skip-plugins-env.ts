@@ -26,12 +26,14 @@ export function mergedRecoverySkipPlugins(
   operatorSkipPlugins: string | undefined,
   recovery: string[],
 ): string {
-  const merged = new Set(
-    (operatorSkipPlugins ?? "")
-      .split(",")
-      .map((name) => name.trim())
-      .filter(Boolean),
-  );
+  const operatorPlugins =
+    operatorSkipPlugins === undefined
+      ? []
+      : operatorSkipPlugins
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean);
+  const merged = new Set(operatorPlugins);
   for (const name of recovery) merged.add(name);
   return [...merged].join(",");
 }

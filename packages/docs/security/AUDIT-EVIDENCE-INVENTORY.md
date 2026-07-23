@@ -79,7 +79,7 @@ What an auditor will request, who owns it, where it lives, and how it is produce
 |---|---|---|---|
 | CI dependency-audit output | Engineering Lead | CI logs | Per PR |
 | Trivy scan output | Engineering Lead | CI logs | Per image |
-| CodeQL / Semgrep results | Engineering Lead | CI logs | Per PR |
+| Semgrep results | Engineering Lead | CI logs | Per PR |
 | Secret-scan results | Engineering Lead | CI logs | Per PR |
 | Open-vuln backlog | Security Lead | Issue tracker | Continuous |
 | Disclosure-program report | Security Lead | Drive | Quarterly |

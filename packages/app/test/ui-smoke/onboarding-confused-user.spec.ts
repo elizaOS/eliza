@@ -121,7 +121,7 @@ test.describe("confused-user onboarding", () => {
     // The "just type at it" instinct — modeled by the same programmatic prefill
     // path the app uses (CHAT_PREFILL_EVENT) — is IGNORED while onboarding is
     // open: the draft is never set and nothing is sent. (The unit suite
-    // ContinuousChatOverlay.firstrun.test asserts the same behavior at the seam.)
+    // ChatOverlay.firstrun.test asserts the same behavior at the seam.)
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent("eliza:chat:prefill", {

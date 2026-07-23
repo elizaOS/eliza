@@ -7,6 +7,13 @@ export type ViewCase = {
   viewType: "gui";
   path: string;
   shellPill: "expected" | "suppressed";
+  /**
+   * Minimum normalized `<main>` innerText length that counts as "loaded".
+   * Views whose designed keyless empty state is a single short word (the
+   * focus view renders just "Idle", the feed just "Feed") override the
+   * default so the load heuristic cannot false-negative on them.
+   */
+  minVisibleTextLength: number;
 };
 
 type ViewCaseTuple = readonly [
@@ -14,7 +21,8 @@ type ViewCaseTuple = readonly [
   viewType: ViewCase["viewType"],
   path: string,
   options?: {
-    shellPill: ViewCase["shellPill"];
+    shellPill?: ViewCase["shellPill"];
+    minVisibleTextLength?: number;
   },
 ];
 
@@ -27,7 +35,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["cloud", "gui", "/cloud"],
     ["contacts", "gui", "/contacts"],
     ["hyperliquid", "gui", "/hyperliquid"],
-    ["focus", "gui", "/focus"],
+    ["focus", "gui", "/focus", { minVisibleTextLength: 4 }],
     ["calendar", "gui", "/calendar"],
     ["documents", "gui", "/documents"],
     ["finances", "gui", "/finances"],
@@ -43,7 +51,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["polymarket", "gui", "/polymarket"],
     ["wallet", "gui", "/wallet"],
     ["vector-browser", "gui", "/vector-browser"],
-    ["feed", "gui", "/feed"],
+    ["feed", "gui", "/feed", { minVisibleTextLength: 4 }],
     ["views-manager", "gui", "/views"],
     ["screenshare", "gui", "/screenshare"],
     ["task-coordinator", "gui", "/task-coordinator"],
@@ -57,4 +65,5 @@ export const VIEW_CASES: ViewCase[] = (
   viewType,
   path: viewPath,
   shellPill: options?.shellPill === "suppressed" ? "suppressed" : "expected",
+  minVisibleTextLength: options?.minVisibleTextLength ?? 21,
 }));

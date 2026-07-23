@@ -1,5 +1,5 @@
 // Conversation persistence coverage for the REAL web chat surface (the
-// continuous-chat overlay on /chat). A message sent through the overlay must
+// chat overlay on /chat). A message sent through the overlay must
 // survive a full page reload — the reloaded shell rehydrates the active
 // conversation from GET /api/conversations + GET .../messages and re-renders
 // the thread. Keyless against a stateful in-spec store.
@@ -7,7 +7,7 @@
 // SCOPE NOTE — page-scoped clear is intentionally NOT driven here. The old
 // in-chrome page-scoped chat rail was removed; the web /chat route is
 // overlay-only and the overlay carries no per-conversation clear/truncate
-// affordance (ContinuousChatOverlay.tsx). So no keyless web route exposes the
+// affordance (ChatOverlay.tsx). So no keyless web route exposes the
 // clear control; that path stays covered by the component tests. This spec
 // asserts the reachable half: send + persistence.
 
@@ -163,7 +163,7 @@ test("chat overlay: a sent message persists across a full page reload", async ({
   page,
 }) => {
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 
@@ -189,7 +189,7 @@ test("chat overlay: a sent message persists across a full page reload", async ({
   // Reload: a fresh shell must rehydrate the same conversation thread from the
   // persistent store (GET conversations -> GET messages), not start empty.
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 
@@ -200,7 +200,7 @@ test("chat overlay: a sent message persists across a full page reload", async ({
   await expect(grabber).toBeVisible({ timeout: 15_000 });
   await grabber.focus();
   await page.keyboard.press("ArrowUp");
-  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
     "data-open",
     "true",
     { timeout: 10_000 },

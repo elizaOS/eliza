@@ -696,7 +696,7 @@ test("automations empty state remains reachable beside chat in short landscape",
     () =>
       Number.parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue(
-          "--eliza-continuous-chat-side-clearance",
+          "--eliza-chat-side-clearance",
         ),
       ) > 0,
   );

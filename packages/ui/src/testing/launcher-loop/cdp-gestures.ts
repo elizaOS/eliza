@@ -51,6 +51,14 @@ export interface LauncherObservation {
   readonly railTransformX: number;
   readonly homeInert: boolean;
   readonly launcherInert: boolean;
+  /**
+   * Whether the surface renders separate home/launcher halves. The combined
+   * home surface (App.tsx) embeds the launcher grid on one page with no
+   * halves; the half-inert invariant is only meaningful when this is true.
+   * Optional so drivers for the two-half layout (fixture, native lanes) need
+   * not set it — absent means "halves exist" (strict).
+   */
+  readonly hasHalves?: boolean;
   readonly activeElementInInert: boolean;
   readonly launchCount: number;
   readonly viewportWidth: number;
@@ -217,6 +225,10 @@ function readObservation(sel: ReaderSelectors): LauncherObservation {
       : 0,
     homeInert: homePage ? homePage.hasAttribute("inert") : false,
     launcherInert: launcherPage ? launcherPage.hasAttribute("inert") : false,
+    // The combined home surface (App.tsx) renders no separate home/launcher
+    // halves at all; the exactly-one-half-inert invariant only applies to the
+    // two-half HomeLauncherSurface layout (fixture + native lanes).
+    hasHalves: Boolean(homePage || launcherPage),
     activeElementInInert: activeInInert,
     launchCount,
     viewportWidth: window.innerWidth,

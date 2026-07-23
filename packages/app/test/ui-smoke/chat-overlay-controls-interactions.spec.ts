@@ -1,4 +1,4 @@
-// Interaction coverage for the continuous-chat overlay — the REAL web chat
+// Interaction coverage for the chat overlay — the REAL web chat
 // surface (the per-message copy/edit/delete action rail lives on the desktop-only
 // full ChatView, which the web app never renders). Drives the overlay's own
 // controls: the pull-up chat (open on send / collapse on Escape / collapse on
@@ -108,7 +108,7 @@ test("chat overlay: sending opens the chat, click-out collapses, Escape collapse
   page,
 }) => {
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   // Collapsed at rest (just the input); sending a line springs the chat open.
@@ -123,7 +123,7 @@ test("chat overlay: sending opens the chat, click-out collapses, Escape collapse
   // Sending leaves the composer focused (keyboard up). Tapping the dimming
   // scrim is a two-step gesture by design: the FIRST tap only drops the
   // keyboard (returning to the prior detent), the SECOND tap collapses the
-  // chat back to the input. (See ContinuousChatOverlay: composerFocusedAtPress
+  // chat back to the input. (See ChatOverlay: composerFocusedAtPress
   // + dismissKeyboardToPriorState — "first tap drops keyboard, second closes".)
   const backdrop = page.getByTestId("chat-sheet-backdrop");
   await backdrop.click({ position: { x: 14, y: 14 }, force: true });
@@ -147,7 +147,7 @@ test("chat overlay: the + menu's Upload file opens an image picker", async ({
   page,
 }) => {
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 
@@ -171,7 +171,7 @@ test("chat overlay: transcript text is selectable and the transcribe toggle is p
   page,
 }) => {
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   // The mic dictation toggle is an intentional trailing composer control
@@ -221,7 +221,7 @@ test("chat overlay: long transcript scrolls inside the conversation log", async 
 }) => {
   await installScrollableConversationRoutes(page);
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   await page.getByTestId("chat-composer-textarea").focus();

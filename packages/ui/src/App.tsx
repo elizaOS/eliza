@@ -66,9 +66,9 @@ import { PermissionPrimingOverlay } from "./components/permissions/PermissionPri
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
+import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
-import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -145,7 +145,10 @@ import {
   firstRunOwnsLoginSurface,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
-import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
+import {
+  isBootstrapGateRequired,
+  isLoopbackGatewayHost,
+} from "./state/use-startup-shell-controller";
 import {
   SurfaceRealmScope,
   setActiveSurfaceRealmScope,
@@ -605,7 +608,7 @@ function TabScrollView({
       main={
         <div
           data-shell-scroll-region="true"
-          className={`eliza-continuous-chat-scroll flex-1 min-h-0 min-w-0 w-full overflow-y-auto pb-[var(--eliza-continuous-chat-clearance,5.25rem)] pe-[var(--eliza-continuous-chat-side-clearance,0px)] ${className}`}
+          className={`eliza-chat-scroll flex-1 min-h-0 min-w-0 w-full overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)] ${className}`}
         >
           {children}
         </div>
@@ -634,7 +637,7 @@ function TabContentView({
       main={
         <div
           data-shell-content-region="true"
-          className="eliza-continuous-chat-scroll flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden pb-[var(--eliza-continuous-chat-clearance,5.25rem)] pe-[var(--eliza-continuous-chat-side-clearance,0px)]"
+          className="eliza-chat-scroll flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
         >
           {children}
         </div>
@@ -1261,7 +1264,7 @@ function ViewLayoutSurface({
           className={`grid min-h-0 flex-1 gap-2 overflow-auto p-2 ${viewLayoutGridClass(
             layout,
             entries.length,
-          )} eliza-continuous-chat-scroll pb-[calc(0.5rem+var(--eliza-continuous-chat-clearance,5.25rem))]`}
+          )} eliza-chat-scroll pb-[calc(0.5rem+var(--eliza-chat-clearance,5.25rem))]`}
         >
           {entries.length > 0 ? (
             entries.map((view) => (
@@ -1304,7 +1307,7 @@ function ViewLayoutSurface({
 
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
- * ContinuousChatOverlay that floats over every view — views never embed an
+ * ChatOverlay that floats over every view — views never embed an
  * inline ChatView — so an unavailable view falls back to the Launcher page
  * of the retained Home/Launcher surface, not a chat surface.
  */
@@ -1418,7 +1421,7 @@ function buildStaticTabRenderers(): Record<
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">
           <ViewHeader title={titleForTab("files")} />
-          <div className="eliza-continuous-chat-scroll min-h-0 flex-1 overflow-y-auto pb-[var(--eliza-continuous-chat-clearance,5.25rem)]">
+          <div className="eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)]">
             <FilesView />
           </div>
         </div>
@@ -1615,12 +1618,33 @@ function ViewRouter({
   settingsNavigateSequence?: number;
 }) {
   const activeTab = useAppSelector((s) => s.tab);
+  const setActiveTab = useAppSelector((s) => s.setTab);
   const tab = routeOverride?.tab ?? activeTab;
   // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
   // camera + the home tiles + the launcher tiles) — never rendered on web,
   // desktop, iOS, or stock Play-Store Android, even via a deep link.
   const nativeOsSurfaceEnabled = isAospShellEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
+  // Late plugin registrations can land AFTER the boot path→tab resolution: a
+  // direct deep link to a plugin-owned page (e.g. /phone-companion) resolves
+  // to the "views" fallback because registerAppShellPage runs on the deferred
+  // idle pump, after first paint. Re-derive the tab for the current path on
+  // every registry change and adopt the now-registered page. Correcting only
+  // away from the "views" fallback means user navigation is never fought —
+  // for a fixed path, tabFromPath's answer only changes when a registration
+  // lands.
+  const shellPageRegistryVersion = useAppShellPageRegistryVersion();
+  useEffect(() => {
+    // The version is the re-run trigger (same pattern as useResolvedDynamicPage).
+    void shellPageRegistryVersion;
+    if (routeOverride) return;
+    if (activeTab !== "views") return;
+    if (typeof window === "undefined") return;
+    const resolved = tabFromPath(getWindowNavigationPath());
+    if (resolved && resolved !== "views") {
+      setActiveTab(resolved);
+    }
+  }, [shellPageRegistryVersion, routeOverride, activeTab, setActiveTab]);
   const [navigationPath, setNavigationPath] = useState(
     () =>
       routeOverride?.navigationPath ??
@@ -1736,7 +1760,7 @@ type ShellContentProps = {
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
-  // always-present ContinuousChatOverlay (mounted at the shell root), which is
+  // always-present ChatOverlay (mounted at the shell root), which is
   // the whole chat experience. Ask it anything, or ask it to open a view ("show
   // me the coding view") which surfaces over this base. The home is wordless,
   // sitting directly on the unified app background (mounted once at the shell
@@ -1784,7 +1808,7 @@ function routedShellMainClass(tab: string): string {
  * The single routed shell for every view. ViewRouter already resolves every tab
  * — static page views, dynamic plugin pages, and remote view bundles — so the
  * shell only adds the desktop tab bar and per-tab padding around it. Chat is the
- * always-present ContinuousChatOverlay floating over this base, never embedded
+ * always-present ChatOverlay floating over this base, never embedded
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
@@ -1930,12 +1954,12 @@ function ShellFoundationMount() {
 
 /**
  * Reads the shared shell controller from context and renders the always-present
- * continuous chat overlay — one ambient glass conversation (the app's single
+ * chat overlay — one ambient glass conversation (the app's single
  * active conversation via useShellController) that floats over every view,
  * including the /chat route's ambient home. Returns null until a controller
  * provider is present.
  */
-function ContinuousChatOverlayMount(): ReactNode {
+function ChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
     useAppSelectorShallow((s) => ({
@@ -1959,7 +1983,7 @@ function ContinuousChatOverlayMount(): ReactNode {
   const agentName =
     characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
   return (
-    <ContinuousChatOverlay
+    <ChatOverlay
       controller={controller}
       agentName={agentName}
       slash={slash}
@@ -2088,6 +2112,17 @@ function AppContent() {
   // Runtime-dependent effects and overlay apps below stay gated on
   // `isCoordinatorReady` and defer safely.
   const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
+  // Cloud-container bootstrap: first-run-required is shell-paintable (in-chat
+  // onboarding), but a provisioned container without a bootstrap session must
+  // still hold the full-screen StartupScreen so its token gate can run — the
+  // shell controller computes the matching `bootstrap` view.
+  const firstRunCloudProvisionedContainer = useAppSelector(
+    (s) => s.firstRunCloudProvisionedContainer,
+  );
+  const bootstrapGateHolds = isBootstrapGateRequired(
+    startupCoordinator.phase,
+    firstRunCloudProvisionedContainer,
+  );
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -2691,7 +2726,7 @@ function AppContent() {
     );
   }
 
-  if (!isShellPaintableNow) {
+  if (!isShellPaintableNow || bootstrapGateHolds) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />
@@ -2964,7 +2999,7 @@ function AppContent() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         {/*
-          Continuous chat overlay (ContinuousChatOverlay) — one ambient glass
+          Chat overlay (ChatOverlay) — one ambient glass
           conversation (the app's single active conversation via
           useShellController) that floats over EVERY view, including the /chat
           route (whose base is now just ambient space). It survives tab/view
@@ -2972,7 +3007,7 @@ function AppContent() {
           is pointer-events-none except its own composer/messages, so the view
           behind stays live.
         */}
-        <ContinuousChatOverlayMount />
+        <ChatOverlayMount />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the
