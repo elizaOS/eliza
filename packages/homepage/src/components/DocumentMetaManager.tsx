@@ -15,15 +15,18 @@ export function DocumentMetaManager(): null {
     const title = t("homepage_eliza.meta.title", {
       defaultValue: "Eliza — your agent, everywhere",
     });
-    const description = t("homepage_eliza.meta.description", {
+    // Deck-era copy uses fresh keys so stale locale translations of the old
+    // marketing copy cannot override the current messaging.
+    const description = t("homepage_eliza.meta.deckDescription", {
       defaultValue:
-        "Eliza — your agent, everywhere. Desktop, mobile, and cloud, all running the same Eliza.",
+        "There’s nothing wrong with you. You’re just overwhelmed. Eliza manages your digital life so you can live your real one.",
     });
-    const ogTitle = t("homepage_eliza.meta.ogTitle", {
-      defaultValue: "Eliza — your agent, everywhere",
+    const ogTitle = t("homepage_eliza.meta.deckOgTitle", {
+      defaultValue: "Eliza — you’re just overwhelmed",
     });
-    const ogDescription = t("homepage_eliza.meta.ogDescription", {
-      defaultValue: "Desktop, mobile, and cloud, all running the same Eliza.",
+    const ogDescription = t("homepage_eliza.meta.deckOgDescription", {
+      defaultValue:
+        "Eliza manages your digital life so you can live your real one.",
     });
     const ogImageAlt = t("homepage_eliza.meta.ogImageAlt", {
       defaultValue: "Eliza",

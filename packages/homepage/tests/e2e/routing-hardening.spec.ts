@@ -74,11 +74,13 @@ test("browser back and forward restore hash and query driven route views", async
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(
-    page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
+    page.getByRole("heading", {
+      name: /There’s nothing wrong with you\. You’re just overwhelmed\./,
+    }),
   ).toBeVisible();
 
   await page
-    .getByRole("link", { name: /^Download$/ })
+    .getByRole("link", { name: /^Downloads$/ })
     .first()
     .click();
   await expect(page).toHaveURL(/#download$/);

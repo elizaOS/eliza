@@ -20,8 +20,7 @@ async function expectCloudPath(locator: Locator) {
   expect(href).toBeTruthy();
   const url = new URL(href ?? "", EXTERNAL_URLS.cloud);
   expect(url.origin).toBe(EXTERNAL_URLS.cloud);
-  expect(url.pathname).toMatch(/^\/login\/?$/);
-  expect(url.searchParams.get("intent")).toBe("launch");
+  expect(url.pathname).toMatch(/^\/?$/);
 }
 
 async function expectWebAppPath(locator: Locator) {
@@ -30,16 +29,6 @@ async function expectWebAppPath(locator: Locator) {
   const url = new URL(href ?? "", EXTERNAL_URLS.app);
   expect(url.origin).toBe(EXTERNAL_URLS.app);
   expect(url.pathname).toMatch(/^\/?$/);
-}
-
-async function _expectExternalOrLocal(
-  locator: Locator,
-  productionHost: string,
-) {
-  const href = await locator.getAttribute("href");
-  expect(href).toBeTruthy();
-  const host = new URL(href ?? "", `https://${productionHost}`).hostname;
-  expect([productionHost, "localhost", "127.0.0.1"]).toContain(host);
 }
 
 async function expectReachableHead(
@@ -76,30 +65,29 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
 
   await expect(page).toHaveTitle("Eliza — your agent, everywhere");
   await expect(
-    page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
+    page.getByRole("heading", {
+      name: /There’s nothing wrong with you\. You’re just overwhelmed\./,
+    }),
   ).toBeVisible();
 
   const productNav = page.getByRole("navigation", {
     name: "Eliza products",
   });
-  await expectWebAppPath(productNav.getByRole("link", { name: /^Web app$/ }));
   await expect(
-    productNav.getByRole("link", { name: /^Download$/ }),
+    productNav.getByRole("link", { name: /^Downloads$/ }),
   ).toHaveAttribute("href", "#download");
   await expectCloudPath(productNav.getByRole("link", { name: /^Cloud$/ }));
 
-  await expect(
-    page.getByRole("link", { name: /^Download$/ }).first(),
-  ).toHaveAttribute("href", "#download");
-  await expectWebAppPath(
-    page.getByRole("link", { name: /^Open web app$/ }).first(),
-  );
-  await expectCloudPath(
-    page.getByRole("link", { name: /^Try Eliza Cloud$/ }).first(),
-  );
+  // The single prominent click-through to Eliza Cloud: a plain same-tab
+  // anchor straight to the cloud origin, no login interstitial.
+  const cloudCta = page.getByRole("link", { name: /^Open Eliza Cloud$/ });
+  await expectCloudPath(cloudCta);
+  await expect(cloudCta).not.toHaveAttribute("target", /.+/);
+
+  await expectWebAppPath(page.getByRole("link", { name: /^Web app$/ }).first());
 
   await page
-    .getByRole("link", { name: /^Download$/ })
+    .getByRole("link", { name: /^Downloads$/ })
     .first()
     .click();
   await expect(page).toHaveURL(/#download$/);
@@ -152,19 +140,16 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   ).toHaveCount(0);
 
   await expect(
-    page.getByRole("heading", { name: /^Install elizaOS\.$/ }),
+    page.getByRole("heading", { name: /^The Linux of agents\.$/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /^Install elizaOS$/ }).first(),
+    page.getByRole("link", { name: /^ElizaOS$/ }).first(),
   ).toHaveAttribute("href", EXTERNAL_URLS.os);
-  await expect(
-    page.getByRole("heading", { name: /^Run in Cloud\.$/ }),
-  ).toBeVisible();
   await expectCloudPath(
-    page.getByRole("link", { name: /^Try Eliza Cloud$/ }).last(),
+    page.getByRole("link", { name: /^Eliza Cloud$/ }).last(),
   );
 
-  await expect(page.locator(".app-shell")).toHaveCSS("font-family", "Poppins");
+  await expect(page.locator(".deck-shell")).toHaveCSS("font-family", "Poppins");
   await expect(page.locator(".brand-section").first()).toHaveCSS(
     "border-radius",
     "0px",
@@ -177,7 +162,9 @@ test("homepage live marketing links resolve for cloud, os, release, and download
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(
-    page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
+    page.getByRole("heading", {
+      name: /There’s nothing wrong with you\. You’re just overwhelmed\./,
+    }),
   ).toBeVisible();
 
   const links = page.locator("main a, header a, footer a");
@@ -213,8 +200,7 @@ test("homepage live marketing links resolve for cloud, os, release, and download
     return url.origin === EXTERNAL_URLS.cloud;
   });
   expect(cloudLinks).toHaveLength(1);
-  expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/login\/?$/);
-  expect(new URL(cloudLinks[0]).searchParams.get("intent")).toBe("launch");
+  expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/?$/);
 
   const effectiveRelease =
     releaseData.release.downloads.length > 0

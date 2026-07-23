@@ -1,12 +1,16 @@
 /**
- * Public homepage download and launch surface for elizaOS apps.
+ * Public homepage for eliza.app — demo-day deck style landing surface.
+ *
+ * Visual language mirrors the elizaOS demo-day deck: near-black canvas,
+ * orange accent, Poppins headlines, mono uppercase tags, minimal copy, one
+ * prominent click-through to Eliza Cloud. The functional download surface
+ * (release cards, store status, elizaOS artifacts) is preserved below the
+ * fold and restyled for the dark canvas.
  */
 import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
 import {
   ArrowRight,
   BadgeCheck,
-  Cloud,
-  Download,
   ExternalLink,
   MonitorDown,
   Package,
@@ -16,7 +20,7 @@ import {
 import { releaseData } from "@/generated/release-data";
 import { useT } from "@/providers/I18nProvider";
 
-const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
+const cloudUrl = EXTERNAL_URLS.cloud;
 const webAppUrl = EXTERNAL_URLS.app;
 const osUrl = EXTERNAL_URLS.os;
 const releaseFallbackUrl = `${EXTERNAL_URLS.github}/releases`;
@@ -127,7 +131,7 @@ export default function MarketingPage() {
   });
 
   return (
-    <div className="theme-app app-shell">
+    <div className="theme-app deck-shell">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[var(--brand-orange)]"
@@ -136,32 +140,27 @@ export default function MarketingPage() {
           defaultValue: "Skip to content",
         })}
       </a>
-      <header className="app-header">
+      <header className="deck-chrome">
         <a
           href="/"
           aria-label={t("homepage_eliza.common.brandHomeAria", {
             defaultValue: "Eliza home",
           })}
-          className="app-brand"
+          className="deck-brand"
         >
           <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupBlack}`}
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupWhite}`}
             alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
             draggable={false}
-            className="app-brand-mark"
+            className="deck-brand-mark"
           />
         </a>
         <nav
-          className="app-nav"
+          className="deck-nav"
           aria-label={t("homepage_eliza.marketing.navProducts", {
             defaultValue: "Eliza products",
           })}
         >
-          <a href={webAppUrl}>
-            {t("homepage_eliza.marketing.navWebApp", {
-              defaultValue: "Web app",
-            })}
-          </a>
           <a href="#download">
             {t("homepage_eliza.marketing.navDownloads", {
               defaultValue: "Downloads",
@@ -170,107 +169,98 @@ export default function MarketingPage() {
           <a href={cloudUrl}>
             {t("homepage_eliza.marketing.navCloud", { defaultValue: "Cloud" })}
           </a>
-          <a href={osUrl}>
-            {t("homepage_eliza.marketing.navOs", { defaultValue: "OS" })}
-          </a>
-          <a href="#download" className="app-nav-download">
-            {t("homepage_eliza.marketing.navDownload", {
-              defaultValue: "Download",
-            })}
-          </a>
         </nav>
       </header>
 
       <main id="main">
-        <section className="brand-section brand-section--cloud app-hero">
-          <div className="app-cloud-scrim" />
-          <div className="app-band-inner app-hero-grid app-hero-copy--cloud">
-            <div className="app-hero-copy">
-              <p className="app-kicker">
-                {t("homepage_eliza.marketing.heroKicker", {
-                  defaultValue: "Eliza App",
+        <section
+          className="brand-section deck-hero"
+          aria-label={t("homepage_eliza.marketing.heroAria", {
+            defaultValue: "Eliza",
+          })}
+        >
+          <div className="deck-hero-grid">
+            <div className="deck-hero-copy">
+              <p className="deck-tag">
+                {t("homepage_eliza.marketing.heroTag", {
+                  defaultValue: "Eliza",
                 })}
               </p>
-              <h1 className="app-display">
-                {t("homepage_eliza.marketing.heroTitle", {
-                  defaultValue: "Your Eliza, everywhere.",
-                })}
+              <h1 className="deck-hero-title">
+                <span className="deck-hero-assurance">
+                  {t("homepage_eliza.marketing.heroAssurance", {
+                    defaultValue: "There’s nothing wrong with you.",
+                  })}
+                </span>
+                <span className="deck-hero-reframe">
+                  {t("homepage_eliza.marketing.heroReframe", {
+                    defaultValue: "You’re just overwhelmed.",
+                  })}
+                </span>
               </h1>
-              <p className="app-lede">
-                {t("homepage_eliza.marketing.heroLede", {
+              <p className="deck-lede">
+                {t("homepage_eliza.marketing.heroDeckLede", {
                   defaultValue:
-                    "Download the desktop and mobile app, connect one agent across your devices, and keep Cloud and elizaOS one click away.",
+                    "Eliza manages your digital life so you can live your real one.",
                 })}
               </p>
-              <div className="app-cta-row">
-                <a href={webAppUrl} className="app-cta app-cta--black">
-                  <ExternalLink className="app-icon" aria-hidden="true" />
-                  {t("homepage_eliza.marketing.ctaOpenWebApp", {
-                    defaultValue: "Open web app",
-                  })}
-                </a>
-                <a href="#download" className="app-cta app-cta--glass">
-                  <Download className="app-icon" aria-hidden="true" />
-                  {t("homepage_eliza.marketing.ctaDownload", {
-                    defaultValue: "Download the app",
-                  })}
-                </a>
-                <a href={cloudUrl} className="app-cta app-cta--glass">
-                  <Cloud className="app-icon" aria-hidden="true" />
-                  {t("homepage_eliza.marketing.ctaTryCloud", {
-                    defaultValue: "Try Eliza Cloud",
-                  })}
-                </a>
-                <a href={osUrl} className="app-cta app-cta--ghost">
-                  {t("homepage_eliza.marketing.ctaInstallOs", {
-                    defaultValue: "Install elizaOS",
+              <div className="deck-cta-row">
+                <a href={cloudUrl} className="deck-cta">
+                  {t("homepage_eliza.marketing.ctaOpenCloud", {
+                    defaultValue: "Open Eliza Cloud",
                   })}
                   <ArrowRight className="app-icon" aria-hidden="true" />
                 </a>
               </div>
             </div>
-            <section
-              className="app-release-panel"
-              aria-label={t("homepage_eliza.marketing.releaseLabel", {
-                defaultValue: "Current release",
-              })}
-            >
-              <div>
-                <span className="app-pill">
-                  {t("homepage_eliza.marketing.releasePill", {
-                    defaultValue: "Latest release",
-                  })}
-                </span>
-                <h2>{releaseData.release.tagName}</h2>
-                <p>{releaseData.release.publishedAtLabel}</p>
-              </div>
-              <a href={releaseData.release.url} className="app-release-link">
-                {t("homepage_eliza.marketing.releaseNotes", {
-                  defaultValue: "Release notes",
-                })}
-                <ExternalLink className="app-icon" aria-hidden="true" />
-              </a>
-            </section>
+            <div className="deck-phone" aria-hidden="true">
+              <img
+                src="/phone-home.png"
+                alt=""
+                width={786}
+                height={1704}
+                draggable={false}
+              />
+            </div>
           </div>
         </section>
 
-        <section id="download" className="brand-section brand-section--white">
+        <section className="brand-section deck-band">
+          <p className="deck-tag">
+            {t("homepage_eliza.marketing.platformTag", {
+              defaultValue: "The platform",
+            })}
+          </p>
+          <h2 className="deck-h2">
+            {t("homepage_eliza.marketing.platformH2", {
+              defaultValue: "The Linux of agents.",
+            })}
+          </h2>
+          <p className="deck-band-copy">
+            {t("homepage_eliza.marketing.platformCopy", {
+              defaultValue:
+                "Everything comes in. Only what matters reaches you.",
+            })}
+          </p>
+        </section>
+
+        <section id="download" className="brand-section deck-downloads">
           <div className="app-band-inner app-download-band">
             <div className="app-section-heading">
-              <p className="app-kicker">
+              <p className="deck-tag">
                 {t("homepage_eliza.marketing.downloadsKicker", {
                   defaultValue: "Downloads",
                 })}
               </p>
-              <h2 className="app-h2">
+              <h2 className="deck-h2">
                 {t("homepage_eliza.marketing.downloadsH2", {
                   defaultValue: "Install the app.",
                 })}
               </h2>
               <p className="app-section-copy">
-                {t("homepage_eliza.marketing.downloadsCopy", {
+                {t("homepage_eliza.marketing.downloadsDeckCopy", {
                   defaultValue:
-                    "Release cards link directly to the published GitHub assets. Store distribution is listed separately and stays disabled until review is complete.",
+                    "Direct downloads from the latest published release.",
                 })}
               </p>
             </div>
@@ -317,9 +307,9 @@ export default function MarketingPage() {
                 })}
               </h3>
               <p className="app-section-copy">
-                {t("homepage_eliza.marketing.osDownloadsCopy", {
+                {t("homepage_eliza.marketing.osDownloadsDeckCopy", {
                   defaultValue:
-                    "Every elizaOS distribution is listed here. Cards with a working link download the published artifact; the rest are still in build and will activate as soon as a release is published.",
+                    "Cards with a working link download the published artifact; the rest activate as releases publish.",
                 })}
               </p>
               <ul className="app-os-grid" data-testid="os-artifact-grid">
@@ -405,39 +395,6 @@ export default function MarketingPage() {
             </div>
           </div>
         </section>
-
-        <section className="brand-section brand-section--black">
-          <div className="app-band-inner app-action-grid">
-            <ProductCta
-              title={t("homepage_eliza.marketing.actionRunCloudTitle", {
-                defaultValue: "Run in Cloud.",
-              })}
-              body={t("homepage_eliza.marketing.actionRunCloudBody", {
-                defaultValue:
-                  "Launch your agent runtime and account dashboard in Eliza Cloud.",
-              })}
-              href={cloudUrl}
-              label={t("homepage_eliza.marketing.ctaTryCloud", {
-                defaultValue: "Try Eliza Cloud",
-              })}
-              icon={Cloud}
-            />
-            <ProductCta
-              title={t("homepage_eliza.marketing.actionInstallOsTitle", {
-                defaultValue: "Install elizaOS.",
-              })}
-              body={t("homepage_eliza.marketing.actionInstallOsBody", {
-                defaultValue:
-                  "Use the full operating system when you want device-level control.",
-              })}
-              href={osUrl}
-              label={t("homepage_eliza.marketing.ctaInstallOs", {
-                defaultValue: "Install elizaOS",
-              })}
-              icon={MonitorDown}
-            />
-          </div>
-        </section>
       </main>
 
       <footer className="app-footer">
@@ -519,33 +476,5 @@ function DownloadLink({
       </span>
       <ArrowRight className="app-icon app-card-arrow" aria-hidden="true" />
     </a>
-  );
-}
-
-function ProductCta({
-  title,
-  body,
-  href,
-  label,
-  icon: Icon,
-}: {
-  title: string;
-  body: string;
-  href: string;
-  label: string;
-  icon: typeof Package;
-}) {
-  return (
-    <article className="app-product-cta">
-      <div>
-        <Icon className="app-product-icon" aria-hidden="true" />
-        <h2>{title}</h2>
-        <p>{body}</p>
-      </div>
-      <a href={href} className="app-cta app-cta--white">
-        {label}
-        <ArrowRight className="app-icon" aria-hidden="true" />
-      </a>
-    </article>
   );
 }

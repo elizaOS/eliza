@@ -1,6 +1,9 @@
 /* Vendored fonts — loaded from local bundle, no Google Fonts CDN request. */
 @import "@fontsource/poppins/300.css";
 @import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
 @import "tailwindcss";
@@ -1164,6 +1167,317 @@ article {
 
   .app-release-panel {
     align-self: stretch;
+  }
+}
+
+/* Demo-day deck landing surface — tokens copied from the elizaOS deck
+   (black canvas, orange accent, Poppins headlines, JetBrains Mono tags). */
+.deck-shell {
+  --deck-orange: #ff5800;
+  --deck-bg: #0a0a0a;
+  --deck-ink: #f4f1ec;
+  --deck-dim: #8a8680;
+  --deck-mono: "JetBrains Mono", ui-monospace, monospace;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* biome-ignore lint/a11y/useGenericFontNames: Eliza App brand requires Poppins only. */
+  font-family: Poppins;
+  background: var(--deck-bg);
+  color: var(--deck-ink);
+}
+
+.deck-chrome {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem clamp(1.25rem, 5vw, 5rem);
+}
+
+.deck-brand {
+  flex: 0 0 auto;
+}
+
+.deck-brand-mark {
+  height: clamp(1.55rem, 2vw, 1.9rem);
+  width: auto;
+  display: block;
+}
+
+.deck-nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(1rem, 2.5vw, 2rem);
+  font-family: var(--deck-mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.deck-nav a {
+  color: var(--deck-ink);
+  text-decoration: none;
+}
+
+.deck-nav a:hover,
+.deck-nav a:focus-visible {
+  color: var(--deck-orange);
+}
+
+.deck-hero {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  background: var(--deck-bg);
+  padding-top: clamp(6.5rem, 10vw, 9rem);
+}
+
+.deck-hero-grid {
+  width: min(100%, 80rem);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(2.5rem, 6vw, 5rem);
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .deck-hero-grid {
+    grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.65fr);
+  }
+}
+
+.deck-tag {
+  margin: 0 0 1.4rem;
+  color: var(--deck-orange);
+  font-family: var(--deck-mono);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+}
+
+.deck-hero-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18em;
+  margin: 0;
+  font-size: clamp(2.4rem, 5.4vw, 5.25rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.04;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+
+.deck-hero-assurance {
+  color: var(--deck-ink);
+  font-weight: 400;
+}
+
+.deck-hero-reframe {
+  color: var(--deck-orange);
+  font-weight: 600;
+}
+
+.deck-lede {
+  max-width: 34ch;
+  margin: 2.2rem 0 0;
+  color: var(--deck-ink);
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.deck-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2.6rem;
+}
+
+.deck-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3.4rem;
+  padding: 0 1.9rem;
+  border-radius: var(--radius-xs);
+  background: var(--deck-orange);
+  color: var(--deck-bg);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.deck-cta:hover,
+.deck-cta:focus-visible {
+  background: var(--deck-ink);
+  color: var(--deck-bg);
+}
+
+.deck-phone {
+  justify-self: center;
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .deck-phone {
+    justify-self: end;
+  }
+}
+
+.deck-phone img {
+  display: block;
+  width: clamp(13rem, 24vw, 19rem);
+  height: auto;
+  border-radius: 2.4rem;
+  box-shadow:
+    0 0 0 8px #161616,
+    0 0 0 9px #2c2c2c,
+    0 40px 90px rgba(0, 0, 0, 0.6);
+}
+
+.deck-band {
+  background: var(--deck-orange);
+  color: var(--deck-bg);
+}
+
+.deck-band .deck-tag {
+  color: var(--deck-bg);
+}
+
+.deck-h2 {
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 4.6rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.deck-band-copy {
+  max-width: 38ch;
+  margin: 1.6rem 0 0;
+  font-size: clamp(1.25rem, 2.2vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: rgba(10, 10, 10, 0.84);
+}
+
+/* Downloads band on the dark canvas: reuse the app-* download components
+   with inverted surfaces. */
+.deck-downloads {
+  background: var(--deck-bg);
+  color: var(--deck-ink);
+}
+
+.deck-downloads .app-section-copy,
+.deck-downloads .app-checksum-row {
+  color: var(--deck-dim);
+}
+
+.deck-downloads .deck-h2 {
+  color: var(--deck-ink);
+}
+
+.deck-downloads .app-download-card {
+  background: #141414;
+  color: var(--deck-ink);
+  box-shadow: none;
+}
+
+.deck-downloads .app-download-card:hover,
+.deck-downloads .app-download-card:focus-visible,
+.deck-downloads .app-download-card:focus-within {
+  background: var(--deck-orange);
+  color: var(--deck-bg);
+}
+
+.deck-downloads .app-card-icon {
+  background: rgba(244, 241, 236, 0.08);
+  color: var(--deck-ink);
+}
+
+.deck-downloads .app-download-card-copy span,
+.deck-downloads .app-download-card-copy small,
+.deck-downloads .app-download-card-meta,
+.deck-downloads .app-card-arrow {
+  color: var(--deck-dim);
+}
+
+.deck-downloads .app-download-card:hover .app-card-icon,
+.deck-downloads .app-download-card:focus-visible .app-card-icon,
+.deck-downloads .app-download-card:focus-within .app-card-icon {
+  background: rgba(10, 10, 10, 0.14);
+  color: var(--deck-bg);
+}
+
+.deck-downloads .app-download-card:hover .app-download-card-copy span,
+.deck-downloads .app-download-card:hover .app-download-card-copy small,
+.deck-downloads .app-download-card:hover .app-download-card-meta,
+.deck-downloads .app-download-card:hover .app-card-arrow,
+.deck-downloads .app-download-card:focus-visible .app-download-card-copy span,
+.deck-downloads .app-download-card:focus-visible .app-download-card-copy small,
+.deck-downloads .app-download-card:focus-visible .app-download-card-meta,
+.deck-downloads .app-download-card:focus-visible .app-card-arrow,
+.deck-downloads .app-download-card:focus-within .app-download-card-copy span,
+.deck-downloads .app-download-card:focus-within .app-download-card-copy small,
+.deck-downloads .app-download-card:focus-within .app-download-card-meta,
+.deck-downloads .app-download-card:focus-within .app-card-arrow {
+  color: rgba(10, 10, 10, 0.72);
+}
+
+.deck-downloads .app-store-card {
+  background: #141414;
+  color: var(--deck-dim);
+}
+
+.deck-downloads .app-os-card {
+  background: #141414;
+  color: var(--deck-ink);
+}
+
+.deck-downloads .app-os-card[data-status="available"]:hover {
+  background: var(--deck-orange);
+  color: var(--deck-bg);
+}
+
+.deck-downloads .app-checksum-row a {
+  color: var(--deck-ink);
+}
+
+.deck-downloads .app-checksum-row a:hover,
+.deck-downloads .app-checksum-row a:focus-visible {
+  color: var(--deck-orange);
+}
+
+@media (max-width: 640px) {
+  .deck-chrome {
+    padding: 1.1rem 1.25rem;
+  }
+
+  .deck-nav {
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+  }
+
+  .deck-cta {
+    width: 100%;
+    justify-content: center;
   }
 }
 

@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/poppins": "^5.2.7",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-slot": "^1.2.4",
