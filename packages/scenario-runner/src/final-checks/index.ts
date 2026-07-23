@@ -320,11 +320,7 @@ function normalizeComparableText(value: string): string {
   // Dashes fold to spaces so hyphenation never defeats a loose title match:
   // live models legitimately title a "before school" routine
   // "Before-school routine" (#16941).
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[-–—]/g, " ")
-    .replace(/\s+/g, " ");
+  return value.trim().toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ");
 }
 
 function textMatchesLoose(actual: string, expected: string): boolean {
@@ -849,14 +845,29 @@ function definitionReceipt(record: DefinitionRecordLike): string {
     parts.push(`tz=${record.definition.timezone}`);
   }
   const planEntries = toRecord(record.reminderPlan);
+  const planSteps = Array.isArray(planEntries?.steps)
+    ? planEntries.steps
+        .map((step) => {
+          const stepRecord = toRecord(step);
+          return typeof stepRecord?.offsetMinutes === "number"
+            ? `${stepRecord.offsetMinutes}m`
+            : "?";
+        })
+        .join(",")
+    : null;
   const planLeads = Array.isArray(planEntries?.leadMinutes)
     ? `leadMinutes=[${planEntries.leadMinutes.join(",")}]`
-    : recordHasEntries(record.reminderPlan)
-      ? "present"
-      : typeof record.definition.reminderPlanId === "string" &&
-          record.definition.reminderPlanId.length > 0
-        ? `id=${record.definition.reminderPlanId}`
-        : "none";
+    : planSteps !== null && planSteps.length > 0
+      ? // Step offsets are the stored artifact for "nudge me before it's due
+        // too" asks (negative = minutes before the anchor), so the receipt
+        // shows them instead of a bare presence flag.
+        `steps=[${planSteps}]`
+      : recordHasEntries(record.reminderPlan)
+        ? "present"
+        : typeof record.definition.reminderPlanId === "string" &&
+            record.definition.reminderPlanId.length > 0
+          ? `id=${record.definition.reminderPlanId}`
+          : "none";
   parts.push(`reminderPlan=${planLeads}`);
   return parts.join(" ");
 }

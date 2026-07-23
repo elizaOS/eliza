@@ -28,12 +28,20 @@ import {
 import { getZonedDateParts } from "../lifeops/time.js";
 import type { ExtractedTaskParams } from "./lib/extract-task-plan.js";
 import {
+  isLifeSaveRetraction,
+  readRecentLifeSaveCache,
+  writeRecentLifeSaveCache,
+} from "./lib/lifeops-deferred-draft.js";
+import {
   buildCadenceFromLlmParams,
   buildCadenceFromUpdateFields,
+  formatLeadOffsetPhrase,
+  maybeAddEarlierReminderStep,
   resolveDefinitionFromIntent,
   resolveOnceDueAt,
   runLifeConnectedQuery,
   runLifeOperationHandler,
+  wantsEarlierReminderNudge,
 } from "./life.js";
 
 const serviceState = vi.hoisted(() => ({
@@ -86,7 +94,13 @@ vi.mock("../lifeops/service.js", () => {
     async createDefinition(request: Record<string, unknown>) {
       serviceState.createCalls.push(request);
       return {
-        definition: { title: request.title, cadence: request.cadence },
+        definition: {
+          id: `def-created-${serviceState.createCalls.length}`,
+          title: request.title,
+          cadence: request.cadence,
+          status: "active",
+        },
+        reminderPlan: request.reminderPlan ?? null,
       };
     }
     async createGoal(request: Record<string, unknown>) {
@@ -135,6 +149,9 @@ vi.mock("../lifeops/service.js", () => {
           },
         },
       ];
+    }
+    async reviewGoalsForWeek() {
+      return { summary: { totalGoals: 0 }, goals: [] };
     }
     async deleteDefinition(id: string) {
       serviceState.deleteDefinitionCalls.push(id);
@@ -1848,5 +1865,314 @@ describe("runLifeOperationHandler consent gate (#16941)", () => {
 
     expect(confirm.success).toBe(true);
     expect(serviceState.createCalls).toHaveLength(1);
+  });
+});
+
+describe("earlier-nudge reminder plan augmentation (#16941)", () => {
+  const BASE_PLAN = {
+    steps: [{ channel: "in_app" as const, offsetMinutes: 0, label: "due" }],
+  };
+  const ASK = "yes lock it in! and can it bug me before friday too";
+
+  it("detects explicit lead-up asks and ignores plain confirmations", () => {
+    expect(wantsEarlierReminderNudge(ASK)).toBe(true);
+    expect(
+      wantsEarlierReminderNudge("remind me earlier in the week as well"),
+    ).toBe(true);
+    expect(wantsEarlierReminderNudge("not just friday morning, please")).toBe(
+      true,
+    );
+    expect(wantsEarlierReminderNudge("yes lock it in!")).toBe(false);
+    expect(wantsEarlierReminderNudge("remind me friday at 5pm")).toBe(false);
+  });
+
+  it("adds a day-before step when there is at least two days of runway", () => {
+    const now = Date.parse("2026-07-20T09:00:00.000Z");
+    const plan = maybeAddEarlierReminderStep({
+      plan: BASE_PLAN,
+      cadence: { kind: "once", dueAt: "2026-07-24T09:00:00.000Z" },
+      ownerText: ASK,
+      title: "Book report",
+      now,
+    });
+    expect(plan.steps).toHaveLength(2);
+    expect(plan.steps[0]).toMatchObject({
+      channel: "in_app",
+      offsetMinutes: -1440,
+    });
+    expect(plan.steps[1]).toMatchObject({ offsetMinutes: 0 });
+  });
+
+  it("shrinks the lead toward the midpoint when the deadline is close", () => {
+    const now = Date.parse("2026-07-20T09:00:00.000Z");
+    const plan = maybeAddEarlierReminderStep({
+      plan: BASE_PLAN,
+      cadence: { kind: "once", dueAt: "2026-07-20T12:00:00.000Z" },
+      ownerText: ASK,
+      title: "Book report",
+      now,
+    });
+    expect(plan.steps[0]).toMatchObject({ offsetMinutes: -90 });
+  });
+
+  it("leaves the plan alone without an ask, without runway, off-once, or when a lead exists", () => {
+    const now = Date.parse("2026-07-20T09:00:00.000Z");
+    const dueSoon = {
+      kind: "once" as const,
+      dueAt: "2026-07-20T09:30:00.000Z",
+    };
+    expect(
+      maybeAddEarlierReminderStep({
+        plan: BASE_PLAN,
+        cadence: { kind: "once", dueAt: "2026-07-24T09:00:00.000Z" },
+        ownerText: "yes lock it in!",
+        title: "Book report",
+        now,
+      }).steps,
+    ).toHaveLength(1);
+    expect(
+      maybeAddEarlierReminderStep({
+        plan: BASE_PLAN,
+        cadence: dueSoon,
+        ownerText: ASK,
+        title: "Book report",
+        now,
+      }).steps,
+    ).toHaveLength(1);
+    expect(
+      maybeAddEarlierReminderStep({
+        plan: BASE_PLAN,
+        cadence: { kind: "daily", windows: ["morning"] },
+        ownerText: ASK,
+        title: "Book report",
+        now,
+      }).steps,
+    ).toHaveLength(1);
+    const withLead = {
+      steps: [
+        { channel: "in_app" as const, offsetMinutes: -600, label: "early" },
+        ...BASE_PLAN.steps,
+      ],
+    };
+    expect(
+      maybeAddEarlierReminderStep({
+        plan: withLead,
+        cadence: { kind: "once", dueAt: "2026-07-24T09:00:00.000Z" },
+        ownerText: ASK,
+        title: "Book report",
+        now,
+      }).steps,
+    ).toHaveLength(2);
+  });
+
+  it("renders lead offsets as human phrases", () => {
+    expect(formatLeadOffsetPhrase(-1440)).toBe("a day");
+    expect(formatLeadOffsetPhrase(-90)).toBe("1.5 hours");
+    expect(formatLeadOffsetPhrase(-60)).toBe("1 hour");
+    expect(formatLeadOffsetPhrase(-45)).toBe("45 minutes");
+  });
+
+  it("persists the lead step and reports it on a crisp confirm-with-additions save", async () => {
+    serviceState.createCalls.length = 0;
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Book report",
+          cadenceKind: "once",
+          dueInDays: 3,
+          timeOfDay: "09:00",
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "yes lock it in! and can it bug me before friday too so i actually read the chapters, not just friday morning.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "save the book report reminder plan",
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    const plan = serviceState.createCalls[0]?.reminderPlan as {
+      steps: Array<{ offsetMinutes: number }>;
+    };
+    expect(plan.steps.some((step) => step.offsetMinutes < 0)).toBe(true);
+    // The stored lead must surface in the confirmed reply, not stay a silent
+    // row: the live failure was an earlier checkpoint "proposed, not created".
+    expect(result.text ?? "").toContain("early nudge");
+  });
+});
+
+describe("recent-save retraction (#16941)", () => {
+  beforeEach(() => {
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+    serviceState.deleteDefinitionCalls.length = 0;
+  });
+
+  function makeMessageWithId(id: string, text: string): Memory {
+    return { ...makeMessage(text), id } as Memory;
+  }
+
+  it("classifies retractions narrowly", () => {
+    expect(
+      isLifeSaveRetraction(
+        "actually no wait don't save that one. my teacher changed it and i need to ask her tomorrow first.",
+      ),
+    ).toBe(true);
+    expect(isLifeSaveRetraction("cancel that")).toBe(true);
+    expect(isLifeSaveRetraction("never mind")).toBe(true);
+    expect(isLifeSaveRetraction("please undo that")).toBe(true);
+    expect(
+      isLifeSaveRetraction(
+        "ok now save just this: tomorrow after school remind me to ask Ms. Rivera what the science report topic is.",
+      ),
+    ).toBe(false);
+    expect(isLifeSaveRetraction("delete the workout habit")).toBe(false);
+    expect(
+      isLifeSaveRetraction("don't forget to set a reminder for friday"),
+    ).toBe(false);
+  });
+
+  it("deletes the just-saved row whatever operation the planner picked", async () => {
+    const runtime = makeRuntime(() => "");
+    const savedMessage = makeMessageWithId(
+      "00000000-0000-0000-0000-000000000031",
+      "can you remind me about my science report?",
+    );
+    await writeRecentLifeSaveCache(runtime, savedMessage, {
+      definitionId: "def-science",
+      title: "Science report - start this weekend",
+      sourceMessageId: "00000000-0000-0000-0000-000000000031",
+      createdAt: Date.now(),
+    });
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-science",
+        title: "Science report - start this weekend",
+        status: "active",
+        cadence: { kind: "once", dueAt: "2026-07-25T09:00:00.000Z" },
+      },
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId(
+        "00000000-0000-0000-0000-000000000032",
+        "actually no wait don't save that one. my teacher changed it and i need to ask her tomorrow first.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "review",
+          intent: "confirm no science report reminder exists",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(serviceState.deleteDefinitionCalls).toEqual(["def-science"]);
+    expect(result.success).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.data).toMatchObject({ retractedRecentSave: true });
+    expect(result.text ?? "").toContain("Science report");
+    // The undo handle is one-shot: a later unrelated turn must not re-delete.
+    expect(await readRecentLifeSaveCache(runtime, savedMessage)).toBeNull();
+  });
+
+  it("never retracts from the same message that saved", async () => {
+    const runtime = makeRuntime(() => "");
+    const message = makeMessageWithId(
+      "00000000-0000-0000-0000-000000000041",
+      "don't save that one",
+    );
+    await writeRecentLifeSaveCache(runtime, message, {
+      definitionId: "def-science",
+      title: "Science report",
+      sourceMessageId: "00000000-0000-0000-0000-000000000041",
+      createdAt: Date.now(),
+    });
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-science",
+        title: "Science report",
+        status: "active",
+        cadence: { kind: "once", dueAt: "2026-07-25T09:00:00.000Z" },
+      },
+    });
+
+    await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: { action: "review", intent: "review reminders" },
+    } as HandlerOptions);
+
+    expect(serviceState.deleteDefinitionCalls).toEqual([]);
+  });
+
+  it("parks an undo handle on an un-previewed crisp save and honors the next-turn retraction", async () => {
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Science report - start this weekend",
+          cadenceKind: "once",
+          dueInDays: 2,
+          timeOfDay: "09:00",
+        });
+      }
+      return "";
+    });
+
+    const saveResult = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId(
+        "00000000-0000-0000-0000-000000000051",
+        "can you remind me about my science report? it's due next monday and i think i should start this weekend.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "remind me about my science report due monday",
+        },
+      } as HandlerOptions,
+    );
+    expect(saveResult.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    const parked = await readRecentLifeSaveCache(
+      runtime,
+      makeMessage("any text"),
+    );
+    expect(parked?.definitionId).toBe("def-created-1");
+
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-created-1",
+        title: "Science report - start this weekend",
+        status: "active",
+        cadence: { kind: "once", dueAt: "2026-07-27T09:00:00.000Z" },
+      },
+    });
+    const retractResult = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId(
+        "00000000-0000-0000-0000-000000000052",
+        "actually no wait don't save that one. my teacher changed it and i need to ask her tomorrow first.",
+      ),
+      undefined,
+      {
+        parameters: { action: "review", intent: "check reminders" },
+      } as HandlerOptions,
+    );
+
+    expect(serviceState.deleteDefinitionCalls).toEqual(["def-created-1"]);
+    expect(retractResult.success).toBe(true);
+    expect(retractResult.data).toMatchObject({ retractedRecentSave: true });
   });
 });

@@ -22,7 +22,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
+import { logger, resolveActionArgs, type SubactionsMap } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -89,6 +89,7 @@ import {
 } from "./lib/extract-update-fields.js";
 import {
   clearDeferredLifeDraftCache,
+  clearRecentLifeSaveCache,
   countTurnsSinceLatestDeferredLifeDraft,
   type DeferredLifeDefinitionDraft,
   type DeferredLifeDraft,
@@ -97,9 +98,12 @@ import {
   type DeferredLifeGoalDraft,
   deferredLifeDraftExpiryReason,
   extractDeferredLifeDraftFollowupWithLlm,
+  isLifeSaveRetraction,
   latestDeferredLifeDraft,
   readDeferredLifeDraftCache,
+  readRecentLifeSaveCache,
   writeDeferredLifeDraftCache,
+  writeRecentLifeSaveCache,
 } from "./lib/lifeops-deferred-draft.js";
 import {
   applyOwnerPolicyConfigureEscalation,
@@ -2511,6 +2515,79 @@ function buildDefaultReminderPlan(
   };
 }
 
+// "bug me before friday too", "remind me earlier as well", "not just friday
+// morning" — an explicit ask for a lead-up nudge on top of the due-time
+// reminder. Kept as a deterministic detector because the ask arrives inside a
+// confirmation turn where extraction focuses on the base item (#16941 live:
+// the earlier checkpoint was proposed in prose but never persisted).
+const EARLIER_NUDGE_ASK_RE =
+  /(?:\b(?:bug|remind|nudge|ping|poke)\s+me\b[^.!?\n]{0,60}\b(?:before|earlier|ahead of|leading up)\b|\bcan\s+it\b[^.!?\n]{0,60}\bbefore\b|\bnot just\b[^.!?\n]{0,40}\b(?:morning|tonight|that day|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\bearlier\s+(?:nudge|reminder|check[-\s]?in|checkpoint|heads[-\s]?up)\b)/i;
+
+export function wantsEarlierReminderNudge(text: string): boolean {
+  return EARLIER_NUDGE_ASK_RE.test(text);
+}
+
+/** "-1440" -> "a day", "-90" -> "1.5 hours", "-45" -> "45 minutes". */
+export function formatLeadOffsetPhrase(offsetMinutes: number): string {
+  const minutes = Math.abs(offsetMinutes);
+  if (minutes >= 1380 && minutes <= 1500) {
+    return "a day";
+  }
+  if (minutes >= 60) {
+    const hours = minutes / 60;
+    const rendered = Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+    return `${rendered} hour${hours === 1 ? "" : "s"}`;
+  }
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+/**
+ * Adds a lead-up step to a one-off reminder plan when the owner explicitly
+ * asked to be nudged before the due time too. Prefers a full day of lead and
+ * shrinks toward the midpoint when the deadline is closer than that; leaves
+ * the plan untouched when an earlier step already exists, when there is under
+ * an hour of room, or when the cadence is not a dated one-off.
+ */
+export function maybeAddEarlierReminderStep(args: {
+  plan: NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]>;
+  cadence: LifeOpsCadence;
+  ownerText: string;
+  title: string;
+  now?: number;
+}): NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]> {
+  if (
+    args.cadence.kind !== "once" ||
+    !wantsEarlierReminderNudge(args.ownerText)
+  ) {
+    return args.plan;
+  }
+  const dueAtMs = Date.parse(args.cadence.dueAt);
+  if (!Number.isFinite(dueAtMs)) {
+    return args.plan;
+  }
+  if (args.plan.steps.some((step) => step.offsetMinutes <= -240)) {
+    return args.plan;
+  }
+  const now = args.now ?? Date.now();
+  const minutesUntilDue = Math.floor((dueAtMs - now) / 60_000);
+  // Need ≥1h of runway before the due-time fire for a lead nudge to be real.
+  if (minutesUntilDue < 60) {
+    return args.plan;
+  }
+  const leadMinutes = Math.min(1440, Math.floor(minutesUntilDue / 2));
+  return {
+    ...args.plan,
+    steps: [
+      {
+        channel: "in_app",
+        offsetMinutes: -leadMinutes,
+        label: `Early start: ${args.title}`,
+      },
+      ...args.plan.steps,
+    ],
+  };
+}
+
 function scoreDefinitionTitleQuality(value: string | null | undefined): number {
   const normalized = normalizeTitle(value ?? "");
   if (!normalized) {
@@ -2863,6 +2940,70 @@ export async function runLifeOperationHandler(
     };
   }
   const explicitAction = normalizeExplicitLifeAction(params.action);
+  // Retraction of an un-previewed save: the crisp-ask fast path persists with
+  // no draft to cancel, and the planner cannot be trusted to translate
+  // "actually don't save that one" into action=delete — observed live
+  // (#16941, child-cancel-reask) it reviewed the row, replied "I won't save
+  // it", and left the definition active. This runs before extraction so no
+  // classifier verdict can strand the stale row; a same-message create
+  // (retract + replace in one utterance) still runs after the deletion.
+  if (deferredDraft === null && isLifeSaveRetraction(messageText(message))) {
+    const recentSave = await readRecentLifeSaveCache(runtime, message);
+    const retractionMessageId =
+      message.id !== undefined && message.id !== null ? String(message.id) : "";
+    if (
+      recentSave !== null &&
+      (recentSave.sourceMessageId === undefined ||
+        recentSave.sourceMessageId !== retractionMessageId)
+    ) {
+      const retractionService = new LifeOpsService(runtime);
+      const retracted = (await retractionService.listDefinitions()).find(
+        (record) =>
+          record.definition.id === recentSave.definitionId &&
+          record.definition.status === "active",
+      );
+      await clearRecentLifeSaveCache(runtime, message);
+      if (retracted) {
+        await retractionService.deleteDefinition(retracted.definition.id);
+        logger.info(
+          `[LifeAction] retracted recent un-previewed save "${retracted.definition.title}" (${retracted.definition.id})`,
+        );
+        const plannerRequestedCreate =
+          explicitAction !== null &&
+          explicitAction !== "phone" &&
+          explicitAction.operation === "create";
+        if (!plannerRequestedCreate) {
+          const fallback = `Okay — I removed "${retracted.definition.title}". Nothing is saved for it now.`;
+          const text = await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent: currentText,
+            scenario: "deleted_definition",
+            fallback,
+            context: {
+              deleted: { title: retracted.definition.title },
+              reason: "retracted_recent_save",
+            },
+          });
+          return {
+            success: true,
+            text,
+            userFacingText: text,
+            verifiedUserFacing: true,
+            data: {
+              actionName: ownerSurfaceActionName,
+              retractedRecentSave: true,
+              deleted: {
+                id: retracted.definition.id,
+                title: retracted.definition.title,
+              },
+            },
+          };
+        }
+      }
+    }
+  }
   if (explicitAction === "phone") {
     return {
       success: false,
@@ -3419,12 +3560,17 @@ export async function runLifeOperationHandler(
               "progressionRule",
             ) as CreateLifeOpsDefinitionRequest["progressionRule"]) ??
             deferredDefinitionDraft?.request.progressionRule,
-          reminderPlan:
-            (detailObject(details, "reminderPlan") as
-              | CreateLifeOpsDefinitionRequest["reminderPlan"]
-              | undefined) ??
-            deferredDefinitionDraft?.request.reminderPlan ??
-            buildDefaultReminderPlan(`${title} reminder`),
+          reminderPlan: maybeAddEarlierReminderStep({
+            plan:
+              (detailObject(details, "reminderPlan") as
+                | CreateLifeOpsDefinitionRequest["reminderPlan"]
+                | undefined) ??
+              deferredDefinitionDraft?.request.reminderPlan ??
+              buildDefaultReminderPlan(`${title} reminder`),
+            cadence,
+            ownerText: messageText(message),
+            title,
+          }),
           timezone:
             normalizeLifeTimeZoneToken(llmPlan?.timeZone) ??
             normalizeLifeTimeZoneToken(
@@ -3550,7 +3696,24 @@ export async function runLifeOperationHandler(
         source: "chat",
       });
       await clearDeferredLifeDraftCache(runtime, message);
-      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}.`;
+      // The un-previewed fast path leaves no draft to cancel, so park an undo
+      // handle: a next-turn retraction deletes this row deterministically.
+      await writeRecentLifeSaveCache(runtime, message, {
+        definitionId: created.definition.id,
+        title: created.definition.title,
+        createdAt: Date.now(),
+        ...(currentMessageId !== ""
+          ? { sourceMessageId: currentMessageId }
+          : {}),
+      });
+      const savedLeadSteps = (created.reminderPlan?.steps ?? []).filter(
+        (step) => step.offsetMinutes < 0,
+      );
+      const leadPhrase =
+        savedLeadSteps.length > 0
+          ? ` with an early nudge ${formatLeadOffsetPhrase(savedLeadSteps[0].offsetMinutes)} before`
+          : "";
+      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}${leadPhrase}.`;
       const savedText = await renderLifeActionReply({
         runtime,
         message,
@@ -3562,6 +3725,13 @@ export async function runLifeOperationHandler(
           created: {
             title: created.definition.title,
             cadence: created.definition.cadence,
+            ...(savedLeadSteps.length > 0
+              ? {
+                  earlyNudges: savedLeadSteps.map((step) =>
+                    formatLeadOffsetPhrase(step.offsetMinutes),
+                  ),
+                }
+              : {}),
           },
           requestKind: timedRequestKind,
         },

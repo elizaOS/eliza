@@ -579,3 +579,118 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
     return null;
   }
 }
+
+/**
+ * Record of the most recent chat-sourced definition save in a room. The crisp
+ * single-dated-ask fast path (#16935) persists without a preview turn, so the
+ * owner's only undo affordance is a retraction on the NEXT turn ("actually
+ * don't save that one"). Observed live (#16941, child-cancel-reask): the
+ * planner answered such a retraction with a review call and a "won't save it"
+ * reply while the row stayed active. This record lets the life handler
+ * deterministically delete the just-saved row instead of trusting the
+ * planner to pick action=delete.
+ */
+export type RecentLifeSaveRecord = {
+  definitionId: string;
+  title: string;
+  /** Owner message id of the turn that saved. Guards same-turn re-entry. */
+  sourceMessageId?: string;
+  /** Epoch ms of the save. The retraction window mirrors draft expiry. */
+  createdAt: number;
+};
+
+const RECENT_LIFE_SAVE_CACHE_PREFIX = "lifeops:recent-save";
+
+/** Retraction is only honored this soon after an un-previewed save. */
+export const RECENT_SAVE_RETRACTION_WINDOW_MS = DRAFT_EXPIRY_MS;
+
+function recentLifeSaveCacheKey(
+  runtime: IAgentRuntime,
+  message: Memory,
+): string {
+  return [
+    RECENT_LIFE_SAVE_CACHE_PREFIX,
+    runtime.agentId,
+    message.roomId,
+    message.entityId,
+  ].join(":");
+}
+
+export function coerceRecentLifeSaveRecord(
+  value: unknown,
+): RecentLifeSaveRecord | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const definitionId =
+    typeof record.definitionId === "string" && record.definitionId.length > 0
+      ? record.definitionId
+      : null;
+  const title = typeof record.title === "string" ? record.title.trim() : "";
+  const createdAt =
+    typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
+      ? record.createdAt
+      : null;
+  if (!definitionId || !title || createdAt === null) {
+    return null;
+  }
+  return {
+    definitionId,
+    title,
+    createdAt,
+    ...(typeof record.sourceMessageId === "string" &&
+    record.sourceMessageId.length > 0
+      ? { sourceMessageId: record.sourceMessageId }
+      : {}),
+  };
+}
+
+export async function readRecentLifeSaveCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<RecentLifeSaveRecord | null> {
+  const stored = await asCacheRuntime(runtime).getCache<unknown>(
+    recentLifeSaveCacheKey(runtime, message),
+  );
+  const record = coerceRecentLifeSaveRecord(stored);
+  if (!record) {
+    return null;
+  }
+  if (Date.now() - record.createdAt > RECENT_SAVE_RETRACTION_WINDOW_MS) {
+    return null;
+  }
+  return record;
+}
+
+export async function writeRecentLifeSaveCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+  record: RecentLifeSaveRecord,
+): Promise<void> {
+  await asCacheRuntime(runtime).setCache(
+    recentLifeSaveCacheKey(runtime, message),
+    record,
+  );
+}
+
+export async function clearRecentLifeSaveCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<void> {
+  await asCacheRuntime(runtime).deleteCache(
+    recentLifeSaveCacheKey(runtime, message),
+  );
+}
+
+// A retraction is a short-window undo of the item that just saved, so the
+// vocabulary stays narrow: negated save/keep verbs and demonstrative
+// cancel/undo forms. Broad phrases ("forget it") are still safe because the
+// caller only consults this within RECENT_SAVE_RETRACTION_WINDOW_MS of an
+// un-previewed save in the same room.
+const LIFE_SAVE_RETRACTION_RE =
+  /(?:\b(?:don'?t|do not|no,? don'?t)\b[^.!?\n]{0,40}\b(?:save|keep|set|schedule|add|create)\b\s+(?:that(?:\s+one)?|this(?:\s+one)?|it)\b|\b(?:cancel|undo|scrap|delete|remove|drop)\b\s+(?:that(?:\s+one)?|it|this(?:\s+one)?|the last one)\b|\bnever\s?mind\b|\bget rid of (?:that|it)\b)/i;
+
+export function isLifeSaveRetraction(text: string): boolean {
+  return LIFE_SAVE_RETRACTION_RE.test(text);
+}
