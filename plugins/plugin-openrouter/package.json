@@ -153,7 +153,7 @@
         "type": "string",
         "description": "General fallback environment variable for the image model name when OPENROUTER_IMAGE_MODEL is not set.",
         "required": false,
-        "default": "x-ai/grok-2-vision-1212",
+        "default": "openai/gpt-4o-mini",
         "sensitive": false
       },
       "OPENROUTER_IMAGE_GENERATION_MODEL": {

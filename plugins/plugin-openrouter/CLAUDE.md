@@ -19,7 +19,7 @@ No actions, services, evaluators, providers, or routes. This plugin registers **
 | `TEXT_MEGA` | `handleTextMega` | falls back to large model |
 | `RESPONSE_HANDLER` | `handleResponseHandler` | falls back to nano model |
 | `ACTION_PLANNER` | `handleActionPlanner` | falls back to medium model |
-| `IMAGE_DESCRIPTION` | `handleImageDescription` | `x-ai/grok-2-vision-1212` |
+| `IMAGE_DESCRIPTION` | `handleImageDescription` | `openai/gpt-4o-mini` |
 | `IMAGE` | `handleImageGeneration` | `google/gemini-2.5-flash-image-preview` |
 | `TEXT_EMBEDDING` | `handleTextEmbedding` | `openai/text-embedding-3-small` (1536 dims) |
 | `TRANSCRIPTION` | `handleTranscription` | `openai/whisper-large-v3` |
@@ -85,7 +85,7 @@ Settings are read via `runtime.getSetting(key)` first, then `process.env[key]`. 
 | `OPENROUTER_MEGA_MODEL` | no | — | Override for TEXT_MEGA specifically. |
 | `OPENROUTER_RESPONSE_HANDLER_MODEL` | no | — | Override for RESPONSE_HANDLER; also checks `OPENROUTER_SHOULD_RESPOND_MODEL`. |
 | `OPENROUTER_ACTION_PLANNER_MODEL` | no | — | Override for ACTION_PLANNER; also checks `OPENROUTER_PLANNER_MODEL`. |
-| `OPENROUTER_IMAGE_MODEL` | no | `x-ai/grok-2-vision-1212` | Override for IMAGE_DESCRIPTION. |
+| `OPENROUTER_IMAGE_MODEL` | no | `openai/gpt-4o-mini` | Override for IMAGE_DESCRIPTION. |
 | `OPENROUTER_IMAGE_GENERATION_MODEL` | no | `google/gemini-2.5-flash-image-preview` | Override for IMAGE generation. |
 | `OPENROUTER_EMBEDDING_MODEL` | no | `openai/text-embedding-3-small` | Override for TEXT_EMBEDDING. |
 | `OPENROUTER_TRANSCRIPTION_MODEL` | no | `openai/whisper-large-v3` | Override for TRANSCRIPTION. |
