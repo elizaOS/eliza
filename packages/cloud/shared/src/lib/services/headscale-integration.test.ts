@@ -1,6 +1,6 @@
 // Exercises headscale integration behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
-import type { HeadscaleClient } from "./headscale-client";
+import { HeadscaleClient } from "./headscale-client";
 import {
   DEFAULT_REGISTRATION_TIMEOUT_MS,
   HeadscaleIntegration,
@@ -167,10 +167,10 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     agentId: "11111111-1111-4111-8111-111111111111",
   });
 
-  test("waitForVPNRegistration polls getNodeByName with the node name", async () => {
+  test("waitForVPNRegistration polls the collision-tolerant lookup with the node name", async () => {
     const lookups: string[] = [];
     const fake = {
-      getNodeByName: async (name: string) => {
+      getNodeByNameOrSuffixed: async (name: string) => {
         lookups.push(name);
         return { id: "node-1", name, ipAddresses: ["100.64.0.7"] };
       },
@@ -208,11 +208,18 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
 
   test("waitForVPNRegistration skips the excluded live node until its replacement appears (#16565)", async () => {
     // During the blue/green overlap old + new nodes share the hostname; the
-    // preserved live node's id must never satisfy the registration wait.
+    // preserved live node's id must never satisfy the registration wait —
+    // even when the client lookup returns it (belt and braces on top of the
+    // client-side exclusion).
     let polls = 0;
+    const seenOptions: ({ excludeNodeId?: string; createdAfter?: Date } | undefined)[] = [];
     const fake = {
-      getNodeByName: async (name: string) => {
+      getNodeByNameOrSuffixed: async (
+        name: string,
+        options?: { excludeNodeId?: string; createdAfter?: Date },
+      ) => {
         polls += 1;
+        seenOptions.push(options);
         return polls < 3
           ? { id: "old-live-node", name, ipAddresses: ["100.64.0.7"] }
           : { id: "blue-node", name, ipAddresses: ["100.64.0.8"] };
@@ -228,6 +235,9 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     expect(registration?.nodeId).toBe("blue-node");
     expect(registration?.ip).toBe("100.64.0.8");
     expect(polls).toBeGreaterThanOrEqual(3);
+    // The client lookup must receive the exclusion and the poll-start gate.
+    expect(seenOptions[0]?.excludeNodeId).toBe("old-live-node");
+    expect(seenOptions[0]?.createdAfter).toBeInstanceOf(Date);
   });
 
   test("cleanupContainerVPN surfaces an API failure instead of reading it as nothing-to-clean-up (#16565)", async () => {
@@ -268,6 +278,138 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     await expect(
       new HeadscaleIntegration(failing).removeVpnNodeById("node-43"),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("waitForVPNRegistration adopts Headscale collision-renamed nodes (real client, stubbed fetch)", () => {
+  // Blue/green upgrade: the preserved green node holds the base hostname, so
+  // Headscale renames the fresh blue registration to `<name>-<random8>`
+  // (observed: eliza-00e6292c-e55-cnpx9uop). These tests drive the full
+  // poll -> client -> HTTP path with only fetch stubbed.
+  const baseName = "eliza-00e6292c-e55";
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const makeNode = (id: string, name: string, ip: string, createdAt: Date) => ({
+    id,
+    name,
+    user: { name: "1" },
+    ipAddresses: [ip],
+    online: true,
+    lastSeen: new Date().toISOString(),
+    createdAt: createdAt.toISOString(),
+  });
+
+  /** Serves the node list for GET /api/v1/node and records/answers rename calls. */
+  const stubHeadscale = (nodes: unknown[], opts?: { renameStatus?: number }) => {
+    const renameUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/rename/")) {
+        renameUrls.push(url);
+        const status = opts?.renameStatus ?? 200;
+        return {
+          ok: status < 400,
+          status,
+          statusText: status < 400 ? "OK" : "Internal Server Error",
+          json: async () => ({}),
+          text: async () => "{}",
+          headers: new Headers({ "content-type": "application/json" }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ nodes }),
+        text: async () => JSON.stringify({ nodes }),
+        headers: new Headers({ "content-type": "application/json" }),
+      } as Response;
+    }) as typeof fetch;
+    return renameUrls;
+  };
+
+  const integration = () =>
+    new HeadscaleIntegration(
+      new HeadscaleClient({ apiUrl: "https://headscale.example", apiKey: "secret", user: "1" }),
+    );
+
+  test("adopts the fresh suffixed blue node past the excluded green and renames it back", async () => {
+    const renames = stubHeadscale([
+      makeNode("3", baseName, "100.64.0.56", new Date(Date.now() - 60 * 60 * 1000)),
+      makeNode("8", `${baseName}-cnpx9uop`, "100.64.0.8", new Date(Date.now() + 60_000)),
+    ]);
+
+    const registration = await integration().waitForVPNRegistration(baseName, 5_000, {
+      excludeNodeId: "3",
+    });
+
+    expect(registration?.nodeId).toBe("8");
+    expect(registration?.ip).toBe("100.64.0.8");
+    expect(renames).toEqual([`https://headscale.example/api/v1/node/8/rename/${baseName}`]);
+  });
+
+  test("a rejected rename-back never fails the adoption", async () => {
+    // While the green node still holds the base name Headscale rejects the
+    // rename; registration is already secured and must succeed regardless.
+    const renames = stubHeadscale(
+      [
+        makeNode("3", baseName, "100.64.0.56", new Date(Date.now() - 60 * 60 * 1000)),
+        makeNode("8", `${baseName}-cnpx9uop`, "100.64.0.8", new Date(Date.now() + 60_000)),
+      ],
+      { renameStatus: 500 },
+    );
+
+    const registration = await integration().waitForVPNRegistration(baseName, 5_000, {
+      excludeNodeId: "3",
+    });
+
+    expect(registration?.nodeId).toBe("8");
+    expect(registration?.ip).toBe("100.64.0.8");
+    expect(renames.length).toBe(1);
+  });
+
+  test("does not attempt a rename when the node registered under the exact name", async () => {
+    const renames = stubHeadscale([makeNode("4", baseName, "100.64.0.9", new Date())]);
+
+    const registration = await integration().waitForVPNRegistration(baseName, 5_000);
+
+    expect(registration?.nodeId).toBe("4");
+    expect(renames).toEqual([]);
+  });
+
+  test("never adopts a suffixed node created before the poll started", async () => {
+    // The previous cycle's green node (or an orphan from a failed upgrade)
+    // keeps its suffixed name forever; adopting it would route the sandbox to
+    // the wrong container. Stale suffixed nodes must time out instead.
+    stubHeadscale([
+      makeNode("5", `${baseName}-aaaaaaaa`, "100.64.0.5", new Date(Date.now() - 60 * 60 * 1000)),
+    ]);
+
+    const registration = await integration().waitForVPNRegistration(baseName, 300);
+
+    expect(registration).toBeNull();
+  });
+
+  test("times out with null when no node matches at all", async () => {
+    stubHeadscale([makeNode("2", "other-agent", "100.64.0.2", new Date())]);
+
+    const registration = await integration().waitForVPNRegistration(baseName, 300);
+
+    expect(registration).toBeNull();
+  });
+
+  test("times out when only the excluded green node exists", async () => {
+    stubHeadscale([makeNode("3", baseName, "100.64.0.56", new Date())]);
+
+    const registration = await integration().waitForVPNRegistration(baseName, 300, {
+      excludeNodeId: "3",
+    });
+
+    expect(registration).toBeNull();
   });
 });
 
