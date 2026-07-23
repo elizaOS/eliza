@@ -8,11 +8,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  DEFAULT_ELIZA_CLOUD_LARGE_MODEL,
-  getLargeModel,
-  getSmallModel,
-} from "../src/utils/config";
+import { DEFAULT_ELIZA_CLOUD_LARGE_MODEL, getLargeModel, getSmallModel } from "../src/utils/config";
 
 const runtimeWith = (map: Record<string, string>) =>
   ({ getSetting: (key: string) => map[key] ?? null }) as unknown as IAgentRuntime;
