@@ -239,6 +239,14 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "Browser workspace navigation/tab controls pair with the BROWSER action (plugin-browser); wallet-consent prompts are owner-in-the-loop by design and stay counted here.",
   },
   {
+    viewId: "my-apps",
+    sourceFiles: ["packages/ui/src/components/pages/MyAppsView.tsx"],
+    semanticActions: ["BROWSER"],
+    maxMutationSites: 1,
+    notes:
+      "Cloud Apps studio row navigates via navigateBrowserPath, which the BROWSER action covers; the row itself is a signed-in-gated shortcut, not a state mutation surface.",
+  },
+  {
     viewId: "relationships",
     sourceFiles: [
       "packages/ui/src/components/pages/RelationshipsView.tsx",
