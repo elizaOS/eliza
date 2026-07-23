@@ -1162,6 +1162,52 @@ export type WalletAlphaSummary = {
   investorInsights?: InvestorEvidenceCollection;
 };
 
+export type WalletInvestmentStyleSummary = {
+  style:
+    | "long_term_investor"
+    | "active_trader"
+    | "swing_trader"
+    | "momentum_trader"
+    | "accumulator"
+    | "defi_investor"
+    | "yield_farmer"
+    | "meme_coin_trader"
+    | "whale_investor"
+    | "passive_holder"
+    | "diversified_investor"
+    | "mixed";
+
+  confidence:
+    | "low"
+    | "medium"
+    | "high";
+
+  evidenceConfidence:
+    | "low"
+    | "medium"
+    | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  investorHeadline: string;
+
+  investorSummary: string;
+
+  investorTakeaway: string;
+
+  styleDescription: string;
+
+  supportingSignals: string[];
+
+  conflictingSignals: string[];
+
+  limitations: string[];
+
+  investorExplanation?: InvestorExplanation;
+
+  investorInsights?: InvestorEvidenceCollection;
+};
+
 export type WalletInvestigationReport = {
   generatedAt: string;
 
