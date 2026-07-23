@@ -61,6 +61,12 @@ jobs:
       - name: Run affected package tests
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # packages/agent defaults to one vitest spawn per file — sized for
+          # the self-hosted exhaustive lane. On this 4-vCPU hosted runner ~350
+          # cold spawns cannot finish inside the job budget, so run the suite
+          # as one grouped invocation; the forks pool already isolates each
+          # file in its own child process (#17099).
+          AGENT_TEST_BATCH_SIZE: "512"
         run: |
           set -euo pipefail
           node packages/scripts/run-turbo.mjs ls --output=json > "$RUNNER_TEMP/workspace-packages.json"
