@@ -35,6 +35,7 @@ import type {
   AutomationListResponse,
 } from "../../api/client-types-config";
 import { isApiError } from "../../api/client-types-core";
+import { workflowSurfaceBaseUrl } from "../../api/workflow-surface-routing";
 import { resolveCloudConsoleUrl } from "../../cloud/applications/lib/native-cloud-nav";
 import { getCached, invalidate, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
@@ -218,7 +219,12 @@ export function AutomationsFeed({
 }: AutomationsFeedProps = {}) {
   const { t } = useTranslation();
   const apiBaseUrl = client.baseUrl;
-  const cacheKey = automationListCacheKey(apiBaseUrl);
+  // The base the workflow surface is actually served from. On a mobile device
+  // whose bundled runtime cannot host plugin-workflow this resolves to the
+  // linked Cloud agent's base, so rows cache under the agent that owns them and
+  // the upgrade CTA can name the right Cloud agent.
+  const workflowApiBase = workflowSurfaceBaseUrl(apiBaseUrl);
+  const cacheKey = automationListCacheKey(workflowApiBase);
   // Seed from the shared cache so a revisit paints the last-known automations
   // instantly and revalidates silently, instead of flashing a spinner.
   const cachedAutomations = getCached<AutomationListResponse>(cacheKey);
@@ -328,7 +334,7 @@ export function AutomationsFeed({
         // error-policy:J4 this view boundary converts capability and load
         // failures into explicit unavailable, upgrade, or retryable states.
         if (isApiError(e) && e.code === "workflow_requires_dedicated") {
-          const agentId = cloudAgentIdFromApiBase(client.baseUrl);
+          const agentId = cloudAgentIdFromApiBase(workflowApiBase);
           if (agentId && activeCacheKeyRef.current === requestCacheKey) {
             setDataState({ cacheKey: requestCacheKey, data: null });
             invalidate(requestCacheKey);
@@ -370,7 +376,7 @@ export function AutomationsFeed({
         }
       }
     },
-    [cacheKey, t],
+    [cacheKey, t, workflowApiBase],
   );
 
   useEffect(() => {

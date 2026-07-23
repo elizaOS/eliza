@@ -613,6 +613,10 @@ export function titleForTab(tab: Tab): string {
       return "Contacts";
     case "camera":
       return "Camera";
+    case "tasks":
+      // The coding-task orchestrator surface presents as "Projects"; the tab
+      // id and /apps/tasks route stay stable for navigation + telemetry.
+      return "Projects";
     case "browser":
       return "Browser";
     case "apps":

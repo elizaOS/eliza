@@ -197,10 +197,10 @@ describe("curateLauncherPages", () => {
   });
 
   it("gates cloud-only tiles behind an active Eliza Cloud connection (#10725)", () => {
-    // cloud-apps is viewKind:"release", so without the gate it would show as an
-    // "Apps" tile regardless of cloud state.
-    const views = [entry("wallet"), entry("cloud-apps", { label: "Apps" })];
-    // Signed out of cloud: the cloud dashboard tile is hidden.
+    // The cloud account app is viewKind:"release", so without the gate it would
+    // tile regardless of cloud state.
+    const views = [entry("wallet"), entry("cloud", { label: "Cloud" })];
+    // Signed out of cloud: the cloud account tile is hidden.
     expect(
       ids(
         curateLauncherPages(views, {
@@ -219,7 +219,28 @@ describe("curateLauncherPages", () => {
           cloudActive: true,
         }),
       ),
-    ).toEqual(["wallet", "cloud-apps"]);
+    ).toEqual(["wallet", "cloud"]);
+  });
+
+  it("never tiles the Cloud Applications studio — My Apps is the one apps tile", () => {
+    // Shaw's consolidation: `cloud-apps` (the native Cloud Applications studio,
+    // label "Cloud Apps") is reached from inside My Apps and by /cloud-apps
+    // deep link; the launcher must show exactly one apps destination whether or
+    // not cloud is signed in.
+    const views = [
+      entry("wallet"),
+      entry("my-apps", { label: "My Apps", builtin: true }),
+      entry("cloud-apps", { label: "Cloud Apps" }),
+    ];
+    for (const cloudActive of [false, true]) {
+      const page = curateLauncherPages(views, {
+        isAosp: false,
+        enabledKinds: ENABLED,
+        cloudActive,
+      });
+      expect(ids(page)).toEqual(["wallet", "my-apps"]);
+      expect(page.find((e) => e.id === "my-apps")?.label).toBe("My Apps");
+    }
   });
 
   it("collapses duplicate wallet + automations registrations, keeping Tasks its own tile", () => {
@@ -359,6 +380,9 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("todos"),
     entry("task-coordinator", { viewKind: "preview" }),
     // Everyday apps.
+    entry("my-apps", { label: "My Apps", builtin: true }),
+    // The native Cloud Applications studio — folded into My Apps, never a tile.
+    entry("cloud-apps", { label: "Cloud Apps" }),
     entry("browser"),
     entry("character", { viewKind: "system" }),
     entry("documents", { viewKind: "system" }),
@@ -369,6 +393,8 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("memories", { viewKind: "system" }),
     entry("feed", { viewKind: "system" }),
     entry("stream"),
+    // Builtin tab with no declared kind — curation must still force preview.
+    entry("pendant-transcript", { builtin: true, label: "Pendant Transcript" }),
     entry("settings", { viewKind: "system" }),
     // Native-OS (AOSP fork only).
     entry("phone", { builtin: true }),
@@ -399,17 +425,20 @@ describe("curateLauncherPages — full realistic view set", () => {
         }),
       ),
     ).toEqual([
-      // chat is the home surface — no launcher tile (#14479).
+      // chat is the home surface — no launcher tile (#14479); cloud-apps folds
+      // into my-apps rather than tiling.
       "settings",
       "wallet",
       "tasks",
       "automations",
+      "my-apps",
       "browser",
       "character",
       "documents",
       "memories",
       "feed",
       "stream",
+      "pendant-transcript",
       "trajectories",
       "database",
       "runtime",
@@ -435,6 +464,7 @@ describe("curateLauncherPages — full realistic view set", () => {
       "wallet",
       "tasks",
       "automations",
+      "my-apps",
       "browser",
       "character",
       "documents",
@@ -442,7 +472,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     ]);
   });
 
-  it("forces feed/stream to preview and fine-tuning + relationships to developer regardless of declared kind", () => {
+  it("forces feed/stream/pendant to preview and fine-tuning + relationships to developer regardless of declared kind", () => {
     // Preview on, developer off: the preview surfaces come back, the training UI
     // and relationships stay hidden (they are developer-gated, not preview).
     const previewOnly = ids(
@@ -452,7 +482,7 @@ describe("curateLauncherPages — full realistic view set", () => {
         cloudActive: true,
       }),
     );
-    for (const id of ["feed", "stream"]) {
+    for (const id of ["feed", "stream", "pendant-transcript"]) {
       expect(previewOnly).toContain(id);
     }
     expect(previewOnly).not.toContain("fine-tuning");
@@ -460,7 +490,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     expect(previewOnly).not.toContain("relationships");
 
     // Developer on, preview off: the training UI + relationships show with the
-    // dev tools, the preview surfaces (feed/stream) stay hidden.
+    // dev tools, the preview surfaces (feed/stream/pendant) stay hidden.
     const developerOnly = ids(
       curateLauncherPages(REAL_VIEWS, {
         isAosp: false,
@@ -471,7 +501,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     expect(developerOnly).toContain("fine-tuning");
     // relationships is a Character section, never a tile — even developer-on.
     expect(developerOnly).not.toContain("relationships");
-    for (const id of ["feed", "stream"]) {
+    for (const id of ["feed", "stream", "pendant-transcript"]) {
       expect(developerOnly).not.toContain(id);
     }
   });
@@ -659,7 +689,7 @@ describe("launcher label-duplication lint", () => {
       entry("wallet", { label: "Wallet", viewKind: "system" }),
       entry("browser", { label: "Browser" }),
       entry("automations", { label: "Automations", viewKind: "system" }),
-      entry("tasks", { label: "Tasks", builtin: true }),
+      entry("tasks", { label: "Projects", builtin: true }),
       entry("character", { label: "Character", viewKind: "system" }),
       entry("relationships", { label: "Relationships", viewKind: "system" }),
       entry("documents", { label: "Documents", viewKind: "system" }),

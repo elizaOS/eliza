@@ -20,7 +20,7 @@ import type {
   AutomationListResponse,
 } from "../../api/client-types-config";
 import { ApiError } from "../../api/client-types-core";
-import { invalidate } from "../../hooks/resource-cache";
+import { getCached, invalidate } from "../../hooks/resource-cache";
 import { AutomationsFeed, automationListCacheKey } from "./AutomationsFeed";
 
 const DEFAULT_AGENT_BASE =
@@ -37,6 +37,12 @@ const clientMock = vi.hoisted(() => ({
   runWorkflowDefinition: vi.fn(),
 }));
 const openExternalUrlMock = vi.hoisted(() => vi.fn(async () => undefined));
+// Drives the REAL workflow-surface routing module (which reads the platform
+// through this seam) so the mobile-through-cloud cases exercise the actual
+// reroute logic instead of a stubbed routing result.
+const platformMock = vi.hoisted(() => ({
+  platform: "web" as "web" | "ios" | "android" | "desktop",
+}));
 
 vi.mock("../../api", () => ({
   client: clientMock,
@@ -44,6 +50,13 @@ vi.mock("../../api", () => ({
 
 vi.mock("../../utils/openExternalUrl", () => ({
   openExternalUrl: openExternalUrlMock,
+}));
+
+vi.mock("../../platform/platform-guards", () => ({
+  getFrontendPlatform: () => platformMock.platform,
+  isDynamicViewLoadingAllowed: () =>
+    platformMock.platform !== "ios" && platformMock.platform !== "android",
+  getActiveViewModality: () => "gui" as const,
 }));
 
 function automationItem(
@@ -125,8 +138,34 @@ function responseFixture(): AutomationListResponse {
   };
 }
 
+const MOBILE_IPC_BASE = "eliza-local-agent://ipc";
+const LINKED_SHARED_CLOUD_BASE =
+  "https://api.elizacloud.ai/api/v1/eliza/agents/linked-shared-agent";
+
+function seedLinkedCloudAgentProfile(): void {
+  window.localStorage.setItem(
+    "elizaos:agent-profiles",
+    JSON.stringify({
+      version: 1,
+      activeProfileId: null,
+      profiles: [
+        {
+          id: "cloud-profile-1",
+          label: "Cloud agent",
+          kind: "cloud",
+          apiBase: LINKED_SHARED_CLOUD_BASE,
+          accessToken: "cloud-jwt",
+          createdAt: "2026-07-01T00:00:00.000Z",
+        },
+      ],
+    }),
+  );
+}
+
 beforeEach(() => {
   window.location.hash = "#automations";
+  window.localStorage.clear();
+  platformMock.platform = "web";
   clientMock.baseUrl = DEFAULT_AGENT_BASE;
   clientMock.listAutomations.mockResolvedValue(responseFixture());
   clientMock.listScheduledTasks.mockResolvedValue({ tasks: [] });
@@ -137,6 +176,8 @@ afterEach(() => {
   cleanup();
   invalidate(automationListCacheKey(DEFAULT_AGENT_BASE));
   invalidate(automationListCacheKey(SECOND_AGENT_BASE));
+  invalidate(automationListCacheKey(MOBILE_IPC_BASE));
+  invalidate(automationListCacheKey(LINKED_SHARED_CLOUD_BASE));
   vi.clearAllMocks();
 });
 
@@ -510,5 +551,79 @@ describe("AutomationsFeed", () => {
     expect(
       within(screen.getByTestId("automation-stat-failed")).getByText("0"),
     ).toBeTruthy();
+  });
+
+  it("serves mobile-through-cloud rows and keys them to the linked Cloud agent", async () => {
+    platformMock.platform = "ios";
+    clientMock.baseUrl = MOBILE_IPC_BASE;
+    seedLinkedCloudAgentProfile();
+
+    render(<AutomationsFeed />);
+
+    // The list request itself is rerouted inside the client layer; the feed's
+    // job is to load real rows instead of the dead-end unavailable state and
+    // cache them under the Cloud agent's base.
+    expect(await screen.findByText("Nightly review")).toBeTruthy();
+    expect(
+      screen.queryByText(/workflow API is not available on this runtime/i),
+    ).toBeNull();
+    expect(
+      getCached(automationListCacheKey(LINKED_SHARED_CLOUD_BASE)),
+    ).toBeTruthy();
+    expect(getCached(automationListCacheKey(MOBILE_IPC_BASE))).toBeFalsy();
+  });
+
+  it("maps the shared-tier capability gate to the Cloud upgrade path on mobile", async () => {
+    platformMock.platform = "ios";
+    clientMock.baseUrl = MOBILE_IPC_BASE;
+    seedLinkedCloudAgentProfile();
+    clientMock.listAutomations.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/automations",
+        status: 409,
+        code: "workflow_requires_dedicated",
+        message:
+          "Workflows require a dedicated agent runtime. Upgrade this agent before managing workflows.",
+      }),
+    );
+
+    render(<AutomationsFeed />);
+
+    // Before the routing fix the upgrade agent id was parsed from the active
+    // (IPC) base, so this state degraded to a generic retry error. The id must
+    // come from the linked Cloud agent that actually answered.
+    expect(await screen.findByText("Dedicated agent required")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Upgrade to Dedicated" }),
+    );
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://elizacloud.ai/dashboard/agents/linked-shared-agent",
+    );
+  });
+
+  it("keeps the explicit unavailable state on mobile with no linked Cloud agent", async () => {
+    platformMock.platform = "ios";
+    clientMock.baseUrl = MOBILE_IPC_BASE;
+    clientMock.listAutomations.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/automations",
+        status: 404,
+        message: "Not found",
+      }),
+    );
+
+    render(<AutomationsFeed />);
+
+    expect(
+      await screen.findByText("Workflow service unavailable"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/workflow API is not available on this runtime/i),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Upgrade to Dedicated" }),
+    ).toBeNull();
   });
 });

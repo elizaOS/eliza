@@ -14,10 +14,14 @@
  * `orchestrator` / `wallet.inventory` use). It is gated to non-web platforms so
  * it never competes with the web shell's route, and the import stays **lazy**
  * (the studio chunk — and the whole applications domain it pulls — loads only
- * when the Apps view is opened), preserving the native bundle's tree-shake.
+ * when the studio is opened), preserving the native bundle's tree-shake.
  *
  * The page id is `cloud-apps` (the local installed-`AppsView` owns `apps`), the
- * route is `/cloud-apps`, and the label is "Apps".
+ * route is `/cloud-apps`, and the label is "Cloud Apps". The page is NOT a
+ * launcher tile: My Apps is the one apps destination in the launcher
+ * (`LAUNCHER_HIDDEN_IDS` in `@elizaos/ui`'s launcher-curation), and this route
+ * is reached from the My Apps view's Eliza Cloud row and from deep links
+ * (`eliza://apps/deploy` → `/cloud-apps`).
  */
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { getFrontendPlatform } from "@elizaos/ui/platform";
@@ -29,7 +33,7 @@ if (getFrontendPlatform() !== "web") {
     id: "cloud-apps",
     viewKind: "release",
     pluginId: "@elizaos/app",
-    label: "Apps",
+    label: "Cloud Apps",
     icon: "Grid3x3",
     path: "/cloud-apps",
     loader: () =>
