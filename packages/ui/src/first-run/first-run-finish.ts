@@ -587,13 +587,13 @@ export async function bindCloudAgent(
   // path instead of serializing the full cold cost behind auth/me.
   // Fire-and-forget: the result is discarded and failures are irrelevant —
   // the hydrate call remains the authoritative fetch. Optional-chained so
-  // chat-surface-less client shims (tests, legacy) are a no-op.
-  try {
-    void client.listConversations?.().catch(() => undefined);
-  } catch {
-    // error-policy:J6 best-effort warm-up — a client without the chat surface
-    // simply skips it.
-  }
+  // chat-surface-less client shims (tests, legacy) are a no-op; the
+  // Promise.resolve().then wrapper absorbs a synchronous throw from a
+  // non-conforming shim without an empty catch block.
+  // error-policy:J6 best-effort warm-up — failure is fully degradable.
+  void Promise.resolve()
+    .then(() => client.listConversations?.())
+    .catch(() => undefined);
   const activeServer = createPersistedActiveServer({
     kind: "cloud",
     id: `cloud:${selectedAgent.agentId}`,
