@@ -42,6 +42,15 @@ interface CachedSharedAgentScope {
    * entries (those revalidate via the key's org instead).
    */
   stewardUserId?: string;
+  /**
+   * Epoch-ms of the entry's FIRST authoritative write (COLDPATH-FIX-2026-07-22).
+   * Preserved across sliding-TTL refreshes so the refresh can be capped at
+   * `resolveMaxAgeMs` past this instant — a continuously active conversation
+   * still self-heals the cached agent row within the cap. Absent on entries
+   * written before this field existed (treated as "write now", so a legacy
+   * entry simply gets one bounded refresh window before the cap applies).
+   */
+  firstWrittenAtMs?: number;
 }
 
 /**
@@ -107,28 +116,121 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
   const scopeCacheKey = scopeKeyPrefix
     ? CacheKeys.sharedAgentScope.resolve(scopeKeyPrefix, agentId)
     : null;
+  // A cache HIT reproduces the resolved scope WITHOUT the cold DB waves, but must
+  // STILL run the per-request credential gate (see revalidateResolvedScope). This
+  // is shared by the direct pre-hydration hit below AND by a single-flight waiter
+  // that picks up a scope another concurrent cold caller just populated.
+  const revalidateResolvedScope = async (
+    cached: CachedSharedAgentScope,
+  ): Promise<ResolvedSharedAgent | null> => {
+    if (!(cached?.agent && cached.orgId && cached.agent.execution_tier === "shared")) {
+      return null;
+    }
+    // SECURITY: a hit skips the expensive user/org+agent DB hydration, but it
+    // must NOT skip the credential gate. API-key path: re-run the (already-
+    // cached, revoke-invalidated) key validation + org match. SESSION path:
+    // re-run the warm-cached steward JWT verify + confirm it still maps to the
+    // SAME steward user the entry was written for. Either way a
+    // revoked/expired/re-scoped credential falls back to the authoritative
+    // gate inside the 30s TTL window; we only skip the cold DB waves.
+    const stillAuthorized = isSessionScope
+      ? cached.stewardUserId != null &&
+        (await revalidateSessionScope(c, cached.stewardUserId).catch(() => false))
+      : await revalidateCachedScope(c, cached.orgId).catch(() => false);
+    if (!stillAuthorized) return null;
+    return {
+      agent: cached.agent,
+      agentId,
+      orgId: cached.orgId,
+      agentName: cached.agent.agent_name ?? "Eliza",
+    };
+  };
+
+  // SLIDING-TTL refresh on a VALIDATED hit (COLDPATH-FIX-2026-07-22). The
+  // residual cold stall after #16743/#16763 is TTL expiry between turns: the
+  // 30s absolute TTL is not refreshed on read, so a conversation idled past 30s
+  // (demo Q&A pacing — read the reply, think, ask a follow-up — routinely does)
+  // re-pays the cold Hyperdrive waves on the NEXT turn. Refreshing the TTL when
+  // we serve a still-authorized hit keeps an ACTIVE conversation warm across
+  // human think-time. It is bounded: a hit only re-validates the CREDENTIAL, not
+  // the cached agent row, so we never refresh past `resolveMaxAgeMs` after the
+  // entry's FIRST write — a tier flip / row change still self-heals within the
+  // cap even under a continuously active conversation. Best-effort: a refresh
+  // failure only means the next turn may re-hydrate; it never fails the turn and
+  // never extends an UNAUTHORIZED entry (this runs only after revalidate passed).
+  const slidingRefreshValidatedHit = (cached: CachedSharedAgentScope): void => {
+    if (!scopeCacheKey) return;
+    const now = Date.now();
+    const firstWrittenAtMs = cached.firstWrittenAtMs ?? now;
+    // Do not refresh past the absolute cap; let the entry expire so the agent
+    // row self-heals via the authoritative gate.
+    if (now - firstWrittenAtMs >= CacheTTL.sharedAgentScope.resolveMaxAgeMs) return;
+    const refreshed: CachedSharedAgentScope = { ...cached, firstWrittenAtMs };
+    void cache.set(scopeCacheKey, refreshed, CacheTTL.sharedAgentScope.resolve).catch((error) => {
+      logger.debug("[resolveSharedAgent] scope cache sliding refresh failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  };
+
   if (scopeCacheKey) {
     const cached = await cache.get<CachedSharedAgentScope>(scopeCacheKey).catch(() => null);
-    if (cached?.agent && cached.orgId && cached.agent.execution_tier === "shared") {
-      // SECURITY: a hit skips the expensive user/org+agent DB hydration, but it
-      // must NOT skip the credential gate. API-key path: re-run the (already-
-      // cached, revoke-invalidated) key validation + org match. SESSION path:
-      // re-run the warm-cached steward JWT verify + confirm it still maps to the
-      // SAME steward user the entry was written for. Either way a
-      // revoked/expired/re-scoped credential falls back to the authoritative
-      // gate inside the 30s TTL window; we only skip the cold DB waves.
-      const stillAuthorized = isSessionScope
-        ? cached.stewardUserId != null &&
-          (await revalidateSessionScope(c, cached.stewardUserId).catch(() => false))
-        : await revalidateCachedScope(c, cached.orgId).catch(() => false);
-      if (stillAuthorized) {
-        return {
-          agent: cached.agent,
-          agentId,
-          orgId: cached.orgId,
-          agentName: cached.agent.agent_name ?? "Eliza",
-        };
+    if (cached) {
+      const resolved = await revalidateResolvedScope(cached);
+      if (resolved) {
+        slidingRefreshValidatedHit(cached);
+        return resolved;
       }
+    }
+  }
+
+  // STAMPEDE FIX (CONTENTION-2026-07-22): the scope cache above kills the cold
+  // hydration cost for the SECOND-and-later cold caller, but N concurrent cold
+  // callers (an audience all chatting the SAME shared demo agent at once) ALL
+  // miss simultaneously and stampede `requireUserOrApiKeyWithOrgLookup` +
+  // findByIdAndOrg in parallel, saturating the Hyperdrive/DB connection pool.
+  // Measured: with 8 concurrent turns on one shared agent exactly one turn's
+  // scope-resolve wedged ~8.5-9s (pool-starved) while the rest ran ~1.2s.
+  // Single-flight the expensive hydration so only the FIRST concurrent cold
+  // caller pays the DB waves and populates the scope; the rest poll for the
+  // populated scope (getOrSet singleflight) and then run the SAME per-request
+  // credential gate via revalidateResolvedScope — security is unchanged, only
+  // the redundant parallel DB hydration is collapsed to one. Falls through to
+  // an independent hydration if the lock backend is absent or the holder is
+  // slow past the poll window (getOrSet's own fall-through), so this can never
+  // hang a turn — worst case it degrades to today's stampede behavior.
+  if (scopeCacheKey) {
+    const hydrated = await cache
+      .getOrSet<CachedSharedAgentScope | null>(
+        scopeCacheKey,
+        CacheTTL.sharedAgentScope.resolve,
+        async () => {
+          const { user, orgLookupResult: agent } = await requireUserOrApiKeyWithOrgLookup(
+            c,
+            (orgId) => agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
+          );
+          // Only a settled shared-tier agent is cacheable (never the
+          // time-sensitive dedicated-bootstrap window). A non-cacheable or
+          // not-found result returns null so getOrSet does NOT populate the
+          // cache, and this caller falls through to the authoritative path
+          // below to produce the correct 404 / bootstrap handling.
+          if (!agent || agent.execution_tier !== "shared") return null;
+          const base =
+            isSessionScope && typeof user.steward_id === "string"
+              ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
+              : { orgId: user.organization_id, agent };
+          return { ...base, firstWrittenAtMs: Date.now() };
+        },
+        { singleflight: true },
+      )
+      .catch(() => null);
+    if (hydrated) {
+      const resolved = await revalidateResolvedScope(hydrated);
+      // No sliding refresh here: this branch either JUST populated the entry
+      // (fresh full TTL) or picked up a scope another cold caller populated
+      // microseconds ago (also fresh). The sliding refresh only exists to keep
+      // a pre-existing, idled entry warm and runs solely on the direct-get hit.
+      if (resolved) return resolved;
     }
   }
 
@@ -148,10 +250,12 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     // JWT maps to the same user without a user/org DB read (#SHADOW-ACCOUNT-DEBUG).
     // Only write it when we actually have it (session path + a steward-linked
     // user); its absence just means the hit safely falls back to the slow gate.
-    const entry: CachedSharedAgentScope =
-      isSessionScope && typeof user.steward_id === "string"
+    const entry: CachedSharedAgentScope = {
+      ...(isSessionScope && typeof user.steward_id === "string"
         ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
-        : { orgId: user.organization_id, agent };
+        : { orgId: user.organization_id, agent }),
+      firstWrittenAtMs: Date.now(),
+    };
     void cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve).catch((error) => {
       logger.debug("[resolveSharedAgent] scope cache write failed", {
         error: error instanceof Error ? error.message : String(error),

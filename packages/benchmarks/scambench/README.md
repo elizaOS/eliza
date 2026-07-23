@@ -1,13 +1,12 @@
 # scambench
 
-> **What this measures:** a generic provider/model safety eval — the
-> scam-resistance of the underlying model — **not** anything specific to the
-> Eliza agent. It does not exercise the AgentRuntime, plugins, or agent loop.
+> **What this measures:** scam resistance and appropriate helpfulness through
+> each selected agent's native runtime loop.
 
-Adversarial scam-detection benchmark. Reads
-`training/data/normalized/scambench.jsonl` (with optional augmentation from
-`training/data/synthesized/scambench/scambench.jsonl`) and sends each
-scenario through the model under test via the OpenAI Python SDK.
+Adversarial scam-detection benchmark. Real runs read the requested split from
+`training/data/normalized/scambench.jsonl`, fail closed when that corpus is not
+complete, and send every selected scenario through the Eliza, Hermes, or
+OpenClaw native harness adapter.
 
 Scoring per record:
 

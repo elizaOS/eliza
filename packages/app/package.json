@@ -232,7 +232,7 @@
     "pathe": "^2.0.3",
     "postcss": "^8.5.16",
     "rollup-plugin-visualizer": "^7.0.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4.3.1",
     "tesseract.js": "^6.0.1",
     "@typescript/native": "npm:typescript@^7.0.2",

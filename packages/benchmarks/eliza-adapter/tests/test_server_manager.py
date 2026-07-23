@@ -101,6 +101,35 @@ def test_server_manager_uses_ephemeral_port_by_default(
     assert captured["kwargs"]["env"]["ELIZA_BENCH_PORT"] == "45678"
 
 
+def test_server_manager_pins_tsx_to_executable_workspace_sources(
+    monkeypatch, tmp_path: Path
+) -> None:
+    server = tmp_path / "packages" / "lifeops-bench" / "src" / "server.ts"
+    server.parent.mkdir(parents=True)
+    server.write_text("console.log('fake benchmark server')\n", encoding="utf-8")
+    (tmp_path / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return _FakeProcess()
+
+    manager = ElizaServerManager(repo_root=tmp_path, port=0)
+    monkeypatch.setattr(manager.client, "is_ready", lambda: True)
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
+    monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
+    monkeypatch.setenv("TSX_TSCONFIG_PATH", "/tmp/declaration-only-tsconfig.json")
+
+    manager.start()
+    manager._proc = None
+
+    assert captured["kwargs"]["env"]["TSX_TSCONFIG_PATH"] == str(
+        tmp_path / "tsconfig.json"
+    )
+
+
 def test_server_manager_respects_explicit_stub_embedding_override(
     monkeypatch,
     tmp_path: Path,

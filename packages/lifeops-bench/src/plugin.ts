@@ -44,6 +44,23 @@ export function getBenchmarkContext(): BenchmarkContext | null {
   return _currentContext;
 }
 
+/**
+ * Keep benchmark provider context installed only for the native turn that
+ * consumes it. Rejections must clear the module-level slot before another
+ * request can observe stale task data.
+ */
+export async function runWithBenchmarkContext<T>(
+  ctx: BenchmarkContext,
+  fn: () => Promise<T> | T,
+): Promise<T> {
+  setBenchmarkContext(ctx);
+  try {
+    return await fn();
+  } finally {
+    setBenchmarkContext(null);
+  }
+}
+
 function currentBenchmarkName(): string {
   return (_currentContext?.benchmark ?? "").trim().toLowerCase();
 }
@@ -771,6 +788,11 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const isPersonalityBenchmark =
     benchmark === "personality_bench" || benchmark === "personality-bench";
 
+  if (isOrchestratorLifecycle) {
+    const sharedHint = ctx.system_hint;
+    return typeof sharedHint === "string" ? sharedHint.trim() : "";
+  }
+
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
   sections.push(`**Task ID:** ${ctx.taskId}`);
@@ -1044,16 +1066,6 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       sections.push(
         `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text. Never ask for money with REPLY alone, and never check payment before the user says they paid or an active charge exists.`,
       );
-    } else if (isOrchestratorLifecycle) {
-      sections.push(
-        `This is an orchestrator lifecycle benchmark. Use the normal task-management and orchestrator actions for lifecycle operations; use REPLY only for user-facing narration around those actions. Do not use BENCHMARK_ACTION.`,
-      );
-      sections.push(
-        `If the user says the current approach failed, asks to replan, changes scope, or asks to continue with revised work, apply the update through the running task and then acknowledge it.`,
-      );
-      sections.push(
-        `For status turns, query the active task or subagent registry before reporting progress; prose-only status claims do not satisfy the benchmark. For underspecified turns, ask a clarifying question and wait before starting.`,
-      );
     } else {
       sections.push(
         `Respond with actions: REPLY and put only the next conversational message in text. Do not call BENCHMARK_ACTION.`,
@@ -1076,6 +1088,49 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   }
 
   return sections.join("\n");
+}
+
+function benchmarkProviderResult(ctx: BenchmarkContext) {
+  const benchmark = ctx.benchmark.trim().toLowerCase();
+  const lifecycleProfile =
+    benchmark === "orchestrator_lifecycle" ||
+    benchmark === "orchestrator-lifecycle";
+  if (lifecycleProfile) {
+    return {
+      text: formatContextAsText(ctx),
+      values: {},
+      data: {},
+    };
+  }
+
+  return {
+    text: formatContextAsText(ctx),
+    values: {
+      hasBenchmark: true,
+      benchmark: ctx.benchmark,
+      taskId: ctx.taskId,
+    },
+    data: { benchmarkContext: ctx },
+  };
+}
+
+/** Verify the exact lifecycle provider payload carries only the shared hint. */
+export function lifecycleBenchmarkProviderPayloadIsNeutral(): boolean {
+  const sharedHint =
+    "Manage delegated work with the available task action and report its result truthfully.";
+  const payload = benchmarkProviderResult({
+    benchmark: "orchestrator_lifecycle",
+    taskId: "sensitive-task-id",
+    model_name: "sensitive-model-name",
+    scenario_id: "sensitive-scenario-id",
+    expected_behaviors: ["sensitive-coaching-label"],
+    system_hint: sharedHint,
+  });
+  return (
+    payload.text === sharedHint &&
+    Object.keys(payload.values).length === 0 &&
+    Object.keys(payload.data).length === 0
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1371,16 +1426,7 @@ export function createBenchmarkPlugin(): Plugin {
           if (!ctx) {
             return { text: "", values: {}, data: {} };
           }
-
-          return {
-            text: formatContextAsText(ctx),
-            values: {
-              hasBenchmark: true,
-              benchmark: ctx.benchmark,
-              taskId: ctx.taskId,
-            },
-            data: { benchmarkContext: ctx },
-          };
+          return benchmarkProviderResult(ctx);
         },
       },
     ],

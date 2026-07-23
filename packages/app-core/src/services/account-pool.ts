@@ -690,6 +690,28 @@ export class AccountPool {
     });
   }
 
+  async markRateLimitedUnknown(
+    accountId: string,
+    detail?: string,
+    opts?: { providerId?: PoolProviderId },
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
+    if (!account) return;
+    const healthDetail: LinkedAccountHealthDetail = {
+      lastChecked: Date.now(),
+      ...(detail ? { lastError: detail } : {}),
+    };
+    await this.deps.writeAccount({
+      ...account,
+      health: "rate-limited",
+      healthDetail,
+    });
+  }
+
   async markNeedsReauth(
     accountId: string,
     detail?: string,
@@ -1185,7 +1207,10 @@ function routeTargetsProvider(
  * Every account-selecting bridge resolves through this so the picker steers
  * all of them — including the coding-agent bridge.
  */
-export function selectionForProvider(providerId: PoolProviderId): {
+export function selectionForProvider(
+  providerId: PoolProviderId,
+  opts: { includeProviderDefault?: boolean } = {},
+): {
   strategy?: Strategy;
   accountIds?: string[];
 } {
@@ -1202,9 +1227,11 @@ export function selectionForProvider(providerId: PoolProviderId): {
       normalizeStrategy(
         defaultSelectionConfig.accountStrategies?.[providerId],
       ) ??
-      (providerId === "anthropic-subscription"
-        ? "drain-soonest-reset"
-        : undefined),
+      (opts.includeProviderDefault === false
+        ? undefined
+        : providerId === "anthropic-subscription"
+          ? "drain-soonest-reset"
+          : undefined),
     accountIds: routeSelection.accountIds,
   };
 }

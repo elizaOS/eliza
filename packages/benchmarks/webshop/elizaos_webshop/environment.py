@@ -8,9 +8,10 @@ Reward is computed by upstream's
 title, attributes, options, and price). The old in-process state machine
 and custom scoring code have been removed entirely.
 
-The optional Lucene/pyserini search engine is *replaced* with an in-process
-BM25 fallback (``rank_bm25``) when pyserini is unavailable. The reward
-function itself is unchanged.
+Full-catalog runs require the local checksum-bound Lucene index and pinned
+Pyserini, Java, spaCy, and fuzzy-matching runtime. Small and explicitly
+synthetic smoke profiles use an in-process BM25 backend and are not
+publication-eligible. The reward function itself is unchanged.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ import subprocess
 import sys
 import json
 import importlib.util
+import random
+from importlib.metadata import version
 from importlib.machinery import ModuleSpec
 from html.parser import HTMLParser
 from dataclasses import dataclass
@@ -38,8 +41,17 @@ logger = logging.getLogger(__name__)
 
 _BENCH_DIR = Path(__file__).resolve().parent.parent
 _UPSTREAM_DIR = _BENCH_DIR / "upstream"
+_OFFICIAL_INDEX_DIR = _BENCH_DIR / "data" / "search-indexes" / "full"
+_OFFICIAL_INDEX_MANIFEST = (
+    _BENCH_DIR / "data" / "search-indexes" / "full.manifest.json"
+)
+_FULL_SOURCE_SHA256 = "2ef591d65df3af89e972ab72468eb82cbf124d876552d9f3678667edd620a6c8"
+_FULL_SUBMITTED_DOCUMENT_COUNT = 1_181_430
+_FULL_EMPTY_PROJECTION_COUNT = 60
+_FULL_DOCUMENT_COUNT = _FULL_SUBMITTED_DOCUMENT_COUNT - _FULL_EMPTY_PROJECTION_COUNT
 _spacy_nlp_singleton: Any | None = None
 _spacy_load_attempted = False
+_ENVIRONMENT_RANDOM_SEED = 233
 
 
 class _FallbackSpacyToken:
@@ -113,6 +125,7 @@ def _ensure_upstream_on_path() -> None:
         sys.path.insert(0, upstream_str)
     _ensure_beautifulsoup_available()
     _install_optional_dependency_stubs()
+    _ensure_spacy_model_available()
     if "gym" not in sys.modules:
         import types as _types
 
@@ -137,19 +150,17 @@ def _ensure_upstream_on_path() -> None:
 
 
 def _ensure_beautifulsoup_available() -> None:
-    """Install BeautifulSoup lazily for hermetic WebShop smoke runs."""
+    """Require BeautifulSoup, except in explicitly synthetic smoke runs."""
     if importlib.util.find_spec("bs4") is not None:
         return
-    if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
-        raise ModuleNotFoundError(
-            "WebShop requires beautifulsoup4. Install it with "
-            "`python -m pip install beautifulsoup4`, or unset WEBSHOP_NO_AUTOFETCH "
-            "to allow the benchmark to install this lightweight dependency."
-        )
-    cmd = [sys.executable, "-m", "pip", "install", "beautifulsoup4>=4.11.0"]
-    completed = subprocess.run(cmd, check=False)
-    if int(getattr(completed, "returncode", 1)) != 0:
+    if os.environ.get("WEBSHOP_ALLOW_SPACY_STUB"):
         _install_beautifulsoup_stub()
+        return
+    raise ModuleNotFoundError(
+        "WebShop requires beautifulsoup4 for real benchmark runs. Install the "
+        "package before running, or use WEBSHOP_ALLOW_SPACY_STUB only for an "
+        "explicitly nonpublishable smoke test."
+    )
 
 
 def _install_beautifulsoup_stub() -> None:
@@ -324,7 +335,10 @@ def _install_beautifulsoup_stub() -> None:
 
 
 def _install_optional_dependency_stubs() -> None:
-    """Install tiny stubs for heavy upstream imports used by reward helpers."""
+    """Install lightweight compatibility stubs for explicit smoke runs only."""
+    if not os.environ.get("WEBSHOP_ALLOW_SPACY_STUB"):
+        return
+
     import types as _types
 
     if "thefuzz" not in sys.modules and importlib.util.find_spec("thefuzz") is None:
@@ -364,9 +378,7 @@ def _install_optional_dependency_stubs() -> None:
 
             fuzz_mod.token_set_ratio = _token_set_ratio  # type: ignore[attr-defined]
 
-    if os.environ.get("WEBSHOP_ALLOW_SPACY_STUB") or (
-        "spacy" not in sys.modules and importlib.util.find_spec("spacy") is None
-    ):
+    if "spacy" not in sys.modules and importlib.util.find_spec("spacy") is None:
         spacy_stub = _types.ModuleType("spacy")
 
         def _load(_model: str) -> _FallbackSpacyNLP:
@@ -376,7 +388,7 @@ def _install_optional_dependency_stubs() -> None:
         sys.modules["spacy"] = spacy_stub
 
 
-def _patch_search_engine_for_bm25_fallback() -> None:
+def _patch_search_engine_for_bm25_fallback(*, force_bm25: bool = False) -> None:
     """Monkey-patch ``engine.init_search_engine`` so pyserini/Lucene/Java
     is not required at import time.
 
@@ -424,18 +436,11 @@ def _patch_search_engine_for_bm25_fallback() -> None:
             sys.modules["pyserini.search.lucene"] = stub
             sys.modules["pyserini.search"].lucene = stub  # type: ignore[attr-defined]
 
-    if "cleantext" not in sys.modules:
-        import types as _types
-
-        cleantext_stub = _types.ModuleType("cleantext")
-
-        def _clean(value: object, **_kwargs: Any) -> str:
-            return str(value)
-
-        cleantext_stub.clean = _clean  # type: ignore[attr-defined]
-        sys.modules["cleantext"] = cleantext_stub
-
-    if "rank_bm25" not in sys.modules:
+    if (
+        "rank_bm25" not in sys.modules
+        and importlib.util.find_spec("rank_bm25") is None
+        and os.environ.get("WEBSHOP_ALLOW_SPACY_STUB")
+    ):
         import types as _types
 
         rank_bm25_stub = _types.ModuleType("rank_bm25")
@@ -456,7 +461,7 @@ def _patch_search_engine_for_bm25_fallback() -> None:
 
     from web_agent_site.engine import engine as _engine  # type: ignore[import-not-found]
 
-    if pyserini_available:
+    if pyserini_available and not force_bm25:
         return
 
     if getattr(_engine, "_elizaos_bm25_patched", False):
@@ -465,11 +470,10 @@ def _patch_search_engine_for_bm25_fallback() -> None:
     try:
         from rank_bm25 import BM25Okapi  # type: ignore[import-not-found]
     except Exception as exc:
-        logger.warning(
-            "rank_bm25 is unavailable; using a simple token-overlap WebShop search fallback: %s",
-            exc,
-        )
-        BM25Okapi = None  # type: ignore[assignment]
+        raise ModuleNotFoundError(
+            "WebShop requires rank_bm25 when the official pyserini/Lucene "
+            "search backend is unavailable"
+        ) from exc
 
     import json as _json
 
@@ -501,7 +505,7 @@ def _patch_search_engine_for_bm25_fallback() -> None:
                 corpus.append(tokens)
                 self._ids.append(p["asin"])
             self._corpus = corpus
-            self._bm25 = BM25Okapi(corpus) if BM25Okapi is not None and corpus else None
+            self._bm25 = BM25Okapi(corpus) if corpus else None
             self._docs = {asin: _BM25Doc(_json.dumps({"id": asin})) for asin in self._ids}
 
         def search(self, query: str, k: int = 50) -> list[_BM25Hit]:
@@ -509,13 +513,8 @@ def _patch_search_engine_for_bm25_fallback() -> None:
                 return []
             query_tokens = query.lower().split()
             if self._bm25 is None:
-                query_set = set(query_tokens)
-                scores = [
-                    float(len(query_set.intersection(tokens)))
-                    for tokens in self._corpus
-                ]
-            else:
-                scores = self._bm25.get_scores(query_tokens)
+                return []
+            scores = self._bm25.get_scores(query_tokens)
             ranked = sorted(
                 zip(self._ids, scores),
                 key=lambda t: t[1],
@@ -536,6 +535,98 @@ def _patch_search_engine_for_bm25_fallback() -> None:
 
     _engine.init_search_engine = _patched_init  # type: ignore[assignment]
     _engine._elizaos_bm25_patched = True  # type: ignore[attr-defined]
+
+
+def _configure_official_lucene_search() -> dict[str, str | int]:
+    """Validate and install the checksum-bound full-catalog Lucene backend."""
+
+    if not _OFFICIAL_INDEX_DIR.is_dir() or not _OFFICIAL_INDEX_MANIFEST.is_file():
+        raise FileNotFoundError(
+            "The full WebShop profile requires its official Lucene index. Run "
+            "`python scripts/build_search_index.py` with the benchmark runtime first."
+        )
+    manifest = json.loads(_OFFICIAL_INDEX_MANIFEST.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("WebShop search-index manifest must be a JSON object")
+    expected_manifest = {
+        "search_backend": "pyserini-lucene",
+        "document_count": _FULL_DOCUMENT_COUNT,
+        "submitted_document_count": _FULL_SUBMITTED_DOCUMENT_COUNT,
+        "empty_projection_count": _FULL_EMPTY_PROJECTION_COUNT,
+        "source_sha256": _FULL_SOURCE_SHA256,
+        "pyserini_version": "2.1.0",
+        "anserini_version": "2.1.1",
+    }
+    for key, expected in expected_manifest.items():
+        if manifest.get(key) != expected:
+            raise ValueError(
+                f"WebShop search-index manifest {key} mismatch: expected "
+                f"{expected!r}, found {manifest.get(key)!r}"
+            )
+
+    from pyserini.index.lucene import LuceneIndexReader  # type: ignore[import-not-found]
+    from pyserini.search.lucene import LuceneSearcher  # type: ignore[import-not-found]
+
+    stats = LuceneIndexReader(str(_OFFICIAL_INDEX_DIR)).stats()
+    document_count = int(stats.get("documents", -1))
+    if document_count != _FULL_DOCUMENT_COUNT:
+        raise ValueError(
+            "WebShop Lucene document count mismatch: expected "
+            f"{_FULL_DOCUMENT_COUNT}, found {document_count}"
+        )
+    if version("pyserini") != manifest["pyserini_version"]:
+        raise ValueError(
+            "WebShop Pyserini runtime does not match the version that built the index"
+        )
+
+    _ensure_upstream_on_path()
+    from web_agent_site.engine import engine as _engine  # type: ignore[import-not-found]
+
+    def _official_init(num_products: int | None = None) -> Any:
+        if num_products is not None:
+            raise ValueError(
+                "The official WebShop Lucene index requires the full product catalog"
+            )
+        return LuceneSearcher(str(_OFFICIAL_INDEX_DIR))
+
+    _engine.init_search_engine = _official_init  # type: ignore[assignment]
+
+    nlp = _ensure_spacy_model_available()
+    spacy_version = version("spacy")
+    spacy_model_name = str(nlp.meta.get("name", ""))
+    spacy_model_version = str(nlp.meta.get("version", ""))
+    if spacy_model_name != "core_web_sm" or spacy_model_version != "3.8.0":
+        raise ValueError(
+            "WebShop requires the en_core_web_sm 3.8.0 reward model; found "
+            f"{spacy_model_name!r} {spacy_model_version!r}"
+        )
+    java_version = subprocess.run(
+        ["java", "-version"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stderr.splitlines()[0]
+    if '"21.' not in java_version:
+        raise ValueError(f"WebShop Pyserini requires Java 21; found {java_version}")
+
+    return {
+        "search_backend": "pyserini-lucene",
+        "search_index_document_count": document_count,
+        "search_index_submitted_document_count": int(
+            manifest["submitted_document_count"]
+        ),
+        "search_index_empty_projection_count": int(
+            manifest["empty_projection_count"]
+        ),
+        "search_index_source_sha256": str(manifest["source_sha256"]),
+        "pyserini_version": str(manifest["pyserini_version"]),
+        "anserini_version": str(manifest["anserini_version"]),
+        "spacy_version": spacy_version,
+        "spacy_model_name": "en_core_web_sm",
+        "spacy_model_version": spacy_model_version,
+        "thefuzz_version": version("thefuzz"),
+        "java_version": java_version,
+    }
 
 
 def _install_bm25_after_load_products() -> None:
@@ -614,10 +705,23 @@ class WebShopEnvironment:
         num_products: int | None = None,
         human_goals: bool = True,
         observation_mode: str = "text",
+        require_official_search: bool = False,
     ) -> None:
         _ensure_upstream_on_path()
-        _patch_search_engine_for_bm25_fallback()
-        _install_bm25_after_load_products()
+        _patch_search_engine_for_bm25_fallback(
+            force_bm25=not require_official_search
+        )
+        if require_official_search:
+            self._runtime_provenance = _configure_official_lucene_search()
+        else:
+            _install_bm25_after_load_products()
+            self._runtime_provenance = {
+                "search_backend": (
+                    "smoke-token-overlap"
+                    if os.environ.get("WEBSHOP_ALLOW_SPACY_STUB")
+                    else "rank-bm25"
+                )
+            }
 
         from web_agent_site import utils as _utils  # type: ignore[import-not-found]
         from web_agent_site.engine import engine as _engine_mod  # type: ignore[import-not-found]
@@ -638,12 +742,20 @@ class WebShopEnvironment:
             else "html"
         )
 
-        self._gym_env = WebAgentTextEnv(
-            observation_mode=upstream_mode,
-            file_path=str(file_path),
-            num_products=num_products,
-            human_goals=int(bool(human_goals)),
-        )
+        random_state = random.getstate()
+        try:
+            # Upstream randomizes product prices before it applies its fixed
+            # goal shuffle. Pinning the initial state gives every harness the
+            # same price constraints while preserving the published shuffle.
+            random.seed(_ENVIRONMENT_RANDOM_SEED)
+            self._gym_env = WebAgentTextEnv(
+                observation_mode=upstream_mode,
+                file_path=str(file_path),
+                num_products=num_products,
+                human_goals=int(bool(human_goals)),
+            )
+        finally:
+            random.setstate(random_state)
         self._task: WebShopTask | None = None
         self._done: bool = False
         self._final_reward: float = 0.0
@@ -667,6 +779,18 @@ class WebShopEnvironment:
     @property
     def final_reward(self) -> float:
         return self._final_reward
+
+    @property
+    def upstream_goals(self) -> list[dict[str, Any]]:
+        return list(self._gym_env.server.goals)
+
+    @property
+    def catalog_product_count(self) -> int:
+        return len(self._gym_env.server.all_products)
+
+    @property
+    def runtime_provenance(self) -> dict[str, str | int]:
+        return dict(self._runtime_provenance)
 
     @property
     def instruction_text(self) -> str:
@@ -790,7 +914,7 @@ def get_reward(
 ) -> Any:
     """Direct re-export of upstream's TF-IDF / fuzzy-match reward."""
     _ensure_upstream_on_path()
-    _patch_search_engine_for_bm25_fallback()
+    _patch_search_engine_for_bm25_fallback(force_bm25=True)
     from web_agent_site.engine.goal import (  # type: ignore[import-not-found]
         get_reward as _upstream_get_reward,
     )

@@ -10,6 +10,11 @@ N=1, over the identical `(scenario, seed)` pairs both lanes run. A delta of
 `0.0` means the shared agent scores each task exactly as well under load as
 alone; a negative delta quantifies degradation.
 
+This is a **within-harness** scaling benchmark, not a cross-harness
+leaderboard. Eliza contends inside one shared runtime; Hermes and OpenClaw use
+process-isolated turns. Reports carry `cross_harness_comparable: false` and
+must contain all three lanes plus all ten task attempts before they are written.
+
 ## What it reuses
 
 MultitaskBench is a thin scheduler on top of
@@ -64,46 +69,25 @@ CEREBRAS_API_KEY=... python -m multitask_bench --harness hermes --lanes 1,5,10 \
 
 Reports land at `results/multitask_<timestamp>.json`.
 
-### openclaw lane — transport choice
+### openclaw lane
 
-Register a Cerebras custom provider in an isolated openclaw profile (one-time
-setup; see [`openclaw-adapter/README.md`](../openclaw-adapter/README.md)
-§"CLI-native provider registration") and the openclaw lane can spawn the **real
-`openclaw agent` CLI**:
-
-```bash
-openclaw --profile bench-cerebras config patch \
-    --file ../openclaw-adapter/config/cerebras.openclaw.json5
-export OPENAI_API_KEY="$CEREBRAS_API_KEY"
-export OPENAI_BASE_URL="https://api.cerebras.ai/v1"
-export OPENCLAW_CONFIG_PATH="$HOME/.openclaw-bench-cerebras/openclaw.json"
-export OPENCLAW_STATE_DIR="$HOME/.openclaw-bench-cerebras"
-export OPENCLAW_USE_CLI=1                       # forces the real CLI path
-CEREBRAS_API_KEY=... python -m multitask_bench --harness openclaw --lanes 1,5,10 \
-    --model gpt-oss-120b --output-dir results
-```
-
-The CLI turns are live (real POSTs to Cerebras, `status=200`), **but this lane
-scores `mean_score=0.000` CLI-native**: the `openclaw agent` command owns its
-own tool execution and returns natural-language `payloads`, so the LifeOpsBench
-tool catalog can only be passed as context-only text — the model emits its tool
-call as JSON *text* the scorer can't execute, and multi-turn scenarios overflow
-context. This is a boundary of the CLI (`2026.6.11`), not a config gap.
-
-For a **scored** openclaw lane, run the direct OpenAI-compatible path — it
-returns the structured `tool_calls` the runner executes against the LifeWorld —
-which stays disclosed as **partial**, not CLI-native tool-call parity:
+The OpenClaw lane runs every task turn through an isolated
+`openclaw agent --local --json` embedded runtime. The adapter generates a native plugin from
+that turn's LifeOps tool catalog, captures the plugin executions, and returns
+those calls to the harness-owned LifeWorld. A loopback completion gateway and
+its ephemeral token are required:
 
 ```bash
-OPENCLAW_DIRECT_OPENAI_COMPAT=1 CEREBRAS_API_KEY=... \
-    python -m multitask_bench --harness openclaw --lanes 1,5,10 \
-    --model gpt-oss-120b --output-dir results
+BENCHMARK_MODEL_PROVIDER=claude-subscription \
+BENCHMARK_MODEL_NAME=claude-opus-4-6 \
+CLAUDE_SUBSCRIPTION_GATEWAY_URL=http://127.0.0.1:43123 \
+CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN=... \
+python -m multitask_bench --harness openclaw --lanes 1,5,10 \
+    --model claude-opus-4-6 --output-dir results
 ```
 
-The report discloses which transport each lane used. See
-[`.github/issue-evidence/13777-multitask-live/openclaw-cli-native/`](../../../.github/issue-evidence/13777-multitask-live/openclaw-cli-native/)
-for the full CLI-native investigation (myth-busting + the scoring-gap
-trajectory).
+Direct OpenAI-compatible transport is reserved for adapter parser/retry tests,
+is marked `publishable_native=false`, and is excluded from campaign results.
 
 ## Tests
 

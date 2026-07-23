@@ -7,13 +7,15 @@ or from local JSON files.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
-from copy import deepcopy
+import shutil
+import tempfile
+import threading
 from dataclasses import replace
 from pathlib import Path
-from urllib.request import urlretrieve
 from zipfile import ZipFile
 
 from benchmarks.mind2web.types import (
@@ -59,8 +61,11 @@ def expand_tasks(tasks: list[Mind2WebTask]) -> list[Mind2WebTask]:
                     task,
                     annotation_id=f"{task.annotation_id}--edge-{index:02d}",
                     confirmed_task=f"{task.confirmed_task}\n\nEdge condition: {variant_note}",
-                    action_reprs=list(task.action_reprs),
-                    actions=deepcopy(task.actions),
+                    # The benchmark treats traces as immutable. Sharing the
+                    # six-gigabyte official HTML payload keeps 10x expansion
+                    # bounded while each variant still owns its prompt/metadata.
+                    action_reprs=task.action_reprs,
+                    actions=task.actions,
                     metadata=metadata,
                 )
             )
@@ -86,49 +91,158 @@ EXPECTED_TEST_COUNTS: dict[str, int] = {
     "test_domain": 912,
 }
 
-_DEFAULT_TEST_ZIP_URL = (
-    "https://github.com/OSU-NLP-Group/Mind2Web/raw/main/data/test.zip"
+MIND2WEB_DATASET_REPOSITORY = "osunlp/Mind2Web"
+MIND2WEB_DATASET_REVISION = "17ece8eb89862368edc0cc806acee6fca5163474"
+MIND2WEB_TEST_ARCHIVE_SHA256 = (
+    "8f5fbe72afab942fe97cdf7fb397e179885d89b5c16862288e9a14bc6d41ca89"
 )
+MIND2WEB_TEST_ARCHIVE_PASSWORD = b"mind2web"
+MIND2WEB_RANKER_SCORES_SHA256 = (
+    "884c97cd9ae0544485d21ea39e0d46422aee0291969a7324e56df3a84466dbd7"
+)
+
+_HASH_CACHE_LOCK = threading.Lock()
+_HASH_CACHE: dict[str, tuple[tuple[int, int, int, int, int], str]] = {}
 
 
 def _default_cache_dir() -> Path:
-    """Return the cache root for optional Mind2Web test-split artifacts."""
+    """Return the repository-owned cache for pinned Mind2Web test artifacts."""
     override = os.environ.get("MIND2WEB_CACHE_DIR", "").strip()
     if override:
         return Path(override).expanduser()
-    return Path.home() / ".cache" / "elizaos" / "mind2web"
+    return Path(__file__).resolve().parents[2] / "benchmark-data" / "mind2web"
 
 
-def ensure_test_splits_available() -> Path | None:
-    """Ensure optional upstream test-split artifacts are present locally.
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
-    The default benchmark path uses HuggingFace/sample data. This helper is for
-    explicit test-split validation and remains offline-safe when
-    ``MIND2WEB_NO_AUTOFETCH=1`` is set.
+
+def _file_identity(path: Path) -> tuple[int, int, int, int, int]:
+    stat = path.stat()
+    return (
+        stat.st_dev,
+        stat.st_ino,
+        stat.st_size,
+        stat.st_mtime_ns,
+        stat.st_ctime_ns,
+    )
+
+
+def _memoized_sha256(path: Path) -> str:
+    """Hash an unchanged artifact once per process.
+
+    MindAct's released score pickle is consulted for every action step. The
+    filesystem identity keeps that hot path constant-time while invalidating
+    the cached digest if the file is replaced or modified.
     """
-    if os.environ.get("MIND2WEB_NO_AUTOFETCH", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }:
-        return None
+    resolved = path.resolve()
+    cache_key = str(resolved)
+    identity = _file_identity(resolved)
+    with _HASH_CACHE_LOCK:
+        cached = _HASH_CACHE.get(cache_key)
+        if cached is not None and cached[0] == identity:
+            return cached[1]
+        digest = _sha256(resolved)
+        if _file_identity(resolved) != identity:
+            raise RuntimeError(f"Mind2Web artifact changed while hashing: {resolved}")
+        _HASH_CACHE[cache_key] = (identity, digest)
+        return digest
+
+
+def ensure_test_splits_available() -> Path:
+    """Materialize the pinned official archive or fail before model execution."""
 
     cache_dir = _default_cache_dir()
     extracted_dir = cache_dir / "extracted"
-    if extracted_dir.exists():
+    completion_marker = extracted_dir / ".complete"
+    zip_path = cache_dir / "test.zip"
+    if not zip_path.exists():
+        if os.environ.get("MIND2WEB_DISABLE_DATA_DOWNLOAD", "").strip() == "1":
+            raise FileNotFoundError(
+                f"Pinned Mind2Web archive is missing at {zip_path}; provision it before the campaign"
+            )
+        try:
+            from huggingface_hub import hf_hub_download
+        except ImportError as exc:
+            raise RuntimeError(
+                "huggingface_hub is required to download the pinned Mind2Web archive"
+            ) from exc
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        downloaded = hf_hub_download(
+            repo_id=MIND2WEB_DATASET_REPOSITORY,
+            repo_type="dataset",
+            filename="test.zip",
+            revision=MIND2WEB_DATASET_REVISION,
+            local_dir=cache_dir,
+        )
+        zip_path = Path(downloaded)
+
+    archive_sha256 = _memoized_sha256(zip_path)
+    if archive_sha256 != MIND2WEB_TEST_ARCHIVE_SHA256:
+        raise RuntimeError(
+            "Mind2Web archive checksum mismatch: "
+            f"expected {MIND2WEB_TEST_ARCHIVE_SHA256}, got {archive_sha256}"
+        )
+    if (
+        completion_marker.exists()
+        and completion_marker.read_text(encoding="utf-8").strip() == archive_sha256
+    ):
         return extracted_dir
 
     cache_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = cache_dir / "test.zip"
-    if not zip_path.exists():
-        url = os.environ.get("MIND2WEB_TEST_ZIP_URL", _DEFAULT_TEST_ZIP_URL)
-        logger.info("Downloading Mind2Web test split archive to %s", zip_path)
-        urlretrieve(url, zip_path)
-
-    extracted_dir.mkdir(parents=True, exist_ok=True)
-    with ZipFile(zip_path) as archive:
-        archive.extractall(extracted_dir)
+    with tempfile.TemporaryDirectory(prefix=".mind2web-extract-", dir=cache_dir) as temp_dir:
+        extraction_root = Path(temp_dir)
+        with ZipFile(zip_path) as archive:
+            root = extraction_root.resolve()
+            for member in archive.infolist():
+                target = (root / member.filename).resolve()
+                if not target.is_relative_to(root):
+                    raise RuntimeError(f"Unsafe path in Mind2Web archive: {member.filename}")
+            archive.extractall(extraction_root, pwd=MIND2WEB_TEST_ARCHIVE_PASSWORD)
+        (extraction_root / ".complete").write_text(archive_sha256, encoding="utf-8")
+        if extracted_dir.exists():
+            shutil.rmtree(extracted_dir)
+        extraction_root.replace(extracted_dir)
     return extracted_dir
+
+
+def ensure_ranker_scores_available() -> Path:
+    """Resolve the pinned official candidate-generation outputs."""
+    cache_dir = _default_cache_dir()
+    scores_path = cache_dir / "scores_all_data.pkl"
+    if not scores_path.exists():
+        if os.environ.get("MIND2WEB_DISABLE_DATA_DOWNLOAD", "").strip() == "1":
+            raise FileNotFoundError(
+                "Pinned Mind2Web ranker scores are missing at "
+                f"{scores_path}; provision them before the campaign"
+            )
+        try:
+            from huggingface_hub import hf_hub_download
+        except ImportError as exc:
+            raise RuntimeError(
+                "huggingface_hub is required to download pinned Mind2Web ranker scores"
+            ) from exc
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        downloaded = hf_hub_download(
+            repo_id=MIND2WEB_DATASET_REPOSITORY,
+            repo_type="dataset",
+            filename="scores_all_data.pkl",
+            revision=MIND2WEB_DATASET_REVISION,
+            local_dir=cache_dir,
+        )
+        scores_path = Path(downloaded)
+
+    scores_sha256 = _memoized_sha256(scores_path)
+    if scores_sha256 != MIND2WEB_RANKER_SCORES_SHA256:
+        raise RuntimeError(
+            "Mind2Web ranker-score checksum mismatch: "
+            f"expected {MIND2WEB_RANKER_SCORES_SHA256}, got {scores_sha256}"
+        )
+    return scores_path
 
 
 # Sample tasks for testing without HuggingFace
@@ -281,6 +395,7 @@ class Mind2WebDataset:
         self.data_dir = data_dir
         self.tasks: list[Mind2WebTask] = []
         self._loaded = False
+        self.data_provenance: dict[str, object] = {}
 
     async def load(self, *, use_huggingface: bool = True, use_sample: bool = False) -> None:
         """Load the dataset.
@@ -294,13 +409,17 @@ class Mind2WebDataset:
 
         if use_sample:
             self._load_sample_tasks()
+            self.data_provenance = {
+                "mode": "sample",
+                "publishable": False,
+                "base_task_count": len(self.tasks),
+            }
         elif use_huggingface:
             await self._load_from_huggingface()
         elif self.data_dir:
             self._load_from_local()
         else:
-            logger.warning("No data source specified, using sample tasks")
-            self._load_sample_tasks()
+            raise RuntimeError("Mind2Web requires --hf, --sample, or an explicit data directory")
 
         self._loaded = True
         logger.info(f"Loaded {len(self.tasks)} tasks from Mind2Web ({self.split.value})")
@@ -313,174 +432,155 @@ class Mind2WebDataset:
                 self.tasks.append(task)
 
     async def _load_from_huggingface(self) -> None:
-        """Load dataset from HuggingFace."""
-        try:
-            from datasets import load_dataset  # type: ignore[import-not-found]
-        except ImportError:
-            logger.warning(
-                "datasets package not installed. Install with: pip install datasets"
+        """Load a pinned official test split from the Hugging Face archive."""
+        if self.split == Mind2WebSplit.TRAIN:
+            raise RuntimeError(
+                "The full campaign uses official test splits; train loading is not supported here"
             )
-            self._load_sample_tasks()
-            return
+        extracted_dir = ensure_test_splits_available()
+        split_name = self.split.value
+        split_files = sorted(
+            path
+            for path in extracted_dir.rglob("*.json")
+            if split_name in path.parts or split_name in path.stem
+        )
+        if not split_files:
+            raise FileNotFoundError(
+                f"Mind2Web archive contains no JSON files for split {split_name!r}"
+            )
+        for json_file in split_files:
+            with json_file.open(encoding="utf-8") as handle:
+                data = json.load(handle)
+            records = data if isinstance(data, list) else [data]
+            for item in records:
+                if not isinstance(item, dict):
+                    raise ValueError(f"{json_file}: expected task objects")
+                self.tasks.append(self._parse_hf_item(item))
 
-        try:
-            # Mind2Web dataset on HuggingFace
-            try:
-                dataset = load_dataset(
-                    "osunlp/Mind2Web",
-                    split=self.split.value,
-                )
-            except Exception as e:
-                if "Unknown split" not in str(e):
-                    raise
-                logger.warning(
-                    f"Split '{self.split.value}' not available; falling back to 'train'"
-                )
-                dataset = load_dataset(
-                    "osunlp/Mind2Web",
-                    split="train",
-                )
-
-            for item in dataset:
-                task = self._parse_hf_item(item)
-                if task:
-                    self.tasks.append(task)
-
-        except Exception as e:
-            logger.error(f"Failed to load from HuggingFace: {e}")
-            logger.info("Falling back to sample tasks")
-            self._load_sample_tasks()
+        expected = EXPECTED_TEST_COUNTS[split_name]
+        if len(self.tasks) != expected:
+            raise RuntimeError(
+                f"Mind2Web {split_name} count mismatch: expected {expected}, got {len(self.tasks)}"
+            )
+        archive_path = _default_cache_dir() / "test.zip"
+        self.data_provenance = {
+            "mode": "official-pinned-test-archive",
+            "repository": MIND2WEB_DATASET_REPOSITORY,
+            "revision": MIND2WEB_DATASET_REVISION,
+            "archive_path": str(archive_path.resolve()),
+            "archive_sha256": _memoized_sha256(archive_path),
+            "split": split_name,
+            "base_task_count": len(self.tasks),
+            "publishable": True,
+        }
 
     def _load_from_local(self) -> None:
         """Load dataset from local JSON files."""
         if not self.data_dir or not self.data_dir.exists():
-            logger.warning(f"Data directory not found: {self.data_dir}")
-            self._load_sample_tasks()
-            return
+            raise FileNotFoundError(f"Mind2Web data directory not found: {self.data_dir}")
 
         # Look for task JSON files
         json_files = list(self.data_dir.glob("*.json"))
         if not json_files:
             json_files = list(self.data_dir.glob("**/*.json"))
+        if not json_files:
+            raise FileNotFoundError(f"Mind2Web data directory has no JSON files: {self.data_dir}")
 
         for json_file in json_files:
-            try:
-                with open(json_file) as f:
-                    data = json.load(f)
+            with open(json_file, encoding="utf-8") as handle:
+                data = json.load(handle)
 
-                if isinstance(data, list):
-                    for item in data:
-                        task = self._parse_task(item)
-                        if task:
-                            self.tasks.append(task)
-                elif isinstance(data, dict):
-                    task = self._parse_task(data)
-                    if task:
-                        self.tasks.append(task)
+            if isinstance(data, list):
+                for item in data:
+                    if not isinstance(item, dict):
+                        raise ValueError(f"{json_file}: expected task objects")
+                    self.tasks.append(self._parse_task(item))
+            elif isinstance(data, dict):
+                self.tasks.append(self._parse_task(data))
+            else:
+                raise ValueError(f"{json_file}: expected a task object or list")
+        self.data_provenance = {
+            "mode": "explicit-local",
+            "path": str(self.data_dir.resolve()),
+            "base_task_count": len(self.tasks),
+            "publishable": False,
+        }
 
-            except Exception as e:
-                logger.warning(f"Failed to load {json_file}: {e}")
-
-    def _parse_hf_item(self, item: dict[str, object]) -> Mind2WebTask | None:
+    def _parse_hf_item(self, item: dict[str, object]) -> Mind2WebTask:
         """Parse a HuggingFace dataset item into a Mind2WebTask."""
         return self._parse_task(item)
 
-    def _parse_task(self, data: dict[str, object]) -> Mind2WebTask | None:
+    def _parse_task(self, data: dict[str, object]) -> Mind2WebTask:
         """Parse a task dictionary into a Mind2WebTask."""
-        try:
-            annotation_id = str(data.get("annotation_id", ""))
-            confirmed_task = str(data.get("confirmed_task", ""))
-            website = str(data.get("website", ""))
-            domain = str(data.get("domain", ""))
-            subdomain = str(data.get("subdomain", ""))
+        annotation_id = str(data.get("annotation_id", "")).strip()
+        confirmed_task = str(data.get("confirmed_task", "")).strip()
+        website = str(data.get("website", ""))
+        domain = str(data.get("domain", ""))
+        subdomain = str(data.get("subdomain", ""))
+        if not annotation_id or not confirmed_task:
+            raise ValueError("Mind2Web task is missing annotation_id or confirmed_task")
 
-            if not annotation_id or not confirmed_task:
-                return None
+        action_reprs_raw = data.get("action_reprs", [])
+        if not isinstance(action_reprs_raw, list):
+            raise ValueError(f"{annotation_id}: action_reprs must be a list")
+        action_reprs = [str(item) for item in action_reprs_raw]
 
-            action_reprs_raw = data.get("action_reprs", [])
-            action_reprs: list[str] = []
-            if isinstance(action_reprs_raw, list):
-                action_reprs = [str(x) for x in action_reprs_raw]
+        actions_raw = data.get("actions", [])
+        if not isinstance(actions_raw, list):
+            raise ValueError(f"{annotation_id}: actions must be a list")
+        actions: list[Mind2WebActionStep] = []
+        for action_data in actions_raw:
+            if not isinstance(action_data, dict):
+                raise ValueError(f"{annotation_id}: action must be an object")
+            actions.append(self._parse_action_step(action_data))
 
-            actions_raw = data.get("actions", [])
-            actions: list[Mind2WebActionStep] = []
-            if isinstance(actions_raw, list):
-                for action_data in actions_raw:
-                    if isinstance(action_data, dict):
-                        action = self._parse_action_step(action_data)
-                        if action:
-                            actions.append(action)
+        return Mind2WebTask(
+            annotation_id=annotation_id,
+            confirmed_task=confirmed_task,
+            website=website,
+            domain=domain,
+            subdomain=subdomain,
+            action_reprs=action_reprs,
+            actions=actions,
+        )
 
-            return Mind2WebTask(
-                annotation_id=annotation_id,
-                confirmed_task=confirmed_task,
-                website=website,
-                domain=domain,
-                subdomain=subdomain,
-                action_reprs=action_reprs,
-                actions=actions,
-            )
-
-        except Exception as e:
-            logger.warning(f"Failed to parse task: {e}")
-            return None
-
-    def _parse_action_step(self, data: dict[str, object]) -> Mind2WebActionStep | None:
+    def _parse_action_step(self, data: dict[str, object]) -> Mind2WebActionStep:
         """Parse an action step from the dataset."""
-        try:
-            action_uid = str(data.get("action_uid", ""))
+        action_uid = str(data.get("action_uid", "")).strip()
+        if not action_uid:
+            raise ValueError("Mind2Web action is missing action_uid")
 
-            operation_data = data.get("operation", {})
-            if isinstance(operation_data, dict):
-                op_str = str(operation_data.get("op", "CLICK")).upper()
-                original_op = str(operation_data.get("original_op", op_str))
-                value = str(operation_data.get("value", ""))
-            else:
-                op_str = "CLICK"
-                original_op = "CLICK"
-                value = ""
+        operation_data = data.get("operation")
+        if not isinstance(operation_data, dict):
+            raise ValueError(f"{action_uid}: operation must be an object")
+        op_str = str(operation_data.get("op", "")).upper().strip()
+        operation = Mind2WebOperation(op_str)
+        if operation == Mind2WebOperation.INVALID:
+            raise ValueError(f"{action_uid}: INVALID is not a ground-truth operation")
+        original_op = str(operation_data.get("original_op", op_str))
+        value = str(operation_data.get("value", ""))
 
-            # Map operation string to enum
-            try:
-                operation = Mind2WebOperation(op_str)
-            except ValueError:
-                # Handle unmapped operations
-                if op_str in ("HOVER", "ENTER"):
-                    operation = Mind2WebOperation.CLICK
-                else:
-                    operation = Mind2WebOperation.CLICK
-
-            raw_html = str(data.get("raw_html", ""))
-            cleaned_html = str(data.get("cleaned_html", ""))
-
-            pos_candidates = self._parse_candidates(data.get("pos_candidates", []))
-            neg_candidates = self._parse_candidates(data.get("neg_candidates", []))
-
-            return Mind2WebActionStep(
-                action_uid=action_uid,
-                operation=operation,
-                value=value,
-                original_op=original_op,
-                raw_html=raw_html,
-                cleaned_html=cleaned_html,
-                pos_candidates=pos_candidates,
-                neg_candidates=neg_candidates,
-            )
-
-        except Exception as e:
-            logger.warning(f"Failed to parse action step: {e}")
-            return None
+        return Mind2WebActionStep(
+            action_uid=action_uid,
+            operation=operation,
+            value=value,
+            original_op=original_op,
+            raw_html=str(data.get("raw_html", "")),
+            cleaned_html=str(data.get("cleaned_html", "")),
+            pos_candidates=self._parse_candidates(data.get("pos_candidates", [])),
+            neg_candidates=self._parse_candidates(data.get("neg_candidates", [])),
+        )
 
     def _parse_candidates(self, candidates_raw: object) -> list[Mind2WebElement]:
         """Parse candidate elements."""
         candidates: list[Mind2WebElement] = []
 
         if not isinstance(candidates_raw, list):
-            return candidates
+            raise ValueError("Mind2Web candidates must be a list")
 
         for cand in candidates_raw:
             if not isinstance(cand, dict):
-                continue
+                raise ValueError("Mind2Web candidate must be an object")
 
             tag = str(cand.get("tag", ""))
             backend_node_id = str(cand.get("backend_node_id", ""))
@@ -491,14 +591,13 @@ class Mind2WebDataset:
                 for k, v in attributes_raw.items():
                     attributes[str(k)] = str(v)
             elif isinstance(attributes_raw, str):
-                # Sometimes attributes are JSON-encoded strings
-                try:
-                    parsed = json.loads(attributes_raw)
-                    if isinstance(parsed, dict):
-                        for k, v in parsed.items():
-                            attributes[str(k)] = str(v)
-                except json.JSONDecodeError:
-                    pass
+                parsed = json.loads(attributes_raw)
+                if not isinstance(parsed, dict):
+                    raise ValueError("Mind2Web candidate attributes must decode to an object")
+                for k, v in parsed.items():
+                    attributes[str(k)] = str(v)
+            else:
+                raise ValueError("Mind2Web candidate attributes must be an object or JSON string")
 
             is_original = bool(cand.get("is_original_target", False))
             is_top_level = bool(cand.get("is_top_level_target", False))

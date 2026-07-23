@@ -99,6 +99,7 @@ bun run --cwd plugins/plugin-sql test:e2e       # live smoke test (needs running
 | `ELIZA_PGLITE_DISABLE_EXTENSIONS` | No | `false` | Disables PGlite extension loading when set. |
 | `ELIZA_IOS_LOCAL_BACKEND` | No | — | Overrides the local backend URL for iOS platform targets. |
 | `ELIZA_ANDROID_LOCAL_BACKEND` | No | — | Overrides the local backend URL for Android platform targets. |
+| `ELIZA_BENCH_DISABLE_DOTENV` | No | `false` | Prevents benchmark processes from loading ancestor `.env` files while resolving PGlite storage. Subscription chat-only benchmark mode enforces the same behavior. |
 | `NODE_ENV` | No | `development` | `production` disables verbose migration logging and tightens safety checks. |
 
 Settings are read via `runtime.getSetting(key)` inside `plugin.init`.

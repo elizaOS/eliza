@@ -24,15 +24,26 @@ import type { Command } from "commander";
 const PLUGIN_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i;
 const PLUGIN_VERSION_RE = /^[A-Za-z0-9._+~:-]+$/;
 
+export interface PluginPathBoundaries {
+  home: string;
+  cwd: string;
+}
+
 /** Validate that a resolved plugin path is within allowed boundaries. */
-export function validatePluginPath(resolved: string): void {
+export function validatePluginPath(
+  resolved: string,
+  boundaries: PluginPathBoundaries = {
+    home: os.homedir(),
+    cwd: process.cwd(),
+  },
+): void {
   if (!nodePath.isAbsolute(resolved)) {
     throw new Error(
-      `Plugin path ${resolved} is outside allowed boundaries (must be under ${os.homedir()} or ${process.cwd()})`,
+      `Plugin path ${resolved} is outside allowed boundaries (must be under ${boundaries.home} or ${boundaries.cwd})`,
     );
   }
-  const home = realpathForBoundary(os.homedir());
-  const cwd = realpathForBoundary(process.cwd());
+  const home = realpathForBoundary(boundaries.home);
+  const cwd = realpathForBoundary(boundaries.cwd);
   const target = realpathForBoundary(resolved);
   if (!isWithinBoundary(target, home) && !isWithinBoundary(target, cwd)) {
     throw new Error(

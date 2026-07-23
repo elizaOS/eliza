@@ -488,7 +488,7 @@
     "react": "19.2.5",
     "react-dom": "19.2.7",
     "react-plaid-link": "^4.1.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "storybook": "^10.0.0",
     "three": "^0.184.0",
     "@typescript/native": "npm:typescript@^7.0.2",

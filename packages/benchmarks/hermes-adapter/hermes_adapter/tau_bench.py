@@ -4,12 +4,9 @@ Drop-in equivalent of :class:`elizaos_tau_bench.eliza_agent.LiteLLMToolCallingAg
 but routes the agent-side completion through :class:`HermesClient`.
 
 The control flow mirrors ``LiteLLMToolCallingAgent.solve`` exactly — same
-upstream ``Env`` reset / step loop, same message-building, same
-``_message_to_action`` semantics — so reward computation stays identical to
-the litellm path. The only difference is *how* the per-turn completion is
-produced: ``HermesClient`` is used in ``in_process`` mode (auto-detected when
-``openai`` is importable in the parent venv) so we hit the Cerebras
-OpenAI-compatible endpoint directly without spawning the hermes-agent venv.
+upstream ``Env`` reset / step loop, same message-building, and same
+``_message_to_action`` semantics. Each completion runs through the isolated
+native Hermes subprocess client.
 
 Cerebras quirk: ``gpt-oss-120b`` returns a ``reasoning_content`` field on
 assistant turns, then rejects subsequent requests that include that field
@@ -20,7 +17,6 @@ back into the next call.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 from typing import Any, Final
@@ -83,11 +79,6 @@ def _strip_cerebras_quirks(message: dict[str, Any]) -> dict[str, Any]:
     for key in ("reasoning_content", "provider_specific_fields"):
         message.pop(key, None)
     return message
-
-
-def _detect_in_process_default() -> bool:
-    """Pick ``in_process`` if ``openai`` is importable in the parent venv."""
-    return importlib.util.find_spec("openai") is not None
 
 
 def _message_to_action(message: dict[str, Any]) -> Action:
@@ -186,7 +177,7 @@ class HermesTauAgent(BaseTauAgent):
         else:
             chosen_mode = mode
             if chosen_mode is None:
-                chosen_mode = "in_process" if _detect_in_process_default() else "subprocess"
+                chosen_mode = "subprocess"
             self.client = HermesClient(
                 provider=provider,
                 model=model,

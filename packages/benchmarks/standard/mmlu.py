@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -38,9 +37,11 @@ from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_
 log = logging.getLogger("benchmarks.standard.mmlu")
 
 BENCHMARK_ID = "mmlu"
-DATASET_VERSION = "cais/mmlu@2023-09-15"
-EXPANDED_DATASET_VERSION = "cais/mmlu@2023-09-15+edge-v1"
 DATASET_NAME = "cais/mmlu"
+DATASET_REVISION = "c30699e8356da336a370243923dbaf21066bb9fe"
+DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
+EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
+EXPECTED_TEST_EXAMPLES = 14_042
 # Reasoning models (gpt-oss, o-series, …) spend completion tokens on hidden
 # reasoning before emitting the visible answer. At the old 256-token default they
 # routinely exhausted the budget mid-reasoning and returned an EMPTY visible
@@ -57,8 +58,8 @@ SYSTEM_PROMPT = (
     "correct answer. Do not include any explanation."
 )
 
-# Tiny built-in fixture covers the mock smoke test. The real benchmark
-# loads ``cais/mmlu`` via ``datasets`` when the package is installed.
+# Tiny built-in fixture covers the explicit mock smoke test. Real runs load the
+# pinned ``cais/mmlu`` revision and fail if that corpus is unavailable.
 SMOKE_FIXTURES: tuple[dict[str, object], ...] = (
     {
         "subject": "high_school_mathematics",
@@ -106,31 +107,15 @@ def _extract_letter(text: str) -> str | None:
 
 
 def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
-    """Load real MMLU via ``datasets``; fall back to the fixture set.
+    """Load a pinned, complete MMLU test corpus for non-mock runs."""
+    from datasets import load_dataset
 
-    The fallback is deliberate — the smoke test must run with no
-    internet and no datasets install.
-    """
-    if (
-        os.environ.get("BENCHMARK_STANDARD_FULL_DATA", "").strip() != "1"
-        and limit is not None
-        and limit <= len(SMOKE_FIXTURES)
-    ):
-        return list(SMOKE_FIXTURES)[:limit]
-
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        log.warning("`datasets` not installed — using built-in fixture")
-        items = list(SMOKE_FIXTURES)
-        return items if limit is None else items[:limit]
-
-    try:
-        ds = load_dataset(DATASET_NAME, "all", split="test")
-    except Exception as exc:  # noqa: BLE001
-        log.warning("failed to load %s: %s — using fixture", DATASET_NAME, exc)
-        items = list(SMOKE_FIXTURES)
-        return items if limit is None else items[:limit]
+    target_count = (
+        EXPECTED_TEST_EXAMPLES if limit is None else min(limit, EXPECTED_TEST_EXAMPLES)
+    )
+    if target_count <= 0:
+        return []
+    ds = load_dataset(DATASET_NAME, "all", split="test", revision=DATASET_REVISION)
 
     examples: list[dict[str, object]] = []
     for row in ds:
@@ -142,8 +127,13 @@ def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
                 "answer_index": int(row.get("answer") or 0),
             }
         )
-        if limit is not None and len(examples) >= limit:
+        if len(examples) >= target_count:
             break
+    if len(examples) != target_count:
+        raise RuntimeError(
+            f"MMLU corpus is incomplete: expected {target_count} test examples, "
+            f"loaded {len(examples)} from revision {DATASET_REVISION}"
+        )
     return examples
 
 
@@ -168,11 +158,19 @@ class MMLURunner:
         self._max_tokens = max_tokens
         self._include_edge_scenarios = include_edge_scenarios
 
-    def _selected_examples(self, limit: int | None) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-        base = list(self._examples if self._examples is not None else _load_dataset_examples(limit))
+    def _selected_examples(
+        self, limit: int | None
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        base = list(
+            self._examples
+            if self._examples is not None
+            else _load_dataset_examples(limit)
+        )
         if self._examples is not None and limit is not None:
             base = base[:limit]
-        examples = expand_mmlu_examples(base) if self._include_edge_scenarios else list(base)
+        examples = (
+            expand_mmlu_examples(base) if self._include_edge_scenarios else list(base)
+        )
         validate_mmlu_examples(examples)
         return base, examples
 
@@ -196,7 +194,9 @@ class MMLURunner:
         if not examples:
             raise RuntimeError("MMLU loaded zero examples")
 
-        config = GenerationConfig(model=model, max_tokens=self._max_tokens, temperature=0.0)
+        config = GenerationConfig(
+            model=model, max_tokens=self._max_tokens, temperature=0.0
+        )
 
         correct = 0
         empty_outputs = 0
@@ -214,8 +214,9 @@ class MMLURunner:
             try:
                 gen = client.generate(messages, config)
             except Exception as exc:  # noqa: BLE001
-                log.warning("generation failed (idx=%d): %s", i, exc)
-                continue
+                raise RuntimeError(
+                    f"MMLU generation failed for example {i + 1}/{len(examples)}"
+                ) from exc
             empty_output = not gen.text.strip()
             if empty_output:
                 empty_outputs += 1
@@ -235,14 +236,18 @@ class MMLURunner:
                         "subject": subject,
                         "question": item.get("question"),
                         "expected": expected_letter,
-                        "predicted": "<empty>" if empty_output else predicted or gen.text[:120],
+                        "predicted": "<empty>"
+                        if empty_output
+                        else predicted or gen.text[:120],
                         "empty_visible_output": empty_output,
                     }
                 )
 
         n = sum(c[1] for c in per_subject.values())
-        if n == 0:
-            raise RuntimeError("MMLU evaluated zero examples — model returned no output")
+        if n != len(examples):
+            raise RuntimeError(
+                f"MMLU evaluated {n}/{len(examples)} examples; refusing a partial score"
+            )
         if empty_outputs == n:
             raise RuntimeError(
                 f"MMLU generated empty visible output for all {n} evaluated examples; "
@@ -268,14 +273,17 @@ class MMLURunner:
 
         accuracy = correct / n
         subject_accuracy: dict[str, float] = {
-            subject: round(slot[0] / slot[1], 4) for subject, slot in per_subject.items()
+            subject: round(slot[0] / slot[1], 4)
+            for subject, slot in per_subject.items()
         }
 
         return BenchmarkResult(
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=EXPANDED_DATASET_VERSION if self._include_edge_scenarios else DATASET_VERSION,
+            dataset_version=EXPANDED_DATASET_VERSION
+            if self._include_edge_scenarios
+            else DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(accuracy, 4),
@@ -305,8 +313,12 @@ class _MMLUFactory(RunnerFactory):
             help="Cap on generated tokens per question",
         )
 
-    def build(self, args: argparse.Namespace) -> tuple[MMLURunner, Sequence[str] | None]:
-        runner = MMLURunner(max_tokens=args.max_tokens, include_edge_scenarios=args.expand_scenarios)
+    def build(
+        self, args: argparse.Namespace
+    ) -> tuple[MMLURunner, Sequence[str] | None]:
+        runner = MMLURunner(
+            max_tokens=args.max_tokens, include_edge_scenarios=args.expand_scenarios
+        )
         mock_responses: Sequence[str] | None = None
         if args.mock:
             base = list(SMOKE_FIXTURES)
@@ -335,7 +347,11 @@ def expand_mmlu_examples(examples: list[dict[str, object]]) -> list[dict[str, ob
 
 
 def validate_mmlu_examples(examples: list[dict[str, object]]) -> None:
-    validate_dict_examples(examples, id_key="scenario_id", required_keys=("question", "choices", "answer_index"))
+    validate_dict_examples(
+        examples,
+        id_key="scenario_id",
+        required_keys=("question", "choices", "answer_index"),
+    )
 
 
 def main() -> int:

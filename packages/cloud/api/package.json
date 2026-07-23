@@ -37,7 +37,7 @@
     "ai": "^6.0.170",
     "drizzle-orm": "^0.45.1",
     "file-type": "^22.0.1",
-    "hono": "4.12.25",
+    "hono": "4.12.27",
     "music-metadata": "^11.12.3",
     "nanoid": "^5.1.9",
     "stripe": "^22.0.0",
@@ -49,7 +49,7 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "@types/pg": "^8.16.0",
     "@types/ws": "^8.18.1",
     "dotenv": "^17.4.2",

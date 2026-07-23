@@ -20,11 +20,13 @@ from .runner import LifecycleRunner
 from .types import LifecycleConfig
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run orchestrator lifecycle scenario benchmark",
     )
-    parser.add_argument("--output", type=str, default="./benchmark_results/orchestrator-lifecycle")
+    parser.add_argument(
+        "--output", type=str, default="./benchmark_results/orchestrator-lifecycle"
+    )
     parser.add_argument(
         "--scenario-dir",
         type=str,
@@ -34,7 +36,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scenario-filter", type=str, default=None)
     parser.add_argument("--provider", type=str, default="openai")
     parser.add_argument("--model", type=str, default="gpt-4o")
-    parser.add_argument("--strict", action="store_true")
+    parser.add_argument(
+        "--strict",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Require the publishable full-corpus contract (default). Use "
+            "--no-strict only for explicitly non-publishable diagnostics."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--expand-scenarios",
@@ -55,7 +65,7 @@ def parse_args() -> argparse.Namespace:
             "measure the eliza agent)."
         ),
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def main() -> None:
@@ -88,13 +98,13 @@ def main() -> None:
     print("Orchestrator lifecycle benchmark complete")
     print(f"Mode: {config.mode}")
     print(f"Scenarios: {len(results)}")
-    if config.mode == "simulate":
+    if config.mode != "bridge" or not config.strict:
         print(
-            "SMOKE ONLY — simulate mode exercises the harness/evaluator with a "
-            "deterministic simulator; this is NOT a benchmark result and the "
-            "report withholds metrics.overall_score so it cannot be published."
+            "DIAGNOSTIC ONLY — only strict bridge mode is scored. This report "
+            "withholds metrics.overall_score and cannot be published as a "
+            "benchmark result."
         )
-        print(f"Harness self-check pass rate: {metrics.scenario_pass_rate:.1%}")
+        print(f"Diagnostic pass rate: {metrics.scenario_pass_rate:.1%}")
     else:
         print(f"Overall score: {metrics.overall_score:.3f}")
         print(f"Pass rate: {metrics.scenario_pass_rate:.1%}")

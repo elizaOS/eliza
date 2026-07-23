@@ -33,6 +33,7 @@ import {
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
+import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-action-handoff";
 import {
   APP_RESUME_EVENT,
   CLOUD_HANDOFF_PHASE_EVENT,
@@ -66,24 +67,27 @@ import {
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
 
-async function handoffCompletedViewAction(
+async function handoffCompletedAction(
   actionResults: ChatActionResultSummary[] | undefined,
   showFailure: (message: string) => void,
 ): Promise<void> {
-  if (!findViewActionHandoff(actionResults)) return;
-  try {
-    await dispatchViewActionHandoff(actionResults);
-  } catch (err) {
-    // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
-    // distinct navigation failure instead of fabricating an opened view.
-    logger.warn(
-      { err },
-      "[useChatSend] completed VIEWS action could not reach the renderer",
-    );
-    showFailure(
-      "The agent chose a view, but the app couldn't open it. Try opening the view again.",
-    );
+  if (findViewActionHandoff(actionResults)) {
+    try {
+      await dispatchViewActionHandoff(actionResults);
+    } catch (err) {
+      // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
+      // distinct navigation failure instead of fabricating an opened view.
+      logger.warn(
+        { err },
+        "[useChatSend] completed VIEWS action could not reach the renderer",
+      );
+      showFailure(
+        "The agent chose a view, but the app couldn't open it. Try opening the view again.",
+      );
+    }
+    return;
   }
+  dispatchWorkflowActionHandoff(actionResults);
 }
 
 // Sentinel for the streaming buffer's `pendingStatus`: "no status update
@@ -1778,7 +1782,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             setChatSending(false);
           }
         }
-        await handoffCompletedViewAction(data.actionResults, (message) => {
+        await handoffCompletedAction(data.actionResults, (message) => {
           setActionNotice(message, "error", 8_000);
         });
 
@@ -1988,12 +1992,9 @@ export function useChatSend(deps: UseChatSendDeps) {
               clientMessageId,
             );
 
-            await handoffCompletedViewAction(
-              retryData.actionResults,
-              (message) => {
-                setActionNotice(message, "error", 8_000);
-              },
-            );
+            await handoffCompletedAction(retryData.actionResults, (message) => {
+              setActionNotice(message, "error", 8_000);
+            });
 
             // Commit any throttle-parked token before the terminal modification.
             flushStreamingText();
@@ -2570,7 +2571,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Commit any token parked by the throttle before the terminal
           // drop/complete/fail/interrupt — no streamed tokens may be lost.
           flushStreamingText();
-          await handoffCompletedViewAction(data.actionResults, (message) => {
+          await handoffCompletedAction(data.actionResults, (message) => {
             setActionNotice(message, "error", 8_000);
           });
 

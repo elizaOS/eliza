@@ -53,6 +53,7 @@ function automationsResponse(items: AutomationItem[]): AutomationListResponse {
     },
     workflowStatus: null,
     workflowFetchError: null,
+    executionFetchErrors: [],
   };
 }
 

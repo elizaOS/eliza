@@ -144,6 +144,27 @@ def test_mmlu_runner_partial_empty_outputs_surface_truncation_signal(
     ), "a partial-empty run must emit the truncation warning"
 
 
+def test_mmlu_runner_aborts_instead_of_publishing_partial_score(
+    tmp_path: Path,
+) -> None:
+    class FailsOnSecondCall(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            if self._idx == 1:
+                raise OSError("transport unavailable")
+            return super().generate(messages, config)
+
+    runner = MMLURunner(examples=list(SMOKE_FIXTURES))
+
+    with pytest.raises(RuntimeError, match="example 2/3"):
+        runner.run(
+            client=FailsOnSecondCall(["C"]),
+            model="mock-model",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
 def test_mmlu_runner_writes_results_file(tmp_path: Path) -> None:
     client = MockClient(["A", "B", "D"])
     runner = MMLURunner(examples=list(SMOKE_FIXTURES))

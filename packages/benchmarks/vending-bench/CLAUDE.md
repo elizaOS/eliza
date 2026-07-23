@@ -2,8 +2,13 @@
 
 elizaOS reimplementation of Andon Labs' Vending-Bench ([arXiv 2502.15840](https://arxiv.org/abs/2502.15840),
 [leaderboard](https://andonlabs.com/evals/vending-bench)): evaluates LLM long-horizon coherence by
-simulating a vending-machine business over up to 30 days (inventory ordering, pricing, cash management).
-Headline score is net worth at end of run. Registered as `vending_bench`.
+simulating a vending-machine business (inventory ordering, pricing, cash management). Headline score
+is net worth at end of run. Registered as `vending_bench`.
+
+This is a deterministic local reimplementation, not Andon Labs' private simulator. Its results compare
+the repository's native harnesses with each other and must not be presented as official leaderboard
+scores. The full campaign uses five base seeds, ten edge variants per seed, a 2,000-message cap,
+a 30,000-token bounded transcript, and a 365-day safety ceiling.
 
 ## Run
 
@@ -19,6 +24,11 @@ python -m elizaos_vending_bench.cli run --provider anthropic --model claude-sonn
 
 # Through the suite orchestrator (resolves provider/model, stores results)
 python -m benchmarks.orchestrator run --benchmarks vending_bench --provider <p> --model <m>
+
+# Validate the full campaign shape without spending model quota (55 scenarios)
+python -m elizaos_vending_bench.cli run --provider heuristic --runs 5 --days 365 \
+  --max-actions-per-day 25 --max-messages-per-run 2000 --context-window-tokens 30000 \
+  --seed 42 --expand-scenarios --expected-scenarios 55 --count-scenarios --no-leaderboard
 ```
 
 ## Smoke test (no API keys)
@@ -54,8 +64,11 @@ pytest elizaos_vending_bench/tests/ -v
 
 - Results write to `./benchmark_results/vending-bench/vending-bench-results-<timestamp>.json` (gitignored).
 - Scored by `_score_from_vendingbench_json` in `registry/scores.py`.
-- Orchestrator command uses `--starter-inventory` and `--max-actions-per-day 6` by default.
+- Smoke defaults use starter inventory and six actions per day; explicit full profiles preserve the
+  requested horizon, message cap, context budget, seed, inventory state, and action budget.
 - The `--provider eliza` path routes through the elizaOS TS benchmark bridge (`eliza-adapter`).
+- Native turns fail closed on missing usage and invalid/empty model output is scored as invalid; the
+  bridge never supplies a strategy or profitable fallback action.
 - Full background: [RESEARCH.md](RESEARCH.md).
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

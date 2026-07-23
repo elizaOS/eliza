@@ -126,6 +126,22 @@ describe("Utils Integration Tests", () => {
       expect(result).toBe("/from/env/file");
     });
 
+    it("should not load .env credentials in subscription benchmark mode", () => {
+      fs.writeFileSync(
+        path.join(tempDir, ".env"),
+        "PGLITE_DATA_DIR=/must-not-load\nCEREBRAS_API_KEY=must-not-load"
+      );
+      delete process.env.PGLITE_DATA_DIR;
+      delete process.env.CEREBRAS_API_KEY;
+      process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY = "1";
+
+      const result = resolvePgliteDir();
+
+      expect(result).toBe(path.join(tempDir, ".eliza", ".elizadb"));
+      expect(process.env.PGLITE_DATA_DIR).toBeUndefined();
+      expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
+    });
+
     it("should expand tilde paths", () => {
       const result = resolvePgliteDir("~/data/pglite");
       expect(result).toBe(path.join(tempDir, "data/pglite"));

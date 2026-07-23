@@ -20,12 +20,15 @@ describe("collectPluginNames optional short-id registry map", () => {
     expect(OPTIONAL_PLUGIN_MAP["agent-wallet"]).toBe("@elizaos/plugin-wallet");
   });
 
-  it("still resolves the legacy host-owned tail (plugins without a registry entry)", () => {
-    // These packages ship no registry-entry.json, so their aliases remain in the
-    // explicitly-marked LEGACY_HOST_OWNED_SHORT_ID_MAP fallback.
+  it("exposes the registry-generated personal-assistant alias", () => {
     expect(OPTIONAL_PLUGIN_MAP.selfcontrol).toBe(
       "@elizaos/plugin-personal-assistant",
     );
+  });
+
+  it("still resolves the legacy host-owned tail (plugins without a registry entry)", () => {
+    // These packages ship no registry-entry.json, so their aliases remain in the
+    // explicitly-marked LEGACY_HOST_OWNED_SHORT_ID_MAP fallback.
     expect(OPTIONAL_PLUGIN_MAP.repoPrompt).toBe("@elizaos/plugin-repoprompt");
     expect(OPTIONAL_PLUGIN_MAP["stwd-eliza-plugin"]).toBe("@stwd/eliza-plugin");
   });

@@ -91,11 +91,19 @@ then the text agent reasons over the transcript plus the MCQ choices.
 
 This baseline is **lossy** on the `sound` and `music` categories — the
 STT throws away non-speech semantic information. Treat cascaded numbers
-on those two categories as a floor, not a ceiling. A future
+as an adapted **MMAU-cascaded-STT** result, not as an official direct-audio
+MMAU score. Cross-harness comparisons are valid only when every harness uses
+the same STT provider and model. Edge variants reuse their base clip's exact
+transcript so one 11-way expansion cannot drift or multiply STT spend. A future
 direct-audio-input adapter (Gemini-style audio-in, native audio models,
 etc.) should supersede this baseline; the `AgentFn` callable in
 `agent.py` already accepts the raw `audio_bytes` so a richer adapter can
 ignore the transcript and consume the audio directly.
+
+Full HF runs require all 1,000 `test-mini` or 9,000 `test` base rows (or
+exactly `--limit` rows), a usable audio source for every row, and zero agent
+or timeout errors. The runner aborts before writing a report when any of these
+conditions fails.
 
 ## Environment
 

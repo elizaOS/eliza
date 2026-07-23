@@ -355,6 +355,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export * from "./streaming-context";
 export * from "./target-sources";
 export {
 	availableProviderNames,

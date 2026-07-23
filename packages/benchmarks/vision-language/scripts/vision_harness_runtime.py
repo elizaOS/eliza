@@ -59,19 +59,13 @@ def _client(
             model=model,
             api_key=api_key,
             base_url=base_url,
-            mode="in_process",
             timeout_s=timeout_s,
         )
     if harness == "openclaw":
-        from openclaw_adapter.client import OpenClawClient
-
-        return OpenClawClient(
-            provider=provider,
-            model=model,
-            api_key=api_key,
-            base_url=base_url,
-            direct_openai_compatible=True,
-            timeout_s=timeout_s,
+        raise RuntimeError(
+            "vision_language is N/A for OpenClaw publication: the isolated "
+            "embedded benchmark runtime currently declares text-only model "
+            "input and cannot preserve the required image payload"
         )
     if harness in {"elizaos", "opencode"}:
         return _ElizaCodeAgentVisionClient(

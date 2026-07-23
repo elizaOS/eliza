@@ -21,15 +21,17 @@ evaluator can recompute reward without re-loading anything.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import random
 import runpy
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from elizaos_webshop.types import WebShopTask
@@ -92,6 +94,46 @@ EDGE_VARIANTS: tuple[dict[str, str], ...] = (
     },
 )
 
+EXPECTED_FULL_HUMAN_GOALS = 12_087
+EXPECTED_FULL_CATALOG_ENTRIES = 1_181_436
+EXPECTED_FULL_PRODUCTS = 1_181_430
+CANONICAL_GOAL_SHUFFLE_SEED = 233
+CANONICAL_SPLIT_BOUNDS: dict[str, tuple[int, int | None]] = {
+    "test": (0, 500),
+    "eval": (500, 1_500),
+    "train": (1_500, None),
+}
+UPSTREAM_GDRIVE_FILE_IDS: dict[str, str] = {
+    "items_shuffle_1000.json": "1EgHdxQ_YxqIQlvvq5iKlCrkEKR6-j0Ib",
+    "items_ins_v2_1000.json": "1IduG0xl544V_A_jv3tHXC0kyFi7PnyBu",
+    "items_shuffle.json": "1A2whVgOO0euk5O13n2iYDM0bQRkkRduB",
+    "items_ins_v2.json": "1s2j6NgHljiZzQNL3veZaAiyW_qDEgBNi",
+    "items_human_ins.json": "14Kb5SPBk_jfdLZ_CDBNitW98QLDlKR5O",
+}
+UPSTREAM_FILE_MANIFEST: dict[str, tuple[int, str]] = {
+    "items_shuffle_1000.json": (
+        4_467_013,
+        "30a4765c3a327af72d9a9a95a6b2486d516f0fa1d3ecd83681901ce82a21b269",
+    ),
+    "items_ins_v2_1000.json": (
+        147_099,
+        "f88a36314a397b53b3d9c3fa5878e5f7b26d35019a51ec83fbedeca61a948f6f",
+    ),
+    "items_shuffle.json": (
+        5_479_720_229,
+        "2ef591d65df3af89e972ab72468eb82cbf124d876552d9f3678667edd620a6c8",
+    ),
+    "items_ins_v2.json": (
+        186_295_270,
+        "1d36af476bdb8f82a5da62bd8acdabe54cd8de2fa84010d37da5c4890feb447e",
+    ),
+    "items_human_ins.json": (
+        5_137_548,
+        "cf78667548a71786e1d9049c24b802e48e1084ad4bb021cae56ce1f6d96954a3",
+    ),
+}
+_CATALOG_STREAM_CHUNK_SIZE = 8 * 1024 * 1024
+
 
 @dataclass
 class WebShopDataPaths:
@@ -126,7 +168,7 @@ def resolve_paths(
         raise ValueError(f"Unknown profile {profile!r}; use 'small' or 'full'.")
     human = base / "items_human_ins.json"
 
-    if not items.exists() or not attrs.exists():
+    if not all(path.exists() and path.stat().st_size > 0 for path in (items, attrs, human)):
         return None
     return WebShopDataPaths(items=items, attributes=attrs, human_instructions=human)
 
@@ -162,6 +204,150 @@ def ensure_profile_downloaded(profile: str, data_dir: Path) -> WebShopDataPaths:
             f"WebShop profile {profile!r} did not produce required files in {data_dir}"
         )
     return paths
+
+
+def verify_upstream_data(paths: WebShopDataPaths) -> dict[str, str | int]:
+    """Hash the exact upstream bytes and return report-ready provenance."""
+
+    provenance: dict[str, str | int] = {}
+    for label, path in (
+        ("items", paths.items),
+        ("attributes", paths.attributes),
+        ("human_goals", paths.human_instructions),
+    ):
+        expected = UPSTREAM_FILE_MANIFEST.get(path.name)
+        if expected is None:
+            raise ValueError(f"WebShop has no pinned manifest for {path.name}")
+        expected_size, expected_sha256 = expected
+        actual_size = path.stat().st_size
+        if actual_size != expected_size:
+            raise ValueError(
+                f"WebShop {path.name} size mismatch: expected {expected_size}, "
+                f"found {actual_size}"
+            )
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        actual_sha256 = digest.hexdigest()
+        if actual_sha256 != expected_sha256:
+            raise ValueError(
+                f"WebShop {path.name} checksum mismatch: expected "
+                f"{expected_sha256}, found {actual_sha256}"
+            )
+        provenance[f"{label}_source_id"] = UPSTREAM_GDRIVE_FILE_IDS[path.name]
+        provenance[f"{label}_file_size"] = actual_size
+        provenance[f"{label}_sha256"] = actual_sha256
+    return provenance
+
+
+def _iter_catalog_products(path: Path) -> Iterator[dict[str, Any]]:
+    """Decode a top-level JSON array without retaining the 5.5 GB catalog."""
+
+    decoder = json.JSONDecoder()
+    file_size = path.stat().st_size
+    with path.open(encoding="utf-8") as catalog:
+        buffer = ""
+        cursor = 0
+        eof = False
+
+        def read_more() -> None:
+            nonlocal buffer, cursor, eof
+            buffer = buffer[cursor:] + catalog.read(_CATALOG_STREAM_CHUNK_SIZE)
+            cursor = 0
+            eof = catalog.tell() == file_size
+
+        def skip_whitespace() -> None:
+            nonlocal cursor
+            while True:
+                while cursor < len(buffer) and buffer[cursor].isspace():
+                    cursor += 1
+                if cursor < len(buffer) or eof:
+                    return
+                read_more()
+
+        read_more()
+        skip_whitespace()
+        if cursor >= len(buffer) or buffer[cursor] != "[":
+            raise ValueError("WebShop product catalog must be a JSON array")
+        cursor += 1
+        first = True
+
+        while True:
+            skip_whitespace()
+            if cursor >= len(buffer):
+                raise ValueError("WebShop product catalog has an unterminated JSON array")
+            if buffer[cursor] == "]":
+                cursor += 1
+                break
+            if not first:
+                if buffer[cursor] != ",":
+                    raise ValueError("WebShop product catalog entries must be comma-separated")
+                cursor += 1
+                skip_whitespace()
+                if cursor >= len(buffer) or buffer[cursor] == "]":
+                    raise ValueError("WebShop product catalog has a trailing comma")
+
+            while True:
+                try:
+                    product, next_cursor = decoder.raw_decode(buffer, cursor)
+                    cursor = next_cursor
+                    break
+                except json.JSONDecodeError as error:
+                    if eof:
+                        raise ValueError("WebShop product catalog contains invalid JSON") from error
+                    read_more()
+
+            if not isinstance(product, dict):
+                raise ValueError("WebShop product catalog entries must be objects")
+            yield product
+            first = False
+
+            if cursor >= _CATALOG_STREAM_CHUNK_SIZE:
+                buffer = buffer[cursor:]
+                cursor = 0
+
+        skip_whitespace()
+        if cursor < len(buffer) or not eof:
+            while not eof:
+                read_more()
+                skip_whitespace()
+            if cursor < len(buffer):
+                raise ValueError("WebShop product catalog has trailing data")
+
+
+def _catalog_asins(
+    path: Path,
+    *,
+    stream: bool,
+    expected_count: int | None = None,
+) -> set[str]:
+    if stream:
+        products: Iterator[dict[str, Any]] = _iter_catalog_products(path)
+    else:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list):
+            raise ValueError("WebShop product catalog must be a JSON array")
+        products = iter(payload)
+
+    asins: set[str] = set()
+    for product in products:
+        if not isinstance(product, dict):
+            raise ValueError("WebShop product catalog entries must be objects")
+        asin = product.get("asin")
+        if not isinstance(asin, str):
+            raise ValueError("WebShop product catalog entry has no ASIN")
+        if asin and asin != "nan" and len(asin) <= 10:
+            asins.add(asin)
+
+    if not asins:
+        raise ValueError("WebShop product catalog contains no valid ASINs")
+    if expected_count is not None and len(asins) != expected_count:
+        raise ValueError(
+            f"WebShop product catalog is incomplete: expected {expected_count} "
+            f"unique products, found {len(asins)}"
+        )
+    return asins
 
 
 def _apply_edge_variant(task: WebShopTask, variant: dict[str, str]) -> WebShopTask:
@@ -209,6 +395,11 @@ def validate_tasks(tasks: list[WebShopTask], include_edge_scenarios: bool = Fals
     duplicates = {task_id for task_id in ids if ids.count(task_id) > 1}
     if duplicates:
         raise ValueError(f"Duplicate WebShop task ids: {sorted(duplicates)[:5]}")
+    for task in tasks:
+        if not task.instruction.strip():
+            raise ValueError(f"WebShop task {task.task_id} has an empty instruction")
+        if not task.target_product_ids or not all(task.target_product_ids):
+            raise ValueError(f"WebShop task {task.task_id} has no target product")
 
     if not include_edge_scenarios:
         return
@@ -235,8 +426,8 @@ class WebShopDataset:
     Parameters
     ----------
     split:
-        Either ``"train"`` or ``"test"``. The 12,087 human goals are split
-        90/10 deterministically (seed=42) following the upstream convention.
+        ``"test"`` selects canonical indices 0–499, ``"eval"`` selects
+        500–1,499, and ``"train"`` selects 1,500 onward.
     profile:
         ``"small"`` (1k products, default) or ``"full"`` (1.18M products).
     use_sample_tasks:
@@ -248,9 +439,6 @@ class WebShopDataset:
         Use human instructions (recommended) vs. synthetic goals.
     """
 
-    SPLIT_SEED = 42
-    TEST_FRACTION = 0.1
-
     def __init__(
         self,
         *,
@@ -260,8 +448,10 @@ class WebShopDataset:
         data_dir: Path | None = None,
         human_goals: bool = True,
     ) -> None:
-        if split not in ("train", "test"):
-            raise ValueError(f"split must be 'train' or 'test', got {split!r}")
+        if split not in CANONICAL_SPLIT_BOUNDS:
+            raise ValueError(
+                f"split must be one of {sorted(CANONICAL_SPLIT_BOUNDS)}, got {split!r}"
+            )
         self.split = split
         self.profile = profile
         self.use_sample_tasks = use_sample_tasks
@@ -270,6 +460,9 @@ class WebShopDataset:
 
         self.paths: WebShopDataPaths | None = None
         self.tasks: list[WebShopTask] = []
+        self.catalog_product_count = 0
+        self.published_goal_count = 0
+        self.data_provenance: dict[str, str | int] = {}
 
     # ------------------------------------------------------------------
     # Loading
@@ -294,6 +487,8 @@ class WebShopDataset:
         if paths is None:
             paths = ensure_profile_downloaded(self.profile, self.data_dir)
         self.paths = paths
+        if self.profile == "full":
+            self.data_provenance = verify_upstream_data(paths)
         self.tasks = self._load_from_upstream(paths)
         logger.info(
             "[WebShopDataset] Loaded %d %s tasks (profile=%s)",
@@ -301,6 +496,158 @@ class WebShopDataset:
             self.split,
             self.profile,
         )
+
+    def load_manifest_sync(self) -> None:
+        """Load task identities for count/validation without the web runtime."""
+        if self.use_sample_tasks:
+            self.paths = self._materialize_sample_catalog()
+        else:
+            paths = resolve_paths(data_dir=self.data_dir, profile=self.profile)
+            paths = paths or ensure_profile_downloaded(self.profile, self.data_dir)
+            self.paths = paths
+            if self.profile == "full":
+                self.data_provenance = verify_upstream_data(paths)
+
+        manifest = json.loads(self.paths.human_instructions.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            raise ValueError("WebShop human-goal manifest must be an object keyed by ASIN")
+        if self.profile == "full" and not self.use_sample_tasks:
+            products: Iterator[dict[str, Any]] = _iter_catalog_products(self.paths.items)
+        else:
+            product_payload = json.loads(self.paths.items.read_text(encoding="utf-8"))
+            if not isinstance(product_payload, list):
+                raise ValueError("WebShop product catalog must be a JSON array")
+            products = iter(product_payload)
+
+        catalog_asins: set[str] = set()
+        catalog_entries = 0
+        goals: list[dict[str, Any]] = []
+        for product in products:
+            catalog_entries += 1
+            if not isinstance(product, dict):
+                raise ValueError("WebShop product catalog entries must be objects")
+            asin = product.get("asin")
+            if not isinstance(asin, str):
+                raise ValueError("WebShop product catalog entry has no ASIN")
+            if not asin or asin == "nan" or len(asin) > 10 or asin in catalog_asins:
+                continue
+            catalog_asins.add(asin)
+            instructions = manifest.get(asin)
+            if instructions is None:
+                continue
+            if not isinstance(asin, str) or not asin.strip():
+                raise ValueError("WebShop human-goal manifest contains an empty ASIN")
+            if not isinstance(instructions, list):
+                raise ValueError(f"WebShop human goals for {asin} must be a list")
+            if asin not in catalog_asins:
+                continue
+            for entry in instructions:
+                if not isinstance(entry, dict):
+                    raise ValueError(f"WebShop human goal for {asin} must be an object")
+                attributes = entry.get("instruction_attributes")
+                if not isinstance(attributes, list):
+                    raise ValueError(
+                        f"WebShop human goal for {asin} is missing instruction_attributes"
+                    )
+                if not attributes:
+                    continue
+                instruction = entry.get("instruction")
+                if not isinstance(instruction, str) or not instruction.strip():
+                    raise ValueError(f"WebShop human goal for {asin} has an empty instruction")
+                goals.append(
+                    {
+                        "asin": asin,
+                        "instruction_text": instruction.strip("."),
+                        "attributes": attributes,
+                        "price_upper": 1_000_000,
+                        "goal_options": entry.get("instruction_options", {}),
+                        "category": product.get("category", ""),
+                        "query": str(product.get("query", "")).lower().strip(),
+                        "name": product.get("name", ""),
+                        "product_category": product.get("product_category", ""),
+                    }
+                )
+
+        if (
+            self.profile == "full"
+            and not self.use_sample_tasks
+            and catalog_entries != EXPECTED_FULL_CATALOG_ENTRIES
+        ):
+            raise ValueError(
+                "WebShop full catalog is incomplete: expected "
+                f"{EXPECTED_FULL_CATALOG_ENTRIES} raw entries, found {catalog_entries}"
+            )
+        if (
+            self.profile == "full"
+            and not self.use_sample_tasks
+            and len(catalog_asins) != EXPECTED_FULL_PRODUCTS
+        ):
+            raise ValueError(
+                "WebShop full catalog is incomplete: expected "
+                f"{EXPECTED_FULL_PRODUCTS} executable products, found {len(catalog_asins)}"
+            )
+        self.catalog_product_count = len(catalog_asins)
+
+        if self.profile == "full" and len(goals) != EXPECTED_FULL_HUMAN_GOALS:
+            raise ValueError(
+                "WebShop full profile is incomplete: expected "
+                f"{EXPECTED_FULL_HUMAN_GOALS} published human goals, found {len(goals)}"
+            )
+
+        random.Random(CANONICAL_GOAL_SHUFFLE_SEED).shuffle(goals)
+        self.published_goal_count = len(goals)
+        start, end = CANONICAL_SPLIT_BOUNDS[self.split]
+        selected = goals[start:end]
+        if self.profile == "full":
+            expected_split = self._expected_full_split_count()
+            if len(selected) != expected_split:
+                raise ValueError(
+                    f"WebShop canonical {self.split} split is incomplete: expected "
+                    f"{expected_split} tasks, found {len(selected)}"
+                )
+        self.tasks = [
+            self._goal_to_task(start + i, goal) for i, goal in enumerate(selected)
+        ]
+
+    def install_runtime_goals(
+        self,
+        goals: list[dict[str, Any]],
+        *,
+        catalog_product_count: int,
+    ) -> None:
+        """Install the exact shuffled goals generated by the upstream server."""
+
+        if self.profile == "full" and catalog_product_count != EXPECTED_FULL_PRODUCTS:
+            raise ValueError(
+                "WebShop full catalog is incomplete: expected "
+                f"{EXPECTED_FULL_PRODUCTS} executable products, "
+                f"found {catalog_product_count}"
+            )
+        if (
+            self.profile == "full"
+            and self.human_goals
+            and len(goals) != EXPECTED_FULL_HUMAN_GOALS
+        ):
+            raise ValueError(
+                "WebShop full profile is incomplete: expected "
+                f"{EXPECTED_FULL_HUMAN_GOALS} published human goals, found {len(goals)}"
+            )
+
+        self.catalog_product_count = catalog_product_count
+        self.published_goal_count = len(goals)
+        start, end = CANONICAL_SPLIT_BOUNDS[self.split]
+        selected = goals[start:end]
+        if self.profile == "full" and self.human_goals:
+            expected_split = self._expected_full_split_count()
+            if len(selected) != expected_split:
+                raise ValueError(
+                    f"WebShop canonical {self.split} split is incomplete: expected "
+                    f"{expected_split} tasks, found {len(selected)}"
+                )
+        self.tasks = [
+            self._goal_to_task(start + index, goal)
+            for index, goal in enumerate(selected)
+        ]
 
     def get_tasks(self, *, limit: int | None = None) -> list[WebShopTask]:
         if limit is None:
@@ -320,7 +667,7 @@ class WebShopDataset:
         )
 
         _ensure_upstream_on_path()
-        _patch_search_engine_for_bm25_fallback()
+        _patch_search_engine_for_bm25_fallback(force_bm25=True)
         _install_bm25_after_load_products()
 
         from web_agent_site import utils as _utils  # type: ignore[import-not-found]
@@ -334,13 +681,11 @@ class WebShopDataset:
         _engine_mod.HUMAN_ATTR_PATH = str(paths.human_instructions)
 
         if self.human_goals and not paths.has_human_goals:
-            logger.warning(
-                "[WebShopDataset] human_instructions file missing; "
-                "falling back to synthetic goals"
+            raise FileNotFoundError(
+                "WebShop human-goal instructions are required; synthetic goals are not "
+                "a substitute for the published benchmark corpus"
             )
-            human_goals = False
-        else:
-            human_goals = self.human_goals
+        human_goals = self.human_goals
 
         all_products, _items, product_prices, _attr_to_asins = load_products(
             filepath=str(paths.items),
@@ -348,18 +693,13 @@ class WebShopDataset:
             human_goals=human_goals,
         )
         goals = get_goals(all_products, product_prices, human_goals=human_goals)
+        random.Random(CANONICAL_GOAL_SHUFFLE_SEED).shuffle(goals)
+        self.install_runtime_goals(goals, catalog_product_count=len(all_products))
+        return list(self.tasks)
 
-        # Deterministic shuffle + split (mirrors upstream's random.seed(233)
-        # for goal ordering but with our own fixed split seed).
-        rng = random.Random(self.SPLIT_SEED)
-        rng.shuffle(goals)
-        n_test = max(1, int(len(goals) * self.TEST_FRACTION))
-        if self.split == "test":
-            goals = goals[:n_test]
-        else:
-            goals = goals[n_test:]
-
-        return [self._goal_to_task(i, g) for i, g in enumerate(goals)]
+    def _expected_full_split_count(self) -> int:
+        start, end = CANONICAL_SPLIT_BOUNDS[self.split]
+        return max(0, min(end or EXPECTED_FULL_HUMAN_GOALS, EXPECTED_FULL_HUMAN_GOALS) - start)
 
     @staticmethod
     def _goal_to_task(idx: int, goal: dict[str, Any]) -> WebShopTask:

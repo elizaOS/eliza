@@ -79,7 +79,7 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "@electric-sql/pglite": "^0.2.17",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
@@ -101,7 +101,7 @@
   },
   "dependencies": {
     "@elizaos/shared": "workspace:*",
-    "@smithers-orchestrator/engine": "0.28.0",
+    "@smithers-orchestrator/engine": "0.29.0",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.21.1",
     "quickjs-emscripten": "0.32.0",

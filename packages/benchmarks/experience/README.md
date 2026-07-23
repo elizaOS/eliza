@@ -23,7 +23,7 @@ Tests three critical properties of the reranking formula:
 ### 3. Learning Cycle
 End-to-end test of the learn-then-apply loop:
 
-1. Load 100 background experiences (noise)
+1. Load the configured number of background experiences (1,000 by default)
 2. Agent encounters a problem and records an experience
 3. Agent faces a similar problem later
 4. Verify the agent retrieves and applies the past experience
@@ -40,12 +40,26 @@ End-to-end test of the learn-then-apply loop:
 cd benchmarks/experience
 python -m pytest tests/ -v
 
-# Run full benchmark (1000 experiences, 100 queries, 20 learning cycles)
+# Run the default Eliza bridge benchmark (1000 memories, 100 retrievals, 20 learnings)
+# Requires ELIZA_BENCH_URL and ELIZA_BENCH_TOKEN.
 python run_benchmark.py
+
+# Run the deterministic in-process service benchmark (no LLM)
+python run_benchmark.py --mode direct
 
 # Custom configuration
 python run_benchmark.py --experiences 2000 --queries 200 --learning-cycles 50 --output results.json
 ```
+
+The bridge report records the expected and completed learning/retrieval counts
+and is written only after all calls finish. A learning counts as recorded only
+when the response contains a structured recording action or the explicit
+`RECORD_EXPERIENCE` command.
+
+This suite is not currently a publishable Eliza/Hermes/OpenClaw comparison.
+The CLI only owns the Eliza bridge, and the Python `ExperienceService` supplies
+the memory implementation. The full campaign therefore marks the cohort
+unsupported instead of relabeling provider calls as native harness results.
 
 ## Synthetic data generation
 

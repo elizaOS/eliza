@@ -6,6 +6,7 @@ from openclaw.scenarios import (
     count_scenarios,
     load_base_scenarios,
     load_scenarios,
+    scenario_provenance,
     validate_scenarios,
 )
 
@@ -32,7 +33,21 @@ def test_expanded_scenarios_preserve_base_mapping_and_prompt() -> None:
     assert base_scenario_name(scenario_id) == "setup"
     assert scenarios[scenario_id]["base_scenario"] == "setup"
     assert "idempotent" in scenarios[scenario_id]["prompt"].lower()
+    assert scenarios["implementation--edge-idempotent-rerun"]["prerequisites"] == [
+        "setup--edge-idempotent-rerun"
+    ]
 
 
 def test_expanded_scenarios_validate() -> None:
     validate_scenarios()
+
+
+def test_scenario_provenance_records_complete_authored_corpus() -> None:
+    provenance = scenario_provenance()
+
+    assert provenance["authored_scenarios"] == 5
+    assert provenance["edge_variants_per_scenario"] == 10
+    assert provenance["total_scenarios"] == 55
+    assert len(provenance["workload_sha256"]) == 64
+    assert len(provenance["manifests"]) == 5
+    assert all(len(item["sha256"]) == 64 for item in provenance["manifests"])
