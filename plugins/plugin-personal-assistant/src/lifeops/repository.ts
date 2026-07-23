@@ -3214,12 +3214,21 @@ export class LifeOpsRepository {
    * occurrences, which left recap turns blind to finished work (#16935).
    * `sinceIso` bounds on `updated_at` (completion bumps it); callers narrow to
    * the owner's local day in TypeScript where timezone math belongs.
+   *
+   * `subjectType` is pushed into SQL rather than filtered by the caller so the
+   * LIMIT can never evict matching rows: under multi-room load, agent-subject
+   * completions interleaved with the owner's would otherwise consume the
+   * window and silently drop owner wins from the evening brief.
    */
   async listCompletedOccurrenceViewsSince(
     agentId: string,
     sinceIso: string,
-    limit = 24,
+    options: { subjectType?: "owner" | "agent"; limit?: number } = {},
   ): Promise<LifeOpsOccurrenceView[]> {
+    const limit = options.limit ?? 24;
+    const subjectFilter = options.subjectType
+      ? `AND occurrence.subject_type = ${sqlQuote(options.subjectType)}`
+      : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT occurrence.*,
@@ -3239,6 +3248,7 @@ export class LifeOpsRepository {
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
           AND occurrence.state = 'completed'
           AND occurrence.updated_at >= ${sqlQuote(sinceIso)}
+          ${subjectFilter}
         ORDER BY occurrence.updated_at DESC
         LIMIT ${sqlInteger(limit)}`,
     );
