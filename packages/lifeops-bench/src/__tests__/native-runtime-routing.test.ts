@@ -117,6 +117,38 @@ describe("campaign-native Eliza routing", () => {
     );
   });
 
+  it("activates chat-only isolation for any provider, not just claude-subscription", () => {
+    // The Cerebras/OpenAI gemma lifecycle pass and the claude-subscription pass
+    // must both collapse to one gateway-backed chat/planner model. Gating
+    // chat-only on the provider (the old `initialBenchProvider ===
+    // "claude-subscription" && ...`) left the Cerebras eliza leg with local
+    // embedding + research handlers, so its readiness gate always failed. The
+    // switch is keyed solely on the env flag now.
+    expect(serverSource).toContain(
+      'const subscriptionChatOnly =\n    process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY === "1";',
+    );
+    expect(serverSource).not.toContain(
+      'initialBenchProvider === "claude-subscription" &&\n    process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY === "1"',
+    );
+  });
+
+  it("single-sources the lifecycle hint onto character.system and neutralizes the provider", () => {
+    // The per-call model-boundary substring attestation requires the one shared
+    // hint exactly once in every model input. Only character.system reaches the
+    // Stage-1 response-handler prompt (a fixed template that composes no
+    // providers), while the dynamic ELIZA_BENCHMARK provider is composed into
+    // the ACTION_PLANNER prompt. Carrying the hint on character.system feeds
+    // every boundary; the provider is neutralized to empty so the planner does
+    // not double-count and fail the attestation closed.
+    expect(serverSource).toContain(
+      "runtime.character.system = lifecycleSystemHint;",
+    );
+    expect(serverSource).toContain('provider.name === "ELIZA_BENCHMARK",');
+    expect(serverSource).toContain(
+      'benchmarkProvider.get = async () => ({ text: "", values: {}, data: {} });',
+    );
+  });
+
   it.each(specializedClassifiers)(
     "%s reaches AgentRuntime.useModel with explicit provenance",
     (classifier) => {

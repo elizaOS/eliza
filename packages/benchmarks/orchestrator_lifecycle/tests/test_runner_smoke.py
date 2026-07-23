@@ -424,6 +424,101 @@ def test_eliza_runtime_readiness_fails_closed_on_provider_profile_drift(
         runner._assert_lifecycle_runtime_ready()
 
 
+class _EnvCapturingServerManager:
+    """Stand-in ElizaServerManager that records the process env at boot.
+
+    The lifecycle runner mutates ``os.environ`` only for the window in which it
+    boots its OWN eliza bench server, then restores it. Capturing the snapshot
+    inside ``start()`` is the only way to observe which flags the server would
+    actually see; reading ``os.environ`` after ``__init__`` returns would show
+    the restored (pre-boot) values.
+    """
+
+    captured_env: dict[str, str] = {}
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        self._client = _EnvCapturingServerManager._make_client()
+
+    @staticmethod
+    def _make_client() -> object:
+        class _Client:
+            def health(self) -> dict[str, object]:
+                return _healthy_lifecycle_health()
+
+        return _Client()
+
+    def start(self) -> None:
+        _EnvCapturingServerManager.captured_env = dict(os.environ)
+
+    @property
+    def client(self) -> object:
+        return self._client
+
+    def stop(self) -> None:  # pragma: no cover - cleanup only
+        return None
+
+
+def _boot_runner_with_captured_env(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> dict[str, str]:
+    import eliza_adapter.server_manager as server_manager_module
+
+    monkeypatch.delenv("ELIZA_BENCH_URL", raising=False)
+    monkeypatch.delenv("ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY", raising=False)
+    monkeypatch.setattr(
+        server_manager_module,
+        "ElizaServerManager",
+        _EnvCapturingServerManager,
+    )
+    _EnvCapturingServerManager.captured_env = {}
+    runner = LifecycleRunner(
+        LifecycleConfig(mode="bridge", strict=False, provider=provider)
+    )
+    assert runner is not None
+    return _EnvCapturingServerManager.captured_env
+
+
+def test_own_eliza_server_boot_forces_subscription_chat_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runner's own bench server always boots in single-model chat-only mode.
+
+    Without ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY the Cerebras/OpenAI bench server
+    keeps its local embedding + research handlers, and the readiness gate
+    (which demands the chat-only handler set) fails every eliza leg. The runner
+    must set the flag regardless of provider so the gemma pass gets the same
+    isolated profile the subscription pass relies on.
+    """
+    monkeypatch.delenv("ELIZA_BENCH_HARNESS", raising=False)
+    monkeypatch.delenv("BENCHMARK_HARNESS", raising=False)
+
+    env = _boot_runner_with_captured_env(monkeypatch, provider="cerebras")
+
+    assert env.get("ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY") == "1"
+    assert env.get("ELIZA_BENCH_LIFECYCLE_PROFILE") == "1"
+    assert env.get("ELIZA_BENCH_REQUIRE_ORCHESTRATOR") == "1"
+
+
+@pytest.mark.parametrize("harness", ["hermes", "openclaw"])
+def test_external_bridge_does_not_apply_eliza_chat_only_env(
+    harness: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hermes/OpenClaw legs are native bridges — no eliza chat-only profile.
+
+    An external-bridge leg must never stamp the eliza-only lifecycle profile
+    flags onto the process env; those legs run their own native runtime and
+    skip the eliza readiness gate entirely.
+    """
+    monkeypatch.delenv("ELIZA_BENCH_HARNESS", raising=False)
+    monkeypatch.setenv("BENCHMARK_HARNESS", harness)
+
+    env = _boot_runner_with_captured_env(monkeypatch, provider="cerebras")
+
+    assert env.get("ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY") != "1"
+    assert env.get("ELIZA_BENCH_LIFECYCLE_PROFILE") != "1"
+
+
 def test_bridge_reply_returns_record_with_extracted_events() -> None:
     class FakeClient:
         def send_message(

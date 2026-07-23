@@ -225,6 +225,15 @@ class LifecycleRunner:
                     lifecycle_env = {
                         "ELIZA_BENCH_REQUIRE_ORCHESTRATOR": "1",
                         "ELIZA_BENCH_LIFECYCLE_PROFILE": "1",
+                        # Collapse Eliza to a single gateway-backed chat/planner
+                        # model so no local embedding or research model muddies
+                        # the cross-harness comparison. The bench server keys
+                        # chat-only isolation on this flag regardless of
+                        # provider, so the Cerebras/OpenAI lifecycle pass gets
+                        # the same isolated model registry the
+                        # claude-subscription pass relies on. Required for the
+                        # eliza readiness gate below.
+                        "ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY": "1",
                     }
                     lifecycle_previous = {
                         name: os.environ.get(name) for name in lifecycle_env

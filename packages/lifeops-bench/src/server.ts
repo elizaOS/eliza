@@ -1172,8 +1172,15 @@ export async function startBenchmarkServer() {
       /(^|\.)cerebras\.ai(\/|$)/i.test(initialOpenAiBaseUrl)) ||
     initialElizaProvider === "cerebras" ||
     initialBenchProvider === "cerebras";
+  // Chat-only isolation is provider-agnostic: it collapses Eliza to a single
+  // gateway-backed chat/planner/tokenizer model so a cross-harness comparison
+  // is never muddied by a second local model (embeddings, research, media). It
+  // is keyed solely on ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY so both the
+  // claude-subscription pass and the Cerebras/OpenAI lifecycle pass opt in the
+  // same way; the wrapper below narrows whichever OpenAI-compatible plugin is
+  // loaded, so the Cerebras lane gets the identical isolated handler set the
+  // claude-subscription lane relies on.
   const subscriptionChatOnly =
-    initialBenchProvider === "claude-subscription" &&
     process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY === "1";
 
   // Local-inference stays enabled by default in benchmark mode so embedding,
@@ -1686,6 +1693,27 @@ export async function startBenchmarkServer() {
     // This dedicated runtime retains basic-capabilities providers/services for
     // native room history, while its public action registry is benchmark-scoped.
     retainOnlyLifecycleTaskAction(runtime);
+    // Single-source the shared hint. The one neutral lifecycle hint must appear
+    // exactly once in EVERY model boundary this turn, which the per-call
+    // recordLlmCall substring attestation enforces. Only `character.system`
+    // reaches all three boundaries — the Stage-1 RESPONSE_HANDLER prompt is a
+    // fixed template that composes neither dynamic nor default providers, so the
+    // ELIZA_BENCHMARK provider cannot feed it. But that provider IS composed
+    // into the ACTION_PLANNER prompt, so if it also emitted the hint there while
+    // character.system carried it, the planner would see the hint twice and the
+    // attestation would fail closed. Neutralize the live provider output to
+    // empty (its lifecycle payload was only ever the hint, now sourced from the
+    // character) so every boundary carries the hint exactly once. The provider
+    // stays registered and its pruned-payload neutrality check
+    // (lifecycleBenchmarkProviderPayloadIsNeutral) still holds, satisfying the
+    // readiness gate. The hint itself is stamped onto character.system per turn
+    // (it arrives in each request's benchmark context).
+    const benchmarkProvider = runtime.providers.find(
+      (provider) => provider.name === "ELIZA_BENCHMARK",
+    );
+    if (benchmarkProvider) {
+      benchmarkProvider.get = async () => ({ text: "", values: {}, data: {} });
+    }
   }
   const registeredActionCatalog = benchmarkRuntimeActionNames(runtime);
   const lifecycleTaskActionRegistered = hasLifecycleTaskAction(runtime);
@@ -3257,6 +3285,13 @@ export async function startBenchmarkServer() {
                 severity: "fatal",
               },
             );
+          }
+          if (lifecycleProfile) {
+            // Stamp the one shared hint onto the character so it renders once in
+            // the canonical system prompt of every model boundary this turn (see
+            // the provider-neutralization note at runtime construction). The hint
+            // is constant across turns, so re-assigning it is idempotent.
+            runtime.character.system = lifecycleSystemHint;
           }
           const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
           const handleNativeTurn = () =>
