@@ -48,7 +48,8 @@ export interface LifeOpsActivitySignalsStatusDetail {
   status:
     | "capture_error"
     | "snapshot_unavailable"
-    | "background_refresh_unavailable";
+    | "background_refresh_unavailable"
+    | "permission_unavailable";
   message?: string;
   reason?: string;
 }

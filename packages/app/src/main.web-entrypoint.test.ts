@@ -37,7 +37,10 @@ vi.mock("@elizaos/app-core/api/ios-local-agent-transport", () => ({
   installIosLocalAgentNativeRequestBridge: vi.fn(),
   installIosLocalAgentFetchBridge: vi.fn(),
 }));
-vi.mock("./embed-bootstrap", () => ({
+vi.mock("./embed-bootstrap", async (importOriginal) => ({
+  // Keep the real isEmbedPath (pure route predicate consumed by the renderer
+  // shell-scope resolution); only the network-touching handshake is stubbed.
+  ...(await importOriginal<typeof import("./embed-bootstrap")>()),
   runEmbedHandshake: webBoot.runEmbedHandshake,
 }));
 vi.mock("./sw-registration", () => ({
