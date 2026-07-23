@@ -280,7 +280,8 @@ describe("bottom-band split: INPUT vs PILL (matrix: HALF slow-drag row)", () => 
     openToHalf();
     // Down by half+45 → cont −45 (past the 40px overshoot) → PILL.
     await slowDrag(grabber(), [200, 360, 520, 598]);
-    expect(detent()).toBe("pill");
+    // The mid-drag commit flips state on React's schedule — await the flush.
+    await waitFor(() => expect(detent()).toBe("pill"));
     expect(chatState()).toBe("CLOSED");
   });
 });
@@ -498,7 +499,7 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
     render(<ContinuousChatOverlay controller={makeController()} />);
     openToHalf(); // 1 haptic
     await slowDrag(grabber(), [200, 360, 520, 598]); // past the bottom → PILL
-    expect(detent()).toBe("pill");
+    await waitFor(() => expect(detent()).toBe("pill"));
     expect(impacts.length).toBe(2); // open + the single pill commit
   });
 
