@@ -1098,13 +1098,15 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
         screen.getAllByTestId("notification-row")[0],
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.queryByTestId("notifications-collapse")).toBeNull();
+    // The shade-level collapse pill stays reachable even while a stack is
+    // fanned — folding everything must never require a Show Less detour.
+    expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
     fireEvent.click(screen.getByTestId("notification-stack-collapse"));
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     expect(screen.queryByTestId("notification-stack-collapse")).toBeNull();
     expect(screen.getByTestId("notifications-collapse").textContent).toContain(
-      "Collapse",
+      "3 Notifications",
     );
     expect(
       screen
@@ -1154,7 +1156,6 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     const list = screen.getByTestId("home-notification-list");
     expect(list.className).toContain("touch-pan-y");
-    expect(list.className).toContain("overflow-x-hidden");
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
@@ -1308,7 +1309,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   }
 
-  it("renders interrupt triage with the total while closed and a bottom collapse command while open", () => {
+  it("renders interrupt triage with the total while closed and a sticky collapse pill while open", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
@@ -1333,7 +1334,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(chevron.classList.contains("w-3")).toBe(true);
     expect(screen.queryByTestId("notifications-expand-toggle")).toBeNull();
     expect(screen.queryByText(/more|show less/i)).toBeNull();
-    expect(list.className).toContain("flex-1");
+    // The list never scrolls itself: the page owns vertical scroll, so the
+    // list stays content-sized in both modes with no overflow or flex sizing.
+    expect(list.className).not.toContain("overflow-y-auto");
+    expect(list.className).not.toContain("flex-1");
     expect(list.className).not.toContain("flex-[0_1_auto]");
     expandShade();
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
@@ -1343,19 +1347,18 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       .closest("li") as HTMLElement;
     expect(clearSlot.style.height).toBe("32px");
     expect(clearSlot.style.marginBottom).toBe("0px");
-    expect(collapse.textContent).toContain("Collapse");
-    const collapseFooter = screen.getByTestId("notifications-collapse-footer");
-    expect(collapseFooter.parentElement).toBe(
+    // The collapse pill restates the total (it replaces the rested count row)
+    // and sticks to the top of the page scrollport, outside the list.
+    expect(collapse.textContent).toContain("3 Notifications");
+    const collapseSlot = screen.getByTestId("notifications-collapse-slot");
+    expect(collapseSlot.parentElement).toBe(
       screen.getByTestId("home-notification-center"),
     );
-    expect(collapseFooter.contains(collapse)).toBe(true);
+    expect(collapseSlot.contains(collapse)).toBe(true);
     expect(list.contains(collapse)).toBe(false);
-    expect(collapseFooter.className).toContain("shrink-0");
-    expect(collapseFooter.className).not.toContain("absolute");
-    expect(list.className).toContain("flex-[0_1_auto]");
+    expect(collapseSlot.className).toContain("sticky");
+    expect(collapseSlot.className).not.toContain("absolute");
     expect(list.className).toContain("pb-2");
-    expect(list.className).toContain("scroll-fade");
-    expect(list.className).toContain("scroll-fade-b-[1.5rem]");
     fireEvent.click(collapse);
     // The total crossfades in while expanded rows settle, so release does not
     // leave an empty beat before the rested count appears.
@@ -1572,7 +1575,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       screen.getByTestId("notifications-count").style.opacity,
     );
     const collapseOpacity = Number.parseFloat(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
+      screen.getByTestId("notifications-collapse-slot").style.opacity,
     );
     expect(countOpacity).toBeGreaterThan(0);
     expect(countOpacity).toBeLessThan(1);
@@ -1588,7 +1591,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(agentGroup?.style.opacity).toBe("1");
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     expect(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
+      screen.getByTestId("notifications-collapse-slot").style.opacity,
     ).toBe("1");
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -1801,11 +1804,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const clearReveal = clear.closest("li") as HTMLElement;
     expect(Number.parseFloat(clearReveal.style.opacity)).toBeGreaterThan(0);
     expect(Number.parseFloat(clearReveal.style.opacity)).toBeLessThan(1);
-    const collapseReveal = Number.parseFloat(
-      screen.getByTestId("notifications-collapse-footer").style.opacity,
-    );
-    expect(collapseReveal).toBeGreaterThan(0);
-    expect(collapseReveal).toBeLessThan(1);
+    // The sticky collapse pill mounts only on commit: inserting it mid-drag
+    // would shift the layout under the finger during direct manipulation.
+    expect(screen.queryByTestId("notifications-collapse-slot")).toBeNull();
     const revealedGroups = list.querySelectorAll(
       ":scope > [data-notification-pull-reveal]",
     );
@@ -2017,12 +2018,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         }}
         data-testid="home-gesture-surface"
       >
-        <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
+        <NotificationsHomeCenter pageSurfaceRef={surfaceRef} />
       </div>,
     );
     const list = expandShade();
     const center = screen.getByTestId("home-notification-center");
-    expect(list.className).toContain("flex-[0_1_auto]");
 
     fireEvent.touchStart(center, {
       touches: [{ clientX: 150, clientY: 420 }],
@@ -2036,12 +2036,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 
-  it("a bottom-edge touch drag closes an overflowing expanded shade", () => {
+  it("an upward push that starts at the page bottom closes the overflowing expanded shade", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
     expandShade();
     setOverflowingListGeometry(list);
+    // Scrolled to the end: upward travel can no longer mean "scroll the
+    // page", so the push becomes the overscroll-to-close from its first
+    // pixel.
+    (list as unknown as { scrollTop: number }).scrollTop = 600;
 
     fireEvent.touchStart(list, { touches: [{ clientX: 150, clientY: 470 }] });
     fireEvent.touchMove(list, { touches: [{ clientX: 152, clientY: 330 }] });
