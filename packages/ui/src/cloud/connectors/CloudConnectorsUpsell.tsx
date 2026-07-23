@@ -20,6 +20,7 @@ import {
 } from "../../components/settings/settings-layout";
 import { Button } from "../../components/ui/button";
 import { useAppSelectorShallow } from "../../state";
+import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
 import { CloudConnectorsSection } from "./CloudConnectorsSection";
 
 const CLOUD_CONNECTOR_FEATURES = [
@@ -62,7 +63,7 @@ function CloudConnectorsUpsell(): React.JSX.Element {
   }));
 
   const handleConnect = useCallback(() => {
-    void handleCloudLogin().catch((error) => {
+    void handleCloudLogin(preOpenCloudLoginWindow()).catch((error) => {
       setActionNotice(
         error instanceof Error
           ? error.message
