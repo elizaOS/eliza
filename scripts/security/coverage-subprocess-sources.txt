@@ -42,6 +42,10 @@ packages/app-core/scripts/dev-ui.mjs
 # The cloud-shared package test wrapper is exercised by a spawned real-process contract suite; importing it starts the test runner.
 packages/cloud/shared/scripts/run-bun-tests.mjs
 
+# Smithers workflow execution is exercised inside fresh Bun/Node workers so its
+# dedicated-pipe and runtime-module behavior match production.
+plugins/plugin-workflow/src/services/smithers-runtime.ts
+
 # Workflow policy checker: both contract validation modes are process
 # entrypoints because importing the module immediately reads workflow files.
 packages/scripts/ci-merge-gate-contract.mjs
