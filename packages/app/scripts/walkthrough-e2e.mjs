@@ -65,6 +65,7 @@ function parseArgs(argv) {
     skipStitch: false,
     platform: "web",
     viewerOnly: null,
+    reviewerPreflighted: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -75,6 +76,7 @@ function parseArgs(argv) {
     else if (arg === "--skip-stitch") a.skipStitch = true;
     else if (arg === "--platform") a.platform = argv[++i];
     else if (arg === "--viewer-only") a.viewerOnly = argv[++i];
+    else if (arg === "--reviewer-preflighted") a.reviewerPreflighted = true;
   }
   return a;
 }
@@ -518,6 +520,26 @@ async function main() {
       childEnv.ELIZA_UI_SMOKE_LIVE_PROVIDER = "anthropic";
   }
 
+  // The live lane promises reviewed visual evidence. Reject unavailable,
+  // invalid, or unfunded reviewer credentials before starting the expensive
+  // browser/model journey. CI may mark a preflight completed by an earlier step.
+  if (lane === "live" && !args.skipReview) {
+    if (!args.reviewerPreflighted) {
+      const preflight = await run(
+        process.execPath,
+        [join(REPO_ROOT, "scripts", "ai-qa", "reviewer-preflight.mjs")],
+        { cwd: REPO_ROOT, env: childEnv },
+      );
+      if (preflight.code !== 0) {
+        console.error(
+          "[walkthrough] stopping before browser launch: reviewer provider preflight failed",
+        );
+        process.exit(preflight.code ?? 2);
+      }
+      args.reviewerPreflighted = true;
+    }
+  }
+
   console.log(
     `\n=== full-walkthrough: lane=${lane} viewports=${args.viewports} runId=${runId} ===\n`,
   );
@@ -551,11 +573,13 @@ async function main() {
     `\n[walkthrough] spec exit=${result.code} (${specOk ? "PASS" : "FAIL"})`,
   );
 
-  // 2) Vision review (best-effort; gated separately).
+  // 2) Vision review. A non-zero reviewer exit fails the whole walkthrough
+  // (reviewOk gates the final exit code) unless --skip-review was passed.
   const verdictMd = join(
     REPO_ROOT,
     "packages/app/test/ui-smoke/walkthrough/WALKTHROUGH_VERDICTS.md",
   );
+  let reviewOk = true;
   if (!args.skipReview) {
     const reviewEnv = { ...childEnv };
     if (!reviewEnv.ANTHROPIC_API_KEY) {
@@ -563,7 +587,7 @@ async function main() {
       if (env.ANTHROPIC_API_KEY)
         reviewEnv.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
     }
-    await run(
+    const review = await run(
       process.execPath,
       [
         join(REPO_ROOT, "scripts", "ai-qa", "review-walkthrough.mjs"),
@@ -574,6 +598,9 @@ async function main() {
       ],
       { cwd: REPO_ROOT, env: reviewEnv },
     );
+    reviewOk = review.code === 0;
+    if (!reviewOk)
+      console.error(`[walkthrough] vision review exit=${review.code} (FAIL)`);
   }
 
   // 3) Stitch human-speed recordings.
@@ -632,7 +659,7 @@ async function main() {
   for (const s of stitched) console.log(`  recording:   ${s.mp4}`);
   console.log("");
 
-  process.exit(specOk ? 0 : 1);
+  process.exit(specOk && reviewOk ? 0 : 1);
 }
 
 main().catch((err) => {
