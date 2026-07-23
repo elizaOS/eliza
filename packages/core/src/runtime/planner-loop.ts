@@ -42,7 +42,7 @@ import {
 import { isModelProviderError } from "../utils/model-errors";
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
-import { computePrefixHashes } from "./context-hash";
+import { computePrefixHashes, stableJsonStringify } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
 	buildStageChatMessages,
@@ -3115,30 +3115,9 @@ function latestUnresolvedFailedNonTerminalToolStep(
 }
 
 function plannerToolOperationKey(toolCall: PlannerToolCall): string {
-	const params = toolCall.params ?? {};
-	const readDiscriminator = (...keys: string[]): string | undefined => {
-		for (const key of keys) {
-			const value = params[key];
-			if (typeof value === "string" && value.trim())
-				return value.trim().toLowerCase();
-		}
-		return undefined;
-	};
-	const capability = readDiscriminator("capability");
-	if (capability) {
-		const view = readDiscriminator("view", "viewId");
-		return [toolCall.name.toUpperCase(), view, capability]
-			.filter((entry): entry is string => entry !== undefined)
-			.join("|");
-	}
-	const operation =
-		readDiscriminator("subaction", "subAction") ??
-		readDiscriminator("operation", "op") ??
-		readDiscriminator("action", "mode") ??
-		readDiscriminator("command");
-	return [toolCall.name.toUpperCase(), operation]
-		.filter((entry): entry is string => entry !== undefined)
-		.join("|");
+	// A successful sibling mutation must not erase an authoritative failure for
+	// another entity; key order is irrelevant, but every argument value matters.
+	return `${toolCall.name.toUpperCase()}|${stableJsonStringify(toolCall.params ?? {})}`;
 }
 
 function handleRequiredToolPlannerMiss(params: {

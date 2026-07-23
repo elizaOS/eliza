@@ -76,6 +76,59 @@ export type ParsedViewInteractionResponse =
 			error: string;
 	  };
 
+export interface ViewInteractionReceipt {
+	requestId?: string;
+	revision?: number;
+	entity?: {
+		kind: "note" | "event";
+		id: string;
+	};
+}
+
+function readBoundedReceiptId(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed.length > 0 && trimmed.length <= 256 ? trimmed : undefined;
+}
+
+/** Extract a bounded mutation receipt without trusting arbitrary response data. */
+export function readViewInteractionReceipt(
+	result: unknown,
+): ViewInteractionReceipt | undefined {
+	if (!isObject(result)) return undefined;
+	const capabilityResult = isObject(result.result) ? result.result : result;
+	const state = isObject(capabilityResult.state)
+		? capabilityResult.state
+		: undefined;
+	const data = isObject(capabilityResult.data)
+		? capabilityResult.data
+		: undefined;
+
+	const requestId = readBoundedReceiptId(result.requestId);
+	const revision =
+		typeof state?.revision === "number" &&
+		Number.isSafeInteger(state.revision) &&
+		state.revision >= 0
+			? state.revision
+			: undefined;
+	let entity: ViewInteractionReceipt["entity"];
+	for (const kind of ["note", "event"] as const) {
+		const candidate = isObject(data?.[kind]) ? data[kind] : undefined;
+		const id = readBoundedReceiptId(candidate?.id);
+		if (id) {
+			entity = { kind, id };
+			break;
+		}
+	}
+
+	if (!requestId && revision === undefined && !entity) return undefined;
+	return {
+		...(requestId ? { requestId } : {}),
+		...(revision !== undefined ? { revision } : {}),
+		...(entity ? { entity } : {}),
+	};
+}
+
 /**
  * Parse the successful HTTP response envelope returned by the view interaction
  * route. The route owns the authoritative success bit; a nested capability

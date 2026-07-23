@@ -29,6 +29,7 @@ import { normalizeActionOptions, readStringOption } from "../params.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
+	readViewInteractionReceipt,
 	type ViewSummary,
 	type ViewsClient,
 } from "./views-client.js";
@@ -2803,7 +2804,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						);
 						const resultText = interaction.text;
 						const receipt = interaction.success
-							? readInteractionReceipt(interaction.result)
+							? readViewInteractionReceipt(interaction.result)
 							: undefined;
 						await callback?.({ text: resultText });
 						return {
@@ -3547,57 +3548,6 @@ function textFromInteractionResult(result: unknown): string | null {
 		}
 	}
 	return null;
-}
-
-interface ViewInteractionReceipt {
-	requestId?: string;
-	revision?: number;
-	entity?: { kind: "note" | "event"; id: string };
-}
-
-function readBoundedReceiptId(value: unknown): string | undefined {
-	if (typeof value !== "string") return undefined;
-	const trimmed = value.trim();
-	return trimmed.length > 0 && trimmed.length <= 256 ? trimmed : undefined;
-}
-
-function readInteractionReceipt(
-	result: unknown,
-): ViewInteractionReceipt | undefined {
-	if (!isCapabilityParamsRecord(result)) return undefined;
-	const capabilityResult = isCapabilityParamsRecord(result.result)
-		? result.result
-		: result;
-	const state = isCapabilityParamsRecord(capabilityResult.state)
-		? capabilityResult.state
-		: undefined;
-	const data = isCapabilityParamsRecord(capabilityResult.data)
-		? capabilityResult.data
-		: undefined;
-	const requestId = readBoundedReceiptId(result.requestId);
-	const revision =
-		typeof state?.revision === "number" &&
-		Number.isSafeInteger(state.revision) &&
-		state.revision >= 0
-			? state.revision
-			: undefined;
-	let entity: ViewInteractionReceipt["entity"];
-	for (const kind of ["note", "event"] as const) {
-		const candidate = isCapabilityParamsRecord(data?.[kind])
-			? data[kind]
-			: undefined;
-		const id = readBoundedReceiptId(candidate?.id);
-		if (id) {
-			entity = { kind, id };
-			break;
-		}
-	}
-	if (!requestId && revision === undefined && !entity) return undefined;
-	return {
-		...(requestId ? { requestId } : {}),
-		...(revision !== undefined ? { revision } : {}),
-		...(entity ? { entity } : {}),
-	};
 }
 
 function successFromInteractionResult(result: unknown): boolean {
