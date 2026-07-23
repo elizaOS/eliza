@@ -3706,29 +3706,32 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(result.finalMessage).not.toContain("call:automation:");
 	});
 
-	it("never surfaces scratch prose accompanying a STOP-only terminal", async () => {
-		// Live regression 2026-06-12 (tj-5d0d458b7ad281): after spawning a
-		// sub-agent the planner emitted STOP plus the free text "We should wait
-		// for the sub-agent result before replying." — and that scratch
-		// reasoning was sent to Discord verbatim as the reply.
-		const runtime = {
-			useModel: vi.fn().mockResolvedValueOnce({
-				text: "We should wait for the sub-agent result before replying.",
-				toolCalls: [{ id: "stop-1", name: "STOP", arguments: {} }],
-			}),
-			logger: { warn: vi.fn() },
-		};
+	it.each(["STOP", "IGNORE"])(
+		"never surfaces scratch prose accompanying a %s-only terminal",
+		async (terminal) => {
+			// Live regression 2026-06-12 (tj-5d0d458b7ad281): after spawning a
+			// sub-agent the planner emitted STOP plus the free text "We should wait
+			// for the sub-agent result before replying." — and that scratch
+			// reasoning was sent to Discord verbatim as the reply.
+			const runtime = {
+				useModel: vi.fn().mockResolvedValueOnce({
+					text: "We should wait for the sub-agent result before replying.",
+					toolCalls: [{ id: "terminal-1", name: terminal, arguments: {} }],
+				}),
+				logger: { warn: vi.fn() },
+			};
 
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			executeToolCall: vi.fn(),
-			evaluate: vi.fn(),
-		});
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			});
 
-		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBeUndefined();
-	});
+			expect(result.status).toBe("finished");
+			expect(result.finalMessage).toBeUndefined();
+		},
+	);
 
 	it("keeps the prose fallback for a textless REPLY terminal", async () => {
 		// Counterpart contract: when the model DID choose REPLY but put the

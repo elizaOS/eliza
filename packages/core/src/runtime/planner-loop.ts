@@ -804,13 +804,20 @@ async function runPlannerLoopIterations(
 				});
 				const latestNonTerminalStep =
 					latestUnresolvedFailedNonTerminalToolStep(trajectory);
-				const terminalFollowsFailedTool = latestNonTerminalStep !== undefined;
-				const groundedFailureMessage =
-					terminalFollowsFailedTool && hasReplyCall
-						? groundedFailedToolMessage(latestNonTerminalStep)
-						: undefined;
+				const pendingInteraction = latestNonTerminalStep
+					? latestActionablePendingInteractionAfter(
+							trajectory,
+							latestNonTerminalStep,
+						)
+					: undefined;
+				const terminalFollowsFailedTool =
+					latestNonTerminalStep !== undefined &&
+					pendingInteraction === undefined;
+				const terminalReplyMessage = hasReplyCall
+					? terminalMessageWithFailureAuthority(trajectory, finalMessage)
+					: undefined;
 				const terminalEvaluator = terminalToolCallFinish(
-					terminalFollowsFailedTool ? groundedFailureMessage : finalMessage,
+					terminalReplyMessage,
 					!terminalFollowsFailedTool,
 				);
 				// Only record an evaluation stage when the trajectory already has
@@ -848,17 +855,19 @@ async function runPlannerLoopIterations(
 					evaluator: terminalEvaluator,
 					finalMessage: terminalFollowsFailedTool
 						? hasReplyCall
-							? userSafeFinalMessage(groundedFailureMessage, trajectory)
+							? userSafeFinalMessage(terminalReplyMessage, trajectory)
 							: undefined
-						: userSafeFinalMessage(
-								codingDrainQueue
-									? codingFinalMessage(trajectory, finalMessage)
-									: preferredFinalMessageFromToolOrModel(
-											trajectory,
-											finalMessage,
-										),
-								trajectory,
-							),
+						: pendingInteraction && hasReplyCall
+							? userSafeFinalMessage(terminalReplyMessage, trajectory)
+							: userSafeFinalMessage(
+									codingDrainQueue
+										? codingFinalMessage(trajectory, finalMessage)
+										: preferredFinalMessageFromToolOrModel(
+												trajectory,
+												finalMessage,
+											),
+									trajectory,
+								),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
 					...(hasReplyCall ? {} : { endedWithDeliberateSilence: true }),
