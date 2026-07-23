@@ -472,6 +472,51 @@ def test_action_calling_stops_after_the_scored_native_action(
     )
 
 
+def test_caller_declared_capture_stop_stops_after_first_tool_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The env-owned contract (``capture_stop`` payload flag, declared by the
+    harness proxy for single-step env turns) must end the native loop at the
+    first captured batch — the failure mode it guards is the tblite turn dying
+    at max_iterations_reached while looping on bridge acknowledgements."""
+    repo_path = tmp_path / "upstream"
+    repo_path.mkdir()
+    home = tmp_path / "home"
+    tools = [_tool("lookup")]
+    bridge = prepare_scoped_benchmark_plugin(
+        home,
+        tools,
+        model="claude-sonnet-test",
+        base_url="http://127.0.0.1:9411/v1",
+    )
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    module, agent_class = _fake_run_agent(
+        repo_path,
+        home,
+        ["lookup"],
+        invocations=[
+            ("lookup", {"query": "orchid"}),
+            ("lookup", {"query": "unscored-follow-up"}),
+        ],
+    )
+    payload = _payload(repo_path, home, bridge, tools=tools)
+    payload["capture_stop"] = True
+
+    result = run_native_turn(payload, module_loader=lambda name: module)
+
+    assert result["actions"] == ["lookup"]
+    meta = result["params"]["_meta"]
+    assert meta["capture_stop_after_scored_action"] is True
+    assert meta["native_api_calls"] == 1
+    assert meta["native_interrupted"] is True
+    assert meta["native_turn_exit_reason"] == "interrupted_by_user"
+    assert (
+        agent_class.instances[-1].interrupt_message
+        == "benchmark_scored_action_captured"
+    )
+
+
 def test_lifecycle_turn_consumes_explicit_history_and_allows_two_tool_rounds(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

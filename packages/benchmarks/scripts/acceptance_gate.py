@@ -108,7 +108,11 @@ TIMEOUT_AGENT_SMOKE_S = 120
 # boot + pinned dataset load + docker terminal sandbox + live agent loop), so
 # the old 240s budget killed healthy runs. 900s bounds a wedged lane while
 # leaving honest headroom for slower agent loops.
-TIMEOUT_BENCHMARK_RUN_S = 900
+# The slowest observed sanity leg (openclaw on tblite broken-python) completes
+# its evaluation in ~890s of real terminal turns plus setup/teardown; 900s was
+# killing legs at the finish line. Generous headroom, not a liveness proxy —
+# the orchestrator's own deadline policy owns hang detection.
+TIMEOUT_BENCHMARK_RUN_S = 1800
 TIMEOUT_RANDOM_RUN_S = 120
 
 
