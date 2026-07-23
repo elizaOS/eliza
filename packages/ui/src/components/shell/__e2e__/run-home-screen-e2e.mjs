@@ -233,6 +233,23 @@ async function touchSwipeLeft(page, testId) {
     stepDelayMs: 16,
   });
 }
+async function touchSlowDragLeft(page, testId) {
+  const viewportWidth = page.viewportSize()?.width;
+  if (!viewportWidth) throw new Error("missing viewport width for slow drag");
+  await touchSwipe(
+    page,
+    `[data-testid="${testId}"]`,
+    -viewportWidth * 0.35,
+    0,
+    {
+      steps: 10,
+      // The complete gesture lasts over a second, keeping release velocity below
+      // the flick path. Thirty-five percent is above the production 30% commit
+      // threshold but below the old 50% threshold, so this fails on regression.
+      stepDelayMs: 120,
+    },
+  );
+}
 async function touchSwipeRight(page, testId) {
   await touchSwipe(page, `[data-testid="${testId}"]`, 280, 0, {
     steps: 10,
@@ -840,6 +857,20 @@ try {
     `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
   );
 
+  await waitForSurfacePageSettled(mobile, "home");
+
+  // A real finger often performs a deliberate drag rather than a sharp flick.
+  // This ~35%-wide, low-velocity touch path used to reveal Apps and then snap
+  // back because the pager required half the screen; it must now commit.
+  await touchSlowDragLeft(mobile, "home-launcher-home-page");
+  await waitForSurfacePageSettled(mobile, "launcher");
+  assert(
+    (await mobile.getByTestId("home-launcher-surface").getAttribute(
+      "data-page",
+    )) === "launcher",
+    "deliberate one-second thumb drag opens the launcher before half-screen travel",
+  );
+  await touchSwipeRight(mobile, "home-launcher-launcher-page");
   await waitForSurfacePageSettled(mobile, "home");
 
   // Real touch left-swipe on the home half pages the outer rail to the
