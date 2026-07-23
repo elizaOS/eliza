@@ -15,24 +15,24 @@ import {
   completeCloudOnboardingToHome,
   completeOnboardingToHome,
   completeOtherProviderSettingsHandoff,
+  expectInlineLauncher,
   injectCloudAuthToken,
   injectFullCapabilityHost,
   installCloudRoutes,
   installHomeRoutes,
   makeScreenshotter,
   settleHomeEntrance,
-  swipeLeftToLauncher,
 } from "./onboarding-to-home.shared";
 
 // Mobile-viewport counterpart of onboarding-to-home.spec.ts. Same keyless flow —
 // fresh device → real Local/on-device onboarding → completeFirstRun("chat") →
-// home with seeded widgets → swipe-left → launcher — but driven through a
-// Pixel-class Chromium context with `hasTouch: true, isMobile: true` and a touch
-// viewport, so the onboarding cards are TAPPED and the launcher reveal is a
-// touch flick at the exact WebView viewport size that ships on Capacitor
-// iOS/Android. This is the desktop-Chromium-with-mobile-emulation lane; the
-// real installed Capacitor WebView lane lives in
-// test/android/onboarding-to-home.android.spec.ts (driven by mobile-e2e.yml).
+// home with seeded widgets and the embedded launcher grid — but driven through
+// a Pixel-class Chromium context with `hasTouch: true, isMobile: true` and a
+// touch viewport, so the onboarding cards are TAPPED at the exact WebView
+// viewport size that ships on Capacitor iOS/Android. This is the
+// desktop-Chromium-with-mobile-emulation lane; the real installed Capacitor
+// WebView lane lives in test/android/onboarding-to-home.android.spec.ts
+// (driven by mobile-e2e.yml).
 //
 // `devices["Pixel 7"]` sets viewport 412×915, deviceScaleFactor 2.625,
 // isMobile: true, hasTouch: true and a mobile Chrome userAgent — so the Local
@@ -57,7 +57,7 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("first-run → home → swipe-left → launcher with touch", async ({
+  test("first-run → home → inline launcher grid with touch", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
@@ -92,8 +92,8 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
 
     // Restated at the spec level: completion settled the sheet to the HALF
     // detent (open, home revealed behind the top half — #15339) and unlocked the
-    // composer. The touch flick below lands on the home rail after
-    // swipeLeftToLauncher collapses the open sheet.
+    // composer. expectInlineLauncher collapses the open sheet before asserting
+    // the embedded launcher grid.
     await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
       "data-detent",
       "half",
@@ -108,8 +108,8 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
-    // A real left-flick over the home page pans the rail to the launcher.
-    await swipeLeftToLauncher(page, surface, { input: "touch" });
+    // The launcher grid is embedded on the combined home surface (no rail).
+    await expectInlineLauncher(page, surface);
     await screenshot(page, "launcher");
   });
 
