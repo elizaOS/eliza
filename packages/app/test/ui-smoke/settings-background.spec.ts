@@ -508,7 +508,11 @@ test.describe("settings shares the unified app background (#9143)", () => {
     await screenshot(page, "mobile-shader");
 
     // -- 2) Photo / image background ------------------------------------------
-    await page.evaluate(
+    // The surface-realm raw-globals guard (#15247) denies live view-realm
+    // writes to shell-reserved `eliza:` keys; seed via addInitScript so the
+    // write runs at document-start of the gotoSettings reload below, inside
+    // the guard-permitted window (same pattern as seedFirstRunCompleteBeforeLoad).
+    await page.addInitScript(
       ({ key, value }) => {
         localStorage.setItem(key, value);
       },

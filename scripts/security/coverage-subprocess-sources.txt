@@ -28,12 +28,29 @@ packages/eliza-hub/services/merge-steward/src/cli.js
 # at module evaluation; its importable bootstrap policies carry unit coverage.
 packages/app-core/src/runtime/dev-server.ts
 
+# The mobile build orchestrator mutates a staged native tree and launches the
+# platform toolchain; its contract suite also drives the real CLI rejection path.
+packages/app-core/scripts/run-mobile-build.mjs
+
 # ACP stdio entrypoint is exercised via spawned runtime contract tests; importing it in-process starts the protocol server.
 packages/examples/code/src/acp.ts
+
+# The dev host entrypoint performs real port/process cleanup on import. Its ACP
+# reload guard is exercised through the one-shot real-process diagnostic.
+packages/app-core/scripts/dev-ui.mjs
 
 # The cloud-shared package test wrapper is exercised by a spawned real-process contract suite; importing it starts the test runner.
 packages/cloud/shared/scripts/run-bun-tests.mjs
 
+# Smithers workflow execution is exercised inside fresh Bun/Node workers so its
+# dedicated-pipe and runtime-module behavior match production.
+plugins/plugin-workflow/src/services/smithers-runtime.ts
+
 # Workflow policy checker: both contract validation modes are process
 # entrypoints because importing the module immediately reads workflow files.
 packages/scripts/ci-merge-gate-contract.mjs
+
+# The mobile build CLI orchestrates destructive native build phases in a child process.
+# Its focused contract test spawns the exact entrypoint and fails at the
+# sideload-versus-Play policy guard before any platform files are changed.
+packages/app-core/scripts/run-mobile-build.mjs

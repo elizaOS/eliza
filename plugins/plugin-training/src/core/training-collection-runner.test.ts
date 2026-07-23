@@ -146,7 +146,9 @@ async function writeFakeActionBenchmarkBun(path: string): Promise<void> {
       "  failures: [],",
       "  results: []",
       "};",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: line of a generated Node script; ${} is interpolated by that script, not here
       "fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\\n`);",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: line of a generated Node script; ${} is interpolated by that script, not here
       "fs.writeFileSync(markdownPath, `# Action Benchmark\\n\\naccuracy: ${accuracy}\\n`);",
       "NODE",
       "",

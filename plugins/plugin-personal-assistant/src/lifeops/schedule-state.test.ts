@@ -3,8 +3,8 @@
  * persisted primary key that `repository.upsertScheduleObservation`'s
  * ON CONFLICT(id) collapses duplicates on, so the derivation must be
  * deterministic (same tuple -> same id, for dedup) and use a strong,
- * non-weak-crypto digest (SHA-256) — CodeQL js/weak-cryptographic-algorithm
- * flags SHA-1 here even though the use is content-addressing, not signing.
+ * non-weak-crypto digest (SHA-256), even though the use is content-addressing
+ * rather than signing.
  * The golden recompute below fails if the code ever reverts to SHA-1.
  */
 import crypto from "node:crypto";
@@ -105,7 +105,7 @@ describe("schedule observation id derivation", () => {
     expect(beta.id).not.toBe(alpha.id);
   });
 
-  it("derives the id with SHA-256, not the weak SHA-1 (CodeQL #649)", () => {
+  it("derives the id with SHA-256, not the weak SHA-1", () => {
     const [observation] = recordsFromSyncRequest({
       agentId: AGENT_ID,
       origin: "device_sync",

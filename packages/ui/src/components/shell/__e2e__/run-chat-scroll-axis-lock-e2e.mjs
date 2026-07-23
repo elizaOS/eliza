@@ -1,7 +1,7 @@
 /**
  * Regression harness for "the chat transcript can pan sideways" (#14328).
  *
- * The continuous-chat transcript (`#continuous-thread`) is a single-axis scroll
+ * The chat transcript (`#continuous-thread`) is a single-axis scroll
  * surface: it scrolls vertically and must NEVER scroll horizontally. CSS Overflow
  * coerces the unspecified axis from `visible` to `auto`, so `overflow-y-auto`
  * alone silently makes the thread horizontally scrollable the instant any child
@@ -9,7 +9,7 @@
  * `touch-pan-y` blocks touch panning but does NOT block trackpad/wheel deltaX, so
  * on desktop a diagonal two-finger scroll pans the whole transcript sideways.
  *
- * This drives the REAL `ContinuousChatOverlay` (via chat-sheet-fixture.tsx), opens
+ * This drives the REAL `ChatOverlay` (via chat-sheet-fixture.tsx), opens
  * the sheet to FULL, injects an over-wide child into the genuine `#continuous-thread`
  * scroller, then dispatches a diagonal wheel and asserts `scrollLeft` never leaves 0.
  * A second case proves a DESIGNED inner scroller (the repo's `overflow-x-auto

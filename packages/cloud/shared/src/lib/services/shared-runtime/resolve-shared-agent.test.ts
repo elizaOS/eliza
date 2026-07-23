@@ -120,6 +120,7 @@ function apiKeyContext(agentId?: string) {
 }
 
 function agent(overrides: Record<string, unknown> = {}) {
+  const timestamp = new Date("2026-01-01T00:00:00.000Z");
   return {
     id: "agent-1",
     organization_id: "org-1",
@@ -127,6 +128,16 @@ function agent(overrides: Record<string, unknown> = {}) {
     status: "running",
     bridge_url: null,
     agent_name: "Shared Agent",
+    created_at: timestamp,
+    updated_at: timestamp,
+    deleted_at: null,
+    claimed_at: null,
+    pool_ready_at: null,
+    last_backup_at: null,
+    last_heartbeat_at: null,
+    last_billed_at: null,
+    shutdown_warning_sent_at: null,
+    scheduled_shutdown_at: null,
     ...overrides,
   };
 }
@@ -554,6 +565,22 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
       const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
       if (!("agent" in result)) throw new Error("expected a resolved agent");
       expect(result.agent.deleted_at).toBeNull();
+    });
+
+    test("an invalid cached timestamp fails observably", async () => {
+      seedCacheHit({ last_heartbeat_at: "not-a-timestamp" });
+
+      const error = await resolveSharedAgent(apiKeyContext("agent-1") as never).then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect(error).toHaveProperty("name", "ElizaError");
+      expect(error).toHaveProperty("code", "INVALID_CACHED_AGENT_TIMESTAMP");
+      expect(error).toHaveProperty("context", {
+        field: "last_heartbeat_at",
+        value: "not-a-timestamp",
+      });
     });
   });
 });

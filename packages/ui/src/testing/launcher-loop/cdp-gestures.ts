@@ -23,14 +23,19 @@ export const LAUNCHER_SELECTORS = {
   pageProbe: '[data-testid="home-launcher-page-probe"]',
   homePage: '[data-testid="home-launcher-home-page"]',
   launcherPage: '[data-testid="home-launcher-launcher-page"]',
-  launcherScroll: '[data-testid="launcher-page-window"]',
+  launcherScroll:
+    '[data-testid="home-launcher-launcher-page"] [data-testid="launcher-page-window"]',
   homeScreen: '[data-testid="home-screen"]',
   // The inline notification inbox on the home column (self-hidden when empty).
   notificationCenter: '[data-testid="home-notification-center"]',
   railPrevButton: '[data-testid="rail-pager-edge-prev"]',
   railNextButton: '[data-testid="rail-pager-edge-next"]',
-  tile: (id: string) => `[data-testid="launcher-tile-${id}"]`,
+  tile: (id: string) =>
+    `[data-testid="home-launcher-launcher-page"] [data-testid="launcher-tile-${id}"]`,
 } as const;
+
+const LAUNCHER_TILE_SELECTOR =
+  '[data-testid="home-launcher-launcher-page"] [data-testid^="launcher-tile-"]';
 
 /**
  * A single observation of the real surface after an action, read atomically
@@ -46,6 +51,14 @@ export interface LauncherObservation {
   readonly railTransformX: number;
   readonly homeInert: boolean;
   readonly launcherInert: boolean;
+  /**
+   * Whether the surface renders separate home/launcher halves. The combined
+   * home surface (App.tsx) embeds the launcher grid on one page with no
+   * halves; the half-inert invariant is only meaningful when this is true.
+   * Optional so drivers for the two-half layout (fixture, native lanes) need
+   * not set it — absent means "halves exist" (strict).
+   */
+  readonly hasHalves?: boolean;
   readonly activeElementInInert: boolean;
   readonly launchCount: number;
   readonly viewportWidth: number;
@@ -82,7 +95,7 @@ export interface Driver {
 
 /** How many launcher tiles the current fixture/app exposes (for tile actions). */
 export async function readTileIds(page: Page): Promise<string[]> {
-  return page.$$eval('[data-testid^="launcher-tile-"]', (nodes) =>
+  return page.$$eval(LAUNCHER_TILE_SELECTOR, (nodes) =>
     nodes
       .map((n) => n.getAttribute("data-testid") ?? "")
       .map((t) => t.replace(/^launcher-tile-/, ""))
@@ -212,6 +225,10 @@ function readObservation(sel: ReaderSelectors): LauncherObservation {
       : 0,
     homeInert: homePage ? homePage.hasAttribute("inert") : false,
     launcherInert: launcherPage ? launcherPage.hasAttribute("inert") : false,
+    // The combined home surface (App.tsx) renders no separate home/launcher
+    // halves at all; the exactly-one-half-inert invariant only applies to the
+    // two-half HomeLauncherSurface layout (fixture + native lanes).
+    hasHalves: Boolean(homePage || launcherPage),
     activeElementInInert: activeInInert,
     launchCount,
     viewportWidth: window.innerWidth,
@@ -377,8 +394,12 @@ export class CdpTouchDriver implements Driver {
           ) {
             return false;
           }
+          // Only the rail's own transform settle blocks the next gesture.
+          // Descendant widgets intentionally run ambient/infinite animations;
+          // including the subtree makes every command burn the timeout even
+          // though the rail has already parked at its page boundary.
           const animating = rail
-            .getAnimations({ subtree: true })
+            .getAnimations()
             .some((a) => a.playState === "running");
           if (animating) return false;
           const railLeft = rail.getBoundingClientRect().left;

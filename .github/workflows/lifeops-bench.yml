@@ -14,8 +14,9 @@
 # top-level `report.md` / `report.json`) as a 30-day artifact, and posts a
 # side-by-side summary as a PR comment after all matrix legs complete.
 #
-# Required secrets (job is skipped, NOT failed, when missing):
-#   CEREBRAS_API_KEY  — eval/judge/teacher provider (gpt-oss-120b)
+# Required secrets (job is skipped, NOT failed, when either is missing):
+#   CEREBRAS_API_KEY  — simulated user and agent model provider
+#   ANTHROPIC_API_KEY — live benchmark judge
 
 name: LifeOps Benchmark
 
@@ -73,9 +74,10 @@ jobs:
         id: gate
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          if [ -z "${CEREBRAS_API_KEY:-}" ]; then
-            echo "[lifeops-bench] CEREBRAS_API_KEY not configured — skipping benchmark."
+          if [ -z "${CEREBRAS_API_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "[lifeops-bench] CEREBRAS_API_KEY and ANTHROPIC_API_KEY are both required — skipping benchmark."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -113,6 +115,12 @@ jobs:
         run: |
           cd packages/benchmarks/lifeops-bench
           pip install -e .
+
+      - name: Install and verify Hermes agent
+        if: steps.gate.outputs.skip != 'true' && matrix.agent == 'hermes'
+        env:
+          AGENT_INSTALL_TIMEOUT_SECONDS: "900"
+        run: python packages/benchmarks/lib/agent_install.py --agents hermes
 
       - name: Type/build check (lifeops + training + scenario-runner + core)
         if: steps.gate.outputs.skip != 'true'
@@ -162,6 +170,7 @@ jobs:
         id: run
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ELIZA_BENCH_AGENT: ${{ matrix.agent }}
           ELIZA_BENCH_LIMIT: ${{ inputs.limit || '25' }}
         run: |

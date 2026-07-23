@@ -23,6 +23,7 @@ import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/set
 import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { scoreView } from "./views-search.js";
 
 const SHOW_VERBS = [
@@ -377,7 +378,7 @@ async function navigateToView(
 			`${base}/api/views/${encodeURIComponent(view.id)}/navigate${requestedViewType ? `?viewType=${requestedViewType}` : ""}`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({
 					path: view.path,
 					viewType: requestedViewType,

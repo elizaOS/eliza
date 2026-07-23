@@ -3,7 +3,7 @@
  *
  * Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
  * seeds synthetic assistant turns into the SAME live transcript the floating
- * `ContinuousChatOverlay` renders (greeting → runtime CHOICE → provider
+ * `ChatOverlay` renders (greeting → runtime CHOICE → provider
  * CHOICE → tutorial CHOICE; Cloud-only sign-in stays a single CTA), and
  * routes the user's first-run-scoped picks to the headless finish use case
  * (`first-run-finish.ts`). It owns NO presentation — the existing

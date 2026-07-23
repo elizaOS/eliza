@@ -3315,6 +3315,63 @@ export const allActionsSpec = {
 				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
 		},
 		{
+			name: "ACCOUNTS_COMMAND",
+			description: "View provider accounts and usage, or manage them",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"use, enable, disable, strategy, refresh — omit for the report",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"use, enable, disable, strategy, refresh - omit for the report",
+				},
+				{
+					name: "provider",
+					description: "claude, codex, cerebras, or a full provider id",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"claude, codex, cerebras, or a full provider id",
+				},
+				{
+					name: "value",
+					description:
+						"account by id, label, or email — or the strategy name for `strategy`",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"account by id, label, or email - or the strategy name for `strategy`",
+				},
+			],
+			similes: ["/accounts"],
+			descriptionCompressed: "View provider accounts and usage, or manage them",
+		},
+		{
+			name: "BACKEND_COMMAND",
+			description: "Show or set the default coding backend",
+			parameters: [
+				{
+					name: "backend",
+					description: "default coding backend for new tasks",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "default coding backend for new tasks",
+				},
+			],
+			similes: ["/backend"],
+			descriptionCompressed: "Show or set the default coding backend",
+		},
+		{
 			name: "COMPACT_COMMAND",
 			description: "Compact conversation history",
 			parameters: [
@@ -3383,13 +3440,13 @@ export const allActionsSpec = {
 				{
 					name: "model",
 					description:
-						"model id — for coding, the backend (codex, claude, opencode, elizaos)",
+						"model id — for coding, the backend (codex, claude, eliza)",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"model id - for coding, the backend (codex, claude, opencode, elizaos)",
+						"model id - for coding, the backend (codex, claude, eliza)",
 				},
 				{
 					name: "effort",

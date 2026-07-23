@@ -39,7 +39,7 @@ export const GameModal: Story = {
 };
 
 /** The overlay's Codex-style working indicator (spinner + label + elapsed clock)
- * on a dark glass substrate, as it renders in the continuous-chat overlay. */
+ * on a dark glass substrate, as it renders in the chat overlay. */
 export const TurnStatusThinking: Story = {
   render: () => (
     <div className="rounded-2xl bg-black/70 p-4">

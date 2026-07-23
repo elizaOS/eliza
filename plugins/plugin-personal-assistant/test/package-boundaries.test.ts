@@ -100,9 +100,11 @@ describe("LifeOps package boundaries", () => {
     expect(apiClient).not.toContain("disconnectHealthLifeOpsConnector");
     expect(apiClient).not.toContain("syncLifeOpsHealth");
     expect(apiClient).not.toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the literal ${} source text is absent
       "/api/lifeops/connectors/health/${encodeURIComponent(provider)}/start",
     );
     expect(apiClient).not.toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the literal ${} source text is absent
       "/api/lifeops/connectors/health/${encodeURIComponent(provider)}/disconnect",
     );
     expect(apiClient).not.toContain("/api/lifeops/health/sync");
@@ -132,9 +134,13 @@ describe("LifeOps package boundaries", () => {
     expect(settingsSection).not.toContain("GoogleDisconnectButton");
     expect(settingsSection).not.toContain("GoogleAccountDisconnectButton");
     expect(settingsSection).not.toContain("PendingAuthBanner");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the literal ${} source text is absent
     expect(settingsSection).not.toContain("settings-google-${side}-connect");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the literal ${} source text is absent
     expect(settingsSection).not.toContain("settings-google-${side}-disconnect");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the literal ${} source text is absent
     expect(settingsSection).not.toContain("settings-google-${side}-add");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the literal ${} source text is absent
     expect(settingsSection).not.toContain("settings-google-${side}-auth");
     expect(
       existsSync(
@@ -330,9 +336,11 @@ describe("LifeOps package boundaries", () => {
       'const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib"',
     );
     expect(appleReminders).not.toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the literal ${} source text is absent
       "path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`",
     );
     expect(appleReminders).not.toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the literal ${} source text is absent
       "path: `../../../../../../${NATIVE_DYLIB_BASENAME}`",
     );
   });

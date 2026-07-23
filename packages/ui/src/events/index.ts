@@ -143,7 +143,7 @@ export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
  * Open (expand) the floating chat from anywhere — fired when the launcher's
  * "Messages" tile is tapped so landing on `/chat` lands the user IN an open
  * conversation, not on the wordless home with a collapsed pill. The always-
- * mounted {@link ContinuousChatOverlay} is the one listener.
+ * mounted {@link ChatOverlay} is the one listener.
  */
 export const CHAT_OPEN_EVENT = "eliza:chat:open" as const;
 /** Open the keyword message-search panel (fired by the chat search affordance). */
@@ -189,7 +189,7 @@ export function dispatchOpenNotificationCenter(): void {
  * The Android hardware/gesture back press, surfaced to shell consumers BEFORE
  * the app's default back behavior runs (#9148). Native (`main.tsx`) dispatches
  * this on the Capacitor `backButton` event; a consumer with an open,
- * back-dismissable surface — today the {@link ContinuousChatOverlay} chat sheet
+ * back-dismissable surface — today the {@link ChatOverlay} chat sheet
  * — closes ONE layer and flips `detail.handled = true`. The dispatcher reads
  * `handled` synchronously (custom events dispatch synchronously, so every
  * listener has run by the time `dispatchEvent` returns) and only falls through

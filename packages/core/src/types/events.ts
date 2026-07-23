@@ -499,7 +499,7 @@ export type ComposerActivityKind =
 export interface ComposerActivityPayload extends EventPayload {
 	activity: ComposerActivityKind;
 	initiatedBy: "user";
-	/** Stable client surface id (e.g. "continuous_chat_overlay"). */
+	/** Stable client surface id (e.g. "chat_overlay"). */
 	surface: string;
 	/** Conversation or room id the composer is editing, when known. */
 	conversationId?: string;

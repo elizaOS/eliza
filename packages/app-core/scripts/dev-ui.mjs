@@ -13,6 +13,7 @@
  *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
  *   node packages/app-core/scripts/dev-ui.mjs                  # from eliza repo root — same
  *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
+ *   node …/dev-ui.mjs --check-acp-hot-reload=31337             # one-shot reload safety probe
  */
 import { execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
@@ -792,6 +793,39 @@ async function isAgentReadyNow(port) {
   }
 }
 
+const ACP_MIDFLIGHT_SESSION_STATUSES = new Set([
+  "running",
+  "busy",
+  "tool_running",
+]);
+
+// A hot-reload bounce SIGTERMs the runtime, and the runtime owns every live
+// coding sub-agent. The response must be trustworthy before a reload is
+// authorized: uncertainty defers the destructive action instead of presenting
+// an unreadable session list as healthy-empty.
+async function hasBusyAcpSessions(port) {
+  const resp = await fetch(`http://127.0.0.1:${port}/api/coding-agents`, {
+    signal: AbortSignal.timeout(1500),
+  });
+  if (resp.status === 404) {
+    // error-policy:J4 the orchestrator is explicitly unavailable, so it cannot
+    // own an ACP session that the host must preserve across a reload.
+    return false;
+  }
+  if (!resp.ok) {
+    throw new Error(`coding-agent session check returned HTTP ${resp.status}`);
+  }
+
+  const body = await resp.json();
+  const sessions = Array.isArray(body) ? body : body?.sessions;
+  if (!Array.isArray(sessions)) {
+    throw new Error("coding-agent session check returned an invalid payload");
+  }
+  return sessions.some((session) =>
+    ACP_MIDFLIGHT_SESSION_STATUSES.has(session?.status),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Orphan cleanup (startup only) — never kills arbitrary Bun; PID/name-wide pkill is avoided.
 // Only processes whose command line ties them to this repo or Eliza workspace dirs.
@@ -856,6 +890,30 @@ function killOrphanedWorkspaceProcesses() {
 
   killPids("workspace process(es)", workspacePids);
   killPids("repo-scoped pty-worker(s)", ptyPids);
+}
+
+const acpHotReloadProbeArg = process.argv.find((arg) =>
+  arg.startsWith("--check-acp-hot-reload="),
+);
+if (acpHotReloadProbeArg) {
+  const port = Number(acpHotReloadProbeArg.split("=")[1]);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    console.error("[dev-ui] --check-acp-hot-reload requires a valid TCP port");
+    process.exit(2);
+  }
+
+  try {
+    const busy = await hasBusyAcpSessions(port);
+    process.stdout.write(`${JSON.stringify({ busy })}\n`);
+    process.exit(0);
+  } catch (error) {
+    // error-policy:J1 this one-shot diagnostic translates a failed safety
+    // probe into an observable process failure for scripts and operators.
+    console.error(
+      `[dev-ui] ACP hot-reload safety check failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1359,6 +1417,21 @@ if (uiOnly) {
         }
         void (async () => {
           if (!(await isAgentReadyNow(API_PORT))) return;
+          try {
+            if (await hasBusyAcpSessions(API_PORT)) {
+              console.log(
+                `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — deferred: a coding sub-agent session is busy (reload would kill it)`)}`,
+              );
+              return;
+            }
+          } catch (error) {
+            // error-policy:J4 an uncertain session snapshot visibly defers the
+            // reload because restarting could destroy an unobserved live turn.
+            console.error(
+              `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — deferred: ACP session safety check failed (${error instanceof Error ? error.message : String(error)})`)}`,
+            );
+            return;
+          }
           console.log(
             `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — reloading agent…`)}`,
           );

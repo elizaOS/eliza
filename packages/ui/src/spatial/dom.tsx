@@ -57,9 +57,8 @@ export function detectDomModality(): SpatialModality {
   return "gui";
 }
 
-const CONTINUOUS_CHAT_SIDE_CLEARANCE_VAR =
-  "--eliza-continuous-chat-side-clearance";
-const CONTINUOUS_CHAT_CLEARANCE_VAR = "--eliza-continuous-chat-clearance";
+const CONTINUOUS_CHAT_SIDE_CLEARANCE_VAR = "--eliza-chat-side-clearance";
+const CONTINUOUS_CHAT_CLEARANCE_VAR = "--eliza-chat-clearance";
 const COMPACT_CHAT_MOBILE_QUERY = "(max-width: 767px)";
 
 function readRootPxVarActive(name: string): boolean {
@@ -200,16 +199,16 @@ export function SpatialSurface({
           overflowY: reserveChatClearance ? "auto" : undefined,
           overscrollBehavior: reserveChatClearance ? "contain" : undefined,
           paddingBottom: reserveChatClearance
-            ? "var(--eliza-continuous-chat-clearance, 5.25rem)"
+            ? "var(--eliza-chat-clearance, 5.25rem)"
             : undefined,
           paddingInlineEnd: reserveChatClearance
-            ? "var(--eliza-continuous-chat-side-clearance, 0px)"
+            ? "var(--eliza-chat-side-clearance, 0px)"
             : undefined,
           scrollPaddingBottom: reserveChatClearance
-            ? "var(--eliza-continuous-chat-clearance, 5.25rem)"
+            ? "var(--eliza-chat-clearance, 5.25rem)"
             : undefined,
           scrollPaddingInlineEnd: reserveChatClearance
-            ? "var(--eliza-continuous-chat-side-clearance, 0px)"
+            ? "var(--eliza-chat-side-clearance, 0px)"
             : undefined,
         }}
       >

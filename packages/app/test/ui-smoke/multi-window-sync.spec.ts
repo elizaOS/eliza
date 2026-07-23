@@ -11,7 +11,7 @@
 // conversation must repaint window B's thread with that conversation — and
 // the follow must be bidirectional without echo loops.
 
-import { type Page, expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -132,7 +132,7 @@ async function openSyncedWindow(page: Page): Promise<void> {
   await installDefaultAppRoutes(page);
   await installConversationStore(page);
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   // Open the sheet (flick the grabber up) so the thread is painted.
   await pointerDrag(page, '[data-testid="chat-sheet-grabber"]', 0, -220, 8);

@@ -66,7 +66,7 @@ const ALLOWED_BLUR = new Set<string>([
   "packages/ui/src/components/shell/liquid-glass.stories.tsx",
   "packages/ui/src/components/shell/home-glass.ts",
   "packages/ui/src/components/shell/wallpaper-idiom.ts",
-  "packages/ui/src/components/shell/ContinuousChatOverlay.tsx",
+  "packages/ui/src/components/shell/ChatOverlay.tsx",
   "packages/ui/src/components/shell/NotificationsHomeCenter.tsx",
   "packages/ui/src/components/shell/NotificationBanners.tsx",
   "packages/ui/src/components/shell/BuildBadge.tsx",

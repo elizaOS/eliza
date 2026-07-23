@@ -51,7 +51,7 @@ test("hostile path, query, and hash input render inert homepage content", async 
   expect(alerts).toEqual([]);
 });
 
-test("download manifest failure falls back to embedded release links", async ({
+test("download manifest failure falls back to explicit unavailable state", async ({
   page,
 }) => {
   await page.route("**/downloads/elizaos-beta-manifest.json", (route) =>
@@ -68,9 +68,12 @@ test("download manifest failure falls back to embedded release links", async ({
   await expect(downloads).toBeVisible();
   await expect(downloads.getByText("ElizaOS beta")).toBeVisible();
   await expect(
-    downloads.getByRole("link", { name: "Download" }).first(),
-  ).toHaveAttribute("href", /github\.com\/elizaOS\/eliza\/releases\/download/);
-  await expect(
-    downloads.getByRole("link", { name: "SHA256" }).first(),
-  ).toHaveAttribute("href", /SHA256SUMS\.txt$/);
+    downloads.getByText("Downloads are temporarily unavailable."),
+  ).toBeVisible();
+  await expect(downloads.getByRole("link", { name: "Download" })).toHaveCount(
+    0,
+  );
+  await expect(downloads.getByText("Unavailable", { exact: true })).toHaveCount(
+    4,
+  );
 });

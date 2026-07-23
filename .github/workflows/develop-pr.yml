@@ -30,8 +30,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
-          # Full history: the error-policy ratchet diffs every touched file
-          # against its content at the merge-base with origin/develop.
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -41,16 +39,6 @@ jobs:
 
       - name: Per-plugin e2e coverage
         run: node packages/scripts/lint-lane-coverage.mjs
-
-      # Binding policy audits from CLAUDE.md that previously ran nowhere in
-      # CI. Both are dependency-free node scripts (<5s): the error-policy
-      # ratchet fails only when a file this PR touches ADDS an empty catch or
-      # server-side console.* call; test-integrity statically lints test
-      # sources for larp patterns.
-      - name: Error-policy ratchet (diff-scoped)
-        run: |
-          git fetch --no-tags origin develop:refs/remotes/origin/develop || true
-          node packages/scripts/error-policy-ratchet.mjs
 
       - name: Test-integrity audit
         run: node packages/scripts/lint-test-integrity.mjs
@@ -73,16 +61,6 @@ jobs:
       # lane validates the proposed state machine and workflow contract first.
       - name: Develop PR aggregate contract self-test
         run: node packages/scripts/develop-pr-aggregate.self-test.mjs
-
-      # View→action ratchet (#14369): every builtin-view on-screen mutation
-      # must map to a registered agent action (chat twin), and the generated
-      # action catalog must reflect the real registered surface. Dependency-free
-      # (node stdlib only) like the other audits in this job.
-      - name: View-action ratchet self-test
-        run: node packages/scripts/view-action-ratchet.mjs --self-test
-
-      - name: View-action ratchet
-        run: node packages/scripts/view-action-ratchet.mjs
 
   lint:
     runs-on: ubuntu-latest

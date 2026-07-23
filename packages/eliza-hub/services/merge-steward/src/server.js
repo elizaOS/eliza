@@ -2546,13 +2546,39 @@ async function readJson(request, config) {
   }
 }
 
-async function readRawBody(request, config = {}) {
+export async function readRawBody(request, config = {}) {
   const maxBodyBytes = Math.max(1, config.http?.maxBodyBytes ?? 1024 * 1024);
+  const declaredLength = request.headers["content-length"];
+  if (declaredLength !== undefined) {
+    // error-policy:J3 Content-Length is untrusted input. A strict decimal
+    // parser prevents malformed, negative, or imprecise values from bypassing
+    // the early rejection; the streaming counter below remains authoritative
+    // for chunked requests and dishonest smaller declarations.
+    if (
+      Array.isArray(declaredLength) ||
+      !/^\d+$/.test(declaredLength) ||
+      !Number.isSafeInteger(Number(declaredLength))
+    ) {
+      request.resume();
+      const error = new Error("invalid_content_length");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (Number(declaredLength) > maxBodyBytes) {
+      request.resume();
+      const error = new Error("request_body_too_large");
+      error.statusCode = 413;
+      throw error;
+    }
+  }
   const chunks = [];
   let received = 0;
   for await (const chunk of request) {
     received += chunk.length;
     if (received > maxBodyBytes) {
+      // Drain without retaining the remaining bytes so Node can deliver the
+      // structured 413 response instead of resetting a still-uploading client.
+      request.resume();
       const error = new Error("request_body_too_large");
       error.statusCode = 413;
       throw error;

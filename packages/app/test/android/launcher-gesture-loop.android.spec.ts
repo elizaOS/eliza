@@ -142,7 +142,7 @@ async function completeFirstRunIfNeeded(page: Page) {
 
 /** Collapse the chat sheet and park the rail on home before the loop starts. */
 async function normalizeToHome(page: Page, adb: string, serial: string) {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toBeVisible({ timeout: 60_000 });
 

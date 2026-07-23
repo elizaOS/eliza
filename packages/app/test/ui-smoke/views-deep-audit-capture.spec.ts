@@ -7,7 +7,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -340,7 +340,7 @@ test.describe("views deep UX audit capture", () => {
         "eliza:wallet:enabled": "true",
       });
       await installDefaultAppRoutes(page);
-      await hideContinuousChatOverlay(page);
+      await hideChatOverlay(page);
 
       await openAppPath(page, "/views");
       await expect(page.getByTestId("launcher")).toBeVisible({

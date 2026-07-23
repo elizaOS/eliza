@@ -43,7 +43,6 @@ try:
         _score_from_recall_json,
         _score_from_rlmbench_json,
         _score_from_scambench_json,
-        _score_from_social_alpha_json,
         _score_from_solana_json,
         _score_from_swebench_json,
         _score_from_swebench_orchestrated_json,
@@ -98,7 +97,6 @@ except ImportError:
         _score_from_recall_json,
         _score_from_rlmbench_json,
         _score_from_scambench_json,
-        _score_from_social_alpha_json,
         _score_from_solana_json,
         _score_from_swebench_json,
         _score_from_swebench_orchestrated_json,
@@ -1762,72 +1760,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _voicebench_quality_result(output_dir: Path) -> Path:
         return output_dir / "voicebench-quality-results.json"
 
-    # Social-Alpha - trust-marketplace benchmark on real Discord crypto chat data
-    def _social_alpha_cmd(
-        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
-    ) -> list[str]:
-        """Build command for Social-Alpha.
-
-        Routes through the click-based ``benchmark.harness`` CLI installed by
-        the ``trust-marketplace-benchmark`` pyproject. Defaults to the bundled
-        smoke fixture when the full ``trenches-chat-dataset`` checkout is not
-        present; callers can override via ``data_dir``. Defaults to the
-        ``baseline`` system unless another system is requested via
-        ``extra.system`` or ``model.provider``.
-        """
-        data_dir_raw = extra.get("data_dir")
-        if isinstance(data_dir_raw, str) and data_dir_raw.strip():
-            data_dir = data_dir_raw.strip()
-        else:
-            full_data_dir = (
-                repo_root / "benchmarks/social-alpha/trenches-chat-dataset/data"
-            )
-            data_dir = (
-                "trenches-chat-dataset/data"
-                if full_data_dir.exists()
-                else "fixtures/smoke-data"
-            )
-        args = [
-            python,
-            "-m",
-            "benchmark.harness",
-            "--data-dir",
-            data_dir,
-            "--output",
-            str(output_dir),
-        ]
-        system_raw = extra.get("system")
-        if isinstance(system_raw, str) and system_raw.strip():
-            system = system_raw.strip()
-        else:
-            provider_lower = (model.provider or "").strip().lower()
-            if provider_lower in {"eliza", "eliza-bridge", "eliza-ts"}:
-                system = "eliza-bridge"
-            elif provider_lower in {"cerebras", "openai", "groq", "openrouter", "vllm"}:
-                system = "full"
-            else:
-                system = "baseline"
-        args.extend(["--system", system])
-        if model.model:
-            args.extend(["--model", model.model])
-        api_base = extra.get("api_base")
-        if isinstance(api_base, str) and api_base.strip():
-            args.extend(["--api-base", api_base.strip()])
-        suites = extra.get("suites")
-        if isinstance(suites, list):
-            for suite in suites:
-                if isinstance(suite, str) and suite.strip():
-                    args.extend(["--suite", suite.strip()])
-        elif isinstance(suites, str) and suites.strip():
-            args.extend(["--suite", suites.strip()])
-        if extra.get("generate_gt") is True:
-            args.append("--generate-gt")
-        _append_scenario_control_flags(args, extra)
-        return args
-
-    def _social_alpha_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="benchmark_results_*.json")
-
     def _trust_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
@@ -3189,25 +3121,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_voicebench_quality_cmd,
             locate_result=_voicebench_quality_result,
             extract_score=_score_from_voicebench_quality_json,
-        ),
-        BenchmarkDefinition(
-            id="social_alpha",
-            display_name="Social-Alpha",
-            description="Trust marketplace benchmark on real Discord crypto-chat data (EXTRACT/RANK/DETECT/PROFIT)",
-            cwd_rel="benchmarks/social-alpha",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=("benchmarks/social-alpha/fixtures/smoke-data",),
-                notes=(
-                    "Defaults to the rule-based BaselineSystem (no LLM). Set system=eliza|full|smart|oracle "
-                    "via extra to swap implementations; eliza/full additionally need provider keys. "
-                    "Uses the bundled smoke fixture when the full dataset is absent. "
-                    "Score: composite Trust Marketplace Score (0..1)."
-                ),
-            ),
-            build_command=_social_alpha_cmd,
-            locate_result=_social_alpha_result,
-            extract_score=_score_from_social_alpha_json,
         ),
         BenchmarkDefinition(
             id="trust",
