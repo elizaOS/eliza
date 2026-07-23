@@ -10,30 +10,38 @@ import { runPlannerLoop } from "../planner-loop";
 const failureA = "Note A could not be updated.";
 const successB = "Note B was updated.";
 
-function plannerToolCall(id: string, title: string) {
+function plannerToolCall(
+	id: string,
+	name: string,
+	args: Record<string, unknown>,
+) {
 	return {
 		text: "",
 		toolCalls: [
 			{
 				id: `call-${id}`,
-				name: "VIEWS",
-				arguments: {
-					action: "interact",
-					view: "notes",
-					capability: "update-note",
-					params: { id, title },
-				},
+				name,
+				arguments: args,
 			},
 		],
 	};
+}
+
+function viewsUpdateCall(id: string, title: string) {
+	return plannerToolCall(id, "VIEWS", {
+		action: "interact",
+		view: "notes",
+		capability: "update-note",
+		params: { id, title },
+	});
 }
 
 function runtimeForFailureThenSuccessThenReply() {
 	return {
 		useModel: vi
 			.fn()
-			.mockResolvedValueOnce(plannerToolCall("note-a", "A"))
-			.mockResolvedValueOnce(plannerToolCall("note-b", "B"))
+			.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+			.mockResolvedValueOnce(viewsUpdateCall("note-b", "B"))
 			.mockResolvedValueOnce({
 				text: "",
 				toolCalls: [
@@ -68,7 +76,7 @@ describe("planner-loop failed-operation correlation", () => {
 		const runtime = {
 			useModel: vi
 				.fn()
-				.mockResolvedValueOnce(plannerToolCall("note-a", "A"))
+				.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
 				.mockResolvedValueOnce({
 					text: "",
 					toolCalls: [
@@ -128,6 +136,71 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("The note was updated.");
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+	});
+
+	it("keeps a failed SHELL command authoritative when an unrelated command succeeds before REPLY", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-a", "SHELL", {
+						command: "pnpm test",
+						cwd: "/workspace/project-a",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-b", "SHELL", {
+						command: "pnpm test",
+						cwd: "/workspace/project-b",
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: "Both test runs passed." },
+						},
+					],
+				}),
+		};
+		const shellFailure = "Project A tests failed.";
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "project-a-failure",
+					text: shellFailure,
+					userFacingText: shellFailure,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Project B tests passed.",
+					userFacingText: "Project B tests passed.",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Continue with the second project.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Invalid evaluator envelope.",
+					protocolFailure: true,
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(shellFailure);
+		expect(result.finalMessage).not.toContain("Both test runs passed");
+		expect(result.finalMessage).not.toContain("Project B tests passed");
 	});
 
 	it("keeps failed entity A authoritative when a terminal REPLY follows successful entity B", async () => {
