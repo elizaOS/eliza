@@ -9,9 +9,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import process from "node:process";
+import { SaxesParser } from "saxes";
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "./eliza-error.mjs";
 
 export const ANDROID_BUNDLETOOL_JAR_ENV = "ELIZA_ANDROID_BUNDLETOOL_JAR";
 export const ANDROID_BUNDLETOOL_VERSION = "1.18.3";
@@ -41,7 +43,21 @@ export const ANDROID_LP3_POLICY_MARKERS = Object.freeze(["lp3_color_policy"]);
 
 const AAB_MANIFEST_ENTRY = /^([^/\\]+)\/manifest\/AndroidManifest\.xml$/;
 const AAB_DEX_ENTRY = /^([^/\\]+)\/dex\/classes\d*\.dex$/;
+const ANDROID_XML_NAMESPACE = "http://schemas.android.com/apk/res/android";
+const MANIFEST_COMPONENT_ELEMENTS = Object.freeze([
+  "activity",
+  "activity-alias",
+  "provider",
+  "receiver",
+  "service",
+]);
 const MAX_TOOL_OUTPUT_BYTES = 16 * 1024 * 1024;
+export const ANDROID_BUNDLETOOL_TIMEOUT_MS = 120_000;
+export const ANDROID_AAB_AUDIT_TIMEOUT_MS = 300_000;
+export const ANDROID_AAB_MAX_MANIFEST_MODULES = 128;
+export const ANDROID_AAB_MAX_DEX_ENTRIES = 4_096;
+export const ANDROID_AAB_MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
+export const ANDROID_AAB_MAX_MANIFEST_TOTAL_BYTES = 16 * 1024 * 1024;
 
 function androidAabAuditError(
   message,
@@ -81,6 +97,15 @@ function requireStringArray(value, label) {
   return value;
 }
 
+function requirePositiveLimit(value, label) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw androidAabAuditError(
+      `[mobile-build] ${label} must be a positive safe integer.`,
+    );
+  }
+  return value;
+}
+
 function isSafeModuleName(moduleName) {
   return (
     moduleName !== "." &&
@@ -109,6 +134,72 @@ function uniqueSorted(values, compare = (a, b) => a.localeCompare(b)) {
 
 function sha256(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+function verifyPinnedBundletoolJar(
+  bundletoolJar,
+  { digestBuffer = sha256, readFileSync = fs.readFileSync } = {},
+) {
+  let bytes;
+  try {
+    bytes = readFileSync(bundletoolJar);
+  } catch (error) {
+    // error-policy:J2 identify the pinned executable that could not be verified
+    throw androidAabAuditError(
+      `[mobile-build] Could not read bundletool JAR for SHA-256 verification: ${bundletoolJar}`,
+      {
+        cause: error,
+        code: "ANDROID_BUNDLETOOL_INTEGRITY_FAILED",
+        context: { bundletoolJar },
+      },
+    );
+  }
+
+  let digest;
+  try {
+    digest = digestBuffer(bytes);
+  } catch (error) {
+    // error-policy:J2 identify the pinned executable whose digest could not be computed
+    throw androidAabAuditError(
+      `[mobile-build] Could not compute bundletool JAR SHA-256: ${bundletoolJar}`,
+      {
+        cause: error,
+        code: "ANDROID_BUNDLETOOL_INTEGRITY_FAILED",
+        context: { bundletoolJar },
+      },
+    );
+  }
+  if (digest !== ANDROID_BUNDLETOOL_SHA256) {
+    throw androidAabAuditError(
+      `[mobile-build] Refusing bundletool with SHA-256 ${digest}; expected ${ANDROID_BUNDLETOOL_SHA256}: ${bundletoolJar}`,
+      {
+        code: "ANDROID_BUNDLETOOL_INTEGRITY_FAILED",
+        context: {
+          actualSha256: digest,
+          bundletoolJar,
+          expectedSha256: ANDROID_BUNDLETOOL_SHA256,
+        },
+      },
+    );
+  }
+  return digest;
+}
+
+function isVerifiedBundletoolCacheEntry(bundletoolJar, dependencies) {
+  try {
+    verifyPinnedBundletoolJar(bundletoolJar, dependencies);
+    return true;
+  } catch (error) {
+    // error-policy:J4 a checksum-mismatched cache entry is replaced by the pinned download
+    if (
+      error instanceof ElizaError &&
+      error.code === "ANDROID_BUNDLETOOL_INTEGRITY_FAILED" &&
+      typeof error.context?.actualSha256 === "string"
+    ) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -142,12 +233,10 @@ export async function ensureAndroidBundletoolJar(
         `[mobile-build] ${ANDROID_BUNDLETOOL_JAR_ENV} does not exist: ${resolvedJar}`,
       );
     }
-    const configuredDigest = digestBuffer(readFileSync(resolvedJar));
-    if (configuredDigest !== ANDROID_BUNDLETOOL_SHA256) {
-      throw androidAabAuditError(
-        `[mobile-build] Refusing configured bundletool with SHA-256 ${configuredDigest}; expected ${ANDROID_BUNDLETOOL_SHA256}: ${resolvedJar}`,
-      );
-    }
+    verifyPinnedBundletoolJar(resolvedJar, {
+      digestBuffer,
+      readFileSync,
+    });
     return resolvedJar;
   }
   if (typeof fetchImpl !== "function") {
@@ -162,7 +251,10 @@ export async function ensureAndroidBundletoolJar(
   );
   if (
     existsSync(target) &&
-    digestBuffer(readFileSync(target)) === ANDROID_BUNDLETOOL_SHA256
+    isVerifiedBundletoolCacheEntry(target, {
+      digestBuffer,
+      readFileSync,
+    })
   ) {
     return target;
   }
@@ -196,10 +288,31 @@ export async function ensureAndroidBundletoolJar(
       { cause: error },
     );
   }
-  const digest = digestBuffer(bytes);
+  let digest;
+  try {
+    digest = digestBuffer(bytes);
+  } catch (error) {
+    // error-policy:J2 preserve download provenance when checksum computation fails
+    throw androidAabAuditError(
+      `[mobile-build] Could not compute downloaded bundletool ${ANDROID_BUNDLETOOL_VERSION} SHA-256.`,
+      {
+        cause: error,
+        code: "ANDROID_BUNDLETOOL_INTEGRITY_FAILED",
+        context: { source: ANDROID_BUNDLETOOL_URL },
+      },
+    );
+  }
   if (digest !== ANDROID_BUNDLETOOL_SHA256) {
     throw androidAabAuditError(
       `[mobile-build] Refusing bundletool ${ANDROID_BUNDLETOOL_VERSION} with SHA-256 ${digest}; expected ${ANDROID_BUNDLETOOL_SHA256}.`,
+      {
+        code: "ANDROID_BUNDLETOOL_INTEGRITY_FAILED",
+        context: {
+          actualSha256: digest,
+          expectedSha256: ANDROID_BUNDLETOOL_SHA256,
+          source: ANDROID_BUNDLETOOL_URL,
+        },
+      },
     );
   }
 
@@ -209,7 +322,10 @@ export async function ensureAndroidBundletoolJar(
     writeFileSync(temporary, bytes, { flag: "wx" });
     if (
       existsSync(target) &&
-      digestBuffer(readFileSync(target)) === ANDROID_BUNDLETOOL_SHA256
+      isVerifiedBundletoolCacheEntry(target, {
+        digestBuffer,
+        readFileSync,
+      })
     ) {
       return target;
     }
@@ -237,8 +353,12 @@ export function resolveAndroidArtifactKind(artifact) {
 /**
  * Finds each module whose compiled manifest bundletool can decode.
  */
-export function listAabManifestModules(entries) {
+export function listAabManifestModules(
+  entries,
+  { maxModules = ANDROID_AAB_MAX_MANIFEST_MODULES } = {},
+) {
   requireStringArray(entries, "Android App Bundle entries");
+  requirePositiveLimit(maxModules, "Android App Bundle manifest module limit");
   const modules = [];
   for (const entry of entries) {
     const match = entry.match(AAB_MANIFEST_ENTRY);
@@ -262,6 +382,15 @@ export function listAabManifestModules(entries) {
       "[mobile-build] Android App Bundle is missing base/manifest/AndroidManifest.xml.",
     );
   }
+  if (sorted.length > maxModules) {
+    throw androidAabAuditError(
+      `[mobile-build] Android App Bundle exceeds the ${maxModules}-module manifest audit limit.`,
+      {
+        code: "ANDROID_AAB_WORKLOAD_LIMIT_EXCEEDED",
+        context: { maxModules, moduleCount: sorted.length },
+      },
+    );
+  }
   return sorted;
 }
 
@@ -269,8 +398,12 @@ export function listAabManifestModules(entries) {
  * Selects code entries from every module while rejecting extraction paths that
  * could escape the caller's temporary directory.
  */
-export function listAabDexEntries(entries) {
+export function listAabDexEntries(
+  entries,
+  { maxEntries = ANDROID_AAB_MAX_DEX_ENTRIES } = {},
+) {
   requireStringArray(entries, "Android App Bundle entries");
+  requirePositiveLimit(maxEntries, "Android App Bundle DEX entry limit");
   const dexEntries = [];
   for (const entry of entries) {
     const match = entry.match(AAB_DEX_ENTRY);
@@ -282,18 +415,31 @@ export function listAabDexEntries(entries) {
     }
     dexEntries.push(entry);
   }
-  return uniqueSorted(dexEntries);
+  const sorted = uniqueSorted(dexEntries);
+  if (sorted.length > maxEntries) {
+    throw androidAabAuditError(
+      `[mobile-build] Android App Bundle exceeds the ${maxEntries}-entry DEX audit limit.`,
+      {
+        code: "ANDROID_AAB_WORKLOAD_LIMIT_EXCEEDED",
+        context: { dexEntryCount: sorted.length, maxEntries },
+      },
+    );
+  }
+  return sorted;
 }
 
 /**
  * Resolves the official bundletool fat JAR and the JDK executable used to run
- * it. An explicit JAR keeps local and CI audits on the same trusted tool.
+ * it. The environment override names a location, not a trust bypass: its bytes
+ * must match the pinned digest here and again immediately before each command.
  */
 export function resolveBundletoolInvocation(
   { env = process.env, javaHome } = {},
   {
+    digestBuffer = sha256,
     existsSync = fs.existsSync,
     platform = process.platform,
+    readFileSync = fs.readFileSync,
     resolvePath = path.resolve,
   } = {},
 ) {
@@ -309,6 +455,10 @@ export function resolveBundletoolInvocation(
       `[mobile-build] bundletool JAR not found at ${bundletoolJar} (${ANDROID_BUNDLETOOL_JAR_ENV}).`,
     );
   }
+  const bundletoolDigest = verifyPinnedBundletoolJar(bundletoolJar, {
+    digestBuffer,
+    readFileSync,
+  });
 
   const resolvedJavaHome = requireNonEmptyString(
     javaHome,
@@ -329,6 +479,7 @@ export function resolveBundletoolInvocation(
     command: javaExecutable,
     argsPrefix: ["-jar", bundletoolJar],
     bundletoolJar,
+    bundletoolDigest,
   };
 }
 
@@ -340,45 +491,189 @@ export function runCheckedBundletool(
   invocation,
   args,
   label,
-  { spawnSyncImpl = spawnSync } = {},
+  {
+    digestBuffer = sha256,
+    readFileSync = fs.readFileSync,
+    spawnSyncImpl = spawnSync,
+    timeoutMs = ANDROID_BUNDLETOOL_TIMEOUT_MS,
+  } = {},
 ) {
+  requirePositiveLimit(timeoutMs, "bundletool command timeout");
+  verifyPinnedBundletoolJar(invocation.bundletoolJar, {
+    digestBuffer,
+    readFileSync,
+  });
   const result = spawnSyncImpl(
     invocation.command,
     [...invocation.argsPrefix, ...args],
     {
       encoding: "utf8",
+      killSignal: "SIGKILL",
       maxBuffer: MAX_TOOL_OUTPUT_BYTES,
+      timeout: timeoutMs,
       windowsHide: true,
     },
   );
-  if (result?.error) {
+  if (result?.error?.code === "ETIMEDOUT") {
+    const stderr = String(result.stderr ?? "").trim();
+    const stdout = String(result.stdout ?? "").trim();
+    const diagnostics = [stderr, stdout].filter(Boolean);
+    const diagnosticSuffix =
+      diagnostics.length > 0 ? ` Diagnostics: ${diagnostics.join(" | ")}` : "";
     throw androidAabAuditError(
-      `[mobile-build] ${label} failed to start: ${result.error.message}`,
+      `[mobile-build] ${label} timed out after ${timeoutMs} ms and was terminated. Verify JAVA_HOME points to a responsive JDK 21, check host resources, and retry.${diagnosticSuffix}`,
+      {
+        cause: result.error,
+        code: "ANDROID_BUNDLETOOL_TIMEOUT",
+        context: {
+          bundletoolJar: invocation.bundletoolJar,
+          label,
+          signal: result.signal ?? null,
+          timeoutMs,
+        },
+      },
+    );
+  }
+  if (result?.signal) {
+    const stderr = String(result.stderr ?? "").trim();
+    const stdout = String(result.stdout ?? "").trim();
+    const diagnostics = [stderr, stdout].filter(Boolean);
+    const diagnosticSuffix =
+      diagnostics.length > 0 ? ` Diagnostics: ${diagnostics.join(" | ")}` : "";
+    throw androidAabAuditError(
+      `[mobile-build] ${label} was terminated by signal ${result.signal}. Check host resource limits and Java diagnostics, then retry.${diagnosticSuffix}`,
+      {
+        ...(result.error ? { cause: result.error } : {}),
+        code: "ANDROID_BUNDLETOOL_TERMINATED",
+        context: {
+          bundletoolJar: invocation.bundletoolJar,
+          label,
+          signal: result.signal,
+        },
+      },
+    );
+  }
+  if (result?.error) {
+    const diagnostics = [
+      result.error.message,
+      String(result.stderr ?? "").trim(),
+      String(result.stdout ?? "").trim(),
+    ].filter(Boolean);
+    throw androidAabAuditError(
+      `[mobile-build] ${label} failed to start: ${diagnostics.join(" | ")}`,
       { cause: result.error },
     );
   }
   if (result?.status !== 0) {
     const stdout = String(result?.stdout ?? "").trim();
     const stderr = String(result?.stderr ?? "").trim();
-    const termination = result?.signal
-      ? `terminated by signal ${result.signal}`
-      : `exited with ${String(result?.status)}`;
+    const termination = `exited with ${String(result?.status)}`;
+    const diagnostics = [termination, stderr, stdout].filter(Boolean);
     throw androidAabAuditError(
-      `[mobile-build] ${label} failed: ${stderr || stdout || termination}`,
+      `[mobile-build] ${label} failed: ${diagnostics.join(" | ")}`,
     );
   }
   return String(result.stdout ?? "");
 }
 
-function assertManifestDoesNotContain(
+function parseXmlOpeningTags(xml) {
+  const tags = [];
+  const parser = new SaxesParser({ xmlns: true });
+  parser.on("opentag", (tag) => {
+    tags.push({
+      attributes: Object.values(tag.attributes).map((attribute) => ({
+        localName: attribute.local,
+        name: attribute.name,
+        namespaceUri: attribute.uri,
+        value: attribute.value,
+      })),
+      name: tag.local,
+      namespaceUri: tag.uri,
+      qualifiedName: tag.name,
+    });
+  });
+  try {
+    parser.write(xml).close();
+  } catch (cause) {
+    // error-policy:J2 retain the manifest parser failure as the audit cause
+    throw androidAabAuditError(
+      `[mobile-build] bundletool returned malformed manifest XML: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+        code: "ANDROID_AAB_MANIFEST_INVALID",
+      },
+    );
+  }
+  return tags;
+}
+
+function readXmlAttribute(tag, namespaceUri, localName) {
+  return (
+    tag.attributes.find(
+      (attribute) =>
+        attribute.namespaceUri === namespaceUri &&
+        attribute.localName === localName,
+    )?.value ?? null
+  );
+}
+
+function readManifestPackageName(manifestText) {
+  return (
+    parseXmlOpeningTags(manifestText)
+      .find((tag) => tag.name === "manifest")
+      ?.attributes.find(
+        (attribute) =>
+          attribute.namespaceUri === "" && attribute.localName === "package",
+      )?.value ?? null
+  );
+}
+
+function manifestPolicyEvidence(moduleName, manifestText) {
+  const tags = parseXmlOpeningTags(manifestText);
+  const androidAttributeValues = (elementNames, localName) =>
+    uniqueSorted(
+      tags
+        .filter((tag) => elementNames.includes(tag.name))
+        .map((tag) => readXmlAttribute(tag, ANDROID_XML_NAMESPACE, localName))
+        .filter(Boolean),
+    );
+  return {
+    actions: androidAttributeValues(["action"], "name"),
+    components: uniqueSorted(
+      tags
+        .filter((tag) => MANIFEST_COMPONENT_ELEMENTS.includes(tag.name))
+        .map((tag) => {
+          const componentName = readXmlAttribute(
+            tag,
+            ANDROID_XML_NAMESPACE,
+            "name",
+          );
+          return componentName ? `${tag.name}:${componentName}` : null;
+        })
+        .filter(Boolean),
+    ),
+    metadataNames: androidAttributeValues(["meta-data"], "name"),
+    module: moduleName,
+    packageName: readManifestPackageName(manifestText),
+    permissions: androidAttributeValues(
+      ["uses-permission", "uses-permission-sdk-23"],
+      "name",
+    ),
+    sha256: sha256(Buffer.from(manifestText, "utf8")),
+    sizeBytes: Buffer.byteLength(manifestText, "utf8"),
+  };
+}
+
+function collectManifestPolicyFinding(
+  findings,
   moduleName,
   manifestText,
   marker,
   description,
 ) {
   if (manifestText.includes(marker)) {
-    throw androidAabAuditError(
-      `[mobile-build] android-cloud AAB module ${moduleName} contains forbidden ${description}: ${marker}`,
+    findings.push(
+      `android-cloud AAB module ${moduleName} contains forbidden ${description}: ${marker}`,
     );
   }
 }
@@ -401,57 +696,117 @@ export function assertAabManifestPolicy({
     );
   }
 
-  const forbiddenComponents = uniqueSorted([
-    ...strippedComponents.map((component) =>
+  const forbiddenComponents = uniqueSorted(
+    strippedComponents.map((component) =>
       qualifyComponent(resolvedAppId, component),
     ),
-    ...ANDROID_LP3_POLICY_CLASSES.map(
-      (className) => `${resolvedAppId}.${className}`,
-    ),
-  ]);
+  );
   const forbiddenPermissions = uniqueSorted([
     ...strippedPermissions.map(qualifyPermission),
     ...ANDROID_LP3_POLICY_PERMISSIONS,
   ]);
+  const baseManifest = manifests.get("base");
+  if (typeof baseManifest !== "string" || baseManifest.trim() === "") {
+    throw androidAabAuditError(
+      "[mobile-build] decoded Android App Bundle manifests must include a non-empty base manifest.",
+    );
+  }
+  const manifestPackage = readManifestPackageName(baseManifest);
+  if (!manifestPackage) {
+    throw androidAabAuditError(
+      "[mobile-build] android-cloud AAB base manifest is missing its package identity.",
+    );
+  }
+  if (manifestPackage !== resolvedAppId) {
+    throw androidAabAuditError(
+      `[mobile-build] android-cloud AAB package ${manifestPackage} does not match expected application ID ${resolvedAppId}.`,
+    );
+  }
 
+  const findings = [];
   for (const [moduleName, manifestText] of manifests) {
     if (typeof manifestText !== "string" || manifestText.trim() === "") {
       throw androidAabAuditError(
         `[mobile-build] bundletool returned an empty manifest for AAB module ${moduleName}.`,
       );
     }
+    const tags = parseXmlOpeningTags(manifestText);
+    const androidAttributeValues = (elementNames, localName) =>
+      uniqueSorted(
+        tags
+          .filter((tag) => elementNames.includes(tag.name))
+          .map((tag) => readXmlAttribute(tag, ANDROID_XML_NAMESPACE, localName))
+          .filter(Boolean),
+      );
+    const manifestPermissions = androidAttributeValues(
+      ["uses-permission", "uses-permission-sdk-23"],
+      "name",
+    );
     for (const permission of forbiddenPermissions) {
-      assertManifestDoesNotContain(
-        moduleName,
-        manifestText,
-        permission,
-        "permission",
-      );
+      if (manifestPermissions.includes(permission)) {
+        findings.push(
+          `android-cloud AAB module ${moduleName} contains forbidden permission: ${permission}`,
+        );
+      }
     }
+    const manifestComponents = androidAttributeValues(
+      MANIFEST_COMPONENT_ELEMENTS,
+      "name",
+    );
+    const qualifiedManifestComponents = manifestComponents.map((component) =>
+      qualifyComponent(resolvedAppId, component),
+    );
     for (const component of forbiddenComponents) {
-      assertManifestDoesNotContain(
-        moduleName,
-        manifestText,
-        component,
-        "component",
-      );
+      if (qualifiedManifestComponents.includes(component)) {
+        findings.push(
+          `android-cloud AAB module ${moduleName} contains forbidden component: ${component}`,
+        );
+      }
     }
-    for (const action of ANDROID_LP3_PRIVATE_ACTIONS) {
-      assertManifestDoesNotContain(
-        moduleName,
-        manifestText,
-        action,
-        "LP3 action",
+    for (const component of manifestComponents) {
+      const privateClass = ANDROID_LP3_POLICY_CLASSES.find(
+        (className) =>
+          component === className ||
+          component.endsWith(`.${className}`) ||
+          component.endsWith(`/${className}`),
       );
+      if (privateClass) {
+        findings.push(
+          `android-cloud AAB module ${moduleName} contains forbidden LP3 component: ${component}`,
+        );
+      }
+    }
+    const manifestActions = androidAttributeValues(["action"], "name");
+    for (const action of ANDROID_LP3_PRIVATE_ACTIONS) {
+      if (manifestActions.includes(action)) {
+        findings.push(
+          `android-cloud AAB module ${moduleName} contains forbidden LP3 action: ${action}`,
+        );
+      }
     }
     for (const marker of ANDROID_LP3_POLICY_MARKERS) {
-      assertManifestDoesNotContain(
+      collectManifestPolicyFinding(
+        findings,
         moduleName,
         manifestText,
         marker,
         "LP3 policy marker",
       );
     }
+  }
+  if (findings.length > 0) {
+    const uniqueFindings = uniqueSorted(findings);
+    throw androidAabAuditError(
+      `[mobile-build] Android App Bundle manifest policy failed:\n${uniqueFindings
+        .map((finding) => `  - ${finding}`)
+        .join("\n")}`,
+      {
+        context: {
+          findings: uniqueFindings,
+          modules: [...manifests.keys()],
+        },
+      },
+    );
   }
 }
 
@@ -490,6 +845,8 @@ export function assertAabDexPolicy({ appId, dexEntries, dexBuffers }) {
       ...ANDROID_LP3_POLICY_CLASSES.flatMap((className) => [
         `${packagePath}/${className}`,
         `${resolvedAppId}.${className}`,
+        `/${className};`,
+        `L${className};`,
       ]),
       ...ANDROID_LP3_PRIVATE_ACTIONS,
       ...ANDROID_LP3_POLICY_MARKERS,
@@ -527,8 +884,16 @@ export function inspectAndroidAppBundle(
     readDexEntries,
   },
   {
+    auditTimeoutMs = ANDROID_AAB_AUDIT_TIMEOUT_MS,
+    digestBuffer = sha256,
     existsSync = fs.existsSync,
+    maxDexEntries = ANDROID_AAB_MAX_DEX_ENTRIES,
+    maxManifestBytes = ANDROID_AAB_MAX_MANIFEST_BYTES,
+    maxManifestModules = ANDROID_AAB_MAX_MANIFEST_MODULES,
+    maxManifestTotalBytes = ANDROID_AAB_MAX_MANIFEST_TOTAL_BYTES,
+    now = () => performance.now(),
     platform = process.platform,
+    readFileSync = fs.readFileSync,
     resolvePath = path.resolve,
     spawnSyncImpl = spawnSync,
   } = {},
@@ -543,40 +908,111 @@ export function inspectAndroidAppBundle(
     );
   }
   requireStringArray(entries, "Android App Bundle entries");
+  requirePositiveLimit(auditTimeoutMs, "Android App Bundle audit timeout");
+  requirePositiveLimit(
+    maxManifestBytes,
+    "Android App Bundle per-manifest byte limit",
+  );
+  requirePositiveLimit(
+    maxManifestTotalBytes,
+    "Android App Bundle aggregate manifest byte limit",
+  );
   if (typeof readDexEntries !== "function") {
     throw androidAabAuditError(
       "[mobile-build] inspectAndroidAppBundle requires a readDexEntries function.",
     );
   }
+  const modules = listAabManifestModules(entries, {
+    maxModules: maxManifestModules,
+  });
+  const dexEntries = listAabDexEntries(entries, {
+    maxEntries: maxDexEntries,
+  });
+  if (dexEntries.length === 0) {
+    throw androidAabAuditError(
+      `[mobile-build] Android App Bundle has no module dex/classes*.dex entries: ${resolvedArtifact}`,
+    );
+  }
 
   const invocation = resolveBundletoolInvocation(
     { env, javaHome },
-    { existsSync, platform, resolvePath },
+    {
+      digestBuffer,
+      existsSync,
+      platform,
+      readFileSync,
+      resolvePath,
+    },
   );
-  runCheckedBundletool(
-    invocation,
+  const auditStartedAt = now();
+  const runWithinAuditDeadline = (args, label) => {
+    const remainingMs = Math.floor(auditTimeoutMs - (now() - auditStartedAt));
+    if (remainingMs <= 0) {
+      throw androidAabAuditError(
+        `[mobile-build] Android App Bundle audit exceeded its ${auditTimeoutMs} ms aggregate bundletool deadline while ${label}.`,
+        {
+          code: "ANDROID_AAB_AUDIT_TIMEOUT",
+          context: { auditTimeoutMs, label },
+        },
+      );
+    }
+    const output = runCheckedBundletool(invocation, args, label, {
+      digestBuffer,
+      readFileSync,
+      spawnSyncImpl,
+      timeoutMs: Math.min(ANDROID_BUNDLETOOL_TIMEOUT_MS, remainingMs),
+    });
+    if (now() - auditStartedAt > auditTimeoutMs) {
+      throw androidAabAuditError(
+        `[mobile-build] Android App Bundle audit exceeded its ${auditTimeoutMs} ms aggregate bundletool deadline while ${label}.`,
+        {
+          code: "ANDROID_AAB_AUDIT_TIMEOUT",
+          context: { auditTimeoutMs, label },
+        },
+      );
+    }
+    return output;
+  };
+  runWithinAuditDeadline(
     ["validate", `--bundle=${resolvedArtifact}`],
-    `Could not validate ${resolvedArtifact} with bundletool`,
-    { spawnSyncImpl },
+    `validating ${resolvedArtifact} with bundletool`,
   );
 
-  const modules = listAabManifestModules(entries);
   const manifests = new Map();
+  let manifestTotalSizeBytes = 0;
   for (const moduleName of modules) {
-    const manifestText = runCheckedBundletool(
-      invocation,
+    const manifestText = runWithinAuditDeadline(
       [
         "dump",
         "manifest",
         `--bundle=${resolvedArtifact}`,
         `--module=${moduleName}`,
       ],
-      `Could not inspect ${resolvedArtifact} module ${moduleName} manifest with bundletool`,
-      { spawnSyncImpl },
+      `inspecting ${resolvedArtifact} module ${moduleName} manifest with bundletool`,
     );
     if (manifestText.trim() === "") {
       throw androidAabAuditError(
         `[mobile-build] bundletool returned an empty manifest for AAB module ${moduleName}.`,
+      );
+    }
+    const manifestSizeBytes = Buffer.byteLength(manifestText, "utf8");
+    manifestTotalSizeBytes += manifestSizeBytes;
+    if (
+      manifestSizeBytes > maxManifestBytes ||
+      manifestTotalSizeBytes > maxManifestTotalBytes
+    ) {
+      throw androidAabAuditError(
+        `[mobile-build] Android App Bundle manifest output exceeds the bounded audit size while inspecting module ${moduleName}.`,
+        {
+          code: "ANDROID_AAB_WORKLOAD_LIMIT_EXCEEDED",
+          context: {
+            manifestSizeBytes,
+            manifestTotalSizeBytes,
+            maxManifestBytes,
+            maxManifestTotalBytes,
+            moduleName,
+          },
+        },
       );
     }
     manifests.set(moduleName, manifestText);
@@ -589,17 +1025,28 @@ export function inspectAndroidAppBundle(
     strippedPermissions,
   });
 
-  const dexEntries = listAabDexEntries(entries);
-  if (dexEntries.length === 0) {
-    throw androidAabAuditError(
-      `[mobile-build] Android App Bundle has no module dex/classes*.dex entries: ${resolvedArtifact}`,
-    );
-  }
   const dexBuffers = readDexEntries(dexEntries, {
     artifact: resolvedArtifact,
     javaHome,
   });
   assertAabDexPolicy({ appId, dexEntries, dexBuffers });
 
-  return { modules, dexEntries };
+  return {
+    appId: requireNonEmptyString(appId, "Android application ID"),
+    bundletool: {
+      sha256: invocation.bundletoolDigest,
+      version: ANDROID_BUNDLETOOL_VERSION,
+    },
+    dexEntries,
+    dexEvidence: dexEntries.map((entry, index) => ({
+      entry,
+      sha256: sha256(Buffer.from(dexBuffers[index])),
+      sizeBytes: Buffer.from(dexBuffers[index]).byteLength,
+    })),
+    manifestEvidence: modules.map((moduleName) =>
+      manifestPolicyEvidence(moduleName, manifests.get(moduleName)),
+    ),
+    manifestTotalSizeBytes,
+    modules,
+  };
 }

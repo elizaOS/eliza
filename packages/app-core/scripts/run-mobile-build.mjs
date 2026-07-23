@@ -53,7 +53,8 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { ElizaError } from "@elizaos/core/errors";
+import { crc32, inflateRawSync } from "node:zlib";
+import AdmZip from "adm-zip";
 import {
   appStoreExecutionProfile,
   findForbiddenRuntimeImportGroups,
@@ -80,6 +81,7 @@ import {
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
+import { ElizaError } from "./lib/eliza-error.mjs";
 import {
   androidUsesAppDirFor,
   MTP_FORK_SRC_CANDIDATES,
@@ -5585,20 +5587,49 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
 ];
 
 function isCloudBannedNativeLibrary(fileName) {
+  const normalized = fileName.toLowerCase();
   return (
-    fileName.startsWith("libeliza_") ||
-    fileName === "libsigsys-handler.so" ||
-    /^lib.*llama.*\.so$/i.test(fileName)
+    normalized.startsWith("libeliza_") ||
+    normalized === "libelizainference.so" ||
+    normalized === "libelizavoicejni.so" ||
+    normalized === "libmtmd.so" ||
+    normalized === "libomp.so" ||
+    normalized === "libsigsys-handler.so" ||
+    /^lib(?:ggml|.*llama).*\.so$/.test(normalized)
   );
 }
 
 function isCloudBannedAsset(filePath) {
-  const base = path.basename(filePath);
+  const base = path.basename(filePath).toLowerCase();
   return (
     ANDROID_CLOUD_STRIPPED_ASSET_FILES.has(base) ||
     base === "bun" ||
     base.endsWith(".gguf")
   );
+}
+
+export function findAndroidCloudPackagedRuntimeOffenders(entries) {
+  if (!Array.isArray(entries)) {
+    throw mobileBuildError(
+      "[mobile-build] Android artifact entries must be an array.",
+      {
+        code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+        context: { entriesType: typeof entries },
+      },
+    );
+  }
+  return entries.filter((entry) => {
+    if (typeof entry !== "string") return true;
+    const normalized = entry.replaceAll("\\", "/");
+    const baseName = path.posix.basename(normalized);
+    const isAsset = /(^|\/)assets\//i.test(normalized);
+    const isNativeLibrary = /(^|\/)lib\//i.test(normalized);
+    return (
+      /(^|\/)assets\/agent\//i.test(normalized) ||
+      (isAsset && isCloudBannedAsset(baseName)) ||
+      (isNativeLibrary && isCloudBannedNativeLibrary(baseName))
+    );
+  });
 }
 
 function cloudBrandUserAgentMarkerLines() {
@@ -6980,21 +7011,17 @@ function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
   return artifact;
 }
 
-function findAndroidCloudAab() {
-  const releaseBundleDir = path.join(
+export function findAndroidCloudAab(
+  releaseBundleDir = path.join(
     androidDir,
     "app",
     "build",
     "outputs",
     "bundle",
     "release",
-  );
-  if (!fs.existsSync(releaseBundleDir)) return null;
-  const candidates = fs
-    .readdirSync(releaseBundleDir)
-    .filter((name) => name.endsWith(".aab"))
-    .map((name) => path.join(releaseBundleDir, name));
-  return firstExisting(candidates);
+  ),
+) {
+  return firstExisting([path.join(releaseBundleDir, "app-release.aab")]);
 }
 
 function findAndroidCloudDebugApk() {
@@ -7011,7 +7038,11 @@ function findAndroidCloudDebugApk() {
   ]);
 }
 
-function resolveAndroidBuildTool(sdkRoot, toolName) {
+export function resolveAndroidBuildTool(
+  sdkRoot,
+  toolName,
+  { platform = process.platform } = {},
+) {
   const buildToolsRoot = path.join(sdkRoot, "build-tools");
   if (!fs.existsSync(buildToolsRoot)) return null;
   const versions = fs
@@ -7020,77 +7051,561 @@ function resolveAndroidBuildTool(sdkRoot, toolName) {
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
     .reverse();
+  const executableNames =
+    platform === "win32" ? [`${toolName}.exe`, toolName] : [toolName];
   for (const version of versions) {
-    const candidate = path.join(buildToolsRoot, version, toolName);
-    if (fs.existsSync(candidate)) return candidate;
+    for (const executableName of executableNames) {
+      const candidate = path.join(buildToolsRoot, version, executableName);
+      if (fs.existsSync(candidate)) return candidate;
+    }
   }
   return null;
 }
 
-/**
- * List the packaged entries of an APK/AAB via `jar tf`. Throws on inspect
- * failure so a broken artifact can never pass an audit by yielding an empty
- * listing.
- */
-function resolveJarTool(javaHome) {
-  // Prefer the JDK's own `jar`, but a JAVA_HOME pointing at a stripped JRE
-  // (java/keytool only, no jdk tools) is common and would hard-fail a finished
-  // build. Fall back to `jar` on PATH — `jar tf` is a plain zip listing and
-  // works regardless of which JDK provides it.
-  const exe = process.platform === "win32" ? "jar.exe" : "jar";
-  const fromHome = javaHome ? path.join(javaHome, "bin", exe) : null;
-  return fromHome && fs.existsSync(fromHome) ? fromHome : exe;
-}
+const MAX_ANDROID_ARTIFACT_BYTES = 512 * 1024 * 1024;
+const MAX_ANDROID_ARCHIVE_ENTRIES = 100_000;
+const MAX_ANDROID_EXTRACTED_ENTRY_BYTES = 256 * 1024 * 1024;
+const MAX_ANDROID_EXTRACTED_TOTAL_BYTES = 512 * 1024 * 1024;
 
-function listAndroidArtifactEntries(artifact, javaHome) {
-  const jar = resolveJarTool(javaHome);
-  const result = spawnSync(jar, ["tf", artifact], { encoding: "utf8" });
-  if (result.error || result.status !== 0) {
+function assertSafeAndroidArchiveEntry(entry, label) {
+  if (typeof entry !== "string" || entry === "") {
     throw mobileBuildError(
-      `[mobile-build] Could not inspect ${artifact}: ${
-        result.error?.message ||
-        result.stderr ||
-        result.stdout ||
-        `jar exited with ${result.status}`
-      }`,
-      result.error ? { cause: result.error } : undefined,
+      `[mobile-build] Refusing empty archive path for ${label}.`,
+      {
+        code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+        context: { entry, label },
+      },
     );
   }
-  return result.stdout.split(/\r?\n/);
+  const pathWithoutDirectorySuffix = entry.endsWith("/")
+    ? entry.slice(0, -1)
+    : entry;
+  const segments = pathWithoutDirectorySuffix.split("/");
+  if (
+    pathWithoutDirectorySuffix === "" ||
+    entry.includes("\\") ||
+    entry.includes("\0") ||
+    path.posix.isAbsolute(entry) ||
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === "..",
+    ) ||
+    path.posix.normalize(pathWithoutDirectorySuffix) !==
+      pathWithoutDirectorySuffix
+  ) {
+    throw mobileBuildError(
+      `[mobile-build] Refusing unsafe archive path for ${label}: ${entry}`,
+      {
+        code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+        context: { entry, label },
+      },
+    );
+  }
 }
 
-function readAndroidArtifactEntryBuffers(
+export function snapshotAndroidArtifact(
   artifact,
-  entries,
-  javaHome,
-  { label = "artifact policy" } = {},
+  {
+    closeSync = fs.closeSync,
+    fstatSync = fs.fstatSync,
+    maxArtifactBytes = MAX_ANDROID_ARTIFACT_BYTES,
+    openSync = fs.openSync,
+    readSync = fs.readSync,
+  } = {},
 ) {
-  const extractionDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "eliza-android-artifact-audit-"),
-  );
+  let descriptor;
+  let stats;
+  let bytes;
   try {
-    const jar = resolveJarTool(javaHome);
-    const extraction = spawnSync(jar, ["xf", artifact, ...entries], {
-      cwd: extractionDir,
-      encoding: "utf8",
-    });
-    if (extraction.error || extraction.status !== 0) {
+    descriptor = openSync(artifact, "r");
+    stats = fstatSync(descriptor);
+    if (!stats.isFile()) {
+      throw new Error("artifact path is not a regular file");
+    }
+    if (stats.size > maxArtifactBytes) {
       throw mobileBuildError(
-        `[mobile-build] Could not extract entries for ${label}: ${
-          extraction.error?.message ||
-          extraction.stderr ||
-          extraction.stdout ||
-          `jar exited with ${extraction.status}`
-        }`,
-        extraction.error ? { cause: extraction.error } : undefined,
+        `[mobile-build] Android artifact exceeds the ${maxArtifactBytes}-byte audit limit: ${artifact}`,
+        {
+          code: "ANDROID_ARTIFACT_TOO_LARGE",
+          context: {
+            artifact,
+            maxBytes: maxArtifactBytes,
+            sizeBytes: stats.size,
+          },
+        },
       );
     }
-    return entries.map((entry) =>
-      fs.readFileSync(path.join(extractionDir, ...entry.split("/"))),
+    bytes = Buffer.allocUnsafe(stats.size);
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const bytesRead = readSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.byteLength - offset,
+        offset,
+      );
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    const extraByte = Buffer.allocUnsafe(1);
+    const extraBytesRead = readSync(descriptor, extraByte, 0, 1, offset);
+    const finalStats = fstatSync(descriptor);
+    if (
+      offset !== bytes.byteLength ||
+      extraBytesRead !== 0 ||
+      finalStats.size !== stats.size
+    ) {
+      throw mobileBuildError(
+        `[mobile-build] Android artifact changed while it was being snapshotted: ${artifact}`,
+        {
+          code: "ANDROID_ARTIFACT_CHANGED_DURING_AUDIT",
+          context: {
+            artifact,
+            bytesRead: offset + extraBytesRead,
+            expectedBytes: stats.size,
+            finalSizeBytes: finalStats.size,
+          },
+        },
+      );
+    }
+  } catch (cause) {
+    // error-policy:J2 preserve the artifact path around snapshot I/O failures
+    if (
+      cause?.code === "ANDROID_ARTIFACT_TOO_LARGE" ||
+      cause?.code === "ANDROID_ARTIFACT_CHANGED_DURING_AUDIT"
+    ) {
+      throw cause;
+    }
+    throw mobileBuildError(
+      `[mobile-build] Could not snapshot Android artifact ${artifact}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+        code: "ANDROID_ARTIFACT_SNAPSHOT_FAILED",
+        context: { artifact },
+      },
     );
   } finally {
-    fs.rmSync(extractionDir, { force: true, recursive: true });
+    if (descriptor !== undefined) closeSync(descriptor);
   }
+  return {
+    bytes,
+    sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+    sizeBytes: bytes.byteLength,
+  };
+}
+
+export function assertAndroidArtifactSnapshotUnchanged(
+  artifact,
+  before,
+  after,
+) {
+  if (before.sha256 !== after.sha256 || before.sizeBytes !== after.sizeBytes) {
+    throw mobileBuildError(
+      `[mobile-build] Android artifact changed during audit; refusing evidence for unstable bytes: ${artifact}`,
+      {
+        code: "ANDROID_ARTIFACT_CHANGED_DURING_AUDIT",
+        context: {
+          artifact,
+          after: {
+            sha256: after.sha256,
+            sizeBytes: after.sizeBytes,
+          },
+          before: {
+            sha256: before.sha256,
+            sizeBytes: before.sizeBytes,
+          },
+        },
+      },
+    );
+  }
+}
+
+/**
+ * Parses APK/AAB metadata from a bounded immutable byte snapshot.
+ *
+ * adm-zip handles ZIP64 central-directory records, while extraction remains
+ * below under an explicit output bound. Reading each compressed slice forces
+ * local-header parsing without expanding attacker-controlled payload bytes.
+ */
+function readAndroidArtifactArchiveMetadata(
+  artifact,
+  bytes,
+  { maxEntries = MAX_ANDROID_ARCHIVE_ENTRIES } = {},
+) {
+  const decoder = {
+    efs: true,
+    decode: (value) => new TextDecoder("utf-8", { fatal: true }).decode(value),
+    encode: (value) => Buffer.from(value, "utf8"),
+  };
+  try {
+    const archive = new AdmZip(bytes, {
+      decoder,
+      noSort: true,
+    });
+    const archiveEntries = archive.getEntries();
+    if (archiveEntries.length === 0) {
+      throw mobileBuildError(
+        `[mobile-build] Android artifact archive has no entries: ${artifact}`,
+        {
+          code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+          context: { artifact },
+        },
+      );
+    }
+    if (archiveEntries.length > maxEntries) {
+      throw mobileBuildError(
+        `[mobile-build] Android artifact exceeds the ${maxEntries}-entry audit limit: ${artifact}`,
+        {
+          code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+          context: {
+            artifact,
+            entries: archiveEntries.length,
+            maxEntries,
+          },
+        },
+      );
+    }
+
+    const seen = new Set();
+    return archiveEntries.map((archiveEntry) => {
+      const entry = archiveEntry.entryName;
+      assertSafeAndroidArchiveEntry(entry, "artifact entry discovery");
+      if (seen.has(entry)) {
+        throw mobileBuildError(
+          `[mobile-build] Android artifact contains duplicate archive entry: ${entry}`,
+          {
+            code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+            context: { artifact, entry },
+          },
+        );
+      }
+      seen.add(entry);
+
+      const header = archiveEntry.header;
+      const numericFields = {
+        compressedSize: header.compressedSize,
+        crc32: header.crc,
+        localHeaderOffset: header.offset,
+        size: header.size,
+      };
+      for (const [field, value] of Object.entries(numericFields)) {
+        if (!Number.isSafeInteger(value) || value < 0) {
+          throw mobileBuildError(
+            `[mobile-build] Android artifact has an invalid ${field} for ${entry}.`,
+            {
+              code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+              context: { artifact, entry, field, value },
+            },
+          );
+        }
+      }
+      if (header.diskNumStart !== 0) {
+        throw mobileBuildError(
+          `[mobile-build] Multi-disk Android artifacts are not supported: ${entry}`,
+          {
+            code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+            context: {
+              artifact,
+              diskNumber: header.diskNumStart,
+              entry,
+            },
+          },
+        );
+      }
+      if (header.encrypted) {
+        throw mobileBuildError(
+          `[mobile-build] Encrypted Android artifact entries cannot be audited: ${entry}`,
+          {
+            code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+            context: { artifact, entry },
+          },
+        );
+      }
+
+      const compressedBytes = archiveEntry.getCompressedData();
+      const localHeader = header.localHeader;
+      if (compressedBytes.byteLength !== header.compressedSize) {
+        throw mobileBuildError(
+          `[mobile-build] Android artifact entry ${entry} has inconsistent compressed size metadata.`,
+          {
+            code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+            context: {
+              actualCompressedSize: compressedBytes.byteLength,
+              artifact,
+              entry,
+              expectedCompressedSize: header.compressedSize,
+            },
+          },
+        );
+      }
+      if (
+        localHeader.flags !== header.flags ||
+        localHeader.method !== header.method
+      ) {
+        throw mobileBuildError(
+          `[mobile-build] Android artifact entry ${entry} has inconsistent local and central headers.`,
+          {
+            code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+            context: {
+              artifact,
+              centralFlags: header.flags,
+              centralMethod: header.method,
+              entry,
+              localFlags: localHeader.flags,
+              localMethod: localHeader.method,
+            },
+          },
+        );
+      }
+
+      const localNameStart = header.offset + 30;
+      const localNameEnd = localNameStart + localHeader.fnameLen;
+      if (
+        localNameStart < 30 ||
+        localNameEnd > bytes.byteLength ||
+        !bytes
+          .subarray(localNameStart, localNameEnd)
+          .equals(Buffer.from(archiveEntry.rawEntryName))
+      ) {
+        throw mobileBuildError(
+          `[mobile-build] Android artifact entry ${entry} has mismatched local filename metadata.`,
+          {
+            code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+            context: { artifact, entry },
+          },
+        );
+      }
+
+      if (!header.flags_desc) {
+        const localSizeMatches =
+          localHeader.size === header.size || localHeader.size === 0xffffffff;
+        const localCompressedSizeMatches =
+          localHeader.compressedSize === header.compressedSize ||
+          localHeader.compressedSize === 0xffffffff;
+        if (
+          localHeader.crc !== header.crc ||
+          !localSizeMatches ||
+          !localCompressedSizeMatches
+        ) {
+          throw mobileBuildError(
+            `[mobile-build] Android artifact entry ${entry} has inconsistent local integrity metadata.`,
+            {
+              code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+              context: {
+                artifact,
+                entry,
+                expectedCompressedSize: header.compressedSize,
+                expectedCrc32: header.crc,
+                expectedSize: header.size,
+                localCompressedSize: localHeader.compressedSize,
+                localCrc32: localHeader.crc,
+                localSize: localHeader.size,
+              },
+            },
+          );
+        }
+      }
+
+      return {
+        compressedBytes,
+        compressedSize: header.compressedSize,
+        crc32: header.crc,
+        entry,
+        method: header.method,
+        size: header.size,
+      };
+    });
+  } catch (cause) {
+    // error-policy:J2 preserve artifact identity around archive parser failures
+    if (
+      cause instanceof ElizaError &&
+      cause.code.startsWith("ANDROID_ARTIFACT_")
+    ) {
+      throw cause;
+    }
+    throw mobileBuildError(
+      `[mobile-build] Could not inspect Android artifact archive ${artifact}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+        code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+        context: { artifact },
+      },
+    );
+  }
+}
+
+export function listAndroidArtifactEntries(
+  artifact,
+  _javaHome,
+  { artifactBytes, maxEntries = MAX_ANDROID_ARCHIVE_ENTRIES } = {},
+) {
+  const bytes =
+    artifactBytes === undefined
+      ? snapshotAndroidArtifact(artifact).bytes
+      : Buffer.from(artifactBytes);
+  return readAndroidArtifactArchiveMetadata(artifact, bytes, {
+    maxEntries,
+  }).map(({ entry }) => entry);
+}
+
+export function readAndroidArtifactEntryBuffers(
+  artifact,
+  entries,
+  _javaHome,
+  {
+    artifactBytes,
+    label = "artifact policy",
+    maxEntryBytes = MAX_ANDROID_EXTRACTED_ENTRY_BYTES,
+    maxTotalBytes = MAX_ANDROID_EXTRACTED_TOTAL_BYTES,
+  } = {},
+) {
+  for (const entry of entries) {
+    assertSafeAndroidArchiveEntry(entry, label);
+  }
+  const bytes =
+    artifactBytes === undefined
+      ? snapshotAndroidArtifact(artifact).bytes
+      : Buffer.from(artifactBytes);
+  const metadata = readAndroidArtifactArchiveMetadata(artifact, bytes);
+  const metadataByEntry = new Map(
+    metadata.map((entryMetadata) => [entryMetadata.entry, entryMetadata]),
+  );
+  let expectedCompressedTotalBytes = 0;
+  let expectedTotalBytes = 0;
+  const selectedMetadata = entries.map((entry) => {
+    const entryMetadata = metadataByEntry.get(entry);
+    if (!entryMetadata) {
+      throw mobileBuildError(
+        `[mobile-build] Android artifact is missing requested ${label} entry: ${entry}`,
+        {
+          code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+          context: { artifact, entry, label },
+        },
+      );
+    }
+    if (
+      entryMetadata.compressedSize > maxEntryBytes ||
+      entryMetadata.size > maxEntryBytes
+    ) {
+      throw mobileBuildError(
+        `[mobile-build] ${label} entry exceeds the ${maxEntryBytes}-byte audit limit: ${entry}`,
+        {
+          code: "ANDROID_ARTIFACT_ENTRY_TOO_LARGE",
+          context: {
+            artifact,
+            compressedSizeBytes: entryMetadata.compressedSize,
+            entry,
+            maxBytes: maxEntryBytes,
+            sizeBytes: entryMetadata.size,
+          },
+        },
+      );
+    }
+    expectedCompressedTotalBytes += entryMetadata.compressedSize;
+    expectedTotalBytes += entryMetadata.size;
+    if (
+      expectedCompressedTotalBytes > maxTotalBytes ||
+      expectedTotalBytes > maxTotalBytes
+    ) {
+      throw mobileBuildError(
+        `[mobile-build] ${label} entries exceed the ${maxTotalBytes}-byte total audit limit.`,
+        {
+          code: "ANDROID_ARTIFACT_ENTRY_TOO_LARGE",
+          context: {
+            artifact,
+            compressedTotalBytes: expectedCompressedTotalBytes,
+            maxTotalBytes,
+            totalBytes: expectedTotalBytes,
+          },
+        },
+      );
+    }
+    return entryMetadata;
+  });
+
+  let actualTotalBytes = 0;
+  return selectedMetadata.map((entryMetadata) => {
+    let bytesForEntry;
+    try {
+      if (entryMetadata.method === 0) {
+        bytesForEntry = Buffer.from(entryMetadata.compressedBytes);
+      } else if (entryMetadata.method === 8) {
+        bytesForEntry = inflateRawSync(entryMetadata.compressedBytes, {
+          maxOutputLength: Math.max(1, entryMetadata.size),
+        });
+      } else {
+        throw new Error(
+          `unsupported ZIP compression method ${entryMetadata.method}`,
+        );
+      }
+    } catch (cause) {
+      // error-policy:J2 preserve entry identity around payload decoder failures
+      throw mobileBuildError(
+        `[mobile-build] Could not decode ${label} entry ${entryMetadata.entry}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        {
+          cause,
+          code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+          context: {
+            artifact,
+            entry: entryMetadata.entry,
+            label,
+            method: entryMetadata.method,
+          },
+        },
+      );
+    }
+
+    actualTotalBytes += bytesForEntry.byteLength;
+    if (
+      bytesForEntry.byteLength > maxEntryBytes ||
+      actualTotalBytes > maxTotalBytes
+    ) {
+      throw mobileBuildError(
+        `[mobile-build] Extracted ${label} payload exceeds the bounded audit size.`,
+        {
+          code: "ANDROID_ARTIFACT_ENTRY_TOO_LARGE",
+          context: {
+            artifact,
+            entry: entryMetadata.entry,
+            entryBytes: bytesForEntry.byteLength,
+            totalBytes: actualTotalBytes,
+          },
+        },
+      );
+    }
+    if (bytesForEntry.byteLength !== entryMetadata.size) {
+      throw mobileBuildError(
+        `[mobile-build] ${label} entry ${entryMetadata.entry} expanded to ${bytesForEntry.byteLength} bytes; the archive declares ${entryMetadata.size}.`,
+        {
+          code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+          context: {
+            actualSizeBytes: bytesForEntry.byteLength,
+            artifact,
+            entry: entryMetadata.entry,
+            expectedSizeBytes: entryMetadata.size,
+            label,
+          },
+        },
+      );
+    }
+    const actualCrc32 = crc32(bytesForEntry) >>> 0;
+    if (actualCrc32 !== entryMetadata.crc32) {
+      throw mobileBuildError(
+        `[mobile-build] ${label} entry ${entryMetadata.entry} failed CRC32 verification.`,
+        {
+          code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+          context: {
+            actualCrc32,
+            artifact,
+            entry: entryMetadata.entry,
+            expectedCrc32: entryMetadata.crc32,
+            label,
+          },
+        },
+      );
+    }
+    return bytesForEntry;
+  });
 }
 
 export function auditAndroidArtifactDexLp3Policy(
@@ -7261,44 +7776,50 @@ export function assertAndroidArtifactOmitsLp3ManifestMarkers(
  * `assets/agent/` is the staged local-agent payload (only present on
  * local/sideload builds; cloud thin clients deliberately strip it).
  */
-function assertAndroidArtifactShipsWebPayload(
+export function assertAndroidArtifactShipsWebPayload(
   artifact,
   entries,
   { requireAgent = false, label = "android" } = {},
 ) {
-  // APKs package assets at `assets/...`; AABs nest them under a module dir
-  // (`base/assets/...`). Match on the canonical suffix so one assertion covers
-  // both `:app:assembleDebug` (APK) and `:app:bundleRelease` (AAB) outputs.
-  const hasAssetFile = (suffix) =>
-    entries.some(
-      (entry) =>
-        entry === `assets/${suffix}` || entry.endsWith(`/assets/${suffix}`),
-    );
+  const assetRoot =
+    resolveAndroidArtifactKind(artifact) === "aab" ? "base/assets/" : "assets/";
+  const hasAssetFile = (suffix) => entries.includes(`${assetRoot}${suffix}`);
   const hasAssetDir = (prefix) =>
-    entries.some(
-      (entry) =>
-        entry.startsWith(`assets/${prefix}`) ||
-        entry.includes(`/assets/${prefix}`),
-    );
+    entries.some((entry) => entry.startsWith(`${assetRoot}${prefix}`));
   const required = ["public/index.html", "capacitor.config.json"];
   const missing = required.filter((suffix) => !hasAssetFile(suffix));
   if (requireAgent && !hasAssetDir("agent/")) missing.push("assets/agent/");
   if (missing.length > 0) {
-    throw new Error(
+    throw mobileBuildError(
       `[mobile-build] ${label} artifact is missing required packaged payload — ` +
         `it would ship a web-less app that fails with ERR_CONNECTION_REFUSED:\n` +
         missing.map((entry) => `  - ${entry}`).join("\n") +
         `\n  artifact: ${artifact}`,
+      {
+        code: "ANDROID_ARTIFACT_WEB_PAYLOAD_MISSING",
+        context: {
+          artifact,
+          artifactKind: resolveAndroidArtifactKind(artifact),
+          label,
+          missing,
+        },
+      },
     );
   }
 }
 
-export function auditAndroidCloudArtifact({
-  artifact: requestedArtifact,
-  debug = false,
-  env = process.env,
-  javaHome,
-} = {}) {
+export function auditAndroidCloudArtifact(
+  {
+    artifact: requestedArtifact,
+    debug = false,
+    env = process.env,
+    javaHome,
+  } = {},
+  {
+    inspectAndroidAppBundleImpl = inspectAndroidAppBundle,
+    log = console.log,
+  } = {},
+) {
   const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
   const artifact =
@@ -7324,100 +7845,188 @@ export function auditAndroidCloudArtifact({
       `[mobile-build] android-cloud ${debug ? "debug" : "release"} audit expected ${expectedArtifactKind.toUpperCase()} but received ${artifactKind.toUpperCase()}: ${artifact}`,
     );
   }
-  const entries = listAndroidArtifactEntries(artifact, javaHome);
-  const offenders = entries.filter((entry) =>
-    /(^|\/)assets\/agent\/|libeliza_|libllama|libsigsys-handler\.so|llama-cpp-kernels\.json/i.test(
-      entry,
-    ),
-  );
+  const initialSnapshot = snapshotAndroidArtifact(artifact);
+  const entries = listAndroidArtifactEntries(artifact, javaHome, {
+    artifactBytes: initialSnapshot.bytes,
+  });
+  const offenders = findAndroidCloudPackagedRuntimeOffenders(entries);
   if (offenders.length > 0) {
     throw mobileBuildError(
       `[mobile-build] android-cloud artifact contains local runtime payloads:\n` +
         offenders.map((entry) => `  - ${entry}`).join("\n"),
+      {
+        code: "ANDROID_CLOUD_RUNTIME_PAYLOAD_PRESENT",
+        context: { artifact, offenders },
+      },
     );
   }
-  if (artifactKind === "apk") {
-    // APK inspection deliberately retains the existing AAPT badging/xmltree
-    // behavior. bundletool is only valid for the release App Bundle path.
-    const aapt = resolveAndroidBuildTool(resolveAndroidSdkRoot(env), "aapt");
-    if (!aapt) {
-      throw mobileBuildError(
-        "[mobile-build] Could not find aapt under Android SDK build-tools for android-cloud artifact audit.",
-      );
-    }
-    const badging = dumpAndroidArtifactBadging(aapt, artifact);
-    const permissionOffenders = stripPolicy.permissions.filter((perm) =>
-      badging.includes(`uses-permission: name='android.permission.${perm}'`),
+  const integrityEntries = entries.filter((entry) =>
+    artifactKind === "aab"
+      ? /^[^/]+\/manifest\/AndroidManifest\.xml$/.test(entry) ||
+        entry === "base/assets/public/index.html" ||
+        entry === "base/assets/capacitor.config.json"
+      : entry === "AndroidManifest.xml" ||
+        entry === "assets/public/index.html" ||
+        entry === "assets/capacitor.config.json",
+  );
+  if (integrityEntries.length > 0) {
+    readAndroidArtifactEntryBuffers(artifact, integrityEntries, javaHome, {
+      artifactBytes: initialSnapshot.bytes,
+      label: "android-cloud policy evidence",
+    });
+  }
+  const snapshotDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-android-artifact-snapshot-"),
+  );
+  const inspectedArtifact = path.join(snapshotDir, `artifact.${artifactKind}`);
+  try {
+    fs.writeFileSync(inspectedArtifact, initialSnapshot.bytes);
+  } catch (cause) {
+    // error-policy:J2 preserve snapshot provenance around materialization failures
+    fs.rmSync(snapshotDir, { force: true, recursive: true });
+    throw mobileBuildError(
+      `[mobile-build] Could not materialize immutable Android artifact snapshot: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+        code: "ANDROID_ARTIFACT_SNAPSHOT_FAILED",
+        context: { artifact, inspectedArtifact },
+      },
     );
-    if (permissionOffenders.length > 0) {
-      throw mobileBuildError(
-        "[mobile-build] android-cloud artifact still requests stripped permissions:\n" +
-          permissionOffenders
-            .map((perm) => `  - android.permission.${perm}`)
-            .join("\n"),
-      );
-    }
-    const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
-    for (const component of stripPolicy.components) {
-      if (manifestText.includes(`${APP.appId}.${component}`)) {
+  }
+  let evidence;
+  try {
+    if (artifactKind === "apk") {
+      // APK inspection deliberately retains the existing AAPT badging/xmltree
+      // behavior. bundletool is only valid for the release App Bundle path.
+      const aapt = resolveAndroidBuildTool(resolveAndroidSdkRoot(env), "aapt");
+      if (!aapt) {
         throw mobileBuildError(
-          `[mobile-build] android-cloud artifact still declares stripped component ${component}`,
+          "[mobile-build] Could not find aapt under Android SDK build-tools for android-cloud artifact audit.",
         );
       }
-    }
-    if (lp3ColorPolicyEnabled) {
-      const missingPermissions = ANDROID_LP3_COLOR_POLICY_PERMISSIONS.filter(
-        (permission) =>
-          !badging.includes(
-            `uses-permission: name='android.permission.${permission}'`,
-          ),
+      const badging = dumpAndroidArtifactBadging(aapt, inspectedArtifact);
+      const permissionOffenders = stripPolicy.permissions.filter((perm) =>
+        badging.includes(`uses-permission: name='android.permission.${perm}'`),
       );
-      if (missingPermissions.length > 0) {
+      if (permissionOffenders.length > 0) {
         throw mobileBuildError(
-          "[mobile-build] opted-in LP3 artifact is missing required permissions:\n" +
-            missingPermissions
-              .map((permission) => `  - android.permission.${permission}`)
+          "[mobile-build] android-cloud artifact still requests stripped permissions:\n" +
+            permissionOffenders
+              .map((perm) => `  - android.permission.${perm}`)
               .join("\n"),
         );
       }
-      assertAndroidLp3ColorPolicyManifest(manifestText);
+      const manifestText = dumpAndroidArtifactManifest(aapt, inspectedArtifact);
+      for (const component of stripPolicy.components) {
+        if (manifestText.includes(`${APP.appId}.${component}`)) {
+          throw mobileBuildError(
+            `[mobile-build] android-cloud artifact still declares stripped component ${component}`,
+          );
+        }
+      }
+      if (lp3ColorPolicyEnabled) {
+        const missingPermissions = ANDROID_LP3_COLOR_POLICY_PERMISSIONS.filter(
+          (permission) =>
+            !badging.includes(
+              `uses-permission: name='android.permission.${permission}'`,
+            ),
+        );
+        if (missingPermissions.length > 0) {
+          throw mobileBuildError(
+            "[mobile-build] opted-in LP3 artifact is missing required permissions:\n" +
+              missingPermissions
+                .map((permission) => `  - android.permission.${permission}`)
+                .join("\n"),
+          );
+        }
+        assertAndroidLp3ColorPolicyManifest(manifestText);
+      } else {
+        assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
+          label: "normal Cloud",
+        });
+      }
+      auditAndroidArtifactDexLp3Policy(
+        inspectedArtifact,
+        entries,
+        javaHome,
+        {
+          debug,
+          expectedPresent: lp3ColorPolicyEnabled,
+        },
+        {
+          readEntryBuffers: (
+            selectedArtifact,
+            selectedEntries,
+            selectedJavaHome,
+            options,
+          ) =>
+            readAndroidArtifactEntryBuffers(
+              selectedArtifact,
+              selectedEntries,
+              selectedJavaHome,
+              {
+                ...options,
+                artifactBytes: initialSnapshot.bytes,
+              },
+            ),
+        },
+      );
     } else {
-      assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
-        label: "normal Cloud",
+      evidence = inspectAndroidAppBundleImpl({
+        appId: APP.appId,
+        artifact: inspectedArtifact,
+        entries,
+        env,
+        javaHome,
+        readDexEntries: (dexEntries) =>
+          readAndroidArtifactEntryBuffers(
+            inspectedArtifact,
+            dexEntries,
+            javaHome,
+            {
+              artifactBytes: initialSnapshot.bytes,
+              label: "android-cloud AAB DEX audit",
+            },
+          ),
+        strippedComponents: stripPolicy.components,
+        strippedPermissions: stripPolicy.permissions,
       });
     }
-    auditAndroidArtifactDexLp3Policy(artifact, entries, javaHome, {
-      debug,
-      expectedPresent: lp3ColorPolicyEnabled,
+    // Cloud is a thin client (no on-device agent), but it must still ship the
+    // renderer — a web-less cloud APK is just as broken as a web-less sideload.
+    assertAndroidArtifactShipsWebPayload(artifact, entries, {
+      requireAgent: false,
+      label: "android-cloud",
     });
-  } else {
-    const evidence = inspectAndroidAppBundle({
-      appId: APP.appId,
-      artifact,
-      entries,
-      env,
-      javaHome,
-      readDexEntries: (dexEntries) =>
-        readAndroidArtifactEntryBuffers(artifact, dexEntries, javaHome, {
-          label: "android-cloud AAB DEX audit",
-        }),
-      strippedComponents: stripPolicy.components,
-      strippedPermissions: stripPolicy.permissions,
-    });
-    console.log(
+  } finally {
+    fs.rmSync(snapshotDir, { force: true, recursive: true });
+  }
+
+  const finalSnapshot = snapshotAndroidArtifact(artifact);
+  assertAndroidArtifactSnapshotUnchanged(
+    artifact,
+    initialSnapshot,
+    finalSnapshot,
+  );
+  if (evidence) {
+    log(
       `[mobile-build] android-cloud AAB manifests inspected: ${evidence.modules.join(", ")}`,
     );
-    console.log(
+    log(
       `[mobile-build] android-cloud AAB DEX inspected:\n${evidence.dexEntries.map((entry) => `  - ${entry}`).join("\n")}`,
     );
+    log(
+      `[mobile-build] android-cloud AAB attestation ${JSON.stringify({
+        ...evidence,
+        artifact: {
+          path: artifact,
+          sha256: initialSnapshot.sha256,
+          sizeBytes: initialSnapshot.sizeBytes,
+        },
+      })}`,
+    );
   }
-  // Cloud is a thin client (no on-device agent), but it must still ship the
-  // renderer — a web-less cloud APK is just as broken as a web-less sideload.
-  assertAndroidArtifactShipsWebPayload(artifact, entries, {
-    requireAgent: false,
-    label: "android-cloud",
-  });
-  console.log(
+  log(
     `[mobile-build] android-cloud${lp3ColorPolicyEnabled ? " LP3 direct" : ""} artifact audit passed: ${artifact}`,
   );
   return artifact;
@@ -7456,28 +8065,17 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
 }
 
 function assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome) {
-  const jar = resolveJarTool(javaHome);
-  const jarResult = spawnSync(jar, ["tf", artifact], { encoding: "utf8" });
-  if (jarResult.status !== 0) {
-    throw new Error(
-      `[mobile-build] Could not inspect ${artifact}: ${
-        jarResult.stderr ||
-        jarResult.stdout ||
-        `jar exited with ${jarResult.status}`
-      }`,
-    );
-  }
-  const packagedOffenders = jarResult.stdout
-    .split(/\r?\n/)
-    .filter((entry) =>
-      /(^|\/)assets\/agent\/|libeliza_|libllama|libsigsys-handler\.so|llama-cpp-kernels\.json/i.test(
-        entry,
-      ),
-    );
+  const packagedOffenders = findAndroidCloudPackagedRuntimeOffenders(
+    listAndroidArtifactEntries(artifact, javaHome),
+  );
   if (packagedOffenders.length > 0) {
-    throw new Error(
+    throw mobileBuildError(
       `[mobile-build] android-sms-gateway artifact contains local runtime payloads:\n` +
         packagedOffenders.map((entry) => `  - ${entry}`).join("\n"),
+      {
+        code: "ANDROID_CLOUD_RUNTIME_PAYLOAD_PRESENT",
+        context: { artifact, offenders: packagedOffenders },
+      },
     );
   }
 }

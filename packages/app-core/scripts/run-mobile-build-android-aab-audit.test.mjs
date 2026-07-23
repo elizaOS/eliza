@@ -9,11 +9,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { unzipSync, zipSync } from "fflate";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { ElizaError as CoreElizaError } from "../../core/src/errors.ts";
 
 import {
+  ANDROID_AAB_AUDIT_TIMEOUT_MS,
+  ANDROID_AAB_MAX_DEX_ENTRIES,
+  ANDROID_AAB_MAX_MANIFEST_MODULES,
   ANDROID_BUNDLETOOL_JAR_ENV,
   ANDROID_BUNDLETOOL_SHA256,
+  ANDROID_BUNDLETOOL_TIMEOUT_MS,
   ANDROID_BUNDLETOOL_URL,
   ANDROID_BUNDLETOOL_VERSION,
   ensureAndroidBundletoolJar,
@@ -21,20 +26,31 @@ import {
   listAabDexEntries,
   listAabManifestModules,
   resolveAndroidArtifactKind,
+  resolveBundletoolInvocation,
+  runCheckedBundletool,
 } from "./lib/android-cloud-artifact-audit.mjs";
+import { ElizaError as ScriptElizaError } from "./lib/eliza-error.mjs";
 import {
   assertAndroidArtifactOmitsLp3ManifestMarkers,
+  assertAndroidArtifactShipsWebPayload,
+  assertAndroidArtifactSnapshotUnchanged,
   auditAndroidArtifactDexLp3Policy,
   auditAndroidCloudArtifact,
   dumpAndroidArtifactBadging,
   dumpAndroidArtifactManifest,
+  findAndroidCloudAab,
+  findAndroidCloudPackagedRuntimeOffenders,
+  listAndroidArtifactEntries,
+  readAndroidArtifactEntryBuffers,
+  resolveAndroidBuildTool,
+  snapshotAndroidArtifact,
 } from "./run-mobile-build.mjs";
 
 const ARTIFACT = "/artifacts/app-release.aab";
 const BUNDLETOOL_JAR = "/tools/bundletool-all.jar";
 const JAVA_HOME = "/jdk";
 const CLEAN_MANIFEST =
-  '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><application/></manifest>';
+  '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ai.elizaos.app"><uses-permission android:name="android.permission.INTERNET"/><application/></manifest>';
 const BASE_ENTRIES = [
   "base/manifest/AndroidManifest.xml",
   "base/dex/classes.dex",
@@ -50,6 +66,18 @@ const ANDROID_APP_GRADLE = fs.readFileSync(
   new URL("../platforms/android/app/build.gradle", import.meta.url),
   "utf8",
 );
+const MOBILE_BUILD_SOURCE = fs.readFileSync(
+  new URL("./run-mobile-build.mjs", import.meta.url),
+  "utf8",
+);
+const AAB_AUDIT_SOURCE = fs.readFileSync(
+  new URL("./lib/android-cloud-artifact-audit.mjs", import.meta.url),
+  "utf8",
+);
+const ELIZA_ERROR_SOURCE = fs.readFileSync(
+  new URL("./lib/eliza-error.mjs", import.meta.url),
+  "utf8",
+);
 const REAL_AAB_FIXTURE = fileURLToPath(
   new URL(
     "../test/fixtures/android/install-time-permanent-modules.aab",
@@ -57,8 +85,22 @@ const REAL_AAB_FIXTURE = fileURLToPath(
   ),
 );
 const REAL_AAB_PACKAGE = "com.google.android.samples.dynamicfeatures.ondemand";
+// Generic app-core CI lanes do not all provision a JDK or permit downloads.
+// Opt in only after the caller has provisioned the Android/JDK toolchain.
 const RUN_REAL_AAB_TEST = process.env.ELIZA_ANDROID_RUN_REAL_AAB_TEST === "1";
 const describeRealAab = RUN_REAL_AAB_TEST ? describe : describe.skip;
+let realBundletoolJar;
+
+function verifiedToolDeps(overrides = {}) {
+  return {
+    digestBuffer: () => ANDROID_BUNDLETOOL_SHA256,
+    existsSync: () => true,
+    platform: "linux",
+    readFileSync: () => Buffer.from("checksum-pinned bundletool"),
+    resolvePath: (value) => value,
+    ...overrides,
+  };
+}
 
 function successfulToolHarness(
   manifests = new Map([["base", CLEAN_MANIFEST]]),
@@ -91,12 +133,7 @@ function successfulToolHarness(
 
   return {
     calls,
-    deps: {
-      existsSync: () => true,
-      platform: "linux",
-      resolvePath: (value) => value,
-      spawnSyncImpl,
-    },
+    deps: verifiedToolDeps({ spawnSyncImpl }),
     spawnSyncImpl,
   };
 }
@@ -127,18 +164,138 @@ function readRealAab(artifact) {
 
 function realAabInspectionOptions(artifact, archive = readRealAab(artifact)) {
   const entries = Object.keys(archive);
+  const artifactBytes = fs.readFileSync(artifact);
   return {
     appId: REAL_AAB_PACKAGE,
     artifact,
     entries,
     env: {
-      [ANDROID_BUNDLETOOL_JAR_ENV]: process.env[ANDROID_BUNDLETOOL_JAR_ENV],
+      [ANDROID_BUNDLETOOL_JAR_ENV]: realBundletoolJar,
     },
     javaHome: process.env.JAVA_HOME,
     readDexEntries: (dexEntries) =>
-      dexEntries.map((entry) => Buffer.from(archive[entry])),
+      readAndroidArtifactEntryBuffers(
+        artifact,
+        dexEntries,
+        process.env.JAVA_HOME,
+        {
+          artifactBytes,
+          label: "real AAB DEX regression",
+        },
+      ),
     strippedComponents: [],
     strippedPermissions: [],
+  };
+}
+
+function findCentralDirectoryEntry(bytes, entryName) {
+  const signature = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const signatureOffset = bytes.indexOf(signature, offset);
+    if (signatureOffset === -1) break;
+    offset = signatureOffset;
+    if (offset + 46 > bytes.byteLength) break;
+    const nameLength = bytes.readUInt16LE(offset + 28);
+    const extraLength = bytes.readUInt16LE(offset + 30);
+    const commentLength = bytes.readUInt16LE(offset + 32);
+    const nextOffset = offset + 46 + nameLength + extraLength + commentLength;
+    if (nextOffset > bytes.byteLength) {
+      offset += 1;
+      continue;
+    }
+    const name = bytes
+      .subarray(offset + 46, offset + 46 + nameLength)
+      .toString("utf8");
+    if (name === entryName) {
+      return {
+        centralOffset: offset,
+        localOffset: bytes.readUInt32LE(offset + 42),
+      };
+    }
+    offset = nextOffset;
+  }
+  throw new Error(`Central-directory entry not found: ${entryName}`);
+}
+
+function rewriteEntryCrc(bytes, entryName, { rewriteLocal = false } = {}) {
+  const mutated = Buffer.from(bytes);
+  const { centralOffset, localOffset } = findCentralDirectoryEntry(
+    mutated,
+    entryName,
+  );
+  const replacement =
+    (mutated.readUInt32LE(centralOffset + 16) ^ 0xffffffff) >>> 0;
+  mutated.writeUInt32LE(replacement, centralOffset + 16);
+  if (rewriteLocal) {
+    mutated.writeUInt32LE(replacement, localOffset + 14);
+  }
+  return mutated;
+}
+
+function rewriteEntryDeclaredSize(bytes, entryName, size) {
+  const mutated = Buffer.from(bytes);
+  const { centralOffset, localOffset } = findCentralDirectoryEntry(
+    mutated,
+    entryName,
+  );
+  mutated.writeUInt32LE(size, centralOffset + 24);
+  mutated.writeUInt32LE(size, localOffset + 22);
+  return mutated;
+}
+
+function useDataDescriptorLocalPlaceholders(bytes, entryName) {
+  const mutated = Buffer.from(bytes);
+  const { centralOffset, localOffset } = findCentralDirectoryEntry(
+    mutated,
+    entryName,
+  );
+  mutated.writeUInt16LE(
+    mutated.readUInt16LE(centralOffset + 8) | 0x08,
+    centralOffset + 8,
+  );
+  mutated.writeUInt16LE(
+    mutated.readUInt16LE(localOffset + 6) | 0x08,
+    localOffset + 6,
+  );
+  mutated.fill(0, localOffset + 14, localOffset + 26);
+  return mutated;
+}
+
+function writeSyntheticCloudAab(
+  temporaryDir,
+  { includeWebPayload = true } = {},
+) {
+  const entries = {
+    "base/dex/classes.dex": Buffer.from("clean synthetic DEX", "utf8"),
+    "base/manifest/AndroidManifest.xml": Buffer.from(
+      "compiled manifest placeholder",
+      "utf8",
+    ),
+    "base/assets/capacitor.config.json": Buffer.from("{}", "utf8"),
+  };
+  if (includeWebPayload) {
+    entries["base/assets/public/index.html"] = Buffer.from(
+      "<!doctype html>",
+      "utf8",
+    );
+  }
+  const artifact = path.join(temporaryDir, "app-release.aab");
+  fs.writeFileSync(artifact, zipSync(entries));
+  return artifact;
+}
+
+function syntheticAabEvidence() {
+  return {
+    appId: "ai.elizaos.app",
+    bundletool: {
+      sha256: ANDROID_BUNDLETOOL_SHA256,
+      version: ANDROID_BUNDLETOOL_VERSION,
+    },
+    dexEntries: ["base/dex/classes.dex"],
+    dexEvidence: [],
+    manifestEvidence: [],
+    modules: ["base"],
   };
 }
 
@@ -187,39 +344,69 @@ describe("Android App Bundle entry discovery", () => {
       ]),
     ).toThrow("unsafe module name");
   });
+
+  it("bounds manifest-module and DEX workloads before process execution", () => {
+    expect(ANDROID_AAB_MAX_MANIFEST_MODULES).toBeGreaterThan(1);
+    expect(ANDROID_AAB_MAX_DEX_ENTRIES).toBeGreaterThan(1);
+    expect(() =>
+      listAabManifestModules(MULTI_MODULE_ENTRIES, { maxModules: 1 }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_AAB_WORKLOAD_LIMIT_EXCEEDED",
+      }),
+    );
+    expect(() =>
+      listAabDexEntries(MULTI_MODULE_ENTRIES, { maxEntries: 1 }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_AAB_WORKLOAD_LIMIT_EXCEEDED",
+      }),
+    );
+  });
 });
 
 describeRealAab("real multi-module bundletool regression", () => {
-  it("validates and inspects every real module manifest and DEX", async () => {
-    const bundletoolJar = await ensureAndroidBundletoolJar({
+  beforeAll(async () => {
+    realBundletoolJar = await ensureAndroidBundletoolJar({
       env: process.env,
-    });
-    expect(bundletoolJar).toBe(
-      path.resolve(process.env[ANDROID_BUNDLETOOL_JAR_ENV]),
-    );
-
-    expect(
-      inspectAndroidAppBundle(realAabInspectionOptions(REAL_AAB_FIXTURE)),
-    ).toEqual({
-      dexEntries: [
-        "base/dex/classes.dex",
-        "initialInstall/dex/classes.dex",
-        "java/dex/classes.dex",
-      ],
-      modules: ["base", "assets", "initialInstall", "java"],
     });
   });
 
+  it("validates and inspects every real module manifest and DEX", async () => {
+    expect(
+      inspectAndroidAppBundle(realAabInspectionOptions(REAL_AAB_FIXTURE)),
+    ).toEqual(
+      expect.objectContaining({
+        appId: REAL_AAB_PACKAGE,
+        bundletool: {
+          sha256: ANDROID_BUNDLETOOL_SHA256,
+          version: ANDROID_BUNDLETOOL_VERSION,
+        },
+        dexEntries: [
+          "base/dex/classes.dex",
+          "initialInstall/dex/classes.dex",
+          "java/dex/classes.dex",
+        ],
+        modules: ["base", "assets", "initialInstall", "java"],
+      }),
+    );
+  });
+
   it("rejects a stripped component declared by a real dynamic feature", () => {
+    const qualifiedComponent = `${REAL_AAB_PACKAGE}.JavaSampleActivity`;
+    const escapedComponent = qualifiedComponent.replaceAll(".", String.raw`\.`);
     expect(() =>
       inspectAndroidAppBundle({
         ...realAabInspectionOptions(REAL_AAB_FIXTURE),
         strippedComponents: ["JavaSampleActivity"],
       }),
     ).toThrow(
-      // bundletool's base dump is merged and identifies this declaration with
-      // android:splitName="java"; the java module dump contains it as well.
-      `module base contains forbidden component: ${REAL_AAB_PACKAGE}.JavaSampleActivity`,
+      // bundletool's base dump is merged, but the audit must keep inspecting
+      // and prove the declaration is also rejected in its owning feature.
+      new RegExp(
+        `module base contains forbidden component: ${escapedComponent}[\\s\\S]*` +
+          `module java contains forbidden component: ${escapedComponent}`,
+      ),
     );
   });
 
@@ -264,7 +451,34 @@ describeRealAab("real multi-module bundletool regression", () => {
           ...realAabInspectionOptions(REAL_AAB_FIXTURE),
           artifact,
         }),
-      ).toThrow(/Could not validate .* with bundletool failed/);
+      ).toThrow(/validating .* with bundletool failed/);
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects real feature DEX central-directory CRC corruption that bundletool accepts", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-real-aab-crc-"),
+    );
+    try {
+      const artifact = path.join(temporaryDir, "central-crc-corrupt.aab");
+      fs.writeFileSync(
+        artifact,
+        rewriteEntryCrc(
+          fs.readFileSync(REAL_AAB_FIXTURE),
+          "java/dex/classes.dex",
+        ),
+      );
+      const archive = readRealAab(artifact);
+
+      expect(() =>
+        inspectAndroidAppBundle(realAabInspectionOptions(artifact, archive)),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+        }),
+      );
     } finally {
       fs.rmSync(temporaryDir, { force: true, recursive: true });
     }
@@ -304,6 +518,49 @@ describe("pinned bundletool provisioning", () => {
         },
       ),
     ).rejects.toThrow(`expected ${ANDROID_BUNDLETOOL_SHA256}`);
+  });
+
+  it("classifies an unreadable configured JAR as an integrity failure", async () => {
+    await expect(
+      ensureAndroidBundletoolJar(
+        {
+          env: { [ANDROID_BUNDLETOOL_JAR_ENV]: BUNDLETOOL_JAR },
+        },
+        {
+          existsSync: () => true,
+          readFileSync: () => {
+            throw new Error("EISDIR: configured path is a directory");
+          },
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "ANDROID_BUNDLETOOL_INTEGRITY_FAILED",
+      context: expect.objectContaining({
+        bundletoolJar: path.resolve(BUNDLETOOL_JAR),
+      }),
+    });
+  });
+
+  it("does not mask an unreadable cache entry with a download", async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      ensureAndroidBundletoolJar(
+        {
+          cacheDir: "/cache/bundletool",
+          env: {},
+        },
+        {
+          existsSync: () => true,
+          fetchImpl,
+          readFileSync: () => {
+            throw new Error("EACCES: cache entry is unreadable");
+          },
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "ANDROID_BUNDLETOOL_INTEGRITY_FAILED",
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("downloads and atomically caches the checksum-pinned official JAR", async () => {
@@ -374,6 +631,159 @@ describe("pinned bundletool provisioning", () => {
     ).rejects.toThrow(`expected ${ANDROID_BUNDLETOOL_SHA256}`);
   });
 
+  it("re-hashes the configured JAR immediately before execution", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-bundletool-recheck-"),
+    );
+    try {
+      const jar = path.join(temporaryDir, "bundletool.jar");
+      fs.writeFileSync(jar, "official");
+      const deps = {
+        digestBuffer: (bytes) =>
+          bytes.toString("utf8") === "official"
+            ? ANDROID_BUNDLETOOL_SHA256
+            : "tampered-digest",
+        existsSync: () => true,
+        platform: "linux",
+        readFileSync: fs.readFileSync,
+      };
+      expect(
+        resolveBundletoolInvocation(
+          {
+            env: { [ANDROID_BUNDLETOOL_JAR_ENV]: jar },
+            javaHome: JAVA_HOME,
+          },
+          deps,
+        ).bundletoolDigest,
+      ).toBe(ANDROID_BUNDLETOOL_SHA256);
+
+      fs.writeFileSync(jar, "tampered");
+      expect(() =>
+        resolveBundletoolInvocation(
+          {
+            env: { [ANDROID_BUNDLETOOL_JAR_ENV]: jar },
+            javaHome: JAVA_HOME,
+          },
+          deps,
+        ),
+      ).toThrow(`expected ${ANDROID_BUNDLETOOL_SHA256}`);
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("re-verifies the pinned JAR before every bundletool command", () => {
+    const pinnedBytes = Buffer.from("official");
+    const tamperedBytes = Buffer.from("tampered");
+    const readFileSync = vi
+      .fn()
+      .mockReturnValueOnce(pinnedBytes)
+      .mockReturnValueOnce(pinnedBytes)
+      .mockReturnValueOnce(tamperedBytes);
+    const digestBuffer = (bytes) =>
+      bytes.equals(pinnedBytes) ? ANDROID_BUNDLETOOL_SHA256 : "tampered-digest";
+    const spawnSyncImpl = vi.fn(() => ({
+      signal: null,
+      status: 0,
+      stderr: "",
+      stdout: "validated",
+    }));
+    const readDexEntries = vi.fn();
+
+    expect(() =>
+      inspectAndroidAppBundle(inspectOptions({ readDexEntries }), {
+        digestBuffer,
+        existsSync: () => true,
+        platform: "linux",
+        readFileSync,
+        resolvePath: (value) => value,
+        spawnSyncImpl,
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_BUNDLETOOL_INTEGRITY_FAILED",
+        context: expect.objectContaining({
+          actualSha256: "tampered-digest",
+          expectedSha256: ANDROID_BUNDLETOOL_SHA256,
+        }),
+      }),
+    );
+    expect(readFileSync).toHaveBeenCalledTimes(3);
+    expect(spawnSyncImpl).toHaveBeenCalledOnce();
+    expect(readDexEntries).not.toHaveBeenCalled();
+  });
+
+  it("bounds bundletool execution with a typed timeout failure", () => {
+    const timeoutCause = Object.assign(new Error("spawnSync ETIMEDOUT"), {
+      code: "ETIMEDOUT",
+    });
+    const invocation = {
+      argsPrefix: ["-jar", BUNDLETOOL_JAR],
+      bundletoolDigest: ANDROID_BUNDLETOOL_SHA256,
+      bundletoolJar: BUNDLETOOL_JAR,
+      command: "/jdk/bin/java",
+    };
+    const spawnSyncImpl = vi.fn(() => ({
+      error: timeoutCause,
+      signal: "SIGKILL",
+      status: null,
+      stderr: "Java process stopped responding",
+      stdout: "",
+    }));
+
+    expect(() =>
+      runCheckedBundletool(invocation, ["validate"], "bundle validation", {
+        digestBuffer: () => ANDROID_BUNDLETOOL_SHA256,
+        readFileSync: () => Buffer.from("official"),
+        spawnSyncImpl,
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        cause: timeoutCause,
+        code: "ANDROID_BUNDLETOOL_TIMEOUT",
+        context: expect.objectContaining({
+          signal: "SIGKILL",
+          timeoutMs: ANDROID_BUNDLETOOL_TIMEOUT_MS,
+        }),
+      }),
+    );
+    expect(spawnSyncImpl).toHaveBeenCalledWith(
+      invocation.command,
+      [...invocation.argsPrefix, "validate"],
+      expect.objectContaining({
+        killSignal: "SIGKILL",
+        timeout: ANDROID_BUNDLETOOL_TIMEOUT_MS,
+      }),
+    );
+  });
+
+  it("reports signal termination separately from an ordinary nonzero exit", () => {
+    const invocation = {
+      argsPrefix: ["-jar", BUNDLETOOL_JAR],
+      bundletoolDigest: ANDROID_BUNDLETOOL_SHA256,
+      bundletoolJar: BUNDLETOOL_JAR,
+      command: "/jdk/bin/java",
+    };
+
+    expect(() =>
+      runCheckedBundletool(invocation, ["validate"], "bundle validation", {
+        digestBuffer: () => ANDROID_BUNDLETOOL_SHA256,
+        readFileSync: () => Buffer.from("official"),
+        spawnSyncImpl: () => ({
+          signal: "SIGKILL",
+          status: null,
+          stderr: "out of memory",
+          stdout: "",
+        }),
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_BUNDLETOOL_TERMINATED",
+        context: expect.objectContaining({ signal: "SIGKILL" }),
+      }),
+    );
+  });
+
   it("wires every Cloud bundleRelease output through the audit-only command", () => {
     expect(ANDROID_APP_GRADLE).toContain(
       "project.findProperty('elizaCloudBuild') == 'true'",
@@ -386,13 +796,29 @@ describe("pinned bundletool provisioning", () => {
       "bundleTask.finalizedBy(auditCloudReleaseAab)",
     );
     expect(ANDROID_APP_GRADLE).not.toContain("bundleTask.doLast");
-    expect(ANDROID_APP_GRADLE).toContain("bundleTask.state.executed");
-    expect(ANDROID_APP_GRADLE).toContain("bundleTask.state.failure == null");
-    expect(ANDROID_APP_GRADLE).toContain("providers.exec {");
-    expect(ANDROID_APP_GRADLE).not.toContain("project.exec {");
     expect(ANDROID_APP_GRADLE).toContain(
+      "variant.artifacts.get(SingleArtifact.BUNDLE.INSTANCE)",
+    );
+    expect(ANDROID_APP_GRADLE).toContain("inputs.file(cloudReleaseAab)");
+    expect(ANDROID_APP_GRADLE).toContain(
+      "def bundleArtifact = cloudReleaseAab.get().asFile",
+    );
+    expect(ANDROID_APP_GRADLE).not.toContain(
       ".file('outputs/bundle/release/app-release.aab')",
     );
+    expect(ANDROID_APP_GRADLE).toContain("bundleTask.state.executed");
+    expect(ANDROID_APP_GRADLE).toContain("bundleTask.state.failure != null");
+    expect(ANDROID_APP_GRADLE).toContain(
+      "bundleTask.state.skipped && !bundleTask.state.upToDate",
+    );
+    expect(ANDROID_APP_GRADLE).toContain(
+      "refusing stale bundle because bundleRelease outcome was",
+    );
+    expect(ANDROID_APP_GRADLE).toMatch(
+      /onlyIf\('Cloud release build'\) \{\s*project\.findProperty\('elizaCloudBuild'\) == 'true'\s*\}/,
+    );
+    expect(ANDROID_APP_GRADLE).toContain("providers.exec {");
+    expect(ANDROID_APP_GRADLE).not.toContain("project.exec {");
     expect(ANDROID_APP_GRADLE).toContain("bundleArtifact.absolutePath");
     expect(ANDROID_APP_GRADLE).toContain(
       "auditOutput.standardOutput.asText.get()",
@@ -401,6 +827,453 @@ describe("pinned bundletool provisioning", () => {
       "auditOutput.standardError.asText.get()",
     );
     expect(ANDROID_APP_GRADLE).toContain("'android-cloud-audit'");
+  });
+});
+
+describe("Android artifact boundary selection", () => {
+  it("keeps script imports local while preserving the canonical core error identity", () => {
+    expect(MOBILE_BUILD_SOURCE).toContain('from "./lib/eliza-error.mjs"');
+    expect(AAB_AUDIT_SOURCE).toContain('from "./eliza-error.mjs"');
+    expect(MOBILE_BUILD_SOURCE).not.toContain('from "@elizaos/core"');
+    expect(AAB_AUDIT_SOURCE).not.toContain('from "@elizaos/core"');
+    expect(MOBILE_BUILD_SOURCE).not.toContain("/core/src/errors.ts");
+    expect(AAB_AUDIT_SOURCE).not.toContain("/core/src/errors.ts");
+    expect(ELIZA_ERROR_SOURCE).toContain(
+      'import.meta.resolve("@elizaos/core")',
+    );
+    expect(ELIZA_ERROR_SOURCE).toContain("/core/src/errors.ts");
+    expect(ELIZA_ERROR_SOURCE).toContain(
+      "export const ElizaError = coreErrors.ElizaError",
+    );
+    expect(ELIZA_ERROR_SOURCE).not.toContain(
+      "export class ElizaError extends Error",
+    );
+    expect(ScriptElizaError).toBe(CoreElizaError);
+  });
+
+  it("rejects every known packaged local-runtime payload family", () => {
+    const forbiddenEntries = [
+      "base/assets/agent/agent-bundle.js",
+      "base/assets/models/model.GGUF",
+      "base/assets/runtime/bun",
+      "base/assets/runtime/llama-cpp-kernels.json",
+      "base/lib/arm64-v8a/libelizainference.so",
+      "base/lib/arm64-v8a/libeliza_runtime.so",
+      "base/lib/arm64-v8a/libelizavoicejni.so",
+      "base/lib/arm64-v8a/libggml-base.so",
+      "base/lib/arm64-v8a/libllama.so",
+      "base/lib/arm64-v8a/libmtmd.so",
+      "base/lib/arm64-v8a/libomp.so",
+      "base/lib/arm64-v8a/libsigsys-handler.so",
+    ];
+    expect(
+      findAndroidCloudPackagedRuntimeOffenders([
+        ...forbiddenEntries,
+        "base/assets/public/bun.png",
+        "base/lib/arm64-v8a/libc++_shared.so",
+      ]),
+    ).toEqual(forbiddenEntries);
+  });
+
+  it("lists and extracts only bounded safe entries from immutable ZIP bytes", () => {
+    const archive = zipSync({
+      "base/dex/classes.dex": Buffer.from("base dex"),
+      "feature/dex/classes2.dex": Buffer.from("feature dex"),
+    });
+    expect(
+      listAndroidArtifactEntries("/artifact.aab", JAVA_HOME, {
+        artifactBytes: archive,
+      }),
+    ).toEqual(["base/dex/classes.dex", "feature/dex/classes2.dex"]);
+    expect(
+      readAndroidArtifactEntryBuffers(
+        "/artifact.aab",
+        ["feature/dex/classes2.dex"],
+        JAVA_HOME,
+        { artifactBytes: archive },
+      ).map((bytes) => bytes.toString("utf8")),
+    ).toEqual(["feature dex"]);
+    expect(() =>
+      listAndroidArtifactEntries("/artifact.aab", JAVA_HOME, {
+        artifactBytes: archive,
+        maxEntries: 1,
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: "ANDROID_ARTIFACT_ARCHIVE_INVALID" }),
+    );
+    expect(() =>
+      readAndroidArtifactEntryBuffers(
+        "/artifact.aab",
+        ["feature/dex/classes2.dex"],
+        JAVA_HOME,
+        {
+          artifactBytes: archive,
+          maxEntryBytes: 4,
+        },
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "ANDROID_ARTIFACT_ENTRY_TOO_LARGE" }),
+    );
+
+    const crcCorruptArchive = rewriteEntryCrc(archive, "base/dex/classes.dex", {
+      rewriteLocal: true,
+    });
+    expect(() =>
+      readAndroidArtifactEntryBuffers(
+        "/artifact.aab",
+        ["base/dex/classes.dex"],
+        JAVA_HOME,
+        {
+          artifactBytes: crcCorruptArchive,
+        },
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "ANDROID_ARTIFACT_ARCHIVE_INVALID" }),
+    );
+
+    const sizeCorruptArchive = rewriteEntryDeclaredSize(
+      zipSync(
+        {
+          "base/dex/classes.dex": Buffer.from("clean marker-after-boundary"),
+        },
+        { level: 0 },
+      ),
+      "base/dex/classes.dex",
+      5,
+    );
+    expect(() =>
+      readAndroidArtifactEntryBuffers(
+        "/artifact.aab",
+        ["base/dex/classes.dex"],
+        JAVA_HOME,
+        { artifactBytes: sizeCorruptArchive },
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "ANDROID_ARTIFACT_ARCHIVE_INVALID" }),
+    );
+
+    const descriptorArchive = useDataDescriptorLocalPlaceholders(
+      archive,
+      "base/dex/classes.dex",
+    );
+    expect(
+      readAndroidArtifactEntryBuffers(
+        "/artifact.aab",
+        ["base/dex/classes.dex"],
+        JAVA_HOME,
+        { artifactBytes: descriptorArchive },
+      )[0].toString("utf8"),
+    ).toBe("base dex");
+  });
+
+  it("rejects compressed-byte declarations above the audit limit", () => {
+    const archive = zipSync(
+      {
+        "base/dex/classes.dex": Buffer.from("12345678"),
+      },
+      { level: 0 },
+    );
+    expect(() =>
+      readAndroidArtifactEntryBuffers(
+        "/artifact.aab",
+        ["base/dex/classes.dex"],
+        JAVA_HOME,
+        {
+          artifactBytes: archive,
+          maxEntryBytes: 4,
+        },
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "ANDROID_ARTIFACT_ENTRY_TOO_LARGE" }),
+    );
+  });
+
+  it("rejects malformed and traversal-shaped ZIP metadata", () => {
+    expect(() =>
+      listAndroidArtifactEntries("/artifact.aab", JAVA_HOME, {
+        artifactBytes: Buffer.from("not a zip"),
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: "ANDROID_ARTIFACT_ARCHIVE_INVALID" }),
+    );
+    const traversalArchive = zipSync({
+      "../escape.dex": Buffer.from("payload"),
+    });
+    expect(() =>
+      listAndroidArtifactEntries("/artifact.aab", JAVA_HOME, {
+        artifactBytes: traversalArchive,
+      }),
+    ).toThrow("unsafe archive path");
+  });
+
+  it("binds audit evidence to a stable artifact snapshot", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-aab-snapshot-"),
+    );
+    const artifact = path.join(temporaryDir, "app-release.aab");
+    try {
+      fs.writeFileSync(artifact, "first artifact");
+      const before = snapshotAndroidArtifact(artifact);
+      expect(() =>
+        assertAndroidArtifactSnapshotUnchanged(
+          artifact,
+          before,
+          snapshotAndroidArtifact(artifact),
+        ),
+      ).not.toThrow();
+
+      fs.writeFileSync(artifact, "replacement artifact");
+      expect(() =>
+        assertAndroidArtifactSnapshotUnchanged(
+          artifact,
+          before,
+          snapshotAndroidArtifact(artifact),
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_ARTIFACT_CHANGED_DURING_AUDIT",
+        }),
+      );
+      expect(() =>
+        snapshotAndroidArtifact(artifact, { maxArtifactBytes: 1 }),
+      ).toThrow(
+        expect.objectContaining({ code: "ANDROID_ARTIFACT_TOO_LARGE" }),
+      );
+
+      let statCall = 0;
+      let readCall = 0;
+      const closeSync = vi.fn();
+      expect(() =>
+        snapshotAndroidArtifact("/virtual/growing.aab", {
+          closeSync,
+          fstatSync: () => ({
+            isFile: () => true,
+            size: statCall++ === 0 ? 4 : 6,
+          }),
+          maxArtifactBytes: 4,
+          openSync: () => 7,
+          readSync: (_descriptor, buffer, offset, length) => {
+            const bytesRead = readCall++ === 0 ? Math.min(4, length) : 1;
+            buffer.fill(0, offset, offset + bytesRead);
+            return bytesRead;
+          },
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_ARTIFACT_CHANGED_DURING_AUDIT",
+        }),
+      );
+      expect(closeSync).toHaveBeenCalledWith(7);
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("selects only the canonical Gradle release AAB", () => {
+    const releaseDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-aab-selection-"),
+    );
+    try {
+      fs.writeFileSync(path.join(releaseDir, "stale-or-foreign.aab"), "stale");
+      expect(findAndroidCloudAab(releaseDir)).toBeNull();
+
+      const canonical = path.join(releaseDir, "app-release.aab");
+      fs.writeFileSync(canonical, "current");
+      expect(findAndroidCloudAab(releaseDir)).toBe(canonical);
+    } finally {
+      fs.rmSync(releaseDir, { force: true, recursive: true });
+    }
+  });
+
+  it("requires Capacitor web assets in the AAB base module", () => {
+    const featureOnlyEntries = [
+      "base/manifest/AndroidManifest.xml",
+      "onDemandFeature/assets/public/index.html",
+      "assetPack/assets/capacitor.config.json",
+    ];
+
+    expect(() =>
+      assertAndroidArtifactShipsWebPayload(ARTIFACT, featureOnlyEntries, {
+        label: "android-cloud",
+      }),
+    ).toThrow("missing required packaged payload");
+    expect(() =>
+      assertAndroidArtifactShipsWebPayload(ARTIFACT, featureOnlyEntries, {
+        label: "android-cloud",
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_ARTIFACT_WEB_PAYLOAD_MISSING",
+        context: expect.objectContaining({
+          artifact: ARTIFACT,
+          artifactKind: "aab",
+          label: "android-cloud",
+        }),
+      }),
+    );
+    expect(() =>
+      assertAndroidArtifactShipsWebPayload(
+        ARTIFACT,
+        [
+          ...featureOnlyEntries,
+          "base/assets/public/index.html",
+          "base/assets/capacitor.config.json",
+        ],
+        { label: "android-cloud" },
+      ),
+    ).not.toThrow();
+  });
+
+  it("retains the APK asset root without accepting nested module lookalikes", () => {
+    expect(() =>
+      assertAndroidArtifactShipsWebPayload("/artifacts/app-debug.apk", [
+        "feature/assets/public/index.html",
+        "feature/assets/capacitor.config.json",
+      ]),
+    ).toThrow("missing required packaged payload");
+    expect(() =>
+      assertAndroidArtifactShipsWebPayload("/artifacts/app-debug.apk", [
+        "assets/public/index.html",
+        "assets/capacitor.config.json",
+      ]),
+    ).not.toThrow();
+  });
+
+  it("resolves Windows AAPT executables from the newest SDK build-tools", () => {
+    const sdkRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-aapt-selection-"),
+    );
+    try {
+      const older = path.join(sdkRoot, "build-tools", "34.0.0");
+      const newer = path.join(sdkRoot, "build-tools", "35.0.0");
+      fs.mkdirSync(older, { recursive: true });
+      fs.mkdirSync(newer, { recursive: true });
+      fs.writeFileSync(path.join(older, "aapt.exe"), "");
+      const expected = path.join(newer, "aapt.exe");
+      fs.writeFileSync(expected, "");
+
+      expect(
+        resolveAndroidBuildTool(sdkRoot, "aapt", { platform: "win32" }),
+      ).toBe(expected);
+    } finally {
+      fs.rmSync(sdkRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("retains extensionless Android build-tools on Unix hosts", () => {
+    const sdkRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-aapt-selection-"),
+    );
+    try {
+      const buildTools = path.join(sdkRoot, "build-tools", "35.0.0");
+      fs.mkdirSync(buildTools, { recursive: true });
+      fs.writeFileSync(path.join(buildTools, "aapt.exe"), "");
+      expect(
+        resolveAndroidBuildTool(sdkRoot, "aapt", { platform: "linux" }),
+      ).toBeNull();
+
+      const expected = path.join(buildTools, "aapt");
+      fs.writeFileSync(expected, "");
+      expect(
+        resolveAndroidBuildTool(sdkRoot, "aapt", { platform: "linux" }),
+      ).toBe(expected);
+    } finally {
+      fs.rmSync(sdkRoot, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("Android Cloud outer audit boundary", () => {
+  it("uses one immutable archive snapshot and emits attestation only after every gate", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-audit-"),
+    );
+    const log = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir);
+      const inspectAndroidAppBundleImpl = vi.fn((options) => {
+        expect(
+          options.readDexEntries(["base/dex/classes.dex"])[0].toString("utf8"),
+        ).toBe("clean synthetic DEX");
+        expect(fs.realpathSync(options.artifact)).not.toBe(
+          fs.realpathSync(artifact),
+        );
+        return syntheticAabEvidence();
+      });
+
+      expect(
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          { inspectAndroidAppBundleImpl, log },
+        ),
+      ).toBe(path.resolve(artifact));
+      expect(inspectAndroidAppBundleImpl).toHaveBeenCalledOnce();
+      expect(log.mock.calls.flat().join("\n")).toMatch(
+        /android-cloud AAB attestation .*"sha256":"[a-f0-9]{64}"/,
+      );
+      expect(log.mock.calls.at(-1)?.[0]).toContain("artifact audit passed");
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("does not attest an AAB that is missing its packaged web payload", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-no-web-"),
+    );
+    const log = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir, {
+        includeWebPayload: false,
+      });
+
+      expect(() =>
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          {
+            inspectAndroidAppBundleImpl: () => syntheticAabEvidence(),
+            log,
+          },
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_ARTIFACT_WEB_PAYLOAD_MISSING",
+        }),
+      );
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("does not attest when the original artifact changes during inspection", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-mutated-"),
+    );
+    const log = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir);
+
+      expect(() =>
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          {
+            inspectAndroidAppBundleImpl: () => {
+              fs.writeFileSync(artifact, Buffer.from("replacement", "utf8"));
+              return syntheticAabEvidence();
+            },
+            log,
+          },
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_ARTIFACT_CHANGED_DURING_AUDIT",
+        }),
+      );
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
   });
 });
 
@@ -515,6 +1388,76 @@ describe("Android APK audit regression contract", () => {
 });
 
 describe("inspectAndroidAppBundle", () => {
+  it("rejects excessive module work before invoking bundletool", () => {
+    const spawnSyncImpl = vi.fn();
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({ entries: MULTI_MODULE_ENTRIES }),
+        {
+          ...verifiedToolDeps({ spawnSyncImpl }),
+          maxManifestModules: 1,
+        },
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_AAB_WORKLOAD_LIMIT_EXCEEDED",
+      }),
+    );
+    expect(spawnSyncImpl).not.toHaveBeenCalled();
+  });
+
+  it("enforces one aggregate deadline across bundletool subprocesses", () => {
+    expect(ANDROID_AAB_AUDIT_TIMEOUT_MS).toBe(300_000);
+    const harness = successfulToolHarness();
+    const now = vi
+      .fn()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(11);
+
+    expect(() =>
+      inspectAndroidAppBundle(inspectOptions(), {
+        ...harness.deps,
+        auditTimeoutMs: 10,
+        now,
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_AAB_AUDIT_TIMEOUT",
+      }),
+    );
+    expect(harness.spawnSyncImpl).toHaveBeenCalledOnce();
+    expect(harness.calls[0].options.timeout).toBe(10);
+  });
+
+  it("bounds aggregate decoded manifest output before retaining every module", () => {
+    const featureManifest =
+      '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application/></manifest>';
+    const harness = successfulToolHarness(
+      new Map([
+        ["base", CLEAN_MANIFEST],
+        ["feature", featureManifest],
+      ]),
+    );
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({ entries: MULTI_MODULE_ENTRIES }),
+        {
+          ...harness.deps,
+          maxManifestBytes: 1_024,
+          maxManifestTotalBytes: Buffer.byteLength(CLEAN_MANIFEST, "utf8"),
+        },
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_AAB_WORKLOAD_LIMIT_EXCEEDED",
+      }),
+    );
+    expect(harness.spawnSyncImpl).toHaveBeenCalledTimes(3);
+  });
+
   it("validates a clean bundle and inspects every module manifest and DEX", () => {
     const manifests = new Map([
       ["base", CLEAN_MANIFEST],
@@ -534,23 +1477,57 @@ describe("inspectAndroidAppBundle", () => {
       );
     });
 
-    expect(
-      inspectAndroidAppBundle(
-        inspectOptions({
-          entries: MULTI_MODULE_ENTRIES,
-          readDexEntries,
-        }),
-        harness.deps,
-      ),
-    ).toEqual({
-      dexEntries: ["base/dex/classes.dex", "feature/dex/classes2.dex"],
-      modules: ["base", "feature"],
-    });
+    const evidence = inspectAndroidAppBundle(
+      inspectOptions({
+        entries: MULTI_MODULE_ENTRIES,
+        readDexEntries,
+      }),
+      harness.deps,
+    );
+    expect(evidence).toEqual(
+      expect.objectContaining({
+        appId: "ai.elizaos.app",
+        bundletool: {
+          sha256: ANDROID_BUNDLETOOL_SHA256,
+          version: ANDROID_BUNDLETOOL_VERSION,
+        },
+        dexEntries: ["base/dex/classes.dex", "feature/dex/classes2.dex"],
+        manifestTotalSizeBytes:
+          Buffer.byteLength(CLEAN_MANIFEST, "utf8") +
+          Buffer.byteLength(manifests.get("feature"), "utf8"),
+        modules: ["base", "feature"],
+      }),
+    );
+    expect(evidence.manifestEvidence).toEqual([
+      expect.objectContaining({
+        actions: [],
+        components: [],
+        metadataNames: [],
+        module: "base",
+        packageName: "ai.elizaos.app",
+        permissions: ["android.permission.INTERNET"],
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        sizeBytes: Buffer.byteLength(CLEAN_MANIFEST, "utf8"),
+      }),
+      expect.objectContaining({
+        actions: [],
+        components: [],
+        metadataNames: [],
+        module: "feature",
+        packageName: null,
+        permissions: [],
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        sizeBytes: Buffer.byteLength(manifests.get("feature"), "utf8"),
+      }),
+    ]);
     expect(readDexEntries).toHaveBeenCalledOnce();
     expect(harness.calls).toHaveLength(3);
     expect(harness.calls[0]).toMatchObject({
       args: ["-jar", BUNDLETOOL_JAR, "validate", `--bundle=${ARTIFACT}`],
       command: path.join(JAVA_HOME, "bin", "java"),
+      options: {
+        timeout: 120_000,
+      },
     });
     expect(harness.calls.slice(1).map((call) => call.args)).toEqual([
       [
@@ -572,6 +1549,95 @@ describe("inspectAndroidAppBundle", () => {
     ]);
   });
 
+  it("normalizes alternate Android namespace prefixes in manifest evidence", () => {
+    const manifest =
+      '<manifest xmlns:a="http://schemas.android.com/apk/res/android" package="ai.elizaos.app">' +
+      '<uses-permission a:name="android.permission.INTERNET"/>' +
+      '<application><service a:name=".SafeService"><intent-filter>' +
+      '<action a:name="ai.elizaos.app.action.SAFE"/></intent-filter></service>' +
+      '<meta-data a:name="safe_metadata" a:value="true"/></application></manifest>';
+    const harness = successfulToolHarness(new Map([["base", manifest]]));
+
+    const evidence = inspectAndroidAppBundle(inspectOptions(), harness.deps);
+
+    expect(evidence.manifestEvidence).toEqual([
+      expect.objectContaining({
+        actions: ["ai.elizaos.app.action.SAFE"],
+        components: ["service:.SafeService"],
+        metadataNames: ["safe_metadata"],
+        module: "base",
+        packageName: "ai.elizaos.app",
+        permissions: ["android.permission.INTERNET"],
+      }),
+    ]);
+  });
+
+  it("rejects a base manifest whose package does not match the expected app", () => {
+    const harness = successfulToolHarness(
+      new Map([
+        [
+          "base",
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.other"><application><service android:name="com.other.ElizaAgentService"/></application></manifest>',
+        ],
+      ]),
+    );
+
+    expect(() =>
+      inspectAndroidAppBundle(inspectOptions(), harness.deps),
+    ).toThrow(
+      "android-cloud AAB package com.other does not match expected application ID ai.elizaos.app",
+    );
+  });
+
+  it("does not mistake a namespaced package lookalike for the app identity", () => {
+    const harness = successfulToolHarness(
+      new Map([
+        [
+          "base",
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:evil="urn:evil" evil:package="ai.elizaos.app" package="com.attacker"><application/></manifest>',
+        ],
+      ]),
+    );
+
+    expect(() =>
+      inspectAndroidAppBundle(inspectOptions(), harness.deps),
+    ).toThrow(
+      "android-cloud AAB package com.attacker does not match expected application ID ai.elizaos.app",
+    );
+  });
+
+  it("does not read a package lookalike from another attribute's value", () => {
+    const harness = successfulToolHarness(
+      new Map([
+        [
+          "base",
+          `<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:evil="urn:evil" evil:note=" package='ai.elizaos.app' " package="com.attacker"><application/></manifest>`,
+        ],
+      ]),
+    );
+
+    expect(() =>
+      inspectAndroidAppBundle(inspectOptions(), harness.deps),
+    ).toThrow(
+      "android-cloud AAB package com.attacker does not match expected application ID ai.elizaos.app",
+    );
+  });
+
+  it("rejects a base manifest without a package identity", () => {
+    const harness = successfulToolHarness(
+      new Map([
+        [
+          "base",
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application/></manifest>',
+        ],
+      ]),
+    );
+
+    expect(() =>
+      inspectAndroidAppBundle(inspectOptions(), harness.deps),
+    ).toThrow("base manifest is missing its package identity");
+  });
+
   it.each([
     [
       "stripped permission",
@@ -582,6 +1648,11 @@ describe("inspectAndroidAppBundle", () => {
       "stripped component",
       '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><service android:name="ai.elizaos.app.ElizaAgentService"/></application></manifest>',
       "forbidden component",
+    ],
+    [
+      "relocated private LP3 component",
+      '<manifest xmlns:a="http://schemas.android.com/apk/res/android"><application><service a:name="com.attacker.Lp3ColorPolicyService"/></application></manifest>',
+      "forbidden LP3 component",
     ],
     [
       "private LP3 action",
@@ -659,6 +1730,26 @@ describe("inspectAndroidAppBundle", () => {
     );
   });
 
+  it("rejects private LP3 class descriptors relocated to another package", () => {
+    const harness = successfulToolHarness();
+    const readDexEntries = () => [
+      Buffer.from("Lcom/attacker/Lp3ColorPolicyService;", "utf8"),
+    ];
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({
+          readDexEntries,
+          strippedComponents: [],
+          strippedPermissions: [],
+        }),
+        harness.deps,
+      ),
+    ).toThrow(
+      "base/dex/classes.dex contains forbidden LP3 marker: /Lp3ColorPolicyService;",
+    );
+  });
+
   it("fails when bundletool rejects a malformed bundle", () => {
     const spawnSyncImpl = vi.fn(() => ({
       signal: null,
@@ -669,12 +1760,10 @@ describe("inspectAndroidAppBundle", () => {
     const readDexEntries = vi.fn();
 
     expect(() =>
-      inspectAndroidAppBundle(inspectOptions({ readDexEntries }), {
-        existsSync: () => true,
-        platform: "linux",
-        resolvePath: (value) => value,
-        spawnSyncImpl,
-      }),
+      inspectAndroidAppBundle(
+        inspectOptions({ readDexEntries }),
+        verifiedToolDeps({ spawnSyncImpl }),
+      ),
     ).toThrow("Bundle is not a valid zip file");
     expect(spawnSyncImpl).toHaveBeenCalledOnce();
     expect(readDexEntries).not.toHaveBeenCalled();
@@ -684,12 +1773,10 @@ describe("inspectAndroidAppBundle", () => {
     const spawnSyncImpl = vi.fn();
 
     expect(() =>
-      inspectAndroidAppBundle(inspectOptions(), {
-        existsSync: () => false,
-        platform: "linux",
-        resolvePath: (value) => value,
-        spawnSyncImpl,
-      }),
+      inspectAndroidAppBundle(
+        inspectOptions(),
+        verifiedToolDeps({ existsSync: () => false, spawnSyncImpl }),
+      ),
     ).toThrow(`bundletool JAR not found at ${BUNDLETOOL_JAR}`);
     expect(spawnSyncImpl).not.toHaveBeenCalled();
   });
@@ -707,12 +1794,10 @@ describe("inspectAndroidAppBundle", () => {
     }));
 
     expect(() =>
-      inspectAndroidAppBundle(inspectOptions(), {
-        existsSync: () => true,
-        platform: "linux",
-        resolvePath: (value) => value,
-        spawnSyncImpl,
-      }),
+      inspectAndroidAppBundle(
+        inspectOptions(),
+        verifiedToolDeps({ spawnSyncImpl }),
+      ),
     ).toThrow(
       expect.objectContaining({
         cause: childError,
@@ -730,12 +1815,10 @@ describe("inspectAndroidAppBundle", () => {
     }));
 
     expect(() =>
-      inspectAndroidAppBundle(inspectOptions(), {
-        existsSync: () => true,
-        platform: "linux",
-        resolvePath: (value) => value,
-        spawnSyncImpl,
-      }),
+      inspectAndroidAppBundle(
+        inspectOptions(),
+        verifiedToolDeps({ spawnSyncImpl }),
+      ),
     ).toThrow("terminated by signal SIGTERM");
   });
 
@@ -788,12 +1871,7 @@ describe("inspectAndroidAppBundle", () => {
           ...inspectOptions(),
           artifact: "/artifacts/app-debug.apk",
         },
-        {
-          existsSync: () => true,
-          platform: "linux",
-          resolvePath: (value) => value,
-          spawnSyncImpl,
-        },
+        verifiedToolDeps({ spawnSyncImpl }),
       ),
     ).toThrow("only accepts .aab artifacts");
     expect(spawnSyncImpl).not.toHaveBeenCalled();
