@@ -183,21 +183,29 @@ def _load_fixture(suite: SuiteId, *, limit: int | None) -> list[Sample]:
     return samples
 
 
-# Upstream hlt-lab/voicebench exposes every suite as a "test" split except
-# sd-qa, which is sharded by dialect region (aus/gbr/ind_n/…/usa) with no
-# "test" split at all. Upstream VoiceBench reports sd-qa on the USA subset,
-# so that is the canonical split here too.
+# Upstream hlt-lab/voicebench exposes most suites as a single "test" split,
+# but two are sharded differently and have no "test" split at all: sd-qa by
+# dialect region (aus/gbr/ind_n/…/usa) and mmsu by academic subject
+# (biology/law/physics/…). Upstream VoiceBench reports sd-qa on the USA
+# subset and MMSU across every subject, so those are the semantics here.
 _SUITE_HF_SPLITS: dict[str, str] = {"sd-qa": "usa"}
+_SUITE_HF_ALL_SPLITS: frozenset[str] = frozenset({"mmsu"})
 
 
-def hf_split_for_suite(suite: SuiteId) -> str:
-    """The Hugging Face split that holds *suite*'s evaluation samples."""
+def hf_split_for_suite(suite: SuiteId) -> str | None:
+    """The Hugging Face split holding *suite*'s samples, or ``None`` for all.
+
+    ``None`` means the suite's evaluation set is the union of every split of
+    its config (loaded in sorted-name order for determinism).
+    """
+    if suite in _SUITE_HF_ALL_SPLITS:
+        return None
     return _SUITE_HF_SPLITS.get(suite, "test")
 
 
 def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
     try:
-        from datasets import load_dataset  # type: ignore[import-not-found]
+        from datasets import get_dataset_split_names, load_dataset  # type: ignore[import-not-found]
     except ImportError as exc:
         raise RuntimeError(
             "VoiceBench HF loading requires the optional `datasets` package. "
@@ -205,17 +213,28 @@ def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
         ) from exc
 
     split = hf_split_for_suite(suite)
-    log.info("loading %s/%s (split=%s) from Hugging Face", HF_REPO, suite, split)
-    ds = load_dataset(HF_REPO, suite, split=split)
-    try:
-        from datasets import Audio  # type: ignore[import-not-found]
+    if split is None:
+        # Sorted for a deterministic sample order; loaded one split at a time
+        # so a small ``limit`` does not download the whole sharded suite.
+        splits = sorted(get_dataset_split_names(HF_REPO, suite))
+    else:
+        splits = [split]
 
-        ds = ds.cast_column("audio", Audio(decode=False))
-    except Exception:
-        pass
     samples: list[Sample] = []
-    for row in _iter_rows(ds, limit=limit):
-        samples.append(_row_to_sample(suite, row, require_audio=True))
+    for name in splits:
+        log.info("loading %s/%s (split=%s) from Hugging Face", HF_REPO, suite, name)
+        ds = load_dataset(HF_REPO, suite, split=name)
+        try:
+            from datasets import Audio  # type: ignore[import-not-found]
+
+            ds = ds.cast_column("audio", Audio(decode=False))
+        except Exception:
+            pass
+        remaining = None if limit is None else limit - len(samples)
+        for row in _iter_rows(ds, limit=remaining):
+            samples.append(_row_to_sample(suite, row, require_audio=True))
+        if limit is not None and len(samples) >= limit:
+            break
     return samples
 
 
