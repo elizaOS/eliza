@@ -26,6 +26,7 @@ import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { isProtected, resolveProtectedApps } from "../protected-apps.js";
 import type { ViewSummary } from "./views-client.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { scoreView } from "./views-search.js";
 
 /** Core first-party plugins that must never be deleted via the VIEWS action. */
@@ -243,7 +244,7 @@ async function unloadPlugin(
 	try {
 		const resp = await fetch(`${base}/api/plugins/uninstall`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: createViewsRequestHeaders(),
 			body: JSON.stringify({ name: pluginName }),
 			signal: AbortSignal.timeout(30_000),
 		});

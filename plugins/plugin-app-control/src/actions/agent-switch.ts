@@ -26,6 +26,7 @@ import type {
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import { readStringOption } from "../params.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 /** Parsed wire response of POST /api/runtime/agent-switch. */
 export interface AgentSwitchOutcome {
@@ -51,7 +52,7 @@ async function defaultSwitchAgent(
 		`http://127.0.0.1:${port}/api/runtime/agent-switch`,
 		{
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: createViewsRequestHeaders(),
 			body: JSON.stringify({ profile }),
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		},
