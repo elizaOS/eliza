@@ -11,7 +11,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SimpleViewsSnapshot } from "../types.js";
+import type { SimpleViewsSnapshot, StickyNote } from "../types.js";
 import type { SimpleViewsState } from "./useSimpleViewsState.js";
 
 const stateHook = vi.hoisted(() => vi.fn());
@@ -32,6 +32,18 @@ function snapshot(
   selectedDate = "2026-07-15",
 ): SimpleViewsSnapshot {
   return { notes: [], events: [], selectedDate, revision };
+}
+
+function stickyNote(overrides: Partial<StickyNote> = {}): StickyNote {
+  return {
+    id: "note-1",
+    title: "Release checklist",
+    body: "Verify the signed build",
+    color: "yellow",
+    createdAt: "2026-07-22T12:00:00.000Z",
+    updatedAt: "2026-07-22T12:00:00.000Z",
+    ...overrides,
+  };
 }
 
 function hookState(
@@ -116,6 +128,75 @@ describe("Simple Views state labels", () => {
 
     render(<SimpleCalendarView />);
     expect(screen.getByText("0 events · revision 7")).toBeTruthy();
+  });
+});
+
+describe("Notes direct interactions", () => {
+  it("creates a colored note and resets an abandoned draft", async () => {
+    const mutate = vi.fn().mockResolvedValue(undefined);
+    stateHook.mockReturnValue(hookState({ snapshot: snapshot(1), mutate }));
+    render(<NotesView />);
+
+    const title = screen.getByLabelText<HTMLInputElement>("Note title");
+    const details = screen.getByLabelText<HTMLTextAreaElement>("Note details");
+    fireEvent.change(title, { target: { value: "Throw this away" } });
+    fireEvent.change(details, { target: { value: "Temporary draft" } });
+    fireEvent.click(screen.getByTitle("Reset draft"));
+    expect(title.value).toBe("");
+    expect(details.value).toBe("");
+
+    fireEvent.change(title, { target: { value: "  Demo notes  " } });
+    fireEvent.change(details, {
+      target: { value: "Keep this across view switches" },
+    });
+    fireEvent.click(screen.getByTitle("Green"));
+    const form = title.closest("form");
+    if (!form) throw new Error("Notes form is required.");
+    fireEvent.submit(form);
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith("create-note", {
+        title: "Demo notes",
+        body: "Keep this across view switches",
+        color: "green",
+      }),
+    );
+    await waitFor(() => expect(title.value).toBe(""));
+  });
+
+  it("renders, edits, deletes, and clears authoritative notes", async () => {
+    const mutate = vi.fn().mockResolvedValue(undefined);
+    const populated = snapshot(4);
+    populated.notes = [stickyNote()];
+    stateHook.mockReturnValue(hookState({ snapshot: populated, mutate }));
+    render(<NotesView />);
+
+    expect(screen.getByText("Release checklist")).toBeTruthy();
+    expect(screen.getByText("Verify the signed build")).toBeTruthy();
+    fireEvent.click(screen.getByTitle("Edit note"));
+    const title = screen.getByLabelText<HTMLInputElement>("Note title");
+    expect(title.value).toBe("Release checklist");
+    fireEvent.change(title, { target: { value: "Release ready" } });
+    fireEvent.click(screen.getByTitle("Rose"));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith("update-note", {
+        id: "note-1",
+        title: "Release ready",
+        body: "Verify the signed build",
+        color: "rose",
+      }),
+    );
+
+    fireEvent.click(screen.getByTitle("Delete note"));
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith("delete-note", { id: "note-1" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm clear" }));
+    await waitFor(() => expect(mutate).toHaveBeenCalledWith("clear-notes"));
   });
 });
 
