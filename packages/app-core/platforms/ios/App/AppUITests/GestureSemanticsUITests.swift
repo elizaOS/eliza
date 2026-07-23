@@ -62,6 +62,7 @@ final class GestureSemanticsUITests: XCTestCase {
     private static let detentPrefix = "chat-detent:"
     private static let maximizedPrefix = "chat-maximized:"
     private static let pagePrefix = "home-launcher-page:"
+    private static let glassTierPrefix = "chat-glass-tier:"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -198,6 +199,161 @@ final class GestureSemanticsUITests: XCTestCase {
             markerValue(Self.detentPrefix, in: app), "full",
             "restoring from full-bleed must land back at the FULL detent, not "
                 + "collapse the sheet"
+        )
+    }
+
+    /// #15891 device leg: the chat sheet adopts REAL native material
+    /// (UIGlassEffect over the natively-hosted wallpaper) only at settled
+    /// inset rests, and never at full-bleed. Asserted through the
+    /// `chat-glass-tier:` AX probe — `native` on iOS 26+ over the default
+    /// image wallpaper, a `css-*` tier below iOS 26 (both are REAL outcomes;
+    /// neither OS generation may silently get the other's material). The
+    /// transient css-during-drag frames are not probe-observable (XCUITest
+    /// gestures block until release); the recorded device video covers them,
+    /// while this leg pins every settled end-state on the real engine.
+    func testChatSheetNativeGlassTierRestAnchoring() throws {
+        let app = XCUIApplication()
+        launchWithRetry(app)
+        // A backendless boot (this leg needs pixels, not an agent) may land on
+        // the "Startup failed" gate; its designed "Open App" escape proceeds
+        // into the offline shell. Poll for EITHER the probe or the escape.
+        let openApp = app.buttons["Open App"]
+        let gateDeadline = Date().addingTimeInterval(90)
+        while Date() < gateDeadline {
+            if markerValue(Self.detentPrefix, in: app) != nil { break }
+            if openApp.exists, openApp.isHittable {
+                attachScreenshot(named: "glass-01-startup-gate")
+                openApp.tap()
+                break
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        let probeDeadline = Date().addingTimeInterval(120)
+        while Date() < probeDeadline,
+            markerValue(Self.detentPrefix, in: app) == nil
+        {
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        guard markerValue(Self.detentPrefix, in: app) != nil else {
+            attachScreenshot(named: "glass-02-no-renderer")
+            throw XCTSkip(
+                "boot did not reach an interactive renderer — boot coverage "
+                    + "lives in BootCaptureUITests")
+        }
+        completeFirstRunIfPresent(in: app)
+        try settleSheetToCollapsed(in: app)
+        attachScreenshot(named: "glass-00-collapsed")
+
+        // Open to an anchored inset rest via the slow free-settle drag.
+        try slowDragGrabber(in: app, dy: -260)
+        assertDetent(becomes: "half", in: app, step: "glass-10-open-half")
+
+        // The tier probe is a hard channel requirement, same doctrine as
+        // chat-detent: a renderer without it is a broken channel, not a skip.
+        guard markerValue(Self.glassTierPrefix, in: app) != nil else {
+            attachScreenshot(named: "glass-15-no-tier-probe")
+            attachAccessibilitySnapshot(
+                of: app, named: "ax-hierarchy-no-glass-probe")
+            XCTFail(
+                "the renderer is interactive but never exposed the "
+                    + "'chat-glass-tier:' AX probe — the glass-tier channel is broken"
+            )
+            return
+        }
+
+        // The runner and the app share the simulator/device OS, so the test's
+        // own availability check mirrors the app's glassSupported gate.
+        let expectNative: Bool
+        if #available(iOS 26.0, *) {
+            expectNative = true
+        } else {
+            expectNative = false
+        }
+
+        guard expectNative else {
+            let tier = markerValue(Self.glassTierPrefix, in: app)
+            attachScreenshot(named: "glass-20-half-rest")
+            XCTAssertEqual(
+                tier?.hasPrefix("css-"), true,
+                "below iOS 26 the settled sheet must stay on a CSS tier "
+                    + "(chat-glass-tier reads '\(tier ?? "nil")')"
+            )
+            return
+        }
+
+        // Settled HALF over the default image wallpaper (Canopy): the
+        // ack-ordered anchor must land the native material. Generous timeout —
+        // the handoff waits for spring rest + wallpaper encode + two bridge acks.
+        let halfTier = waitForMarker(
+            Self.glassTierPrefix, toEqual: "native", timeout: 15, in: app)
+        attachScreenshot(named: "glass-20-half-rest-native")
+        XCTAssertEqual(
+            halfTier, "native",
+            "the settled open sheet on iOS 26+ over the default image "
+                + "wallpaper must adopt the native material "
+                + "(chat-glass-tier reads '\(halfTier ?? "nil")')"
+        )
+
+        // Detent step to FULL: the drag detaches native (css mid-flight, on
+        // the video); the new rest must RE-anchor it.
+        try flickGrabber(in: app, dy: -260)
+        assertDetent(becomes: "full", in: app, step: "glass-30-full")
+        let fullTier = waitForMarker(
+            Self.glassTierPrefix, toEqual: "native", timeout: 15, in: app)
+        attachScreenshot(named: "glass-35-full-rest-native")
+        XCTAssertEqual(
+            fullTier, "native",
+            "the FULL rest must re-anchor the native material "
+                + "(chat-glass-tier reads '\(fullTier ?? "nil")')"
+        )
+
+        // Full-bleed is opaque web paint BY DESIGN — the native region must
+        // drop when the over-pull commits edge-to-edge.
+        try slowDragGrabber(in: app, dy: -560)
+        let maximized = waitForMarker(
+            Self.maximizedPrefix, toEqual: "true", timeout: 5, in: app)
+        attachScreenshot(named: "glass-40-full-bleed")
+        XCTAssertEqual(
+            maximized, "true",
+            "the over-pull must commit full-bleed before the tier assertion "
+                + "(chat-maximized reads '\(maximized ?? "nil")')"
+        )
+        let bleedTier = markerValue(Self.glassTierPrefix, in: app)
+        XCTAssertEqual(
+            bleedTier?.hasPrefix("css-"), true,
+            "full-bleed stays opaque web paint — the native material must "
+                + "drop (chat-glass-tier reads '\(bleedTier ?? "nil")')"
+        )
+
+        // Restore to the inset FULL detent: native must return once more.
+        guard let restoreZone = maximizeRestoreZone(in: app),
+            restoreZone.isHittable
+        else {
+            attachAccessibilitySnapshot(
+                of: app, named: "ax-hierarchy-no-restore-zone-glass")
+            throw XCTSkip("no hittable maximize-restore strip in the AX tree")
+        }
+        let start = restoreZone.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        let end = start.withOffset(CGVector(dx: 0, dy: 320))
+        start.press(
+            forDuration: 0.05, thenDragTo: end,
+            withVelocity: XCUIGestureVelocity(rawValue: 2000),
+            thenHoldForDuration: 0)
+        let restored = waitForMarker(
+            Self.maximizedPrefix, toEqual: "false", timeout: 5, in: app)
+        XCTAssertEqual(
+            restored, "false",
+            "the top-20% pull-down must restore the inset overlay "
+                + "(chat-maximized reads '\(restored ?? "nil")')"
+        )
+        let restoredTier = waitForMarker(
+            Self.glassTierPrefix, toEqual: "native", timeout: 15, in: app)
+        attachScreenshot(named: "glass-50-restored-native")
+        XCTAssertEqual(
+            restoredTier, "native",
+            "restoring to the inset FULL detent must re-anchor the native "
+                + "material (chat-glass-tier reads '\(restoredTier ?? "nil")')"
         )
     }
 
