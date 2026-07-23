@@ -21,7 +21,7 @@ describe("development Vite process commands", () => {
       resolveViteCommand({ appDir, nodePath: "/usr/local/bin/node" }),
       {
         command: "/usr/local/bin/node",
-        args: [viteCli],
+        args: ["--import", "tsx", viteCli],
       },
     );
   });
@@ -36,7 +36,7 @@ describe("development Vite process commands", () => {
       }),
       {
         command: "/usr/bin/node",
-        args: [viteCli, "--force", "--port", "2138"],
+        args: ["--import", "tsx", viteCli, "--force", "--port", "2138"],
       },
     );
     assert.deepEqual(
@@ -47,7 +47,7 @@ describe("development Vite process commands", () => {
       }),
       {
         command: "/usr/bin/node",
-        args: [viteCli, "--port", "2138"],
+        args: ["--import", "tsx", viteCli, "--port", "2138"],
       },
     );
   });
