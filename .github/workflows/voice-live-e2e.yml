@@ -323,7 +323,10 @@ jobs:
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     needs: voice-fused-build
-    timeout-minutes: 120
+    # The 26-scenario workbench alone runs tens of minutes on a CPU-only host
+    # (every turn is a real Kokoro synth + fused ASR decode), on top of the
+    # first-night bundle staging — 120 was measured too tight end-to-end.
+    timeout-minutes: 180
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       # Desktop-CPU TTFA ceiling — see the header note; the 700 ms default is
