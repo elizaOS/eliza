@@ -237,7 +237,7 @@ describe("reserveInferenceCredits — real row-locked upfront hold (#10857)", ()
       const app = await seedApp({
         organizationId: creatorOrgId,
         createdByUserId: creatorId,
-        inferenceMarkupPercentage: 25,
+        inferenceMarkupPercentage: 0,
       });
       await dbWrite.insert(appUsers).values({ app_id: app.id, user_id: consumerId });
 

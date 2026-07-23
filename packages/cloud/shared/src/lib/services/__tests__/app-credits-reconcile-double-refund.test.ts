@@ -229,10 +229,11 @@ describe("reconcile refund-then-throw + settler re-invoke (#11512)", () => {
 
     const blip = injectReduceEarningsBlipOnce();
     try {
-      // First settle: actual 0.01 < estimate 0.03 → refund branch. The org
-      // refund of 0.04 COMMITS, then the post-refund write throws.
+      // First settle: actual 0.01 < estimate 0.03 → refund branch. Creator
+      // reversal runs before the org refund so a failed clawback cannot leave
+      // both parties holding the same money.
       await expect(settle(0.01)).rejects.toThrow("injected post-refund write blip");
-      expect(await orgBalance(payerOrgId)).toBeCloseTo(INITIAL_ORG_BALANCE - 0.06 + 0.04, 6);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(INITIAL_ORG_BALANCE - 0.06, 6);
 
       // The route's fallback catch: `await settleReservation?.(0)`. Before
       // #11512 this re-invoked reconcile(0) and issued a SECOND committed

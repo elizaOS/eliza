@@ -379,9 +379,9 @@ describe("ElizaSandboxService shared runtime billing", () => {
         }),
         { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
         expect.objectContaining({
-          affiliateAttribution,
-          affiliatePayoutSourceId: "ai_billing:affiliate:shared-sandbox-test",
           reconcile: expect.any(Function),
+          reservationTransactionId: "reservation-1",
+          reservedAmount: 0.002,
         }),
       );
       expect(reconcileReservation).toHaveBeenCalledWith(0.0003);
@@ -623,9 +623,9 @@ describe("ElizaSandboxService shared runtime billing", () => {
         }),
         { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
         expect.objectContaining({
-          affiliateAttribution,
-          affiliatePayoutSourceId: "ai_billing:affiliate:shared-sandbox-test",
           reconcile: expect.any(Function),
+          reservationTransactionId: "reservation-1",
+          reservedAmount: 0.002,
         }),
       );
       expect(reconcileReservation).toHaveBeenCalledWith(0.0003);

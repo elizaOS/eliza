@@ -518,19 +518,7 @@ export class CreditsService {
   async getOrganizationBalanceSnapshot(
     organizationId: string,
   ): Promise<OrganizationBalanceSnapshot> {
-    const rows = await sqlRows<{
-      credit_balance: string | number | null;
-      balance_revision: string | number | null;
-    }>(
-      dbWrite,
-      sql`
-        SELECT credit_balance, balance_revision
-        FROM organizations
-        WHERE id = ${organizationId}
-        LIMIT 1
-      `,
-    );
-    const org = rows[0];
+    const org = await organizationsRepository.findBalanceSnapshotForWrite(organizationId);
     // error-policy:J6 missing org → 0 is the documented fail-safe (gate slow-paths).
     if (!org) return { balanceUsd: 0, revision: "0" };
     const revision = String(org.balance_revision);

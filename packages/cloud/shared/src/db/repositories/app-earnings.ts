@@ -350,7 +350,7 @@ export class AppEarningsRepository {
     if (expectedCreatorAmountRounded.isZero()) {
       throw new Error("Creator movement amount is below the minimum ledger precision of 0.0001");
     }
-    const platformRevenueDelta = platformRevenueAmount.toFixed(6);
+    const requestedPlatformRevenueDelta = platformRevenueAmount.toFixed(6);
 
     return dbWrite.transaction(async (tx) => {
       const [redeemableLedger] = await tx
@@ -369,26 +369,36 @@ export class AppEarningsRepository {
           ? redeemableLedger.metadata
           : {};
       const creatorDelta = new Decimal(redeemableLedger?.amount ?? Number.NaN);
+      const ledgerPlatformRevenue = new Decimal(
+        typeof ledgerMetadata.appPlatformRevenueDelta === "string"
+          ? ledgerMetadata.appPlatformRevenueDelta
+          : Number.NaN,
+      );
       const expectedEntryType = expectedCreatorAmount.isPositive() ? "earning" : "adjustment";
       const ledgerMismatch = !redeemableLedger
         ? "redeemable ledger row is missing"
         : !creatorDelta.isFinite()
           ? "redeemable amount is non-finite"
-          : !creatorDelta.equals(expectedCreatorAmountRounded)
+          : !params.redeemableDeduplicated && !creatorDelta.equals(expectedCreatorAmountRounded)
             ? `redeemable amount ${creatorDelta.toFixed()} differs from requested creator movement ${expectedCreatorAmountRounded.toFixed()}`
             : redeemableLedger.entryType !== expectedEntryType
               ? "redeemable entry type differs from creator movement direction"
               : redeemableLedger.earningsSource !== "miniapp"
                 ? "redeemable source is not miniapp"
-                : ledgerMetadata.appPlatformRevenueDelta !== platformRevenueDelta
-                  ? "redeemable platform revenue differs"
-                  : ledgerMetadata.app_id !== params.appId
-                    ? "redeemable app identity differs"
-                    : ledgerMetadata.earnings_type !== params.type
-                      ? "redeemable earnings type differs"
-                      : ledgerMetadata.transaction_user_id !== params.userId
-                        ? "redeemable transaction user differs"
-                        : null;
+                : !ledgerPlatformRevenue.isFinite()
+                  ? "redeemable platform revenue is non-finite"
+                  : creatorDelta.isPositive() !== ledgerPlatformRevenue.isPositive()
+                    ? "redeemable platform revenue direction differs"
+                    : !params.redeemableDeduplicated &&
+                        ledgerMetadata.appPlatformRevenueDelta !== requestedPlatformRevenueDelta
+                      ? "redeemable platform revenue differs"
+                      : ledgerMetadata.app_id !== params.appId
+                        ? "redeemable app identity differs"
+                        : ledgerMetadata.earnings_type !== params.type
+                          ? "redeemable earnings type differs"
+                          : ledgerMetadata.transaction_user_id !== params.userId
+                            ? "redeemable transaction user differs"
+                            : null;
       if (ledgerMismatch) {
         throw new CreatorMovementReplayMismatchError(
           params.redeemableLedgerEntryId,
@@ -403,6 +413,13 @@ export class AppEarningsRepository {
         return { deduplicated: true, transaction: null };
       }
 
+      // On a keyed replay, the immutable redeemable ledger is the committed
+      // first-writer contract. A later caller may carry a different estimate
+      // after a stale sweep won the race; projection recovery must heal from
+      // the committed movement rather than reject or project the later quote.
+      const platformRevenueDelta = params.redeemableDeduplicated
+        ? ledgerPlatformRevenue.toFixed(6)
+        : requestedPlatformRevenueDelta;
       const creatorDeltaValue = creatorDelta.toFixed(6);
       const movementMetadata = {
         ...params.metadata,

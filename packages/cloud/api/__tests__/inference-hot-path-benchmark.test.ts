@@ -6,6 +6,8 @@
 import { expect, test } from "bun:test";
 import { InferenceAdmissionGate } from "../src/inference-admission-gate";
 
+process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
+
 class BenchmarkStorage {
   private readonly values = new Map<string, unknown>();
 

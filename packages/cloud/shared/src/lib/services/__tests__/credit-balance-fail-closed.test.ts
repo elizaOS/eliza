@@ -39,19 +39,27 @@ afterEach(() => {
 
 describe("CreditsService.getOrganizationBalanceUsd fail-closed", () => {
   test("parses a well-formed numeric-string balance", async () => {
-    const s = spyOn(organizationsRepository, "findById").mockResolvedValue(orgWithBalance("12.5"));
+    const s = spyOn(organizationsRepository, "findBalanceSnapshotForWrite").mockResolvedValue({
+      credit_balance: "12.5",
+      balance_revision: "7",
+    });
     spies.push(s);
     expect(await creditsService.getOrganizationBalanceUsd(ORG_ID)).toBe(12.5);
   });
 
   test("missing org returns 0 (documented gate fail-safe -> slow path)", async () => {
-    const s = spyOn(organizationsRepository, "findById").mockResolvedValue(undefined);
+    const s = spyOn(organizationsRepository, "findBalanceSnapshotForWrite").mockResolvedValue(
+      undefined,
+    );
     spies.push(s);
     expect(await creditsService.getOrganizationBalanceUsd(ORG_ID)).toBe(0);
   });
 
   test("present org with null balance THROWS instead of coercing to NaN", async () => {
-    const s = spyOn(organizationsRepository, "findById").mockResolvedValue(orgWithBalance(null));
+    const s = spyOn(organizationsRepository, "findBalanceSnapshotForWrite").mockResolvedValue({
+      credit_balance: null,
+      balance_revision: "7",
+    });
     spies.push(s);
     await expect(creditsService.getOrganizationBalanceUsd(ORG_ID)).rejects.toThrow(
       /credit_balance/,
@@ -59,9 +67,10 @@ describe("CreditsService.getOrganizationBalanceUsd fail-closed", () => {
   });
 
   test("present org with non-numeric balance THROWS (no NaN gate hint)", async () => {
-    const s = spyOn(organizationsRepository, "findById").mockResolvedValue(
-      orgWithBalance("not-a-number"),
-    );
+    const s = spyOn(organizationsRepository, "findBalanceSnapshotForWrite").mockResolvedValue({
+      credit_balance: "not-a-number",
+      balance_revision: "7",
+    });
     spies.push(s);
     await expect(creditsService.getOrganizationBalanceUsd(ORG_ID)).rejects.toThrow(
       /credit_balance/,

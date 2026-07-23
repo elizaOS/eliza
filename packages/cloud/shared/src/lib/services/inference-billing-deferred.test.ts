@@ -209,9 +209,9 @@ describe("createDeferredAdmissionSettler", () => {
       settlementTransactionIds: ["debit-1"],
       adjustmentType: "none",
     });
-    // The stale pre-forward hint (100) was dropped; the successful fallback
-    // debit then re-seeded it with the fresh post-debit balance (lower-only).
-    expect((await readOrgBalanceHint(ctx.organizationId))?.balanceUsd).toBe(90);
+    // Refusal removes the optimistic hint; only a later authoritative admission
+    // refresh may repopulate it.
+    expect(await readOrgBalanceHint(ctx.organizationId)).toBeNull();
   });
 
   test("refused with settle(0) (error/abort path) → no debit, still refused + hint dropped", async () => {
