@@ -29,6 +29,7 @@ export const ANDROID_LP3_PRIVATE_ACTIONS = Object.freeze([
 
 export const ANDROID_LP3_POLICY_CLASSES = Object.freeze([
   "Lp3ColorPolicy",
+  "Lp3ColorPolicyInitializer",
   "Lp3ColorPolicyService",
   "Lp3ColorPolicyBootReceiver",
 ]);

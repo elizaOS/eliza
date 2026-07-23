@@ -1806,6 +1806,11 @@ describe("inspectAndroidAppBundle", () => {
       "forbidden LP3 component",
     ],
     [
+      "relocated private LP3 initializer",
+      '<manifest xmlns:a="http://schemas.android.com/apk/res/android"><application><provider a:name="com.attacker.Lp3ColorPolicyInitializer"/></application></manifest>',
+      "forbidden LP3 component",
+    ],
+    [
       "private LP3 action",
       '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><receiver android:name="ai.elizaos.app.SafeReceiver"><intent-filter><action android:name="ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY"/></intent-filter></receiver></application></manifest>',
       "forbidden LP3 action",
@@ -1923,6 +1928,26 @@ describe("inspectAndroidAppBundle", () => {
       ),
     ).toThrow(
       "base/dex/classes.dex contains forbidden LP3 marker: /Lp3ColorPolicyService;",
+    );
+  });
+
+  it("rejects a relocated LP3 initializer descriptor", () => {
+    const harness = successfulToolHarness();
+    const readDexEntries = () => [
+      Buffer.from("Lcom/attacker/Lp3ColorPolicyInitializer;", "utf8"),
+    ];
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({
+          readDexEntries,
+          strippedComponents: [],
+          strippedPermissions: [],
+        }),
+        harness.deps,
+      ),
+    ).toThrow(
+      "base/dex/classes.dex contains forbidden LP3 marker: /Lp3ColorPolicyInitializer;",
     );
   });
 
