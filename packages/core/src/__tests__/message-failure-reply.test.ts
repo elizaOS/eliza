@@ -222,7 +222,7 @@ describe("DefaultMessageService structured failure replies", () => {
 			envelope,
 			` \`\`\`json\n${envelope}\n\`\`\` `.trim(),
 			'{"decision":"CONTINUE","thought":"retry"}',
-			'{"shouldRespond":true,"messageToUser":{"text":"not public prose"}}',
+			'{"shouldRespond":true,"messageToUser":{"action":"X","parameters":{}}}',
 		]);
 
 		await expect(
