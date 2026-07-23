@@ -1,22 +1,26 @@
 /**
  * EVM prompt context reads only background-refreshed wallet state.
  */
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { AgentRuntime, type Memory, type State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { EVM_SERVICE_NAME } from "../../constants";
 import { evmWalletProvider } from "../../providers/wallet";
+import { EVMService } from "../../service";
 
 const message = {} as Memory;
 const state = { agentName: "Agent" } as State;
 
 describe("evmWalletProvider cache-only prompt path", () => {
+  function runtimeWithService(): { runtime: AgentRuntime; service: EVMService } {
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    const service = new EVMService(runtime);
+    vi.spyOn(runtime, "getService").mockReturnValue(service);
+    return { runtime, service };
+  }
+
   it("returns explicit loading context without awaiting network work", async () => {
+    const { runtime, service } = runtimeWithService();
     const getCachedData = vi.fn(async () => undefined);
-    const runtime = {
-      getService: vi.fn((serviceName: string) =>
-        serviceName === EVM_SERVICE_NAME ? { getCachedData } : null
-      ),
-    } as unknown as IAgentRuntime;
+    vi.spyOn(service, "getCachedData").mockImplementation(getCachedData);
 
     const result = await evmWalletProvider.get(runtime, message, state);
 
@@ -29,14 +33,12 @@ describe("evmWalletProvider cache-only prompt path", () => {
   });
 
   it("renders the cached address and balances", async () => {
-    const runtime = {
-      getService: vi.fn(() => ({
-        getCachedData: async () => ({
-          address: "0x1234",
-          chains: [{ name: "Ethereum", balance: "1", symbol: "ETH" }],
-        }),
-      })),
-    } as unknown as IAgentRuntime;
+    const { runtime, service } = runtimeWithService();
+    vi.spyOn(service, "getCachedData").mockResolvedValue({
+      address: "0x1234",
+      chains: [{ name: "Ethereum", balance: "1", symbol: "ETH" }],
+      timestamp: Date.now(),
+    });
 
     const result = await evmWalletProvider.get(runtime, message, state);
 

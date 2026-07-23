@@ -5,6 +5,7 @@
  * loopback-only rejection, and prod-disabled behavior.
  */
 import { Socket } from "node:net";
+import { AgentRuntime, type Log, type UUID } from "@elizaos/core";
 import {
   afterEach,
   beforeAll,
@@ -185,5 +186,108 @@ describe("GET /api/dev/voice-latency", () => {
     const handled = await handleDevCompatRoutes(req, res, STATE);
     expect(handled).toBe(true);
     expect(captured.status).toBe(404);
+  });
+});
+
+describe("GET /api/dev/inference-timing", () => {
+  beforeEach(() => {
+    delete process.env.NODE_ENV;
+  });
+
+  afterEach(() => {
+    delete process.env.NODE_ENV;
+  });
+
+  it("rehydrates the full persisted flow including visible and finalized milestones", async () => {
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    const log: Log = {
+      type: "inference_timing",
+      entityId: runtime.agentId,
+      roomId: "00000000-0000-0000-0000-000000000042" as UUID,
+      createdAt: new Date(),
+      body: {
+        runId: "persisted-flow-1",
+        source: "inference_timing",
+        startTime: 1_000,
+        endTime: 1_160,
+        duration: 160,
+        metadata: {
+          label: "chat-request",
+          modelProvider: "openai",
+          timeToFirstTokenMs: 90,
+          timeToFirstVisibleMs: 100,
+          timeToReplyMs: 140,
+          timeToResponseFinalizedMs: 160,
+          spans: [
+            {
+              name: "provider:KNOWLEDGE",
+              startMs: 0,
+              endMs: 20,
+              durationMs: 20,
+              meta: { outcome: "success" },
+            },
+            {
+              name: "model:TEXT_LARGE",
+              startMs: 20,
+              endMs: 140,
+              durationMs: 120,
+            },
+          ],
+          marks: [
+            { name: "first-model-token", tMs: 90 },
+            { name: "first-visible-reply", tMs: 100 },
+            { name: "reply-delivered", tMs: 140 },
+            { name: "response-finalized", tMs: 160 },
+          ],
+          byName: {
+            "provider:KNOWLEDGE": { totalMs: 20, count: 1 },
+            "model:TEXT_LARGE": { totalMs: 120, count: 1 },
+          },
+          anomalies: [],
+        },
+      },
+    };
+    vi.spyOn(runtime, "getLogs").mockResolvedValue([log]);
+    const state: CompatRuntimeState = {
+      current: runtime,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    };
+    const { req, res, captured } = makeReqRes({
+      url: "/api/dev/inference-timing?limit=1",
+    });
+
+    await expect(handleDevCompatRoutes(req, res, state)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    const payload = JSON.parse(captured.body ?? "{}");
+    expect(payload.turns).toHaveLength(1);
+    expect(payload.turns[0]).toMatchObject({
+      turnId: "persisted-flow-1",
+      timeToFirstTokenMs: 90,
+      timeToFirstVisibleMs: 100,
+      timeToReplyMs: 140,
+      timeToResponseFinalizedMs: 160,
+    });
+    expect(payload.flows[0].stages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stage: "providers", totalMs: 20 }),
+        expect.objectContaining({ stage: "llm-inference", totalMs: 120 }),
+      ]),
+    );
+    expect(payload.providers[0]).toMatchObject({
+      providerName: "KNOWLEDGE",
+      successes: 1,
+    });
+  });
+
+  it("rejects non-loopback callers before reading persisted telemetry", async () => {
+    const { req, res, captured } = makeReqRes({
+      url: "/api/dev/inference-timing",
+      remoteAddress: "10.0.0.5",
+    });
+
+    await expect(handleDevCompatRoutes(req, res, STATE)).resolves.toBe(true);
+    expect(captured.status).toBe(403);
   });
 });

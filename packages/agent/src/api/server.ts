@@ -4323,23 +4323,6 @@ export async function startApiServer(opts?: {
       );
     });
 
-    void import("../services/registry-client.ts")
-      .then(({ getRegistryPlugins }) => getRegistryPlugins())
-      // error-policy:J7 prewarm is diagnostic/performance work; report failure
-      // without taking down the already-listening API process.
-      .catch((error) => {
-        const runtime = state.runtime;
-        if (runtime) {
-          runtime.reportError("ApiServer.registryPrewarm", error);
-          return;
-        }
-        logger.warn(
-          `[ApiServer] Registry prewarm failed before runtime readiness: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      });
-
     void ensureAppManager()
       .then((appManager) => {
         // Stop app runs whose UI heartbeat has gone silent.

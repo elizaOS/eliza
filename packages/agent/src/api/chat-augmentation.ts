@@ -225,6 +225,10 @@ export async function maybeAugmentChatMessageWithDocuments(
     if (options.signal?.aborted) {
       throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
     }
+    const searchOptions = {
+      turnMessageId,
+      ...(options.signal ? { signal: options.signal } : {}),
+    };
     return (
       (await documents.service?.searchDocuments(
         {
@@ -237,10 +241,7 @@ export async function maybeAugmentChatMessageWithDocuments(
         { roomId: scopeRoomId },
         "keyword",
         accessContext,
-        {
-          turnMessageId,
-          ...(options.signal ? { signal: options.signal } : {}),
-        },
+        searchOptions,
       )) ?? []
     );
   };
