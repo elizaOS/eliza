@@ -55,12 +55,15 @@ const AGENT_SANDBOX_DATE_FIELDS = [
  * we never fabricate a bogus `Date`.
  */
 function rehydrateCachedAgentDates(agent: AgentSandbox): AgentSandbox {
-  const out = agent as unknown as Record<string, unknown>;
   for (const field of AGENT_SANDBOX_DATE_FIELDS) {
-    const value = out[field];
+    // The declared type says `Date | null`, but a scope-cache round-trip
+    // JSON-serializes the row, so at runtime the value may be an ISO string.
+    // Widen the read to `unknown` (an honest "we don't trust the declared
+    // type here") instead of double-casting the whole row.
+    const value: unknown = agent[field];
     if (typeof value === "string") {
       const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) out[field] = parsed;
+      if (!Number.isNaN(parsed.getTime())) agent[field] = parsed;
     }
   }
   return agent;

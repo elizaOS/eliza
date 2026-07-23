@@ -26,12 +26,17 @@ export function mergedRecoverySkipPlugins(
   operatorSkipPlugins: string | undefined,
   recovery: string[],
 ): string {
-  const merged = new Set(
-    (operatorSkipPlugins ?? "")
-      .split(",")
-      .map((name) => name.trim())
-      .filter(Boolean),
-  );
+  // "Operator never set the var" is a distinct state, not an empty list to
+  // default into (#9940 empty-fallback rule): branch on it explicitly so the
+  // undefined case reads as intentional.
+  const operatorList =
+    operatorSkipPlugins === undefined
+      ? []
+      : operatorSkipPlugins
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean);
+  const merged = new Set(operatorList);
   for (const name of recovery) merged.add(name);
   return [...merged].join(",");
 }
