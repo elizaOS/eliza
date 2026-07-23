@@ -164,6 +164,20 @@ function inspectParsedJson(
 	fieldPath: readonly UserVisibleReplyField[],
 	depth: number,
 ): UserVisibleModelOutput {
+	if (Array.isArray(parsed)) {
+		for (const entry of parsed) {
+			const nested = inspectValue(entry, fieldPath, depth + 1);
+			if (nested.kind === "control" || nested.kind === "invalid") {
+				return nested;
+			}
+		}
+		return {
+			kind: "text",
+			text: displayText,
+			format: "json",
+			fieldPath,
+		};
+	}
 	if (!isPlainObject(parsed)) {
 		return {
 			kind: "text",

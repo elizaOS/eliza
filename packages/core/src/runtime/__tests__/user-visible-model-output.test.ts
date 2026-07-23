@@ -118,6 +118,27 @@ describe("sanitizeUserVisibleModelOutput", () => {
 		});
 	});
 
+	it("rejects control records in direct JSON arrays while preserving ordinary arrays", () => {
+		expect(
+			sanitizeUserVisibleModelOutput(
+				'[{"label":"first"},{"action":"BROWSER","parameters":{"url":"https://example.com"}}]',
+			),
+		).toEqual({
+			kind: "control",
+			envelope: "action",
+			malformed: false,
+			fieldPath: [],
+		});
+
+		const ordinary = '[{"label":"first"},{"action":"proceed","step":2}]';
+		expect(sanitizeUserVisibleModelOutput(ordinary)).toEqual({
+			kind: "text",
+			text: ordinary,
+			format: "json",
+			fieldPath: [],
+		});
+	});
+
 	it("preserves genuine JSON instead of treating any action key as control", () => {
 		const lowerCaseAction =
 			'{"action":"proceed","parameters":{"step":1},"status":"done","summary":"approved"}';
