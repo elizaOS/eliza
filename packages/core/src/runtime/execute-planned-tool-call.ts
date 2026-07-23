@@ -161,6 +161,9 @@ export function projectActionResultForClipboard(
 			? { verifiedUserFacing: result.verifiedUserFacing }
 			: {}),
 		...(safeActionName ? { data: { actionName: safeActionName } } : {}),
+		...(result.turnComplete !== undefined
+			? { turnComplete: result.turnComplete }
+			: {}),
 		...(result.continueChain !== undefined
 			? { continueChain: result.continueChain }
 			: {}),
@@ -569,6 +572,7 @@ function actionResultToStreamingResult(
 			options.suppressData && result.values !== undefined
 				? sensitiveActionResultMarker(result.values)
 				: result.values,
+		turnComplete: result.turnComplete,
 		continueChain: result.continueChain,
 	} as ToolCall["result"];
 }

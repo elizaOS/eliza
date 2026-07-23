@@ -964,9 +964,9 @@ let viteStartedAt = 0;
 
 // Vite cold-start of the full raw-source module graph can exceed 60s on slow
 // shared CI runners (2-4 cores). Allow CI to widen the health-check kill window
-// via env; dev machines keep the 60s default.
+// via env; the 120s default covers cold optimizer startup on constrained hosts.
 const VITE_READY_BUDGET_MS =
-  Number(process.env.ELIZA_DEV_VITE_READY_BUDGET_MS) || 60_000;
+  Number(process.env.ELIZA_DEV_VITE_READY_BUDGET_MS) || 120_000;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;

@@ -42,7 +42,7 @@ def test_builtin_agent_command_template_points_at_helper(monkeypatch) -> None:
     template = agent_command_template(
         "elizaos",
         provider="cerebras",
-        model="gpt-oss-120b",
+        model="gemma-4-31b",
         timeout_seconds=123,
     )
 
@@ -463,7 +463,7 @@ def test_run_agent_app_eval_coding_writes_results_and_token_metrics(tmp_path: Pa
         tasks=[task],
         task_agent="elizaos",
         model_provider="cerebras",
-        model="gpt-oss-120b",
+        model="gemma-4-31b",
         command_template=(
             f"{sys.executable} {fake_agent} --workspace {{workspace}} "
             "--prompt {prompt} --task {task} --result-json {result_json}"
@@ -505,7 +505,7 @@ def test_missing_agent_result_is_not_a_success(tmp_path: Path) -> None:
         tasks=[task],
         task_agent="elizaos",
         model_provider="cerebras",
-        model="gpt-oss-120b",
+        model="gemma-4-31b",
         command_template=(
             f"{sys.executable} {fake_agent} --workspace {{workspace}} "
             "--prompt {prompt} --task {task} --result-json {result_json}"

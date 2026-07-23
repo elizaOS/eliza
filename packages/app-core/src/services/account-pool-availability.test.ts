@@ -12,9 +12,7 @@
  *     it `healthy: 0` makes the SubAgentRouter refuse a failover respawn that
  *     the pool would happily serve.
  *
- * Together with the strategy suite, this keeps the production pool's broader
- * eligibility surface in the changed-file coverage lane. The pool is driven
- * through injected readAccounts/writeAccount; only
+ * The pool is driven through injected readAccounts/writeAccount; only
  * `recordCall`'s JSONL usage counter touches disk (a throwaway state dir).
  */
 import { mkdtempSync, rmSync } from "node:fs";

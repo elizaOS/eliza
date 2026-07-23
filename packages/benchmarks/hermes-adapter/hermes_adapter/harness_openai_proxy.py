@@ -143,6 +143,17 @@ class HarnessOpenAIProxy:
             "temperature": payload.get("temperature"),
             "max_tokens": payload.get("max_tokens"),
         }
+        if self.harness in {"openclaw", "hermes"}:
+            # This proxy is a single chat-completions step: the env executes
+            # the returned tool_calls itself and replays real results on its
+            # next request. The native OpenClaw/Hermes loops must therefore
+            # stop at the first captured tool batch instead of iterating on
+            # the bridge's placeholder acknowledgements — OpenClaw bills one
+            # completion per fake round (~90 observed per tblite turn) and
+            # Hermes dies at max_iterations_reached(2/2). Eliza owns a real
+            # server-side action loop, not a capture bridge, so the key is
+            # never sent there.
+            context["capture_stop"] = True
         response = self._client.send_message(text, context=context)
         content = str(getattr(response, "text", "") or "")
         params = getattr(response, "params", {}) or {}

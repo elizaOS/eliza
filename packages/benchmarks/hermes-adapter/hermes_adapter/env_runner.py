@@ -41,6 +41,10 @@ DEFAULT_YC_BENCH_PATH = (
 DEFAULT_HF_HOME = _WORKSPACE_ROOT / "packages" / "benchmark-data" / "huggingface"
 PINNED_HERMES_ENV_REVISION = "d36413211449057c28aaaab52a2be5133bc59ef7"
 PINNED_YC_BENCH_REVISION = "bfb0c88062450f46341bd9a5298903fc2e952a5c"
+# Parent of upstream deletion commit 38eaea7 ("clean up unused files") — the
+# last ancestor of PINNED_YC_BENCH_REVISION that still carries the calibrated
+# fast_test/medium/hard presets the 9-run matrix requires.
+PINNED_YC_PRESETS_SOURCE = "97b1bdb2e0c7fe57327c43d82d69ef157ade3d62"
 
 
 @dataclass(frozen=True)
@@ -293,6 +297,15 @@ def run_hermes_env(
     if env_id in {"tblite", "terminalbench_2"}:
         config_env_overrides["agent_temperature"] = 0.0
         config_env_overrides["system_prompt"] = _TERMINAL_ENV_SYSTEM_PROMPT
+        # Campaign policy: no artificial limits. The upstream defaults
+        # (max_agent_turns=60, task_timeout=1200s) truncate hard tasks
+        # mid-repair and turn capability measurements into budget
+        # measurements. Both are pydantic ints upstream, so "unlimited" is
+        # expressed as values no real rollout can reach; the task ends when
+        # the agent concludes or the surrounding orchestrator deadline (if
+        # any) fires. Caller-overridable via extra_args (--env.<key>=…).
+        config_env_overrides.setdefault("max_agent_turns", 1_000_000_000)
+        config_env_overrides.setdefault("task_timeout", 1_000_000_000)
     forwarded_args: list[str] = list(extra_args or [])
     if not _has_forwarded_arg(forwarded_args, "--env.terminal_backend"):
         forwarded_args.append(f"--env.terminal_backend={terminal_backend}")
@@ -432,13 +445,50 @@ def _yc_bench_path() -> Path:
 def _verify_yc_presets(yc_path: Path) -> None:
     preset_dir = yc_path / "src" / "yc_bench" / "config" / "presets"
     required = {"fast_test", "medium", "hard"}
-    present = {path.stem for path in preset_dir.glob("*.toml")}
-    missing = sorted(required - present)
+    missing = sorted(required - {path.stem for path in preset_dir.glob("*.toml")})
+    if missing:
+        # Upstream deleted the calibrated preset TOMLs as "unused files" in
+        # 38eaea7, an ancestor of PINNED_YC_BENCH_REVISION, so a clean clone of
+        # the pin can never satisfy this check on its own. The presets still
+        # load as ExperimentConfig under the pinned loader, so materialize the
+        # deleted files from the pin's own ancestry (worktree only — HEAD stays
+        # at the pin) instead of failing every fresh provisioning.
+        _restore_pinned_yc_presets(yc_path, missing)
+        missing = sorted(required - {path.stem for path in preset_dir.glob("*.toml")})
     if missing:
         raise RuntimeError(
             f"Pinned YC-Bench dependency {PINNED_YC_BENCH_REVISION} is incompatible "
             "with the Hermes env's 9-run matrix: missing presets "
             f"{missing} under {preset_dir}. Refusing to substitute a different matrix."
+        )
+
+
+def _restore_pinned_yc_presets(yc_path: Path, names: list[str]) -> None:
+    """Restore preset TOMLs deleted upstream from the pin's own ancestry.
+
+    ``PINNED_YC_PRESETS_SOURCE`` is the parent of upstream's deletion commit —
+    the last revision on the pinned lineage whose calibrated presets exist.
+    Restoring from an ancestor of the pin keeps the content attributable to
+    upstream; nothing is authored here. A failed restore is logged and the
+    caller's missing-preset error still fails the run closed.
+    """
+    paths = [
+        f"src/yc_bench/config/presets/{name}.toml"
+        for name in names
+    ]
+    completed = _subprocess_run(
+        ["git", "-C", str(yc_path), "restore",
+         f"--source={PINNED_YC_PRESETS_SOURCE}", "--worktree", "--", *paths],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        logger.warning(
+            "Could not restore YC-Bench presets %s from %s: %s",
+            names,
+            PINNED_YC_PRESETS_SOURCE,
+            (completed.stderr or completed.stdout).strip()[-500:],
         )
 
 
@@ -573,6 +623,11 @@ def _select_yc_preset(repo: Path) -> str:
         )
     )
     candidates.append(repo / "environments" / "benchmarks" / "yc_bench" / "fast_test.toml")
+    # The YC-Bench checkout leads PYTHONPATH at run time, so a preset restored
+    # there by _verify_yc_presets is the one importlib.resources resolves.
+    candidates.append(
+        _yc_bench_path() / "src" / "yc_bench" / "config" / "presets" / "fast_test.toml"
+    )
     return "fast_test" if any(path.exists() for path in candidates) else "default"
 
 
@@ -697,6 +752,16 @@ def _annotate_sample_completion(
             continue
         last = messages[-1]
         if isinstance(last, dict) and last.get("role") == "tool" and not row.get("passed"):
+            # A trailing tool result on a rollout with real agent turns is a
+            # resource-bounded failure (wall clock or turn ceiling ended the
+            # loop after the last tool execution) — a real, scoreable
+            # measurement. Harness deaths surface as row errors and are
+            # raised above; only zero-work rollouts (the agent never took a
+            # turn) stay unscoreable. The campaign runs without an artificial
+            # turn budget, so hard tasks routinely end exactly this way.
+            turns = row.get("turns_used")
+            if isinstance(turns, int) and turns > 0:
+                continue
             incomplete += 1
     if expected_samples is not None and total != expected_samples:
         raise RuntimeError(

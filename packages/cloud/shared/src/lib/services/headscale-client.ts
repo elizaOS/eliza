@@ -35,6 +35,12 @@ async function readHeadscaleErrorBody(
   }
 }
 
+/** Escape a literal string for embedding in a RegExp source (hostnames carry
+ *  hyphens today; escaping keeps the suffix matcher safe for any future name). */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Pre-auth key TTL window (ms): how long a freshly-created key stays valid for a
  * container to boot AND finish VPN enrollment. 10 min proved too tight on slow
@@ -151,6 +157,59 @@ export class HeadscaleClient {
   async getNodeByName(name: string): Promise<HeadscaleNode | null> {
     const nodes = await this.listNodes();
     return nodes.find((n) => n.name === name) ?? null;
+  }
+
+  /**
+   * Find a node by hostname, tolerating Headscale's collision rename.
+   * When a node registers under a hostname that is already taken (the exact
+   * blue/green upgrade overlap: the preserved live node holds the base name),
+   * Headscale assigns `<name>-<8 random lowercase alphanumerics>` as the
+   * givenName (GenerateRandomStringDNSSafe(8), e.g. the observed
+   * `eliza-00e6292c-e55-cnpx9uop`). An exact-match poll then never sees the
+   * new node and the upgrade times out even though the blue container
+   * registered fine.
+   *
+   * The exact name wins unconditionally. A suffixed candidate is accepted only
+   * when it matches the rename shape exactly AND — when `createdAfter` is set —
+   * was created at/after that instant. Renamed nodes keep their suffix forever
+   * (there is no rename-back guarantee), so without the createdAt gate a poll
+   * would happily adopt the previous cycle's live green node or an orphan from
+   * an earlier failed upgrade and route the sandbox to the wrong container.
+   * `excludeNodeId` drops the known preserved green node from both paths.
+   */
+  async getNodeByNameOrSuffixed(
+    name: string,
+    options?: { excludeNodeId?: string; createdAfter?: Date },
+  ): Promise<HeadscaleNode | null> {
+    const nodes = await this.listNodes();
+    const exact = nodes.find((n) => n.name === name && n.id !== options?.excludeNodeId);
+    if (exact) return exact;
+
+    // Anchored on Headscale's exact rename shape: a sibling agent's hostname
+    // (`<name>-<12-char uuid prefix>`, hyphen at index 8) shares the `<name>-`
+    // prefix but must never be adopted as a rename of `name`.
+    const suffixPattern = new RegExp(`^${escapeRegExp(name)}-[a-z0-9]{8}$`);
+    const createdAfterMs = options?.createdAfter?.getTime();
+    const candidates = nodes.filter(
+      (n) =>
+        n.id !== options?.excludeNodeId &&
+        suffixPattern.test(n.name) &&
+        (createdAfterMs === undefined || Date.parse(n.createdAt) >= createdAfterMs),
+    );
+    if (candidates.length === 0) return null;
+    // Headscale ids are numeric strings; lexicographic order would rank "9"
+    // above "10", so compare numerically to get the newest registration.
+    candidates.sort((a, b) => Number(b.id) - Number(a.id));
+    return candidates[0];
+  }
+
+  /** Rename a node's givenName (POST /api/v1/node/{nodeId}/rename/{newName}). */
+  async renameNode(nodeId: string, newName: string): Promise<void> {
+    await this.request<Record<string, unknown>>(
+      "POST",
+      `/api/v1/node/${nodeId}/rename/${encodeURIComponent(newName)}`,
+    );
+    logger.info(`[headscale] renamed node ${nodeId} to ${newName}`);
   }
 
   /** Find a node by hostname while propagating listing failures. */

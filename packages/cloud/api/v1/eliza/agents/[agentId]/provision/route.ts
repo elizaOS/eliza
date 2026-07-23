@@ -188,6 +188,101 @@ async function __hono_POST(
             orgId: user.organization_id,
             poolNodeId: claimed.node_id,
           });
+          // Post-claim character apply: the pool container booted GENERIC (no
+          // ELIZA_AGENT_CHARACTER_JSON), so push the user's character onto the
+          // live runtime via the container's PUT /api/character. Bounded (10s)
+          // and NON-FATAL: on failure the claim still succeeds (the row's
+          // agent_config applies on the next container restart) and
+          // `warm_pool.character_push_failed` keeps the miss observable.
+          try {
+            const push =
+              await elizaSandboxService.pushClaimedWarmContainerCharacter(
+                claimed,
+              );
+            if (push.pushed) {
+              logger.info("[agent-api] Warm pool character push applied", {
+                agentId,
+                orgId: user.organization_id,
+                agentName: push.agentName,
+              });
+            }
+          } catch (pushErr) {
+            logger.warn(
+              "[agent-api] Warm pool character push failed; claim kept (character applies on next restart)",
+              {
+                event: "warm_pool.character_push_failed",
+                agentId,
+                orgId: user.organization_id,
+                error:
+                  pushErr instanceof Error ? pushErr.message : String(pushErr),
+              },
+            );
+          }
+          // Post-claim inference re-key (F0): mint a user-org-scoped inference
+          // key and push it onto the live container so it can infer against the
+          // claiming org (the pool container booted with a pool-org key).
+          // The live runtime must attest the replacement. Failure enters
+          // restart recovery from row env instead of reporting a ready agent.
+          try {
+            const keyPush =
+              await elizaSandboxService.pushClaimedWarmContainerInferenceKey(
+                claimed,
+              );
+            if (keyPush.pushed) {
+              logger.info("[agent-api] Warm pool inference key push applied", {
+                agentId,
+                orgId: user.organization_id,
+                keyPrefix: keyPush.keyPrefix,
+              });
+            }
+          } catch (keyErr) {
+            const recovery =
+              await provisioningJobService.enqueueAgentRestartOnce({
+                agentId,
+                organizationId: user.organization_id,
+                userId: user.id,
+              });
+            await agentSandboxesRepository.update(claimed.id, {
+              status: "provisioning",
+              error_message:
+                "Warm-pool credential handoff requires restart recovery",
+            });
+            if (recovery.created) {
+              void provisioningJobService
+                .triggerImmediate(ctx?.env)
+                .catch(() => {
+                  // error-policy:J5 the persisted restart job is observed by
+                  // the provisioning worker poll after a failed nudge.
+                });
+            }
+            logger.warn(
+              "[agent-api] Warm pool inference key push failed; restart recovery enqueued",
+              {
+                event: "warm_pool.key_push_failed",
+                agentId,
+                orgId: user.organization_id,
+                recoveryJobId: recovery.job.id,
+                recoveryJobCreated: recovery.created,
+                error:
+                  keyErr instanceof Error ? keyErr.message : String(keyErr),
+              },
+            );
+            return applyCorsHeaders(
+              Response.json(
+                {
+                  success: true,
+                  source: "warm_pool_recovery",
+                  data: {
+                    id: claimed.id,
+                    agentName: claimed.agent_name,
+                    status: "provisioning",
+                  },
+                },
+                { status: 202 },
+              ),
+              CORS_METHODS,
+            );
+          }
           return applyCorsHeaders(
             Response.json({
               success: true,

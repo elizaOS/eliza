@@ -41,6 +41,7 @@ import {
 	resolveServerOnlyPort,
 	Service,
 } from "@elizaos/core";
+import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
 
 export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE = "verification-room-bridge";
 
@@ -185,7 +186,7 @@ async function loadPluginFromWorkdir(
 			`http://127.0.0.1:${port}/api/plugins/load-from-directory`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ directory: workdir }),
 				signal: AbortSignal.timeout(30_000),
 			},
@@ -245,7 +246,7 @@ async function loadAppFromWorkdir(
 			`http://127.0.0.1:${port}/api/apps/load-from-directory`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ directory }),
 				signal: AbortSignal.timeout(30_000),
 			},

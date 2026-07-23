@@ -110,7 +110,6 @@ const ALLOWED_EXACT = new Set([
   "audit:scripts",
   "audit:scripts:self-test",
   "audit:tee-secret-leak",
-  "audit:test-realness:evidence",
   "audit:scripts:inventory",
   "audit:type-duplication:self-test",
   "audit:tee-secret-leak:self-test",

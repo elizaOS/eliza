@@ -5310,3 +5310,194 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
     }
   });
 });
+
+describe("snapshot hydration budgets (#16639)", () => {
+  const prevRaw = process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES;
+
+  afterEach(() => {
+    if (prevRaw === undefined) delete process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES;
+    else process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES = prevRaw;
+  });
+
+  function streamedResponse(body: string): Response {
+    // A real streaming body so the budget is enforced chunk-by-chunk.
+    const bytes = new TextEncoder().encode(body);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const chunk = 64 * 1024;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          controller.enqueue(bytes.subarray(i, i + chunk));
+        }
+        controller.close();
+      },
+    });
+    return new Response(stream, { status: 200 });
+  }
+
+  test("a body past the raw budget is rejected while streaming — never retained", async () => {
+    const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
+    const oversized = "x".repeat(2 * 1024 * 1024);
+    await expect(readBodyWithinBudget(streamedResponse(oversized), 1024 * 1024)).rejects.toThrow(
+      "raw hydration budget",
+    );
+  });
+
+  test("a body within budget streams through intact", async () => {
+    const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
+    const body = JSON.stringify({ ok: true });
+    expect(await readBodyWithinBudget(streamedResponse(body), 1024)).toBe(body);
+  });
+
+  test("file-count and expanded-byte budgets fail closed before retention", async () => {
+    const { assertSnapshotExpandedBudgets } = await import("./eliza-sandbox.ts?actual");
+    // Within budget: passes.
+    assertSnapshotExpandedBudgets({
+      memories: [],
+      config: {},
+      workspaceFiles: { "a.txt": "hello" },
+    });
+    // File-count breach via workspaceFiles.
+    const manyFiles: Record<string, string> = {};
+    for (let i = 0; i < 5_001; i++) manyFiles[`f${i}.txt`] = "x";
+    expect(() =>
+      assertSnapshotExpandedBudgets({ memories: [], config: {}, workspaceFiles: manyFiles }),
+    ).toThrow("file budget");
+    // Expanded-byte breach via the manifest's DECLARED size (the counter
+    // takes max(declared, decoded), so neither side of a lying manifest can
+    // under-count) — no giant test allocation needed.
+    expect(() =>
+      assertSnapshotExpandedBudgets({
+        memories: [],
+        config: {},
+        workspaceFiles: {},
+        manifest: {
+          schemaVersion: 1,
+          format: "elizaos.agent-backup",
+          createdAt: "2026-07-19T00:00:00Z",
+          agentId: "a",
+          components: {
+            database: { kind: "none", sha256: "s" },
+            media: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "s" },
+            vault: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "s" },
+            character: { runtimeCharacter: {}, sha256: "s" },
+            stateFiles: {
+              kind: "file-set",
+              rootLabel: "state-dir",
+              files: [
+                { path: "big.bin", sha256: "s", size: 500 * 1024 * 1024, bytesBase64: "AAAA" },
+              ],
+              sha256: "s",
+            },
+          },
+          integrity: { componentHashes: {} },
+        },
+      }),
+    ).toThrow("expanded byte budget");
+  });
+
+  test("a reader-less response under budget falls back to text() intact", async () => {
+    const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
+    // A null-body Response is the real reader-less shape (bun keeps body null).
+    expect(await readBodyWithinBudget(new Response(null), 16)).toBe("");
+  });
+
+  test("a reader-less response past the budget is rejected, not retained", async () => {
+    const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
+    const readerless = {
+      body: null,
+      text: async () => "x".repeat(2048),
+    } as unknown as Response;
+    await expect(readBodyWithinBudget(readerless, 1024)).rejects.toThrow("raw hydration budget");
+  });
+
+  test("manifest file-sets count every component, taking max(declared, decoded)", async () => {
+    const { assertSnapshotExpandedBudgets } = await import("./eliza-sandbox.ts?actual");
+    // Within budget: exercises the pglite + media + vault + stateFiles loops
+    // and the configFile counter without throwing. One entry declares MORE
+    // than its base64 decodes to (declared wins), one declares LESS (decoded
+    // wins) — both sides of the max(declared, decoded) counter.
+    assertSnapshotExpandedBudgets({
+      memories: [],
+      config: {},
+      workspaceFiles: {},
+      manifest: {
+        schemaVersion: 1,
+        format: "elizaos.agent-backup",
+        createdAt: "2026-07-19T00:00:00Z",
+        agentId: "a",
+        components: {
+          database: {
+            kind: "pglite-files",
+            pglite: {
+              kind: "file-set",
+              rootLabel: "pglite-dir",
+              files: [
+                // declared 1024 > decoded 3 — the lying-manifest declared side.
+                { path: "db/base", sha256: "s", size: 1024, bytesBase64: "AAAA" },
+              ],
+              sha256: "s",
+            },
+            sha256: "s",
+          },
+          media: {
+            kind: "file-set",
+            rootLabel: "state-dir",
+            files: [
+              // declared 1 < decoded 6 — the under-declared side loses to decode.
+              { path: "m/a.png", sha256: "s", size: 1, bytesBase64: "AAAAAAAA" },
+            ],
+            sha256: "s",
+          },
+          vault: {
+            kind: "file-set",
+            rootLabel: "state-dir",
+            files: [{ path: "v/k", sha256: "s", size: 8, bytesBase64: "AAAA" }],
+            sha256: "s",
+          },
+          character: {
+            runtimeCharacter: {},
+            configFile: { path: "character.json", sha256: "s", size: 64, bytesBase64: "AAAAAAAA" },
+            sha256: "s",
+          },
+          stateFiles: {
+            kind: "file-set",
+            rootLabel: "state-dir",
+            files: [{ path: "s/notes.txt", sha256: "s", size: 16, bytesBase64: "AAAA" }],
+            sha256: "s",
+          },
+        },
+        integrity: { componentHashes: {} },
+      },
+    });
+    // The same manifest shape breaches the FILE budget when a component's
+    // file-set alone exceeds it — the count must come from the manifest loops,
+    // not just legacy workspaceFiles.
+    const manyEntries = Array.from({ length: 5_001 }, (_, i) => ({
+      path: `m/f${i}`,
+      sha256: "s",
+      size: 1,
+      bytesBase64: "AAAA",
+    }));
+    expect(() =>
+      assertSnapshotExpandedBudgets({
+        memories: [],
+        config: {},
+        workspaceFiles: {},
+        manifest: {
+          schemaVersion: 1,
+          format: "elizaos.agent-backup",
+          createdAt: "2026-07-19T00:00:00Z",
+          agentId: "a",
+          components: {
+            database: { kind: "none", sha256: "s" },
+            media: { kind: "file-set", rootLabel: "state-dir", files: manyEntries, sha256: "s" },
+            vault: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "s" },
+            character: { runtimeCharacter: {}, sha256: "s" },
+            stateFiles: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "s" },
+          },
+          integrity: { componentHashes: {} },
+        },
+      }),
+    ).toThrow("file budget");
+  });
+});

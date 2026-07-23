@@ -148,6 +148,66 @@ describe("applyStreamingTextModification", () => {
     );
   });
 
+  it("complete swaps the streamed temp id to the persisted server id in place", () => {
+    const initial = [
+      userMsg("u1", "hi"),
+      assistantMsg("temp-resp-1", "hello there"),
+    ];
+    const harness = makeSetter(initial);
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "temp-resp-1",
+      mode: "complete",
+      fullText: "hello there",
+      persistedMessageId: "server-assistant-1",
+    });
+
+    expect(harness.current.map((m) => m.id)).toEqual([
+      "u1",
+      "server-assistant-1",
+    ]);
+    expect(harness.current[1].text).toBe("hello there");
+  });
+
+  it("complete id-swap drops an already-appended WS echo bubble carrying the persisted id", () => {
+    // Action-callback turns persist + broadcast mid-turn, so the
+    // proactive-message echo can land BEFORE the SSE `done` id-swap. The swap
+    // must collapse the pair to one bubble at the streamed position.
+    const initial = [
+      userMsg("u1", "hi"),
+      assistantMsg("temp-resp-1", "hello there"),
+      assistantMsg("server-assistant-1", "hello there"),
+    ];
+    const harness = makeSetter(initial);
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "temp-resp-1",
+      mode: "complete",
+      fullText: "hello there",
+      persistedMessageId: "server-assistant-1",
+    });
+
+    expect(harness.current.map((m) => m.id)).toEqual([
+      "u1",
+      "server-assistant-1",
+    ]);
+    expect(harness.current[1].text).toBe("hello there");
+  });
+
+  it("complete without persistedMessageId leaves the message id untouched", () => {
+    const initial = [assistantMsg("temp-resp-1", "partial")];
+    const harness = makeSetter(initial);
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "temp-resp-1",
+      mode: "complete",
+      fullText: "Done",
+    });
+
+    expect(harness.current[0].id).toBe("temp-resp-1");
+    expect(harness.current[0].text).toBe("Done");
+  });
+
   it("fail sets failureKind without touching text", () => {
     const initial = [assistantMsg("a1", "Streaming text")];
     const harness = makeSetter(initial);

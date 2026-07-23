@@ -136,12 +136,20 @@ _SEARCH_ROOTS = [
 
 def _action_name_declared(name: str) -> bool:
     """Return True iff some .ts file under the search roots declares
-    an ``Action`` with ``name: "<name>"``.
+    an ``Action`` named *name*.
 
-    We use a strict ``name: "X"`` pattern so we don't accidentally
-    accept similes or arbitrary string occurrences.
+    Two declaration shapes count, both strict so we don't accidentally
+    accept similes or arbitrary string occurrences:
+
+    1. Direct literal: ``name: "X"``.
+    2. Const indirection: ``const ACTION_NAME = "X"`` in a file that
+       also contains ``name: ACTION_NAME`` (e.g. the VOICE_CALL action
+       in plugin-personal-assistant declares its name this way).
     """
-    pattern = re.compile(rf"""name:\s*['"]{re.escape(name)}['"]""")
+    direct = re.compile(rf"""name:\s*['"]{re.escape(name)}['"]""")
+    const_def = re.compile(
+        rf"""(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[\w."'| ]+)?=\s*['"]{re.escape(name)}['"]"""
+    )
     for root in _SEARCH_ROOTS:
         if not root.is_dir():
             continue
@@ -155,7 +163,12 @@ def _action_name_declared(name: str) -> bool:
                 text = ts_path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            if pattern.search(text):
+            if direct.search(text):
+                return True
+            indirect = const_def.search(text)
+            if indirect and re.search(
+                rf"name:\s*{re.escape(indirect.group(1))}\b", text
+            ):
                 return True
     return False
 

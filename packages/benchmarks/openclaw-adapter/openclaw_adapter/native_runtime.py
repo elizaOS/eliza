@@ -139,8 +139,16 @@ def prepare_native_runtime(
     thinking_level: str = "medium",
     system_prompt: str | None = None,
     state_dir: Path | None = None,
+    capture_stop: bool = False,
 ) -> NativeRuntimePaths:
-    """Materialize a key-free OpenClaw config, system prompt, and tool plugin."""
+    """Materialize a key-free OpenClaw config, system prompt, and tool plugin.
+
+    ``capture_stop`` selects the env-owned tool-execution contract: the caller
+    (a benchmark env speaking OpenAI chat-completions) executes captured tool
+    calls itself and feeds their real results back on the next turn, so the
+    embedded loop must end after the first tool batch instead of iterating on
+    the bridge's placeholder acknowledgements. See ``_write_plugin``.
+    """
 
     if not base_url.startswith("http://127.0.0.1:") and not base_url.startswith(
         "http://localhost:"
@@ -169,7 +177,7 @@ def prepare_native_runtime(
     capture_path = root / "tool-calls.jsonl"
     capture_path.write_text("", encoding="utf-8")
 
-    _write_plugin(plugin_dir, tools)
+    _write_plugin(plugin_dir, tools, capture_stop=capture_stop)
     config = _runtime_config(
         root=root,
         plugin_dir=plugin_dir,
@@ -765,7 +773,12 @@ def _runtime_config(
     }
 
 
-def _write_plugin(plugin_dir: Path, tools: tuple[BenchmarkTool, ...]) -> None:
+def _write_plugin(
+    plugin_dir: Path,
+    tools: tuple[BenchmarkTool, ...],
+    *,
+    capture_stop: bool = False,
+) -> None:
     manifest = {
         "id": PLUGIN_ID,
         "name": "elizaOS Benchmark Tool Bridge",
@@ -795,13 +808,22 @@ def _write_plugin(plugin_dir: Path, tools: tuple[BenchmarkTool, ...]) -> None:
     plugin_source = f"""/**
  * Registers the exact tool catalog supplied by one benchmark turn.
  *
- * Handlers record the selected call for the Python scorer and return a neutral
- * acknowledgement so OpenClaw's native loop, rather than this bridge, owns
- * tool selection and continuation behavior.
+ * Handlers record the selected call for the Python scorer. This bridge never
+ * executes anything: the benchmark env replays captured calls against the
+ * real environment and feeds genuine results back on the next turn. In
+ * capture-stop mode every result therefore sets `terminate` so the embedded
+ * loop ends after the first tool batch — iterating on the bridge's
+ * placeholder acknowledgements would bill one provider completion per fake
+ * round while telling the model nothing. The `async`/`status: "started"`
+ * details mark the batch as deferred external work so OpenClaw's terminal
+ * classifier treats the captured handoff as delivery rather than an empty
+ * (non-deliverable) turn. The capture file keeps the bare scorer contract
+ * either way.
  */
 import {{ appendFileSync }} from "node:fs";
 
 const tools = {json.dumps(descriptors, ensure_ascii=True)};
+const captureStop = {json.dumps(bool(capture_stop))};
 const callSequences = new Map();
 
 export default {{
@@ -846,7 +868,10 @@ export default {{
               type: "text",
               text: JSON.stringify(outcome),
             }}],
-            details: outcome,
+            details: captureStop
+              ? {{ ...outcome, async: true, status: "started" }}
+              : outcome,
+            ...(captureStop ? {{ terminate: true }} : {{}}),
           }};
         }},
       }});

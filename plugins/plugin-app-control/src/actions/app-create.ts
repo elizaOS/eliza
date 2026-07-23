@@ -13,6 +13,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	UUID,
 } from "@elizaos/core";
 import {
 	logger,
@@ -611,15 +612,30 @@ async function persistIntentTask(
 	// TaskMetadata's index signature is `JsonValue | object | undefined`, so
 	// the choices array goes through cleanly; we serialize the IntentTaskMetadata
 	// directly into metadata fields without mutating the structure.
+	//
+	// The task also joins the core AWAITING_CHOICE convention (tag +
+	// `metadata.options` + `metadata.choiceActionName`): the CHOICE provider
+	// then surfaces the pending picker to the model, and the threadOps abort
+	// guard recognizes a bare option value ("cancel") as a widget pick to route
+	// back into APP rather than a turn retraction (#16939).
 	await runtime.createTask({
 		name: "APP_CREATE intent",
 		description: `Awaiting user choice for: ${metadata.intent}`,
-		tags: [APP_CREATE_INTENT_TAG],
+		tags: [APP_CREATE_INTENT_TAG, "AWAITING_CHOICE"],
+		// Top-level roomId is what the room-scoped AWAITING_CHOICE queries (core
+		// CHOICE provider, threadOps pick guard) filter on; metadata.roomId is
+		// kept for the existing findExistingIntentTask lookup.
+		roomId: metadata.roomId as UUID,
 		metadata: {
 			roomId: metadata.roomId,
 			intent: metadata.intent,
 			choices: metadata.choices,
 			intentCreatedAt: metadata.intentCreatedAt,
+			options: metadata.choices.map((choice) => ({
+				name: choice.key,
+				description: choice.label,
+			})),
+			choiceActionName: "APP",
 		},
 	});
 }
@@ -964,7 +980,15 @@ export async function runCreate({
 	}
 
 	// First turn: gather intent and (when matches exist) prompt for a choice.
-	const intent = explicitIntent || userText;
+	// Planners routinely split the ask across `intent` / `title` /
+	// `description`; any explicit build description beats the raw user text,
+	// with `intent` the canonical carrier.
+	const explicitTitle = readStringOption(options, "title");
+	const explicitDescription = readStringOption(options, "description");
+	const composedIntent = [explicitTitle, explicitDescription]
+		.filter((part): part is string => Boolean(part))
+		.join(" — ");
+	const intent = explicitIntent || composedIntent || userText;
 	if (!intent) {
 		const text = "Tell me what project you want to build.";
 		await callback?.({ text });

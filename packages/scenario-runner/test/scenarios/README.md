@@ -13,6 +13,17 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
   named-color and hex color set, programmable GLSL shader presets (natural
   phrasing + explicit `preset` param), a live-shader uniform tweak, undo, redo,
   and reset — asserting the exact ordered `background:apply` broadcast ledger.
+- `deterministic-settings-voice-actions` covers the real `SETTINGS` voice
+  section: continuous-chat on/off, silence window, RMS threshold, and the
+  invalid-mode / out-of-range rejections — asserting the exact ordered
+  `PUT /api/config` persisted-prefs ledger and matching `voice-settings:apply`
+  broadcast ledger, including the #14910 twin-default seeding.
+- `deterministic-document-actions` covers the real core `DOCUMENT` handler and
+  DocumentService DB state: list, an owner-only mutation-wall refusal for a
+  whitelisted connector-admin (ADMIN) non-owner — the resolved tier is pinned
+  via the real roles resolution so the fixture cannot silently degrade to
+  GUEST — the owner delete (document actually gone), and the not-found /
+  missing-id rejections.
 - `deterministic-generated-app-routes` covers a generated app loaded through the
   real AppRegistryService and app-manager routes: registry persistence,
   catalog tile data, generated hero SVG, `/api/apps/:slug/*` package routing,
@@ -101,6 +112,26 @@ requires a real provider key for live natural-language planner runs.
   fallback occasionally drops the `PLUGIN` verb from the model's tool context for
   a whole boot (see the plugin scenario header), so re-run if the plugin toggle
   scenario reports only `REPLY`.
+- The chat-widget round-trip legs (MVP ws2 acceptance, #14322/#16939):
+  `live-chat-widgets-form-roundtrip` (FORM emit → `[form:submit …]` re-entry →
+  values used), `live-chat-widgets-choice-roundtrip` (a `[CHOICE:app-create …]`
+  picker, then the bare picked value `cancel` routed back into `APP` and the
+  pending-intent task deleted as the domain artifact — this leg also pins the
+  threadOps abort guard: a bare option value must be treated as a widget pick,
+  never a turn retraction), `live-chat-widgets-config-emission`
+  (`[CONFIG:<pluginId>]` for a plugin-setup ask), and
+  `live-chat-widgets-followups-restraint` (a factual question comes back with
+  no widget markers). The settings-in-chat legs live in
+  `plugins/plugin-app-control/test/scenarios/` (`settings-in-chat-config-card`,
+  `settings-in-chat-provider-switch`); both seed the production uiWidgets
+  guide + agent-level `SETTINGS` action (`_helpers/production-agent-seeds.ts`)
+  and the provider switch asserts the persisted per-run `eliza.json` write.
+  Run any of them with
+  `eliza-scenarios run <scenario-dir> --scenario <id> --report <out> --run-dir <dir>`
+  against a live model and attach the hand-read report + trajectories; the
+  rendered-surface companion is
+  `packages/app/test/ui-smoke/settings-in-chat-live.spec.ts`
+  (`ELIZA_UI_SMOKE_LIVE_STACK=1`).
 
 ## Residual Gaps
 

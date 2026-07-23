@@ -7,7 +7,7 @@ Attention & context scaling benchmark for ElizaOS agents. Measures whether an ag
 ## Quick Start
 
 ```bash
-cd benchmarks/adhdbench
+cd packages/benchmarks/adhdbench
 pip install -e .
 
 # List scenarios
@@ -17,15 +17,20 @@ python scripts/run_benchmark.py list
 python scripts/run_benchmark.py baselines
 
 # Quick run (L0 only, 2 scale points, ~5 min)
-python scripts/run_benchmark.py run --quick --model openai/gpt-oss-120b
+python scripts/run_benchmark.py run --quick --model openai/gpt-oss-120b --provider openai
 
 # Full run (all levels, all scales, both configs)
-python scripts/run_benchmark.py run --full --model gpt-4o
+python scripts/run_benchmark.py run --full --model gpt-4o --provider openai
 ```
+
+`--provider` defaults to `eliza` (the ElizaOS TypeScript benchmark bridge
+against the real AgentRuntime). Other choices: `mock-passthrough` (deterministic
+smoke), `openai`, `cerebras`, `groq`, `openrouter`, `vllm`.
 
 ## Structure
 
-**45 scenarios** across 3 levels:
+**45 authored scenarios** across 3 levels (a further 450 generated edge
+variants are available with `--expand-scenarios`, 495 total):
 
 | Level | Count | Tests |
 |-------|-------|-------|
@@ -62,16 +67,16 @@ Deterministic, binary. 7 outcome types:
 
 ```
 elizaos_adhdbench/
-    types.py              196 lines — frozen scenario/result types
-    config.py              89 lines — all tuneable axes
-    scenarios.py          598 lines — 45 scenarios with outcome definitions
-    distractor_plugin.py  758 lines — 50 actions + variant generator
-    evaluator.py          237 lines — 7 deterministic evaluators + scoring
-    baselines.py           98 lines — random + always-REPLY baselines
-    runner.py             ~450 lines — orchestration with error handling + logging
-    runtime_wrapper.py    242 lines — trajectory logger service
-    reporting.py          240 lines — markdown, JSON, ASCII curves
-tests/                    142 passing tests
+    types.py              frozen scenario/result types + default scale points
+    config.py             all tuneable axes
+    scenarios.py          45 authored scenarios + edge-variant expansion
+    distractor_plugin.py  50 distractor actions across 9 domains
+    evaluator.py          7 deterministic evaluators + scoring
+    baselines.py          random + always-REPLY baselines
+    runner.py             orchestration loop (mock-passthrough path)
+    openai_runner.py      OpenAI-compatible provider runner (openai/cerebras/groq/openrouter/vllm)
+    reporting.py          markdown, JSON, ASCII curves
+tests/                    pytest suite (150 tests)
 scripts/run_benchmark.py  CLI with run, baselines, list commands
 ```
 

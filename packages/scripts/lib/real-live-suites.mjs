@@ -195,6 +195,13 @@ export const GUARDED_REAL_LIVE_SUITES = [
     probe: "attached display",
   },
   {
+    file: "plugins/plugin-elizacloud/__tests__/text-streaming.live.test.ts",
+    optIn: "ELIZA_TOOLCALL_STREAM_LIVE",
+    requires: ["ELIZAOS_CLOUD_API_KEY"],
+    notes:
+      "cerebras-chat-flow-live.yml supplies and cross-checks exact-head/output metadata, then publishes hash-bound redacted provider/plugin/tool evidence",
+  },
+  {
     file: "plugins/plugin-form/src/tests/json-integration.live.test.ts",
     anyOf: [["ANTHROPIC_API_KEY"], ["OPENAI_API_KEY"]],
   },

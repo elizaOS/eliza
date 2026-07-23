@@ -37,6 +37,16 @@ turn prompt exactly once. The synthetic lifecycle target is not dispatched;
 each call receives the shared neutral `{captured: true, effect:
 "not_executed", sequence, tool: "TASKS"}` result.
 
+Callers whose benchmark env executes captured calls itself — the hermes-native
+env proxy speaks one chat-completions step per turn and replays real tool
+results on the next request — declare `context["capture_stop"] = True`. The
+generated plugin then marks every result as terminating deferred external
+work, so the embedded loop ends after the first captured tool batch instead of
+iterating on placeholder acknowledgements (one billed completion per fake
+round) and the terminal `toolUse` turn still classifies as a delivered,
+publishable trajectory. The default (off) preserves the ack-loop contract for
+benchmarks that score reply text written after the acknowledgement.
+
 Publishable runs must use a loopback completion URL. The token appears only as
 an environment reference in generated config. Per-turn telemetry proves the
 runtime, transport, native plugin bridge, config hash, provider, and model; the
@@ -97,7 +107,7 @@ disables bootstrap/skills and denies every non-benchmark tool.
 |---|---|---|
 | `binary_path` | resolved from `OPENCLAW_BIN`, the install manifest, or `PATH` | path to the `openclaw` Node binary |
 | `provider` | `"cerebras"` | provider prefix injected as `<provider>/<model>` when `model` has no slash |
-| `model` | `"gpt-oss-120b"` | model id passed via `--model` |
+| `model` | `"gemma-4-31b"` | model id passed via `--model` |
 | `api_key_env` | `"CEREBRAS_API_KEY"` | env var read for the OpenAI-compatible API key |
 | `base_url` | `None` | loopback OpenAI-compatible gateway URL required by the native publication path |
 | `base_url_env` | `"CEREBRAS_BASE_URL"` | env var read for the OpenAI-compatible base URL |

@@ -28,6 +28,7 @@ import {
   agentSandboxes,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
+  WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { imageRepo } from "../../db/utils/docker-image-ref";
@@ -100,6 +101,16 @@ import {
   runWakeRestoreIntegrityGate,
   type WakeRestoreIntegrityFailure,
 } from "./wake-restore-integrity";
+import {
+  buildWarmClaimCharacterPayload,
+  WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS,
+} from "./warm-claim-character-push";
+import {
+  buildWarmClaimKeyPushBody,
+  safeKeyPrefix,
+  WARM_CLAIM_KEY_PUSH_TIMEOUT_MS,
+  warmClaimKeyFingerprint,
+} from "./warm-claim-key-push";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -458,6 +469,25 @@ const DB_LIVENESS_RESTART_BUDGET = 3;
 const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
 const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
 const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
+/**
+ * Hydration budgets (#16639): the worker heap died buffering unbounded
+ * snapshot bodies (`res.json()` retained everything, then a re-stringify
+ * doubled it). The raw budget is enforced WHILE streaming — bytes past it are
+ * never retained — and the expanded file budgets are validated before the
+ * payload is persisted. Env-overridable for staging soak.
+ */
+const SNAPSHOT_MAX_RAW_BYTES = (() => {
+  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 256 * 1024 * 1024;
+})();
+const SNAPSHOT_MAX_FILES = (() => {
+  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 5_000;
+})();
+const SNAPSHOT_MAX_EXPANDED_BYTES = (() => {
+  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_EXPANDED_BYTES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 384 * 1024 * 1024;
+})();
 const SNAPSHOT_RESTORE_TIMEOUT_MS = 120_000;
 const UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS = 30_000;
 // Hard cap on the container+VPN teardown during agent delete. The underlying
@@ -487,6 +517,102 @@ function digestPinnedImageRef(imageRef: string, digest: string): string {
   const lastSlash = imageRef.lastIndexOf("/");
   const withoutTag = lastColon > lastSlash ? imageRef.slice(0, lastColon) : imageRef;
   return `${withoutTag}@${digest}`;
+}
+
+/**
+ * Stream a Response body, enforcing a hard byte budget (#16639): the read is
+ * aborted the moment the counted bytes exceed the budget, so an oversized
+ * snapshot can never be retained in memory. Fail-closed with an explicit,
+ * observable error.
+ */
+export async function readBodyWithinBudget(res: Response, maxBytes: number): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    if (Buffer.byteLength(text, "utf-8") > maxBytes) {
+      throw new Error(
+        `Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`,
+      );
+    }
+    return text;
+  }
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        received += value.byteLength;
+        if (received > maxBytes) {
+          throw new Error(
+            `Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`,
+          );
+        }
+        chunks.push(value);
+      }
+    }
+  } finally {
+    // Release the connection whether we finished or bailed over budget.
+    reader.cancel().catch(() => {});
+  }
+  return Buffer.concat(chunks).toString("utf-8");
+}
+
+/**
+ * Validate the parsed snapshot's expanded budgets BEFORE it is persisted
+ * (#16639): total file count and summed content bytes across the legacy
+ * `workspaceFiles` map and the durable manifest files. Fail-closed — a
+ * payload over budget is rejected outright, never partially restored.
+ */
+export function assertSnapshotExpandedBudgets(stateData: AgentBackupStateData): void {
+  let files = 0;
+  let expandedBytes = 0;
+  const workspace = stateData.workspaceFiles ?? {};
+  for (const content of Object.values(workspace)) {
+    files += 1;
+    expandedBytes += typeof content === "string" ? Buffer.byteLength(content, "utf-8") : 0;
+  }
+  const components = stateData.manifest?.components;
+  if (components) {
+    const fileSets = [
+      components.database?.pglite,
+      components.media,
+      components.vault,
+      components.stateFiles,
+    ];
+    for (const fileSet of fileSets) {
+      for (const entry of fileSet?.files ?? []) {
+        files += 1;
+        // `size` is the declared decoded size; the base64 payload is the
+        // retained one — count the larger of the two so a lying manifest
+        // cannot under-declare.
+        const decoded =
+          typeof entry.bytesBase64 === "string"
+            ? Math.floor((entry.bytesBase64.length * 3) / 4)
+            : 0;
+        expandedBytes += Math.max(typeof entry.size === "number" ? entry.size : 0, decoded);
+      }
+    }
+    const configFile = components.character?.configFile;
+    if (configFile) {
+      files += 1;
+      expandedBytes +=
+        typeof configFile.bytesBase64 === "string"
+          ? Math.floor((configFile.bytesBase64.length * 3) / 4)
+          : 0;
+    }
+  }
+  if (files > SNAPSHOT_MAX_FILES) {
+    throw new Error(
+      `Snapshot exceeds the file budget (${files} > ${SNAPSHOT_MAX_FILES}) — refusing to retain it`,
+    );
+  }
+  if (expandedBytes > SNAPSHOT_MAX_EXPANDED_BYTES) {
+    throw new Error(
+      `Snapshot exceeds the expanded byte budget (${expandedBytes} > ${SNAPSHOT_MAX_EXPANDED_BYTES}) — refusing to retain it`,
+    );
+  }
 }
 
 function isDockerSandboxMetadata(value: unknown): value is DockerSandboxMetadata {
@@ -2737,6 +2863,7 @@ export class ElizaSandboxService {
   private async bridgeSharedMessageStream(
     rec: AgentSandbox,
     rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
   ): Promise<Response> {
     const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
     const text = typeof params.text === "string" ? params.text : "";
@@ -2818,6 +2945,14 @@ export class ElizaSandboxService {
         start: async (controller) => {
           let reply = "";
           let finished = false;
+          // Once the billing tail is registered it owns settlement end-to-end
+          // (success settles at totalCost, failure refunds). The stream catch
+          // below must then leave the reservation alone: a client cancel makes
+          // the `done` enqueue throw AFTER registration, and racing a
+          // settle(0) against the deferred tail's settle(totalCost) would turn
+          // a fully-delivered, persisted reply into an unbilled one depending
+          // on which write lands first.
+          let billingTailOwnsSettlement = false;
           try {
             for await (const part of parts) {
               if (part.type === "text-delta") {
@@ -2850,46 +2985,79 @@ export class ElizaSandboxService {
               if (turn.navIntent) {
                 await settleReservation(0);
               } else if (billingContext) {
-                try {
-                  const billing = await billUsage(
-                    billingContext,
-                    this.sharedRuntimeBillingUsageForReply(
-                      finalReply,
-                      part.usage,
-                      estimatedInputTokens,
-                    ),
-                  );
-                  const settlement = await settleReservation(billing.totalCost);
-                  const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-                    type: "chat",
-                    content: finalReply,
-                    prompt: text,
-                  });
-                  if (usageRecord) {
-                    await aiBillingRecordsService
-                      .record({
-                        context: billingContext,
-                        billing,
-                        usageRecord,
-                        idempotencyKey,
-                        reconciliation: settlement,
-                      })
-                      .catch((error) => {
-                        logger.error("[shared-runtime] AI billing audit record failed", {
-                          error: error instanceof Error ? error.message : String(error),
-                          agentId: rec.id,
+                // The reply is final once the last token arrived and history
+                // persisted, but the billing tail (billUsage → settleReservation
+                // → analytics → audit) is ~4 serial cross-region Worker→DB
+                // round-trips (~1.5-2s) that previously ran INLINE before the
+                // `done` SSE frame — the exact firstText≈1.4s / done≈4s gap
+                // measured on staging. Same deferral the non-stream send got
+                // (#8759 / settleOffResponsePath): on a Worker the tail runs via
+                // executionCtx.waitUntil OFF the `done` path; without an
+                // executionCtx (tests, non-Worker callers) it runs inline,
+                // exactly as before. The deferred task ALWAYS settles the hold:
+                // success settles at billing.totalCost, any failure refunds via
+                // the idempotent settleReservation(0), and a refund throw is
+                // contained and logged (never an unhandled waitUntil rejection)
+                // — the #11169 sweep-credit-reservations cron backstops a hold
+                // stranded by a dropped waitUntil or a failed refund.
+                billingTailOwnsSettlement = true;
+                await settleOffResponsePath(executionCtx, async () => {
+                  try {
+                    const billing = await billUsage(
+                      billingContext,
+                      this.sharedRuntimeBillingUsageForReply(
+                        finalReply,
+                        part.usage,
+                        estimatedInputTokens,
+                      ),
+                    );
+                    const settlement = await settleReservation(billing.totalCost);
+                    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+                      type: "chat",
+                      content: finalReply,
+                      prompt: text,
+                    });
+                    if (usageRecord) {
+                      await aiBillingRecordsService
+                        .record({
+                          context: billingContext,
+                          billing,
+                          usageRecord,
+                          idempotencyKey,
+                          reconciliation: settlement,
+                        })
+                        .catch((error) => {
+                          logger.error("[shared-runtime] AI billing audit record failed", {
+                            error: error instanceof Error ? error.message : String(error),
+                            agentId: rec.id,
+                          });
                         });
-                      });
+                    }
+                  } catch (error) {
+                    // error-policy:J1 deferred-settlement boundary — the `done`
+                    // frame may already be flushed, so the refund is the
+                    // handling: settle(0) is idempotent, and a refund failure is
+                    // logged for the cron sweep.
+                    try {
+                      await settleReservation(0);
+                    } catch (refundError) {
+                      logger.error(
+                        "[shared-runtime] deferred billing refund failed; sweep-credit-reservations will reclaim the hold",
+                        {
+                          error:
+                            refundError instanceof Error
+                              ? refundError.message
+                              : String(refundError),
+                          agentId: rec.id,
+                        },
+                      );
+                    }
+                    logger.error("[shared-runtime] billing failed", {
+                      error: error instanceof Error ? error.message : String(error),
+                      agentId: rec.id,
+                    });
                   }
-                } catch (error) {
-                  // error-policy:J1 billing boundary translation — the user got
-                  // the reply, but a failed meter write must release the hold.
-                  await settleReservation(0);
-                  logger.error("[shared-runtime] billing failed", {
-                    error: error instanceof Error ? error.message : String(error),
-                    agentId: rec.id,
-                  });
-                }
+                });
               }
               // Attach a VIEWS navigation handoff for a deterministic nav turn so
               // the PWA opens the view (findViewActionHandoff → navigate event in
@@ -2916,8 +3084,12 @@ export class ElizaSandboxService {
             }
           } catch (error) {
             // error-policy:J1 stream boundary translation — partial SSE streams
-            // cannot become HTTP errors, so emit a terminal error frame.
-            await settleReservation(0);
+            // cannot become HTTP errors, so emit a terminal error frame. The
+            // refund only runs while the reservation is still this scope's to
+            // settle — once the billing tail is registered it owns the hold.
+            if (!billingTailOwnsSettlement) {
+              await settleReservation(0);
+            }
             logger.warn("[shared-runtime] stream failed", {
               error: error instanceof Error ? error.message : String(error),
               agentId: rec.id,
@@ -2987,6 +3159,179 @@ export class ElizaSandboxService {
       return this.buildSharedRuntimeCharacter(bootstrap);
     }
     return null;
+  }
+
+  /**
+   * Post-claim character apply (warm pool). A pool container boots GENERIC
+   * (no ELIZA_AGENT_CHARACTER_JSON — agent-warm-pool-creator provisions with
+   * empty env), so after `claimWarmContainer` transfers the DB row the RUNNING
+   * container would still answer as the default Eliza. This pushes the user's
+   * character onto the live runtime via the container's own
+   * `PUT /api/character` route (which applies it in-memory, persists it to the
+   * agent DB so it survives restarts, and journals character history) — no
+   * container restart, no cold boot.
+   *
+   * Bounded and non-fatal by contract: the CALLER treats a failure as
+   * "claim still succeeds, character applies on next container restart"
+   * (the row's agent_config feeds ensureRuntimeAgentStarted / the env path on
+   * any subsequent boot). Throws on failure so the caller can log the
+   * `warm_pool.character_push_failed` event with context.
+   */
+  async pushClaimedWarmContainerCharacter(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "agent_name"
+      | "agent_config"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+  ): Promise<{ pushed: boolean; agentName?: string }> {
+    const payload = buildWarmClaimCharacterPayload(rec.agent_config, rec.agent_name);
+    if (!payload) return { pushed: false };
+
+    const res = await this.fetchAgentApi(rec, "/api/character", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      // error-policy: enrich with a bounded body excerpt; a failed body read
+      // must never mask the HTTP status.
+      const text = await res.text().catch(() => "");
+      throw new Error(`Warm-claim character push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+    }
+    return { pushed: true, agentName: String(payload.name) };
+  }
+
+  /**
+   * Post-claim inference-credential re-key (warm pool, F0). A pool container
+   * boots under the sentinel pool org with a managed cloud inference key
+   * scoped to THAT org, so after `claimWarmContainer` transfers the row the
+   * RUNNING container still holds the pool-org key and every inference reply is
+   * the "key isn't authorized" fallback. This:
+   *
+   *   1. mints a NEW `agent-sandbox:<claimed-row-id>` inference key scoped to
+   *      the claiming user's org;
+   *   2. persists that key onto the claimed row's env (`ELIZAOS_CLOUD_API_KEY`)
+   *      so restart recovery is always possible;
+   *   3. revokes the old `agent-sandbox:<pool-row-id>` credential;
+   *   4. pushes the replacement onto the live container via its authenticated
+   *      `POST /api/cloud/login/persist` route with `forceInferenceEnabled`,
+   *      and requires a fingerprint attestation from runtime-resolved state.
+   *
+   * Secret handling: the plaintext key rides only in the authed TLS-internal
+   * (tailnet) PUT body `fetchAgentApi` uses; it is NEVER logged — the return
+   * carries only booleans + a short safe prefix, and the fingerprint exchange
+   * carries a sha-256 prefix, never key material.
+   *
+   * A transport or attestation failure throws. The caller must enqueue restart
+   * recovery and must not report the claimed agent as ready.
+   */
+  async pushClaimedWarmContainerInferenceKey(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "organization_id"
+      | "user_id"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    > & { warm_pool_row_id: string },
+  ): Promise<{ pushed: boolean; keyPrefix?: string }> {
+    // Guard: never re-key a row that is (still) owned by the sentinel pool org.
+    // The caller invokes this ONLY after a successful claim, when the row is
+    // the user's, but a defensive check here means a pool-org row can never be
+    // handed a fresh user-billable key by mistake.
+    if (rec.organization_id === WARM_POOL_ORG_ID) {
+      throw new Error("Refusing warm-claim key push for a sentinel-pool-org row (not claimed)");
+    }
+    if (!rec.warm_pool_row_id) {
+      throw new Error("Warm-claim key push requires the source agent-sandbox pool row id");
+    }
+
+    // The source pool credential is named after the pool row, not the claimed
+    // user row. Its identity must cross the claim transaction so this handoff
+    // can revoke the correct credential.
+    const { plainKey } = await apiKeysService.createForAgent({
+      organizationId: rec.organization_id,
+      userId: rec.user_id,
+      agentSandboxId: rec.id,
+    });
+
+    const body = buildWarmClaimKeyPushBody({
+      apiKey: plainKey,
+      organizationId: rec.organization_id,
+      userId: rec.user_id,
+    });
+    if (!body) {
+      // A blank minted key or missing org is a broken mint pipeline. Reporting
+      // `pushed: false` here would let the caller advertise an un-re-keyed
+      // container as ready — the exact failure class this handoff exists to
+      // prevent — so it fails closed like every other handoff fault.
+      throw new Error("Warm-claim key push has no usable minted key/org for the claimed row");
+    }
+
+    // 2. Persist the new key onto the row env so a restart boots re-credentialed.
+    const currentEnv = (rec.environment_vars as Record<string, string> | null) ?? {};
+    const nextEnv: Record<string, string> = {
+      ...currentEnv,
+      ELIZAOS_CLOUD_API_KEY: plainKey,
+      ELIZAOS_CLOUD_ENABLED: "true",
+    };
+    await agentSandboxesRepository.update(rec.id, {
+      environment_vars: nextEnv,
+    });
+
+    // The replacement is durable before the boot credential is revoked. From
+    // this point any live-push failure is repaired by restarting from row env.
+    await apiKeysService.revokeForAgent(rec.warm_pool_row_id);
+
+    // Push onto the LIVE container. Use a rec whose env already carries the
+    //    NEW ELIZA_API_TOKEN transport auth (unchanged by the re-key) so
+    //    fetchAgentApi authenticates correctly.
+    const res = await this.fetchAgentApi(
+      { ...rec, environment_vars: nextEnv },
+      "/api/cloud/login/persist",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(WARM_CLAIM_KEY_PUSH_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) {
+      // error-policy: bounded body excerpt; a failed body read must not mask
+      // the status. The excerpt cannot contain the pushed key (this route
+      // echoes only `{ ok }` + a fingerprint), but slice defensively regardless.
+      const text = await res.text().catch(() => "");
+      throw new Error(`Warm-claim key push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+    }
+
+    const responseBody = (await res.json()) as {
+      ok?: unknown;
+      appliedKeyFingerprint?: unknown;
+    };
+    const echoedFingerprint =
+      typeof responseBody.appliedKeyFingerprint === "string"
+        ? responseBody.appliedKeyFingerprint
+        : undefined;
+    const expectedFingerprint = await warmClaimKeyFingerprint(plainKey);
+    if (responseBody.ok !== true || echoedFingerprint !== expectedFingerprint) {
+      throw new Error("Warm-claim key push was not attested by the running runtime");
+    }
+
+    return { pushed: true, keyPrefix: safeKeyPrefix(plainKey) };
   }
 
   // Bridge
@@ -4251,7 +4596,12 @@ export class ElizaSandboxService {
     }
   }
 
-  async bridgeStream(agentId: string, orgId: string, rpc: BridgeRequest): Promise<Response | null> {
+  async bridgeStream(
+    agentId: string,
+    orgId: string,
+    rpc: BridgeRequest,
+    executionCtx?: BridgeExecutionContext,
+  ): Promise<Response | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
@@ -4266,7 +4616,7 @@ export class ElizaSandboxService {
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     if (rec.execution_tier === "shared") {
-      const response = await this.bridgeSharedMessageStream(rec, rpc);
+      const response = await this.bridgeSharedMessageStream(rec, rpc, executionCtx);
       return response ?? (fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null);
     }
 
@@ -6599,8 +6949,19 @@ export class ElizaSandboxService {
       throw new Error(`Snapshot fetch failed: HTTP ${res.status}`);
     }
 
-    const stateData = (await res.json()) as AgentBackupStateData;
-    const sizeBytes = Buffer.byteLength(JSON.stringify(stateData), "utf-8");
+    // Bounded hydration (#16639): stream and count — bytes past the raw
+    // budget are never retained (fail-closed, no partial restore), and the
+    // measured size comes from the counted stream instead of a re-stringify
+    // that used to double peak memory.
+    const raw = await readBodyWithinBudget(res, SNAPSHOT_MAX_RAW_BYTES);
+    let stateData: AgentBackupStateData;
+    try {
+      stateData = JSON.parse(raw) as AgentBackupStateData;
+    } catch {
+      throw new Error("Snapshot payload is not valid JSON — refusing partial restore");
+    }
+    assertSnapshotExpandedBudgets(stateData);
+    const sizeBytes = Buffer.byteLength(raw, "utf-8");
 
     return {
       stateData,

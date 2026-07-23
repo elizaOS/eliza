@@ -50,6 +50,26 @@ const HOSTED_MTP_TIERS: ReadonlySet<string> = new Set(
 	ELIZA_1_HOSTED_MTP_TIER_IDS,
 );
 
+/**
+ * Published bundle contract after the Gemma-4 cutover: HF bundle
+ * directories use architecture slugs, not the tier-id suffix. Pinned
+ * here independently of the catalog's own slug map so a silent rename
+ * on either side fails this suite.
+ */
+const EXPECTED_TIER_BUNDLE_SLUGS: Readonly<Record<string, string>> = {
+	"eliza-1-2b": "e2b",
+	"eliza-1-4b": "e4b",
+	"eliza-1-9b": "12b",
+	"eliza-1-27b": "31b",
+	"eliza-1-27b-256k": "31b-256k",
+};
+
+function expectedBundleSlug(tierId: string): string {
+	const slug = EXPECTED_TIER_BUNDLE_SLUGS[tierId];
+	expect(slug, `${tierId} missing from EXPECTED_TIER_BUNDLE_SLUGS`).toBeTruthy();
+	return slug ?? tierId;
+}
+
 describe("per-tier text + embedding bundle resolution", () => {
 	for (const tierId of ELIZA_1_TIER_IDS) {
 		describe(tierId, () => {
@@ -78,7 +98,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 				}
 				// Separate-drafter MTP is enabled only after the tier's hosted
 				// Gemma drafter GGUF is present under `mtp/drafter-<tier>.gguf`.
-				const slug = tierId.slice("eliza-1-".length);
+				const slug = expectedBundleSlug(tierId);
 				expect(model?.sourceModel?.components.mtp?.repo).toBe(
 					ELIZA_1_HF_REPO,
 				);
@@ -102,7 +122,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 					// One canonical embedding file per tier — the catalog uses
 					// a single filename for every tier that ships one.
 					expect(components?.embedding?.file).toBe(
-						`bundles/${tierId.slice("eliza-1-".length)}/embedding/eliza-1-embedding.gguf`,
+						`bundles/${expectedBundleSlug(tierId)}/embedding/eliza-1-embedding.gguf`,
 					);
 				}
 			});
@@ -113,7 +133,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 				if (!model || !file) return;
 				const url = buildHuggingFaceResolveUrlForPath(model, file);
 				expect(url).toContain(`/${ELIZA_1_HF_REPO}/resolve/main/`);
-				expect(url).toContain(`bundles/${tierId.slice("eliza-1-".length)}/`);
+				expect(url).toContain(`bundles/${expectedBundleSlug(tierId)}/`);
 				expect(url).toMatch(/\.gguf\?download=true$/);
 			});
 

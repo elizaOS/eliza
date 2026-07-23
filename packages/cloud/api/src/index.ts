@@ -17,6 +17,8 @@ import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
 
+export { SharedRuntimeConversation } from "./shared-runtime-conversation";
+
 let appPromise: Promise<Hono<AppEnv>> | undefined;
 let inferenceAppPromise: Promise<Hono<AppEnv>> | undefined;
 const CHAT_COMPLETIONS_PATH = "/api/v1/chat/completions";

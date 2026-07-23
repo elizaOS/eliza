@@ -90,6 +90,10 @@ function makeFakeAcp() {
       return { stopReason: "end_turn", finalText: "ok" };
     }),
     stopSession: vi.fn(async () => undefined),
+    // The residuals gate consults the live orchestrator-owned-artifact
+    // ledger before falling back to session metadata; these sessions own
+    // no scaffolded artifacts, so the live ledger is empty.
+    getOrchestratorOwnedArtifacts: vi.fn(() => []),
   };
   return {
     service,
@@ -775,6 +779,8 @@ function makeVerifierAcp(verifierResponse: () => string) {
       stopped.push(sessionId);
     }),
     getSession: vi.fn(async () => undefined),
+    // Residuals gate: no orchestrator-scaffolded artifacts in these repos.
+    getOrchestratorOwnedArtifacts: vi.fn(() => []),
     spawnSession: vi.fn(
       async (opts: {
         approvalPreset?: string;

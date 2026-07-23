@@ -3,8 +3,8 @@
 Run any integrated benchmark (or all benchmarks), store normalized results in
 SQLite/JSON, and inspect history in the browser viewer.
 
-Use the workspace Python (`/Users/shawwalters/eliza-workspace/.venv/bin/python`)
-for consistent dependency versions across benchmark subprocesses.
+Use one consistent Python interpreter (`python3`, or your project virtualenv's
+python) for consistent dependency versions across benchmark subprocesses.
 
 ## Paths
 
@@ -15,7 +15,7 @@ for consistent dependency versions across benchmark subprocesses.
 ## List integrated benchmarks
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator list-benchmarks
+python3 -m benchmarks.orchestrator list-benchmarks
 ```
 
 This verifies adapter coverage for all benchmark directories under `benchmarks/`.
@@ -23,8 +23,8 @@ This verifies adapter coverage for all benchmark directories under `benchmarks/`
 ## Generate the static operator inventory
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator inventory --format markdown
-/opt/miniconda3/bin/python -m benchmarks.orchestrator inventory --format json
+python3 -m benchmarks.orchestrator inventory --format markdown
+python3 -m benchmarks.orchestrator inventory --format json
 ```
 
 `inventory` emits the registry/adapter checklist without running benchmarks:
@@ -38,7 +38,7 @@ exits with code `2` when static gaps exist so the drift is visible before a live
 Run one benchmark:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --benchmarks solana \
   --provider groq \
   --model openai/gpt-oss-120b
@@ -47,7 +47,7 @@ Run one benchmark:
 Run all benchmarks:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --all \
   --provider groq \
   --model openai/gpt-oss-120b
@@ -89,7 +89,7 @@ Inspect the machine-checked workload and subscription-call ledger without
 launching a benchmark:
 
 ```bash
-PYTHONPATH=packages /opt/miniconda3/bin/python \
+PYTHONPATH=packages python3 \
   -m benchmarks.orchestrator.campaign_ledger
 ```
 
@@ -109,7 +109,7 @@ report.
 Run one full canary phase:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator.full_campaign \
+python3 -m benchmarks.orchestrator.full_campaign \
   --model claude-sonnet-4-6 \
   --benchmarks orchestrator_lifecycle \
   --force
@@ -118,7 +118,7 @@ Run one full canary phase:
 Run every automatic full phase:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator.full_campaign \
+python3 -m benchmarks.orchestrator.full_campaign \
   --model claude-sonnet-4-6 \
   --force
 ```
@@ -162,10 +162,10 @@ Examples:
 
 ```bash
 # rerun only failed signatures
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run --all --rerun-failed --provider groq --model openai/gpt-oss-120b
+python3 -m benchmarks.orchestrator run --all --rerun-failed --provider groq --model openai/gpt-oss-120b
 
 # force fresh runs
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run --all --force --provider groq --model openai/gpt-oss-120b
+python3 -m benchmarks.orchestrator run --all --force --provider groq --model openai/gpt-oss-120b
 ```
 
 ## Extra benchmark config
@@ -176,7 +176,7 @@ This keeps `run --all` idempotent with stable per-benchmark baseline settings
 while still letting you override knobs when needed.
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --benchmarks osworld \
   --provider groq \
   --model openai/gpt-oss-120b \
@@ -188,7 +188,7 @@ while still letting you override knobs when needed.
 in one `--all` run:
 
 ```bash
-/Users/shawwalters/eliza-workspace/.venv/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --all \
   --agent eliza \
   --provider cerebras \
@@ -215,7 +215,7 @@ Use them with `--model-profile`; benchmark `--extra` can still be combined
 and overrides any profile `extra` keys:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --benchmarks bfcl \
   --agent eliza \
   --model-profile cerebras-gemma-4-31b \
@@ -242,7 +242,7 @@ New orchestrator-centric benchmark IDs:
 Code matrix example:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --benchmarks swe_bench_orchestrated \
   --provider anthropic \
   --model claude-sonnet-4-6 \
@@ -252,7 +252,7 @@ Code matrix example:
 Lifecycle suite example:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --benchmarks orchestrator_lifecycle \
   --provider openai \
   --model gpt-4o \
@@ -262,7 +262,7 @@ Lifecycle suite example:
 Replay scoring example (from normalized Eliza capture artifacts):
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --benchmarks eliza_replay \
   --provider groq \
   --model openai/gpt-oss-120b \
@@ -283,8 +283,8 @@ and computer-use benchmarks. The default included matrix is sourced from
 for both `elizaos` and `opencode`.
 
 ```bash
-cd /Users/shawwalters/milaidy/eliza
-PYTHONPATH=packages python -m benchmarks.orchestrator.code_agent_matrix \
+cd "$(git rev-parse --show-toplevel)"
+PYTHONPATH=packages python3 -m benchmarks.orchestrator.code_agent_matrix \
   --benchmarks swe_bench,terminal_bench,mind2web,visualwebbench,webshop,osworld,swe_bench_multilingual,nl2repo,mint,app_eval_coding,standard_humaneval,openclaw_benchmark,claw_eval,qwen_claw_bench,clawbench,agentbench \
   --adapters elizaos,opencode \
   --provider cerebras \
@@ -332,7 +332,7 @@ Add `--publish-latest-dir` to materialize the ElizaOS-vs-OpenCode report rows
 as latest-style JSON artifacts:
 
 ```bash
-PYTHONPATH=packages python -m benchmarks.orchestrator.code_agent_matrix \
+PYTHONPATH=packages python3 -m benchmarks.orchestrator.code_agent_matrix \
   --benchmarks swe_bench,terminal_bench,mind2web,visualwebbench,webshop,osworld,swe_bench_multilingual,nl2repo,mint,app_eval_coding,standard_humaneval,openclaw_benchmark,claw_eval,qwen_claw_bench,clawbench,agentbench \
   --adapters elizaos,opencode \
   --provider cerebras \
@@ -474,8 +474,8 @@ Resume is default: cells with `cell-result.json` are reused. Add `--force` to
 rerun, or summarize an interrupted/keyed run without executing anything:
 
 ```bash
-cd /Users/shawwalters/milaidy/eliza/packages
-python -m benchmarks.orchestrator.code_agent_matrix \
+cd "$(git rev-parse --show-toplevel)/packages"
+python3 -m benchmarks.orchestrator.code_agent_matrix \
   --summarize /path/to/benchmark_results/code-agent-matrix/20260516T120000Z
 ```
 
@@ -484,8 +484,8 @@ To rerun only queued comparisons from a previous report, point at its
 benchmark because it avoids rebuilding the full matrix:
 
 ```bash
-cd /Users/shawwalters/milaidy/eliza/packages
-python -m benchmarks.orchestrator.code_agent_matrix \
+cd "$(git rev-parse --show-toplevel)/packages"
+python3 -m benchmarks.orchestrator.code_agent_matrix \
   --rerun-queue /path/to/benchmark_results/code-agent-matrix/20260516T120000Z/summary.json \
   --compare-summary /path/to/benchmark_results/code-agent-matrix/20260516T120000Z/summary.json \
   --queue-priorities p0 \
@@ -536,7 +536,7 @@ combined with `--enforce-report`, the combined report gate includes the
 no-regression gate.
 
 Use `--quality-guardrail-summary` to attach the JSON output from
-`PYTHONPATH=packages python -m benchmarks.orchestrator validate-latest-readiness --skip-runtime-gates --exclude-benchmarks <code-agent-benchmark-csv> --json`
+`PYTHONPATH=packages python3 -m benchmarks.orchestrator validate-latest-readiness --skip-runtime-gates --exclude-benchmarks <code-agent-benchmark-csv> --json`
 for the broader benchmark matrix. This validates the latest published
 non-code-quality evidence without circularly re-validating the code-agent
 benchmarks under release, and without letting host-specific runtime probes,
@@ -615,8 +615,8 @@ Docker needs to be installed or started, or whether NL2Repo should use the
 built-in agent helper:
 
 ```bash
-cd /Users/shawwalters/milaidy/eliza/packages
-python -m benchmarks.orchestrator.code_agent_matrix \
+cd "$(git rev-parse --show-toplevel)/packages"
+python3 -m benchmarks.orchestrator.code_agent_matrix \
   --preflight \
   --smoke \
   --no-docker \
@@ -626,8 +626,8 @@ python -m benchmarks.orchestrator.code_agent_matrix \
 No-key smoke/dry validation:
 
 ```bash
-cd /Users/shawwalters/milaidy/eliza/packages
-python -m benchmarks.orchestrator.code_agent_matrix \
+cd "$(git rev-parse --show-toplevel)/packages"
+python3 -m benchmarks.orchestrator.code_agent_matrix \
   --dry-run \
   --smoke \
   --no-docker \
@@ -645,7 +645,7 @@ before being persisted.
 Serve live viewer API + UI:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator serve-viewer --host 127.0.0.1 --port 8877
+python3 -m benchmarks.orchestrator serve-viewer --host 127.0.0.1 --port 8877
 ```
 
 Open: `http://127.0.0.1:8877/`
@@ -660,7 +660,7 @@ Viewer supports:
 ## Rebuild viewer dataset
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator export-viewer-data
+python3 -m benchmarks.orchestrator export-viewer-data
 ```
 
 ## Validate latest benchmark readiness
@@ -671,18 +671,18 @@ real successful runs with numeric scores, no sample/demo/mock/stub markers, and
 comparable real-harness scores.
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-matrix
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-runtime-gates
-/opt/miniconda3/bin/python -m benchmarks.orchestrator calibration-report --tolerance 0.08
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-publishability
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-comparability --tolerance 0.08
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08 --skip-runtime-gates --exclude-benchmarks agentbench,app_eval_coding,claw_eval,clawbench,mind2web,mint,nl2repo,openclaw_benchmark,osworld,qwen_claw_bench,qwen_web_bench,standard_humaneval,swe_bench,swe_bench_multilingual,swe_bench_pro,terminal_bench,vision_language,visualwebbench,webshop --json > /path/to/non-code-quality-guardrail.json
+python3 -m benchmarks.orchestrator validate-matrix
+python3 -m benchmarks.orchestrator validate-runtime-gates
+python3 -m benchmarks.orchestrator calibration-report --tolerance 0.08
+python3 -m benchmarks.orchestrator validate-latest-publishability
+python3 -m benchmarks.orchestrator validate-latest-comparability --tolerance 0.08
+python3 -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08
+python3 -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08 --skip-runtime-gates --exclude-benchmarks agentbench,app_eval_coding,claw_eval,clawbench,mind2web,mint,nl2repo,openclaw_benchmark,osworld,qwen_claw_bench,qwen_web_bench,standard_humaneval,swe_bench,swe_bench_multilingual,swe_bench_pro,terminal_bench,vision_language,visualwebbench,webshop --json > /path/to/non-code-quality-guardrail.json
 
 # Code-agent latest artifacts from --publish-latest-dir:
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-publishability --latest-dir packages/benchmarks/benchmark_results/latest-code-agent --include-benchmarks swe_bench
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-comparability --latest-dir packages/benchmarks/benchmark_results/latest-code-agent --include-benchmarks swe_bench --tolerance 0.08
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-readiness --latest-dir packages/benchmarks/benchmark_results/latest-code-agent --include-benchmarks swe_bench --skip-runtime-gates
+python3 -m benchmarks.orchestrator validate-latest-publishability --latest-dir packages/benchmarks/benchmark_results/latest-code-agent --include-benchmarks swe_bench
+python3 -m benchmarks.orchestrator validate-latest-comparability --latest-dir packages/benchmarks/benchmark_results/latest-code-agent --include-benchmarks swe_bench --tolerance 0.08
+python3 -m benchmarks.orchestrator validate-latest-readiness --latest-dir packages/benchmarks/benchmark_results/latest-code-agent --include-benchmarks swe_bench --skip-runtime-gates
 ```
 
 `validate-latest-readiness` is the completion gate. It fails unless every
@@ -704,12 +704,14 @@ latest artifact set.
 credentials that unlock benchmarks where sample/demo fallbacks are forbidden.
 
 After the latest matrix is generated and manually spot-reviewed, package the
-reviewed result set into the committed evidence location:
+reviewed result set into a local evidence bundle (gitignored; attach the
+contents inline on the issue/PR — the committed `.github/issue-evidence/`
+location is retired):
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator review-package \
+python3 -m benchmarks.orchestrator review-package \
   --latest-dir packages/benchmarks/benchmark_results/latest \
-  --out-dir .github/issue-evidence/10199-benchmark-review \
+  --out-dir test-results/evidence/10199-benchmark-review \
   --reviewed-by <handle> \
   --reviewer-note "Opened the selected trajectories/replays and spot-reviewed model inputs, outputs, scores, and failure diagnostics."
 ```
@@ -742,7 +744,7 @@ VISION_LANGUAGE_PROVIDER=local-eliza \
 VISION_LANGUAGE_MODEL=eliza-1-9b \
 VISION_LANGUAGE_TIER=eliza-1-9b \
 PYTHONPATH=. \
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+python3 -m benchmarks.orchestrator run \
   --benchmarks hyperliquid_bench \
   --all-harnesses \
   --provider cerebras \
@@ -754,13 +756,13 @@ VISION_LANGUAGE_PROVIDER=local-eliza \
 VISION_LANGUAGE_MODEL=eliza-1-9b \
 VISION_LANGUAGE_TIER=eliza-1-9b \
 PYTHONPATH=. \
-/opt/miniconda3/bin/python -m benchmarks.orchestrator export-viewer-data
+python3 -m benchmarks.orchestrator export-viewer-data
 
 VISION_LANGUAGE_PROVIDER=local-eliza \
 VISION_LANGUAGE_MODEL=eliza-1-9b \
 VISION_LANGUAGE_TIER=eliza-1-9b \
 PYTHONPATH=. \
-/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08
+python3 -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08
 ```
 
 ## Recover stale/interrupted runs
@@ -769,19 +771,54 @@ If an orchestrator process is interrupted, rows can remain in `running` state.
 Recover them immediately and regenerate the viewer dataset:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator recover-stale-runs --stale-seconds 0
+python3 -m benchmarks.orchestrator recover-stale-runs --stale-seconds 0
 ```
 
 Default behavior only recovers runs older than 300 seconds:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator recover-stale-runs
+python3 -m benchmarks.orchestrator recover-stale-runs
 ```
+
+Recovery never touches finished run groups: a completed cohort's terminal
+state is authoritative, and reopening it would break subscription cohort reuse
+and the one-unfinished-group-per-namespace invariant. Cohort campaigns also
+run the same recovery automatically at cohort startup for non-subscription
+(namespace-less) groups older than six hours, so an interrupted API-key cohort
+self-heals without a manual `recover-stale-runs` pass. Subscription
+(namespaced) groups are excluded from that automatic sweep — they pause
+durably and are resumed with `--resume`.
+
+The stale threshold is wall-clock, not liveness: a legitimately-running row
+older than six hours in *another process* is indistinguishable from a zombie
+and would be flipped to `failed` by the sweep. Standalone `run` invocations do
+not take the campaign execution lock, so do not run long standalone benchmarks
+(swe_bench/osworld-class cells routinely exceed six hours) concurrently with a
+cohort campaign against the same `orchestrator.sqlite`.
+
+### Resume after a subscription account swap
+
+A paused subscription campaign stores the pausing account's `retry_at` and
+will not resume before it. After swapping to a fresh subscription account,
+pass `--assume-quota-reset` so the stored `retry_at` no longer blocks the
+resume (and the in-process `--wait-on-quota` wait does not sleep on it):
+
+```bash
+python3 -m benchmarks.orchestrator.full_campaign \
+  --model claude-sonnet-4-6 \
+  --resume \
+  --assume-quota-reset
+```
+
+The override is fail-closed and off by default: if quota is in fact still
+latched, the gateway immediately re-pauses the cohort with a fresh `retry_at`,
+and that fresh pause is honored — the assertion is consumed by the first
+resume attempt. The flag requires `--resume` or `--wait-on-quota`.
 
 ## Show runs in terminal
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator show-runs --desc --limit 200
+python3 -m benchmarks.orchestrator show-runs --desc --limit 200
 ```
 
 `show-runs` is sorted by `(agent, run_id)` and is useful for quick auditing.
@@ -798,7 +835,7 @@ compatible base URL; for the ``vllm`` provider this points the orchestrator at
 a self-hosted vLLM endpoint started via ``vllm serve``.
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator compare \
+python3 -m benchmarks.orchestrator compare \
   --a "vllm:elizaos/eliza-1@http://127.0.0.1:8001/v1" \
   --b "vllm:Qwen/Qwen3.5-2B@http://127.0.0.1:8002/v1" \
   --benchmarks action-calling,bfcl,realm,context-bench
@@ -834,7 +871,7 @@ Wrote benchmarks/benchmark_results/comparisons/compare-cmp_20260504T120000Z_a1b2
 Re-render a stored comparison:
 
 ```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator view-comparison \
+python3 -m benchmarks.orchestrator view-comparison \
   cmp_20260504T120000Z_a1b2c3d4
 ```
 

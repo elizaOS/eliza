@@ -786,6 +786,10 @@ const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_DOWNGRADE,
 ]);
+/** Re-schedule delay for snapshot jobs claimed while the lane gate is off
+ *  (#16639) — long enough not to spin, short enough to drain promptly once
+ *  operators enable the lane. */
+const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
 
 /**
@@ -1833,9 +1837,16 @@ export class ProvisioningJobService {
 
     const jobTypes = opts.jobTypes ?? Object.values(JOB_TYPES);
 
-    // Process each job type in this daemon's lane
-    for (const jobType of jobTypes) {
-      await this.processJobType(jobType, batchSize, result);
+    // Process each job type in this daemon's lane. The memory-intensive
+    // snapshot lane is gated out of CLAIMING (fail-closed, #16639) and, when
+    // enabled, forced sequential (batch 1) so phases settle before another
+    // payload is allocated. The stale sweep below deliberately keeps the
+    // full lane list: flipping a stuck in_progress row back to pending is a
+    // DB-only operation with no hydration, and gated rows simply wait as
+    // pending until operators enable the lane.
+    for (const jobType of this.filterSnapshotLane(jobTypes, "claim")) {
+      const laneBatch = jobType === JOB_TYPES.AGENT_SNAPSHOT ? 1 : batchSize;
+      await this.processJobType(jobType, laneBatch, result);
     }
 
     // Recover stale jobs (stuck in_progress for >5 minutes), scoped to the same
@@ -1846,6 +1857,36 @@ export class ProvisioningJobService {
     }
 
     return result;
+  }
+
+  /**
+   * Fail-closed gate for the memory-intensive `agent_snapshot` lane (#16639).
+   * The lane is DISABLED unless `ELIZA_SNAPSHOT_JOBS_ENABLED` is exactly
+   * "true": production repeatedly exhausted the worker heap hydrating
+   * snapshots, and disabling backup verification did not disable hydration.
+   * Claim and startup recovery both honor the gate, so a restart cannot
+   * resurrect snapshot jobs before operators re-enable them; every other
+   * lifecycle lane stays independently operable.
+   */
+  static snapshotJobsEnabled(): boolean {
+    return process.env.ELIZA_SNAPSHOT_JOBS_ENABLED === "true";
+  }
+
+  private snapshotGateLogged = false;
+
+  private filterSnapshotLane(
+    jobTypes: readonly ProvisioningJobType[],
+    where: string,
+  ): readonly ProvisioningJobType[] {
+    if (ProvisioningJobService.snapshotJobsEnabled()) return jobTypes;
+    const filtered = jobTypes.filter((t) => t !== JOB_TYPES.AGENT_SNAPSHOT);
+    if (filtered.length !== jobTypes.length && !this.snapshotGateLogged) {
+      this.snapshotGateLogged = true;
+      logger.warn(
+        `[provisioning-jobs] agent_snapshot lane disabled (${where}): set ELIZA_SNAPSHOT_JOBS_ENABLED=true to enable`,
+      );
+    }
+    return filtered;
   }
 
   /**
@@ -1862,7 +1903,7 @@ export class ProvisioningJobService {
   ): Promise<number> {
     let totalRecovered = 0;
 
-    for (const jobType of jobTypes) {
+    for (const jobType of this.filterSnapshotLane(jobTypes, "startup-recovery")) {
       const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
         type: jobType,
         startedBefore,
@@ -2879,6 +2920,22 @@ export class ProvisioningJobService {
       throw new Error(
         `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
       );
+    }
+
+    // Belt to the lane filter (#16639): a snapshot job claimed through any
+    // other path while the gate is off is re-scheduled without burning an
+    // attempt — observable, never a fabricated success.
+    if (!ProvisioningJobService.snapshotJobsEnabled()) {
+      logger.warn("[provisioning-jobs] agent_snapshot blocked by disabled gate", {
+        jobId: job.id,
+        agentId: data.agentId,
+      });
+      await jobsRepository.retryLaterWithoutIncrementingAttempts(
+        job.id,
+        "agent_snapshot lane disabled (ELIZA_SNAPSHOT_JOBS_ENABLED != true)",
+        SNAPSHOT_GATE_RETRY_DELAY_MS,
+      );
+      return;
     }
 
     logger.info("[provisioning-jobs] Executing agent_snapshot", {

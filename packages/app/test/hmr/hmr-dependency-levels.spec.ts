@@ -131,6 +131,14 @@ const LEVELS = [
     file: "plugins/plugin-screenshare/src/components/ScreenshareView.tsx",
   },
   {
+    name: "plugin view notes",
+    file: "plugins/plugin-simple-views/src/views/NotesView.tsx",
+  },
+  {
+    name: "plugin view simple-calendar",
+    file: "plugins/plugin-simple-views/src/views/SimpleCalendarView.tsx",
+  },
+  {
     name: "plugin view task coordinator",
     file: "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
   },

@@ -42,6 +42,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "settings",
   "wallet",
   "tasks",
+  "simple-calendar",
+  "notes",
   "automations",
   "browser",
   // Cloud account app — gated to cloud-signed-in sessions via
@@ -249,7 +251,11 @@ function preferenceScore(entry: ViewEntry): number {
  * (`cloud-apps`) needs no entry here: it never tiles at all
  * (LAUNCHER_HIDDEN_IDS) and its deep link redirects to Projects.
  */
-export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud"]);
+export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set([
+  "cloud",
+  "notes",
+  "simple-calendar",
+]);
 
 export interface CurateLauncherOptions {
   /** Include the native-OS tiles (phone/messages/contacts/camera/files). */

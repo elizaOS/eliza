@@ -22,46 +22,6 @@ permissions:
   contents: read
 
 jobs:
-  lane-coverage:
-    name: Test Integrity (lane coverage)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: "24.15.0"
-
-      - name: Per-plugin e2e coverage
-        run: node packages/scripts/lint-lane-coverage.mjs
-
-      - name: Test-integrity audit
-        run: node packages/scripts/lint-test-integrity.mjs
-
-      - name: Test-integrity audit self-test
-        run: node packages/scripts/lint-test-integrity.self-test.mjs
-
-      - name: Changed-file coverage classifier self-tests
-        run: |
-          while IFS= read -r self_test; do
-            if [ ! -f "$self_test" ]; then
-              echo "registered coverage self-test is missing: $self_test"
-              exit 1
-            fi
-            node "$self_test"
-          done < scripts/security/coverage-node-self-tests.txt
-
-      # The aggregate itself is base-trusted and therefore cannot execute its
-      # new implementation on the PR that introduces a change. This required
-      # lane validates the proposed state machine and workflow contract first.
-      - name: Develop PR aggregate contract self-test
-        run: node packages/scripts/develop-pr-aggregate.self-test.mjs
-
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -547,7 +547,7 @@ describe("AcpService", () => {
     }
   });
 
-  it("writes SKILLS.md into every spawn workspace (shared spawn path)", async () => {
+  it("does not create SKILLS.md in a caller-owned non-isolated workdir", async () => {
     const dir = mkdtempSync(join(tmpdir(), "acp-skills-"));
     try {
       const skillsService = {
@@ -567,7 +567,7 @@ describe("AcpService", () => {
       );
       await service.start();
       const promise = service.spawnSession({
-        name: "skills-spawn",
+        name: "skills-non-isolated",
         agentType: "codex",
         workdir: dir,
       });
@@ -581,7 +581,48 @@ describe("AcpService", () => {
       closeOk(reg);
       await promise;
 
-      const manifestPath = join(dir, "SKILLS.md");
+      expect(existsSync(join(dir, "SKILLS.md"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes SKILLS.md into orchestrator-owned isolated scratch", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acp-skills-isolated-"));
+    try {
+      const skillsService = {
+        getEligibleSkills: async () => [
+          {
+            slug: "github",
+            name: "GitHub",
+            description: "gh CLI usage.",
+            content: "# GitHub\n",
+          },
+        ],
+        isSkillEnabled: () => true,
+      };
+      const reg = nextProc();
+      const service = new AcpService(
+        runtime({}, { AGENT_SKILLS_SERVICE: skillsService }),
+      );
+      await service.start();
+      const promise = service.spawnSession({
+        name: "skills-isolated",
+        agentType: "codex",
+        workdir: dir,
+        isolateWorkdir: true,
+      });
+      await waitForSpawn(reg);
+      reg.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          '{"jsonrpc":"2.0","method":"session_started","params":{"sessionId":"skills-isolated"}}\n',
+        ),
+      );
+      closeOk(reg);
+      const result = await promise;
+
+      const manifestPath = join(result.workdir, "SKILLS.md");
       expect(existsSync(manifestPath)).toBe(true);
       const manifest = readFileSync(manifestPath, "utf8");
       expect(manifest).toContain("GitHub");
@@ -589,8 +630,16 @@ describe("AcpService", () => {
       // Broker router not registered here → no broker entry advertised.
       expect(manifest).not.toContain("Parent Eliza Agent");
       // And the on-disk manual has no broker section either.
-      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).not.toContain(
-        "Asking the parent Eliza agent to act",
+      expect(
+        readFileSync(join(result.workdir, "AGENTS.md"), "utf8"),
+      ).not.toContain("Asking the parent Eliza agent to act");
+      expect(result.metadata?.orchestratorOwnedArtifacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: "SKILLS.md",
+            source: "skills-manifest",
+          }),
+        ]),
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -650,10 +699,14 @@ describe("AcpService", () => {
         runtime({}, { ACPX_SUB_AGENT_ROUTER: router }),
       );
       await service.start();
+      // SKILLS.md is written only into orchestrator-owned isolated scratch
+      // (096cb58f3a2), so the broker advertisement must be asserted there —
+      // spawn isolated and read from the session's own workdir.
       const promise = service.spawnSession({
         name: "broker-spawn",
         agentType: "codex",
         workdir: dir,
+        isolateWorkdir: true,
       });
       await waitForSpawn(reg);
       reg.proc.stdout.emit(
@@ -663,12 +716,12 @@ describe("AcpService", () => {
         ),
       );
       closeOk(reg);
-      await promise;
+      const result = await promise;
 
-      expect(readFileSync(join(dir, "SKILLS.md"), "utf8")).toContain(
+      expect(readFileSync(join(result.workdir, "SKILLS.md"), "utf8")).toContain(
         "Parent Eliza Agent",
       );
-      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toContain(
+      expect(readFileSync(join(result.workdir, "AGENTS.md"), "utf8")).toContain(
         "Asking the parent Eliza agent to act",
       );
     } finally {

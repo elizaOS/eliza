@@ -159,7 +159,9 @@ help-as-knowledge. The current views as read surfaces the agent drives. LifeOps:
 scheduling, calendar, reminders, goals, todos, tasks, coordination — one
 scheduler, structural behavior. The in-chat widget vocabulary (form, choice,
 followups, task, secret/oauth, `[CONFIG]`). A sparse resting home
-(time/weather + notifications + wallet). Bidirectional voice on every surface.
+(time/weather + notifications; the wallet price surface lives on the routed
+`/wallet` view per the ratified home spec, #14560/#14669). Bidirectional voice
+on every surface.
 On-device Android + iOS fleet e2e. Doc-driven coordination + inline evidence.
 The unifying constraint: **fix / test / verify, don't add.**
 
@@ -217,9 +219,14 @@ accepts inline GitHub attachments.
 **What's weak.** The persona corpus is **134/212 verified**, and the shortfall
 concentrates exactly in the make-or-break neurodivergent packs — ADHD capture
 **8/28**, ADHD follow-through **5/24**, shift-rotation **4/22**. The widget
-round-trips have **zero live-LLM scenario coverage**. The home carries seven
-non-MVP widgets and a wallet that contradicts its own doctrine (hides with no
-holdings, prices never refresh); an `AppRunsWidget` polls every 5s ungated.
+round-trips have live-only scenarios for every leg (FORM #14488, CHOICE /
+CONFIG / FOLLOWUPS, settings-in-chat card + provider switch with a persisted
+eliza.json assertion), with reviewer-visible hand-read runs attached to
+#16939; by design no CI lane runs them, so coverage is re-proven per change,
+not continuously. The non-MVP home widgets
+were removed and `wallet.balance` was demoted off the home per the ratified
+spec (#14560/#14669); the demotion's compensations — the routed price surface
+mount and the balance-delta notification producer — landed in #16943.
 Cloud voice now has a committed Railway benchmark and a scheduled live contract
 lane, the client cloud-ASR path is wired, the STT model is deploy-configurable,
 and reproducible Kokoro/Whisper Railway service definitions live in-repo.
@@ -256,8 +263,9 @@ The nine research docs, one line each. Full detail behind each link.
    connector form-link, add date/time field types, and prove the widget +
    settings-in-chat + hosted-secret round-trips with live-LLM scenarios.
 3. [Launcher widgets](../research/03-launcher-widgets.md) — keep the resting
-   home sparse; respec the wallet to doctrine; remove seven non-MVP widgets;
-   prove the sparse state with an e2e fixture.
+   home sparse; wallet demoted to the routed `/wallet` view with a
+   balance-delta notification producer (#14560/#14669/#16943); remove seven
+   non-MVP widgets; prove the sparse state with an e2e fixture.
 4. [Onboarding, tutorial & help](../research/04-onboarding-tutorial-help.md) —
    resurrect the live e2e lane, automate the default cloud path on devices via
    the SIWE wallet, and add a liveness contract to every onboarding path.
@@ -294,8 +302,14 @@ proof. Per workstream, done means:
    CHOICE pick, `[CONFIG]` emission, and the settings + hosted-secret
    round-trips working, reviewed by hand.
 3. **Launcher** — an e2e fixture asserts the healthy-quiet home shows exactly
-   time/weather + wallet (+ notifications when present), each keeper self-hides,
-   and the wallet shows BTC/SOL/ETH by default / top-3 held, refreshing.
+   time/weather (+ notifications when present) and each keeper self-hides. The
+   wallet is NOT a home resident: the ratified home spec
+   (`docs/design/NOTIFICATIONS-WIDGETS-SYSTEM.md` §B/§E item 3, decided in
+   #14560, landed in #14669) demoted `wallet.balance` to the routed wallet
+   view. The wallet bar is therefore: the price surface (BTC/SOL/ETH by
+   default / top-3 held, visibility-gated refresh, price-only per #10706)
+   renders on the `/wallet` section root, and a material balance delta arrives
+   as a producer-side notification (#16943).
 4. **Onboarding** — a green scheduled `app-live-e2e.yml` run with reviewed
    artifacts (real cloud login + real-LLM reply); iOS-sim + Android-emu lanes
    that onboard through the real UI via the SIWE wallet and record MP4 + JPG;

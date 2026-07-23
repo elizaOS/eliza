@@ -3,8 +3,11 @@
  * Deterministic unit test with a stubbed runtime; no live model.
  */
 import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { describe, expect, it, vi } from "vitest";
+import * as os from "node:os";
+import * as path from "node:path";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { handleAgentRoutes } from "../../src/api/agent-routes.ts";
 import type { RouteContext } from "../../src/api/route-utils.ts";
 
@@ -104,10 +107,27 @@ describe("agent-routes goal wrapper", () => {
   });
 
   it("POST /spawn wraps the raw task via buildGoalPrompt and stores the bare goal", async () => {
+    // The workdir must be an allowed root OUTSIDE the runtime's own checkout
+    // (#16777 refuses any checkout-nested dir, and this test process always
+    // runs from inside the repo) — route it through a configured workspace
+    // root the same way the spawn path does in production.
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "goal-wrapper-ws-"),
+    );
+    const workdir = path.join(workspaceRoot, "task");
+    await mkdir(workdir, { recursive: true });
+    const prevWorkspaceDir = process.env.ELIZA_WORKSPACE_DIR;
+    process.env.ELIZA_WORKSPACE_DIR = workspaceRoot;
+    onTestFinished(async () => {
+      if (prevWorkspaceDir === undefined)
+        delete process.env.ELIZA_WORKSPACE_DIR;
+      else process.env.ELIZA_WORKSPACE_DIR = prevWorkspaceDir;
+      await rm(workspaceRoot, { recursive: true, force: true });
+    });
     const spawnSession = vi.fn().mockResolvedValue({
       id: "sess-1",
       agentType: "codex",
-      workdir: process.cwd(),
+      workdir,
       status: "ready",
     });
     const ctx = makeCtx({
@@ -120,7 +140,7 @@ describe("agent-routes goal wrapper", () => {
       body: {
         agentType: "codex",
         task: "Refactor the parser",
-        workdir: process.cwd(),
+        workdir,
       },
     });
     const { res, status } = fakeResponse();

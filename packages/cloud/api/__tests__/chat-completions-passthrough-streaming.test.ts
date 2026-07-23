@@ -1,5 +1,6 @@
 /**
  * Pass-through streaming fast path (#15428) for POST /api/v1/chat/completions.
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * Drives the REAL streaming handler with a mocked global `fetch` (the direct
  * upstream boundary) and the REAL credit-reservation settler, mirroring

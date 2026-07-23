@@ -1,6 +1,7 @@
 /**
  * Guard tests for #12749 — /v1/chat/completions must fail closed (402) when a
  * caller can afford the base cost but NOT base + affiliate markup.
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * #11976 threaded `affiliateCode` into the synchronous reserveCredits
  * (`estimatedCostMultiplier = 1 + markup`), so the upfront hold covers the

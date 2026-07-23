@@ -64,17 +64,15 @@ import {
   InsufficientCreditsError,
   normalizeUsage,
   recordUsageAnalytics,
-  reserveCredits,
 } from "@/lib/services/ai-billing";
 import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
-import type {
-  CreditReconciliationResult,
-  CreditReservation,
-} from "@/lib/services/credits";
+import type { CreditReconciliationResult } from "@/lib/services/credits";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
+import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
@@ -564,7 +562,18 @@ app.post("/", async (c) => {
   // JWT/cookie/wallet creds or a cold cache.
   let moderationAlreadyChecked = false;
   try {
-    const resolution = await resolveInferenceAuthContext(c.req.raw);
+    const resolution = await resolveInferenceAuthContext(c.req.raw, {
+      executionCtx,
+      traceId,
+      cacheOnly: Boolean(executionCtx),
+    });
+    if (resolution.kind === "warming") {
+      return anthropicError(
+        "api_error",
+        "Authorization cache is warming. Retry shortly.",
+        503,
+      );
+    }
     if (resolution.kind === "suspended") {
       return anthropicError(
         "permission_error",
@@ -699,9 +708,11 @@ app.post("/", async (c) => {
   const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
   const billingSource: PricingBillingSource =
     resolveAiProviderSource(model) ?? "bitrouter";
+  // One server-generated identity spans admission, settlement, affiliate
+  // earnings, and audit records. A client-controlled retry key is intentionally
+  // kept separate because two delivered requests must produce two charges.
+  const requestId = crypto.randomUUID();
   const tBeforeReserve = performance.now();
-
-  let reservation: CreditReservation;
 
   if (useAppCredits && appId && monetizedApp) {
     const { totalCost } = await calculateCost(
@@ -717,7 +728,7 @@ app.post("/", async (c) => {
     const idempotencyKey = getRequestIdempotencyKey() ?? crypto.randomUUID();
 
     try {
-      reservation = await appCreditsService.reserveInferenceCredits({
+      const reservation = await appCreditsService.reserveInferenceCredits({
         appId,
         userId: user.id,
         estimatedBaseCost: totalCost,
@@ -733,6 +744,7 @@ app.post("/", async (c) => {
         },
         app: monetizedApp,
       });
+      settleReservation = createCreditReservationSettler(reservation);
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
@@ -746,18 +758,24 @@ app.post("/", async (c) => {
     }
   } else {
     try {
-      reservation = await reserveCredits(
-        {
+      const admission = await admitOrganizationInference({
+        context: {
           organizationId: user.organization_id,
           userId: user.id,
+          apiKeyId: apiKey?.id,
           model,
           provider,
           billingSource,
           affiliateCode,
+          requestId,
         },
         estimatedInputTokens,
         estimatedOutputTokens,
-      );
+        apiKeyId: apiKey?.id,
+        affiliateCode,
+        executionCtx,
+      });
+      settleReservation = admission.settle;
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
@@ -766,12 +784,23 @@ app.post("/", async (c) => {
           429,
         );
       }
+      if (error instanceof InferenceBalanceCacheWarmingError) {
+        return anthropicError(
+          "api_error",
+          "Billing authorization is warming. Retry shortly.",
+          503,
+        );
+      }
 
       throw error;
     }
   }
 
-  settleReservation = createCreditReservationSettler(reservation);
+  if (!settleReservation) {
+    throw new Error(
+      "[Messages API] inference admission did not return a settler",
+    );
+  }
   const tAfterReserve = performance.now();
 
   // The outer AI SDK invocation is the last gateway-controlled boundary.
@@ -809,18 +838,6 @@ app.post("/", async (c) => {
     // valid `tools` array); keep it inside the settle-refunding try so a
     // conversion throw refunds the reservation instead of stranding the debit
     // the caller was just charged (refund-gap class, #11795).
-    // #11588: the billing requestId feeds the affiliate-earnings dedupe
-    // sourceId (getAffiliateEarningsSourceId → `ai_billing:<op>:<requestId>`,
-    // deduped on addEarnings) while the org charge is unconditional. It MUST
-    // NOT be client-controllable, or a caller pinning `x-request-id`/an
-    // idempotency key across two real billed requests could suppress the
-    // second affiliate/creator credit while still paying the org charge
-    // (mirrors chat/completions). Server-generate it once per request — it
-    // stays stable across this request's stream-finish/abort/non-stream
-    // settle contexts, so the single-flight billing dedupe is preserved. The
-    // client retry key remains ONLY the reservation idempotencyKey (#10423).
-    // Threaded into handleStream / handleNonStream.
-    const requestId = crypto.randomUUID();
     const messages = anthropicMessagesToModelMessages(request.messages);
     const tools = convertTools(request.tools);
     const toolChoice = mapToolChoice(request.tool_choice);

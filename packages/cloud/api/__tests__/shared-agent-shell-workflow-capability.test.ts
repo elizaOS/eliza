@@ -87,6 +87,7 @@ describe("shared-agent workflow capability on hosted app paths", () => {
     const response = await request("unknown-capability");
 
     expect(response.status).toBe(404);
+    expect(resolveSharedAgent).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toEqual({
       success: false,
       error: "Not found",

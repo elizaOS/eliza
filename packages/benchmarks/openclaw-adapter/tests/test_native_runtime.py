@@ -238,6 +238,97 @@ process.stdout.write(JSON.stringify([first, second]));
     ]
 
 
+def test_capture_stop_plugin_terminates_batch_and_keeps_scorer_contract(
+    tmp_path: Path,
+) -> None:
+    """Capture-stop results must end the embedded loop (``terminate: true``)
+    and classify as deferred external work (``async``/``started`` details) so
+    the terminal turn counts as delivery, while the capture file keeps the
+    bare scorer contract with none of those runtime-facing markers."""
+    paths = prepare_native_runtime(
+        tools=normalize_benchmark_tools([_tool()]),
+        model="claude-opus-4-8",
+        base_url="http://127.0.0.1:31337",
+        timeout_s=45,
+        max_tokens=2048,
+        state_dir=tmp_path,
+        capture_stop=True,
+    )
+    plugin_path = paths.plugin_dir / "index.mjs"
+    script = f"""
+import {{ pathToFileURL }} from "node:url";
+const plugin = (await import(pathToFileURL({json.dumps(str(plugin_path))}).href)).default;
+const registrations = [];
+plugin.register({{ registerTool(tool) {{ registrations.push(tool); }} }});
+const result = await registrations[0].execute("call-1", {{ value: "sentinel" }});
+process.stdout.write(JSON.stringify(result));
+"""
+    completed = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "OPENCLAW_BENCHMARK_CAPTURE_PATH": str(paths.capture_path),
+        },
+    )
+
+    result = json.loads(completed.stdout)
+    assert result["terminate"] is True
+    assert result["details"] == {
+        "captured": True,
+        "tool": "record_probe",
+        "sequence": 0,
+        "async": True,
+        "status": "started",
+    }
+    executions = read_captured_tool_executions(paths.capture_path)
+    assert [execution["result"] for execution in executions] == [
+        {"captured": True, "tool": "record_probe", "sequence": 0}
+    ]
+
+
+def test_default_plugin_keeps_neutral_acknowledgement_without_terminate(
+    tmp_path: Path,
+) -> None:
+    paths = prepare_native_runtime(
+        tools=normalize_benchmark_tools([_tool()]),
+        model="claude-opus-4-8",
+        base_url="http://127.0.0.1:31337",
+        timeout_s=45,
+        max_tokens=2048,
+        state_dir=tmp_path,
+    )
+    plugin_path = paths.plugin_dir / "index.mjs"
+    script = f"""
+import {{ pathToFileURL }} from "node:url";
+const plugin = (await import(pathToFileURL({json.dumps(str(plugin_path))}).href)).default;
+const registrations = [];
+plugin.register({{ registerTool(tool) {{ registrations.push(tool); }} }});
+const result = await registrations[0].execute("call-1", {{ value: "sentinel" }});
+process.stdout.write(JSON.stringify(result));
+"""
+    completed = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "OPENCLAW_BENCHMARK_CAPTURE_PATH": str(paths.capture_path),
+        },
+    )
+
+    result = json.loads(completed.stdout)
+    assert "terminate" not in result
+    assert result["details"] == {
+        "captured": True,
+        "tool": "record_probe",
+        "sequence": 0,
+    }
+
+
 def test_prepare_runtime_rejects_remote_completion_provider(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="loopback completion gateway"):
         prepare_native_runtime(

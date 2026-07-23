@@ -529,9 +529,7 @@ function pluginIsRegistered(runtime: AgentRuntime, name: string): boolean {
 
 async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
   if (pkg === "@elizaos/plugin-app-control") {
-    const mod = (await import(
-      "../../../plugins/plugin-app-control/src/index.ts"
-    )) as {
+    const mod = (await import("@elizaos/plugin-app-control")) as {
       appAction?: Action;
       appControlPlugin?: Plugin;
       backgroundAction?: Action;
@@ -562,24 +560,6 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
         mod.appControlPlugin?.responseHandlerEvaluators,
     };
   }
-  if (pkg === "@elizaos/plugin-hyperliquid") {
-    const mod = (await import(
-      "../../../plugins/plugin-hyperliquid/src/plugin.ts"
-    )) as {
-      hyperliquidPlugin?: Plugin;
-    };
-    return mod.hyperliquidPlugin ?? null;
-  }
-  if (pkg === "@elizaos/plugin-anthropic-proxy") {
-    const mod = (await import(
-      "../../../plugins/plugin-anthropic-proxy/index.ts"
-    )) as {
-      default?: Plugin;
-      anthropicProxyPlugin?: Plugin;
-    };
-    return mod.default ?? mod.anthropicProxyPlugin ?? null;
-  }
-
   const mod = (await import(pkg)) as Record<string, unknown>;
   const isPlugin = (value: unknown): value is Plugin => {
     if (value === null || typeof value !== "object") return false;

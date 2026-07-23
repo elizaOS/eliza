@@ -95,7 +95,10 @@ import {
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
 import { buildProviderAttributionsFromState } from "./runtime/trajectory-provider-attribution";
-import { TurnControllerRegistry } from "./runtime/turn-controller";
+import {
+	TurnAbortedError,
+	TurnControllerRegistry,
+} from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import {
 	CompositeEntityRecognizer,
@@ -125,6 +128,10 @@ import {
 } from "./services/message/fallback-reply";
 import { sanitizeOutboundText } from "./services/message/outbound-sanitize";
 import { ensureAgentVoice } from "./services/message/voice-gate";
+import {
+	drainPostDeliveryTasks,
+	pendingPostDeliveryTaskCount,
+} from "./services/post-delivery-task-tracker.ts";
 import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
@@ -2255,6 +2262,16 @@ export class AgentRuntime implements IAgentRuntime {
 			return;
 		}
 		const fast = options?.fast === true;
+		if (!fast) {
+			const pending = pendingPostDeliveryTaskCount(this);
+			if (pending > 0) {
+				this.logger.info(
+					{ src: "agent", agentId: this.agentId, pending },
+					"Draining post-delivery work before runtime shutdown",
+				);
+				await drainPostDeliveryTasks(this);
+			}
+		}
 		const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
 		if (fast) {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";
@@ -4627,6 +4644,24 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 				}
 			}
+		}
+		// A designed turn abort (threadOps abort op, user "stop", client
+		// disconnect) cancels every in-flight provider at once. Those provider
+		// "failures" are a consequence of the abort, not a broken pipeline —
+		// surface the abort itself so the message boundary keeps its ack-and-stop
+		// contract instead of emitting a canned runtime-failure apology (#16939:
+		// a CHOICE "cancel" tap turned into "Something went wrong on my end").
+		if (
+			failedProviderData.length > 0 &&
+			providerSignal?.aborted &&
+			failedProviderData.every((record) => record.providerOutcome === "aborted")
+		) {
+			const reason = providerSignal.reason;
+			throw reason instanceof TurnAbortedError
+				? reason
+				: new TurnAbortedError(
+						reason instanceof Error ? reason.message : String(reason),
+					);
 		}
 		if (failedProviderData.length === 1) {
 			const failedProvider = failedProviderData[0];
@@ -10621,6 +10656,36 @@ ${section_end}`;
 				handlerSource: normalized,
 			},
 			"Send handler registered",
+		);
+	}
+
+	registerInternalSendHandler(
+		source: string,
+		handler: SendHandlerFunction,
+	): void {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) {
+			throw new Error("Internal send handler registration requires a source");
+		}
+		const routeKey = connectorRouteKey(normalized);
+		if (this.sendHandlers.has(routeKey)) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+				},
+				"Internal send handler already registered, overwriting",
+			);
+		}
+		this.sendHandlers.set(routeKey, handler);
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				handlerSource: normalized,
+			},
+			"Internal send handler registered",
 		);
 	}
 

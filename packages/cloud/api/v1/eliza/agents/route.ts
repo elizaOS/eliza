@@ -544,6 +544,102 @@ app.post("/", async (c) => {
             orgId: user.organization_id,
             poolNodeId: claimed.node_id,
           });
+          // Post-claim character apply: the pool container booted GENERIC (no
+          // ELIZA_AGENT_CHARACTER_JSON), so without this push the running
+          // container answers as the default Eliza even though the DB row now
+          // carries the user's character. The push is bounded (10s) and
+          // NON-FATAL: on failure the claim still succeeds — the row's
+          // agent_config is authoritative, so the character applies on the
+          // next container restart — and the stable
+          // `warm_pool.character_push_failed` event makes a persistently
+          // broken push path observable in aggregate.
+          try {
+            const push =
+              await elizaSandboxService.pushClaimedWarmContainerCharacter(
+                claimed,
+              );
+            if (push.pushed) {
+              logger.info("[agent-api] Warm pool character push applied", {
+                agentId: agent.id,
+                orgId: user.organization_id,
+                agentName: push.agentName,
+              });
+            }
+          } catch (pushErr) {
+            logger.warn(
+              "[agent-api] Warm pool character push failed; claim kept (character applies on next restart)",
+              {
+                event: "warm_pool.character_push_failed",
+                agentId: agent.id,
+                orgId: user.organization_id,
+                error:
+                  pushErr instanceof Error ? pushErr.message : String(pushErr),
+              },
+            );
+          }
+          // Post-claim inference re-key (F0): the pool container booted under
+          // the sentinel pool org with a cloud inference key scoped to THAT
+          // org, so without this the first reply is the "key isn't authorized"
+          // fallback. Mint a user-org-scoped key and push it onto the live
+          // container and require runtime attestation. A failed handoff enters
+          // restart recovery from the updated row env; it is never reported as
+          // a ready warm claim. Never log the key itself.
+          try {
+            const keyPush =
+              await elizaSandboxService.pushClaimedWarmContainerInferenceKey(
+                claimed,
+              );
+            if (keyPush.pushed) {
+              logger.info("[agent-api] Warm pool inference key push applied", {
+                agentId: agent.id,
+                orgId: user.organization_id,
+                keyPrefix: keyPush.keyPrefix,
+              });
+            }
+          } catch (keyErr) {
+            const recovery =
+              await provisioningJobService.enqueueAgentRestartOnce({
+                agentId: agent.id,
+                organizationId: user.organization_id,
+                userId: user.id,
+              });
+            await agentSandboxesRepository.update(claimed.id, {
+              status: "provisioning",
+              error_message:
+                "Warm-pool credential handoff requires restart recovery",
+            });
+            if (recovery.created) {
+              void provisioningJobService.triggerImmediate(c.env).catch(() => {
+                // error-policy:J5 the persisted restart job is observed by the
+                // provisioning worker poll when the immediate nudge fails.
+              });
+            }
+            logger.warn(
+              "[agent-api] Warm pool inference key push failed; restart recovery enqueued",
+              {
+                event: "warm_pool.key_push_failed",
+                agentId: agent.id,
+                orgId: user.organization_id,
+                recoveryJobId: recovery.job.id,
+                recoveryJobCreated: recovery.created,
+                error:
+                  keyErr instanceof Error ? keyErr.message : String(keyErr),
+              },
+            );
+            return c.json(
+              {
+                success: true,
+                source: "warm_pool_recovery",
+                data: {
+                  id: claimed.id,
+                  agentName: claimed.agent_name,
+                  status: "provisioning",
+                  executionTier: claimed.execution_tier,
+                },
+              },
+              202,
+            );
+          }
           return c.json(
             {
               success: true,

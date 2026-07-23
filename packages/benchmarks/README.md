@@ -77,7 +77,7 @@ benchmark's `AGENTS.md` for the exact command and a no-key smoke path.
 
 Use your workspace Python so dependency versions stay consistent across
 benchmark subprocesses. Full operator runbook (remote GPU, sub-agent matrix,
-calibration gates): [`ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md)
+calibration gates): [`docs/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](docs/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md)
 and [`orchestrator/README.md`](orchestrator/README.md).
 
 ## Testing the harnesses

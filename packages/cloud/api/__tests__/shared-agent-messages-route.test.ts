@@ -65,6 +65,33 @@ function postMessage(body: unknown, origin?: string) {
   });
 }
 
+function postMessageWithWorkerBindings(
+  body: unknown,
+  namespace: {
+    getByName(name: string): {
+      fetch(request: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+    };
+  },
+) {
+  return messagesRoute.request(
+    "/",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer user-api-key",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+    { SHARED_RUNTIME_CONVERSATIONS: namespace } as never,
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as never,
+  );
+}
+
 describe("shared agent messages route", () => {
   beforeEach(() => {
     resolveSharedAgent.mockReset();
@@ -102,6 +129,49 @@ describe("shared agent messages route", () => {
       "say hi",
       "Eliza",
       undefined,
+    );
+  });
+
+  test("passes the resolved agent and Durable Object namespace on the Worker path", async () => {
+    const agent = {
+      id: AGENT,
+      organization_id: ORG,
+      execution_tier: "shared",
+    };
+    const namespace = {
+      getByName: mock(() => ({
+        fetch: mock(async () => new Response()),
+      })),
+    };
+    resolveSharedAgent.mockResolvedValueOnce({
+      agent,
+      agentId: AGENT,
+      orgId: ORG,
+      agentName: "Eliza",
+    });
+    sharedRestMessageSend.mockResolvedValue({
+      text: "hello",
+      agentName: "Eliza",
+    });
+
+    const res = await postMessageWithWorkerBindings(
+      { text: "say hi" },
+      namespace,
+    );
+
+    expect(res.status).toBe(200);
+    expect(resolveSharedAgent.mock.calls[0]?.[1]).toMatchObject({
+      cacheOnly: true,
+    });
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      AGENT,
+      ORG,
+      AGENT,
+      "say hi",
+      "Eliza",
+      expect.objectContaining({ waitUntil: expect.any(Function) }),
+      agent,
+      namespace,
     );
   });
 

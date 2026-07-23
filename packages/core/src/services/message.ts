@@ -19,6 +19,7 @@ import {
 } from "../actions/to-tool";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { createUniqueUuid } from "../entities";
+import { ElizaError } from "../errors";
 import {
 	formatTaskCompletionStatus,
 	type TaskCompletionAssessment,
@@ -171,6 +172,10 @@ import {
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
 import {
+	sanitizeUserVisibleModelOutput,
+	type UserVisibleModelOutput,
+} from "../runtime/user-visible-model-output";
+import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
 	runWithStreamingContext,
@@ -321,6 +326,7 @@ import {
 	type OptimizedPromptRuntimeLike,
 	resolveOptimizedPromptForRuntime,
 } from "./optimized-prompt-resolver";
+import { trackPostDeliveryTask } from "./post-delivery-task-tracker.ts";
 
 export {
 	findWebLookupActionName,
@@ -3018,6 +3024,92 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
+// Completed-side-effect detection is split by grammatical certainty so that
+// only ASSERTIONS of finished work fire; consent-seeking offers, questions,
+// and conditionals must pass through untouched (a rewritten offer forces an
+// unwanted planner run — the user asked a question and got an action).
+//
+// Perfective first-person claims ("I've set…", "I have scheduled…", "I just
+// added…") carry an explicit completion auxiliary, so they read as reports in
+// any sentence shape — including tag questions ("I've set it — anything
+// else?"). Only a leading subordinator ("Once I've set…") turns one into a
+// plan instead of a report. Adjacency keeps denials out: "I have not set"
+// never matches.
+const PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN =
+	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
+// Bare simple-past claims ("I set a reminder for 9am."). "set" is the one
+// verb here whose past tense equals its base form, so offers ("Should I
+// set…?", "Before I set…") collide with reports on the raw pattern — this
+// branch is additionally gated on the word preceding "I" and on the
+// containing sentence not being a question.
+const BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN =
+	/\bi\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
+// State-of-the-world completion claims that need no first-person subject
+// ("that's all set", "your reminders are set", "Done —"). The bare "done —"
+// branch is anchored to the start of the (trimmed) reply or of a sentence, so
+// congratulations like "Well done — that's every task cleared." are not
+// misread as completion claims.
+const STATE_SIDE_EFFECT_CLAIM_PATTERN =
+	/\b(?:(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|scheduled|in\s+place)\b)|(?:^|[.!?]\s+)done\s*[—–-]/i;
+// A modal, interrogative auxiliary, or subordinator immediately before the
+// matched "I" makes the clause an offer/question/condition ("Should I
+// set…?", "Shall I set…?", "When I set…", "Once I've set…"), not a report of
+// finished work.
+const NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN =
+	/\b(?:should|shall|can|could|may|might|would|will|do|does|did|must|if|unless|once|when|whenever|while|before|after|until|whether)\s+$/i;
+// The claim must be ABOUT a schedulable/saved thing, not e.g. "I've set aside
+// some thoughts". Vocabulary mirrors the scheduled-item nouns the LifeOps
+// surfaces own.
+const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
+	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|check[- ]?ins?|follow[- ]?ups?)\b/i;
+
+// True when the sentence containing the match (scanning forward from the
+// match) terminates in "?" — the shape of a consent-seeking offer or a
+// clarifying question ("I set reminders in the morning usually — should I?").
+function sideEffectClaimSentenceIsQuestion(
+	text: string,
+	fromIndex: number,
+): boolean {
+	for (let i = fromIndex; i < text.length; i += 1) {
+		const ch = text[i];
+		if (ch === "?") return true;
+		if (ch === "." || ch === "!" || ch === "\n") return false;
+	}
+	return false;
+}
+
+/**
+ * True when a Stage-1 reply ASSERTS that a scheduling/save side effect already
+ * happened. On the simple path no tool has run, so any such assertion is
+ * fabricated — the "not loaded must never read as zero" doctrine applied to
+ * writes: "no tool ran" must never read as "done" (#16935; observed live: a
+ * bill-reminder ask answered "Done — I've set two reminders" with zero tool
+ * calls, plus invented "session-only" caveats). Consent-seeking offers,
+ * questions, and conditionals ("Want me to set…?", "Should I set…?", "I could
+ * set…") are NOT claims and must return false — rewriting them to "On it."
+ * turns a question the user asked into an action they did not consent to.
+ */
+export function replyClaimsCompletedSideEffect(reply: string): boolean {
+	const text = reply.trim();
+	if (!text) return false;
+	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) return false;
+	if (STATE_SIDE_EFFECT_CLAIM_PATTERN.test(text)) return true;
+	for (const match of text.matchAll(PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN)) {
+		if (
+			!NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(text.slice(0, match.index))
+		) {
+			return true;
+		}
+	}
+	for (const match of text.matchAll(BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN)) {
+		const prefix = text.slice(0, match.index);
+		if (NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(prefix)) continue;
+		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+		return true;
+	}
+	return false;
+}
+
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -3152,6 +3244,56 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					reply: "On it.",
 					debug: [
 						`current request matched registered action metadata: ${candidateActions.join(", ")}`,
+					],
+				};
+			},
+		},
+		{
+			// A simple-path turn runs NO tools, so a reply asserting a completed
+			// scheduling/save side effect is fabricated by construction. Reroute the
+			// turn to the planner so a real action performs the work and the
+			// confirmation the user reads is grounded in a tool result. Candidate
+			// hints come from the plugin-registered backstop rules (matched against
+			// the fabricated claim's own vocabulary), so core stays free of
+			// plugin-specific action names.
+			name: "core.simple_completed_side_effect_claim",
+			description:
+				"Blocks simple-path replies that claim an already-completed scheduling/save side effect no tool performed; reroutes the turn to the planner.",
+			priority: 30,
+			shouldRun: ({ messageHandler }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				return replyClaimsCompletedSideEffect(reply);
+			},
+			evaluate: ({ messageHandler, runtime }) => {
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				const candidateActions = [
+					...new Set(
+						getCandidateActionBackstopRules(runtime)
+							.filter((rule) => rule.matches(reply))
+							.flatMap((rule) => [...rule.actionNames]),
+					),
+				];
+				return {
+					requiresTool: true,
+					addContexts: ["general"],
+					...(candidateActions.length > 0
+						? { addCandidateActions: candidateActions }
+						: {}),
+					reply: "On it.",
+					debug: [
+						`simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
 					],
 				};
 			},
@@ -3318,11 +3460,16 @@ function isRequestedTerseLiteralReply(args: {
 /**
  * Recognize a simple imperative to emit ONE specific literal token, e.g.
  * "Say PONG", "say pong", "please say PONG", "can you say PONG", "reply with OK",
- * "respond with the word HELLO", "output PONG!". The lightweight sibling of
+ * "respond with the word HELLO", "output PONG!", and the quantified forms
+ * "Reply with the single word: PONG" / "reply with one word: PONG" (the
+ * acceptance-gate smoke phrasing). The lightweight sibling of
  * {@link parseExactWordsInstruction} (which requires the explicit
  * "...with exactly N words: ..." form). Anchored to the whole message and a
  * single word, so it only fires on a clear "say <token>" request — not
- * "say something nice about cats". Returns the requested literal or null.
+ * "say something nice about cats". Between the verb and the literal only
+ * complete connector units may appear ("with", "the word", "the single word",
+ * "one word", …) — never bare determiners, so "write a poem" cannot parse as
+ * a request to say "poem". Returns the requested literal or null.
  */
 function parseSayLiteralInstruction(
 	text: string | null | undefined,
@@ -3337,7 +3484,7 @@ function parseSayLiteralInstruction(
 		.replace(/^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u, "")
 		.trim();
 	const match = body.match(
-		/^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|the\s+word|the\s+phrase)){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?\s*[.!?]*$/iu,
+		/^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|(?:(?:the|a|an)\s+)?(?:single|one)\s+(?:word|phrase|token)|the\s+(?:word|phrase|token))){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?\s*[.!?]*$/iu,
 	);
 	return match ? match[1] : null;
 }
@@ -3858,6 +4005,42 @@ function exposedActionMatches(
 				normalizeActionIdentifier(String(simile)) === normalizedCandidate,
 		);
 	});
+}
+
+function userVisibleOutputClassification(
+	output: Exclude<UserVisibleModelOutput, { kind: "empty" }>,
+): string {
+	if (output.kind === "control") {
+		return `${output.malformed ? "malformed-" : ""}${output.envelope}`;
+	}
+	if (output.kind === "invalid") {
+		return output.reason;
+	}
+	return output.format === "json" ? "unexpected-json" : "unexpected-text";
+}
+
+function reportRejectedUserVisibleModelOutput(args: {
+	runtime: IAgentRuntime;
+	scope: string;
+	code: string;
+	message: string;
+	stage: string;
+	output: Exclude<UserVisibleModelOutput, { kind: "empty" }>;
+	context?: Record<string, unknown>;
+}): void {
+	args.runtime.reportError(
+		args.scope,
+		new ElizaError(args.message, {
+			code: args.code,
+			context: {
+				stage: args.stage,
+				classification: userVisibleOutputClassification(args.output),
+				fieldPath: args.output.fieldPath,
+				...args.context,
+			},
+			severity: "ephemeral",
+		}),
+	);
 }
 
 export function messageHandlerFromFieldResult(
@@ -6144,6 +6327,9 @@ function collectPreviousActionResults(
 					? { verifiedUserFacing: step.result.verifiedUserFacing }
 					: {}),
 				data: { actionName },
+				...(step.result.turnComplete !== undefined
+					? { turnComplete: step.result.turnComplete }
+					: {}),
 				...(step.result.continueChain !== undefined
 					? { continueChain: step.result.continueChain }
 					: {}),
@@ -6193,6 +6379,9 @@ function collectPreviousActionResults(
 			},
 			...(values ? { values } : {}),
 			...(error !== undefined ? { error } : {}),
+			...(step.result.turnComplete !== undefined
+				? { turnComplete: step.result.turnComplete }
+				: {}),
 			...(step.result.continueChain !== undefined
 				? { continueChain: step.result.continueChain }
 				: {}),
@@ -6836,6 +7025,28 @@ export async function runV5MessageRuntimeStage1(args: {
 			throw new Error(
 				"v5 messageHandler returned invalid MessageHandlerResult",
 			);
+		}
+		const stageOneVisibleReply = sanitizeUserVisibleModelOutput(
+			getMessageHandlerReply(messageHandler),
+		);
+		if (stageOneVisibleReply.kind === "text") {
+			messageHandler.plan.reply = stageOneVisibleReply.text;
+		} else {
+			messageHandler.plan.reply = "";
+			if (stageOneVisibleReply.kind !== "empty") {
+				// error-policy:J3 Stage 1 is an untrusted model boundary. A
+				// control/invalid reply becomes an observable invalid signal,
+				// never a string that a direct or early-reply channel can send.
+				reportRejectedUserVisibleModelOutput({
+					runtime: args.runtime,
+					scope: "MessageService.runV5MessageRuntimeStage1",
+					code: "STAGE1_INVALID_USER_VISIBLE_OUTPUT",
+					message:
+						"Stage-1 model placed control data in the user-visible reply field",
+					stage: "response-handler",
+					output: stageOneVisibleReply,
+				});
+			}
 		}
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
@@ -8132,10 +8343,6 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
-// Sub-agent completions emit follow-up evaluators (URL verification, attachment
-// routing, transcript stripping) that legitimately take >5s; 30s gives them
-// room without indefinitely blocking response finalization.
-const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 30_000;
 const INFERENCE_TIMING_LOG_TYPE = "inference_timing";
 const INFERENCE_TIMING_LOG_RETENTION = 4_096;
 const INFERENCE_TIMING_LOG_SWEEP_INTERVAL = 64;
@@ -8226,65 +8433,12 @@ function clearLatestResponseId(
 	}
 }
 
-function resolvePostDeliverySideEffectTimeoutMs(): number {
-	const raw = process.env.ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS?.trim();
-	if (!raw) return DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS;
-	const parsed = Number.parseInt(raw, 10);
-	if (!Number.isFinite(parsed) || parsed <= 0) {
-		return DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS;
-	}
-	return Math.max(100, parsed);
-}
-
-async function runPostDeliverySideEffect(
-	runtime: Pick<IAgentRuntime, "logger" | "agentId">,
-	label: string,
-	task: () => Promise<unknown>,
-): Promise<void> {
-	const timeoutMs = resolvePostDeliverySideEffectTimeoutMs();
-	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-	try {
-		const result = await Promise.race([
-			Promise.resolve()
-				.then(task)
-				.then(() => "completed" as const),
-			new Promise<"timed_out">((resolve) => {
-				timeoutHandle = setTimeout(() => resolve("timed_out"), timeoutMs);
-				(timeoutHandle as { unref?: () => void }).unref?.();
-			}),
-		]);
-		if (result === "timed_out") {
-			runtime.logger.warn(
-				{
-					src: "service:message",
-					agentId: runtime.agentId,
-					label,
-					timeoutMs,
-				},
-				"Post-delivery side effect timed out",
-			);
-		}
-	} catch (err) {
-		runtime.logger.warn(
-			{
-				src: "service:message",
-				agentId: runtime.agentId,
-				label,
-				err: err instanceof Error ? err.message : String(err),
-			},
-			"Post-delivery side effect failed",
-		);
-	} finally {
-		if (timeoutHandle) clearTimeout(timeoutHandle);
-	}
-}
-
 function detachPostDeliverySideEffect(
-	runtime: Pick<IAgentRuntime, "logger" | "agentId">,
+	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
 	label: string,
 	task: () => Promise<unknown>,
 ): void {
-	void runPostDeliverySideEffect(runtime, label, task);
+	void trackPostDeliveryTask(runtime, label, task);
 }
 
 export function isSimpleReplyResponse(
@@ -8296,6 +8450,21 @@ export function isSimpleReplyResponse(
 		typeof responseContent.actions[0] === "string" &&
 		isReplyActionIdentifier(responseContent.actions[0])
 	);
+}
+
+const POST_TURN_SEMANTIC_SIGNAL =
+	/(?:https?:\/\/|\b(?:i am|i'm|i have|i've|i feel|i like|i love|i hate|i prefer|i need|i want|my|we|our|remember|friend|partner|wife|husband|relationship|work at|live in|located in|goal|plan)\b)/i;
+
+export function hasPostTurnSemanticSignal(
+	message: Pick<Memory, "content">,
+	state: Pick<State, "data"> | undefined,
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	if (!isSimpleReplyResponse(responseContent)) return true;
+	const actionResults = state?.data?.actionResults;
+	if (Array.isArray(actionResults) && actionResults.length > 0) return true;
+	const text = message.content.text?.trim() ?? "";
+	return POST_TURN_SEMANTIC_SIGNAL.test(text);
 }
 
 function isStopResponse(
@@ -9668,16 +9837,20 @@ export class DefaultMessageService implements IMessageService {
 						});
 
 					// Emit run started event
-					await runtime.emitEvent(EventType.RUN_STARTED, {
-						runtime,
-						source: "messageHandler",
-						runId,
-						messageId: message.id,
-						roomId: message.roomId,
-						entityId: message.entityId,
-						startTime,
-						status: "started",
-					} as RunEventPayload);
+					await runWithInferenceTiming(inferenceTimer, () =>
+						timeInferenceSpan("message:lifecycle:run-started", () =>
+							runtime.emitEvent(EventType.RUN_STARTED, {
+								runtime,
+								source: "messageHandler",
+								runId,
+								messageId: message.id,
+								roomId: message.roomId,
+								entityId: message.entityId,
+								startTime,
+								status: "started",
+							} as RunEventPayload),
+						),
+					);
 
 					const timeoutPromise = new Promise<never>((_, reject) => {
 						timeoutId = setTimeout(async () => {
@@ -9966,48 +10139,58 @@ export class DefaultMessageService implements IMessageService {
 			{ src: "service:message" },
 			"Saving message to memory",
 		);
-		let memoryToQueue: Memory;
+		await timeInferenceSpan("message:ingress:persistence", async () => {
+			let memoryToQueue: Memory;
 
-		// The document augmentation envelope
-		// (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
-		// is a model-facing wrapper added just for this turn's LLM prompt. Persist
-		// and embed the clean user text so the stored memory does not echo raw
-		// wrapper XML back into the user's chat bubble or re-enter context as
-		// history on later turns. `message` (used downstream this turn) keeps its
-		// wrap.
-		const persistableMessage = stripAugmentationForPersistence(message);
+			// The document augmentation envelope
+			// (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
+			// is a model-facing wrapper added just for this turn's LLM prompt. Persist
+			// and embed the clean user text so the stored memory does not echo raw
+			// wrapper XML back into the user's chat bubble or re-enter context as
+			// history on later turns. `message` (used downstream this turn) keeps its
+			// wrap.
+			const persistableMessage = stripAugmentationForPersistence(message);
 
-		if (message.id) {
-			const existingMemory = await runtime.getMemoryById(message.id);
-			if (existingMemory) {
-				runtime.logger.debug(
-					{ src: "service:message" },
-					"Memory already exists, skipping creation",
-				);
-				memoryToQueue = existingMemory;
+			if (message.id) {
+				const existingMemory = await runtime.getMemoryById(message.id);
+				if (existingMemory) {
+					runtime.logger.debug(
+						{ src: "service:message" },
+						"Memory already exists, skipping creation",
+					);
+					memoryToQueue = existingMemory;
+				} else {
+					const createdMemoryId = await runtime.createMemory(
+						persistableMessage,
+						"messages",
+					);
+					memoryToQueue = { ...persistableMessage, id: createdMemoryId };
+				}
+				await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
 			} else {
-				const createdMemoryId = await runtime.createMemory(
+				const memoryId = await runtime.createMemory(
 					persistableMessage,
 					"messages",
 				);
-				memoryToQueue = { ...persistableMessage, id: createdMemoryId };
+				message.id = memoryId;
+				memoryToQueue = { ...persistableMessage, id: memoryId };
+				await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
 			}
-			await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
-		} else {
-			const memoryId = await runtime.createMemory(
-				persistableMessage,
-				"messages",
-			);
-			message.id = memoryId;
-			memoryToQueue = { ...persistableMessage, id: memoryId };
-			await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
-		}
+		});
+
+		// Participant state and room are independent reads. Resolving them together
+		// also lets mute evaluation reuse this room instead of fetching it once to
+		// discover the world and again before should-respond routing.
+		const [agentUserState, room] = await Promise.all([
+			timeInferenceSpan("message:ingress:participant-state", () =>
+				runtime.getParticipantUserState(message.roomId, runtime.agentId),
+			),
+			timeInferenceSpan("message:ingress:room", () =>
+				runtime.getRoom(message.roomId),
+			),
+		]);
 
 		// Check if LLM is off by default
-		const agentUserState = await runtime.getParticipantUserState(
-			message.roomId,
-			runtime.agentId,
-		);
 		const defLllmOff = parseBooleanFromText(
 			String(runtime.getSetting("BASIC_CAPABILITIES_DEFLLMOFF") || ""),
 		);
@@ -10036,11 +10219,18 @@ export class DefaultMessageService implements IMessageService {
 			runtime,
 			message,
 		);
-		const muteState = await resolveEffectiveMuteState(runtime, {
-			roomIds: [message.roomId],
-			primaryParticipantState: agentUserState,
-			...(message.worldId ? { worldId: message.worldId } : {}),
-		});
+		const muteState = await timeInferenceSpan(
+			"message:ingress:mute-state",
+			() =>
+				resolveEffectiveMuteState(runtime, {
+					roomIds: [message.roomId],
+					primaryRoom: room,
+					primaryParticipantState: agentUserState,
+					...(message.worldId || room?.worldId
+						? { worldId: message.worldId ?? room?.worldId }
+						: {}),
+				}),
+		);
 		if (muteState.muted) {
 			runtime.logger.debug(
 				{
@@ -10181,15 +10371,12 @@ export class DefaultMessageService implements IMessageService {
 			});
 		}
 
-		// Room context for shouldRespond (fetch before compose so providers see
-		// post-attachment and post-incoming-hook message state).
-		const room = await runtime.getRoom(message.roomId);
-
 		// Process attachments before state composition / incoming hooks
 		if (message.content.attachments && message.content.attachments.length > 0) {
-			message.content.attachments = await this.processAttachments(
-				runtime,
-				message.content.attachments,
+			const attachments = message.content.attachments;
+			message.content.attachments = await timeInferenceSpan(
+				"message:ingress:attachments",
+				() => this.processAttachments(runtime, attachments),
 			);
 			if (message.id) {
 				await runtime.updateMemory({
@@ -10207,13 +10394,15 @@ export class DefaultMessageService implements IMessageService {
 		const preIncomingHookText =
 			typeof message.content?.text === "string" ? message.content.text : "";
 
-		await runtime.applyPipelineHooks(
-			"incoming_before_compose",
-			incomingPipelineHookContext(message, {
-				roomId: message.roomId,
-				responseId,
-				runId,
-			}),
+		await timeInferenceSpan("message:ingress:hooks", () =>
+			runtime.applyPipelineHooks(
+				"incoming_before_compose",
+				incomingPipelineHookContext(message, {
+					roomId: message.roomId,
+					responseId,
+					runId,
+				}),
+			),
 		);
 
 		const postIncomingHookText =
@@ -10243,15 +10432,17 @@ export class DefaultMessageService implements IMessageService {
 		const autonomyMode =
 			typeof metadata?.autonomyMode === "string" ? metadata.autonomyMode : null;
 
-		await runtime.applyPipelineHooks(
-			"pre_should_respond",
-			preShouldRespondPipelineHookContext(message, {
-				roomId: message.roomId,
-				responseId,
-				runId,
-				state,
-				isAutonomous,
-			}),
+		await timeInferenceSpan("message:ingress:pre-respond-hooks", () =>
+			runtime.applyPipelineHooks(
+				"pre_should_respond",
+				preShouldRespondPipelineHookContext(message, {
+					roomId: message.roomId,
+					responseId,
+					runId,
+					state,
+					isAutonomous,
+				}),
+			),
 		);
 
 		let shouldRespondToMessage = true;
@@ -10735,30 +10926,39 @@ export class DefaultMessageService implements IMessageService {
 						{ src: "service:message", memoryId: responseMemory.id },
 						"Saving response to memory",
 					);
-					await runtime.createMemory(responseMemory, "messages");
+					await timeInferenceSpan("message:delivery:persistence", () =>
+						runtime.createMemory(responseMemory, "messages"),
+					);
 
-					await this.emitMessageSent(
-						runtime,
-						responseMemory,
-						message.content.source ?? "messageHandler",
+					await timeInferenceSpan("message:delivery:event", () =>
+						this.emitMessageSent(
+							runtime,
+							responseMemory,
+							message.content.source ?? "messageHandler",
+						),
 					);
 				}
 			}
 
 			if (responseContent) {
+				const deliverableResponseContent = responseContent;
 				if (mode === "simple") {
 					// Keep content hooks and DB write before delivery so the wire
 					// response and stored memory match. Do not put MESSAGE_SENT
 					// handlers or post-turn evaluators before the callback; they are
 					// side effects and must not stall user-visible streaming.
-					await runtime.applyPipelineHooks(
-						"outgoing_before_deliver",
-						outgoingPipelineHookContext(responseContent, {
-							source: "simple",
-							roomId: message.roomId,
-							message,
-							responseId: responseContent.responseId ?? responseMessages[0]?.id,
-						}),
+					await timeInferenceSpan("message:delivery:hooks", () =>
+						runtime.applyPipelineHooks(
+							"outgoing_before_deliver",
+							outgoingPipelineHookContext(deliverableResponseContent, {
+								source: "simple",
+								roomId: message.roomId,
+								message,
+								responseId:
+									deliverableResponseContent.responseId ??
+									responseMessages[0]?.id,
+							}),
+						),
 					);
 					if (responseMessages.length > 0) {
 						for (const responseMemory of responseMessages) {
@@ -10768,9 +10968,7 @@ export class DefaultMessageService implements IMessageService {
 							) {
 								continue;
 							}
-							if (responseContent) {
-								responseMemory.content = responseContent;
-							}
+							responseMemory.content = deliverableResponseContent;
 							if (shouldSkipResponseMemoryPersistence(responseMemory)) {
 								runtime.logger.debug(
 									{ src: "service:message", memoryId: responseMemory.id },
@@ -10782,7 +10980,9 @@ export class DefaultMessageService implements IMessageService {
 								{ src: "service:message", memoryId: responseMemory.id },
 								"Saving response to memory",
 							);
-							await runtime.createMemory(responseMemory, "messages");
+							await timeInferenceSpan("message:delivery:persistence", () =>
+								runtime.createMemory(responseMemory, "messages"),
+							);
 
 							detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
 								this.emitMessageSent(
@@ -10794,10 +10994,10 @@ export class DefaultMessageService implements IMessageService {
 						}
 					}
 					if (callback) {
-						if (responseContent) {
-							await callback(responseContent);
-							markInference(INFERENCE_MARKS.replyDelivered);
-						}
+						await timeInferenceSpan("message:delivery:callback", () =>
+							callback(deliverableResponseContent),
+						);
+						markInference(INFERENCE_MARKS.replyDelivered);
 					}
 				}
 			}
@@ -10862,13 +11062,15 @@ export class DefaultMessageService implements IMessageService {
 				inReplyTo: createUniqueUuid(runtime, message.id),
 			};
 
-			await runtime.applyPipelineHooks(
-				"outgoing_before_deliver",
-				outgoingPipelineHookContext(terminalContent, {
-					source: "excluded",
-					roomId: message.roomId,
-					message,
-				}),
+			await timeInferenceSpan("message:delivery:hooks", () =>
+				runtime.applyPipelineHooks(
+					"outgoing_before_deliver",
+					outgoingPipelineHookContext(terminalContent, {
+						source: "excluded",
+						roomId: message.roomId,
+						message,
+					}),
+				),
 			);
 
 			const terminalMemory: Memory = {
@@ -10879,11 +11081,15 @@ export class DefaultMessageService implements IMessageService {
 				roomId: message.roomId,
 				createdAt: Date.now(),
 			};
-			await runtime.createMemory(terminalMemory, "messages");
-			await this.emitMessageSent(
-				runtime,
-				terminalMemory,
-				message.content.source ?? "messageHandler",
+			await timeInferenceSpan("message:delivery:persistence", () =>
+				runtime.createMemory(terminalMemory, "messages"),
+			);
+			await timeInferenceSpan("message:delivery:event", () =>
+				this.emitMessageSent(
+					runtime,
+					terminalMemory,
+					message.content.source ?? "messageHandler",
+				),
 			);
 			runtime.logger.debug(
 				{ src: "service:message", memoryId: terminalMemory.id },
@@ -10894,7 +11100,9 @@ export class DefaultMessageService implements IMessageService {
 				callback &&
 				!(terminalAction === "IGNORE" && isVoiceChannelMessage(message))
 			) {
-				await callback(terminalContent);
+				await timeInferenceSpan("message:delivery:callback", () =>
+					callback(terminalContent),
+				);
 			}
 		}
 
@@ -10906,16 +11114,24 @@ export class DefaultMessageService implements IMessageService {
 		// that are not part of the unified evaluator service.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
+		const semanticSignal = hasPostTurnSemanticSignal(
+			message,
+			state,
+			responseContent,
+		);
 		// Post-turn work is never part of connector completion. Connectors await
 		// handleMessage for generation/delivery bookkeeping, so awaiting an
 		// evaluator here makes every connector wait even though the reply has
 		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
 		// one detached task while keeping both failures observable at the boundary.
 		detachPostDeliverySideEffect(runtime, "post_turn", async () => {
-			await runPostTurnEvaluators(runtime, message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
-			});
+			if (semanticSignal) {
+				await runPostTurnEvaluators(runtime, message, state, {
+					didRespond: didRespondGate,
+					responses: responseMessages,
+					semanticSignal,
+				});
+			}
 			await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 				didRespond: didRespondGate,
 				responses: responseMessages,
@@ -10940,14 +11156,21 @@ export class DefaultMessageService implements IMessageService {
 		let roomName = entityName;
 
 		if (!isDM) {
-			const roomDatas = await runtime.getRoomsByIds([message.roomId]);
+			const roomDatas = await timeInferenceSpan(
+				"message:lifecycle:log-context-room",
+				() => runtime.getRoomsByIds([message.roomId]),
+			);
 			if (roomDatas?.length) {
 				const roomData = roomDatas[0];
 				if (roomData.name) {
 					roomName = roomData.name;
 				}
 				if (roomData.worldId) {
-					const worldData = await runtime.getWorld(roomData.worldId);
+					const worldId = roomData.worldId;
+					const worldData = await timeInferenceSpan(
+						"message:lifecycle:log-context-world",
+						() => runtime.getWorld(worldId),
+					);
 					if (worldData) {
 						roomName = `${worldData.name}-${roomName}`;
 					}
@@ -10986,18 +11209,20 @@ export class DefaultMessageService implements IMessageService {
 		};
 
 		// Emit run ended event
-		await runtime.emitEvent(EventType.RUN_ENDED, {
-			runtime,
-			source: "messageHandler",
-			runId,
-			messageId: message.id,
-			roomId: message.roomId,
-			entityId: message.entityId,
-			startTime,
-			status: "completed",
-			endTime: Date.now(),
-			duration: Date.now() - startTime,
-		} as RunEventPayload);
+		await timeInferenceSpan("message:lifecycle:run-ended", () =>
+			runtime.emitEvent(EventType.RUN_ENDED, {
+				runtime,
+				source: "messageHandler",
+				runId,
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: message.entityId,
+				startTime,
+				status: "completed",
+				endTime: Date.now(),
+				duration: Date.now() - startTime,
+			} as RunEventPayload),
+		);
 
 		return {
 			didRespond,
@@ -11508,19 +11733,30 @@ export class DefaultMessageService implements IMessageService {
 				}
 
 				const cleaned = stripReasoningBlocks(response);
-				const looksStructuredReply =
-					cleaned.startsWith("{") && cleaned.includes("}");
-				const parsed = looksStructuredReply
-					? parseJSONObjectFromText(cleaned)
-					: null;
-				const replyText =
-					typeof parsed?.text === "string" && parsed.text.trim().length > 0
-						? parsed.text.trim()
-						: cleaned;
-				if (replyText) {
-					return { kind: "text", value: replyText };
+				const visible = sanitizeUserVisibleModelOutput(cleaned);
+				if (visible.kind === "text" && visible.format === "plain") {
+					return { kind: "text", value: visible.text };
 				}
+				if (visible.kind === "empty") {
+					continue;
+				}
+
+				// error-policy:J3 the fallback prompt requires plain text. A
+				// typed invalid/control result advances to the next model slot
+				// and is reported instead of masquerading as a valid reply.
+				reportRejectedUserVisibleModelOutput({
+					runtime,
+					scope: "MessageService.generateFailureReplyText",
+					code: "FAILURE_REPLY_INVALID_MODEL_OUTPUT",
+					message:
+						"Failure-reply model violated the plain-text output contract",
+					stage,
+					output: visible,
+					context: { modelType },
+				});
 			} catch (error) {
+				// error-policy:J1 this model-fallback boundary translates
+				// provider failures into the typed outcome the caller renders.
 				// If the runtime reports no LLM provider is configured at all,
 				// no further model attempts will succeed. Surface the actionable
 				// hint instead of the generic transient-failure message. See

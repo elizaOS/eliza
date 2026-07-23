@@ -1,18 +1,17 @@
 # HyperliquidBench
 
-![logo.png](assets/logo.png)
-![frontend.png](assets/frontend.png)
-![leaderboard.png](assets/leaderboard.png)
+A reproducible benchmark measuring the **operational competence** of
+Hyperliquid perp trading agents: prove an agent can route orders, cancels,
+transfers, and leverage changes correctly, not just print PnL. The toolchain is
+Rust-first (`hl-runner` executes plans, `hl-evaluator` scores them), ships
+deterministic datasets, and records every effect so results are auditable — the
+same "declare metrics → execute → evaluate" philosophy as
+[SolanaBench](https://solana.com/news/solana-bench).
 
-HyperLiquidBench is a reproducible benchmark for measuring the **operational
-competence** of Hyperliquid trading agents. It leans on the same “declare
-metrics → execute → evaluate” philosophy used in [SolanaBench](https://solana.com/news/solana-bench): prove an agent can
-route venue actions correctly, not just print PnL. The toolchain is Rust-first,
-ships deterministic datasets, and records every effect so results are auditable.
-
-* Product Deck: https://drive.google.com/file/d/1tnQpgina5jGGIV9QXQrfPQ96FWUwsiz6/view?usp=sharing
-* Demo Frontend: https://hyperliquid-bench.vercel.app/
-* YouTube Link: https://youtu.be/m8pSPQIDdxQ
+Registered in the suite registry as `hyperliquid_bench` and runnable through
+the suite orchestrator (`python -m benchmarks.orchestrator run --benchmarks
+hyperliquid_bench …`). See [AGENTS.md](AGENTS.md) for the run / smoke / test
+commands; this document is the full technical reference.
 
 ---
 
@@ -36,7 +35,7 @@ else.
 so teams can credit routed flow. Orders are also written to `orders_routed.csv`
 for auditing.
 
-For the detailed hackathon rationale, see `docs/TECHSPEC_MASTER.md`. Coverage,
+For the original design rationale, see `docs/TECHSPEC_MASTER.md`. Coverage,
 evaluator, and HiaN implementation plans live under `docs/PLAN_*`.
 
 ---
@@ -68,10 +67,9 @@ requests via an Ethereum private key.
 
 ## Environment Setup
 
-1. **Clone and fetch dependencies**
+1. **Fetch dependencies** (the crates live in this directory)
    ```bash
-   git clone https://github.com/sigridjineth/hyperliquidbench.git
-   cd hyperliquidbench
+   cd packages/benchmarks/HyperliquidBench
    cargo fetch
    ```
 2. **Export required secrets** (or place them in a `.env` file; both CLIs load
@@ -134,7 +132,7 @@ Artifacts match the live format but `run_meta.json` includes `"demoMode": true` 
 
 You can still exercise the LLM pipeline in demo mode. That lets you validate prompts, caching, and plan decoding without hitting the exchange.
 
-1. **Set credentials** (Cerebras is the benchmark default for gpt-oss-120b; OpenRouter remains usable if you explicitly select it):
+1. **Set credentials** (Cerebras is the benchmark default for gemma-4-31b; OpenRouter remains usable if you explicitly select it):
    ```bash
    export CEREBRAS_API_KEY=csk-...
    export BENCHMARK_MODEL_PROVIDER=cerebras
@@ -463,12 +461,12 @@ JSON under `frontend/data/` whenever you publish new runs.
 
 ## Further Reading
 
-- `docs/TECHSPEC_MASTER.md` – track alignment, prize narrative, and architecture.
+- `docs/TECHSPEC_MASTER.md` – original architecture and design specification.
 - `docs/PLAN_3_1.md` – runner action requirements and artifact contracts.
 - `docs/PLAN_3_2.md` – evaluator normalization and scoring rules.
 - `docs/PLAN_3_3.md` – HiaN validator design and acceptance notes.
 - `docs/PLAN_4.md` – domains, dataset layout, acceptance tests, and versioning.
-- `docs/TODO_PLAN_MASTER.md` – high-level success checklist for the hackathon.
+- `docs/TODO_PLAN_MASTER.md` – high-level success checklist from the original build-out.
 
 HyperLiquidBench is designed so other teams can adopt the same dataset, scoring
 config, and tooling. Contributions should keep the reproducibility guarantees

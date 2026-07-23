@@ -37,6 +37,11 @@ import {
 function makeRuntime(
   options: {
     useModel?: (modelType: string, args: { prompt: string }) => Promise<string>;
+    reportError?: (
+      scope: string,
+      error: unknown,
+      context?: Record<string, unknown>,
+    ) => void;
   } = {},
 ): IAgentRuntime {
   return {
@@ -49,6 +54,10 @@ function makeRuntime(
     },
     useModel:
       options.useModel ?? (async () => "Composed narrative from the model."),
+    // The J4 degrade in loadCompletedTodayFromService reports through the
+    // diagnostic boundary; the harness runtime must carry it so the evening
+    // composer can run without a LifeOpsService registered.
+    reportError: options.reportError ?? (() => undefined),
   } as unknown as IAgentRuntime;
 }
 
@@ -287,6 +296,95 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       const [modelType, args] = modelCall as [string, { prompt: string }];
       expect(modelType).toBe(ModelType.TEXT_LARGE);
       expect(args.prompt).toContain("Standup");
+    });
+  });
+
+  describe("compose_evening — completed-today wins (#16935)", () => {
+    it("aggregates completedToday and feeds it to the narrative prompt", async () => {
+      const useModel = vi.fn(async () => "evening narrative");
+      const runtime = makeRuntime({ useModel });
+      const loadCompletedToday = vi.fn(async () => [
+        {
+          id: "occ-done-1",
+          kind: "todo" as const,
+          title: "Sorted receipts",
+          dueAt: null,
+        },
+      ]);
+      setBriefComposers({
+        loadLife: async () => [
+          {
+            id: "todo-open-1",
+            kind: "todo" as const,
+            title: "File the invoice",
+            dueAt: null,
+          },
+        ],
+        loadCompletedToday,
+      });
+
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_evening",
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        briefing: { sections: Record<string, unknown[]> };
+      };
+      expect(data.briefing.sections.completedToday).toEqual([
+        expect.objectContaining({ title: "Sorted receipts" }),
+      ]);
+      // The narrative model sees the wins alongside the open items, and the
+      // baseline instructions demand wins-first ordering for evening briefs.
+      const [, args] = useModel.mock.calls[0] as [string, { prompt: string }];
+      expect(args.prompt).toContain("Sorted receipts");
+      expect(args.prompt).toContain("completedToday");
+      expect(args.prompt).toContain("LEAD with those finished");
+    });
+
+    // Regression (#16966 post-merge review): the completed-today catch used
+    // to degrade with a log-only warn — a broken load silently read as a
+    // win-less day. The J4 degrade must surface through runtime.reportError
+    // so RECENT_ERRORS and owner escalation see it.
+    it("surfaces a failed completed-today load via reportError while the brief still composes", async () => {
+      const reportError = vi.fn();
+      // Default composers + a runtime with no LifeOpsService: the DEFAULT
+      // loadCompletedTodayFromService path fails for real and must degrade
+      // through its own J4 catch, not an injected stand-in.
+      const runtime = makeRuntime({ reportError });
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_evening",
+        include: { calendar: false, inbox: false, life: true, money: false },
+        format: "json",
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        briefing: { sections: Record<string, unknown> };
+      };
+      // The degrade omits the wins section entirely — a designed absence, not
+      // a fabricated empty win list rendered as a healthy day.
+      expect(data.briefing.sections).not.toHaveProperty("completedToday");
+      expect(reportError).toHaveBeenCalledTimes(1);
+      expect(reportError).toHaveBeenCalledWith(
+        "Brief.loadCompletedToday",
+        expect.anything(),
+        { surface: "evening-brief-wins" },
+      );
+    });
+
+    it("keeps morning briefs forward-looking (no completedToday load)", async () => {
+      const useModel = vi.fn(async () => "morning narrative");
+      const runtime = makeRuntime({ useModel });
+      const loadCompletedToday = vi.fn(async () => []);
+      setBriefComposers({ loadCompletedToday });
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_morning",
+      });
+      expect(result.success).toBe(true);
+      expect(loadCompletedToday).not.toHaveBeenCalled();
+      const data = result.data as {
+        briefing: { sections: Record<string, unknown[]> };
+      };
+      expect(data.briefing.sections.completedToday).toBeUndefined();
     });
   });
 

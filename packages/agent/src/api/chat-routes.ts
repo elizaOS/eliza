@@ -29,6 +29,7 @@ import {
   isRateLimitError,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  type Memory,
   ModelType,
   markInference,
   nextInferenceTurnId,
@@ -2047,13 +2048,14 @@ function isDuplicateMemoryError(err: unknown): boolean {
 export async function persistConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
-): Promise<void> {
+): Promise<ReturnType<typeof createMessageMemory>> {
   try {
     await runtime.createMemory(memory, "messages");
   } catch (err) {
-    if (isDuplicateMemoryError(err)) return;
+    if (isDuplicateMemoryError(err)) return memory;
     throw err;
   }
+  return memory;
 }
 
 async function hasRecentAssistantMemory(
@@ -2108,6 +2110,24 @@ export async function getRecentVisibleAssistantMemoryTextSince(
   // prior turn's answer to a rapid-fire retry.
   slackMs: number = 2000,
 ): Promise<string | null> {
+  return (
+    (
+      await getRecentVisibleAssistantMemorySince(
+        runtime,
+        roomId,
+        sinceMs,
+        slackMs,
+      )
+    )?.text ?? null
+  );
+}
+
+export async function getRecentVisibleAssistantMemorySince(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  sinceMs: number,
+  slackMs: number = 2000,
+): Promise<{ id: UUID; text: string } | null> {
   try {
     const recent = await runtime.getMemories({
       roomId,
@@ -2127,11 +2147,12 @@ export async function getRecentVisibleAssistantMemoryTextSince(
       })
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
 
-    return (
-      (
-        persistedAssistantTurn?.content as { text?: string } | undefined
-      )?.text?.trim() ?? null
-    );
+    const text = (
+      persistedAssistantTurn?.content as { text?: string } | undefined
+    )?.text?.trim();
+    return persistedAssistantTurn?.id && text
+      ? { id: persistedAssistantTurn.id as UUID, text }
+      : null;
   } catch {
     return null;
   }
@@ -2143,7 +2164,13 @@ export async function persistAssistantConversationMemory(
   content: string | Content,
   channelType: ChannelType,
   dedupeSinceMs?: number,
-): Promise<void> {
+  // Caller-supplied memory id. The streaming route pre-mints the id and stamps
+  // it on the SSE `done` frame BEFORE this (possibly deferred) persist runs,
+  // so the client can swap its optimistic temp-resp-* bubble to the durable id
+  // and the proactive-message WS echo reconciles by id instead of appending a
+  // duplicate bubble.
+  memoryId?: UUID,
+): Promise<Memory | null> {
   const persistedContent = markSyntheticChatFailureContent(
     typeof content === "string"
       ? ({
@@ -2165,7 +2192,7 @@ export async function persistAssistantConversationMemory(
         } satisfies Content),
   );
   const trimmed = persistedContent.text.trim();
-  if (!trimmed) return;
+  if (!trimmed) return null;
 
   if (typeof dedupeSinceMs === "number") {
     const alreadyPersisted = await hasRecentAssistantMemory(
@@ -2174,13 +2201,13 @@ export async function persistAssistantConversationMemory(
       trimmed,
       dedupeSinceMs,
     );
-    if (alreadyPersisted) return;
+    if (alreadyPersisted) return null;
   }
 
-  await persistConversationMemory(
+  return await persistConversationMemory(
     runtime,
     createMessageMemory({
-      id: crypto.randomUUID() as UUID,
+      id: memoryId ?? (crypto.randomUUID() as UUID),
       entityId: runtime.agentId,
       agentId: runtime.agentId,
       roomId,

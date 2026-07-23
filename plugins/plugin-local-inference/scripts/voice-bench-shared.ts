@@ -30,6 +30,7 @@ import { resolveFusedLibraryPath } from "../src/services/desktop-fused-ffi-backe
 import type { BenchCorpusEntry } from "../src/services/voice/bench-utils";
 import { decodeMonoPcm16Wav } from "../src/services/voice/engine-bridge";
 import {
+	ELIZA_INFERENCE_ABI_VERSION,
 	type ElizaInferenceFfi,
 	loadElizaInferenceFfi,
 } from "../src/services/voice/ffi-bindings";
@@ -68,7 +69,12 @@ export function makeBenchGates(tag: string, requireEnvName: string): BenchGates 
 	};
 }
 
-/** Load the fused lib (ABI v12) or skip. */
+/**
+ * Load the fused lib or skip. The loaded library must report exactly
+ * `ELIZA_INFERENCE_ABI_VERSION` (the canonical current contract) — the benches
+ * prove the current ABI, so the loader's graduated back-compat set is not
+ * accepted here.
+ */
 export function bootFusedFfi(gates: BenchGates): {
 	ffi: ElizaInferenceFfi;
 	libPath: string;
@@ -84,8 +90,12 @@ export function bootFusedFfi(gates: BenchGates): {
 		);
 	}
 	const ffi = loadElizaInferenceFfi(libPath);
-	if (ffi.libraryAbiVersion !== "12") {
-		gates.fail(`expected fused-lib ABI v12, got v${ffi.libraryAbiVersion}`);
+	// The real benches prove the CURRENT contract, so they pin the canonical
+	// constant rather than accepting the loader's graduated back-compat set.
+	if (ffi.libraryAbiVersion !== String(ELIZA_INFERENCE_ABI_VERSION)) {
+		gates.fail(
+			`expected fused-lib ABI v${ELIZA_INFERENCE_ABI_VERSION}, got v${ffi.libraryAbiVersion}`,
+		);
 	}
 	return { ffi, libPath };
 }

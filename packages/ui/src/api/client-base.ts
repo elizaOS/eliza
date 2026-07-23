@@ -85,6 +85,7 @@ type StreamChatEvent = {
   text?: string;
   fullText?: string;
   agentName?: string;
+  messageId?: string;
   message?: string;
   thought?: string;
   noResponseReason?: string;
@@ -210,6 +211,7 @@ type StreamChatState = {
   fullText: string;
   doneText: string | null;
   doneAgentName: string | null;
+  doneMessageId: string | null;
   doneThought: string | null;
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
@@ -323,6 +325,9 @@ function applyStreamChatDoneEvent(
   if (typeof parsed.fullText === "string") state.doneText = parsed.fullText;
   if (typeof parsed.agentName === "string" && parsed.agentName.trim()) {
     state.doneAgentName = parsed.agentName;
+  }
+  if (typeof parsed.messageId === "string" && parsed.messageId.trim()) {
+    state.doneMessageId = parsed.messageId;
   }
   if (typeof parsed.thought === "string" && parsed.thought.trim()) {
     state.doneThought = parsed.thought;
@@ -1824,6 +1829,7 @@ export class ElizaClient {
     accountConnect?: AccountConnectRequest;
     localInference?: LocalInferenceChatMetadata;
     actionResults?: ChatActionResultSummary[];
+    messageId?: string;
   }> {
     // Idempotency key for the chat send. The HTTP chat path (POST
     // /api/chat[/:conversationId]/stream) lives in
@@ -1873,6 +1879,7 @@ export class ElizaClient {
       fullText: "",
       doneText: null,
       doneAgentName: null,
+      doneMessageId: null,
       doneThought: null,
       doneNoResponseReason: null,
       doneUsage: undefined,
@@ -2017,6 +2024,9 @@ export class ElizaClient {
       completed: streamState.receivedDone,
       ...(streamState.doneThought
         ? { reasoning: streamState.doneThought }
+        : {}),
+      ...(streamState.doneMessageId
+        ? { messageId: streamState.doneMessageId }
         : {}),
       ...(streamState.doneNoResponseReason
         ? { noResponseReason: streamState.doneNoResponseReason }

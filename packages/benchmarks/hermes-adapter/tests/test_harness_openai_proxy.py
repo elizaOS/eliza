@@ -82,8 +82,42 @@ def test_proxy_completion_forwards_messages_tools_and_returns_openai_shape() -> 
     assert context["harness_proxy"] == "openclaw"
     assert context["messages"] == payload["messages"]
     assert context["tools"] == payload["tools"]
+    # The proxy speaks single-step chat-completions: the env executes the
+    # returned tool_calls itself, so OpenClaw turns must stop after the first
+    # captured batch instead of looping on placeholder acknowledgements.
+    assert context["capture_stop"] is True
     assert response["choices"][0]["finish_reason"] == "tool_calls"
     message = response["choices"][0]["message"]
     assert message["tool_calls"][0]["function"]["name"] == "terminal"
     assert message["tool_calls"][0]["function"]["arguments"] == '{"cmd": "pytest -q"}'
     assert response["usage"]["total_tokens"] == 5
+
+
+def test_proxy_declares_env_owned_contract_for_hermes() -> None:
+    proxy = HarnessOpenAIProxy(harness="hermes", provider="cerebras", model="m")
+    proxy._client = _FakeClient()
+
+    proxy.complete(
+        {
+            "messages": [{"role": "user", "content": "fix the repo"}],
+            "tools": [{"type": "function", "function": {"name": "terminal"}}],
+        }
+    )
+
+    assert proxy._client.calls[0][1]["capture_stop"] is True
+
+
+def test_proxy_env_owned_contract_never_reaches_eliza() -> None:
+    """Eliza owns a real server-side action loop, not a capture bridge — the
+    ``capture_stop`` key must never leak into its context."""
+    proxy = HarnessOpenAIProxy(harness="eliza", provider="cerebras", model="m")
+    proxy._client = _FakeClient()
+
+    proxy.complete(
+        {
+            "messages": [{"role": "user", "content": "fix the repo"}],
+            "tools": [{"type": "function", "function": {"name": "terminal"}}],
+        }
+    )
+
+    assert "capture_stop" not in proxy._client.calls[0][1]

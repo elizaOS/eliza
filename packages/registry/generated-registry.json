@@ -26,7 +26,13 @@
       },
       "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw — vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
       "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
-      "topics": ["security", "secrets", "vault", "signing", "multi-chain"],
+      "topics": [
+        "security",
+        "secrets",
+        "vault",
+        "signing",
+        "multi-chain"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -112,7 +118,14 @@
       },
       "description": "WaaP wallet plugin for ElizaOS — 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
       "homepage": "https://github.com/holonym-foundation/eliza-plugin-waap",
-      "topics": ["wallet", "mpc", "2pc", "evm", "sui", "2fa"],
+      "topics": [
+        "wallet",
+        "mpc",
+        "2pc",
+        "evm",
+        "sui",
+        "2fa"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -151,7 +164,12 @@
       },
       "description": "ElizaOS LLM plugin for LMX Cloud — pay per call in USDC via x402 on Base (no API key).",
       "homepage": "https://lmxcloud.io",
-      "topics": ["lmxcloud", "x402", "usdc", "llm"],
+      "topics": [
+        "lmxcloud",
+        "x402",
+        "usdc",
+        "llm"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -190,7 +208,13 @@
       },
       "description": "MEV-protected same-chain swaps via Ophis (CoW Protocol): the agent signs a GPv2 order with its own EVM key and it settles gaslessly in a batch auction (surplus returned, no sandwiching). Carries an integrator partner fee + optional referral rebate.",
       "homepage": "https://docs.ophis.fi/ai-agents",
-      "topics": ["defi", "swap", "dex", "cow-protocol", "mev-protection"],
+      "topics": [
+        "defi",
+        "swap",
+        "dex",
+        "cow-protocol",
+        "mev-protection"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -556,7 +580,13 @@
       },
       "description": "Wealthville liquidity-pool scores, ENTER/HOLD/EXIT verdicts, and public miss-inclusive track record for DeFi agents (Solana + EVM).",
       "homepage": "https://wealthville.net/developers",
-      "topics": ["solana", "defi", "liquidity-pools", "scoring", "wealthville"],
+      "topics": [
+        "solana",
+        "defi",
+        "liquidity-pools",
+        "scoring",
+        "wealthville"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -791,7 +821,11 @@
       },
       "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
       "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
-      "topics": ["example", "utility", "reference"],
+      "topics": [
+        "example",
+        "utility",
+        "reference"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -830,7 +864,12 @@
       },
       "description": "Farcaster engagement discovery, like, reply, and follow/unfollow actions via Neynar REST API for ElizaOS agents",
       "homepage": null,
-      "topics": ["farcaster", "neynar", "social", "discovery"],
+      "topics": [
+        "farcaster",
+        "neynar",
+        "social",
+        "discovery"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -918,7 +957,11 @@
       },
       "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
       "homepage": null,
-      "topics": ["reddit", "social", "discovery"],
+      "topics": [
+        "reddit",
+        "social",
+        "discovery"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -967,6 +1010,51 @@
         "defi",
         "micropayments",
         "trading"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-yieldsignal": {
+      "git": {
+        "repo": "Stakemate369/plugin-yieldsignal",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-yieldsignal",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Buyer-side GET_YIELD_SIGNAL action: real-time, risk-weighted USDC/WETH lending APY on Base, paid $0.01/call via x402, EIP-712 signed and EAS-attested by the seller.",
+      "homepage": "https://yieldsignal.vercel.app",
+      "topics": [
+        "defi",
+        "x402",
+        "yield",
+        "base",
+        "payments"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

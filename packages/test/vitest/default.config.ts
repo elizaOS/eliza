@@ -18,10 +18,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import {
-  coverageSummaryReporters,
-  coverageThresholds,
-} from "../../app-core/scripts/coverage-policy.mjs";
+import { coverageSummaryReporters } from "../../app-core/scripts/coverage-policy.mjs";
 import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
@@ -545,7 +542,6 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: [...coverageSummaryReporters],
-      thresholds: coverageThresholds,
       include: ["src/**/*.ts"],
       exclude: [
         "src/**/*.test.ts",

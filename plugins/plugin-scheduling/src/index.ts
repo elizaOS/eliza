@@ -34,7 +34,10 @@ export {
   decideDispatchPolicy,
 } from "./dispatch-policy.ts";
 export type { DispatchResult } from "./dispatch-types.ts";
-export { schedulingPlugin } from "./plugin.ts";
+export {
+  schedulingPlugin,
+  waitForScheduledTaskRunnerService,
+} from "./plugin.ts";
 export { buildSchedulingRoutes } from "./routes/plugin-routes.ts";
 export {
   makeScheduledTasksRouteHandler,

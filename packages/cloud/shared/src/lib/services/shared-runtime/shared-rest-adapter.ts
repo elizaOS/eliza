@@ -17,18 +17,15 @@
  * bridge already writes.
  */
 
+import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
+import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
-import type { BridgeExecutionContext, BridgeRequest } from "../eliza-sandbox";
-// Namespace import (resolved at call-time, not captured at module-eval) so the
-// adapter always reads the *current* eliza-sandbox export. Under bun's
-// process-global `mock.module`, a sibling test file can import this module
-// first and bind a captured `{ elizaSandboxService }` to a different (or real)
-// service before shared-rest-adapter.test.ts installs its own mock — which on
-// Windows surfaced as "elizaSandboxService.bridge is an instance of Promise".
-// Reading `elizaSandbox.elizaSandboxService` lazily makes the binding immune to
-// that import-order/module-cache race.
-import * as elizaSandbox from "../eliza-sandbox";
+import type { BridgeRequest } from "../eliza-sandbox-bridge";
+import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
+import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
+
+const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 
 /** Minimal subset of the agent-server REST `Conversation` the chat client reads. */
 export interface SharedRestConversation {
@@ -263,11 +260,13 @@ export async function sharedRestCharacter(
   agentId: string,
   orgId: string,
   agentName: string,
+  agent?: AgentSandbox,
 ): Promise<{ character: SharedAgentCharacter | Record<string, never>; agentName: string }> {
-  const character = await elizaSandbox.elizaSandboxService.getSharedRuntimeCharacter(
-    agentId,
-    orgId,
-  );
+  const character = agent
+    ? await sharedRuntimeChatService.getCharacter(agent)
+    : await import("../eliza-sandbox").then(({ elizaSandboxService }) =>
+        elizaSandboxService.getSharedRuntimeCharacter(agentId, orgId),
+      );
   return { character: character ?? {}, agentName: agentName || "Eliza" };
 }
 
@@ -336,11 +335,9 @@ function sharedRestMessageTimestamp(
 export async function sharedRestMessagesGet(
   agentId: string,
   conversationId: string,
+  namespace?: RuntimeDurableObjectNamespace,
 ): Promise<{ messages: SharedRestMessage[] }> {
-  const history = await elizaSandbox.elizaSandboxService.getSharedConversationHistory(
-    agentId,
-    conversationId,
-  );
+  const history = await coordinateSharedHistory(agentId, conversationId, { namespace });
   const messages = history.map((turn, index) => ({
     id: `${conversationId}:${index}`,
     role: turn.role,
@@ -362,6 +359,8 @@ export async function sharedRestMessageSend(
   text: string,
   agentName: string,
   executionCtx?: BridgeExecutionContext,
+  agent?: AgentSandbox,
+  namespace?: RuntimeDurableObjectNamespace,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -371,12 +370,16 @@ export async function sharedRestMessageSend(
   };
   // executionCtx (Workers only) lets the bridge defer the post-reply billing
   // tail off the response path; without it the turn settles inline as before.
-  const response = await elizaSandbox.elizaSandboxService.bridge(agentId, orgId, rpc, executionCtx);
+  const response = agent
+    ? await coordinateSharedBridge(agent, rpc, { executionCtx, namespace })
+    : await import("../eliza-sandbox").then(({ elizaSandboxService }) =>
+        elizaSandboxService.bridge(agentId, orgId, rpc, executionCtx),
+      );
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a
     // transient bridge failure — surface it typed so the route boundary can
     // return the canonical 402 instead of the generic retryable 503.
-    if (response.error.code === elizaSandbox.BRIDGE_INSUFFICIENT_CREDITS_CODE) {
+    if (response.error.code === BRIDGE_INSUFFICIENT_CREDITS_CODE) {
       throw new InsufficientCreditsError(response.error.message);
     }
     throw new Error(response.error.message || "shared message.send failed");

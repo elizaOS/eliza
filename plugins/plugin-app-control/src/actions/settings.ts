@@ -1687,15 +1687,53 @@ export function parseSettingsRequest(
 	};
 }
 
+/**
+ * Turns a failed settings-route response into copy a person can act on. The
+ * raw `route <path> returned <status>` internals used to flow verbatim into
+ * the chat reply ("I couldn't change …: route /api/views/settings/navigate
+ * returned 401"), which reads as a scary internal error even when the failure
+ * is a transient auth/session hiccup the user can simply retry (the class
+ * behind the "Authentication error: please reopen settings" QA report,
+ * 2026-07-22). Auth and transient server failures get retry-first phrasing;
+ * a server-provided error message is preferred when it is actually
+ * descriptive; the technical path/status fallback only remains for
+ * unclassified client errors with no server detail.
+ */
+export function humanizeSettingsRouteFailure(
+	path: string,
+	status: number,
+	serverDetail: string | null,
+): string {
+	const detail = serverDetail?.trim() ?? "";
+	// Boilerplate status-text bodies carry no more signal than the code itself.
+	const terse =
+		!detail ||
+		/^(unauthorized|forbidden|not found|bad request|internal server error|bad gateway|service unavailable|gateway timeout)\.?$/i.test(
+			detail,
+		);
+	if (status === 401 || status === 403) {
+		return "the app session isn't authenticated right now — try that again in a moment, and reopen the app if it keeps happening";
+	}
+	if (status === 404) {
+		return "that settings surface isn't available in this app version";
+	}
+	if (status === 408 || status === 429 || status >= 500) {
+		const base = `the app hit a temporary error (HTTP ${status}) — try that again in a moment`;
+		return terse ? base : `${base} (${detail})`;
+	}
+	return terse ? `the request failed (HTTP ${status} on ${path})` : detail;
+}
+
 async function defaultRouteFetch(
 	request: SettingsRouteRequest,
 ): Promise<SettingsRouteOutcome> {
 	const port = resolveServerOnlyPort(process.env);
 	const response = await fetch(`http://127.0.0.1:${port}${request.path}`, {
 		method: request.method,
-		headers: request.path.startsWith("/api/views")
-			? createViewsRequestHeaders()
-			: { "Content-Type": "application/json" },
+		// Every settings route crosses the same token-protected local API
+		// boundary (/api/config, /api/permissions, /api/wallet, /api/backups,
+		// ...), not just /api/views/*. Attach the canonical bearer everywhere.
+		headers: createViewsRequestHeaders(),
 		body: request.body === undefined ? undefined : JSON.stringify(request.body),
 		signal: AbortSignal.timeout(30_000),
 	});
@@ -1706,11 +1744,14 @@ async function defaultRouteFetch(
 		unknown
 	> | null;
 	if (!response.ok) {
-		const detail =
-			parsed && typeof parsed.error === "string"
-				? parsed.error
-				: `route ${request.path} returned ${response.status}`;
-		return { ok: false, detail };
+		return {
+			ok: false,
+			detail: humanizeSettingsRouteFailure(
+				request.path,
+				response.status,
+				parsed && typeof parsed.error === "string" ? parsed.error : null,
+			),
+		};
 	}
 	return { ok: true, data: parsed };
 }
@@ -1859,6 +1900,9 @@ async function handleSet(
 	return {
 		success: true,
 		text: reply,
+		userFacingText: reply,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			section: request.sectionId,
 			key: keyName,
@@ -2122,6 +2166,9 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 				return {
 					success: true,
 					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					data: { sections: listing },
 				};
 			}

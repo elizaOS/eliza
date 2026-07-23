@@ -390,7 +390,6 @@ import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
-import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import { computeCanRespond } from "./health-routes.ts";
 import {
   type LocalInferenceRouteApi,
@@ -3876,7 +3875,6 @@ export async function startApiServer(opts?: {
     broadcastWsToClientId: null,
     broadcastWsToConversation: null,
     activeConversationId: null,
-    deliveryDedupe: createDeliveryDedupeState(),
     permissionStates: {},
     shellEnabled: config.features?.shellEnabled !== false,
     agentAutomationMode: resolveAgentAutomationModeFromConfig(config),

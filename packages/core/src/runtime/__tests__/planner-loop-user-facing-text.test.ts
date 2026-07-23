@@ -8,6 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+	looksLikeActionEnvelopeJson,
 	looksLikeSpawnEnvelopeJson,
 	runPlannerLoop,
 	singleVerifiedUserFacingToolResultText,
@@ -546,6 +547,53 @@ describe("looksLikeSpawnEnvelopeJson — spawn-arg leak detector", () => {
 		expect(looksLikeSpawnEnvelopeJson("[1,2,3]")).toBe(false);
 		expect(looksLikeSpawnEnvelopeJson('{"task": broken')).toBe(false);
 		expect(looksLikeSpawnEnvelopeJson("")).toBe(false);
+	});
+});
+
+describe("looksLikeActionEnvelopeJson — planner fallback-envelope leak detector", () => {
+	it("flags the documented plain-JSON planner fallback envelope", () => {
+		expect(
+			looksLikeActionEnvelopeJson(
+				'{"action":"BROWSER","parameters":{"url":"https://example.com","subaction":"open"},"thought":"open the browser"}',
+			),
+		).toBe(true);
+	});
+
+	it("flags the envelope without a thought", () => {
+		expect(
+			looksLikeActionEnvelopeJson(
+				'{"action":"VIEWS","parameters":{"view":"settings"}}',
+			),
+		).toBe(true);
+	});
+
+	it("flags the envelope wrapped in a ```json fence", () => {
+		expect(
+			looksLikeActionEnvelopeJson(
+				'```json\n{"action":"WEB_SEARCH","parameters":{"query":"x"}}\n```',
+			),
+		).toBe(true);
+	});
+
+	it("does NOT flag a genuine JSON answer with foreign keys", () => {
+		expect(
+			looksLikeActionEnvelopeJson(
+				'{"action":"proceed","parameters":{"a":1},"status":"done","summary":"…"}',
+			),
+		).toBe(false);
+	});
+
+	it("does NOT flag an action string without a parameters object", () => {
+		expect(looksLikeActionEnvelopeJson('{"action":"approve"}')).toBe(false);
+		expect(
+			looksLikeActionEnvelopeJson('{"action":"approve","parameters":"yes"}'),
+		).toBe(false);
+	});
+
+	it("does NOT flag prose or unparseable text", () => {
+		expect(looksLikeActionEnvelopeJson("The action succeeded.")).toBe(false);
+		expect(looksLikeActionEnvelopeJson('{"action": broken')).toBe(false);
+		expect(looksLikeActionEnvelopeJson("")).toBe(false);
 	});
 });
 

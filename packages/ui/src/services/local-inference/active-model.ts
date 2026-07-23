@@ -302,15 +302,12 @@ function mergeOverrides(
     args.maxThreads = overrides.maxThreads;
 }
 
-function stripBundlePrefix(catalogFile: string, modelId: string): string {
-  const slug = modelId.startsWith("eliza-1-")
-    ? modelId.slice("eliza-1-".length)
-    : modelId;
-  const prefix = `bundles/${slug}/`;
-  if (catalogFile.startsWith(prefix)) {
-    return catalogFile.slice(prefix.length);
-  }
-  return catalogFile;
+// Catalog component files are repo-relative `bundles/<bundle-slug>/<local>`;
+// the slug is an architecture slug (`e2b`, `12b`, …) that no longer matches
+// the tier-id suffix after the Gemma-4 cutover, so strip any single
+// `bundles/<segment>/` prefix instead of re-deriving the slug from the id.
+function stripBundlePrefix(catalogFile: string): string {
+  return catalogFile.replace(/^bundles\/[^/]+\//, "");
 }
 
 function resolveMtpDrafterPath(
@@ -325,7 +322,7 @@ function resolveMtpDrafterPath(
     catalog?.sourceModel?.components?.mtp?.file;
   if (!catalogFile) return undefined;
 
-  const localPath = stripBundlePrefix(catalogFile, installed.id);
+  const localPath = stripBundlePrefix(catalogFile);
   const candidate = pathJoin(bundleRoot, localPath);
   return existsSync(candidate) ? candidate : undefined;
 }

@@ -16,6 +16,7 @@ import type {
 import { parseExtractorOutputTolerant } from "./factExtractor.schema.ts";
 import {
 	factMemoryEvaluator,
+	identityEvaluator,
 	REFLECTION_ENTITY_LIMIT,
 	relationshipEvaluator,
 } from "./reflection-items.ts";
@@ -480,5 +481,27 @@ describe("reflection context bounds the room entity slice (#15087)", () => {
 		const runtime = contextRuntime(entities);
 		const prepared = await prepareContext(runtime);
 		expect(prepared.entities).toHaveLength(entities.length);
+	});
+
+	it("shares reflection reads across evaluators for the same turn", async () => {
+		const runtime = contextRuntime(roomEntities(3));
+		const turn = message();
+		const context = {
+			runtime,
+			message: turn,
+			state: { values: {}, data: {}, text: "" },
+			options: {},
+		};
+
+		await Promise.all([
+			relationshipEvaluator.prepare?.(context),
+			identityEvaluator.prepare?.(context),
+			factMemoryEvaluator.prepare?.(context),
+		]);
+
+		expect(runtime.getRelationships).toHaveBeenCalledTimes(1);
+		expect(runtime.getEntitiesForRoom).toHaveBeenCalledTimes(1);
+		// One shared conversation read plus factMemory's room/entity fact reads.
+		expect(runtime.getMemories).toHaveBeenCalledTimes(3);
 	});
 });

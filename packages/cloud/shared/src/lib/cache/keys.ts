@@ -50,6 +50,8 @@ export const CacheKeys = {
   sharedAgentScope: {
     resolve: (keyHashPrefix: string, agentId: string) =>
       `shared-agent-scope:${keyHashPrefix}:${agentId}:v1`,
+    voice: (organizationId: string, userId: string, agentId: string) =>
+      `shared-agent-scope:voice:${organizationId}:${userId}:${agentId}:v1`,
   },
   /**
    * Inference hot-path caches (#9899). The IAC entry collapses auth + org +
@@ -61,6 +63,12 @@ export const CacheKeys = {
    */
   inference: {
     authContext: (fullKeyHash: string) => `iac:auth:${fullKeyHash}:v1`,
+    /**
+     * Negative marker for a definitively rejected credential. Cache-only
+     * resolution uses it to route retries to the authoritative 401/403 instead
+     * of an unconverging warming loop; it never serves a cached rejection.
+     */
+    authRejected: (fullKeyHash: string) => `iac:auth-rejected:${fullKeyHash}:v1`,
     /** Org credit-balance snapshot used only as the optimistic fast-path gate hint. */
     orgBalance: (orgId: string) => `iac:org-balance:${orgId}:v1`,
     /** Durable pending-charge for Tier-2 optimistic billing; swept by cron backstop. */
@@ -304,6 +312,7 @@ export const CacheTTL = {
    */
   inference: {
     authContext: 300, // 5 min - backstop only; revoke paths invalidate explicitly (fail-closed)
+    authRejected: 60, // 1 min - negative marker only routes to the authoritative gate; staleness can never serve a rejection
     orgBalance: 15, // 15 seconds - FRESHNESS window: getGateBalanceUsd serves a hint older than this stale-while-revalidate (background refresh) instead of blocking on an authoritative read
     orgBalanceStale: 300, // 5 min - PHYSICAL KV lifetime so a stale hint can be served + background-refreshed; over-admit stays bounded by the debit settler's lowerOrgBalanceHint + top-up invalidate, exactly as before
     pendingCharge: 3600, // 60 min - sweep window = TTL - grace(20m) = 40m, survives cron hiccups

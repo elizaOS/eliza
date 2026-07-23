@@ -344,6 +344,7 @@ export async function extractLifeOperationWithLlm(args: {
     "Only set shouldAct=true when the assistant should execute, preview, update, or query right now.",
     "Requests with concrete routine content and interpretable cadence are actionable even when some fields are implied.",
     "Treat requests like weekdays after lunch, during the day, every morning, tomorrow at 9, set an alarm for 7 am, and remind me about my Invisalign as specific enough to act on now.",
+    "A deadline phrase on a reminder — 'by the 20th', 'before Friday', 'due on the 28th' — IS a schedule: never list schedule as missing for it. Default the nudge to a day or two before the deadline (or the morning it is due) rather than asking the owner for an exact time.",
     "A goal horizon like this year, this month, by June, or before my trip does not create a routine cadence by itself.",
     "Use create with a goal-flavored intent for aspirations with a target or horizon unless the user explicitly asks for reminders, recurrence, or a routine schedule.",
     "",

@@ -168,6 +168,7 @@ import type {
   UpdateLifeOpsWorkflowRequest,
 } from "../contracts/index.js";
 import { loadLifeOpsAppState } from "./app-state.js";
+import { resolveDefaultTimeZone } from "./defaults.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
 import { DefinitionsDomain } from "./domains/definitions-service.js";
@@ -219,6 +220,7 @@ import type {
 } from "./schedule-insight.js";
 import { LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail, requireNonEmptyString } from "./service-normalize.js";
+import { getZonedDateParts } from "./time.js";
 import type {
   FlightBookingExecutionResult,
   PreparedFlightBooking,
@@ -1685,6 +1687,44 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   async getOverview(now = new Date()): Promise<LifeOpsOverview> {
     return this.goalsDomain.getOverview(now);
+  }
+
+  /**
+   * Owner occurrences completed within the owner's current local calendar
+   * day, newest first. The overview above deliberately lists only OPEN
+   * occurrences; recap surfaces (the lifeops provider block, the evening
+   * brief) need the finished items too so an end-of-day recap can lead with
+   * real wins instead of reporting an empty day (#16935). Bounded lookback
+   * in UTC, then narrowed to the local day here — timezone math stays in
+   * one place.
+   */
+  async listOwnerOccurrencesCompletedToday(
+    now = new Date(),
+  ): Promise<LifeOpsOccurrenceView[]> {
+    const timeZone = resolveDefaultTimeZone();
+    const dayKey = (date: Date): string => {
+      const parts = getZonedDateParts(date, timeZone);
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    };
+    const todayKey = dayKey(now);
+    const lookbackMs = 36 * 60 * 60 * 1000;
+    // The owner filter lives in the SQL WHERE (not here) so the row limit is
+    // applied AFTER it: with the filter in TypeScript, agent-subject
+    // completions under multi-room load consumed the LIMIT window and
+    // silently evicted owner wins from the recap (#16966 post-merge review).
+    // The scan limit is sized for the 36h window, newest-first — the local-day
+    // filter below only trims the older-than-today tail, so today's rows are
+    // never the ones cut. The final cap bounds the provider/brief block.
+    const views = await this.repository.listCompletedOccurrenceViewsSince(
+      this.agentId(),
+      new Date(now.getTime() - lookbackMs).toISOString(),
+      { subjectType: "owner", limit: 200 },
+    );
+    return views
+      .filter(
+        (occurrence) => dayKey(new Date(occurrence.updatedAt)) === todayKey,
+      )
+      .slice(0, 24);
   }
 
   async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {

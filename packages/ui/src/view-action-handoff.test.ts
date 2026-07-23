@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import {
   dispatchViewActionHandoff,
+  dispatchViewActionHandoffDirect,
   findViewActionHandoff,
   recoverMissedCurrentView,
 } from "./view-action-handoff";
@@ -72,6 +73,20 @@ describe("view action handoff", () => {
       viewLabel: "Calendar",
       viewType: "gui",
     });
+  });
+
+  it("dispatches the shared-runtime Knowledge destination without a server round-trip", () => {
+    const dispatch = vi.fn();
+    const sharedKnowledge: ChatActionResultSummary = {
+      actionName: "VIEWS",
+      success: true,
+      values: { mode: "show", viewId: "documents", source: "agent" },
+    };
+
+    expect(dispatchViewActionHandoffDirect([sharedKnowledge], dispatch)).toBe(
+      true,
+    );
+    expect(dispatch).toHaveBeenCalledWith({ viewId: "documents" });
   });
 
   it("does not duplicate history when the WebSocket already switched the route", async () => {

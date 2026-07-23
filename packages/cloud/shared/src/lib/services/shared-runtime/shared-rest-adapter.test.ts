@@ -228,6 +228,29 @@ describe("shared-rest-adapter — messages", () => {
     expect(getSharedConversationHistory).toHaveBeenCalledWith(AGENT, AGENT);
   });
 
+  test("GET reads production history from the conversation Durable Object", async () => {
+    const fetch = mock(async () =>
+      Response.json({
+        history: [
+          {
+            role: "assistant",
+            content: "cache local",
+            createdAt: 1_783_382_400_000,
+          },
+        ],
+      }),
+    );
+    const namespace = {
+      getByName: mock(() => ({ fetch })),
+    };
+
+    const { messages } = await sharedRestMessagesGet(AGENT, AGENT, namespace as never);
+
+    expect(messages[0]?.text).toBe("cache local");
+    expect(namespace.getByName).toHaveBeenCalledWith(`${AGENT}:${AGENT}`);
+    expect(getSharedConversationHistory).not.toHaveBeenCalled();
+  });
+
   test("POST forwards to bridge message.send with roomId and returns the reply", async () => {
     bridge.mockResolvedValue({
       jsonrpc: "2.0",

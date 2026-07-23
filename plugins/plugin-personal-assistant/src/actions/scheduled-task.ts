@@ -1065,18 +1065,16 @@ async function handleVerbWithReason(
   };
 }
 
+// History reads work with or without a task id: a recap/"what happened
+// today" turn naturally asks for history across every scheduled item, and
+// hard-requiring an id made that call error MISSING_TASK_ID mid-recap
+// (observed live, #16935). Without an id the read spans all of the agent's
+// scheduled items, most recent first.
 async function handleHistory(
   scope: RunnerScope,
   params: ScheduledTaskParams,
 ): Promise<ActionResult> {
   const taskId = params.taskId?.trim();
-  if (!taskId) {
-    return {
-      success: false,
-      text: "I need to know which scheduled item you mean before I can read its history.",
-      data: { subaction: "history", error: "MISSING_TASK_ID" },
-    };
-  }
   const repo = new LifeOpsRepository(scope.runtime);
   const limit =
     typeof params.limit === "number" &&
@@ -1086,7 +1084,7 @@ async function handleHistory(
       : 100;
   const entries: ScheduledTaskLogEntry[] = await repo.listScheduledTaskLog({
     agentId: scope.agentId,
-    taskId,
+    ...(taskId ? { taskId } : {}),
     ...(params.sinceIso ? { sinceIso: params.sinceIso } : {}),
     ...(params.untilHistoryIso ? { untilIso: params.untilHistoryIso } : {}),
     excludeRollups: params.includeRollups !== true,
@@ -1236,7 +1234,7 @@ export const scheduledTaskAction: Action & {
     {
       name: "taskId",
       description:
-        "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history.",
+        "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items).",
       schema: { type: "string" as const },
     },
     {

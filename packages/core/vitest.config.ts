@@ -8,7 +8,7 @@ const pluginSqlRoot = path.join(
 	getElizaWorkspaceRoot(repoRoot),
 	"plugins",
 	"plugin-sql",
-	"typescript",
+	"src",
 );
 
 export default defineConfig({

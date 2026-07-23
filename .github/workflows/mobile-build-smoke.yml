@@ -694,7 +694,7 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.android == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -717,7 +717,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
         with:
-          packages: "platform-tools platforms;android-34 build-tools;34.0.0"
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
@@ -728,6 +728,15 @@ jobs:
           run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      - name: Run real multi-module AAB audit regression
+        env:
+          ELIZA_ANDROID_RUN_REAL_AAB_TEST: "1"
+        run: >-
+          bunx vitest run
+          packages/app-core/scripts/run-mobile-build-android-aab-audit.test.mjs
+          --pool=forks
+          --maxWorkers=1
 
       - name: Generate protobuf types
         # Restores the step that was on the last green Mobile Build Smoke
@@ -823,3 +832,60 @@ jobs:
           path: packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
           if-no-files-found: error
+
+      - name: Build and audit canonical Android Cloud release AAB
+        shell: bash
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/app build:android:cloud 2>&1 \
+            | tee "$RUNNER_TEMP/android-cloud-release-aab-audit.log"
+
+      - name: Verify release AAB audit evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB_PATH="packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab"
+          AUDIT_LOG="$RUNNER_TEMP/android-cloud-release-aab-audit.log"
+          ATTESTATION="$RUNNER_TEMP/android-cloud-release-attestation.json"
+          test -s "$AAB_PATH"
+          node - "$AUDIT_LOG" "$ATTESTATION" "$AAB_PATH" <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const [logPath, outputPath, aabPath] = process.argv.slice(2);
+          const prefix = "[mobile-build] android-cloud AAB attestation ";
+          const line = fs
+            .readFileSync(logPath, "utf8")
+            .split(/\r?\n/)
+            .filter((candidate) => candidate.startsWith(prefix))
+            .at(-1);
+          if (!line) throw new Error("release AAB attestation was not emitted");
+          const attestation = JSON.parse(line.slice(prefix.length));
+          if (attestation.bundletool?.version !== "1.18.3") {
+            throw new Error("release AAB attestation has the wrong bundletool version");
+          }
+          const aabBytes = fs.readFileSync(aabPath);
+          const aabSha256 = crypto.createHash("sha256").update(aabBytes).digest("hex");
+          if (
+            attestation.artifact?.sha256 !== aabSha256 ||
+            attestation.artifact?.sizeBytes !== aabBytes.byteLength
+          ) {
+            throw new Error("release AAB attestation does not match the uploaded artifact");
+          }
+          fs.writeFileSync(outputPath, `${JSON.stringify(attestation, null, 2)}\n`);
+          NODE
+          sha256sum "$AAB_PATH" | tee "$RUNNER_TEMP/android-cloud-release-aab.sha256"
+
+      - name: Upload release AAB audit evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-cloud-release-aab-audit
+          path: |
+            packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab
+            ${{ runner.temp }}/android-cloud-release-aab-audit.log
+            ${{ runner.temp }}/android-cloud-release-aab.sha256
+            ${{ runner.temp }}/android-cloud-release-attestation.json
+          retention-days: 7
+          if-no-files-found: warn

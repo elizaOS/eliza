@@ -22,6 +22,7 @@ import {
   isChecked,
   isRowSatisfied,
   isRowSatisfiedForContext,
+  markerFreeBodyHint,
   parseLabels,
   REQUIRED_EVIDENCE_ROWS,
   requiresSurfaceArtifacts,
@@ -209,6 +210,33 @@ describe("check-pr-evidence parser", () => {
     const { ok, findings } = evaluatePrEvidence("");
     assert.equal(ok, false);
     assert.ok(findings.every((finding) => finding.status === "missing"));
+  });
+
+  it("reports a prose-only body (template markers deleted) as all-missing", () => {
+    // The #16925/#16913 failure shape: an agent-authored body that talks about
+    // evidence in prose but carries none of the template's HTML markers. The
+    // gate cannot match prose — every required row is missing, and the CLI
+    // keys its "re-add the markers" hint off this exact all-missing shape.
+    const { ok, findings } = evaluatePrEvidence(
+      "Evidence rows: UI/video/frontend `N/A - cloud backend latency`. Backend: 51-test run above.",
+    );
+    assert.equal(ok, false);
+    assert.equal(findings.length, REQUIRED_EVIDENCE_ROWS.length);
+    assert.ok(findings.every((finding) => finding.status === "missing"));
+  });
+
+  it("marker-free hint names the marker mechanism and one --row flag per required row", () => {
+    // The hint is the fix instruction shown on the #16925/#16913 shape; a row
+    // list that drifted from REQUIRED_EVIDENCE_ROWS would tell authors to
+    // patch the wrong rows — the exact misdiagnosis class the hint exists to
+    // prevent.
+    const hint = markerFreeBodyHint();
+    assert.match(hint, /NO evidence-row markers found/);
+    assert.match(hint, /<!-- evidence-row:<id> -->/);
+    assert.match(hint, /pr-evidence\.mjs rows/);
+    for (const { id } of REQUIRED_EVIDENCE_ROWS) {
+      assert.ok(hint.includes(`--row ${id}=`), `hint must offer --row ${id}=…`);
+    }
   });
 });
 

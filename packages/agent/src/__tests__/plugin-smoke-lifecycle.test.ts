@@ -747,3 +747,35 @@ describe("dispose error handling", () => {
     );
   });
 });
+
+describe("service-class snapshot with a service-less plugin (#16808)", () => {
+  // PR #16808 replaced `plugin.services ?? []` iteration in
+  // snapshotPluginServiceClasses/trackPluginServiceClasses with early
+  // returns. A plugin without a `services` array must still register and
+  // unload cleanly through the serialized lifecycle (the tracking pass is a
+  // no-op for it) and must not disturb another plugin's service ownership.
+  it("registers and unloads a service-less plugin without touching service state", async () => {
+    const runtime = createTestRuntime() as InspectableRuntime;
+    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    installRuntimePluginLifecycle(runtime);
+    const withService = makeLifecycleRaceFixture("ratchet-guard-plugin", "v1");
+    const serviceLess = makeSyntheticSkillsPlugin();
+
+    await runtime.registerPlugin(withService.plugin);
+    expect(runtime.hasService(withService.serviceType)).toBe(true);
+
+    await runtime.registerPlugin(serviceLess);
+    expect(serviceLess.services).toBeUndefined();
+    expect(runtime.actions.some((a) => a.name === "USE_SKILL")).toBe(true);
+    // The service-less registration must not have perturbed the other
+    // plugin's service registration.
+    expect(runtime.hasService(withService.serviceType)).toBe(true);
+
+    await runtime.unloadPlugin(serviceLess.name);
+    expect(runtime.actions.some((a) => a.name === "USE_SKILL")).toBe(false);
+    expect(runtime.hasService(withService.serviceType)).toBe(true);
+
+    await runtime.unloadPlugin(withService.plugin.name);
+    expect(runtime.hasService(withService.serviceType)).toBe(false);
+  });
+});

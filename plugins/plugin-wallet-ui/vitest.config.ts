@@ -6,13 +6,10 @@
  * since that package publishes no matching subpath export.
  *
  * The ui alias targets `packages/ui/src/index.ts`, not the package's `.` export,
- * because the changed-files coverage gate (run-changed-vitest-coverage.mjs) runs
- * this config BEFORE the workspace build, when `@elizaos/ui`'s dist entry does
- * not exist yet — resolving its `.` export then throws "Failed to resolve entry
- * for package @elizaos/ui" and the suite collects zero tests. The wallet gui
+ * so the suite can run before workspace build artifacts exist. The wallet gui
  * test fully `vi.mock`s `@elizaos/ui`, so the source file is only resolved (to
- * key the mock), never loaded; aliasing to a pre-build-present path is what lets
- * the mock register under both the bare and every subpath specifier.
+ * key the mock), never loaded; aliasing to a source path lets the mock register
+ * under both the bare and every subpath specifier.
  */
 import { createRequire } from "node:module";
 import path from "node:path";

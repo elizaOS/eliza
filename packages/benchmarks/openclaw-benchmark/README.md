@@ -1,77 +1,46 @@
-# 🤖 Benchmarking OpenClaw & Other AI Assistants
+# OpenClaw-Bench
 
-Dieses Repository enthält eine umfassende Testsuite und Benchmarking-Umgebung für verschiedene AI-Coding-Assistenten und OpenCode-Plugins. Das Ziel ist es, Metriken wie Ausführungsgeschwindigkeit, Token-Verbrauch und Code-Qualität in isolierten Docker-Umgebungen zu vergleichen.
+AI coding-assistant benchmark: the agent completes standardized software tasks —
+environment setup, feature implementation (a weather CLI), refactoring into a
+modular architecture, and testing (unit + integration) — inside a sandboxed
+workspace. Scoring validates real outcomes (files created, commands executed,
+output correctness), not keyword matching. Registered in the suite registry as
+`openclaw_bench`.
 
-## 📊 Benchmark-Ergebnisse & Ziel
+## What it measures
 
-Wir vergleichen die Leistung von AI Agents in standardisierten Szenarien.
+Each task is a YAML scenario (`openclaw/scenarios/`) with a prompt and a scoring
+rubric. In **execution mode** the runner (`openclaw/runner.py`) drives an LLM
+tool loop (up to 15 steps) against a `SandboxExecutor` — subprocess isolation by
+default, Docker with `--docker` — and `openclaw/scoring.py` checks the concrete
+results: does the file exist, does the command run, is the YAML valid.
+**Conceptual mode** is a no-key keyword-match smoke path; its scores are not
+publishable and `registry/scores.py` rejects them.
 
-### Getestete Agents / Tools
+Tasks run in dependency order under `--all`, sharing one sandbox so downstream
+tasks see files left by earlier ones. Human-readable task specifications live in
+[`benchmark/standard_tasks.md`](benchmark/standard_tasks.md).
 
-| Tool | Verzeichnis | Status | Beschreibung |
-|------|-------------|--------|--------------|
-| **Ralphy** | [`/ralphy`](./ralphy) | ✅ Ready | PRD-Orchestrator mit striktem Workflow |
-| **OpenClaw** | [`/openclaw`](./openclaw) | 🔧 Setup | Autonomer Agent für komplexe Aufgaben |
-| **Oh My OpenCode** | [`/ohmyopencode`](./ohmyopencode) | ⏳ Pending | Plugin-Sammlung und Hilfsmittel |
-| **BMAD Method** | [`/bmadmethod`](./bmadmethod) | ⏳ Pending | Experimentelle Methodik |
+## Quick start
 
----
-
-## 🛠 Setup & Installation
-
-### Voraussetzungen
-- **Docker** & **Docker Compose**
-- **OpenCode CLI** (optional, für lokale Entwicklung)
-- **Node.js 20+**
-
-### Starten der Benchmarks
-
-Jeder Agent befindet sich in seinem eigenen Verzeichnis mit einem passenden `Dockerfile` und `run.sh` Skript.
-
-**Beispiel: Starten von Ralphy**
 ```bash
-cd ralphy
-./run.sh
+# Direct — single task, execution mode (needs an API key)
+python eliza_adapter.py --task setup --mode execution
+
+# No-key smoke (conceptual mode, harness/import readiness only)
+python eliza_adapter.py --task setup --mode conceptual
+
+# Through the suite orchestrator (resolves provider/model, stores results)
+python -m benchmarks.orchestrator run --benchmarks openclaw_bench --provider <p> --model <m>
 ```
 
-**Beispiel: Starten von OpenClaw**
-```bash
-cd openclaw
-./run.sh
-```
+## Integration
 
-### Docker Naming-Convention
+- Registry command builder: `_openclaw_bench_cmd` in `registry/commands.py` —
+  invokes `eliza_adapter.py` and defaults to execution mode; `provider=mock`
+  routes to conceptual mode for readiness checks.
+- Scored by `_score_from_openclaw_bench_json` in `registry/scores.py`; results
+  land in the orchestrator output dir as `openclaw_<task>_exec_<timestamp>.json`.
 
-Das Projekt nutzt eine strikte Namenskonvention für Docker-Container, um Konflikte zu vermeiden und Filterung zu erleichtern.
-
-- **Images**: `benchmark/<tool-name>` (z.B. `benchmark/ralphy`)
-- **Container**: `benchmark--<tool-name>` (z.B. `benchmark--ralphy`)
-- **Labels**: `project=benchmark`, `component=<tool-name>`
-
-Alle aktiven Benchmark-Container anzeigen:
-```bash
-docker ps --filter 'label=project=benchmark'
-```
-
----
-
-## 🧪 Standard-Tasks
-
-Alle Agents werden gegen denselben Satz von Aufgaben getestet, um Vergleichbarkeit zu gewährleisten.
-
-Detaillierte Aufgabenbeschreibung: [📄 benchmark/standard_tasks.md](./benchmark/standard_tasks.md)
-
-1. **Setup**: Initialisierung der Umgebung.
-2. **Implementation**: Umsetzung eines Features (z.B. Weather CLI).
-3. **Refactoring**: Code-Verbesserung.
-4. **Testing**: Schreiben und Ausführen von Tests.
-
----
-
-## 📈 Analyse
-
-Detaillierte Analysen und Gedanken zur Architektur finden sich im Ordner [`my_idea`](./my_idea).
-
----
-
-_Erstellt von [Enving](https://github.com/enving)_
+See [AGENTS.md](AGENTS.md) for the full task list, model/env configuration,
+smoke paths, and test commands.

@@ -129,6 +129,14 @@ interface BriefLifeOpsService {
     reminders?: readonly unknown[];
     goals?: readonly unknown[];
   }>;
+  listOwnerOccurrencesCompletedToday(): Promise<
+    ReadonlyArray<{
+      id: string;
+      definitionKind: string;
+      title: string;
+      dueAt: string | null;
+    }>
+  >;
 }
 
 async function getBriefLifeOpsService(
@@ -305,6 +313,40 @@ async function loadLifeFromOverview(args: {
   }
 }
 
+/**
+ * Owner items completed today, for the evening/recap narrative. Loaded from
+ * the same service read the lifeops provider uses so the brief's "wins" and
+ * the chat context can never disagree. A failed load degrades to an empty
+ * list like the sibling loaders — the brief still composes — but the failure
+ * is surfaced through `runtime.reportError` so the agent sees it in
+ * RECENT_ERRORS instead of an evening brief that silently implies a win-less
+ * day.
+ */
+async function loadCompletedTodayFromService(args: {
+  runtime: IAgentRuntime;
+}): Promise<readonly LifeOpsBriefingLifeItem[]> {
+  try {
+    const service = await getBriefLifeOpsService(args.runtime);
+    const completed = await service.listOwnerOccurrencesCompletedToday();
+    return completed.slice(0, 25).map((occurrence) => ({
+      id: occurrence.id,
+      kind: normalizeLifeKind(occurrence.definitionKind),
+      title: occurrence.title,
+      dueAt: occurrence.dueAt ?? null,
+    }));
+  } catch (error) {
+    // error-policy:J4 the brief composes from independent optional sources;
+    // one broken source must not kill the whole evening brief. The degrade is
+    // designed (section omitted, narrative simply cannot claim wins) and the
+    // failure stays observable: reportError feeds RECENT_ERRORS + owner
+    // escalation rather than a log-only warn masquerading as an empty day.
+    args.runtime.reportError("Brief.loadCompletedToday", error, {
+      surface: "evening-brief-wins",
+    });
+    return [];
+  }
+}
+
 async function loadMoneyFromPayments(args: {
   runtime: IAgentRuntime;
 }): Promise<readonly LifeOpsBriefingMoneyItem[]> {
@@ -350,6 +392,10 @@ export interface BriefComposers {
     runtime: IAgentRuntime;
     period: LifeOpsBriefingPeriod;
   }) => Promise<readonly LifeOpsBriefingMoneyItem[]>;
+  /** Evening/recap wins: owner items completed within the current local day. */
+  loadCompletedToday: (args: {
+    runtime: IAgentRuntime;
+  }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
 }
 
 const defaultComposers: BriefComposers = {
@@ -357,6 +403,7 @@ const defaultComposers: BriefComposers = {
   loadInbox: loadInboxFromTriage,
   loadLife: loadLifeFromOverview,
   loadMoney: loadMoneyFromPayments,
+  loadCompletedToday: loadCompletedTodayFromService,
 };
 
 let activeComposers: BriefComposers = defaultComposers;
@@ -578,14 +625,23 @@ async function assembleBriefing(args: {
       : Promise.resolve([] as readonly LifeOpsBriefingMoneyItem[]),
   ]);
 
+  const kind = SUBACTION_TO_KIND[args.subaction];
+  // The evening brief is the recap surface: it must know what got DONE today
+  // so the narrative can lead with wins instead of opening on open items
+  // (#16935). Morning/weekly briefs keep their forward-looking shape.
+  const completedToday =
+    kind === "evening" && args.include.life
+      ? await composers.loadCompletedToday({ runtime: args.runtime })
+      : [];
+
   const sections: LifeOpsBriefingSections = {
     ...(args.include.calendar ? { calendar: calendarItems } : {}),
     ...(args.include.inbox ? { inbox: inboxItems } : {}),
     ...(args.include.life ? { life: lifeItems } : {}),
+    ...(completedToday.length > 0 ? { completedToday } : {}),
     ...(args.include.money ? { money: moneyItems } : {}),
   };
 
-  const kind = SUBACTION_TO_KIND[args.subaction];
   const editorial = buildBriefEditorialContract({ sections });
   let narrative: string | undefined;
   if (args.format === "narrative") {

@@ -4,15 +4,14 @@
  * into user-visible text (coordinator summary over raw jsonl, tool-output
  * envelope stripping with evidence URLs preserved, connector replies split by
  * originating external message, workdir artifacts attached/renamed, input files
- * not re-uploaded). routeAutonomyTextToUser: persist-vs-ephemeral delivery and
- * duplicate suppression. Deterministic: in-memory runtime/state stubs with real
- * temp-dir files for the artifact cases.
+ * not re-uploaded). routeAutonomyTextToUser: persist-vs-ephemeral delivery.
+ * Deterministic: in-memory runtime/state stubs with real temp-dir files for the
+ * artifact cases.
  */
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
@@ -170,6 +169,7 @@ describe("handleSwarmSynthesis", () => {
   it("routes async connector synthesis as a reply to the originating external message when available", async () => {
     const sent: Array<{ target: unknown; content: Record<string, unknown> }> =
       [];
+    const dashboardFallback = vi.fn(async () => undefined);
     const runtimeWithConnector = {
       getService() {
         return null;
@@ -205,15 +205,138 @@ describe("handleSwarmSynthesis", () => {
         stopped: 0,
         errored: 0,
       },
-      async () => undefined,
+      dashboardFallback,
     );
 
     expect(sent).toHaveLength(1);
+    expect(dashboardFallback).not.toHaveBeenCalled();
     expect(sent[0].content).toMatchObject({
       text: "done",
       source: "swarm_synthesis",
       inReplyTo: "external-message-1",
     });
+  });
+
+  it("uses one client_chat transport for dashboard-origin synthesis", async () => {
+    const sendMessageToTarget = vi.fn(async () => undefined);
+    const dashboardFallback = vi.fn(async () => undefined);
+    const runtimeWithDashboardRelay = {
+      getService() {
+        return null;
+      },
+      getRoom: async () => ({
+        id: "room-1",
+        source: "client_chat",
+        channelId: "room-1",
+      }),
+      sendMessageToTarget,
+    } as never;
+
+    await handleSwarmSynthesis(
+      { runtime: runtimeWithDashboardRelay },
+      {
+        tasks: [
+          {
+            sessionId: "pty-dashboard",
+            label: "dashboard task",
+            agentType: "codex",
+            originalTask: "inspect the repository",
+            status: "completed",
+            completionSummary: "done",
+            roomId: "room-1",
+          },
+        ],
+        total: 1,
+        completed: 1,
+        stopped: 0,
+        errored: 0,
+      },
+      dashboardFallback,
+    );
+
+    expect(sendMessageToTarget).toHaveBeenCalledTimes(1);
+    expect(sendMessageToTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "client_chat",
+        roomId: "room-1",
+      }),
+      expect.objectContaining({
+        text: "done",
+        source: "swarm_synthesis",
+      }),
+    );
+    expect(dashboardFallback).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the dashboard only when the origin route is unavailable", async () => {
+    const dashboardFallback = vi.fn(async () => undefined);
+
+    await handleSwarmSynthesis(
+      { runtime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-no-origin",
+            label: "dashboard task",
+            agentType: "codex",
+            originalTask: "inspect the repository",
+            status: "completed",
+            completionSummary: "done",
+          },
+        ],
+        total: 1,
+        completed: 1,
+        stopped: 0,
+        errored: 0,
+      },
+      dashboardFallback,
+    );
+
+    expect(dashboardFallback).toHaveBeenCalledTimes(1);
+    expect(dashboardFallback).toHaveBeenCalledWith("done", "swarm_synthesis");
+  });
+
+  it("surfaces origin failures without invoking a second transport", async () => {
+    const dashboardFallback = vi.fn(async () => undefined);
+    const runtimeWithFailedConnector = {
+      getService() {
+        return null;
+      },
+      getRoom: async () => ({
+        id: "room-1",
+        source: "discord",
+        channelId: "channel-1",
+      }),
+      sendMessageToTarget: async () => {
+        throw new Error("connector unavailable");
+      },
+    } as never;
+
+    await expect(
+      handleSwarmSynthesis(
+        { runtime: runtimeWithFailedConnector },
+        {
+          tasks: [
+            {
+              sessionId: "pty-failed-origin",
+              label: "connector task",
+              agentType: "codex",
+              originalTask: "inspect the repository",
+              status: "completed",
+              completionSummary: "done",
+              roomId: "room-1",
+            },
+          ],
+          total: 1,
+          completed: 1,
+          stopped: 0,
+          errored: 0,
+        },
+        dashboardFallback,
+      ),
+    ).rejects.toThrow("connector unavailable");
+
+    expect(dashboardFallback).not.toHaveBeenCalled();
   });
 
   it("splits synthesis by originating external reply target", async () => {
@@ -576,7 +699,6 @@ describe("routeAutonomyTextToUser", () => {
         ],
       ]),
       broadcastWs,
-      deliveryDedupe: createDeliveryDedupeState(),
     } as never;
 
     await routeAutonomyTextToUser(state, "Take your meds", "reminder");
@@ -622,7 +744,6 @@ describe("routeAutonomyTextToUser", () => {
         ],
       ]),
       broadcastWs,
-      deliveryDedupe: createDeliveryDedupeState(),
     } as never;
 
     for (const source of [
@@ -638,7 +759,7 @@ describe("routeAutonomyTextToUser", () => {
     expect(broadcastWs).not.toHaveBeenCalled();
   });
 
-  it("Bug A: a duplicate relay of an already-delivered reply is suppressed (one memory + one broadcast)", async () => {
+  it("preserves repeated identical durable messages as distinct deliveries", async () => {
     const createMemory = vi.fn();
     const broadcastWs = vi.fn();
     const state = {
@@ -658,21 +779,16 @@ describe("routeAutonomyTextToUser", () => {
         ],
       ]),
       broadcastWs,
-      deliveryDedupe: createDeliveryDedupeState(),
     } as never;
 
-    // A persisted source (not ephemeral) so it createMemory()s + broadcasts.
     await routeAutonomyTextToUser(state, "the same reply", "autonomy");
-    // A second sink delivers the identical reply moments later (the fan-out
-    // that caused the double in production).
     await routeAutonomyTextToUser(state, "the same reply", "autonomy");
 
-    // Exactly one memory written and one proactive-message broadcast.
-    expect(createMemory).toHaveBeenCalledTimes(1);
-    expect(broadcastWs).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(2);
+    expect(broadcastWs).toHaveBeenCalledTimes(2);
   });
 
-  it("Bug A: an ephemeral broadcast does NOT suppress a later durable persist of the same text", async () => {
+  it("delivers an ephemeral message and a later durable message independently", async () => {
     const createMemory = vi.fn();
     const broadcastWs = vi.fn();
     const state = {
@@ -692,17 +808,12 @@ describe("routeAutonomyTextToUser", () => {
         ],
       ]),
       broadcastWs,
-      deliveryDedupe: createDeliveryDedupeState(),
     } as never;
 
-    // Ephemeral source: broadcasts but does NOT persist (and must not anchor
-    // the dedupe guard).
     await routeAutonomyTextToUser(state, "shared status", "swarm_synthesis");
     expect(createMemory).not.toHaveBeenCalled();
     expect(broadcastWs).toHaveBeenCalledTimes(1);
 
-    // A later DURABLE delivery of the same text must still persist (not be
-    // suppressed as a phantom duplicate of the ephemeral broadcast).
     await routeAutonomyTextToUser(state, "shared status", "autonomy");
     expect(createMemory).toHaveBeenCalledTimes(1);
     expect(broadcastWs).toHaveBeenCalledTimes(2);

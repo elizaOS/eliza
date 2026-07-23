@@ -102,6 +102,7 @@ import {
 import {
   createOptimisticDebitSettler,
   getGateBalanceUsd,
+  InferenceBalanceCacheWarmingError,
   isOptimisticBackstopAvailable,
   isOptimisticBillingEnabled,
   isOptimisticEligible,
@@ -1098,6 +1099,7 @@ async function selectPooledInferenceCredential(params: {
   model: string;
   organizationId: string;
   sessionKey: string;
+  defer?: (task: Promise<void>) => void;
 }): Promise<PooledInferenceCredential | null> {
   const providerId = resolvePooledDirectProviderForModel(params.model);
   if (!providerId) return null;
@@ -1105,6 +1107,7 @@ async function selectPooledInferenceCredential(params: {
     organizationId: params.organizationId,
     providerId,
     sessionKey: params.sessionKey,
+    ...(params.defer ? { defer: params.defer } : {}),
   });
   return selected
     ? toPooledInferenceCredential(params.organizationId, selected)
@@ -1219,10 +1222,27 @@ export async function handleChatCompletionsPOST(
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
+      cacheOnly: Boolean(options.executionCtx),
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
     });
+    if (resolution.kind === "warming") {
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: "Authorization cache is warming. Retry shortly.",
+                type: "service_unavailable",
+                code: "auth_cache_warming",
+              },
+            },
+            { status: 503 },
+          ),
+        ),
+      );
+    }
     if (resolution.kind === "suspended") {
       return attachPreforwardTelemetry(
         addCorsHeaders(
@@ -1378,6 +1398,12 @@ export async function handleChatCompletionsPOST(
       model,
       organizationId: user.organization_id,
       sessionKey: apiKey?.id ?? user.id,
+      ...(options.executionCtx
+        ? {
+            defer: (task: Promise<void>) =>
+              options.executionCtx?.waitUntil(task),
+          }
+        : {}),
     });
     const modelSupportedParametersPromise: Promise<string[] | undefined> =
       skipCatalogLookup
@@ -1625,7 +1651,29 @@ export async function handleChatCompletionsPOST(
           billingSource,
         );
         const thresholdUsd = resolveSafeBalanceThresholdUsd();
-        const balanceUsd = await getGateBalanceUsd(user.organization_id);
+        let balanceUsd: number;
+        try {
+          balanceUsd = await getGateBalanceUsd(user.organization_id, {
+            executionCtx: options.executionCtx,
+            cacheOnly: true,
+          });
+        } catch (error) {
+          if (error instanceof InferenceBalanceCacheWarmingError) {
+            return addCorsHeaders(
+              Response.json(
+                {
+                  error: {
+                    message: "Billing authorization is warming. Retry shortly.",
+                    type: "service_unavailable",
+                    code: "billing_cache_warming",
+                  },
+                },
+                { status: 503 },
+              ),
+            );
+          }
+          throw error;
+        }
         if (
           isOptimisticEligible({
             enabled: true,
@@ -2897,6 +2945,13 @@ async function handleStreamingRequest(
     async start(controller) {
       const responseId = `chatcmpl-${Date.now()}`;
       const toolCallIndexes = new Map<string, number>();
+      // Argument chars already delivered per tool call id via
+      // `tool-input-delta` fragments. OpenAI streaming clients concatenate
+      // every `function.arguments` fragment for an index, so the consolidated
+      // `tool-call` part must not re-emit arguments that were already
+      // streamed — doing so produced doubled, unparseable argument JSON
+      // downstream (hermes/openclaw agents hard-fail the tool call).
+      const toolCallArgsDelivered = new Map<string, number>();
       let nextToolCallIndex = 0;
       let finishReason = "stop";
       let finishUsage: unknown;
@@ -2928,6 +2983,7 @@ async function handleStreamingRequest(
           if (part.type === "tool-input-start") {
             const index = nextToolCallIndex++;
             toolCallIndexes.set(part.id, index);
+            toolCallArgsDelivered.set(part.id, 0);
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -2960,6 +3016,10 @@ async function handleStreamingRequest(
 
           if (part.type === "tool-input-delta") {
             const index = toolCallIndexes.get(part.id) ?? 0;
+            toolCallArgsDelivered.set(
+              part.id,
+              (toolCallArgsDelivered.get(part.id) ?? 0) + part.delta.length,
+            );
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -2992,6 +3052,16 @@ async function handleStreamingRequest(
             const index =
               toolCallIndexes.get(part.toolCallId) ?? nextToolCallIndex++;
             toolCallIndexes.set(part.toolCallId, index);
+            // Arguments already went out incrementally for this id; the
+            // consolidated part is only the SDK's summary event. Re-emitting
+            // the full serialized input here would append a second copy of
+            // the arguments on the client. Providers that never stream input
+            // fragments (no start/delta for this id, or an empty delta
+            // stream) still need the full emission below.
+            if ((toolCallArgsDelivered.get(part.toolCallId) ?? 0) > 0) {
+              finishReason = "tool_calls";
+              continue;
+            }
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({

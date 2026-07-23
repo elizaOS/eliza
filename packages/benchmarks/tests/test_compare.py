@@ -49,7 +49,7 @@ from benchmarks.compare import (  # noqa: E402
     run_compare,
 )
 from benchmarks.lib.results_store import ResultsStore  # noqa: E402
-from benchmarks.standard._base import BenchmarkResult  # noqa: E402
+from benchmarks.standard._base import BenchmarkResult, ENDPOINT_ENV_CHAIN  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +236,13 @@ def test_resolve_endpoint_spec_accepts_url() -> None:
     assert spec.label == "candidate"
 
 
-def test_resolve_endpoint_spec_accepts_provider_name() -> None:
+def test_resolve_endpoint_spec_accepts_provider_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Provider-name resolution consults the operator base-URL overrides first;
+    # clear them so this asserts the hardcoded default deterministically.
+    for name in ENDPOINT_ENV_CHAIN:
+        monkeypatch.delenv(name, raising=False)
     spec = resolve_endpoint_spec(
         label="baseline",
         raw="openai",
@@ -258,7 +264,11 @@ def test_resolve_endpoint_spec_rejects_empty() -> None:
         )
 
 
-def test_resolve_endpoint_spec_rejects_unknown_provider() -> None:
+def test_resolve_endpoint_spec_rejects_unknown_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ENDPOINT_ENV_CHAIN:
+        monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValueError):
         resolve_endpoint_spec(
             label="baseline",

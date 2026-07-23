@@ -9,14 +9,18 @@
  * This is "real WER on the degraded corpus" — proving the robustness corpus is
  * meaningful and showing how the real ASR holds up as the room gets worse.
  *
- * Inputs (env): ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_BUNDLE, ELEVENLABS_API_KEY.
- * Exits 2 (skip) when an artifact/key is missing.
+ * Clean speech: ElevenLabs when ELEVENLABS_API_KEY is set, else a keyless
+ * cached corpus synthesized with a fused Kokoro voice pack (#9577) — the
+ * degradations and the ASR under test are identical either way. Inputs (env):
+ * ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_BUNDLE, ELIZA_KOKORO_MODEL_DIR, optional
+ * ELEVENLABS_API_KEY. Exits 2 (skip) when an artifact is missing.
  */
 
 import { existsSync } from "node:fs";
 import { wordErrorRate } from "@elizaos/shared/voice-wer";
 import { type AugmentationSpec, augmentPcm } from "../src/services/voice/corpus-augment";
 import { loadElizaInferenceFfi } from "../src/services/voice/ffi-bindings";
+import { type BenchGates, ensureKokoroCorpus } from "./voice-bench-shared";
 
 const EL_VOICE = "21m00Tcm4TlvDq8ikWAM";
 const SR = 16_000;
@@ -52,7 +56,6 @@ const bundle = process.env.ELIZA_ASR_BUNDLE?.trim();
 const elKey = process.env.ELEVENLABS_API_KEY?.trim();
 if (!lib || !existsSync(lib)) skip("set ELIZA_INFERENCE_LIBRARY");
 if (!bundle || !existsSync(`${bundle}/asr`)) skip("set ELIZA_ASR_BUNDLE");
-if (!elKey) skip("set ELEVENLABS_API_KEY");
 
 /** ElevenLabs TTS → raw mono PCM16 @16k → normalized Float32 [-1,1]. */
 async function ttsFloat32(text: string): Promise<Float32Array> {
@@ -77,11 +80,42 @@ const ffi = loadElizaInferenceFfi(lib);
 const ctx = ffi.create(bundle);
 ffi.mmapAcquire(ctx, "asr");
 
+// Keyless (#9577): synthesize the clean phrases once with a fused Kokoro voice
+// pack (cached); ELEVENLABS_API_KEY upgrades them to a real human voice.
+const cleanByPhrase = new Map<string, Float32Array>();
+if (elKey) {
+	for (const phrase of PHRASES) {
+		cleanByPhrase.set(phrase, await ttsFloat32(phrase));
+	}
+} else {
+	console.log(
+		"[real-robustness] keyless — synthesizing clean phrases with fused Kokoro (#9577)…",
+	);
+	const gates: BenchGates = {
+		required: false,
+		skip,
+		fail: (m: string): never => {
+			console.error(`[real-robustness] FAIL: ${m}`);
+			process.exit(1);
+		},
+	};
+	const items = await ensureKokoroCorpus(
+		"robustness-clean",
+		PHRASES.map((text, i) => ({ id: `phrase-${i + 1}`, voiceId: "af_bella", text })),
+		gates,
+		(m) => console.log(`[real-robustness] ${m}`),
+	);
+	for (const [i, phrase] of PHRASES.entries()) {
+		cleanByPhrase.set(phrase, items[i].pcm);
+	}
+}
+
 // rows[condition] = list of WER across phrases
 const rows = new Map<string, number[]>();
 try {
 	for (const phrase of PHRASES) {
-		const clean = await ttsFloat32(phrase);
+		const clean = cleanByPhrase.get(phrase);
+		if (!clean) throw new Error(`no clean PCM for phrase "${phrase}"`);
 		for (const cond of CONDITIONS) {
 			const pcm =
 				Object.keys(cond.spec).length === 0

@@ -1,13 +1,24 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations conversationid messages stream route traffic with route-local auth expectations.
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import {
+  type AgentSandbox,
+  agentSandboxesRepository,
+} from "@/db/repositories/agent-sandboxes";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
+import { cache } from "@/lib/cache/client";
+import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import {
+  type CachedAgentSandbox,
+  rehydrateCachedAgentDates,
+} from "@/lib/services/shared-runtime/cached-agent-dates";
 import {
   type CanonicalScopedStreamRequest,
   handleCanonicalScopedAgentStream,
 } from "@/lib/services/shared-runtime/canonical-scoped-stream";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
+import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -52,7 +63,10 @@ function elapsedMs(startedAt: number): number {
   return Math.round((nowMs() - startedAt) * 10) / 10;
 }
 
-async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
+async function resolveAgentScope(
+  c: Parameters<typeof resolveSharedAgent>[0],
+  executionCtx?: BridgeExecutionContext,
+) {
   const configured = c.env?.VOICE_REALTIME_ELIZA_AUTHORIZATION;
   const presented = c.req.header("authorization");
   if (configured && presented && timingSafeEqualSecret(presented, configured)) {
@@ -76,9 +90,65 @@ async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
         status: 404 as const,
       };
     }
-    const agent = orgId
-      ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId)
-      : undefined;
+    const cacheKey = CacheKeys.sharedAgentScope.voice(orgId, userId, agentId);
+    // The voice scope cache stores either the serialized agent row or a
+    // negative sentinel. Recording the negative outcome is what lets the
+    // cache-only warming state converge: an entry that can never be written
+    // (mismatched user, dedicated tier, not found) would otherwise loop the
+    // retryable 503 forever. This route serves the SHARED tier only, so a
+    // known-negative is a definitive 404.
+    const cachedScope = await cache.get<
+      CachedAgentSandbox | { unresolvable: true }
+    >(cacheKey);
+    const knownNegative =
+      cachedScope != null &&
+      (cachedScope as { unresolvable?: boolean }).unresolvable === true;
+    let agent: AgentSandbox | null =
+      cachedScope && !knownNegative
+        ? // Restore the Date contract lost to the cache's JSON round-trip
+          // before any consumer reads a timestamp column.
+          rehydrateCachedAgentDates(cachedScope as CachedAgentSandbox)
+        : null;
+    if (!agent && !knownNegative) {
+      const hydrate = async () => {
+        const authoritative = orgId
+          ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId)
+          : undefined;
+        const eligible =
+          authoritative != null &&
+          authoritative.user_id === userId &&
+          authoritative.execution_tier === "shared";
+        await cache.set(
+          cacheKey,
+          eligible ? authoritative : { unresolvable: true },
+          CacheTTL.sharedAgentScope.resolve,
+        );
+        // The DO-mode cache stores only shared-tier rows; the inline path
+        // keeps the legacy permissive return (the user gate below still 404s
+        // a mismatched caller, and the bridge routes tiers itself).
+        return authoritative;
+      };
+      if (c.env?.SHARED_RUNTIME_CONVERSATIONS) {
+        const hydration = hydrate()
+          .then(() => undefined)
+          .catch((error) => {
+            // error-policy:J7 the cold fill is deliberately off the response
+            // path; the retry stays fail-closed until a fill lands.
+            logger.warn("[voice-scope] background hydration failed", {
+              agentId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        if (executionCtx) executionCtx.waitUntil(hydration);
+        else void hydration;
+        return {
+          error: "Agent authorization cache is warming. Retry shortly.",
+          code: "agent_cache_warming",
+          status: 503 as const,
+        };
+      }
+      agent = (await hydrate()) ?? null;
+    }
     if (!agent || !userId || agent.user_id !== userId) {
       return {
         error: "Agent not found",
@@ -87,13 +157,17 @@ async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
       };
     }
     return {
+      agent,
       agentId: agent.id,
       orgId,
       userId,
       agentName: agent.agent_name ?? "Agent",
     };
   }
-  return resolveSharedAgent(c);
+  return resolveSharedAgent(c, {
+    cacheOnly: Boolean(c.env?.SHARED_RUNTIME_CONVERSATIONS),
+    executionCtx,
+  });
 }
 
 app.options("/", (c) =>
@@ -102,8 +176,14 @@ app.options("/", (c) =>
 
 app.post("/", async (c) => {
   const origin = c.req.header("origin");
+  let executionCtx: BridgeExecutionContext | undefined;
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    executionCtx = undefined;
+  }
   const scopeStartedAt = nowMs();
-  const scopePromise = resolveAgentScope(c).then((result) => ({
+  const scopePromise = resolveAgentScope(c, executionCtx).then((result) => ({
     result,
     durationMs: elapsedMs(scopeStartedAt),
   }));
@@ -142,12 +222,17 @@ app.post("/", async (c) => {
 
   const conversationId = c.req.param("conversationId") ?? r.agentId;
   return handleCanonicalScopedAgentStream({
+    agent: r.agent,
     agentId: r.agentId,
     orgId: r.orgId,
     conversationId,
     ...("userId" in r ? { userId: r.userId } : {}),
     body: raw,
     origin,
+    namespace: c.env?.SHARED_RUNTIME_CONVERSATIONS,
+    // The executionCtx derived for resolveAgentScope above also carries the
+    // shared turn's deferred billing tail (#16976).
+    executionCtx,
     timings: {
       scope: scopeMs,
       body: bodyMs,
