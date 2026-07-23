@@ -81,7 +81,7 @@ def test_read_manifest_invalid_returns_none(isolated_agent_root):
 def test_install_openclaw_idempotent(isolated_agent_root):
     agent_install, tmp_path = isolated_agent_root
 
-    prefix = tmp_path / "openclaw" / "2026.5.7"
+    prefix = tmp_path / "openclaw" / "v2026.5.7"
     binary = prefix / "node_modules" / ".bin" / "openclaw"
 
     def fake_run(cmd, *args, **kwargs):
@@ -114,7 +114,7 @@ def test_install_openclaw_idempotent(isolated_agent_root):
 def test_install_openclaw_force_reinstalls(isolated_agent_root):
     agent_install, tmp_path = isolated_agent_root
 
-    prefix = tmp_path / "openclaw" / "2026.5.7"
+    prefix = tmp_path / "openclaw" / "v2026.5.7"
     binary = prefix / "node_modules" / ".bin" / "openclaw"
 
     def fake_run(cmd, *args, **kwargs):
@@ -160,7 +160,7 @@ def test_install_openclaw_surfaces_npm_failure(isolated_agent_root):
 def test_verify_install_success_openclaw(isolated_agent_root):
     agent_install, tmp_path = isolated_agent_root
 
-    prefix = tmp_path / "openclaw" / "2026.5.7"
+    prefix = tmp_path / "openclaw" / "v2026.5.7"
     binary = prefix / "node_modules" / ".bin" / "openclaw"
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_text("#!/usr/bin/env node\n")
@@ -189,7 +189,7 @@ def test_verify_install_success_openclaw(isolated_agent_root):
 def test_verify_install_failure(isolated_agent_root):
     agent_install, tmp_path = isolated_agent_root
 
-    prefix = tmp_path / "openclaw" / "2026.5.7"
+    prefix = tmp_path / "openclaw" / "v2026.5.7"
     binary = prefix / "node_modules" / ".bin" / "openclaw"
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_text("#!/usr/bin/env node\n")
@@ -252,7 +252,7 @@ def test_install_all_unknown_agent(isolated_agent_root):
 def test_cli_install_all_returns_zero_on_success(isolated_agent_root):
     agent_install, tmp_path = isolated_agent_root
 
-    openclaw_prefix = tmp_path / "openclaw" / "2026.5.7"
+    openclaw_prefix = tmp_path / "openclaw" / "v2026.5.7"
     openclaw_bin = openclaw_prefix / "node_modules" / ".bin" / "openclaw"
     hermes_dir = tmp_path / agent_install.HERMES_DIR_NAME
     hermes_venv_python = hermes_dir / ".venv" / "bin" / "python"
