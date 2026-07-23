@@ -37,7 +37,7 @@ export const WithFeatures: Story = {
       "Connect a source and Eliza will start surfacing what matters most.",
     icon: Sparkles,
     features: [
-      { id: "chat", label: "Continuous chat", icon: MessageSquare },
+      { id: "chat", label: "Chat", icon: MessageSquare },
       { id: "alerts", label: "Smart alerts", icon: Bell },
       { id: "actions", label: "Quick actions", icon: Zap },
     ],

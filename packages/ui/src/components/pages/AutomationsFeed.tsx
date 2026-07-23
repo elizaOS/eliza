@@ -673,7 +673,7 @@ export function AutomationsFeed({
         <div
           data-testid="automations-scroll-region"
           data-shell-scroll-region="true"
-          className="eliza-continuous-chat-scroll min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-[var(--eliza-continuous-chat-clearance,5.25rem)] pe-[var(--eliza-continuous-chat-side-clearance,0px)]"
+          className="eliza-chat-scroll min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
         >
           {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
           <div

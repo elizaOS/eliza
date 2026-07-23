@@ -5,7 +5,7 @@
  * conductor seeds synthetic assistant turns — the sign-in greeting, the
  * welcome-back turn, per-step status turns, the cloud-done wrap-up, typed
  * onboarding user/reply turns — DIRECTLY into the live `conversationMessages`
- * store the `ContinuousChatOverlay` renders. While onboarding is active
+ * store the `ChatOverlay` renders. While onboarding is active
  * (`firstRunOpen`) the overlay filters the transcript down to the current
  * first-run turn via `selectFirstRunDisplayMessages`, so only one card shows.
  *

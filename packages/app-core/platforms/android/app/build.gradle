@@ -7,6 +7,9 @@ apply plugin: 'com.android.application'
 // project lives outside the eliza tree and the relative walk overshoots.
 // Keep the variable name and single definition, or that pin silently misses.
 def elizaRepoRoot = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
+def lp3ColorPolicyBuildEnabled = ['1', 'true', 'yes'].contains(
+    (System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase()
+)
 
 def resolveElizaVoiceArm64SourceDir = {
     def fromProp = project.findProperty("eliza.mtp.android.libdir")
@@ -39,6 +42,9 @@ android {
         buildConfig true
     }
     defaultConfig {
+        // Direct-distribution LP3 builds opt in explicitly. Runtime device,
+        // operator, and privileged-permission gates still apply independently.
+        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "${lp3ColorPolicyBuildEnabled}"
         buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\"\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles\""
@@ -73,6 +79,22 @@ android {
             cmake {
                 arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include').absolutePath}"
             }
+        }
+    }
+
+    // The LP3 production sources live outside src/main so every ordinary APK
+    // and AAB excludes them. The explicit flag attaches them only to the debug
+    // source set; release variants cannot see the Java or manifest overlay.
+    sourceSets {
+        test.java.srcDir file('../lp3-color-policy/src/test/java')
+        if (lp3ColorPolicyBuildEnabled) {
+            debug.java.srcDir file('../lp3-color-policy/src/debug/java')
+            debug.manifest.srcFile file('../lp3-color-policy/src/debug/AndroidManifest.xml')
+            // Release artifacts cannot see the policy, but release unit tests
+            // still compile the shared policy contract outside the main APK.
+            testRelease.java.srcDir file('../lp3-color-policy/src/debug/java')
+        } else {
+            test.java.srcDir file('../lp3-color-policy/src/debug/java')
         }
     }
 

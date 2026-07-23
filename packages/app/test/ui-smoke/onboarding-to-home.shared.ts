@@ -735,7 +735,7 @@ const REMOVED_ONBOARDING_TESTIDS = [
  * the removed full-screen onboarding testIds exist.
  */
 export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
   await expect(
     page.getByText("First, where should your agent run?", { exact: false }),
@@ -837,7 +837,7 @@ async function expectPostOnboardingChat(
     await expectOnboardingSettleToHalf(page);
     return;
   }
-  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
     "data-open",
     "true",
     { timeout: 30_000 },
@@ -930,7 +930,7 @@ export async function completeOnboardingToHome(
   // completion edge (revealing the home); with "start" the chat-native tour
   // re-opens it over the home. The composer unlocks either way and the home
   // widget host renders its seeded cards.
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectPostOnboardingChat(page, tutorial);
   await dismissPermissionPrimingIfShown(page);
@@ -985,7 +985,7 @@ export async function completeCloudOnboardingToHome(
   // the home (sheet settles to half).
   await pickTutorial(page, click, tutorial);
 
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectPostOnboardingChat(page, tutorial);
   await dismissPermissionPrimingIfShown(page);
@@ -1015,7 +1015,7 @@ export async function completeCloudOnboardingToHome(
 export async function expectCloudOnlySignInOnboarding(
   page: Page,
 ): Promise<void> {
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
   // Cloud-only greeting (#13377): the conductor seeds the greeting and sign-in
   // prompt as two normal chat turns, followed by the single cloud CTA. The
@@ -1060,8 +1060,8 @@ async function expectCloudOnlyCompletion(
 ): Promise<{ surface: Locator }> {
   // Completion fires at provisioning success and returns the user to the home
   // surface. Cloud-only completion rides the SAME full→half falling-edge settle
-  // as chooser mode (ContinuousChatOverlay's wasFirstRunOpenRef effect →
-  // goToDetent("half"); ContinuousChatOverlay.firstrun.test), so the sheet rests
+  // as chooser mode (ChatOverlay's wasFirstRunOpenRef effect →
+  // goToDetent("half"); ChatOverlay.firstrun.test), so the sheet rests
   // at the half detent with the home revealed behind it and the composer
   // unlocked. The durable contract is asserted on that settle, the onboarded
   // home, the absent tutorial gate, and the exactly-once POST. The wrap-up copy
@@ -1155,7 +1155,7 @@ export async function completeCloudInferenceOnboardingToHome(
 
   await pickTutorial(page, click, tutorial);
 
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectPostOnboardingChat(page, tutorial);
   await dismissPermissionPrimingIfShown(page);
@@ -1215,7 +1215,7 @@ export async function completeOtherProviderSettingsHandoff(
     "Sign in to start chatting",
   );
 
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectPostOnboardingChat(page, tutorial);
   await dismissPermissionPrimingIfShown(page);
@@ -1293,7 +1293,7 @@ export async function connectRemoteFirstRunToHome(
 }
 
 /**
- * Collapse the floating ContinuousChatOverlay back to its composer-only resting
+ * Collapse the floating ChatOverlay back to its composer-only resting
  * state if it happens to be open. The overlay AUTO-COLLAPSES on the onboarding
  * completion edge, so post-onboarding this is normally a no-op guard (the
  * early-return below); it still handles a sheet a test deliberately opened.
@@ -1302,7 +1302,7 @@ export async function connectRemoteFirstRunToHome(
  * negative assertion), so never call this mid-onboarding.
  */
 export async function collapseChatOverlay(page: Page): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 15_000 });
   if ((await overlay.getAttribute("data-open")) !== "true") return;
   await page.keyboard.press("Escape");

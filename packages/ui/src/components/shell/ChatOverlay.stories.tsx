@@ -1,5 +1,5 @@
 /**
- * Storybook states for the ContinuousChatOverlay shell surface across startup,
+ * Storybook states for the ChatOverlay shell surface across startup,
  * launcher, banner, and overlay contexts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
@@ -7,7 +7,7 @@ import type * as React from "react";
 import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { MockAppProvider } from "../../storybook/mock-providers";
-import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
+import { ChatOverlay } from "./ChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import type { ConversationNav, ShellController } from "./useShellController";
 
@@ -119,8 +119,8 @@ const Backdrop = ({ children }: { children: React.ReactNode }) => (
 );
 
 const meta = {
-  title: "Shell/ContinuousChatOverlay",
-  component: ContinuousChatOverlay,
+  title: "Shell/ChatOverlay",
+  component: ChatOverlay,
   parameters: { layout: "fullscreen" },
   decorators: [
     // The overlay reads the app store via useAppSelectorShallow; seed a mock
@@ -133,7 +133,7 @@ const meta = {
       </MockAppProvider>
     ),
   ],
-} satisfies Meta<typeof ContinuousChatOverlay>;
+} satisfies Meta<typeof ChatOverlay>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

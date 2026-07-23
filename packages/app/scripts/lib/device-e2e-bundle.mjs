@@ -149,12 +149,20 @@ function convertPngToJpgWithSharp(src, dest) {
     "const sharp=require(process.argv[3]);" +
     "sharp(process.argv[1]).jpeg({quality:82}).toFile(process.argv[2])" +
     ".then(()=>process.exit(0)).catch(()=>process.exit(1));";
-  const result = spawnSync(
-    process.execPath,
-    ["-e", encode, src, dest, sharpEntry],
-    { stdio: "ignore" },
-  );
-  return result.status === 0 && isNonEmptyFile(dest);
+  // Under `bun test` process.execPath is bun; loading sharp's NAPI binary
+  // there has flaked on canary bun builds, so fall back to the system node
+  // (which sharp targets first-class) before giving up.
+  const runtimes =
+    path.basename(process.execPath).startsWith("bun") === false
+      ? [process.execPath]
+      : [process.execPath, "node"];
+  for (const runtime of runtimes) {
+    const result = spawnSync(runtime, ["-e", encode, src, dest, sharpEntry], {
+      stdio: "ignore",
+    });
+    if (result.status === 0 && isNonEmptyFile(dest)) return true;
+  }
+  return false;
 }
 
 function remuxMovToMp4(src, dest) {

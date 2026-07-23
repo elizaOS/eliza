@@ -1,7 +1,7 @@
 /**
- * Pure layout math for the continuous-chat sheet's height + top clearance.
+ * Pure layout math for the chat sheet's height + top clearance.
  *
- * Extracted from ContinuousChatOverlay so the geometry that decides where the
+ * Extracted from ChatOverlay so the geometry that decides where the
  * panel's TOP edge lands (and thus whether the header buttons sit below the
  * notch) is unit-testable without rendering the overlay. The overlay is a
  * bottom-anchored fixed element (`bottom: effectiveKeyboardInset`) whose panel
@@ -130,7 +130,7 @@ export const SHORT_LANDSCAPE_MAX_HEIGHT = 480;
 
 /**
  * True for a wide-but-short viewport (a landscape phone): wider than tall AND no
- * taller than {@link SHORT_LANDSCAPE_MAX_HEIGHT}. The continuous-chat overlay
+ * taller than {@link SHORT_LANDSCAPE_MAX_HEIGHT}. The chat overlay
  * shrinks its RESTING footprint to a compact bottom-corner affordance here, so
  * its otherwise ~full-width composer band stops overlapping the view controls
  * that pack into the short height (#14173). Portrait phones (taller than wide)

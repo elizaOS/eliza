@@ -252,7 +252,7 @@ test.describe("dashboard shell interaction framerate", () => {
     page,
   }, testInfo) => {
     await openAppPath(page, "/chat");
-    const overlay = page.getByTestId("continuous-chat-overlay");
+    const overlay = page.getByTestId("chat-overlay");
     await expect(overlay).toBeVisible({ timeout: 60_000 });
 
     // --- Scenario A: live token streaming ------------------------------------

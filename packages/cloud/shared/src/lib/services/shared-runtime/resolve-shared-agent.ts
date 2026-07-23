@@ -1,4 +1,5 @@
 // Coordinates cloud service resolve shared agent behavior behind route handlers.
+import { ElizaError } from "@elizaos/core";
 import type { Context } from "hono";
 
 import {
@@ -40,6 +41,36 @@ const AGENT_SANDBOX_DATE_FIELDS = [
   "scheduled_shutdown_at",
 ] as const satisfies ReadonlyArray<keyof AgentSandbox>;
 
+type AgentSandboxDateField = (typeof AGENT_SANDBOX_DATE_FIELDS)[number];
+type CachedAgentSandbox = Omit<AgentSandbox, AgentSandboxDateField> & {
+  [Field in AgentSandboxDateField]: unknown;
+};
+
+function invalidCachedAgentTimestamp(field: AgentSandboxDateField, value: unknown): ElizaError {
+  return new ElizaError("Shared-agent cache contains an invalid timestamp", {
+    code: "INVALID_CACHED_AGENT_TIMESTAMP",
+    context: { field, value },
+    severity: "fatal",
+  });
+}
+
+function rehydrateRequiredCachedDate(value: unknown, field: AgentSandboxDateField): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  throw invalidCachedAgentTimestamp(field, value);
+}
+
+function rehydrateNullableCachedDate(value: unknown, field: AgentSandboxDateField): Date | null {
+  return value === null ? null : rehydrateRequiredCachedDate(value, field);
+}
+
 /**
  * Restore the `AgentSandbox` DATE contract after a scope-cache round-trip
  * (CONVERSATIONS-500-2026-07-22). The cache client JSON-serializes on write and
@@ -49,21 +80,31 @@ const AGENT_SANDBOX_DATE_FIELDS = [
  * conversations route calls `agent.created_at.toISOString()`, which throws
  * (`string.toISOString is not a function`) and 500s the read on EVERY cache hit
  * (the exact "first call 200, then all 500" defect). Rehydrating the known date
- * fields at the cache-read boundary keeps a cache hit byte-for-byte equivalent
- * to a fresh DB hydration for every caller. Best-effort per field: an absent or
- * already-`Date` value is left untouched; an unparseable value is left as-is so
- * we never fabricate a bogus `Date`.
+ * fields at the cache-read boundary keeps a cache hit equivalent to a fresh DB
+ * hydration for every caller. Nullable values and valid `Date`s are preserved;
+ * malformed values fail at this boundary because returning a row that violates
+ * `AgentSandbox` would defer the fault into an unrelated route consumer.
  */
-function rehydrateCachedAgentDates(agent: AgentSandbox): AgentSandbox {
-  const out = agent as unknown as Record<string, unknown>;
-  for (const field of AGENT_SANDBOX_DATE_FIELDS) {
-    const value = out[field];
-    if (typeof value === "string") {
-      const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) out[field] = parsed;
-    }
-  }
-  return agent;
+function rehydrateCachedAgentDates(agent: CachedAgentSandbox): AgentSandbox {
+  return {
+    ...agent,
+    created_at: rehydrateRequiredCachedDate(agent.created_at, "created_at"),
+    updated_at: rehydrateRequiredCachedDate(agent.updated_at, "updated_at"),
+    deleted_at: rehydrateNullableCachedDate(agent.deleted_at, "deleted_at"),
+    claimed_at: rehydrateNullableCachedDate(agent.claimed_at, "claimed_at"),
+    pool_ready_at: rehydrateNullableCachedDate(agent.pool_ready_at, "pool_ready_at"),
+    last_backup_at: rehydrateNullableCachedDate(agent.last_backup_at, "last_backup_at"),
+    last_heartbeat_at: rehydrateNullableCachedDate(agent.last_heartbeat_at, "last_heartbeat_at"),
+    last_billed_at: rehydrateNullableCachedDate(agent.last_billed_at, "last_billed_at"),
+    shutdown_warning_sent_at: rehydrateNullableCachedDate(
+      agent.shutdown_warning_sent_at,
+      "shutdown_warning_sent_at",
+    ),
+    scheduled_shutdown_at: rehydrateNullableCachedDate(
+      agent.scheduled_shutdown_at,
+      "scheduled_shutdown_at",
+    ),
+  };
 }
 
 /**
@@ -78,7 +119,7 @@ function rehydrateCachedAgentDates(agent: AgentSandbox): AgentSandbox {
  */
 interface CachedSharedAgentScope {
   orgId: string;
-  agent: AgentSandbox;
+  agent: CachedAgentSandbox;
   /**
    * Steward user id the entry was written for, present ONLY on session-keyed
    * entries (#SHADOW-ACCOUNT-DEBUG). A session-path hit re-verifies the JWT and

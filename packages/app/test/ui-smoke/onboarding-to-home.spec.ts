@@ -35,7 +35,7 @@ import {
 //
 // These specs boot a fresh device (no first-run-complete) and drive the in-chat
 // flow in the REAL shell to completion, then assert the post-onboarding landing
-// is the HOME (the ContinuousChatOverlay composer over the home widgets) and that
+// is the HOME (the ChatOverlay composer over the home widgets) and that
 // POST /api/first-run fired exactly once. Covered paths: chat-first + gate-absent
 // assertion, Local/on-device, Cloud (OAuth card mocked at the network boundary +
 // cloud-agent pick), tutorial-or-skip (both branches), and POST-once.
@@ -90,7 +90,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
     // NEGATIVE, restated at the spec level: mid-onboarding the sheet cannot be
     // dismissed — the old Escape-collapse-to-reach-the-launcher step is gone.
     await page.keyboard.press("Escape");
-    await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+    await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
       "data-open",
       "true",
     );
@@ -102,14 +102,14 @@ test.describe("in-chat onboarding → home → launcher", () => {
     });
 
     // Completion settled the sheet from the pinned FULL detent down to the HALF
-    // detent (#15339 / ContinuousChatOverlay.firstrun.test): the sheet stays
+    // detent (#15339 / ChatOverlay.firstrun.test): the sheet stays
     // OPEN with the home revealed behind its top half, and the composer unlocks.
     // expectInlineLauncher collapses the open sheet before asserting the grid.
     await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
       "data-detent",
       "half",
     );
-    await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+    await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
       "data-open",
       "true",
     );

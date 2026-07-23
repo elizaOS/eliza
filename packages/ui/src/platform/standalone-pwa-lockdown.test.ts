@@ -514,7 +514,7 @@ describe("JS-measured bottom reclaim is present and install-guarded", () => {
 
   it("the composer overlay applies the measured reclaim offset at rest", () => {
     const overlaySrc = readFileSync(
-      resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),
+      resolve(uiSrc, "components/shell/ChatOverlay.tsx"),
       "utf8",
     );
     // The resting `bottom` uses the measured offset (keyboard-lift wins when up).
@@ -527,7 +527,7 @@ describe("Composer bottom geometry — full-bleed, keyboard-lift preserved", () 
   // physical screen bottom; when the keyboard is visible, visual-viewport lift
   // owns the offset instead. Safe-area padding keeps controls tappable.
   const overlaySrc = readFileSync(
-    resolve(process.cwd(), "src/components/shell/ContinuousChatOverlay.tsx"),
+    resolve(process.cwd(), "src/components/shell/ChatOverlay.tsx"),
     "utf8",
   );
   const layoutSrc = readFileSync(
@@ -657,7 +657,7 @@ describe("Bottom-reclaim CONSUMPTION contract — the measured var actually pain
     // Mirror of the real-chain composer assertion, grouped here so the visual
     // bottom paints and the interactive bottom stay in the same contract.
     const overlaySrc = readFileSync(
-      resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),
+      resolve(uiSrc, "components/shell/ChatOverlay.tsx"),
       "utf8",
     );
     expect(

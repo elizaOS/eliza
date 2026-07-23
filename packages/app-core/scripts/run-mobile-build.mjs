@@ -1931,6 +1931,7 @@ function injectBuildConfigAospField(content) {
 
 function androidSmsGatewayBuildConfigFieldLines() {
   return [
+    `        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase())}"`,
     `        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"`,
     `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_SECRET ?? "")}\\""`,
     `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ?? "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles")}\\""`,
@@ -5266,6 +5267,23 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
 // components.
 //
 // Components deleted from the manifest (and from app/src/main/java/...):
+export const ANDROID_LP3_COLOR_POLICY_COMPONENTS = [
+  "Lp3ColorPolicyService",
+  "Lp3ColorPolicyBootReceiver",
+];
+
+export const ANDROID_LP3_COLOR_POLICY_PERMISSIONS = [
+  "WRITE_SECURE_SETTINGS",
+  "RECEIVE_BOOT_COMPLETED",
+  "FOREGROUND_SERVICE_SPECIAL_USE",
+];
+
+export const ANDROID_LP3_COLOR_POLICY_JAVA_FILES = [
+  "Lp3ColorPolicy.java",
+  "Lp3ColorPolicyService.java",
+  "Lp3ColorPolicyBootReceiver.java",
+];
+
 export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaAgentService",
   "ElizaDialActivity",
@@ -5291,6 +5309,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaCameraActivity",
   "ElizaClockActivity",
   "ElizaCalendarActivity",
+  ...ANDROID_LP3_COLOR_POLICY_COMPONENTS,
 ];
 
 // Permissions removed from the manifest. Anything that triggers a Play
@@ -5332,6 +5351,7 @@ export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "BIND_ACCESSIBILITY_SERVICE",
   "BIND_NOTIFICATION_LISTENER_SERVICE",
   "BIND_DEVICE_ADMIN",
+  "WRITE_SECURE_SETTINGS",
 ];
 
 // Some kept Capacitor plugins can reintroduce source-stripped permissions via
@@ -5378,7 +5398,81 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRespondViaMessageService.java",
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
+  ...ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
 ];
+
+export function isAndroidLp3ColorPolicyEnabled(env = process.env) {
+  return ["1", "true", "yes"].includes(
+    String(env.ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED ?? "")
+      .trim()
+      .toLowerCase(),
+  );
+}
+
+export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
+  return {
+    ...env,
+    ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: isAndroidLp3ColorPolicyEnabled(env)
+      ? "1"
+      : "0",
+  };
+}
+
+export function enforceAndroidLp3ColorPolicyBuildPolicy({
+  targetName,
+  env = process.env,
+  appId = APP.appId,
+}) {
+  if (!isAndroidLp3ColorPolicyEnabled(env)) return;
+  const playSignaled =
+    env.ELIZA_PLAY_STORE_BUILD === "1" ||
+    String(env.ELIZA_BUILD_VARIANT ?? "").toLowerCase() === "store";
+  const nonCanonicalTree =
+    env.ELIZA_ANDROID_USE_APP_DIR === "1" || appId !== "ai.elizaos.app";
+  if (
+    targetName !== "android-cloud-debug" ||
+    playSignaled ||
+    nonCanonicalTree
+  ) {
+    throw new Error(
+      "[mobile-build] ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED is restricted to " +
+        "the canonical android-cloud-debug direct-distribution lane; it is " +
+        "forbidden for release, Play, SMS gateway, sideload, AOSP, app-dir, " +
+        "and whitelabel targets.",
+    );
+  }
+}
+
+export function resolveAndroidCloudStripPolicy(env = process.env) {
+  if (!isAndroidLp3ColorPolicyEnabled(env)) {
+    return {
+      components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
+      permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+      mergerRemovedPermissions:
+        ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
+      javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
+    };
+  }
+
+  const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
+  const allowedPermissions = new Set(ANDROID_LP3_COLOR_POLICY_PERMISSIONS);
+  const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
+  return {
+    components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
+      (component) => !allowedComponents.has(component),
+    ),
+    permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
+      (permission) => !allowedPermissions.has(permission),
+    ),
+    mergerRemovedPermissions:
+      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter(
+        (permission) => !allowedPermissions.has(permission),
+      ),
+    javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
+      (file) => !allowedJavaFiles.has(file),
+    ),
+  };
+}
 
 // Java sources that survive the cloud strip but are rewritten (or deleted) by
 // rewriteCloudJavaSources() so that the android-cloud tree compiles without
@@ -5985,8 +6079,10 @@ function stripAndroidCloudNativePlugins() {
   );
 }
 
-function auditAndroidCloudSource(phase) {
+function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   const failures = [];
+  const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
+  const stripPolicy = resolveAndroidCloudStripPolicy(env);
   const manifestPath = path.join(
     androidDir,
     "app",
@@ -5999,12 +6095,12 @@ function auditAndroidCloudSource(phase) {
     if (xml.includes("ElizaAgentService")) {
       failures.push("AndroidManifest.xml still references ElizaAgentService");
     }
-    for (const component of ANDROID_CLOUD_STRIPPED_COMPONENTS) {
+    for (const component of stripPolicy.components) {
       if (xml.includes(component)) {
         failures.push(`AndroidManifest.xml still references ${component}`);
       }
     }
-    for (const perm of ANDROID_CLOUD_STRIPPED_PERMISSIONS) {
+    for (const perm of stripPolicy.permissions) {
       const full = `android.permission.${perm}`;
       if (hasAndroidPermissionRequest(xml, full)) {
         failures.push(`AndroidManifest.xml still requests ${full}`);
@@ -6027,6 +6123,45 @@ function auditAndroidCloudSource(phase) {
     }
     if (!xml.includes('android:name="android.app.shortcuts"')) {
       failures.push("AndroidManifest.xml does not register @xml/shortcuts");
+    }
+  }
+
+  const lp3DebugRoot = path.join(
+    platformsDir,
+    "android",
+    "lp3-color-policy",
+    "src",
+    "debug",
+  );
+  if (lp3ColorPolicyEnabled) {
+    const lp3ManifestPath = path.join(lp3DebugRoot, "AndroidManifest.xml");
+    if (!fs.existsSync(lp3ManifestPath)) {
+      failures.push("LP3 direct-debug manifest overlay is missing");
+    } else {
+      const lp3Manifest = stripXmlComments(
+        fs.readFileSync(lp3ManifestPath, "utf8"),
+      );
+      for (const component of ANDROID_LP3_COLOR_POLICY_COMPONENTS) {
+        if (!lp3Manifest.includes(component)) {
+          failures.push(
+            `LP3 direct-debug manifest is missing component ${component}`,
+          );
+        }
+      }
+      for (const permission of ANDROID_LP3_COLOR_POLICY_PERMISSIONS) {
+        const full = `android.permission.${permission}`;
+        if (!hasAndroidPermissionRequest(lp3Manifest, full)) {
+          failures.push(
+            `LP3 direct-debug manifest is missing permission ${full}`,
+          );
+        }
+      }
+    }
+    const lp3JavaRoot = path.join(lp3DebugRoot, "java", "ai", "elizaos", "app");
+    for (const file of ANDROID_LP3_COLOR_POLICY_JAVA_FILES) {
+      if (!fs.existsSync(path.join(lp3JavaRoot, file))) {
+        failures.push(`LP3 direct-debug Java source is missing: ${file}`);
+      }
     }
   }
 
@@ -6059,8 +6194,13 @@ function auditAndroidCloudSource(phase) {
   }
 
   const javaRoot = path.join(androidDir, "app", "src", "main", "java");
+  const forbiddenJavaFiles = new Set(stripPolicy.javaFiles);
   walkFiles(javaRoot, (filePath) => {
     const base = path.basename(filePath);
+    if (forbiddenJavaFiles.has(base)) {
+      failures.push(path.relative(androidDir, filePath));
+      return;
+    }
     if (base === "ElizaAgentService.java") {
       failures.push(path.relative(androidDir, filePath));
       return;
@@ -6291,8 +6431,9 @@ function auditAndroidSystemSource(
  *
  * Idempotent: safe to re-run on an already-stripped tree.
  */
-function stripAndroidForCloud() {
+function stripAndroidForCloud({ env = process.env } = {}) {
   const androidPackage = APP.appId;
+  const stripPolicy = resolveAndroidCloudStripPolicy(env);
 
   // 1. Strip manifest components, permissions, and BootReceiver/SMS/etc.
   const manifestPath = path.join(
@@ -6306,23 +6447,20 @@ function stripAndroidForCloud() {
     let xml = fs.readFileSync(manifestPath, "utf8");
     const original = xml;
 
-    for (const component of ANDROID_CLOUD_STRIPPED_COMPONENTS) {
+    for (const component of stripPolicy.components) {
       xml = removeApplicationComponentBlock(
         xml,
         `${androidPackage}.${component}`,
       );
       xml = removeApplicationComponentClassBlock(xml, component);
     }
-    xml = removeXmlCommentsContaining(xml, ANDROID_CLOUD_STRIPPED_COMPONENTS);
+    xml = removeXmlCommentsContaining(xml, stripPolicy.components);
     xml = ensureManifestApplicationClosedBeforeTopLevelEntries(xml);
 
-    xml = removeAndroidPermissionRequests(
-      xml,
-      ANDROID_CLOUD_STRIPPED_PERMISSIONS,
-    );
+    xml = removeAndroidPermissionRequests(xml, stripPolicy.permissions);
     xml = ensureAndroidPermissionRemovalMarkers(
       xml,
-      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
+      stripPolicy.mergerRemovedPermissions,
     );
     xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
 
@@ -6354,7 +6492,7 @@ function stripAndroidForCloud() {
   let removedJavaCount = 0;
   for (const root of javaRoots) {
     if (!fs.existsSync(root)) continue;
-    for (const file of ANDROID_CLOUD_STRIPPED_JAVA_FILES) {
+    for (const file of stripPolicy.javaFiles) {
       const target = path.join(root, file);
       if (fs.existsSync(target)) {
         fs.rmSync(target);
@@ -6554,9 +6692,9 @@ const ANDROID_SOURCE_AUDITS = Object.freeze({
 
 const ANDROID_ARTIFACT_AUDITS = Object.freeze({
   sideload: ({ javaHome }) => auditAndroidSideloadArtifact({ javaHome }),
-  cloud: ({ javaHome }) => auditAndroidCloudArtifact({ javaHome }),
-  cloudDebug: ({ javaHome }) =>
-    auditAndroidCloudArtifact({ debug: true, javaHome }),
+  cloud: ({ env, javaHome }) => auditAndroidCloudArtifact({ env, javaHome }),
+  cloudDebug: ({ env, javaHome }) =>
+    auditAndroidCloudArtifact({ debug: true, env, javaHome }),
   smsGateway: ({ androidSdkRoot, javaHome }) =>
     auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
   system: ({ javaHome }) => auditAndroidSystemArtifact({ javaHome }),
@@ -6638,11 +6776,19 @@ export async function runAndroidBuild(
   targetName,
   { debug = false, env = process.env } = {},
 ) {
+  const resolvedEnv = resolveAndroidLp3ColorPolicyBuildEnv(env);
   const target = resolveAndroidBuildTarget(targetName, { debug });
-  runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", { env });
+  enforceAndroidLp3ColorPolicyBuildPolicy({
+    targetName: target.target,
+    env: resolvedEnv,
+    appId: APP.appId,
+  });
+  runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", {
+    env: resolvedEnv,
+  });
 
-  const sdk = resolveAndroidSdkRoot(env);
-  const jdk = resolveJavaHome(env);
+  const sdk = resolveAndroidSdkRoot(resolvedEnv);
+  const jdk = resolveJavaHome(resolvedEnv);
   if (!sdk)
     throw new Error(
       "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
@@ -6652,7 +6798,7 @@ export async function runAndroidBuild(
     target,
     ANDROID_AFTER_TOOLCHAIN,
     "afterToolchainResolvedKey",
-    { env },
+    { env: resolvedEnv },
   );
 
   await buildWeb(target.webTarget);
@@ -6675,23 +6821,26 @@ export async function runAndroidBuild(
       ...target.agentRuntime,
     });
   }
-  runAndroidTargetPhase(target, ANDROID_SOURCE_STRIPS, "stripSourceKey");
+  runAndroidTargetPhase(target, ANDROID_SOURCE_STRIPS, "stripSourceKey", {
+    env: resolvedEnv,
+  });
   runAndroidTargetPhase(
     target,
     ANDROID_SOURCE_AUDITS,
     "auditSourceKey",
     "pre-gradle",
+    { env: resolvedEnv },
   );
 
   const buildEnv = createAndroidBuildEnv(target, {
     androidSdkRoot: sdk,
-    env,
+    env: resolvedEnv,
     javaHome: jdk,
   });
   const { buildArgs, metadataArgs } = resolveAndroidGradleCommands(
     target.target,
     {
-      env,
+      env: resolvedEnv,
       settingsGradle: readAndroidSettingsGradle(),
     },
   );
@@ -6708,6 +6857,7 @@ export async function runAndroidBuild(
     ANDROID_SOURCE_AUDITS,
     "auditSourceKey",
     "post-gradle",
+    { env: resolvedEnv },
   );
   const artifact = runAndroidTargetPhase(
     target,
@@ -6715,6 +6865,7 @@ export async function runAndroidBuild(
     "artifactAuditKey",
     {
       androidSdkRoot: sdk,
+      env: resolvedEnv,
       javaHome: jdk,
     },
   );
@@ -6851,6 +7002,149 @@ function listAndroidArtifactEntries(artifact, javaHome) {
   return result.stdout.split(/\r?\n/);
 }
 
+function auditAndroidArtifactDexLp3Policy(
+  artifact,
+  entries,
+  javaHome,
+  { debug, expectedPresent },
+) {
+  const dexEntries = entries.filter((entry) =>
+    /(^|\/)classes\d*\.dex$/.test(entry),
+  );
+  if (dexEntries.length === 0) {
+    throw new Error(
+      `[mobile-build] Android artifact has no classes*.dex entries: ${artifact}`,
+    );
+  }
+
+  const extractionDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-lp3-dex-audit-"),
+  );
+  try {
+    const jar = resolveJarTool(javaHome);
+    const extraction = spawnSync(jar, ["xf", artifact, ...dexEntries], {
+      cwd: extractionDir,
+      encoding: "utf8",
+    });
+    if (extraction.status !== 0) {
+      throw new Error(
+        `[mobile-build] Could not extract DEX for LP3 policy audit: ${
+          extraction.stderr ||
+          extraction.stdout ||
+          `jar exited with ${extraction.status}`
+        }`,
+      );
+    }
+    const dexBuffers = dexEntries.map((entry) =>
+      fs.readFileSync(path.join(extractionDir, entry)),
+    );
+    const packagePath = APP.appId.replaceAll(".", "/");
+    const classNames =
+      expectedPresent && !debug
+        ? ANDROID_LP3_COLOR_POLICY_COMPONENTS
+        : ANDROID_LP3_COLOR_POLICY_JAVA_FILES.map((file) =>
+            file.replace(/\.java$/, ""),
+          );
+    const findings = classNames.filter((className) => {
+      const marker = Buffer.from(`${packagePath}/${className}`, "utf8");
+      return dexBuffers.some((dex) => dex.includes(marker));
+    });
+    if (expectedPresent && findings.length !== classNames.length) {
+      const missing = classNames.filter((name) => !findings.includes(name));
+      throw new Error(
+        "[mobile-build] opted-in LP3 artifact DEX is missing policy classes:\n" +
+          missing.map((name) => `  - ${APP.appId}.${name}`).join("\n"),
+      );
+    }
+    if (!expectedPresent && findings.length > 0) {
+      throw new Error(
+        "[mobile-build] normal Cloud artifact DEX still contains LP3 policy classes:\n" +
+          findings.map((name) => `  - ${APP.appId}.${name}`).join("\n"),
+      );
+    }
+  } finally {
+    fs.rmSync(extractionDir, { force: true, recursive: true });
+  }
+}
+
+function findAndroidManifestElementBlock(
+  manifestText,
+  elementName,
+  qualifiedName,
+) {
+  const lines = manifestText.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(\s*)E: (\S+)/);
+    if (!match || match[2] !== elementName) continue;
+    const indent = match[1].length;
+    let end = index + 1;
+    while (end < lines.length) {
+      const nextElement = lines[end].match(/^(\s*)E: /);
+      if (nextElement && nextElement[1].length <= indent) break;
+      end += 1;
+    }
+    const block = lines.slice(index, end).join("\n");
+    if (block.includes(qualifiedName)) return block;
+  }
+  return null;
+}
+
+function assertAndroidLp3ColorPolicyManifest(manifestText) {
+  const serviceName = `${APP.appId}.Lp3ColorPolicyService`;
+  const receiverName = `${APP.appId}.Lp3ColorPolicyBootReceiver`;
+  const service = findAndroidManifestElementBlock(
+    manifestText,
+    "service",
+    serviceName,
+  );
+  const receiver = findAndroidManifestElementBlock(
+    manifestText,
+    "receiver",
+    receiverName,
+  );
+  if (!service) {
+    throw new Error(
+      `[mobile-build] opted-in LP3 artifact is missing ${serviceName}`,
+    );
+  }
+  if (!receiver) {
+    throw new Error(
+      `[mobile-build] opted-in LP3 artifact is missing ${receiverName}`,
+    );
+  }
+  if (!/android:exported[^\n]*(?:0x0|false)/.test(service)) {
+    throw new Error(
+      `[mobile-build] opted-in LP3 service must be android:exported=false`,
+    );
+  }
+  if (!/android:exported[^\n]*(?:0x0|false)/.test(receiver)) {
+    throw new Error(
+      `[mobile-build] opted-in LP3 receiver must be android:exported=false`,
+    );
+  }
+  if (
+    !/android:foregroundServiceType[^\n]*0x40000000/.test(service) ||
+    !service.includes("android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE")
+  ) {
+    throw new Error(
+      `[mobile-build] opted-in LP3 service is missing its specialUse foreground contract`,
+    );
+  }
+  for (const action of [
+    "android.intent.action.BOOT_COMPLETED",
+    "android.intent.action.MY_PACKAGE_REPLACED",
+    "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
+    "ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY",
+    "ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY",
+  ]) {
+    if (!receiver.includes(action)) {
+      throw new Error(
+        `[mobile-build] opted-in LP3 receiver is missing action ${action}`,
+      );
+    }
+  }
+}
+
 /**
  * Positive assertion that an installable APK actually ships the web renderer
  * (and, for local builds, the on-device agent). Without this, a sync that
@@ -6893,7 +7187,13 @@ function assertAndroidArtifactShipsWebPayload(
   }
 }
 
-function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
+function auditAndroidCloudArtifact({
+  debug = false,
+  env = process.env,
+  javaHome,
+} = {}) {
+  const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
+  const stripPolicy = resolveAndroidCloudStripPolicy(env);
   const artifact = debug ? findAndroidCloudDebugApk() : findAndroidCloudAab();
   if (!artifact) {
     throw new Error(
@@ -6912,16 +7212,15 @@ function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
         offenders.map((entry) => `  - ${entry}`).join("\n"),
     );
   }
-  const aapt = resolveAndroidBuildTool(resolveAndroidSdkRoot(), "aapt");
+  const aapt = resolveAndroidBuildTool(resolveAndroidSdkRoot(env), "aapt");
   if (!aapt) {
     throw new Error(
       "[mobile-build] Could not find aapt under Android SDK build-tools for android-cloud artifact audit.",
     );
   }
   const badging = dumpAndroidArtifactBadging(aapt, artifact);
-  const permissionOffenders = ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
-    (perm) =>
-      badging.includes(`uses-permission: name='android.permission.${perm}'`),
+  const permissionOffenders = stripPolicy.permissions.filter((perm) =>
+    badging.includes(`uses-permission: name='android.permission.${perm}'`),
   );
   if (permissionOffenders.length > 0) {
     throw new Error(
@@ -6931,6 +7230,35 @@ function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
           .join("\n"),
     );
   }
+  const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
+  for (const component of stripPolicy.components) {
+    if (manifestText.includes(`${APP.appId}.${component}`)) {
+      throw new Error(
+        `[mobile-build] android-cloud artifact still declares stripped component ${component}`,
+      );
+    }
+  }
+  if (lp3ColorPolicyEnabled) {
+    const missingPermissions = ANDROID_LP3_COLOR_POLICY_PERMISSIONS.filter(
+      (permission) =>
+        !badging.includes(
+          `uses-permission: name='android.permission.${permission}'`,
+        ),
+    );
+    if (missingPermissions.length > 0) {
+      throw new Error(
+        "[mobile-build] opted-in LP3 artifact is missing required permissions:\n" +
+          missingPermissions
+            .map((permission) => `  - android.permission.${permission}`)
+            .join("\n"),
+      );
+    }
+    assertAndroidLp3ColorPolicyManifest(manifestText);
+  }
+  auditAndroidArtifactDexLp3Policy(artifact, entries, javaHome, {
+    debug,
+    expectedPresent: lp3ColorPolicyEnabled,
+  });
   // Cloud is a thin client (no on-device agent), but it must still ship the
   // renderer — a web-less cloud APK is just as broken as a web-less sideload.
   assertAndroidArtifactShipsWebPayload(artifact, entries, {
@@ -6938,7 +7266,7 @@ function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
     label: "android-cloud",
   });
   console.log(
-    `[mobile-build] android-cloud artifact audit passed: ${artifact}`,
+    `[mobile-build] android-cloud${lp3ColorPolicyEnabled ? " LP3 direct" : ""} artifact audit passed: ${artifact}`,
   );
   return artifact;
 }
