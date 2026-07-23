@@ -48,11 +48,6 @@ export default scenario({
         rubric:
           "The assistant should confirm that the Brush teeth routine is now created and active with the requested morning and night reminders. A passing reply may say the routine was saved, set up, scheduled, or is now in place, but it should not ask for confirmation again or imply the routine is still only a draft.",
       },
-      waitForDefinitionTitle: "Brush teeth",
-      waitForDefinitionTitleAliases: [
-        "Brush teeth 8 + 9 pm",
-        "Brush teeth 8 am & 9 pm",
-      ],
     },
     {
       kind: "message",

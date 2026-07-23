@@ -52,12 +52,22 @@ interface ScenarioFacts {
   hasPersonalityExpect: boolean;
   hasExpectedActionParams: boolean;
   hasMessageAsGmailLabelExpectation: boolean;
+  deadTurnAssertionFields: string[];
   duplicateTopLevelFields: string[];
 }
 
 const DEAD_EXPECTED_ACTION_PARAMS = /\bexpectedActionParams\s*:/;
 const MESSAGE_AS_GMAIL_LABEL_EXPECTATION =
   /\b(?:addLabelIds|removeLabelIds)\s*:\s*(?:(["'])MESSAGE\1|\[[^\]]*(["'])MESSAGE\2[^\]]*\])/;
+// Turn-level keys the executor silently ignores, mapped to the assertion that
+// actually runs. Only DIRECT keys of a turn object count — the same names are
+// legitimate option names inside helper calls like expectTurnToCallAction().
+const DEAD_TURN_ASSERTION_FIELD_FIXES = {
+  acceptedActions: "expectedActions",
+  includesAny: "responseIncludesAny",
+  waitForDefinitionTitle: "finalChecks/custom predicate",
+  waitForDefinitionTitleAliases: "finalChecks/custom predicate",
+} as const;
 const PER_TURN_ASSERT =
   /\b(assertResponse|expectedActions|responseIncludesAny|responseIncludesAll|responseExcludes|forbiddenActions|plannerIncludesAll|plannerIncludesAny|plannerExcludes|responseJudge|assertTurn)\b/;
 const NON_EMPTY_FINAL_CHECKS = /finalChecks\s*:\s*\[\s*[^\]\s]/;
@@ -158,6 +168,36 @@ function duplicateTopLevelFields(
   return fields.filter((field) => (counts.get(field) ?? 0) > 1);
 }
 
+function collectDirectTurnKeys(sourceFile: ts.SourceFile): Set<string> {
+  const keys = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isPropertyAssignment(node) &&
+      propertyNameText(node.name) === "turns" &&
+      ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      for (const element of node.initializer.elements) {
+        if (!ts.isObjectLiteralExpression(element)) continue;
+        for (const prop of element.properties) {
+          if (
+            ts.isPropertyAssignment(prop) ||
+            ts.isMethodDeclaration(prop) ||
+            ts.isShorthandPropertyAssignment(prop)
+          ) {
+            const key = propertyNameText(prop.name);
+            if (key) keys.add(key);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return keys;
+}
+
 function analyze(file: string): ScenarioFacts {
   const source = readFileSync(file, "utf8");
   const sourceFile = ts.createSourceFile(
@@ -168,6 +208,7 @@ function analyze(file: string): ScenarioFacts {
     ts.ScriptKind.TS,
   );
   const scenarioObject = findExportedScenarioObject(sourceFile);
+  const directTurnKeys = collectDirectTurnKeys(sourceFile);
   const idValues = getStaticStringPropertyValues(scenarioObject, "id");
   const laneValues = getStaticStringPropertyValues(scenarioObject, "lane");
 
@@ -181,6 +222,9 @@ function analyze(file: string): ScenarioFacts {
     hasExpectedActionParams: DEAD_EXPECTED_ACTION_PARAMS.test(source),
     hasMessageAsGmailLabelExpectation:
       MESSAGE_AS_GMAIL_LABEL_EXPECTATION.test(source),
+    deadTurnAssertionFields: Object.keys(
+      DEAD_TURN_ASSERTION_FIELD_FIXES,
+    ).filter((field) => directTurnKeys.has(field)),
     duplicateTopLevelFields: duplicateTopLevelFields(scenarioObject, [
       "id",
       "lane",
@@ -236,6 +280,26 @@ describe("scenario corpus assertion integrity", () => {
     const offenders = facts
       .filter((fact) => fact.hasMessageAsGmailLabelExpectation)
       .map(relativeFile)
+      .sort();
+    expect(offenders).toEqual([]);
+  });
+
+  it("rejects turn assertion spellings the executor ignores", () => {
+    const offenders = facts
+      .filter((fact) => fact.deadTurnAssertionFields.length > 0)
+      .map(
+        (fact) =>
+          `${relativeFile(fact)} (${fact.deadTurnAssertionFields
+            .map(
+              (field) =>
+                `${field} -> ${
+                  DEAD_TURN_ASSERTION_FIELD_FIXES[
+                    field as keyof typeof DEAD_TURN_ASSERTION_FIELD_FIXES
+                  ]
+                }`,
+            )
+            .join(", ")})`,
+      )
       .sort();
     expect(offenders).toEqual([]);
   });

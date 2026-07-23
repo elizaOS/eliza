@@ -123,7 +123,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Scenario runner unit coverage
-        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
+        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts src/corpus-larp-guards.test.ts src/corpus-assertion-guard.test.ts
 
       - name: Real local agent provisioning (no model, no secret)
         run: bun run --cwd packages/app-core test:local-provisioning

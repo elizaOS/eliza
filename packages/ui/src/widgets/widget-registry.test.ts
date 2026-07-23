@@ -98,6 +98,95 @@ describe("home-widget resolution", () => {
   });
 });
 
+describe("chat-sidebar slot resolution", () => {
+  // Every plugin id referenced by a built-in chat-sidebar declaration, enabled
+  // — so the resolver treats each sidebar widget as present + active.
+  function allBuiltinSidebarPlugins(): WidgetPluginState[] {
+    return [
+      ...new Set(
+        BUILTIN_WIDGET_DECLARATIONS.filter(
+          (decl) => decl.slot === "chat-sidebar",
+        ).map((decl) => decl.pluginId),
+      ),
+    ].map(enabled);
+  }
+
+  it("resolves every enabled built-in chat-sidebar declaration to a renderable widget", () => {
+    const declared = BUILTIN_WIDGET_DECLARATIONS.filter(
+      (decl) => decl.slot === "chat-sidebar" && decl.defaultEnabled !== false,
+    );
+    expect(declared.length).toBeGreaterThan(0);
+    const resolved = resolveWidgetsForSlot(
+      "chat-sidebar",
+      allBuiltinSidebarPlugins(),
+    );
+    const resolvedIds = new Set(resolved.map((r) => r.declaration.id));
+    // The resolver drops declarations it cannot render, so a sidebar widget
+    // whose component registration is lost would vanish silently — surface
+    // that as a missing id here.
+    const unresolved = declared
+      .filter((decl) => !resolvedIds.has(decl.id))
+      .map((decl) => decl.id);
+    expect(unresolved).toEqual([]);
+    const unrenderable = resolved.filter(
+      (entry) => entry.Component === null && !entry.declaration.uiSpec,
+    );
+    expect(unrenderable.map((entry) => entry.declaration.id)).toEqual([]);
+  });
+
+  it("resolves each chat-sidebar widget id exactly once", () => {
+    const resolved = resolveWidgetsForSlot(
+      "chat-sidebar",
+      allBuiltinSidebarPlugins(),
+    );
+    const ids = resolved.map((r) => r.declaration.id);
+    expect(ids).toEqual([...new Set(ids)]);
+  });
+
+  it("red control: a bare chat-sidebar declaration does NOT resolve", () => {
+    const decl: PluginWidgetDeclaration = {
+      id: "unresolvable.sidebar",
+      pluginId: "unresolvable",
+      slot: "chat-sidebar",
+      label: "Unresolvable",
+    };
+    withTempDeclaration(decl, () => {
+      const resolved = resolveWidgetsForSlot("chat-sidebar", [
+        enabled("unresolvable"),
+      ]);
+      expect(
+        resolved.some((r) => r.declaration.id === "unresolvable.sidebar"),
+      ).toBe(false);
+    });
+  });
+
+  it("green control: the same declaration with a uiSpec DOES resolve", () => {
+    const decl: PluginWidgetDeclaration = {
+      id: "resolvable.sidebar",
+      pluginId: "resolvable",
+      slot: "chat-sidebar",
+      label: "Resolvable",
+      uiSpec: {
+        root: "root",
+        state: {},
+        elements: {
+          root: { type: "Text", props: { text: "hi" }, children: [] },
+        },
+      },
+    };
+    withTempDeclaration(decl, () => {
+      const resolved = resolveWidgetsForSlot("chat-sidebar", [
+        enabled("resolvable"),
+      ]);
+      const entry = resolved.find(
+        (r) => r.declaration.id === "resolvable.sidebar",
+      );
+      expect(entry).toBeDefined();
+      expect(entry?.declaration.uiSpec).toBeDefined();
+    });
+  });
+});
+
 describe("widget slot contract (#9448)", () => {
   it("keeps bundled widget declarations off retired slots", () => {
     const active = new Set<string>(WIDGET_SLOTS);
