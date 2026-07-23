@@ -40,6 +40,9 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
   } = overrides;
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
+    // No pending AWAITING_CHOICE tasks by default — the abort-path pick guard
+    // queries this before honoring an abort op.
+    getTasks: async () => [],
     logger: {
       debug: () => {},
       info: () => {},

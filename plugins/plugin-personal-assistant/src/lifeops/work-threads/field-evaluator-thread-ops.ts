@@ -286,19 +286,12 @@ async function pendingChoicePickAction(
 ): Promise<string | null> {
   const text = (ctx.message.content?.text ?? "").trim().toLowerCase();
   if (!text || text.length > 64) return null;
-  const roomId =
-    typeof ctx.message.roomId === "string" ? ctx.message.roomId : "";
+  const roomId = ctx.message.roomId;
   if (!roomId) return null;
-  const runtime = ctx.runtime as {
-    getTasks?: (query: {
-      roomId: string;
-      tags: string[];
-    }) => Promise<Array<{ metadata?: Record<string, unknown> }> | null>;
-  };
-  if (typeof runtime.getTasks !== "function") return null;
-  const pending = await runtime.getTasks({
+  const pending = await ctx.runtime.getTasks({
     roomId,
     tags: ["AWAITING_CHOICE"],
+    agentIds: [ctx.runtime.agentId],
   });
   for (const task of pending ?? []) {
     const options = task.metadata?.options;
