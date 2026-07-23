@@ -12,14 +12,23 @@
 import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Mock the three environment reads the hook makes so we can drive the decision.
+// Mock the environment reads the hook makes so we can drive the decision.
 const mockCloudToken = vi.fn<() => string | null>();
 const mockActiveServer = vi.fn();
 const mockBootConfig = vi.fn(() => ({ cloudApiBase: "https://elizacloud.ai" }));
 const mockRunRecovery = vi.fn();
+// Silent cookie->session recovery for the returning-PWA dead-end. Default:
+// no cookie (returns null) so pre-existing cases keep their old behavior.
+const mockEnsureCloudSession = vi.fn<() => Promise<string | null>>(async () =>
+  Promise.resolve(null),
+);
 
 vi.mock("../api/client-cloud", () => ({
   getCloudAuthToken: () => mockCloudToken(),
+  // The recovery resolver/predicate treats a direct cloud shared-agent base as
+  // cloud-managed. Our test servers use kind:"cloud"/"local", so this is only
+  // consulted for the non-cloud (local) case, where it must return false.
+  isDirectCloudSharedAgentBase: () => false,
 }));
 vi.mock("../state/persistence", () => ({
   loadPersistedActiveServer: () => mockActiveServer(),
@@ -30,8 +39,16 @@ vi.mock("../config/boot-config", () => ({
 vi.mock("../state/agent-session-recovery-runner", () => ({
   runAgentSessionRecovery: (...args: unknown[]) => mockRunRecovery(...args),
 }));
+vi.mock("../state/cloud-session-refresh-for-repair", () => ({
+  ensureCloudSessionForRepair: () => mockEnsureCloudSession(),
+}));
 
 import { useAgentSessionRecovery } from "./useAgentSessionRecovery";
+
+// Stable navigate identity across re-renders (mirrors the real app's
+// module-level `defaultNavigate`). An unstable navigate would churn the effect
+// deps and cancel an in-flight async re-pair — which the real app never does.
+const STABLE_NAVIGATE = () => {};
 
 function Probe(props: {
   active: boolean;
@@ -41,7 +58,7 @@ function Probe(props: {
   const status = useAgentSessionRecovery({
     active: props.active,
     reason: props.reason,
-    navigate: () => {},
+    navigate: STABLE_NAVIGATE,
   });
   props.onStatus(status);
   return null;
@@ -59,6 +76,8 @@ function cloudServer(agentId: string) {
 afterEach(() => {
   delete (globalThis as { Capacitor?: unknown }).Capacitor;
   vi.clearAllMocks();
+  // Restore the default "no cookie" behavior after clearAllMocks wipes it.
+  mockEnsureCloudSession.mockImplementation(async () => Promise.resolve(null));
 });
 
 describe("useAgentSessionRecovery", () => {
@@ -117,9 +136,10 @@ describe("useAgentSessionRecovery", () => {
     );
   });
 
-  it("stays idle (wall) when there is no cloud session", async () => {
+  it("stays idle (wall) when there is no cloud session AND no recoverable cookie", async () => {
     mockCloudToken.mockReturnValue(null);
     mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    // No shared cookie -> ensureCloudSessionForRepair resolves null (default).
 
     const statuses: string[] = [];
     render(
@@ -131,9 +151,72 @@ describe("useAgentSessionRecovery", () => {
     );
 
     await waitFor(() => {
-      expect(statuses.length).toBeGreaterThan(0);
+      // Ends on idle so the notice/wall renders honestly.
+      expect(statuses[statuses.length - 1]).toBe("idle");
     });
-    expect(statuses).not.toContain("recovering");
+    expect(mockRunRecovery).not.toHaveBeenCalled();
+  });
+
+  it("REGRESSION: returning PWA with no app-origin token but a live Eliza Cloud cookie silently re-pairs instead of dead-ending", async () => {
+    // The exact reported dead-end: `getCloudAuthToken()` is null on the agent
+    // subdomain (cold PWA relaunch, empty localStorage mirror), but the shared
+    // HttpOnly `.elizacloud.ai` session cookie is live. The hook must recover
+    // the session from the cookie and re-pair, NOT drop to
+    // `CloudHostedAgentAuthNotice`.
+    let token: string | null = null;
+    mockCloudToken.mockImplementation(() => token);
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockEnsureCloudSession.mockImplementation(async () => {
+      // Simulate the cookie refresh landing a fresh app-origin token.
+      token = "steward.jwt.recovered";
+      return token;
+    });
+    mockRunRecovery.mockReturnValue(new Promise(() => {})); // stays recovering
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(s) => statuses.push(s)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockRunRecovery).toHaveBeenCalledTimes(1);
+    });
+    expect(statuses).toContain("recovering");
+    expect(mockEnsureCloudSession).toHaveBeenCalledTimes(1);
+    expect(mockRunRecovery.mock.calls[0][0]).toMatchObject({
+      agentId: "agent-1",
+      cloudApiBase: "https://elizacloud.ai",
+      cloudToken: "steward.jwt.recovered",
+    });
+  });
+
+  it("does not attempt a cookie refresh for a self-hosted (non-cloud) server", async () => {
+    mockCloudToken.mockReturnValue(null);
+    mockActiveServer.mockReturnValue({
+      kind: "local" as const,
+      id: "local:1",
+      label: "Local",
+      apiBase: "http://localhost:7777",
+    });
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(s) => statuses.push(s)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses[statuses.length - 1]).toBe("idle");
+    });
+    // A self-hosted wall is honest: never touch the cloud cookie refresh.
+    expect(mockEnsureCloudSession).not.toHaveBeenCalled();
     expect(mockRunRecovery).not.toHaveBeenCalled();
   });
 
