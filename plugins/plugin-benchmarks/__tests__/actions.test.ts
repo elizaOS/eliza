@@ -140,15 +140,16 @@ describe("promoted benchmark actions", () => {
     ["WEBSHOP_SELECT_OPTION", { option_name: "size", option_value: "medium" }, "select_option"],
     ["OSWORLD_SCROLL", { direction: "down", amount: 600 }, "scroll"],
     ["VISUALWEBBENCH_TASK_WEBQA", { answer_text: "Account settings" }, "webqa"],
-  ])("pins %s while preserving sibling parameters", async (name, parameters, expectedAction) => {
+  ])("rejects a contradictory discriminator for %s", async (name, parameters, expectedAction) => {
     const action = registeredAction(name);
     const result = await invoke(action, {
       parameters: { action: "conflicting_value", ...parameters },
     });
 
     expect(result).toMatchObject({
-      success: true,
-      data: { action: expectedAction, ...parameters },
+      success: false,
+      text: expect.stringContaining(`pinned to ${expectedAction}`),
+      error: expect.any(Error),
     });
   });
 

@@ -79,6 +79,7 @@
       "plugins/plugin-polymarket",
       "plugins/plugin-scheduling",
       "plugins/plugin-signal",
+      "plugins/plugin-simple-views",
       "plugins/plugin-telegram",
       "plugins/plugin-training",
       "plugins/plugin-wallet",
