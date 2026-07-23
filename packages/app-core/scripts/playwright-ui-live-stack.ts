@@ -60,11 +60,16 @@ const UI_SMOKE_STUB_SCRIPT = path.join(
   import.meta.dirname,
   "playwright-ui-smoke-api-stub.mjs",
 );
+const REAL_LOCAL_AGENT_SCRIPT = path.join(
+  import.meta.dirname,
+  "serve-real-local-agent.ts",
+);
 const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(process.env.ELIZA_UI_SMOKE_API_PORT ?? "31337");
 const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
 const UI_SMOKE_RUN_ID = process.env.ELIZA_UI_SMOKE_RUN_ID?.trim() ?? "";
 const LIVE_PROVIDER = await selectLiveProviderAsync();
+const REAL_LOCAL_STACK = process.env.ELIZA_UI_SMOKE_REAL_LOCAL_STACK === "1";
 // Precedence (force-stub > live opt-in > CI default) lives in one tested helper.
 // The key behavior: ELIZA_UI_SMOKE_LIVE_STACK=1 overrides the CI-based stub force
 // so a genuinely-real lane is possible (GitHub Actions always sets CI=true, which
@@ -459,7 +464,25 @@ async function proxyUiRequest(args: {
       proxyHeaders[key] = value;
     });
     args.response.writeHead(upstream.status, proxyHeaders);
-    args.response.end(Buffer.from(await upstream.arrayBuffer()));
+    if (!upstream.body) {
+      args.response.end();
+      return;
+    }
+    const reader = upstream.body.getReader();
+    try {
+      while (!args.response.writableEnded) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!args.response.write(value)) {
+          await new Promise<void>((resolve) => {
+            args.response.once("drain", resolve);
+          });
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    args.response.end();
     return;
   }
 
@@ -1047,8 +1070,75 @@ async function startStubStack(): Promise<StartedStack> {
   }
 }
 
+async function startRealLocalStack(): Promise<StartedStack> {
+  const stateDir = await createStateDir("eliza-ui-smoke-real-local-");
+  let apiChild: ChildProcessWithoutNullStreams | null = null;
+  let uiServer: Server | null = null;
+  try {
+    const uiDistDir = await snapshotUiDist(stateDir);
+    const apiBase = `http://127.0.0.1:${API_PORT}`;
+    apiChild = spawn(resolveBunCommand(), ["--bun", REAL_LOCAL_AGENT_SCRIPT], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        FORCE_COLOR: "0",
+        ELIZA_API_PORT: String(API_PORT),
+        ELIZA_PORT: String(API_PORT),
+        ELIZA_PAIRING_DISABLED: "1",
+        ELIZA_E2E_MODEL_STREAM_CHUNK_SIZE: "8",
+        ELIZA_E2E_MODEL_STREAM_INTERVAL_MS: "16",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    apiChild.stdout.on("data", (chunk) => {
+      process.stdout.write(`[ui-smoke][real-local] ${chunk}`);
+    });
+    apiChild.stderr.on("data", (chunk) => {
+      process.stdout.write(`[ui-smoke][real-local-err] ${chunk}`);
+    });
+
+    await waitForJsonPredicate<{ state?: string }>(
+      `${apiBase}/api/status`,
+      (status) => status.state === "running",
+      READY_TIMEOUT_MS,
+    );
+    await waitForJsonPredicate<{ session?: { kind?: string } }>(
+      `${apiBase}/api/auth/me`,
+      (me) => me.session?.kind === "local",
+      READY_TIMEOUT_MS,
+    );
+
+    uiServer = await startUiProxyServer({
+      apiBase,
+      port: UI_PORT,
+      uiDistDir,
+    });
+    process.env.ELIZA_API_PORT = String(API_PORT);
+    markStateDirOwnedByStack(stateDir);
+
+    return {
+      apiBase,
+      apiChild,
+      stateDir,
+      uiBase: `http://127.0.0.1:${UI_PORT}`,
+      uiServer,
+    };
+  } catch (error) {
+    await closeUiServer(uiServer);
+    await stopApiChild(apiChild);
+    await removePathRecursive(stateDir);
+    pendingStateDirs.delete(stateDir);
+    throw error;
+  }
+}
+
 async function startRealStack(): Promise<StartedStack> {
   await ensureUiDistReady();
+
+  if (REAL_LOCAL_STACK) {
+    return startRealLocalStack();
+  }
 
   if (FORCE_STUB_STACK || !LIVE_PROVIDER) {
     return startStubStack();
