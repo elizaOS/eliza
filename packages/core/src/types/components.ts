@@ -655,6 +655,17 @@ export interface ProviderResult {
 }
 
 /**
+ * Turn-scoped execution controls supplied by the runtime to every provider.
+ *
+ * Providers that start database, network, subprocess, or other interruptible
+ * work must propagate `signal` to that boundary. The runtime never converts an
+ * aborted provider into empty context: cancellation rejects state composition.
+ */
+export interface ProviderExecutionContext {
+	signal?: AbortSignal;
+}
+
+/**
  * Provider for external data/services
  */
 export interface Provider {
@@ -766,6 +777,7 @@ export interface Provider {
 		runtime: IAgentRuntime,
 		message: Memory,
 		state: State,
+		context?: ProviderExecutionContext,
 	) => Promise<ProviderResult>;
 }
 

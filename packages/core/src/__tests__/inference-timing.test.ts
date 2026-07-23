@@ -185,5 +185,54 @@ describe("emit + format + registry", () => {
 		expect(payload.turns).toHaveLength(80);
 		expect(payload.turns.at(-1)?.turnId).toBe("persisted-99");
 		expect(payload.spanHistograms["provider:FACTS"]?.count).toBe(100);
+		expect(payload.spanHistograms["provider:FACTS"]?.p95).toBe(95);
+		expect(
+			payload.providers.find((entry) => entry.providerName === "FACTS"),
+		).toEqual(
+			expect.objectContaining({
+				unknown: 100,
+				cacheHits: 0,
+				execution: expect.objectContaining({ count: 100, p95: 95 }),
+			}),
+		);
+	});
+
+	it("ranks providers by p95 and aggregates outcomes, cache hits, and coalescing", () => {
+		const timer = new InferenceTurnTimer({
+			turnId: "provider-telemetry",
+			label: "message-turn",
+			t0EpochMs: Date.now() + 200_000,
+		});
+		timer.recordSpan("provider:FAST", 5, {
+			outcome: "success",
+			coalesced: false,
+		});
+		timer.recordSpan("provider:SLOW", 120, {
+			outcome: "deadline_exceeded",
+			coalesced: true,
+		});
+		timer.recordSpan("provider-cache:FAST", 0, { cacheHit: true });
+
+		const payload = buildInferenceTimingDevPayload(50, [timer.close()]);
+		expect(payload.providers.map((entry) => entry.providerName)).toEqual([
+			"SLOW",
+			"FAST",
+		]);
+		expect(payload.providers[0]).toEqual(
+			expect.objectContaining({
+				providerName: "SLOW",
+				deadlineExceeded: 1,
+				coalesced: 1,
+				execution: expect.objectContaining({ p95: 120 }),
+			}),
+		);
+		expect(payload.providers[1]).toEqual(
+			expect.objectContaining({
+				providerName: "FAST",
+				successes: 1,
+				cacheHits: 1,
+				execution: expect.objectContaining({ p95: 5 }),
+			}),
+		);
 	});
 });

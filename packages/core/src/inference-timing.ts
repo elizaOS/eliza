@@ -344,6 +344,7 @@ export interface InferenceHistogramSummary {
 	count: number;
 	p50: number | null;
 	p90: number | null;
+	p95: number | null;
 	p99: number | null;
 	min: number | null;
 	max: number | null;
@@ -365,6 +366,7 @@ class BoundedHistogram {
 				count: 0,
 				p50: null,
 				p90: null,
+				p95: null,
 				p99: null,
 				min: null,
 				max: null,
@@ -381,6 +383,7 @@ class BoundedHistogram {
 			count: n,
 			p50: pct(50),
 			p90: pct(90),
+			p95: pct(95),
 			p99: pct(99),
 			min: sorted[0] as number,
 			max: sorted[n - 1] as number,
@@ -448,6 +451,102 @@ export interface InferenceTimingDevPayload {
 	turns: InferenceTurnSummary[];
 	spanHistograms: Record<string, InferenceHistogramSummary>;
 	derivedHistograms: Record<string, InferenceHistogramSummary>;
+	providers: ProviderInferenceTelemetry[];
+}
+
+export interface ProviderInferenceTelemetry {
+	providerName: string;
+	execution: InferenceHistogramSummary;
+	cacheHits: number;
+	successes: number;
+	errors: number;
+	aborted: number;
+	deadlineExceeded: number;
+	coalesced: number;
+	unknown: number;
+}
+
+function summarizeProviderInference(
+	turns: readonly InferenceTurnSummary[],
+): ProviderInferenceTelemetry[] {
+	const summaries = new Map<
+		string,
+		{
+			histogram: BoundedHistogram;
+			cacheHits: number;
+			successes: number;
+			errors: number;
+			aborted: number;
+			deadlineExceeded: number;
+			coalesced: number;
+			unknown: number;
+		}
+	>();
+	const entryFor = (providerName: string) => {
+		const existing = summaries.get(providerName);
+		if (existing) return existing;
+		const created = {
+			histogram: new BoundedHistogram(REGISTRY_HISTOGRAM_CAPACITY),
+			cacheHits: 0,
+			successes: 0,
+			errors: 0,
+			aborted: 0,
+			deadlineExceeded: 0,
+			coalesced: 0,
+			unknown: 0,
+		};
+		summaries.set(providerName, created);
+		return created;
+	};
+
+	for (const turn of turns) {
+		for (const span of turn.spans) {
+			if (span.name.startsWith("provider-cache:")) {
+				entryFor(span.name.slice("provider-cache:".length)).cacheHits += 1;
+				continue;
+			}
+			if (!span.name.startsWith("provider:")) continue;
+			const entry = entryFor(span.name.slice("provider:".length));
+			entry.histogram.add(span.durationMs);
+			if (span.meta?.coalesced === true) entry.coalesced += 1;
+			switch (span.meta?.outcome) {
+				case "success":
+					entry.successes += 1;
+					break;
+				case "aborted":
+					entry.aborted += 1;
+					break;
+				case "deadline_exceeded":
+					entry.deadlineExceeded += 1;
+					break;
+				case "error":
+					entry.errors += 1;
+					break;
+				default:
+					entry.unknown += 1;
+					break;
+			}
+		}
+	}
+
+	return [...summaries.entries()]
+		.map(([providerName, entry]) => ({
+			providerName,
+			execution: entry.histogram.summary(),
+			cacheHits: entry.cacheHits,
+			successes: entry.successes,
+			errors: entry.errors,
+			aborted: entry.aborted,
+			deadlineExceeded: entry.deadlineExceeded,
+			coalesced: entry.coalesced,
+			unknown: entry.unknown,
+		}))
+		.sort(
+			(a, b) =>
+				(b.execution.p95 ?? b.execution.max ?? -1) -
+					(a.execution.p95 ?? a.execution.max ?? -1) ||
+				a.providerName.localeCompare(b.providerName),
+		);
 }
 
 /** JSON body for a dev endpoint (e.g. `GET /api/dev/inference-timing`). */
@@ -476,13 +575,21 @@ export function buildInferenceTimingDevPayload(
 					: combined.slice(combined.length - limit),
 			spanHistograms: durableRegistry.spanSummaries(),
 			derivedHistograms: durableRegistry.derivedSummaries(),
+			providers: summarizeProviderInference(combined),
 		};
 	}
+	const recentTurns = inferenceTimingRegistry.recentTurns(
+		REGISTRY_RING_CAPACITY,
+	);
 	return {
 		generatedAtEpochMs: Date.now(),
-		turns: inferenceTimingRegistry.recentTurns(limit),
+		turns:
+			limit >= recentTurns.length
+				? recentTurns
+				: recentTurns.slice(recentTurns.length - limit),
 		spanHistograms: inferenceTimingRegistry.spanSummaries(),
 		derivedHistograms: inferenceTimingRegistry.derivedSummaries(),
+		providers: summarizeProviderInference(recentTurns),
 	};
 }
 

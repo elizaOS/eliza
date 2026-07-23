@@ -355,11 +355,10 @@ export async function handleDevCompatRoutes(
   }
 
   // ── GET /api/dev/inference-timing ───────────────────────────────────
-  // Recent per-turn text/cloud inference latency breakdowns + per-span
-  // p50/p90/p99 histograms (composeState, model round-trips, cloud HTTP +
-  // semaphore wait, embeddings) and derived ttreply/ttft/total. Loopback only,
-  // same convention as the other dev observability routes. `?limit=N` caps the
-  // turns returned (default 50).
+  // Recent per-turn text/cloud inference latency breakdowns, provider outcome
+  // and cache-hit totals, plus per-span p50/p90/p95/p99 histograms. Loopback
+  // only, same convention as the other dev observability routes. `?limit=N`
+  // caps the turns returned (default 50).
   if (method === "GET" && url.pathname === "/api/dev/inference-timing") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
       sendJsonErrorResponse(res, 403, "loopback only");

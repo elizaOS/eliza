@@ -1,10 +1,9 @@
 /**
  * `EVMService` owns the periodic refresh of the agent's EVM wallet
- * address/balances into runtime cache (`EVM_WALLET_DATA_CACHE_KEY`), on a
- * `CACHE_REFRESH_INTERVAL_MS` timer plus on-demand `forceUpdate`.
- * `getCachedData` serves the cache and transparently refreshes when stale;
- * `evmWalletProvider` (`providers/wallet.ts`) reads through this service
- * before falling back to a direct fetch.
+ * address/balances into runtime cache (`EVM_WALLET_DATA_CACHE_KEY`).
+ * Prompt providers read the cache without waiting for network work: missing
+ * or stale data triggers a coalesced background refresh and returns
+ * immediately. `forceUpdate` is the explicit blocking refresh boundary.
  */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
@@ -33,6 +32,7 @@ export class EVMService extends Service {
 
   private walletProvider: WalletProvider | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
+  private refreshInFlight: Promise<void> | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<EVMService> {
     logger.log("Initializing EVMService");
@@ -45,10 +45,13 @@ export class EVMService extends Service {
       clearInterval(evmService.refreshInterval);
     }
 
-    evmService.refreshInterval = setInterval(
-      () => evmService.refreshWalletData(),
-      CACHE_REFRESH_INTERVAL_MS
-    );
+    evmService.refreshInterval = setInterval(() => {
+      void evmService.refreshWalletData().catch((error) => {
+        // error-policy:J7 periodic cache refresh failure is surfaced without
+        // terminating the service timer.
+        runtime.reportError("EVMService.periodicRefresh", error);
+      });
+    }, CACHE_REFRESH_INTERVAL_MS);
 
     logger.log("EVM service initialized");
     return evmService;
@@ -74,12 +77,27 @@ export class EVMService extends Service {
   }
 
   async refreshWalletData(): Promise<void> {
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+    const refresh = this.refreshWalletDataUncoalesced();
+    this.refreshInFlight = refresh;
+    try {
+      await refresh;
+    } finally {
+      if (this.refreshInFlight === refresh) {
+        this.refreshInFlight = null;
+      }
+    }
+  }
+
+  private async refreshWalletDataUncoalesced(): Promise<void> {
     if (!this.walletProvider) {
       this.walletProvider = await initWalletProvider(this.runtime);
     }
 
     const address = this.walletProvider.getAddress();
-    const balances = await this.walletProvider.getWalletBalances();
+    const balances = await this.walletProvider.getWalletBalances(true);
 
     const chainDetails: Array<{
       chainName: string;
@@ -126,9 +144,11 @@ export class EVMService extends Service {
     const now = Date.now();
 
     if (!cachedData || now - cachedData.timestamp > CACHE_REFRESH_INTERVAL_MS) {
-      logger.log("EVM wallet data is stale, refreshing...");
-      await this.refreshWalletData();
-      return await this.runtime.getCache<EVMWalletData>(EVM_WALLET_DATA_CACHE_KEY);
+      void this.refreshWalletData().catch((error) => {
+        // error-policy:J7 cache readers receive explicit missing/stale state;
+        // refresh failure is reported without moving RPC latency onto that read.
+        this.runtime.reportError("EVMService.cacheRefresh", error);
+      });
     }
 
     return cachedData;

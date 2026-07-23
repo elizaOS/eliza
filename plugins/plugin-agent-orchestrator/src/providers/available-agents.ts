@@ -81,7 +81,7 @@ export const availableAgentsProvider: Provider = {
       service.checkAvailableAgents?.() ??
         service.getAvailableAgents?.() ??
         Promise.resolve([]),
-      listSessionsWithin(service, 2000),
+      listSessionsWithin(service),
       getTaskAgentFrameworkState(runtime).catch(
         (error): TaskAgentFrameworkState | null => {
           // error-policy:J7 framework probe threw — backend down, not

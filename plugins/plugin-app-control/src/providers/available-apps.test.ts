@@ -1,11 +1,9 @@
 /**
- * available_apps provider tests — the stale-while-revalidate snapshot that
- * keeps the planner compose off the two loopback /api/apps calls on warm
- * turns (#16873). The provider holds module-level snapshot state, so each
- * test resets modules and re-imports for an isolated snapshot.
+ * Runtime-scoped stale-while-revalidate coverage for the app inventory
+ * provider. Cold and failed loopback reads remain explicit without blocking
+ * compose, while successful empty inventory stays distinguishable from them.
  */
-
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -20,14 +18,31 @@ vi.mock("../client/api.js", () => ({
 	}),
 }));
 
-const RUNTIME = {} as IAgentRuntime;
 const MESSAGE = {} as Memory;
 const STATE = {} as State;
 
-async function loadProvider() {
+function makeRuntime(): IAgentRuntime {
+	return {
+		reportError: vi.fn(),
+	} as unknown as IAgentRuntime;
+}
+
+async function loadProvider(): Promise<Provider> {
 	vi.resetModules();
 	const mod = await import("./available-apps.js");
 	return mod.availableAppsProvider;
+}
+
+async function waitForSnapshot(
+	provider: Provider,
+	runtime: IAgentRuntime,
+	status: "ready" | "error" = "ready",
+) {
+	await vi.waitFor(async () => {
+		const result = await provider.get(runtime, MESSAGE, STATE);
+		expect(result.values?.availableAppsStatus).toBe(status);
+	});
+	return provider.get(runtime, MESSAGE, STATE);
 }
 
 beforeEach(() => {
@@ -52,18 +67,42 @@ afterEach(() => {
 });
 
 describe("availableAppsProvider snapshot", () => {
-	it("returns empty text with zero calls-in-render when nothing is installed or running", async () => {
-		h.listInstalledApps.mockResolvedValue([]);
-		h.listAppRuns.mockResolvedValue([]);
+	it("returns an explicit loading state without awaiting the cold loopback reads", async () => {
+		let resolveInstalled!: (value: unknown[]) => void;
+		let resolveRuns!: (value: unknown[]) => void;
+		h.listInstalledApps.mockReturnValue(
+			new Promise((resolve) => {
+				resolveInstalled = resolve;
+			}),
+		);
+		h.listAppRuns.mockReturnValue(
+			new Promise((resolve) => {
+				resolveRuns = resolve;
+			}),
+		);
+		const runtime = makeRuntime();
 		const provider = await loadProvider();
-		const result = await provider.get(RUNTIME, MESSAGE, STATE);
-		expect(result.text).toBe("");
+
+		const cold = await provider.get(runtime, MESSAGE, STATE);
+		expect(cold.values?.availableAppsStatus).toBe("loading");
+		expect(cold.text).toContain("status: loading");
+
+		resolveInstalled([]);
+		resolveRuns([]);
+		const ready = await waitForSnapshot(provider, runtime);
+		expect(ready.text).toBe("");
+		expect(ready.values?.installedAppCount).toBe(0);
 	});
 
-	it("renders installed apps and their running run counts on the cold turn", async () => {
+	it("renders installed apps after the out-of-band cold refresh", async () => {
+		const runtime = makeRuntime();
 		const provider = await loadProvider();
-		const result = await provider.get(RUNTIME, MESSAGE, STATE);
+		const cold = await provider.get(runtime, MESSAGE, STATE);
+		expect(cold.values?.availableAppsStatus).toBe("loading");
+
+		const result = await waitForSnapshot(provider, runtime);
 		expect(result.text).toContain("available_apps:");
+		expect(result.text).toContain("status: ready");
 		expect(result.text).toContain("installedCount: 1");
 		expect(result.text).toContain("runningCount: 1");
 		expect(result.text).toContain("chess,Chess,@elizaos/plugin-chess,1");
@@ -73,24 +112,24 @@ describe("availableAppsProvider snapshot", () => {
 	});
 
 	it("serves the snapshot without re-fetching inside the TTL", async () => {
+		const runtime = makeRuntime();
 		const provider = await loadProvider();
-		await provider.get(RUNTIME, MESSAGE, STATE);
-		expect(h.listInstalledApps).toHaveBeenCalledTimes(1);
-		const second = await provider.get(RUNTIME, MESSAGE, STATE);
-		// Warm turn is served from the cached snapshot — no second fetch.
+		await provider.get(runtime, MESSAGE, STATE);
+		await waitForSnapshot(provider, runtime);
+
+		const second = await provider.get(runtime, MESSAGE, STATE);
 		expect(h.listInstalledApps).toHaveBeenCalledTimes(1);
 		expect(second.text).toContain("installedCount: 1");
 	});
 
-	it("returns the stale snapshot immediately and refreshes out-of-band past the TTL", async () => {
+	it("returns stale data immediately while refreshing past the TTL", async () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
+		const runtime = makeRuntime();
 		const provider = await loadProvider();
-		const first = await provider.get(RUNTIME, MESSAGE, STATE);
+		await provider.get(runtime, MESSAGE, STATE);
+		const first = await waitForSnapshot(provider, runtime);
 		expect(first.text).toContain("installedCount: 1");
-		expect(h.listInstalledApps).toHaveBeenCalledTimes(1);
 
-		// A second app appears; the very next warm-but-expired turn must still
-		// serve the OLD snapshot synchronously, then refresh in the background.
 		h.listInstalledApps.mockResolvedValue([
 			{
 				name: "chess",
@@ -109,23 +148,43 @@ describe("availableAppsProvider snapshot", () => {
 		]);
 
 		vi.setSystemTime(Date.now() + 46_000);
-		const stale = await provider.get(RUNTIME, MESSAGE, STATE);
-		// Rendered synchronously from the pre-refresh snapshot (still count 1).
+		const stale = await provider.get(runtime, MESSAGE, STATE);
 		expect(stale.text).toContain("installedCount: 1");
 
-		// Let the background refresh settle: it re-fetched with the new count and
-		// overwrote the snapshot. Poll a fresh render until it flips to count 2.
 		await vi.waitFor(async () => {
 			expect(h.listInstalledApps).toHaveBeenCalledTimes(2);
-			const refreshed = await provider.get(RUNTIME, MESSAGE, STATE);
+			const refreshed = await provider.get(runtime, MESSAGE, STATE);
 			expect(refreshed.text).toContain("installedCount: 2");
 		});
 	});
 
-	it("degrades to empty context when a loopback call throws (never fails the turn)", async () => {
+	it("reports loopback failure and serves an explicit unavailable state", async () => {
 		h.listAppRuns.mockRejectedValue(new Error("loopback down"));
+		const runtime = makeRuntime();
 		const provider = await loadProvider();
-		const result = await provider.get(RUNTIME, MESSAGE, STATE);
-		expect(result.text).toBe("");
+
+		const cold = await provider.get(runtime, MESSAGE, STATE);
+		expect(cold.values?.availableAppsStatus).toBe("loading");
+		const failed = await waitForSnapshot(provider, runtime, "error");
+
+		expect(failed.text).toContain("status: unavailable");
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"availableAppsProvider.refresh",
+			expect.any(Error),
+			{ provider: "available_apps" },
+		);
+	});
+
+	it("keeps snapshots isolated between runtimes", async () => {
+		const firstRuntime = makeRuntime();
+		const secondRuntime = makeRuntime();
+		const provider = await loadProvider();
+
+		await provider.get(firstRuntime, MESSAGE, STATE);
+		await waitForSnapshot(provider, firstRuntime);
+		await provider.get(secondRuntime, MESSAGE, STATE);
+		await waitForSnapshot(provider, secondRuntime);
+
+		expect(h.listInstalledApps).toHaveBeenCalledTimes(2);
 	});
 });
