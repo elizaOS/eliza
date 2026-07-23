@@ -1,6 +1,7 @@
 # ConfigBench — Agent Guide
 
-Plugin configuration & secrets security benchmark: 50 scripted scenarios testing
+Plugin configuration & secrets security benchmark: 62 authored scripted scenarios
+(expanded 10× with edge variants to 682 total) testing
 `@elizaos/core` built-in secrets (CRUD, encryption, leakage prevention, DM enforcement,
 social-engineering resistance) and the built-in plugin manager (lifecycle, activation,
 onboarding). Registered in the suite registry as `configbench`.
@@ -35,7 +36,7 @@ bun run src/index.ts
 
 ```bash
 cd packages/benchmarks/configbench
-bun run test        # vitest run (all four test files)
+bun run test        # vitest run (all test files under tests/)
 ```
 
 ## Layout
@@ -44,7 +45,7 @@ bun run test        # vitest run (all four test files)
 | --- | --- |
 | `src/index.ts` | CLI entrypoint; parses flags, wires handlers |
 | `src/runner.ts` | Core execution loop |
-| `src/scenarios/` | 50 scripted scenarios (secrets-crud, security, plugin-lifecycle, plugin-config, integration) |
+| `src/scenarios/` | 62 authored scenarios, expanded to 682 (secrets-crud, security, plugin-lifecycle, plugin-config, integration) |
 | `src/handlers/` | Perfect / Failing / Random / Eliza / harness-bridge handler implementations |
 | `src/scoring/scorer.ts` | Weighted scoring (security score zeroes on any leak) |
 | `src/reporting/reporter.ts` | JSON + Markdown result writers |

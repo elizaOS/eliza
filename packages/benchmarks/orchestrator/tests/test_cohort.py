@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,6 +22,7 @@ from benchmarks.orchestrator.db import (
     list_run_groups,
     list_runs,
     pause_run_group,
+    recover_stale_running_runs,
 )
 from benchmarks.orchestrator.subscription_gateway import (
     GatewayPauseState,
@@ -929,6 +931,358 @@ def test_sqlite_busy_timeout_allows_contending_cohort_writer(tmp_path: Path) -> 
     groups = list_run_groups(conn)
     conn.close()
     assert groups[0]["run_group_id"] == "rgc-contender"
+
+
+def _stored_identity() -> cohort_module.PhaseExecutionIdentity:
+    return cohort_module.PhaseExecutionIdentity(
+        namespace="benchmark-phase-v1-stored",
+        contract={"schema_version": 1, "benchmark_id": "alpha"},
+        checkpoint_relpath=".subscription-checkpoints/stored/responses.jsonl",
+    )
+
+
+def _seed_stored_execution(
+    workspace_root: Path,
+    identity: cohort_module.PhaseExecutionIdentity,
+    *,
+    run_group_id: str = "rgc-prior",
+    running_run_id: str | None = "run-prior-eliza",
+) -> None:
+    output_root = workspace_root / "benchmarks" / "benchmark_results"
+    output_root.mkdir(parents=True, exist_ok=True)
+    conn = connect_database(output_root / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id=run_group_id,
+        created_at="2026-07-01T00:00:00+00:00",
+        request={},
+        benchmarks=["alpha"],
+        repo_meta={},
+        execution_namespace=identity.namespace,
+        execution_contract=dict(identity.contract),
+        checkpoint_relpath=identity.checkpoint_relpath,
+    )
+    if running_run_id is not None:
+        insert_run_start(
+            conn,
+            run_id=running_run_id,
+            run_group_id=run_group_id,
+            benchmark_id="alpha",
+            benchmark_directory="alpha",
+            signature="sig-prior-eliza",
+            attempt=1,
+            agent="eliza",
+            provider="claude-subscription",
+            model="claude-opus-4-6",
+            extra_config={},
+            started_at="2026-07-01T00:00:00+00:00",
+            command=[],
+            cwd=".",
+            stdout_path="",
+            stderr_path="",
+            benchmark_version=None,
+            benchmarks_commit=None,
+            eliza_commit=None,
+            eliza_version=None,
+        )
+    conn.close()
+
+
+class _ResumeFakeGateway:
+    def __init__(self, workspace_root: Path) -> None:
+        self._audit_path = workspace_root / "audit.jsonl"
+
+    def env_for_harness(self, harness: str) -> dict[str, str]:
+        return {"CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN": f"token-{harness}"}
+
+    def close(self) -> Path:
+        return self._audit_path
+
+    def cleanup_private_checkpoint(self) -> None:
+        return None
+
+
+def test_resumed_cohort_retires_prior_running_rows_before_workers_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = _workspace(tmp_path)
+    adapters = {"alpha": _adapter("alpha", ("eliza",))}
+    monkeypatch.setattr(
+        cohort_module,
+        "discover_adapters",
+        lambda _root: AdapterDiscovery(adapters=adapters, all_directories=("alpha",)),
+    )
+    monkeypatch.setattr(cohort_module, "_repo_meta", lambda _root: {})
+    identity = _stored_identity()
+    monkeypatch.setattr(
+        cohort_module,
+        "build_phase_execution_identity",
+        lambda **_kwargs: identity,
+    )
+    monkeypatch.setattr(
+        cohort_module,
+        "_find_reusable_subscription_cohort",
+        lambda **_kwargs: None,
+    )
+    _seed_stored_execution(workspace_root, identity)
+    monkeypatch.setattr(
+        cohort_module,
+        "start_claude_subscription_gateway",
+        lambda **_kwargs: _ResumeFakeGateway(workspace_root),
+    )
+    monkeypatch.setattr(cohort_module, "_attach_gateway_audit", lambda **_kwargs: {})
+    prior_status_at_worker_start: list[str] = []
+
+    def fake_run_benchmarks(**kwargs):
+        conn = connect_database(
+            workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
+        )
+        row = conn.execute(
+            "SELECT status FROM benchmark_runs WHERE run_id = 'run-prior-eliza'"
+        ).fetchone()
+        conn.close()
+        prior_status_at_worker_start.append(str(row["status"]))
+        return (
+            kwargs["shared_run_group_id"],
+            [_outcome("alpha", kwargs["request"].agent)],
+            workspace_root / "benchmarks" / "benchmark_results" / "viewer_data.json",
+        )
+
+    monkeypatch.setattr(cohort_module, "run_benchmarks", fake_run_benchmarks)
+    request = RunRequest(
+        benchmarks=("alpha",),
+        agent="eliza",
+        provider="claude-subscription",
+        model="claude-opus-4-6",
+        extra_config={},
+        resume=True,
+    )
+
+    results = cohort_module.run_benchmark_cohorts(
+        workspace_root=workspace_root,
+        request=request,
+        harnesses=("eliza",),
+    )
+
+    assert results[0].run_group_id == "rgc-prior"
+    assert results[0].status == cohort_module.BenchmarkCohortStatus.SUCCEEDED
+    assert prior_status_at_worker_start == ["paused_unknown"]
+    conn = connect_database(
+        workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
+    )
+    rows = {row["run_id"]: row for row in list_runs(conn, limit=None)}
+    prior = rows["run-prior-eliza"]
+    assert prior["status"] == "paused_unknown"
+    assert prior["ended_at"] is not None
+    groups = {group["run_group_id"]: group for group in list_run_groups(conn)}
+    finished_at = groups["rgc-prior"]["finished_at"]
+    assert finished_at is not None
+    assert groups["rgc-prior"]["cohort_status"] == "succeeded"
+
+    # The group is now terminal; a later stale sweep must be a strict no-op.
+    recovered = recover_stale_running_runs(
+        conn,
+        stale_before="2100-01-01T00:00:00+00:00",
+        ended_at="2100-01-01T00:00:00+00:00",
+    )
+    groups_after = {
+        group["run_group_id"]: group for group in list_run_groups(conn)
+    }
+    conn.close()
+    assert recovered == []
+    assert groups_after["rgc-prior"]["finished_at"] == finished_at
+    assert groups_after["rgc-prior"]["cohort_status"] == "succeeded"
+
+
+def test_stored_future_retry_blocks_resume_unless_quota_reset_assumed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = _workspace(tmp_path)
+    adapters = {"alpha": _adapter("alpha", ("eliza",))}
+    monkeypatch.setattr(
+        cohort_module,
+        "discover_adapters",
+        lambda _root: AdapterDiscovery(adapters=adapters, all_directories=("alpha",)),
+    )
+    monkeypatch.setattr(cohort_module, "_repo_meta", lambda _root: {})
+    identity = _stored_identity()
+    monkeypatch.setattr(
+        cohort_module,
+        "build_phase_execution_identity",
+        lambda **_kwargs: identity,
+    )
+    monkeypatch.setattr(
+        cohort_module,
+        "_find_reusable_subscription_cohort",
+        lambda **_kwargs: None,
+    )
+    _seed_stored_execution(workspace_root, identity)
+    retry_at = "2100-01-01T00:00:00+00:00"
+    output_root = workspace_root / "benchmarks" / "benchmark_results"
+    conn = connect_database(output_root / "orchestrator.sqlite")
+    pause_run_group(
+        conn,
+        run_group_id="rgc-prior",
+        status="paused",
+        paused_at="2026-07-01T01:00:00+00:00",
+        retry_at=retry_at,
+        reason="rate_limit",
+        metadata={"affected_harnesses": ["eliza"], "active_records": 0},
+    )
+    conn.close()
+    monkeypatch.setattr(
+        cohort_module,
+        "run_benchmarks",
+        lambda **_kwargs: pytest.fail("a future retry_at must not start workers"),
+    )
+    monkeypatch.setattr(
+        cohort_module,
+        "start_claude_subscription_gateway",
+        lambda **_kwargs: pytest.fail("a future retry_at must not start a gateway"),
+    )
+    request = RunRequest(
+        benchmarks=("alpha",),
+        agent="eliza",
+        provider="claude-subscription",
+        model="claude-opus-4-6",
+        extra_config={},
+        resume=True,
+    )
+
+    blocked = cohort_module.run_benchmark_cohorts(
+        workspace_root=workspace_root,
+        request=request,
+        harnesses=("eliza",),
+    )
+
+    assert blocked[0].status == cohort_module.BenchmarkCohortStatus.PAUSED
+    assert blocked[0].pause_retry_at == retry_at
+    assert blocked[0].outcomes == ()
+
+    monkeypatch.setattr(
+        cohort_module,
+        "start_claude_subscription_gateway",
+        lambda **_kwargs: _ResumeFakeGateway(workspace_root),
+    )
+    monkeypatch.setattr(cohort_module, "_attach_gateway_audit", lambda **_kwargs: {})
+    worker_agents: list[str] = []
+
+    def fake_run_benchmarks(**kwargs):
+        worker_agents.append(kwargs["request"].agent)
+        return (
+            kwargs["shared_run_group_id"],
+            [_outcome("alpha", kwargs["request"].agent)],
+            workspace_root / "benchmarks" / "benchmark_results" / "viewer_data.json",
+        )
+
+    monkeypatch.setattr(cohort_module, "run_benchmarks", fake_run_benchmarks)
+
+    resumed = cohort_module.run_benchmark_cohorts(
+        workspace_root=workspace_root,
+        request=request,
+        harnesses=("eliza",),
+        assume_quota_reset=True,
+    )
+
+    assert resumed[0].status == cohort_module.BenchmarkCohortStatus.SUCCEEDED
+    assert resumed[0].run_group_id == "rgc-prior"
+    assert worker_agents == ["eliza"]
+    conn = connect_database(output_root / "orchestrator.sqlite")
+    groups = {group["run_group_id"]: group for group in list_run_groups(conn)}
+    conn.close()
+    assert groups["rgc-prior"]["finished_at"] is not None
+    assert groups["rgc-prior"]["cohort_status"] == "succeeded"
+
+
+def test_prepare_cohort_recovers_stale_namespaceless_groups_only(
+    tmp_path: Path,
+) -> None:
+    workspace_root = _workspace(tmp_path)
+    output_root = workspace_root / "benchmarks" / "benchmark_results"
+    output_root.mkdir(parents=True, exist_ok=True)
+    conn = connect_database(output_root / "orchestrator.sqlite")
+    initialize_database(conn)
+    for group_id in ("rg-plain-open", "rg-plain-live"):
+        create_run_group(
+            conn,
+            run_group_id=group_id,
+            created_at="2026-01-01T00:00:00+00:00",
+            request={},
+            benchmarks=["alpha"],
+            repo_meta={},
+        )
+    create_run_group(
+        conn,
+        run_group_id="rg-sub-open",
+        created_at="2026-01-01T00:00:00+00:00",
+        request={},
+        benchmarks=["alpha"],
+        repo_meta={},
+        execution_namespace="benchmark-phase-v1-open",
+        execution_contract={"schema_version": 1},
+        checkpoint_relpath=".subscription-checkpoints/open/responses.jsonl",
+    )
+    fresh_started_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    for run_id, group_id, started_at in (
+        ("run-plain-stale", "rg-plain-open", "2026-01-01T00:00:00+00:00"),
+        ("run-plain-fresh", "rg-plain-live", fresh_started_at),
+        ("run-sub-stale", "rg-sub-open", "2026-01-01T00:00:00+00:00"),
+    ):
+        insert_run_start(
+            conn,
+            run_id=run_id,
+            run_group_id=group_id,
+            benchmark_id="alpha",
+            benchmark_directory="alpha",
+            signature=f"sig-{run_id}",
+            attempt=1,
+            agent="eliza",
+            provider="cerebras",
+            model="test-model",
+            extra_config={},
+            started_at=started_at,
+            command=[],
+            cwd=".",
+            stdout_path="",
+            stderr_path="",
+            benchmark_version=None,
+            benchmarks_commit=None,
+            eliza_commit=None,
+            eliza_version=None,
+        )
+    conn.close()
+
+    cohort_module._prepare_cohort(
+        workspace_root=workspace_root,
+        request=_request("alpha"),
+        benchmark_id="alpha",
+        run_group_id="rgc-new",
+        harnesses=("eliza",),
+        requested_harnesses=("eliza",),
+        unsupported_harnesses=(),
+        repo_meta={},
+        execution_identity=None,
+        storage_preflight=None,
+    )
+
+    conn = connect_database(output_root / "orchestrator.sqlite")
+    rows = {row["run_id"]: row for row in list_runs(conn, limit=None)}
+    groups = {group["run_group_id"]: group for group in list_run_groups(conn)}
+    conn.close()
+    assert rows["run-plain-stale"]["status"] == "failed"
+    # Younger than the 6h threshold: still considered live, not recovered.
+    assert rows["run-plain-fresh"]["status"] == "running"
+    assert rows["run-sub-stale"]["status"] == "running"
+    assert groups["rg-plain-open"]["cohort_status"] == "failed"
+    assert groups["rg-plain-open"]["finished_at"] is not None
+    assert groups["rg-plain-live"]["finished_at"] is None
+    # The namespaced group keeps its durable pause semantics intact.
+    assert groups["rg-sub-open"]["cohort_status"] == "running"
+    assert groups["rg-sub-open"]["finished_at"] is None
+    assert groups["rgc-new"]["finished_at"] is None
 
 
 def test_publication_decorator_serializes_thread_writers(tmp_path: Path) -> None:

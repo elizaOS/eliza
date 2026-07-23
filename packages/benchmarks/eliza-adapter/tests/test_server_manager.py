@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from eliza_adapter.server_manager import ElizaServerManager, _server_command
+from eliza_adapter.server_manager import (
+    ElizaServerManager,
+    _normalize_model_env,
+    _server_command,
+)
 
 
 def _stub_node_resolution(monkeypatch) -> None:
@@ -182,6 +186,8 @@ def test_server_manager_maps_cerebras_env_to_openai_compatible_settings(
     monkeypatch.delenv("OPENAI_LARGE_MODEL", raising=False)
     monkeypatch.delenv("OPENAI_RESPONSE_HANDLER_MODEL", raising=False)
     monkeypatch.delenv("OPENAI_ACTION_PLANNER_MODEL", raising=False)
+    monkeypatch.delenv("CEREBRAS_BASE_URL", raising=False)
+    monkeypatch.delenv("BENCHMARK_BASE_URL", raising=False)
     monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test")
     monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "cerebras")
     monkeypatch.setenv("BENCHMARK_MODEL_NAME", "gpt-oss-120b")
@@ -222,6 +228,8 @@ def test_server_manager_autowires_current_cerebras_model_without_provider(
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("BENCHMARK_MODEL_PROVIDER", raising=False)
+    monkeypatch.delenv("CEREBRAS_BASE_URL", raising=False)
+    monkeypatch.delenv("BENCHMARK_BASE_URL", raising=False)
     monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test")
     monkeypatch.setenv("BENCHMARK_MODEL_NAME", "zai-glm-4.7")
 
@@ -302,3 +310,96 @@ def test_server_manager_falls_back_to_node_tzx(monkeypatch, tmp_path: Path) -> N
         "tsx",
         str(server),
     ]
+
+
+# ---------------------------------------------------------------------------
+# _normalize_model_env base-URL resolution: operator env wins over the
+# hardcoded provider endpoint (CEREBRAS_BASE_URL > BENCHMARK_BASE_URL >
+# OPENAI_BASE_URL > https://api.cerebras.ai/v1).
+# ---------------------------------------------------------------------------
+
+
+def _cerebras_env(**overrides: str) -> dict[str, str]:
+    env = {
+        "CEREBRAS_API_KEY": "csk-test",
+        "BENCHMARK_MODEL_PROVIDER": "cerebras",
+        "BENCHMARK_MODEL_NAME": "gemma-4-31b",
+    }
+    env.update(overrides)
+    return env
+
+
+def test_normalize_model_env_respects_preset_openai_base_url() -> None:
+    env = _cerebras_env(OPENAI_BASE_URL="https://elizacloud.ai/api/v1")
+    _normalize_model_env(env)
+    assert env["OPENAI_BASE_URL"] == "https://elizacloud.ai/api/v1"
+    assert env["ELIZA_PROVIDER"] == "cerebras"
+    assert env["OPENAI_API_KEY"] == "csk-test"
+
+
+def test_normalize_model_env_honors_benchmark_base_url_over_default() -> None:
+    env = _cerebras_env(BENCHMARK_BASE_URL="https://elizacloud.ai/api/v1")
+    _normalize_model_env(env)
+    assert env["OPENAI_BASE_URL"] == "https://elizacloud.ai/api/v1"
+
+
+def test_normalize_model_env_cerebras_base_url_wins_over_all() -> None:
+    env = _cerebras_env(
+        CEREBRAS_BASE_URL="https://proxy-a.example/v1",
+        BENCHMARK_BASE_URL="https://proxy-b.example/v1",
+        OPENAI_BASE_URL="https://proxy-c.example/v1",
+    )
+    _normalize_model_env(env)
+    assert env["OPENAI_BASE_URL"] == "https://proxy-a.example/v1"
+
+
+def test_normalize_model_env_benchmark_base_url_wins_over_openai() -> None:
+    env = _cerebras_env(
+        BENCHMARK_BASE_URL="https://proxy-b.example/v1",
+        OPENAI_BASE_URL="https://proxy-c.example/v1",
+    )
+    _normalize_model_env(env)
+    assert env["OPENAI_BASE_URL"] == "https://proxy-b.example/v1"
+
+
+def test_normalize_model_env_falls_back_to_hardcoded_default() -> None:
+    env = _cerebras_env()
+    _normalize_model_env(env)
+    assert env["OPENAI_BASE_URL"] == "https://api.cerebras.ai/v1"
+
+
+def test_normalize_model_env_blank_overrides_do_not_mask_default() -> None:
+    """Whitespace-only operator values are treated as unset, not honored."""
+    env = _cerebras_env(
+        CEREBRAS_BASE_URL="  ",
+        BENCHMARK_BASE_URL="",
+        OPENAI_BASE_URL=" ",
+    )
+    _normalize_model_env(env)
+    assert env["OPENAI_BASE_URL"] == "https://api.cerebras.ai/v1"
+
+
+def test_normalize_model_env_known_model_without_provider_uses_overrides() -> None:
+    """The known-Cerebras-model autowire path resolves the same override
+    chain instead of force-writing the hardcoded endpoint."""
+    env = {
+        "CEREBRAS_API_KEY": "csk-test",
+        "BENCHMARK_MODEL_NAME": "zai-glm-4.7",
+        "BENCHMARK_BASE_URL": "https://elizacloud.ai/api/v1",
+    }
+    _normalize_model_env(env)
+    assert env["ELIZA_PROVIDER"] == "cerebras"
+    assert env["OPENAI_BASE_URL"] == "https://elizacloud.ai/api/v1"
+
+
+def test_normalize_model_env_non_cerebras_setdefault_path_keeps_preset() -> None:
+    """When only CEREBRAS_API_KEY hints at cerebras (unknown model, no
+    provider), normalization is setdefault-only and never downgrades a
+    pre-set OPENAI_BASE_URL."""
+    env = {
+        "CEREBRAS_API_KEY": "csk-test",
+        "BENCHMARK_MODEL_NAME": "some-custom-model",
+        "OPENAI_BASE_URL": "https://elizacloud.ai/api/v1",
+    }
+    _normalize_model_env(env)
+    assert env["OPENAI_BASE_URL"] == "https://elizacloud.ai/api/v1"

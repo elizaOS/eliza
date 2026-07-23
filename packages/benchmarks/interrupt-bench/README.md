@@ -2,12 +2,11 @@
 
 A TypeScript benchmark for **interruption handling** in the Eliza / elizaOS agent runtime. Measures whether the Stage-1 response handler does the right thing when the user fragments, retracts, refines, steers, pivots, merges, or otherwise interrupts an in-flight conversation.
 
-InterruptBench is **in-process** — it does not boot a full agent runtime or hit a real database. Instead it directly wires the Wave 0 primitives shipped from `@elizaos/core`:
+InterruptBench is **in-process** — it does not boot a full agent runtime or hit a real database. Instead it wires local mirrors of the Wave 0 primitives (`src/core-lite.ts`, mirroring `@elizaos/core`):
 
 - `ResponseHandlerFieldRegistry` (Stage-1 schema + prompt composer + dispatcher)
 - `TurnControllerRegistry` (turn-scoped AbortSignals; abort propagation)
 - `RoomHandlerQueue` (one-at-a-time per room serialization)
-- `withCleanup` (graceful abort wrap-up)
 
 …and exercises them with a deterministic clock, scripted channels, and a real or scripted LLM.
 
@@ -47,12 +46,16 @@ baselines by dropping JSON into `scenarios/<category>/`.
 ## Running
 
 ```bash
-# Scripted mode — deterministic, no LLM calls. Validates harness + scoring.
+# Default: Cerebras live mode — real LLM (gemma-4-31b at https://api.cerebras.ai/v1).
+# Requires CEREBRAS_API_KEY in your env.
 bun run bench
 
-# Cerebras live mode — real LLM (gemma-4-31b at https://api.cerebras.ai/v1).
-# Requires CEREBRAS_API_KEY in your env.
-bun run bench -- --mode=cerebras
+# Scripted mode — deterministic, no LLM calls. Validates harness + scoring.
+bun run bench -- --mode=scripted
+
+# Harness mode — routes Stage-1 calls through the Eliza/Hermes/OpenClaw bridge
+# (scripts/harness_stage1_turn.py).
+bun run bench -- --mode=harness
 
 # With LLM judge bonus (also Cerebras).
 bun run bench -- --mode=cerebras --judge
@@ -120,7 +123,7 @@ See `scenarios/A/A1-fragmented-email-draft.json` for the working example.
    - Initialize a `FakeClock`, a `Trace`, a `SimulatorState` from `setup`, a `ChannelSimulator` (wraps `RoomHandlerQueue`), and a `TurnControllerRegistry`.
    - Compose the Stage-1 schema + system prompt via `ResponseHandlerFieldRegistry` (see `src/registry.ts` — registers `shouldRespond`, `contexts`, `intents`, `candidateActionNames`, `replyText`, `facts`, `relationships`, `addressedTo`, and `threadOps`).
    - Schedule every `script` step on the fake clock.
-   - As each step fires, hand the message to either the scripted provider (`src/llm-scripted.ts`) or Cerebras (`src/llm-cerebras.ts`) to get a parsed `ResponseHandlerResult`.
+   - As each step fires, hand the message to the scripted provider (`src/llm-scripted.ts`), Cerebras (`src/llm-cerebras.ts`), or the harness bridge (`src/llm-harness.ts`) to get a parsed `ResponseHandlerResult`.
    - Dispatch the result into state mutations (apply `threadOps`, record replies, fire abort if any op is `type: "abort"`).
    - Capture everything in the trace.
 3. Score each scenario across the six axes and aggregate.
@@ -143,15 +146,22 @@ src/
   trace.ts           # append-only trace
   llm-scripted.ts    # deterministic provider for harness validation
   llm-cerebras.ts    # live Cerebras client (gemma-4-31b)
-  scenarios.ts       # loader for scenarios/*.json
+  llm-harness.ts     # Stage-1 client backed by the Eliza/Hermes/OpenClaw bridge
+  core-lite.ts       # local mirrors of the core Wave 0 primitives
+  scenarios.ts       # loader + edge-variant expander for scenarios/*.json
   types.ts           # public types
   index.ts           # public API
 scripts/
-  cerebras-smoke.ts  # one round-trip to Cerebras with the composed schema
+  cerebras-smoke.ts       # one round-trip to Cerebras with the composed schema
+  harness_stage1_turn.py  # per-turn bridge invoked by --mode=harness
 scenarios/
   A|B|C|D|F|G|H|K/*.json
 tests/
-  scenarios.test.ts  # vitest: every scenario parses + runs
+  scenarios.test.ts        # vitest: every scenario parses + runs
+  aggregate-score.test.ts  # aggregate math
+  honest-scoring.test.ts   # scoring guards
+  judge.test.ts            # judge bonus
+  llm-harness.test.ts      # harness bridge client
 ```
 
 ## Acceptance
@@ -159,8 +169,8 @@ tests/
 - `bun install` succeeds.
 - `bun run typecheck` succeeds.
 - `bun run bench:smoke` round-trips one Cerebras call with the composed schema and prints the parsed JSON.
-- `bun run bench` runs all 110 scenarios against the scripted provider and emits a markdown report.
-- `bun run bench -- --mode=cerebras --judge` runs all 110 against Cerebras with the judge bonus enabled.
+- `bun run bench -- --mode=scripted` runs all 110 scenarios against the scripted provider (no keys) and emits a markdown report.
+- `bun run bench` (default Cerebras mode) and `bun run bench -- --judge` run all 110 against a live model, judge bonus optional.
 
 ## See also
 

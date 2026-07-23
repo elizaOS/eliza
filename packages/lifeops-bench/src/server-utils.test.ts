@@ -388,6 +388,53 @@ describe("composeBenchmarkPrompt", () => {
     expect(prompt).not.toContain('"messages"');
   });
 
+  it("keeps a context-less message byte-for-byte clean (identity-only context)", () => {
+    // normalizeBenchmarkContext stamps benchmark/taskId/task_id onto every
+    // message, so a client that sent NO context still arrives here with the
+    // identity trio. Decorating such a message with the authoritative-context
+    // JSON + action-output trailer corrupted the user's actual ask: the
+    // acceptance-gate smoke "Reply with the single word: PONG" stopped parsing
+    // as a say-literal request in core and dead-ended in the unusable-reply
+    // deferral.
+    const prompt = composeBenchmarkPrompt({
+      text: "Reply with the single word: PONG",
+      context: {
+        benchmark: "unknown",
+        taskId: "default-task",
+        task_id: "default-task",
+      },
+    });
+    expect(prompt).toBe("Reply with the single word: PONG");
+  });
+
+  it("still decorates a message whose context carries real task payload", () => {
+    const prompt = composeBenchmarkPrompt({
+      text: "List the directory.",
+      context: {
+        benchmark: "agentbench",
+        taskId: "task-1",
+        task_id: "task-1",
+        goal: "explore the filesystem",
+        action_space: ["ls", "cd"],
+      },
+    });
+    expect(prompt).toContain("BENCHMARK CONTEXT (authoritative):");
+    expect(prompt).toContain('"goal": "explore the filesystem"');
+    expect(prompt).toContain(
+      "Respond using normal Eliza action output so actions/params can be executed and evaluated.",
+    );
+  });
+
+  it("keeps the image payload even when the context is identity-only", () => {
+    const prompt = composeBenchmarkPrompt({
+      text: "What is in this screenshot?",
+      context: { benchmark: "unknown", taskId: "t", task_id: "t" },
+      image: { url: "data:image/png;base64,AAAA" },
+    });
+    expect(prompt).toContain("IMAGE PAYLOAD:");
+    expect(prompt).toContain("data:image/png;base64,AAAA");
+  });
+
   it("keeps lifecycle user text clean and delegates the shared hint to its provider", () => {
     const hint =
       "Manage delegated work with the available task action and report its result truthfully.";

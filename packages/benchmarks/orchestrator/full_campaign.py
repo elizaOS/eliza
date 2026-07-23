@@ -1264,6 +1264,7 @@ def run_full_campaign(
     manual_overrides: Mapping[str, Mapping[str, Any]] | None = None,
     stop_after_failed_cohort: bool = True,
     wait_on_quota: bool = False,
+    assume_quota_reset: bool = False,
     max_quota_wait_seconds: float = DEFAULT_MAX_QUOTA_WAIT_SECONDS,
     quota_poll_seconds: float = DEFAULT_QUOTA_POLL_SECONDS,
     quota_now: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -1276,9 +1277,21 @@ def run_full_campaign(
     entries require both explicit selection and ``allow_manual=True``;
     unsupported and non-agent entries are never coerced into fake comparison
     rows. The return value lists every unscheduled entry and its reason.
+
+    ``assume_quota_reset`` asserts that the subscription account behind a
+    stored quota pause was swapped, so the old account's ``retry_at`` neither
+    blocks the resume nor makes the in-process quota wait sleep. The assertion
+    is spent the first time a resume-capable attempt still comes back paused:
+    that pause carries a fresh gateway verdict, and honoring the override again
+    would spin instead of waiting for the real quota window.
     """
 
     validate_full_campaign_manifest(workspace_root)
+    if assume_quota_reset and not (request.resume or wait_on_quota):
+        raise FullCampaignSelectionError(
+            "assume_quota_reset only acts through resume or wait_on_quota; "
+            "enable one of them or drop the override"
+        )
     if request.provider.strip().lower() != "claude-subscription":
         raise FullCampaignSelectionError(
             "The full campaign requires provider=claude-subscription"
@@ -1360,6 +1373,7 @@ def run_full_campaign(
     completed_phases: list[str] = []
     campaign_failed = False
     paused_cohort: BenchmarkCohortResult | None = None
+    assume_reset_armed = bool(assume_quota_reset)
     for benchmark_id in selected_ids:
         entry = by_id[benchmark_id]
         benchmark_overrides = overrides_by_id.get(benchmark_id, {})
@@ -1376,6 +1390,7 @@ def run_full_campaign(
                     request=phase_request,
                     harnesses=normalized_harnesses,
                     stop_after_failed_cohort=stop_after_failed_cohort,
+                    assume_quota_reset=assume_reset_armed,
                 )
                 if len(phase_results) != 1:
                     raise RuntimeError(
@@ -1392,16 +1407,26 @@ def run_full_campaign(
                     BenchmarkCohortStatus.PAUSED_UNKNOWN,
                 }:
                     break
+                # A pause returned by a resume-capable attempt is fresh
+                # gateway evidence that quota is still latched, so the
+                # operator's reset assertion is consumed here; keeping it
+                # armed would resume in a tight loop against a latched
+                # gateway instead of waiting for the fresh retry_at.
+                if assume_reset_armed and phase_request.resume:
+                    assume_reset_armed = False
                 can_resume = (
                     wait_on_quota
                     and cohort_status == BenchmarkCohortStatus.PAUSED
-                    and _wait_for_known_quota_retry(
-                        retry_at=cohort.pause_retry_at,
-                        max_wait_seconds=max_quota_wait_seconds,
-                        poll_seconds=quota_poll_seconds,
-                        now=quota_now,
-                        sleep=quota_sleep,
-                        heartbeat=quota_heartbeat,
+                    and (
+                        assume_reset_armed
+                        or _wait_for_known_quota_retry(
+                            retry_at=cohort.pause_retry_at,
+                            max_wait_seconds=max_quota_wait_seconds,
+                            poll_seconds=quota_poll_seconds,
+                            now=quota_now,
+                            sleep=quota_sleep,
+                            heartbeat=quota_heartbeat,
+                        )
                     )
                 )
                 if not can_resume:
@@ -1485,6 +1510,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--keep-going", action="store_true")
     parser.add_argument("--wait-on-quota", action="store_true")
     parser.add_argument(
+        "--assume-quota-reset",
+        action="store_true",
+        help=(
+            "After swapping subscription accounts, resume without honoring the "
+            "old account's stored retry_at; fail-closed because a still-latched "
+            "gateway re-pauses with a fresh retry_at. Requires --resume or "
+            "--wait-on-quota."
+        ),
+    )
+    parser.add_argument(
         "--max-quota-wait-seconds",
         type=float,
         default=DEFAULT_MAX_QUOTA_WAIT_SECONDS,
@@ -1526,6 +1561,7 @@ def main(argv: list[str] | None = None) -> int:
             manual_overrides=manual_overrides,
             stop_after_failed_cohort=not bool(args.keep_going),
             wait_on_quota=bool(args.wait_on_quota),
+            assume_quota_reset=bool(args.assume_quota_reset),
             max_quota_wait_seconds=float(args.max_quota_wait_seconds),
             quota_poll_seconds=float(args.quota_poll_seconds),
             quota_heartbeat=lambda payload: print(

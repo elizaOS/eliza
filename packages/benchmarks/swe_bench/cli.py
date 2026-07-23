@@ -715,6 +715,22 @@ _OPENCODE_MODEL_LIMITS = {
     "gpt-oss-120b": {"context": 131072, "output": 65536},
 }
 
+_DEFAULT_CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
+
+
+def _opencode_base_url() -> str:
+    """Resolve the OpenAI-compatible endpoint for the opencode task agent.
+
+    Operators route benchmark traffic through a proxy (e.g. the Eliza Cloud
+    OpenAI-compatible gateway) by exporting a base-URL override; a set env var
+    must win over the hardcoded provider default, never the other way around.
+    """
+    for key in ("CEREBRAS_BASE_URL", "BENCHMARK_BASE_URL", "OPENAI_BASE_URL"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+    return _DEFAULT_CEREBRAS_BASE_URL
+
 
 def _opencode_config_content(model_name: str) -> str:
     """Return an OpenCode config for Cerebras/OpenAI-compatible SWE-bench runs."""
@@ -732,7 +748,7 @@ def _opencode_config_content(model_name: str) -> str:
                     "npm": "@ai-sdk/openai-compatible",
                     "env": ["CEREBRAS_API_KEY"],
                     "options": {
-                        "baseURL": "https://api.cerebras.ai/v1",
+                        "baseURL": _opencode_base_url(),
                         "timeout": 600000,
                     },
                     "models": {
