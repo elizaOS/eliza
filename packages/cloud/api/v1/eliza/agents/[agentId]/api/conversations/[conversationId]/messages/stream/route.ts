@@ -141,6 +141,17 @@ app.post("/", async (c) => {
   }
 
   const conversationId = c.req.param("conversationId") ?? r.agentId;
+  // Workers only: pass an executionCtx so the shared turn defers its billing
+  // tail off the SSE `done` path via waitUntil. Hono's executionCtx getter
+  // THROWS outside a Worker (tests, Node) — degrade to undefined there so the
+  // turn settles inline, preserving fully-synchronous behavior. Mirrors the
+  // non-stream POST .../messages route.
+  let executionCtx: CanonicalScopedStreamRequest["executionCtx"];
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    executionCtx = undefined;
+  }
   return handleCanonicalScopedAgentStream({
     agentId: r.agentId,
     orgId: r.orgId,
@@ -152,6 +163,7 @@ app.post("/", async (c) => {
       scope: scopeMs,
       body: bodyMs,
     },
+    ...(executionCtx ? { executionCtx } : {}),
   } satisfies CanonicalScopedStreamRequest);
 });
 

@@ -130,11 +130,23 @@ async function __hono_POST(
 
     const rpcRequest = parsed.data as BridgeRequest;
 
+    // Workers only: pass an executionCtx so a shared-tier turn defers its
+    // billing tail off the SSE `done` path via waitUntil. Hono's executionCtx
+    // getter THROWS outside a Worker (tests, Node) — degrade to undefined
+    // there so the turn settles inline, preserving synchronous behavior.
+    let executionCtx: Parameters<typeof elizaSandboxService.bridgeStream>[3];
+    try {
+      executionCtx = _ctx?.executionCtx;
+    } catch {
+      executionCtx = undefined;
+    }
+
     // Get the raw SSE stream from the sandbox
     const upstreamResponse = await elizaSandboxService.bridgeStream(
       agentId,
       user.organization_id,
       rpcRequest,
+      executionCtx,
     );
 
     if (!upstreamResponse?.body) {
