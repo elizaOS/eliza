@@ -101,6 +101,10 @@ permissions:
 jobs:
   validate-deploy-source:
     name: Validate Canonical Deploy Source
+    # Push and pull-request refs are constrained by the trigger itself. Only a
+    # manual dispatch can select an invalid ref, so automatic releases should
+    # not wait for a hosted runner merely to execute an unconditional exit 0.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -128,7 +132,7 @@ jobs:
   authorize-staging:
     name: Authorize staging release
     needs: validate-deploy-source
-    if: ${{ github.event_name != 'pull_request' && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && github.event_name != 'pull_request' && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     # This environment contains only deployment policy. Runtime secrets remain
@@ -143,7 +147,7 @@ jobs:
   admit-release:
     name: Admit current release
     needs: [validate-deploy-source, authorize-staging]
-    if: ${{ always() && needs.validate-deploy-source.result == 'success' && (needs.authorize-staging.result == 'success' || needs.authorize-staging.result == 'skipped') }}
+    if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && (needs.authorize-staging.result == 'success' || needs.authorize-staging.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
