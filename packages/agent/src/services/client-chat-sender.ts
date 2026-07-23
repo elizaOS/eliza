@@ -17,10 +17,6 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import {
-  beginDelivery,
-  deliveryIdentityFromContent,
-} from "../api/delivery-dedupe.ts";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";
 
 /**
@@ -154,28 +150,6 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
         );
       }
 
-      // Cross-path delivery dedupe (Bug A): a single reply can also arrive via
-      // the autonomy/coordinator relay (routeAutonomyTextToUser), which writes
-      // its own memory + WS broadcast. If this exact (roomId + text) was just
-      // delivered, suppress this duplicate instead of double-persisting +
-      // double-broadcasting. Treat the suppressed delivery as a successful
-      // no-op (do NOT throw) — the message already reached the user. The
-      // reservation is only committed AFTER a successful createMemory +
-      // broadcast, and released on failure, so a failed delivery never
-      // suppresses a legitimate fallback/retry of the same reply.
-      const delivery = beginDelivery(
-        state.deliveryDedupe,
-        conv.roomId,
-        content.text,
-        // Include attachment/action identity so two distinct sends that share
-        // the same caption/status text but carry different payloads are NOT
-        // collapsed (codex review P2).
-        { identity: deliveryIdentityFromContent(content) },
-      );
-      if (delivery.kind === "duplicate") {
-        return;
-      }
-
       const messageId = crypto.randomUUID() as UUID;
 
       const agentMessage = createMessageMemory({
@@ -188,12 +162,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
           source: MESSAGE_SOURCE_CLIENT_CHAT,
         },
       });
-      try {
-        await runtime.createMemory(agentMessage, "messages");
-      } catch (err) {
-        delivery.reservation.release();
-        throw err;
-      }
+      await runtime.createMemory(agentMessage, "messages");
 
       conv.updatedAt = new Date().toISOString();
 
@@ -208,7 +177,6 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
           source: MESSAGE_SOURCE_CLIENT_CHAT,
         },
       });
-      delivery.reservation.commit();
       return undefined;
     };
 }
@@ -226,11 +194,13 @@ type RuntimeWithFallbackMarker = IAgentRuntime & {
  * Registered connector handlers (discord/telegram/…) and the explicit
  * {@link RELAY_SOURCES} above always win: if a send handler is registered for
  * the target source (reflected by `getMessageConnectors()`, which
- * `registerSendHandler` populates), the original send path runs unchanged. Only
- * an otherwise-unhandled source falls through to the dashboard deliver — so we
- * never hijack a real connector's delivery, yet an arbitrary dashboard-supplied
- * source (a custom `body.source`, or `agent_message_api`'s `platformName`) is
- * never dropped.
+ * `registerSendHandler` populates), the original send path runs unchanged.
+ * Explicit dashboard relay sources are internal transports, so they bypass the
+ * connector lookup and retain their registered handler. Only an otherwise-
+ * unhandled source falls through to the dashboard deliver — so we never hijack
+ * a real connector's delivery, yet an arbitrary dashboard-supplied source (a
+ * custom `body.source`, or `agent_message_api`'s `platformName`) is never
+ * dropped.
  */
 function installDashboardFallbackSend(
   runtime: IAgentRuntime,
@@ -262,7 +232,11 @@ function installDashboardFallbackSend(
     const source =
       typeof target.source === "string" ? target.source.trim() : "";
     // A registered connector / explicit relay source owns its own delivery.
-    if (!source || hasRegisteredHandler(source)) {
+    if (
+      !source ||
+      RELAY_SOURCES.some((relaySource) => relaySource === source) ||
+      hasRegisteredHandler(source)
+    ) {
       return originalSend(target, content);
     }
     // Unknown / unregistered dashboard-origin source: deliver into the
@@ -284,15 +258,18 @@ export function registerClientChatSendHandler(
   runtime: IAgentRuntime,
   state: ServerState,
 ): void {
-  if (typeof runtime.registerSendHandler !== "function") {
+  if (typeof runtime.registerInternalSendHandler !== "function") {
     return;
   }
   const deliver = makeDeliver(runtime, state);
 
   // Explicit handlers for the dashboard/REST sources that go through
-  // generateChatResponse and can originate a sub-agent spawn (see RELAY_SOURCES).
+  // generateChatResponse and can originate a sub-agent spawn (see
+  // RELAY_SOURCES). These are routing seams, not user-selectable connectors:
+  // advertising client_chat to MESSAGE op=send lets a synchronous web turn
+  // deliver once through this WS path and again through its owning SSE route.
   for (const source of RELAY_SOURCES) {
-    runtime.registerSendHandler(source, deliver(source));
+    runtime.registerInternalSendHandler(source, deliver(source));
   }
 
   // Safety net for arbitrary/unknown dashboard-origin sources.

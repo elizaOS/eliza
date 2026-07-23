@@ -10624,6 +10624,36 @@ ${section_end}`;
 		);
 	}
 
+	registerInternalSendHandler(
+		source: string,
+		handler: SendHandlerFunction,
+	): void {
+		const normalized = typeof source === "string" ? source.trim() : "";
+		if (!normalized) {
+			throw new Error("Internal send handler registration requires a source");
+		}
+		const routeKey = connectorRouteKey(normalized);
+		if (this.sendHandlers.has(routeKey)) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					handlerSource: normalized,
+				},
+				"Internal send handler already registered, overwriting",
+			);
+		}
+		this.sendHandlers.set(routeKey, handler);
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				handlerSource: normalized,
+			},
+			"Internal send handler registered",
+		);
+	}
+
 	registerMessageConnector(registration: MessageConnectorRegistration): void {
 		const source =
 			typeof registration.source === "string" ? registration.source.trim() : "";
