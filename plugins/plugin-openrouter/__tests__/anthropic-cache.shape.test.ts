@@ -505,17 +505,18 @@ describe("Anthropic cache breakpoints — malformed plans fail loudly", () => {
     ["non-numeric", "3"],
   ];
 
-  it.each(
-    malformedMaxBreakpointCases
-  )("rejects a %s maxBreakpoints value", async (_label, maxBreakpoints) => {
-    await expectBreakpointRejection(
-      segmentedParams({
-        maxBreakpoints,
-        cacheBreakpoints: [{ segmentIndex: 0, cacheControl: { type: "ephemeral" } }],
-      }),
-      /maxBreakpoints/
-    );
-  });
+  it.each(malformedMaxBreakpointCases)(
+    "rejects a %s maxBreakpoints value",
+    async (_label, maxBreakpoints) => {
+      await expectBreakpointRejection(
+        segmentedParams({
+          maxBreakpoints,
+          cacheBreakpoints: [{ segmentIndex: 0, cacheControl: { type: "ephemeral" } }],
+        }),
+        /maxBreakpoints/
+      );
+    }
+  );
 
   it("accepts the core planner's four-block cap while applying at most three user markers", async () => {
     const { generateText } = mockModules();
