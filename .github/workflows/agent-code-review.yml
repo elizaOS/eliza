@@ -1,8 +1,20 @@
-name: Agent Code Review (self-hosted proposal)
+name: Agent Code Review
 
-# Proposal workflow. Keep dispatch-only until a dedicated `pool-review` runner
-# is registered on the machine that owns the loopback broker. Activation is a
-# separate, manually reviewed workflow-policy change.
+# Advisory fable review through the metered account-pool relay (PR #16634).
+#
+# Inert until BOTH are true, each a deliberate human step:
+#   1. repository variable AGENT_REVIEW_ENABLED == "1"
+#   2. repository secret REVIEW_POOL_KEY holds a dedicated, metered, revocable
+#      relay key (NOT the broker credential; the relay enforces per-key quota)
+#
+# Safety model:
+#   - pull_request_target runs this workflow definition from the BASE branch,
+#     and we NEVER check out or execute PR code. The trusted review client is
+#     sparse-checked-out at the base SHA; the PR diff is fetched read-only via
+#     the GitHub API and treated as untrusted prompt data.
+#   - the endpoint is allowlisted inside the script; overrides are rejected.
+#   - advisory only: one PR comment, never a required check, never a review
+#     state that blocks merge.
 on:
   workflow_dispatch:
     inputs:
@@ -10,23 +22,29 @@ on:
         description: Pull request number to review
         required: true
         type: number
+  pull_request_target:
+    types: [opened, ready_for_review, synchronize, reopened]
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: agent-code-review-${{ inputs.pr_number }}
+  group: agent-code-review-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
   agent-review:
     name: agent-review
-    runs-on: [self-hosted, pool-review]
-    timeout-minutes: 15
+    if: >-
+      vars.AGENT_REVIEW_ENABLED == '1' &&
+      (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
+    runs-on: [self-hosted, Linux, X64, hetzner-robot]
+    timeout-minutes: 20
     steps:
-      # Deliberately no checkout: untrusted PR code must never execute on the
-      # private runner. The trusted script is fetched from the base branch.
+      # Deliberately no PR checkout: untrusted PR code must never execute on
+      # the runner. github.sha here is the BASE branch head for
+      # pull_request_target, so this always fetches the trusted client.
       - name: Check out trusted review client only
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -35,9 +53,15 @@ jobs:
           sparse-checkout: scripts/ci/self-hosted-agent-review.mjs
           sparse-checkout-cone-mode: false
 
-      - name: Review pull request through loopback broker
+      - name: Review pull request through metered pool relay
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          REVIEW_ENDPOINT: http://127.0.0.1:18801/v1/messages
-        run: node scripts/ci/self-hosted-agent-review.mjs
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          REVIEW_ENDPOINT: https://pool.shad0w.xyz/v1/messages
+          REVIEW_POOL_KEY: ${{ secrets.REVIEW_POOL_KEY }}
+        run: |
+          if command -v node >/dev/null 2>&1; then
+            node scripts/ci/self-hosted-agent-review.mjs
+          else
+            bun scripts/ci/self-hosted-agent-review.mjs
+          fi
