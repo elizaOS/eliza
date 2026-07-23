@@ -54,7 +54,10 @@
  * means a slow embed either completes (rich recall) or genuinely errors
  * (fail-open), with no silent middle ground.
  */
+
+import { recordInferenceSpan } from "../../inference-timing";
 import { logger } from "../../logger";
+import { getStreamingContext } from "../../streaming-context";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
 
@@ -147,8 +150,12 @@ function getTurnCache(
 export async function embedRecallQuery(
 	runtime: IAgentRuntime,
 	queryText: string,
-	options?: { messageId?: string },
+	options?: { messageId?: string; signal?: AbortSignal },
 ): Promise<number[] | null> {
+	const signal = options?.signal ?? getStreamingContext()?.abortSignal;
+	if (signal?.aborted) {
+		throw signal.reason ?? new DOMException("Aborted", "AbortError");
+	}
 	const normalized = normalizeQuery(queryText);
 	if (!normalized) {
 		return null;
@@ -173,11 +180,19 @@ export async function embedRecallQuery(
 
 	const cached = cache?.results.get(normalized);
 	if (cached) {
+		recordInferenceSpan("embedding-cache:recall", 0, {
+			outcome: "cache_hit",
+		});
 		return cached;
 	}
 
 	// Dedupe concurrent identical embeds to a single in-flight round-trip.
 	let pending = cache?.inFlight.get(normalized);
+	if (pending) {
+		recordInferenceSpan("embedding-coalesce:recall", 0, {
+			outcome: "coalesced",
+		});
+	}
 	if (!pending) {
 		try {
 			// Promise.resolve guards a model handler that returns a bare value (or
@@ -189,9 +204,13 @@ export async function embedRecallQuery(
 			pending = Promise.resolve(
 				runtime.useModel(ModelType.TEXT_EMBEDDING, {
 					text: queryText,
+					...(signal ? { signal } : {}),
 				}) as Promise<number[]>,
 			);
 		} catch (error) {
+			if (signal?.aborted) {
+				throw signal.reason ?? error;
+			}
 			logger.debug(
 				{
 					src: "core:documents:recall-embed",
@@ -226,6 +245,9 @@ export async function embedRecallQuery(
 		// report that as the fail-open null, not a garbage value.
 		return Array.isArray(vector) ? vector : null;
 	} catch (error) {
+		if (signal?.aborted) {
+			throw signal.reason ?? error;
+		}
 		logger.debug(
 			{
 				src: "core:documents:recall-embed",

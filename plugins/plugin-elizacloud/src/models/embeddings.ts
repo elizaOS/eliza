@@ -45,8 +45,22 @@ export function embeddingBackoffMs(attempt: number, retryAfterSec?: number): num
   return Math.round(base * (1 + Math.random() * 0.25));
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function extractRateLimitInfo(response: Response): {
@@ -114,6 +128,8 @@ export async function handleTextEmbedding(
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const { embeddingDimension } = getEmbeddingConfig(runtime);
+  const signal =
+    typeof params === "object" && params !== null ? params.signal : undefined;
 
   if (params === null) {
     logger.debug("Creating test embedding for initialization");
@@ -136,7 +152,7 @@ export async function handleTextEmbedding(
     throw new Error("Cannot generate embedding for empty text");
   }
 
-  const results = await handleBatchTextEmbedding(runtime, [text]);
+  const results = await handleBatchTextEmbedding(runtime, [text], signal);
   return results[0];
 }
 
@@ -149,7 +165,8 @@ export interface BatchEmbeddingResult {
 
 export async function handleBatchTextEmbedding(
   runtime: IAgentRuntime,
-  texts: string[]
+  texts: string[],
+  signal?: AbortSignal
 ): Promise<number[][]> {
   const { embeddingModelName, embeddingDimension } = getEmbeddingConfig(runtime);
   const client = createCloudApiClient(runtime, true);
@@ -206,6 +223,7 @@ export async function handleBatchTextEmbedding(
                 dimensions: embeddingDimension,
               },
               timeoutMs: EMBED_REQUEST_TIMEOUT_MS,
+              ...(signal ? { signal } : {}),
             }),
           { batch: batchTexts.length, attempt }
         );
@@ -232,7 +250,7 @@ export async function handleBatchTextEmbedding(
           );
           // Drain the body so the underlying connection can be reused.
           await resp.text().catch(() => undefined);
-          await sleep(delay);
+          await sleep(delay, signal);
           continue;
         }
         response = resp;

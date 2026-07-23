@@ -20,17 +20,26 @@ import {
   type Content,
   createMessageMemory,
   EventType,
+  emitInferenceTiming,
+  getInferenceTimer,
   getSwarmCoordinatorService,
+  INFERENCE_MARKS,
   INSUFFICIENT_CREDITS_REPLY,
+  InferenceTurnTimer,
   isRateLimitError,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
   ModelType,
+  markInference,
+  nextInferenceTurnId,
+  persistInferenceTimingSummary,
   type RolesWorldMetadata,
   type RouteRequestContext,
   recordOwnerGrant,
+  runWithInferenceTiming,
   runWithTrajectoryContext,
   stringToUuid,
+  timeInferenceSpan,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -2399,7 +2408,7 @@ function buildChatUsage(
 // generateChatResponse
 // ---------------------------------------------------------------------------
 
-export async function generateChatResponse(
+async function generateChatResponseWithTiming(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
   agentName: string,
@@ -2429,10 +2438,12 @@ export async function generateChatResponse(
       once: true,
     });
   }
+  let closeResponseFinalization: (() => void) | undefined;
   try {
     const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
+    let firstVisibleReplyMarked = false;
     let forcedWalletExecutionText = false;
     let blockedUnexecutedActionPayload = false;
     let activeStreamSource: StreamSource = "unset";
@@ -2464,8 +2475,14 @@ export async function generateChatResponse(
     // `thinking` is the opening phase: the turn started, the model is being
     // prompted, but no visible text has streamed yet.
     emitStatus({ kind: "thinking" });
+    const markFirstVisibleReply = (): void => {
+      if (firstVisibleReplyMarked) return;
+      firstVisibleReplyMarked = true;
+      markInference(INFERENCE_MARKS.firstVisibleReply);
+    };
     const emitChunk = (chunk: string): void => {
       if (!chunk) return;
+      markFirstVisibleReply();
       responseText += chunk;
       opts?.onChunk?.(chunk);
     };
@@ -2475,6 +2492,7 @@ export async function generateChatResponse(
       // re-emitting the same fullText forces clients to re-render an identical
       // bubble (and on-the-wire bytes for nothing).
       if (text === responseText) return;
+      markFirstVisibleReply();
       responseText = text;
       opts?.onSnapshot?.(text);
     };
@@ -2809,61 +2827,73 @@ export async function generateChatResponse(
                 runtime,
                 languageAugmentedMessage,
               );
-            const generationMessage =
-              await maybeAugmentChatMessageWithDocuments(
-                runtime,
-                walletAugmentedMessage,
-              );
-            result = await runtime.messageService?.handleMessage(
-              runtime,
-              generationMessage,
-              async (content: Content) => {
-                if (generationTimedOut || opts?.isAborted?.()) {
-                  throw createChatGenerationTimeoutError(generationTimeoutMs);
-                }
-
-                const chunk = extractCompatTextContent(content);
-                const visibleChunk = isInternalStructuredStreamText(chunk)
-                  ? ""
-                  : chunk;
-                recordActionCallback(
-                  extractCallbackActionTag(content),
-                  Boolean(visibleChunk),
-                );
-                if (!visibleChunk) return [];
-                if (!claimStreamSource("callback")) return [];
-                applyCallbackTextUpdate(content, visibleChunk);
-                return [];
-              },
-              {
-                timeoutDuration: generationTimeoutMs,
-                abortSignal: generationAbortController.signal,
-                keepExistingResponses: true,
-                onStreamChunk: opts?.onChunk
-                  ? async (chunk: string) => {
-                      if (generationTimedOut || opts?.isAborted?.()) {
-                        throw createChatGenerationTimeoutError(
-                          generationTimeoutMs,
-                        );
-                      }
-                      if (!chunk) return;
-                      if (isInternalStructuredStreamText(chunk)) {
-                        // A native planner/tool step, not visible reply text:
-                        // fork it onto the working indicator + inline tool row
-                        // instead of leaking JSON into the bubble.
-                        const events =
-                          chatEventsFromStructuredStreamText(chunk);
-                        if (events?.status) emitStatus(events.status);
-                        if (events?.toolEvent) {
-                          opts?.onToolEvent?.(events.toolEvent);
-                        }
-                        return;
-                      }
-                      if (!claimStreamSource("onStreamChunk")) return;
-                      appendIncomingText(chunk);
+            const generationMessage = await timeInferenceSpan(
+              "chat:document-augmentation",
+              () =>
+                maybeAugmentChatMessageWithDocuments(
+                  runtime,
+                  walletAugmentedMessage,
+                  { signal: generationAbortController.signal },
+                ),
+              { phase: "pre-model" },
+            );
+            result = await timeInferenceSpan(
+              "chat:message-service",
+              async () =>
+                runtime.messageService?.handleMessage(
+                  runtime,
+                  generationMessage,
+                  async (content: Content) => {
+                    if (generationTimedOut || opts?.isAborted?.()) {
+                      throw createChatGenerationTimeoutError(
+                        generationTimeoutMs,
+                      );
                     }
-                  : undefined,
-              },
+
+                    const chunk = extractCompatTextContent(content);
+                    const visibleChunk = isInternalStructuredStreamText(chunk)
+                      ? ""
+                      : chunk;
+                    recordActionCallback(
+                      extractCallbackActionTag(content),
+                      Boolean(visibleChunk),
+                    );
+                    if (!visibleChunk) return [];
+                    if (!claimStreamSource("callback")) return [];
+                    applyCallbackTextUpdate(content, visibleChunk);
+                    return [];
+                  },
+                  {
+                    timeoutDuration: generationTimeoutMs,
+                    abortSignal: generationAbortController.signal,
+                    keepExistingResponses: true,
+                    onStreamChunk: opts?.onChunk
+                      ? async (chunk: string) => {
+                          if (generationTimedOut || opts?.isAborted?.()) {
+                            throw createChatGenerationTimeoutError(
+                              generationTimeoutMs,
+                            );
+                          }
+                          if (!chunk) return;
+                          if (isInternalStructuredStreamText(chunk)) {
+                            // A native planner/tool step, not visible reply text:
+                            // fork it onto the working indicator + inline tool row
+                            // instead of leaking JSON into the bubble.
+                            const events =
+                              chatEventsFromStructuredStreamText(chunk);
+                            if (events?.status) emitStatus(events.status);
+                            if (events?.toolEvent) {
+                              opts?.onToolEvent?.(events.toolEvent);
+                            }
+                            return;
+                          }
+                          if (!claimStreamSource("onStreamChunk")) return;
+                          appendIncomingText(chunk);
+                        }
+                      : undefined,
+                  },
+                ),
+              { phase: "message" },
             );
 
             // Ensure MESSAGE_SENT hooks run for API chat flows.
@@ -3063,6 +3093,12 @@ export async function generateChatResponse(
       ),
     );
     capturedUsage = generationCapture.usage;
+    closeResponseFinalization = getInferenceTimer()?.openSpan(
+      "chat:response-finalization",
+      {
+        phase: "post-model",
+      },
+    );
 
     const responseMessageText = getLatestVisibleResponseMessageText(
       result?.responseMessages,
@@ -3226,7 +3262,60 @@ export async function generateChatResponse(
         "Failed to persist trajectory grouping metadata",
       );
     }
+    closeResponseFinalization?.();
   }
+}
+
+export async function generateChatResponse(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+  agentName: string,
+  opts?: ChatGenerateOptions,
+): Promise<ChatGenerationResult> {
+  const existingTimer = getInferenceTimer();
+  if (existingTimer) {
+    const result = await generateChatResponseWithTiming(
+      runtime,
+      message,
+      agentName,
+      opts,
+    );
+    markInference(INFERENCE_MARKS.responseFinalized);
+    return result;
+  }
+
+  const timer = new InferenceTurnTimer({
+    turnId: nextInferenceTurnId(),
+    label: "chat-request",
+    roomId: message.roomId,
+  });
+  return runWithInferenceTiming(timer, async () => {
+    try {
+      const result = await generateChatResponseWithTiming(
+        runtime,
+        message,
+        agentName,
+        opts,
+      );
+      markInference(INFERENCE_MARKS.responseFinalized);
+      return result;
+    } finally {
+      const summary = emitInferenceTiming(timer);
+      if (summary) {
+        void persistInferenceTimingSummary(runtime, message, summary).catch(
+          (error) => {
+            // error-policy:J7 latency persistence must not turn a completed
+            // chat response into a failed request.
+            runtime.reportError(
+              "ChatRoutes.persistInferenceTimingSummary",
+              error,
+              { messageId: message.id, roomId: message.roomId },
+            );
+          },
+        );
+      }
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -5467,6 +5467,7 @@ export class AgentRuntime implements IAgentRuntime {
 		recordInferenceSpan(`model:${modelType}`, elapsedTime, {
 			modelKey,
 			provider: resolvedProvider,
+			outcome: "success",
 		});
 		if (modelType !== ModelType.TEXT_EMBEDDING) {
 			setInferenceModelProvider(resolvedProvider);
@@ -5516,6 +5517,7 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
+		const useModelStartedAt = Date.now();
 		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
 			? captureModelLookupCaller()
 			: undefined;
@@ -5694,6 +5696,20 @@ export class AgentRuntime implements IAgentRuntime {
 			const resolvedModelKey = resolvedModel.modelKey;
 			const handler = resolvedModel.handler;
 			providerAttemptStartedOutput = false;
+			const attemptMeta = {
+				modelKey: String(resolvedModelKey),
+				provider: resolvedModel.provider ?? "unknown",
+				attempt: resolvedIndex + 1,
+			};
+			const preprocessingStartedAt = Date.now();
+			let handlerStartedAt: number | null = null;
+			if (resolvedIndex === 0) {
+				recordInferenceSpan(
+					`model-routing:${String(modelType)}`,
+					preprocessingStartedAt - useModelStartedAt,
+					attemptMeta,
+				);
+			}
 
 			try {
 				const binaryModels: string[] = [
@@ -5844,6 +5860,16 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 					if (streamedText === "" && safeChunk.length > 0) {
 						markInference(INFERENCE_MARKS.firstToken);
+						const firstTokenAt =
+							typeof performance !== "undefined" &&
+							typeof performance.now === "function"
+								? performance.now()
+								: Date.now();
+						recordInferenceSpan(
+							`model-ttft:${String(modelType)}`,
+							firstTokenAt - startTime,
+							attemptMeta,
+						);
 					}
 					streamedText += safeChunk;
 					// Per-token hook dispatch: skip the whole ceremony (trajectory
@@ -6153,6 +6179,12 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof performance.now === "function"
 						? performance.now()
 						: Date.now();
+				recordInferenceSpan(
+					`model-preprocess:${String(modelType)}`,
+					Date.now() - preprocessingStartedAt,
+					attemptMeta,
+				);
+				handlerStartedAt = Date.now();
 				const rawResponse = await handler(
 					this,
 					modelParams as Record<string, JsonValue | object>,
@@ -6252,6 +6284,7 @@ export class AgentRuntime implements IAgentRuntime {
 						typeof performance.now === "function"
 							? performance.now()
 							: Date.now()) - startTime;
+					const postprocessingStartedAt = Date.now();
 
 					await this.invokePipelineHooks(
 						"post_model",
@@ -6317,6 +6350,11 @@ export class AgentRuntime implements IAgentRuntime {
 							elapsedTime,
 						});
 					}
+					recordInferenceSpan(
+						`model-postprocess:${String(modelType)}`,
+						Date.now() - postprocessingStartedAt,
+						{ ...attemptMeta, streaming: true },
+					);
 
 					return resultRef.current as R;
 				}
@@ -6350,6 +6388,7 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof performance.now === "function"
 						? performance.now()
 						: Date.now()) - startTime;
+				const postprocessingStartedAt = Date.now();
 
 				await this.invokePipelineHooks(
 					"post_model",
@@ -6414,8 +6453,26 @@ export class AgentRuntime implements IAgentRuntime {
 						elapsedTime,
 					});
 				}
+				recordInferenceSpan(
+					`model-postprocess:${String(modelType)}`,
+					Date.now() - postprocessingStartedAt,
+					{ ...attemptMeta, streaming: handlerDeliveredStream },
+				);
 				return resultRef.current as R;
 			} catch (error) {
+				if (handlerStartedAt === null) {
+					recordInferenceSpan(
+						`model-preprocess:${String(modelType)}`,
+						Date.now() - preprocessingStartedAt,
+						{ ...attemptMeta, outcome: "error" },
+					);
+				} else {
+					recordInferenceSpan(
+						`model:${String(modelType)}`,
+						Date.now() - handlerStartedAt,
+						{ ...attemptMeta, outcome: "error" },
+					);
+				}
 				lastModelError = error;
 				const nextModel = resolvedModels[resolvedIndex + 1];
 				if (
