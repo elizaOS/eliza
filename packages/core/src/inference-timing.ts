@@ -24,6 +24,7 @@
  */
 
 import { logger } from "./logger";
+import { readEnv } from "./utils/read-env";
 
 // ---------------------------------------------------------------------------
 // Span / mark shapes
@@ -505,6 +506,36 @@ export function formatInferenceTimingSummary(s: InferenceTurnSummary): string {
 }
 
 /**
+ * Post-reply tail watchdog. The "tail" is the wall-clock time between the
+ * user-visible reply mark and turn close — work (billing, persistence,
+ * evaluators) the user never sees but that holds the turn open. When the tail
+ * exceeds `ELIZA_TURN_TAIL_BUDGET_MS` (default 500), surface it as a WARN so
+ * the class of "reply ready but the turn is still grinding" regressions is
+ * visible without opting into full timing logs. Observability only — never
+ * throws, never affects the turn. Set the budget to `0` (or negative) to
+ * disable.
+ */
+const DEFAULT_TAIL_BUDGET_MS = 500;
+
+function warnOnPostReplyTail(summary: InferenceTurnSummary): void {
+	if (summary.totalMs === null || summary.timeToReplyMs === null) return;
+	const rawBudget = readEnv("ELIZA_TURN_TAIL_BUDGET_MS");
+	const budgetMs =
+		rawBudget === undefined ? DEFAULT_TAIL_BUDGET_MS : Number(rawBudget);
+	if (!Number.isFinite(budgetMs) || budgetMs <= 0) return;
+	const tailMs = summary.totalMs - summary.timeToReplyMs;
+	if (tailMs <= budgetMs) return;
+	const replyAtMs = summary.timeToReplyMs;
+	const tailSpans = summary.spans
+		.filter((s) => s.startMs > replyAtMs)
+		.map((s) => ({ name: s.name, durationMs: s.durationMs }));
+	logger.warn(
+		{ turnId: summary.turnId, tailMs, tailSpans },
+		`[InferenceTiming] ${summary.label} post-reply tail ${tailMs}ms exceeds budget ${budgetMs}ms (reply at ${replyAtMs}ms, turn closed at ${summary.totalMs}ms)`,
+	);
+}
+
+/**
  * Close the timer, fold it into the process registry, and emit the breakdown.
  * Call once at the end of a turn. No-op-safe for an undefined timer.
  */
@@ -515,6 +546,7 @@ export function emitInferenceTiming(
 	try {
 		const summary = timer.close();
 		inferenceTimingRegistry.record(summary);
+		warnOnPostReplyTail(summary);
 		const line = formatInferenceTimingSummary(summary);
 		if (timingLogEnabled()) {
 			logger.info({ inferenceTiming: summary }, line);
