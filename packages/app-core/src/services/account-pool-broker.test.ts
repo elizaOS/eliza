@@ -64,6 +64,54 @@ describe("AccountPoolBroker TTL", () => {
 });
 
 describe("AccountPoolBroker observability", () => {
+  it("keeps empty snapshot defaults explicit and leases without exclusions", async () => {
+    const pool = {
+      select: vi.fn(async () => account()),
+      recordCall: vi.fn(async () => {}),
+      markHealthy: vi.fn(async () => {}),
+      markRateLimited: vi.fn(async () => {}),
+      markNeedsReauth: vi.fn(async () => {}),
+      list: vi.fn(() => [account()]),
+    } as unknown as AccountPool;
+    const broker = new AccountPoolBroker({
+      pool,
+      now: () => 10_000,
+      idGenerator: () => "lease-primary",
+      tokenResolver: async () => ({
+        accessToken: "access",
+        accessExpiresAt: 20_000,
+      }),
+    });
+
+    expect(broker.snapshot()).toMatchObject({
+      accounts: {
+        "anthropic-subscription:primary": {
+          activeLeaseCount: 0,
+          lastLease: null,
+          lastLeaseAt: null,
+          lastReportedStatus: null,
+        },
+      },
+      providers: {
+        "anthropic-subscription": {
+          lastSelection: null,
+          recentFailovers: [],
+        },
+      },
+    });
+
+    await expect(
+      broker.lease({
+        providerId: "anthropic-subscription",
+        sessionKey: "session",
+      }),
+    ).resolves.toMatchObject({ leaseId: "lease-primary" });
+    expect(
+      broker.snapshot().accounts["anthropic-subscription:primary"]
+        ?.activeLeaseCount,
+    ).toBe(1);
+  });
+
   it("attributes leases with hashed session keys and updates model from reports", async () => {
     let now = 10_000;
     const pool = {
