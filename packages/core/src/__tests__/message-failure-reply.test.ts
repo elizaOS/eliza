@@ -87,10 +87,7 @@ describe("DefaultMessageService structured failure replies", () => {
 	});
 
 	it.each([
-		[
-			"text",
-			'{"shouldRespond":true,"text":"sorry, that failed on my side"}',
-		],
+		["text", '{"shouldRespond":true,"text":"sorry, that failed on my side"}'],
 		[
 			"replyText",
 			'{"shouldRespond":true,"replyText":"sorry, that failed on my side"}',
