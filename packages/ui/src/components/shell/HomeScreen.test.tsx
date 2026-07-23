@@ -185,6 +185,7 @@ describe("HomeScreen", () => {
     expect(wrapper?.className).not.toContain("max-h-[40%]");
     expect(wrapper?.className).toContain("mt-4");
     expect(wrapper?.className).toContain("mb-3");
+    expect(wrapper?.className).toContain("max-sm:-mx-2");
     const column = screen.getByTestId("home-content-column");
     expect(column.className).toContain("h-full");
     expect(column.className).not.toContain("min-h-full");

@@ -165,7 +165,10 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
             compact, and expansion grows the list in place, pushing the app
             region down instead of hiding it. */}
         <div
-          className={cn(enterClass, "mt-4 mb-3 flex flex-none flex-col")}
+          className={cn(
+            enterClass,
+            "mt-4 mb-3 flex flex-none flex-col max-sm:-mx-2",
+          )}
           style={{ animationDelay: "90ms" }}
         >
           <NotificationsHomeCenter pageSurfaceRef={columnScrollRef} />
