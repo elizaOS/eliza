@@ -78,20 +78,23 @@ describe("HeadscaleClient upstream errors", () => {
 /**
  * Blue/green upgrade regression: when the preserved green node still holds the
  * base hostname, Headscale renames the freshly registered blue node to
- * `<name>-<random>`. An exact-name poll never finds it and the upgrade times
- * out despite a healthy registration. getNodeByNameOrSuffixed tolerates the
- * collision rename: exact match wins, otherwise the newest suffixed node,
- * optionally excluding a known node id (the preserved green node).
+ * `<name>-<8 lowercase alphanumerics>` (observed: eliza-00e6292c-e55-cnpx9uop).
+ * An exact-name poll never finds it and the upgrade times out despite a healthy
+ * registration. getNodeByNameOrSuffixed tolerates the collision rename: exact
+ * match wins; otherwise the newest node matching the exact rename shape, gated
+ * on createdAfter (renamed nodes keep their suffix forever, so old suffixed
+ * nodes must never be adopted), optionally excluding a known node id (the
+ * preserved green node).
  */
 describe("getNodeByNameOrSuffixed (Headscale collision-rename tolerance)", () => {
-  const makeNode = (id: string, name: string): Record<string, unknown> => ({
+  const makeNode = (id: string, name: string, createdAt?: string): Record<string, unknown> => ({
     id,
     name,
     user: { name: "1" },
     ipAddresses: ["100.64.0.1"],
     online: true,
     lastSeen: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
+    createdAt: createdAt ?? new Date().toISOString(),
   });
 
   const mockNodes = (nodes: Record<string, unknown>[]) => {
@@ -124,9 +127,9 @@ describe("getNodeByNameOrSuffixed (Headscale collision-rename tolerance)", () =>
 
   it("prefers the exact hostname match over suffixed candidates", async () => {
     mockNodes([
-      makeNode("7", "eliza-abc123-k9x2"),
+      makeNode("7", "eliza-abc123-k9x2m4p1"),
       makeNode("3", "eliza-abc123"),
-      makeNode("9", "eliza-abc123-m4p1"),
+      makeNode("9", "eliza-abc123-m4p1q7w2"),
     ]);
     const node = await client().getNodeByNameOrSuffixed("eliza-abc123");
     expect(node?.id).toBe("3");
@@ -134,32 +137,45 @@ describe("getNodeByNameOrSuffixed (Headscale collision-rename tolerance)", () =>
   });
 
   it("finds the collision-renamed suffixed node when no exact match exists", async () => {
-    mockNodes([makeNode("2", "eliza-other"), makeNode("5", "eliza-abc123-k9x2")]);
+    mockNodes([makeNode("2", "eliza-other"), makeNode("5", "eliza-abc123-k9x2m4p1")]);
     const node = await client().getNodeByNameOrSuffixed("eliza-abc123");
     expect(node?.id).toBe("5");
-    expect(node?.name).toBe("eliza-abc123-k9x2");
+    expect(node?.name).toBe("eliza-abc123-k9x2m4p1");
+  });
+
+  it("matches the rename shape observed in production", async () => {
+    mockNodes([makeNode("11", "eliza-00e6292c-e55-cnpx9uop")]);
+    const node = await client().getNodeByNameOrSuffixed("eliza-00e6292c-e55");
+    expect(node?.id).toBe("11");
   });
 
   it("respects excludeNodeId so the preserved green node is never returned", async () => {
     mockNodes([
       makeNode("3", "eliza-abc123"), // preserved green node holding the base name
-      makeNode("8", "eliza-abc123-k9x2"), // fresh blue registration
+      makeNode("8", "eliza-abc123-k9x2m4p1"), // fresh blue registration
     ]);
     const node = await client().getNodeByNameOrSuffixed("eliza-abc123", {
       excludeNodeId: "3",
     });
     expect(node?.id).toBe("8");
-    expect(node?.name).toBe("eliza-abc123-k9x2");
+    expect(node?.name).toBe("eliza-abc123-k9x2m4p1");
   });
 
   it("picks the newest suffixed registration when several exist", async () => {
     mockNodes([
-      makeNode("4", "eliza-abc123-old1"),
-      makeNode("9", "eliza-abc123-new7"),
-      makeNode("6", "eliza-abc123-mid3"),
+      makeNode("4", "eliza-abc123-old1old1"),
+      makeNode("9", "eliza-abc123-new7new7"),
+      makeNode("6", "eliza-abc123-mid3mid3"),
     ]);
     const node = await client().getNodeByNameOrSuffixed("eliza-abc123");
     expect(node?.id).toBe("9");
+  });
+
+  it("orders candidate ids numerically, not lexicographically", async () => {
+    // Headscale ids are numeric strings; string compare ranks "9" > "10".
+    mockNodes([makeNode("9", "eliza-abc123-old1old1"), makeNode("10", "eliza-abc123-new7new7")]);
+    const node = await client().getNodeByNameOrSuffixed("eliza-abc123");
+    expect(node?.id).toBe("10");
   });
 
   it("returns null when nothing matches the base name or its suffixes", async () => {
@@ -172,5 +188,56 @@ describe("getNodeByNameOrSuffixed (Headscale collision-rename tolerance)", () =>
     mockNodes([makeNode("1", "eliza-abc1234")]);
     const node = await client().getNodeByNameOrSuffixed("eliza-abc123");
     expect(node).toBeNull();
+  });
+
+  it("rejects suffixes that are not exactly 8 lowercase alphanumerics", async () => {
+    // A sibling agent's hostname is `<name>-<12-char uuid prefix>` with a
+    // hyphen at index 8 — it shares the `<name>-` prefix but is NOT a
+    // collision rename of `name` and must never be adopted as one.
+    mockNodes([
+      makeNode("1", "eliza-00e6292c-e55"), // sibling: 12-char uuid prefix, hyphen at index 8
+      makeNode("2", "eliza-abcdefg"), // 7 chars: too short
+      makeNode("3", "eliza-abcdefghi"), // 9 chars: too long
+      makeNode("4", "eliza-abcd-efgh"), // hyphen inside the suffix
+      makeNode("5", "eliza-ABCDEFGH"), // uppercase: not DNS-safe rename output
+    ]);
+    const node = await client().getNodeByNameOrSuffixed("eliza");
+    expect(node).toBeNull();
+  });
+
+  it("ignores suffixed nodes created before createdAfter (stale green/orphan)", async () => {
+    // The previous cycle's green node and orphans from failed upgrades keep
+    // their suffixed names forever; only a rename minted during THIS provision
+    // may be adopted.
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    mockNodes([makeNode("6", "eliza-abc123-k9x2m4p1", past)]);
+    const node = await client().getNodeByNameOrSuffixed("eliza-abc123", {
+      createdAfter: new Date(),
+    });
+    expect(node).toBeNull();
+  });
+
+  it("adopts a suffixed node created at/after createdAfter", async () => {
+    const pollStart = new Date(Date.now() - 5_000);
+    mockNodes([
+      makeNode("6", "eliza-abc123-old1old1", new Date(Date.now() - 60 * 60 * 1000).toISOString()),
+      makeNode("7", "eliza-abc123-k9x2m4p1", new Date().toISOString()),
+    ]);
+    const node = await client().getNodeByNameOrSuffixed("eliza-abc123", {
+      createdAfter: pollStart,
+    });
+    expect(node?.id).toBe("7");
+  });
+
+  it("keeps exact-name matches exempt from the createdAfter gate", async () => {
+    // The exact hostname is only ever held by the node this poll is waiting
+    // for (or the excluded green node) — createdAt gating applies to suffixed
+    // candidates only.
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    mockNodes([makeNode("3", "eliza-abc123", past)]);
+    const node = await client().getNodeByNameOrSuffixed("eliza-abc123", {
+      createdAfter: new Date(),
+    });
+    expect(node?.id).toBe("3");
   });
 });
