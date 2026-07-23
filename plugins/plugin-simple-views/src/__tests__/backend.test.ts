@@ -333,82 +333,145 @@ describe("SimpleViewsStore", () => {
     await restarted.stop();
   });
 
-  it("migrates legacy state once without deleting it or overwriting the scoped restart", async () => {
+  it("ignores unscoped workbench state while concurrent agents persist independently", async () => {
     const stateDir = await temporaryStateDirectory();
-    const legacyPath = simpleViewsStateFilePath(stateDir);
-    const scopedPath = simpleViewsStateFilePath(
+    const unscopedPath = simpleViewsStateFilePath(stateDir);
+    const firstScopedPath = simpleViewsStateFilePath(
       stateDir,
       testAgentId("agent-a"),
     );
-    const legacy = await serviceFor(legacyPath);
-    await legacy.createNote({ title: "Legacy note", body: "Keep this" });
-    await legacy.createCalendarEvent({
-      title: "Legacy event",
-      date: "2026-07-22",
-      time: "15:00",
+    const secondScopedPath = simpleViewsStateFilePath(
+      stateDir,
+      testAgentId("agent-b"),
+    );
+    const unscoped = await serviceFor(unscopedPath);
+    await unscoped.createNote({
+      title: "Local workbench note",
+      body: "Must not cross agent boundaries",
     });
-    await legacy.selectDate("2026-07-22");
-    const legacySnapshot = legacy.snapshot();
-    await legacy.stop();
-    const legacyBytes = await fs.readFile(legacyPath, "utf8");
+    await unscoped.stop();
+    const unscopedBytes = await fs.readFile(unscopedPath, "utf8");
 
     const first = new SimpleViewsService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
-    const duplicate = new SimpleViewsService(
-      await defaultStoreRuntime("agent-a"),
+    const second = new SimpleViewsService(
+      await defaultStoreRuntime("agent-b"),
       { stateDir },
     );
-    await Promise.all([first.initialize(), duplicate.initialize()]);
+    await Promise.all([first.initialize(), second.initialize()]);
 
-    expect(first.snapshot()).toEqual(legacySnapshot);
-    expect(duplicate.snapshot()).toEqual(legacySnapshot);
-    expect(await fs.readFile(scopedPath, "utf8")).toBe(legacyBytes);
-    expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
-
-    await first.createNote({ title: "Scoped note" });
-    await first.stop();
-    await duplicate.stop();
-
-    const restarted = new SimpleViewsService(
-      await defaultStoreRuntime("agent-a"),
-      { stateDir },
-    );
-    await restarted.initialize();
-    expect(restarted.listNotes().map((note) => note.title)).toEqual([
-      "Scoped note",
-      "Legacy note",
+    expect(first.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    expect(second.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    await Promise.all([
+      first.createNote({ title: "First agent note" }),
+      second.createCalendarEvent({
+        title: "Second agent event",
+        date: "2026-07-22",
+        time: "15:00",
+      }),
     ]);
-    expect(restarted.snapshot()).toMatchObject({ revision: 4 });
-    expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
-    await restarted.stop();
+    await first.stop();
+    await second.stop();
+
+    const restartedFirst = new SimpleViewsService(
+      await defaultStoreRuntime("agent-a"),
+      { stateDir },
+    );
+    const restartedSecond = new SimpleViewsService(
+      await defaultStoreRuntime("agent-b"),
+      { stateDir },
+    );
+    await Promise.all([
+      restartedFirst.initialize(),
+      restartedSecond.initialize(),
+    ]);
+    expect(restartedFirst.listNotes().map((note) => note.title)).toEqual([
+      "First agent note",
+    ]);
+    expect(
+      restartedSecond.listCalendarEvents().map((event) => event.title),
+    ).toEqual(["Second agent event"]);
+    expect(restartedFirst.listCalendarEvents()).toEqual([]);
+    expect(restartedSecond.listNotes()).toEqual([]);
+    expect(await fs.readFile(unscopedPath, "utf8")).toBe(unscopedBytes);
+    expect(
+      JSON.parse(await fs.readFile(firstScopedPath, "utf8")),
+    ).toMatchObject({
+      revision: 1,
+      notes: [{ title: "First agent note" }],
+      events: [],
+    });
+    expect(
+      JSON.parse(await fs.readFile(secondScopedPath, "utf8")),
+    ).toMatchObject({
+      revision: 1,
+      notes: [],
+      events: [{ title: "Second agent event" }],
+    });
+    await restartedFirst.stop();
+    await restartedSecond.stop();
   });
 
-  it("rejects malformed legacy state instead of migrating a healthy-looking empty document", async () => {
+  it("retries a failed first boot without residue or cross-agent state", async () => {
     const stateDir = await temporaryStateDirectory();
-    const legacyPath = simpleViewsStateFilePath(stateDir);
-    const scopedPath = simpleViewsStateFilePath(
+    const firstScopedPath = simpleViewsStateFilePath(
       stateDir,
       testAgentId("agent-a"),
     );
-    await fs.mkdir(path.dirname(legacyPath), { recursive: true });
-    await fs.writeFile(
-      legacyPath,
-      JSON.stringify({ schemaVersion: 1, revision: "not-a-number" }),
-      "utf8",
-    );
-
-    const service = new SimpleViewsService(
+    const originalLink = fs.link.bind(fs);
+    const link = vi
+      .spyOn(fs, "link")
+      .mockImplementation(async (source, target) => {
+        if (target === firstScopedPath) {
+          link.mockImplementation(originalLink);
+          throw Object.assign(new Error("simulated interrupted install"), {
+            code: "EIO",
+          });
+        }
+        await originalLink(source, target);
+      });
+    const failed = new SimpleViewsService(
       await defaultStoreRuntime("agent-a"),
       { stateDir },
     );
-    await expect(service.initialize()).rejects.toMatchObject({
-      code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+    const isolated = new SimpleViewsService(
+      await defaultStoreRuntime("agent-b"),
+      { stateDir },
+    );
+
+    const [failedResult, isolatedResult] = await Promise.allSettled([
+      failed.initialize(),
+      isolated.initialize(),
+    ]);
+    expect(failedResult).toMatchObject({
+      status: "rejected",
+      reason: { code: "SIMPLE_VIEWS_STORE_WRITE_FAILED" },
     });
-    await expect(fs.access(scopedPath)).rejects.toMatchObject({
+    expect(isolatedResult).toMatchObject({ status: "fulfilled" });
+    expect(isolated.snapshot()).toMatchObject({ revision: 0, notes: [] });
+    await expect(fs.access(firstScopedPath)).rejects.toMatchObject({
       code: "ENOENT",
     });
-    await service.stop();
+    expect(
+      (await fs.readdir(path.dirname(firstScopedPath))).filter((entry) =>
+        entry.endsWith(".tmp"),
+      ),
+    ).toEqual([]);
+
+    await failed.stop();
+    const retried = new SimpleViewsService(
+      await defaultStoreRuntime("agent-a"),
+      { stateDir },
+    );
+    await retried.initialize();
+    await retried.createNote({ title: "Recovered agent" });
+    expect(retried.listNotes().map((note) => note.title)).toEqual([
+      "Recovered agent",
+    ]);
+    expect(isolated.listNotes()).toEqual([]);
+    await retried.stop();
+    await isolated.stop();
   });
 
   it("surfaces corrupt persisted bytes as an error instead of healthy empty state", async () => {
