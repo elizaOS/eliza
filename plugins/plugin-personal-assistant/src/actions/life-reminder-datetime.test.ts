@@ -2176,3 +2176,128 @@ describe("recent-save retraction (#16941)", () => {
     expect(retractResult.data).toMatchObject({ retractedRecentSave: true });
   });
 });
+
+describe("sentence-scoped explicit confirmation (#16941)", () => {
+  it("treats a leading yes with a later negation clause as consent", async () => {
+    // Live failure: "yes lock it in! … not just friday morning" tripped the
+    // message-wide negation veto, so three confirmed creates all previewed
+    // and nothing persisted. The negation lives in a different sentence than
+    // the confirmation cue, so it must not cancel the yes.
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Book report milestones",
+          cadenceKind: "once",
+          dueInDays: 3,
+          timeOfDay: "09:00",
+          multiStep: true,
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "yes lock it in! and can it bug me before friday too so i actually read the chapters, not just friday morning.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "save the book report reminder plan",
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+  });
+
+  it("still refuses consent when the negation shares the sentence with the cue", async () => {
+    serviceState.createCalls.length = 0;
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Book report milestones",
+          cadenceKind: "once",
+          dueInDays: 3,
+          timeOfDay: "09:00",
+          multiStep: true,
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("hold off, don't save that plan yet"),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "book report reminder plan",
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+});
+
+describe("buildCadenceFromLlmParams (deadline exclusion + phrase slots, #16941)", () => {
+  const NOW2 = new Date("2026-07-20T12:00:00-06:00");
+  const DENVER2 = "America/Denver";
+
+  it("never turns the deadline clock into a work slot", () => {
+    // Live failure: "due thursday at 5pm" produced a 17:00 daily slot, so the
+    // saved plan scheduled a work session exactly at the due instant.
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW2,
+        timeZone: DENVER2,
+        intent:
+          "my seminar paper is due thursday at 5pm. remind me at 1pm and again late evening — no 8am/9am reminders",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 1290]);
+  });
+
+  it("maps owner phrase anchors (after dinner, after school) to slots", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW2,
+        timeZone: DENVER2,
+        intent:
+          "draft session at 1pm, citations after dinner, and a run after school",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 930, 1170]);
+  });
+
+  it("keeps phrase anchors under negation excluded", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW2,
+        timeZone: DENVER2,
+        intent: "remind me at 1pm and 3pm but not after dinner",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 900]);
+  });
+});

@@ -523,24 +523,55 @@ function resolveDeferredLifeDraftReuseMode(args: {
   return null;
 }
 
+const LIFE_CONFIRMATION_VETO_RE =
+  /\b(?:no|not|don t|do not|cancel|hold off|wait|later|change)\b/u;
+const LIFE_CONFIRMATION_CUE_RE =
+  /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/u;
+
+// Sentence-scoped on purpose: a message-wide negation veto turned "yes lock
+// it in! and can it bug me before friday too, not just friday morning" into
+// a non-confirmation, so three consecutive confirmed creates previewed and
+// nothing persisted (#16941 live). A sentence that carries its own negation
+// ("don't save that one") still never counts as consent.
 function isExplicitLifeCreateConfirmation(text: string): boolean {
-  const normalized = text
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/u);
+  for (const sentence of sentences) {
+    const normalized = sentence
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+    if (!normalized) {
+      continue;
+    }
+    if (LIFE_CONFIRMATION_VETO_RE.test(normalized)) {
+      continue;
+    }
+    if (LIFE_CONFIRMATION_CUE_RE.test(normalized)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// A confirmation is "bare" when stripping the yes-cues and politeness filler
+// leaves essentially nothing — "yes save it exactly like that." is bare,
+// "yes, save that plan. draft first, citations after dinner…" is not.
+const LIFE_CONFIRMATION_CUE_STRIP_RE =
+  /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/gu;
+const LIFE_CONFIRMATION_FILLER_STRIP_RE =
+  /\b(?:please|pls|thanks|thank you|now|just|exactly|like|that|this|it|the|one|plan|sounds|good|great|perfect|awesome)\b/gu;
+
+function isBareLifeCreateConfirmationMessage(text: string): boolean {
+  if (!isExplicitLifeCreateConfirmation(text)) {
+    return false;
+  }
+  const residue = text
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(LIFE_CONFIRMATION_CUE_STRIP_RE, " ")
+    .replace(LIFE_CONFIRMATION_FILLER_STRIP_RE, " ")
     .trim();
-  if (!normalized) {
-    return false;
-  }
-  if (
-    /\b(?:no|not|don t|do not|cancel|hold off|wait|later|change)\b/u.test(
-      normalized,
-    )
-  ) {
-    return false;
-  }
-  return /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/u.test(
-    normalized,
-  );
+  return residue.length <= 3;
 }
 
 function stringifyLifeDetailForPrompt(value: unknown): string | null {
@@ -1873,7 +1904,7 @@ const NEGATED_CLOCK_CUE_RE =
   /\b(?:no|not|don'?t|do\s+not|never|avoid|without|skip|drop|stop|instead\s+of|rather\s+than|none\s+of)\b(?!\s+forget\b)/i;
 const CLOCK_CLAUSE_BOUNDARY_RE = /[.;!?\n—–]|\bbut\b/gi;
 
-function clockTokenIsNegated(intent: string, tokenStart: number): boolean {
+function clockClauseStart(intent: string, tokenStart: number): number {
   let clauseStart = 0;
   for (const boundary of intent.matchAll(CLOCK_CLAUSE_BOUNDARY_RE)) {
     if (boundary.index >= tokenStart) {
@@ -1881,11 +1912,40 @@ function clockTokenIsNegated(intent: string, tokenStart: number): boolean {
     }
     clauseStart = boundary.index + boundary[0].length;
   }
-  return NEGATED_CLOCK_CUE_RE.test(intent.slice(clauseStart, tokenStart));
+  return clauseStart;
 }
 
+function clockTokenIsNegated(intent: string, tokenStart: number): boolean {
+  return NEGATED_CLOCK_CUE_RE.test(
+    intent.slice(clockClauseStart(intent, tokenStart), tokenStart),
+  );
+}
+
+// "due thursday at 5pm" names the DEADLINE, not a work slot — storing it as a
+// daily slot schedules the work session exactly at the due instant (#16941
+// live, night-owl: the saved plan's 17:00 slot coincided with the deadline).
+const DEADLINE_CLOCK_CONTEXT_RE =
+  /\b(?:due|deadline|submit(?:ted)?\s+by|turn(?:\s+it)?\s+in\s+by|hand(?:\s+it)?\s+in\s+by)\b[^.!?\n;]*$/i;
+
+function clockTokenIsDeadline(intent: string, tokenStart: number): boolean {
+  return DEADLINE_CLOCK_CONTEXT_RE.test(
+    intent.slice(clockClauseStart(intent, tokenStart), tokenStart),
+  );
+}
+
+// Owner-vocabulary day anchors that carry a concrete time but never match the
+// numeric clock pattern ("citations after dinner", "again late evening").
+// Conservative midpoints; negation/deadline scoping applies the same way.
+const PHRASE_SLOT_MINUTES: ReadonlyArray<[RegExp, number]> = [
+  [/\bafter\s+dinner\b/gi, 19 * 60 + 30],
+  [/\bafter\s+lunch\b/gi, 13 * 60 + 30],
+  [/\bafter\s+school\b/gi, 15 * 60 + 30],
+  [/\blate\s+(?:evening|night)\b/gi, 21 * 60 + 30],
+  [/\bbefore\s+bed(?:time)?\b/gi, 21 * 60 + 30],
+];
+
 function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
-  const tokens: string[] = [];
+  const tokens: Array<{ label: string; minuteOfDay: number }> = [];
   for (const match of intent.matchAll(
     /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|noon|midnight)\b/gi,
   )) {
@@ -1893,23 +1953,39 @@ function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
     if (typeof token !== "string" || token.length === 0) {
       continue;
     }
-    if (clockTokenIsNegated(intent, match.index)) {
+    if (
+      clockTokenIsNegated(intent, match.index) ||
+      clockTokenIsDeadline(intent, match.index)
+    ) {
       continue;
     }
-    tokens.push(token);
+    const minuteOfDay = parseClockToken(token);
+    if (minuteOfDay !== null) {
+      tokens.push({ label: token.trim(), minuteOfDay });
+    }
+  }
+  for (const [phraseRe, minuteOfDay] of PHRASE_SLOT_MINUTES) {
+    for (const match of intent.matchAll(phraseRe)) {
+      if (
+        clockTokenIsNegated(intent, match.index) ||
+        clockTokenIsDeadline(intent, match.index)
+      ) {
+        continue;
+      }
+      tokens.push({ label: match[0].trim().toLowerCase(), minuteOfDay });
+    }
   }
   const seen = new Set<number>();
   const slots: LifeOpsDailySlot[] = [];
   for (const [index, token] of tokens.entries()) {
-    const minuteOfDay = parseClockToken(token);
-    if (minuteOfDay === null || seen.has(minuteOfDay)) {
+    if (seen.has(token.minuteOfDay)) {
       continue;
     }
-    seen.add(minuteOfDay);
+    seen.add(token.minuteOfDay);
     slots.push({
       key: `clock-${index + 1}`,
-      label: token.trim(),
-      minuteOfDay,
+      label: token.label,
+      minuteOfDay: token.minuteOfDay,
       durationMinutes: 45,
     });
   }
@@ -2877,16 +2953,24 @@ export async function runLifeOperationHandler(
     deferredDraft != null
       ? (countTurnsSinceLatestDeferredLifeDraft(state) ?? 0) + 1
       : undefined;
+  // A bare yes skips the classifier; a yes that CARRIES content ("yes, save
+  // that plan. draft first, citations after dinner…") must still be
+  // classified, because confirm-mode reuses the parked draft verbatim and
+  // would drop the newly named specifics (#16941 live, night-owl: the saved
+  // plan kept the draft's slots and lost the after-dinner citations session).
+  // The classifier abstaining never cancels an explicit yes, though — that
+  // falls back to confirm instead of dropping consent.
   const deferredDraftFollowupMode = deferredDraft
-    ? explicitCreateConfirmation
+    ? explicitCreateConfirmation &&
+      isBareLifeCreateConfirmationMessage(currentText)
       ? "confirm"
-      : await extractDeferredLifeDraftFollowupWithLlm({
+      : ((await extractDeferredLifeDraftFollowupWithLlm({
           runtime,
           message,
           state,
           currentText,
           draft: deferredDraft,
-        })
+        })) ?? (explicitCreateConfirmation ? "confirm" : null))
     : null;
   const draftExpiryReason = deferredLifeDraftExpiryReason({
     draft: deferredDraft,
