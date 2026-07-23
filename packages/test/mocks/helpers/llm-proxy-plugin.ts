@@ -123,6 +123,16 @@ export interface DeterministicLlmProxyOptions {
   fixtureRegistry?: DeterministicLlmFixtureRegistry;
   priority?: number;
   resolve?: (call: LlmProxyCall) => LlmProxyResponse | null | undefined;
+  /**
+   * Opt-in model-callback streaming for real-runtime browser/device tests.
+   * The final model result is unchanged; its serialized form is also delivered
+   * through `onStreamChunk` at a deterministic cadence.
+   */
+  stream?: {
+    chunkSize: number;
+    intervalMs: number;
+    modelTypes?: ModelTypeName[];
+  };
 }
 
 const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE";
@@ -159,14 +169,27 @@ export function createDeterministicLlmProxyPlugin(
     const call = buildCall(modelType, params);
     const fixtureResolved = resolveFixtureCall(fixtureRegistry, call);
     if (fixtureResolved !== undefined) {
+      await streamDeterministicResponse(
+        params,
+        fixtureResolved,
+        options.stream,
+        modelType,
+      );
       return fixtureResolved;
     }
 
     const resolved = options.resolve?.(call);
     if (resolved !== null && resolved !== undefined) {
-      return options.strict
+      const normalized = options.strict
         ? normalizeAndValidateFixtureResponse(resolved, call, "resolve")
         : normalizeResolvedResponse(resolved);
+      await streamDeterministicResponse(
+        params,
+        normalized,
+        options.stream,
+        modelType,
+      );
+      return normalized;
     }
 
     if (options.strict) {
@@ -174,22 +197,50 @@ export function createDeterministicLlmProxyPlugin(
     }
 
     if (modelType === ModelType.RESPONSE_HANDLER) {
-      return normalizeResolvedResponse(
+      const normalized = normalizeResolvedResponse(
         createHandleResponse(call, options.failOnUnhandledAction ?? true),
       );
+      await streamDeterministicResponse(
+        params,
+        normalized,
+        options.stream,
+        modelType,
+      );
+      return normalized;
     }
 
     if (modelType === ModelType.ACTION_PLANNER) {
-      return normalizeResolvedResponse(
+      const normalized = normalizeResolvedResponse(
         createPlannerResponse(call, options.failOnUnhandledAction ?? true),
       );
+      await streamDeterministicResponse(
+        params,
+        normalized,
+        options.stream,
+        modelType,
+      );
+      return normalized;
     }
 
     if (params.responseSchema) {
-      return JSON.stringify(schemaFixture(params.responseSchema));
+      const normalized = JSON.stringify(schemaFixture(params.responseSchema));
+      await streamDeterministicResponse(
+        params,
+        normalized,
+        options.stream,
+        modelType,
+      );
+      return normalized;
     }
 
-    return `deterministic-test-response: ${call.latestUserText || modelType}`;
+    const normalized = `deterministic-test-response: ${call.latestUserText || modelType}`;
+    await streamDeterministicResponse(
+      params,
+      normalized,
+      options.stream,
+      modelType,
+    );
+    return normalized;
   }
 
   const models: NonNullable<Plugin["models"]> = {
@@ -208,10 +259,52 @@ export function createDeterministicLlmProxyPlugin(
       "High-priority deterministic LLM proxy for zero-cost end-to-end tests.",
     priority: options.priority ?? 1_000,
     models,
+    ...(options.stream
+      ? {
+          modelMetadata: Object.fromEntries(
+            TEXT_MODEL_TYPES.filter(
+              (modelType) =>
+                !options.stream?.modelTypes ||
+                options.stream.modelTypes.includes(modelType),
+            ).map((modelType) => [modelType, { streamable: true }]),
+          ),
+        }
+      : {}),
     llmFixtures: fixtureRegistry,
     assertFixturesConsumed: () => fixtureRegistry.assertConsumed(),
     getFixtureDiagnostics: () => fixtureRegistry.diagnostics(),
   };
+}
+
+async function streamDeterministicResponse(
+  params: GenerateTextParams,
+  response: string,
+  stream: DeterministicLlmProxyOptions["stream"],
+  modelType: ModelTypeName,
+): Promise<void> {
+  if (!stream || typeof params.onStreamChunk !== "function") return;
+  if (stream.modelTypes && !stream.modelTypes.includes(modelType)) return;
+  if (
+    !Number.isSafeInteger(stream.chunkSize) ||
+    stream.chunkSize <= 0 ||
+    !Number.isFinite(stream.intervalMs) ||
+    stream.intervalMs < 0
+  ) {
+    throw new Error(
+      "deterministic LLM stream requires a positive integer chunkSize and a non-negative intervalMs",
+    );
+  }
+
+  for (let offset = 0; offset < response.length; offset += stream.chunkSize) {
+    await params.onStreamChunk(
+      response.slice(offset, offset + stream.chunkSize),
+    );
+    if (offset + stream.chunkSize < response.length && stream.intervalMs > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, stream.intervalMs);
+      });
+    }
+  }
 }
 
 function buildCall(
