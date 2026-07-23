@@ -92,6 +92,19 @@ export const embeddingsPlugin: Plugin = {
       );
     }
     logResolvedConfig(runtime);
+
+    // Warm the endpoint (TLS handshake + provider-side connection routing) off
+    // the hot path. Embedding TTFB is measured at ~1.7s cold vs ~0.25s warm, so
+    // the first user turn would otherwise pay the full cold penalty in its
+    // composeState. Fire-and-forget on a real (non-probe) input; only run when a
+    // base URL is present so it cannot throw the boot path.
+    if (getEmbeddingBaseURL(runtime)) {
+      void handleTextEmbedding(runtime, "warmup")
+        .then(() => logger.debug("[Embeddings] Endpoint warm"))
+        // error-policy:J6 boot warm-up is best-effort; a cold or unreachable
+        // endpoint surfaces on the first real call through the normal throw.
+        .catch(() => undefined);
+    }
   },
 
   // ONLY the embedding slots are registered — this plugin is embedding-only.

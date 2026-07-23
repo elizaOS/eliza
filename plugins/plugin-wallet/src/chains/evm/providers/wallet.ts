@@ -2,14 +2,13 @@
  * EVM wallet: `WalletProvider` wraps a viem account across the agent's
  * configured chains, resolving RPC transport per chain (managed/Eliza-Cloud
  * RPC with auto-fallback to the chain's default RPC on auth failure, or a
- * direct custom/default URL) and bounding balance reads so a slow endpoint
- * can never stall a reply turn. `LazyTeeWalletProvider` defers key
+ * direct custom/default URL). `LazyTeeWalletProvider` defers key
  * derivation to the TEE service and proxies signing calls once ready.
  * `initWalletProvider` is the entry point: it resolves TEE vs local-key mode
  * and generates+persists a new `EVM_PRIVATE_KEY` if none is configured.
  * `evmWalletProvider` is the planner-context provider that surfaces the
- * address and per-chain balances, preferring `EVMService`'s cache and
- * falling back to a direct fetch.
+ * address and per-chain balances exclusively from `EVMService`'s
+ * background-refreshed cache so RPC latency never enters prompt composition.
  */
 import * as path from "node:path";
 import {
@@ -71,40 +70,8 @@ function headersWithoutAuthorization(headersInit?: HeadersInit): Headers {
   return headers;
 }
 
-/**
- * Per-turn safety bound for wallet balance RPC calls. `evmWalletProvider.get()`
- * runs inside `composeState` on every message and is awaited (via `Promise.all`)
- * before the agent can produce a reply, so an unbounded RPC against a slow or
- * unreachable endpoint would block the WHOLE turn up to composeState's 30s
- * provider cap — the dedicated-agent "28s per reply" symptom. Bounding each read
- * means a wallet-enabled agent never pays more than this per chain; on timeout we
- * return null (logged) and that chain's balance simply isn't shown that turn.
- */
-const WALLET_BALANCE_RPC_TIMEOUT_MS = 3000;
-
-/** Transport-level fast-fail bound so a hung socket aborts instead of lingering. */
+/** Viem aborts the underlying HTTP request when this network deadline expires. */
 const WALLET_RPC_FETCH_TIMEOUT_MS = 4000;
-
-/**
- * Race `promise` against a timeout. Rejects with a labelled error on timeout so
- * the caller's existing try/catch can treat it like any other RPC failure. The
- * timer is always cleared so a fast-resolving promise leaves no dangling handle.
- */
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
 
 function isRetryableManagedRpcStatus(status: number): boolean {
   return (
@@ -233,9 +200,11 @@ export class WalletProvider {
     return Object.keys(this._chains) as SupportedChain[];
   }
 
-  async getWalletBalances(): Promise<Record<SupportedChain, string>> {
+  async getWalletBalances(forceRefresh = false): Promise<Record<SupportedChain, string>> {
     const cacheKey = path.join(this.cacheKey, "walletBalances");
-    const cachedData = await this._runtime.getCache<Record<SupportedChain, string>>(cacheKey);
+    const cachedData = forceRefresh
+      ? undefined
+      : await this._runtime.getCache<Record<SupportedChain, string>>(cacheKey);
 
     if (cachedData) {
       logger.log(`Returning cached wallet balances`);
@@ -268,14 +237,7 @@ export class WalletProvider {
   async getWalletBalanceForChain(chainName: SupportedChain): Promise<string | null> {
     try {
       const client = this.getPublicClient(chainName);
-      // Bound the per-turn RPC so a slow/unreachable endpoint can never block the
-      // reply pipeline (see WALLET_BALANCE_RPC_TIMEOUT_MS). On timeout this rejects
-      // and is handled by the catch below exactly like any other RPC error.
-      const balance = await withTimeout(
-        client.getBalance({ address: this._account.address }),
-        WALLET_BALANCE_RPC_TIMEOUT_MS,
-        `getBalance(${chainName})`
-      );
+      const balance = await client.getBalance({ address: this._account.address });
       return formatUnits(balance, 18);
     } catch (error) {
       logger.error(
@@ -650,10 +612,10 @@ class LazyTeeWalletProvider extends WalletProvider {
     return this.teeWallet.getWalletClient(chainName);
   }
 
-  override async getWalletBalances(): Promise<Record<SupportedChain, string>> {
+  override async getWalletBalances(forceRefresh = false): Promise<Record<SupportedChain, string>> {
     await this.ensureInitialized();
     assertDefined(this.teeWallet, "TEE wallet failed to initialize");
-    return this.teeWallet.getWalletBalances();
+    return this.teeWallet.getWalletBalances(forceRefresh);
   }
 
   override async getWalletBalanceForChain(chainName: SupportedChain): Promise<string | null> {
@@ -681,8 +643,7 @@ export const evmWalletProvider: Provider = {
       const evmService = runtime.getService(EVM_SERVICE_NAME);
 
       if (!evmService) {
-        logger.warn("EVM service not found, falling back to direct fetching");
-        return await directFetchWalletData(runtime, state);
+        throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "EVM service is not available");
       }
 
       const serviceWithCache = evmService as {
@@ -700,14 +661,22 @@ export const evmWalletProvider: Provider = {
       };
 
       if (typeof serviceWithCache.getCachedData !== "function") {
-        logger.warn("EVM service missing getCachedData, falling back to direct fetching");
-        return await directFetchWalletData(runtime, state);
+        throw new EVMError(
+          EVMErrorCode.WALLET_NOT_INITIALIZED,
+          "EVM service does not expose its wallet cache"
+        );
       }
 
       const walletData = await serviceWithCache.getCachedData();
       if (!walletData) {
-        logger.warn("No cached wallet data available, falling back to direct fetching");
-        return await directFetchWalletData(runtime, state);
+        return {
+          text: "EVM wallet data is loading in the background.",
+          data: { status: "loading" },
+          values: {
+            walletReady: false,
+            walletStatus: "loading",
+          },
+        };
       }
 
       const agentName = state?.agentName ?? "The agent";
@@ -751,47 +720,3 @@ export const evmWalletProvider: Provider = {
     }
   },
 };
-
-async function directFetchWalletData(
-  runtime: IAgentRuntime,
-  state?: State
-): Promise<ProviderResult> {
-  const walletProvider = await initWalletProvider(runtime);
-  const address = walletProvider.getAddress();
-  const balances = await walletProvider.getWalletBalances();
-  const agentName = state?.agentName ?? "The agent";
-
-  const allChainDetails = Object.entries(balances).map(([chainName, balance]) => {
-    const chain = walletProvider.getChainConfigs(chainName as SupportedChain);
-    return {
-      chainName,
-      balance,
-      symbol: chain.nativeCurrency.symbol,
-      chainId: chain.id,
-      name: chain.name,
-    };
-  });
-  const chainDetails = allChainDetails.slice(0, MAX_EVM_CHAIN_BALANCES);
-
-  const balanceText = chainDetails
-    .map((chain) => `${chain.name}: ${chain.balance} ${chain.symbol}`)
-    .join("\n");
-  const truncationText =
-    allChainDetails.length > chainDetails.length
-      ? `\n... and ${allChainDetails.length - chainDetails.length} more chains`
-      : "";
-
-  return {
-    text: `${agentName}'s EVM Wallet Address: ${address}\n\nBalances:\n${balanceText}${truncationText}`,
-    data: {
-      address,
-      chains: chainDetails,
-      chainCount: allChainDetails.length,
-      displayedChainCount: chainDetails.length,
-    },
-    values: {
-      address: address as string,
-      chains: `${balanceText}${truncationText}`,
-    },
-  };
-}

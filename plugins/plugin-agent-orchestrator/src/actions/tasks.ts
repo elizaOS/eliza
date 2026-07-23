@@ -2134,7 +2134,7 @@ async function runListAgents(
     return errorResult("SERVICE_UNAVAILABLE");
   }
 
-  const sessions = await listSessionsWithin(service, 2000);
+  const sessions = await listSessionsWithin(service);
   const preferredTaskAgent = {
     id: String((await service.resolveAgentType?.({})) ?? "codex"),
     reason: "acpx default agent",
@@ -2673,7 +2673,7 @@ async function runHistory(
       reason: "acp_unavailable",
     });
   }
-  const sessions = (await listSessionsWithin(service, 2000))
+  const sessions = (await listSessionsWithin(service))
     .filter(
       (session) =>
         (!sessionId || session.id === sessionId) &&

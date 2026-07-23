@@ -54,14 +54,11 @@ export class ChainOfThought<
   async forward(input: I): Promise<ChainOfThoughtResult<O>> {
     const result: PredictResult<O & { reasoning: string }> =
       await this.predict.forward(input);
-    const { reasoning, ...rest } = result.output;
-    // `rest` has type `Omit<O & { reasoning: string }, "reasoning">`, which
-    // is structurally equal to `O` (we only added `reasoning` ourselves and
-    // just removed it). TS cannot prove this through Omit-on-intersection,
-    // so the double-cast is the minimal type assertion to bridge the
-    // destructure to O.
+    const reasoning = result.output.reasoning;
+    const output: O & { reasoning?: string } = { ...result.output };
+    delete output.reasoning;
     return {
-      output: rest as unknown as O,
+      output,
       reasoning: typeof reasoning === "string" ? reasoning : "",
       usage: result.usage,
       trace: result.trace,

@@ -613,6 +613,63 @@ describe("ElizaSandboxService shared runtime bridge", () => {
       }
     },
   );
+
+  test("returns the PWA VIEWS handoff for deterministic shared-runtime navigation", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+      undefined,
+    );
+
+    try {
+      const response = await runWithCloudBindings(
+        {
+          CEREBRAS_API_KEY: "",
+          OPENAI_API_KEY: "",
+        },
+        () =>
+          new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+            jsonrpc: "2.0",
+            id: "shared-nav-turn",
+            method: "message.send",
+            params: { text: "open settings" },
+          }),
+      );
+
+      expect(response).toMatchObject({
+        jsonrpc: "2.0",
+        id: "shared-nav-turn",
+        result: {
+          text: "Opening Settings for you.",
+          runtime: "shared",
+          transport: "shared-runtime",
+          actionResults: [
+            {
+              actionName: "VIEWS",
+              success: true,
+              text: "Opening Settings for you.",
+              values: {
+                mode: "show",
+                viewId: "settings",
+                source: "agent",
+              },
+            },
+          ],
+        },
+      });
+      expect(historyGetSpy).toHaveBeenCalled();
+      expect(historyUpsertSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      findRunningSandboxSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyUpsertSpy.mockRestore();
+    }
+  });
 });
 
 describe("ElizaSandboxService wake", () => {
@@ -1341,6 +1398,7 @@ describe("ElizaSandboxService recoverDisconnected", () => {
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
     ).mockImplementation(async () => undefined);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(undefined);
     globalThis.fetch = mock(async () => new Response("nope", { status: 502 }));
 
     try {
@@ -1353,6 +1411,7 @@ describe("ElizaSandboxService recoverDisconnected", () => {
     } finally {
       findSpy.mockRestore();
       casSpy.mockRestore();
+      nodeSpy.mockRestore();
     }
     // The unreachable path burns real probe-retry backoff (~5-6s of sleeps);
     // under the multi-suite coverage lane that overruns the default 5s budget.
@@ -1437,6 +1496,7 @@ describe("ElizaSandboxService heartbeat", () => {
     const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
       async () => undefined as never,
     );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(undefined);
     globalThis.fetch = mock(async () => {
       throw new Error("fetch failed");
     });
@@ -1452,6 +1512,7 @@ describe("ElizaSandboxService heartbeat", () => {
     } finally {
       findSpy.mockRestore();
       updateSpy.mockRestore();
+      nodeSpy.mockRestore();
     }
   });
 

@@ -4,6 +4,7 @@
  * TEXT_LARGE, structured output via responseSchema, IMAGE_DESCRIPTION, and
  * TEXT_EMBEDDING through `runtime.useModel`.
  */
+import { randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { openrouterPlugin } from "../index";
@@ -24,9 +25,7 @@ async function createTestRuntime(settings: Record<string, string> = {}): Promise
     plugin: sqlPluginInstance,
   } = await import("@elizaos/plugin-sql");
   const { AgentRuntime, createCharacter } = await import("@elizaos/core");
-  const { v4: uuidv4 } = await import("uuid");
-
-  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const agentId = randomUUID();
 
   // Create the adapter using the exported function with in-memory database
   const adapter = createDatabaseAdapter({ dataDir: "memory://" }, agentId);

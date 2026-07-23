@@ -7,7 +7,7 @@
  * Security across all tables once every migration succeeds.
  */
 import { type IDatabaseAdapter, logger, type Plugin } from "@elizaos/core";
-import { applyMessageSearchObjects } from "./message-search";
+import { applyMessageSearchObjects, messageSearchTableExists } from "./message-search";
 import { migrateToEntityRLS } from "./migrations";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";
 import { RuntimeMigrator } from "./runtime-migrator";
@@ -141,8 +141,14 @@ export class DatabaseMigrationService {
       // Install the message full-text/trigram search objects on the migrated
       // `memories` table (#13534). Idempotent; runs after the table exists so the
       // GIN expression indexes can be created.
-      if (shouldApplyMessageSearchObjects(this.databaseBackend)) {
+      const shouldInstallSearchObjects = shouldApplyMessageSearchObjects(this.databaseBackend);
+      if (shouldInstallSearchObjects && (await messageSearchTableExists(this.db))) {
         await applyMessageSearchObjects(this.db);
+      } else if (shouldInstallSearchObjects) {
+        logger.info(
+          { src: "plugin:sql", table: "memories" },
+          "[MessageSearch] deferring search-object install until the core SQL schema is migrated"
+        );
       } else {
         logger.warn(
           {

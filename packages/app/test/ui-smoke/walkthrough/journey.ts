@@ -1476,8 +1476,13 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         await page.keyboard.press("ArrowUp").catch(() => undefined);
       } else {
         const pill = page.getByTestId("chat-pill");
-        if (await pill.isVisible({ timeout: 3_000 }).catch(() => false))
+        if (await pill.isVisible({ timeout: 3_000 }).catch(() => false)) {
+          // A pill tap steps only to the INPUT bar; the grabber tap then
+          // reveals the thread (the deliberate two-step).
           await pill.click().catch(() => undefined);
+          await grabber.focus().catch(() => undefined);
+          await page.keyboard.press("ArrowUp").catch(() => undefined);
+        }
       }
       await expect(overlay).toHaveAttribute("data-open", "true", {
         timeout: 10_000,

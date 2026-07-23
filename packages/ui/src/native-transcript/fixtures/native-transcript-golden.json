@@ -1,0 +1,691 @@
+{
+  "schema": "eliza.native-transcript/v1",
+  "note": "Language-neutral golden conformance fixture for eliza.native-transcript/v1. Every shell (web here; iOS/Android native next) must decode these exact events and fold them into `expectView`. `expectRejectedIndexes` lists positions in `events` that MUST fail decode (malformed). Item objects omit optional fields that are absent; a conformant comparison ignores undefined-valued keys.",
+  "scenarios": [
+    {
+      "name": "happy-path-voice-turn",
+      "case": "baseline: partial -> final STT, streamed agent text, tool started/succeeded, TTS started/ended",
+      "events": [
+        { "type": "stt.partial", "seq": 1, "turnId": "t1", "text": "hel" },
+        {
+          "type": "stt.partial",
+          "seq": 2,
+          "turnId": "t1",
+          "text": "hello wor"
+        },
+        {
+          "type": "stt.final",
+          "seq": 3,
+          "turnId": "t1",
+          "text": "hello world"
+        },
+        {
+          "type": "agent.text",
+          "seq": 4,
+          "messageId": "m1",
+          "turnId": "t1",
+          "text": "Hi",
+          "final": false
+        },
+        {
+          "type": "tool.state",
+          "seq": 5,
+          "callId": "c1",
+          "name": "search",
+          "phase": "started",
+          "turnId": "t1"
+        },
+        {
+          "type": "tool.state",
+          "seq": 6,
+          "callId": "c1",
+          "name": "search",
+          "phase": "succeeded",
+          "turnId": "t1"
+        },
+        {
+          "type": "agent.text",
+          "seq": 7,
+          "messageId": "m1",
+          "turnId": "t1",
+          "text": "Hi there!",
+          "final": true
+        },
+        {
+          "type": "tts.audio",
+          "seq": 8,
+          "utteranceId": "u1",
+          "phase": "started",
+          "messageId": "m1"
+        },
+        {
+          "type": "tts.audio",
+          "seq": 9,
+          "utteranceId": "u1",
+          "phase": "ended",
+          "messageId": "m1"
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "hello world",
+            "words": []
+          },
+          {
+            "kind": "agent",
+            "id": "m1",
+            "status": "final",
+            "text": "Hi there!",
+            "turnId": "t1"
+          },
+          {
+            "kind": "tool",
+            "id": "c1",
+            "status": "succeeded",
+            "name": "search",
+            "turnId": "t1"
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 9
+      }
+    },
+    {
+      "name": "malformed-events-rejected",
+      "case": "malformed: missing/negative seq, unknown type, bad enum, wrong field type, non-object, missing required id",
+      "events": [
+        { "type": "stt.partial", "seq": 1, "turnId": "t1", "text": "ok" },
+        { "type": "stt.partial", "turnId": "t1", "text": "no seq" },
+        { "type": "stt.partial", "seq": -1, "turnId": "t1", "text": "neg" },
+        { "type": "bogus.kind", "seq": 2 },
+        {
+          "type": "tool.state",
+          "seq": 3,
+          "callId": "c1",
+          "name": "x",
+          "phase": "weird"
+        },
+        {
+          "type": "agent.text",
+          "seq": 4,
+          "messageId": "m1",
+          "text": "hi",
+          "final": "yes"
+        },
+        { "type": "stt.final", "seq": 5, "turnId": "t1", "text": "done" },
+        "not an object",
+        { "type": "cancel", "seq": 6, "scope": "turn" },
+        {
+          "type": "agent.text",
+          "seq": 7,
+          "messageId": "m1",
+          "text": "hi",
+          "final": true
+        }
+      ],
+      "expectRejectedIndexes": [1, 2, 3, 4, 5, 7, 8],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "done",
+            "words": []
+          },
+          { "kind": "agent", "id": "m1", "status": "final", "text": "hi" }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 7
+      }
+    },
+    {
+      "name": "duplicated-events-deduped",
+      "case": "duplicated: identical seq repeated is a no-op",
+      "events": [
+        { "type": "stt.final", "seq": 1, "turnId": "t1", "text": "hello" },
+        { "type": "stt.final", "seq": 1, "turnId": "t1", "text": "hello" },
+        {
+          "type": "agent.text",
+          "seq": 2,
+          "messageId": "m1",
+          "text": "hi",
+          "final": true
+        },
+        {
+          "type": "agent.text",
+          "seq": 2,
+          "messageId": "m1",
+          "text": "hi",
+          "final": true
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "hello",
+            "words": []
+          },
+          { "kind": "agent", "id": "m1", "status": "final", "text": "hi" }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 2
+      }
+    },
+    {
+      "name": "reordered-late-partial-dropped",
+      "case": "reordered: a partial that arrives after the final (lower seq) never regresses the row",
+      "events": [
+        { "type": "stt.final", "seq": 3, "turnId": "t1", "text": "final text" },
+        { "type": "stt.partial", "seq": 1, "turnId": "t1", "text": "fin" },
+        { "type": "stt.partial", "seq": 2, "turnId": "t1", "text": "final te" }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "final text",
+            "words": []
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 3
+      }
+    },
+    {
+      "name": "reordered-creation-orders-by-seq",
+      "case": "reordered: render order follows first-seen seq, not arrival order",
+      "events": [
+        {
+          "type": "agent.text",
+          "seq": 5,
+          "messageId": "m2",
+          "text": "second",
+          "final": true
+        },
+        { "type": "stt.final", "seq": 2, "turnId": "t1", "text": "first" }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "first",
+            "words": []
+          },
+          { "kind": "agent", "id": "m2", "status": "final", "text": "second" }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 5
+      }
+    },
+    {
+      "name": "concurrent-interleaved-turns",
+      "case": "concurrent: two overlapping turns advance independently and stay ordered by first-seen seq",
+      "events": [
+        { "type": "stt.partial", "seq": 1, "turnId": "tA", "text": "A hel" },
+        { "type": "stt.partial", "seq": 2, "turnId": "tB", "text": "B wor" },
+        { "type": "stt.final", "seq": 3, "turnId": "tA", "text": "A hello" },
+        {
+          "type": "agent.text",
+          "seq": 4,
+          "messageId": "mA",
+          "turnId": "tA",
+          "text": "resA",
+          "final": true
+        },
+        { "type": "stt.final", "seq": 5, "turnId": "tB", "text": "B world" },
+        {
+          "type": "agent.text",
+          "seq": 6,
+          "messageId": "mB",
+          "turnId": "tB",
+          "text": "resB",
+          "final": true
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "tA",
+            "status": "final",
+            "text": "A hello",
+            "words": []
+          },
+          {
+            "kind": "user",
+            "id": "tB",
+            "status": "final",
+            "text": "B world",
+            "words": []
+          },
+          {
+            "kind": "agent",
+            "id": "mA",
+            "status": "final",
+            "text": "resA",
+            "turnId": "tA"
+          },
+          {
+            "kind": "agent",
+            "id": "mB",
+            "status": "final",
+            "text": "resB",
+            "turnId": "tB"
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 6
+      }
+    },
+    {
+      "name": "empty-log",
+      "case": "empty: no events yields the empty designed state, never a fabricated row",
+      "events": [],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 0
+      }
+    },
+    {
+      "name": "empty-text-preserved",
+      "case": "empty: an empty-text final still produces a row (no length inference)",
+      "events": [{ "type": "stt.final", "seq": 1, "turnId": "t1", "text": "" }],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "",
+            "words": []
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 1
+      }
+    },
+    {
+      "name": "unicode-rtl",
+      "case": "Unicode/RTL: Arabic, Hebrew, CJK, emoji + skin-tone modifier, combining accent carried verbatim",
+      "events": [
+        {
+          "type": "stt.final",
+          "seq": 1,
+          "turnId": "t1",
+          "text": "مرحبا بالعالم"
+        },
+        {
+          "type": "agent.text",
+          "seq": 2,
+          "messageId": "m1",
+          "turnId": "t1",
+          "text": "שלום 世界 👋🏽 café",
+          "final": true
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "مرحبا بالعالم",
+            "words": []
+          },
+          {
+            "kind": "agent",
+            "id": "m1",
+            "status": "final",
+            "text": "שלום 世界 👋🏽 café",
+            "turnId": "t1"
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 2
+      }
+    },
+    {
+      "name": "long-text",
+      "case": "long: a large snapshot is just text; no length-based state bucketing",
+      "events": [
+        {
+          "type": "agent.text",
+          "seq": 1,
+          "messageId": "m1",
+          "final": true,
+          "text": "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word"
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "agent",
+            "id": "m1",
+            "status": "final",
+            "text": "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word"
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 1
+      }
+    },
+    {
+      "name": "offline-reconnect-restored",
+      "case": "offline: connection lost then restored; markers ordered, connection ends live",
+      "events": [
+        { "type": "stt.final", "seq": 1, "turnId": "t1", "text": "before" },
+        { "type": "reconnect", "seq": 2, "phase": "lost", "attempt": 1 },
+        { "type": "reconnect", "seq": 3, "phase": "restored", "attempt": 1 },
+        { "type": "stt.final", "seq": 4, "turnId": "t2", "text": "after" }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "before",
+            "words": []
+          },
+          {
+            "kind": "reconnect",
+            "id": "reconnect:2",
+            "phase": "lost",
+            "attempt": 1
+          },
+          {
+            "kind": "reconnect",
+            "id": "reconnect:3",
+            "phase": "restored",
+            "attempt": 1
+          },
+          {
+            "kind": "user",
+            "id": "t2",
+            "status": "final",
+            "text": "after",
+            "words": []
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 4
+      }
+    },
+    {
+      "name": "offline-connection-lost",
+      "case": "offline: a trailing lost marker leaves connection lost",
+      "events": [
+        { "type": "stt.final", "seq": 1, "turnId": "t1", "text": "hi" },
+        { "type": "reconnect", "seq": 2, "phase": "lost", "attempt": 2 }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "hi",
+            "words": []
+          },
+          {
+            "kind": "reconnect",
+            "id": "reconnect:2",
+            "phase": "lost",
+            "attempt": 2
+          }
+        ],
+        "speaking": null,
+        "connection": "lost",
+        "lastSeq": 2
+      }
+    },
+    {
+      "name": "permission-denied-error",
+      "case": "permission-denied: surfaced as a non-retryable error row",
+      "events": [
+        {
+          "type": "error",
+          "seq": 1,
+          "code": "permission-denied",
+          "retryable": false,
+          "message": "Microphone permission denied"
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "error",
+            "id": "error:1",
+            "code": "permission-denied",
+            "retryable": false,
+            "message": "Microphone permission denied"
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 1
+      }
+    },
+    {
+      "name": "cancellation-boundary-all",
+      "case": "cancellation: scope=all cancels in-flight items, drops a pre-boundary straggler, applies a post-boundary continuation",
+      "events": [
+        { "type": "stt.partial", "seq": 10, "turnId": "t1", "text": "start" },
+        {
+          "type": "agent.text",
+          "seq": 11,
+          "messageId": "m1",
+          "turnId": "t1",
+          "text": "thinking",
+          "final": false
+        },
+        {
+          "type": "tool.state",
+          "seq": 12,
+          "callId": "c1",
+          "name": "search",
+          "phase": "started",
+          "turnId": "t1"
+        },
+        {
+          "type": "tts.audio",
+          "seq": 13,
+          "utteranceId": "u1",
+          "phase": "started",
+          "messageId": "m1"
+        },
+        {
+          "type": "cancel",
+          "seq": 20,
+          "scope": "all",
+          "reason": "user-barge-in"
+        },
+        {
+          "type": "agent.text",
+          "seq": 15,
+          "messageId": "m1",
+          "turnId": "t1",
+          "text": "late chunk",
+          "final": false
+        },
+        {
+          "type": "agent.text",
+          "seq": 25,
+          "messageId": "m1",
+          "turnId": "t1",
+          "text": "post cancel continuation",
+          "final": true
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "cancelled",
+            "text": "start",
+            "words": []
+          },
+          {
+            "kind": "agent",
+            "id": "m1",
+            "status": "final",
+            "text": "post cancel continuation",
+            "turnId": "t1"
+          },
+          {
+            "kind": "tool",
+            "id": "c1",
+            "status": "cancelled",
+            "name": "search",
+            "turnId": "t1"
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 25
+      }
+    },
+    {
+      "name": "cancellation-turn-scoped",
+      "case": "cancellation: scope=turn only cancels the matching turn; the other turn keeps flowing",
+      "events": [
+        {
+          "type": "stt.partial",
+          "seq": 1,
+          "turnId": "tA",
+          "text": "a in flight"
+        },
+        {
+          "type": "stt.partial",
+          "seq": 2,
+          "turnId": "tB",
+          "text": "b in flight"
+        },
+        { "type": "cancel", "seq": 3, "scope": "turn", "turnId": "tA" }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "tA",
+            "status": "cancelled",
+            "text": "a in flight",
+            "words": []
+          },
+          {
+            "kind": "user",
+            "id": "tB",
+            "status": "partial",
+            "text": "b in flight",
+            "words": []
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 3
+      }
+    },
+    {
+      "name": "speaking-active",
+      "case": "TTS/audio: playback in progress is transient view state (speaking indicator), not a row",
+      "events": [
+        {
+          "type": "agent.text",
+          "seq": 1,
+          "messageId": "m1",
+          "text": "hello",
+          "final": true
+        },
+        {
+          "type": "tts.audio",
+          "seq": 2,
+          "utteranceId": "u1",
+          "phase": "started",
+          "messageId": "m1"
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          { "kind": "agent", "id": "m1", "status": "final", "text": "hello" }
+        ],
+        "speaking": { "utteranceId": "u1", "messageId": "m1" },
+        "connection": "live",
+        "lastSeq": 2
+      }
+    },
+    {
+      "name": "stt-final-with-words",
+      "case": "word timings: stt.final carries per-word timing that survives decode verbatim",
+      "events": [
+        {
+          "type": "stt.final",
+          "seq": 1,
+          "turnId": "t1",
+          "text": "hi there",
+          "words": [
+            { "text": "hi", "startMs": 0, "endMs": 200 },
+            { "text": "there", "startMs": 200, "endMs": 600 }
+          ]
+        }
+      ],
+      "expectRejectedIndexes": [],
+      "expectView": {
+        "items": [
+          {
+            "kind": "user",
+            "id": "t1",
+            "status": "final",
+            "text": "hi there",
+            "words": [
+              { "text": "hi", "startMs": 0, "endMs": 200 },
+              { "text": "there", "startMs": 200, "endMs": 600 }
+            ]
+          }
+        ],
+        "speaking": null,
+        "connection": "live",
+        "lastSeq": 1
+      }
+    }
+  ]
+}

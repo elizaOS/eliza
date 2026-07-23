@@ -153,6 +153,11 @@ FROM node:${NODE_VERSION}-slim AS tsx
 RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.21.0 \
   && npm cache clean --force
 
+# Workflow execution uses Bun's SQLite runtime even when the agent entrypoint
+# runs on Node. Copy only the pinned binary so the final image can execute
+# Smithers workers without inheriting the full build-stage filesystem.
+FROM oven/bun:${BUN_VERSION} AS bun-runtime
+
 FROM node:${NODE_VERSION}-slim
 ARG BUN_VERSION
 ARG APP_CORE_DIR
@@ -216,6 +221,7 @@ COPY --from=pruner /app /app
 # from its own stage so it's self-contained (with esbuild + get-tsconfig
 # deps) at /opt/tsx, independent of bun's workspace install.
 COPY --from=tsx /opt/tsx /opt/tsx
+COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
 
 ENV NODE_ENV=production
 ENV ELIZA_DISABLE_DIRECT_RUN=1

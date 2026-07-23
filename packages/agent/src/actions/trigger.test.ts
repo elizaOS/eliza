@@ -4,10 +4,23 @@
  * delayMinutes) converts to a one-off scheduledAtIso, no workflowId means
  * kind:"prompt", prompt triggers are creatable with the autonomy loop off and
  * land in the originating room — against a minimal in-memory runtime.
+ * Also covers the update / delete / toggle lifecycle ops (happy paths and
+ * structured not-found failures).
  */
 
-import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
-import { AUTONOMY_SERVICE_TYPE, stringToUuid } from "@elizaos/core";
+import type {
+  ActionParameters,
+  IAgentRuntime,
+  Memory,
+  PromptTriggerConfig,
+  Task,
+  UUID,
+} from "@elizaos/core";
+import {
+  AUTONOMY_SERVICE_TYPE,
+  stringToUuid,
+  TRIGGER_SCHEMA_VERSION,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TriggerTaskMetadata } from "../triggers/types.ts";
@@ -46,10 +59,12 @@ function makeRuntime(opts: { enableAutonomy: boolean }): {
         ? { getAutonomousRoomId: () => AUTONOMY_ROOM_ID }
         : null,
     getTasks: vi.fn(async () => [] as Task[]),
+    getTask: vi.fn(async () => null),
     createTask: vi.fn(async (task: CreatedTask) => {
       createdTasks.push(task);
       return stringToUuid(`created-${createdTasks.length}`);
     }),
+    updateTask: vi.fn(async () => undefined),
   } as unknown as IAgentRuntime;
   return { runtime, createdTasks };
 }
@@ -217,6 +232,46 @@ describe("TRIGGER create — prompt-kind reminders", () => {
   });
 });
 
+describe("TRIGGER handler — silent, planner-voiced acks (#16863)", () => {
+  it("never invokes the user-visible callback on a successful create", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const callback = vi.fn(async () => []);
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("remind me to stretch"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          instructions: "stretch",
+          delaySeconds: 45,
+        },
+      },
+      callback,
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks).toHaveLength(1);
+    // The planner's final message is the single user-facing ack; a handler
+    // callback here double-posted the mechanical result seconds before it.
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("returns the invalid-op failure without echoing it to chat", async () => {
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const callback = vi.fn(async () => []);
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("do something"),
+      undefined,
+      { parameters: { action: "explode" } },
+      callback,
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("TRIGGER_INVALID");
+    expect(callback).not.toHaveBeenCalled();
+  });
+});
+
 describe("TRIGGER create — workflow triggers", () => {
   it("still requires the autonomy loop for workflow triggers", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
@@ -245,5 +300,225 @@ describe("TRIGGER create — workflow triggers", () => {
       "wf-1",
     );
     expect(createdTasks[0].roomId).toBe(AUTONOMY_ROOM_ID);
+  });
+
+  it("creates a valid cron trigger", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: true });
+    const result = await create(runtime, {
+      instructions: "run the report workflow",
+      workflowId: "wf-1",
+      cronExpression: "0 9 * * 1-5",
+    });
+
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger).toMatchObject({
+      triggerType: "cron",
+      cronExpression: "0 9 * * 1-5",
+    });
+  });
+
+  it("rejects an invalid cron expression without creating a task", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: true });
+    const result = await create(runtime, {
+      instructions: "run the report workflow",
+      workflowId: "wf-1",
+      triggerType: "cron",
+      cronExpression: "not a cron",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("INVALID_CRON");
+    expect(createdTasks).toHaveLength(0);
+  });
+});
+
+describe("TRIGGER lifecycle", () => {
+  it("resolves a task UUID and accepts a string boolean when toggling", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    await create(runtime, { instructions: "drink water", delaySeconds: 90 });
+    const taskId = stringToUuid("existing-trigger-task");
+    vi.mocked(runtime.getTask).mockResolvedValue({
+      id: taskId,
+      name: createdTasks[0].name,
+      tags: createdTasks[0].tags,
+      metadata: createdTasks[0].metadata,
+    } as Task);
+
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("enable my reminder"),
+      undefined,
+      { parameters: { action: "toggle", taskId, enabled: "yes" } },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.data?.enabled).toBe(true);
+    expect(runtime.updateTask).toHaveBeenCalledWith(
+      taskId,
+      expect.objectContaining({ metadata: expect.any(Object) }),
+    );
+  });
+});
+
+describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
+  const LIFECYCLE_TASK_ID = stringToUuid("trigger-lifecycle-task");
+
+  function makePromptTrigger(
+    overrides: Partial<PromptTriggerConfig> = {},
+  ): PromptTriggerConfig {
+    return {
+      version: TRIGGER_SCHEMA_VERSION,
+      triggerId: stringToUuid("trigger-lifecycle-config"),
+      displayName: "Trigger: water the plants",
+      instructions: "water the plants",
+      triggerType: "interval",
+      enabled: true,
+      wakeMode: "inject_now",
+      createdBy: String(USER_ID),
+      runCount: 0,
+      intervalMs: 3_600_000,
+      kind: "prompt",
+      ...overrides,
+    };
+  }
+
+  function makeTriggerTask(trigger: PromptTriggerConfig): Task {
+    return {
+      id: LIFECYCLE_TASK_ID,
+      name: "TRIGGER_DISPATCH",
+      description: trigger.displayName,
+      roomId: CHAT_ROOM_ID,
+      tags: ["queue", "repeat", "trigger"],
+      metadata: { updatedAt: Date.now(), trigger },
+    } as unknown as Task;
+  }
+
+  interface TaskPatch {
+    description?: string;
+    metadata?: TriggerTaskMetadata;
+  }
+
+  function makeLifecycleRuntime(tasks: Task[]): {
+    runtime: IAgentRuntime;
+    updates: Array<{ taskId: UUID; patch: TaskPatch }>;
+    deletions: UUID[];
+  } {
+    const updates: Array<{ taskId: UUID; patch: TaskPatch }> = [];
+    const deletions: UUID[] = [];
+    const runtime = {
+      agentId: AGENT_ID,
+      enableAutonomy: false,
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+      getSetting: () => undefined,
+      getService: () => null,
+      getTask: vi.fn(async (id: UUID) => tasks.find((t) => t.id === id)),
+      getTasks: vi.fn(async () => tasks),
+      updateTask: vi.fn(async (taskId: UUID, patch: TaskPatch) => {
+        updates.push({ taskId, patch });
+      }),
+      deleteTask: vi.fn(async (taskId: UUID) => {
+        deletions.push(taskId);
+      }),
+    } as unknown as IAgentRuntime;
+    return { runtime, updates, deletions };
+  }
+
+  async function dispatch(
+    runtime: IAgentRuntime,
+    parameters: ActionParameters,
+  ) {
+    return triggerAction.handler(
+      runtime,
+      makeMessage("manage my triggers"),
+      undefined,
+      { parameters },
+    );
+  }
+
+  it("update patches displayName and interval and persists a recomputed schedule", async () => {
+    const { runtime, updates } = makeLifecycleRuntime([
+      makeTriggerTask(makePromptTrigger()),
+    ]);
+    const before = Date.now();
+    const result = await dispatch(runtime, {
+      action: "update",
+      taskId: LIFECYCLE_TASK_ID,
+      displayName: "Trigger: hydrate",
+      intervalMs: 120_000,
+    });
+    expect(result?.success).toBe(true);
+    expect(result?.text).toBe('Updated trigger "Trigger: hydrate".');
+    expect(updates).toHaveLength(1);
+    expect(updates[0].taskId).toBe(LIFECYCLE_TASK_ID);
+    expect(updates[0].patch.description).toBe("Trigger: hydrate");
+    const next = updates[0].patch.metadata?.trigger;
+    expect(next?.displayName).toBe("Trigger: hydrate");
+    expect(next?.intervalMs).toBe(120_000);
+    // buildTriggerMetadata re-armed the schedule off the new interval.
+    expect(next?.nextRunAtMs).toBeGreaterThanOrEqual(before + 120_000);
+  });
+
+  it("update fails structurally on a missing or unknown taskId without persisting", async () => {
+    const { runtime, updates } = makeLifecycleRuntime([]);
+    const missing = await dispatch(runtime, {
+      action: "update",
+      taskId: stringToUuid("no-such-task"),
+      displayName: "whatever",
+    });
+    expect(missing?.success).toBe(false);
+    expect(missing?.error).toBe("TRIGGER_NOT_FOUND");
+
+    const noId = await dispatch(runtime, {
+      action: "update",
+      displayName: "whatever",
+    });
+    expect(noId?.success).toBe(false);
+    expect(noId?.error).toBe("MISSING_TASK_ID");
+    expect(updates).toHaveLength(0);
+  });
+
+  it("delete resolves the trigger by displayName fragment and removes its task", async () => {
+    const { runtime, deletions } = makeLifecycleRuntime([
+      makeTriggerTask(makePromptTrigger()),
+    ]);
+    const result = await dispatch(runtime, {
+      action: "delete",
+      displayName: "water the plants",
+    });
+    expect(result?.success).toBe(true);
+    expect(result?.text).toBe('Deleted trigger "Trigger: water the plants".');
+    expect(deletions).toEqual([LIFECYCLE_TASK_ID]);
+  });
+
+  it("delete reports TRIGGER_NOT_FOUND when no triggers exist", async () => {
+    const { runtime, deletions } = makeLifecycleRuntime([]);
+    const result = await dispatch(runtime, {
+      action: "delete",
+      displayName: "anything",
+    });
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("TRIGGER_NOT_FOUND");
+    expect(result?.text).toBe("No triggers exist.");
+    expect(deletions).toHaveLength(0);
+  });
+
+  it("toggle flips a disabled trigger back on and persists the re-armed schedule", async () => {
+    const { runtime, updates } = makeLifecycleRuntime([
+      makeTriggerTask(makePromptTrigger({ enabled: false })),
+    ]);
+    const result = await dispatch(runtime, {
+      action: "toggle",
+      taskId: LIFECYCLE_TASK_ID,
+    });
+    expect(result?.success).toBe(true);
+    expect(result?.text).toBe('Enabled trigger "Trigger: water the plants".');
+    expect(result?.data?.enabled).toBe(true);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].patch.metadata?.trigger?.enabled).toBe(true);
   });
 });

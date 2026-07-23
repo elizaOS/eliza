@@ -85,7 +85,6 @@ bun run --cwd plugins/plugin-app-manager clean       # rm -rf dist
 
 | Variable | Required | Description |
 |---|---|---|
-| `ELIZA_APPS_REGISTRY_REFRESH_TIMEOUT_MS` | No | Override the 5 s timeout for registry refresh during `listInstalled`. Min 250 ms. |
 | `ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY` | No | Set to `1`/`true` to also scan `apps/app-<slug>` dirs when resolving hero images (disabled by default). |
 
 The state-dir path used by `readAppRunStore` / `writeAppRunStore` comes from `@elizaos/agent/config/paths#resolveStateDir`. Override it by passing the `stateDir` option to `new AppManager({ stateDir })`.

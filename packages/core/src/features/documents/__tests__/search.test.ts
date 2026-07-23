@@ -540,5 +540,27 @@ describe("DocumentService.searchDocuments", () => {
 				expect(embedCallCount(rt)).toBe(1);
 			},
 		);
+
+		it("threads the caller abort signal into the recall embedding request", async () => {
+			const { rt } = buildEmbedCountingRuntime();
+			const svc = buildService(rt);
+			const controller = new AbortController();
+
+			await svc.searchDocuments(
+				makeMessage("find the escalation policy"),
+				{ roomId: "room-1" as UUID },
+				"vector",
+				undefined,
+				{
+					turnMessageId: TURN_MESSAGE_ID,
+					signal: controller.signal,
+				},
+			);
+
+			expect(rt.useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, {
+				text: "find the escalation policy",
+				signal: controller.signal,
+			});
+		});
 	});
 });

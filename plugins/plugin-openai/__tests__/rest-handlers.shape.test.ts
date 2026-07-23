@@ -76,12 +76,16 @@ describe("OpenAI REST handler request shapes", () => {
     );
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
+    const controller = new AbortController();
     const embedding = await handleTextEmbedding(
       createRuntime({ OPENAI_EMBEDDING_DIMENSIONS: "384" }),
-      { text: "hello" }
+      { text: "hello", signal: controller.signal }
     );
 
     expect(embedding).toHaveLength(384);
+    const firstRequest = fetchMock.mock.calls[0];
+    expect(firstRequest).toBeDefined();
+    expect((firstRequest?.[1] as RequestInit | undefined)?.signal).toBe(controller.signal);
     const requestBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as Record<
       string,
       unknown
