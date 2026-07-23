@@ -63,7 +63,12 @@ function buildOneLine(
       ONE_LINE_MAX,
     );
   }
-  return "First-run setup hasn't run yet. Ask whether to use defaults or customize.".slice(
+  // "never claim it's done" is load-bearing: observed live (#16941), a
+  // fresh-boot "set me up with defaults" ask was answered with "You're all
+  // set up" while no setup had run, and a "customize my setup" ask was read
+  // as devtool config knobs — the line forbids claiming completion and names
+  // the real questions so the model walks the actual flow.
+  return "First-run setup hasn't run — never claim it's done. Offer defaults or customize (asks name, categories, nudge channel).".slice(
     0,
     ONE_LINE_MAX,
   );

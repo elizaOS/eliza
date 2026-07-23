@@ -317,7 +317,14 @@ function normalizeChannel(value: string): string {
 }
 
 function normalizeComparableText(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  // Dashes fold to spaces so hyphenation never defeats a loose title match:
+  // live models legitimately title a "before school" routine
+  // "Before-school routine" (#16941).
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[-–—]/g, " ")
+    .replace(/\s+/g, " ");
 }
 
 function textMatchesLoose(actual: string, expected: string): boolean {

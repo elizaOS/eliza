@@ -220,10 +220,13 @@ export function fastStartSeedsFirstReminder(
 }
 
 /**
- * Full customize walk incl. the conditional relationships question (Q5 fires
- * only because `follow-ups` is among the categories), then assert the default
- * pack seeded with anchors derived from the answered morning window and that
- * the preferred name persisted.
+ * Full customize walk under the three-question contract (#14691:
+ * preferredName → categories → channel; timezone/windows are inferred, not
+ * asked, and relationships are discovered passively). The owner in this
+ * scenario VOLUNTEERS timezone + windows + follow-up cadences in speech, so
+ * the walk passes them as volunteered `CustomizePathInput` fields alongside
+ * the asked answers — the pack must anchor to the volunteered morning window
+ * and the preferred name must persist.
  */
 export async function customizeFullWalkSeedsReminders(
   ctx: ScenarioContext,
@@ -235,30 +238,27 @@ export async function customizeFullWalkSeedsReminders(
   if (q1.awaitingQuestion !== "preferredName") {
     return `expected Q1 preferredName, saw ${q1.awaitingQuestion}`;
   }
-  const q2 = await service.runCustomizePath({ preferredName: "Sam" });
-  if (q2.awaitingQuestion !== "timezoneAndWindows") {
-    return `expected Q2 timezoneAndWindows, saw ${q2.awaitingQuestion}`;
-  }
-  const q3 = await service.runCustomizePath({
+  // Name answered; timezone/windows ride along as volunteered data — no
+  // timezone question may fire, the flow must advance straight to categories.
+  const q2 = await service.runCustomizePath({
+    preferredName: "Sam",
     timezone: "America/Los_Angeles",
     morningWindow: { startLocal: "06:30", endLocal: "11:30" },
     eveningWindow: { startLocal: "18:00", endLocal: "22:00" },
   });
-  if (q3.awaitingQuestion !== "categories") {
-    return `expected Q3 categories, saw ${q3.awaitingQuestion}`;
+  if (q2.awaitingQuestion !== "categories") {
+    return `expected Q2 categories, saw ${q2.awaitingQuestion}`;
   }
-  const q4 = await service.runCustomizePath({
+  const q3 = await service.runCustomizePath({
     categories: ["reminder packs", "follow-ups"],
   });
-  if (q4.awaitingQuestion !== "channel") {
-    return `expected Q4 channel, saw ${q4.awaitingQuestion}`;
+  if (q3.awaitingQuestion !== "channel") {
+    return `expected Q3 channel, saw ${q3.awaitingQuestion}`;
   }
-  // follow-ups selected → the conditional relationships question MUST fire.
-  const q5 = await service.runCustomizePath({ channel: "in_app" });
-  if (q5.awaitingQuestion !== "relationships") {
-    return `follow-ups selected but Q5 relationships was skipped (saw ${q5.awaitingQuestion})`;
-  }
+  // Relationships are never asked (#14691) — volunteered cadences are still
+  // accepted alongside the final answer.
   const done = await service.runCustomizePath({
+    channel: "in_app",
     relationships: [
       { name: "Alice", cadenceDays: 14 },
       { name: "Bob", cadenceDays: 30 },
@@ -277,10 +277,12 @@ export async function customizeFullWalkSeedsReminders(
 }
 
 /**
- * Abandon-mid-customize → resume without data loss. Answers Q1+Q2, abandons,
+ * Abandon-mid-customize → resume without data loss. Answers Q1 (with the
+ * timezone/windows the owner volunteered in speech riding along), abandons,
  * then a FRESH service instance (same runtime cache) resumes: it must advance
- * to the next UNanswered question (categories) rather than re-ask Q1/Q2, and
- * the persisted answers must survive. Exercises `FirstRunStateStore` durability.
+ * to the next UNanswered question (categories) rather than re-ask the name,
+ * and the persisted answers must survive. Exercises `FirstRunStateStore`
+ * durability under the three-question contract (#14691).
  */
 export async function abandonResumeNoDataLoss(
   ctx: ScenarioContext,
@@ -288,17 +290,14 @@ export async function abandonResumeNoDataLoss(
   const runtime = asRuntime(ctx);
   const first = productionFirstRunService(runtime);
 
-  const a1 = await first.runCustomizePath({ preferredName: "Riley" });
-  if (a1.awaitingQuestion !== "timezoneAndWindows") {
-    return `expected timezoneAndWindows after name, saw ${a1.awaitingQuestion}`;
-  }
-  const a2 = await first.runCustomizePath({
+  const a1 = await first.runCustomizePath({
+    preferredName: "Riley",
     timezone: "America/Chicago",
     morningWindow: { startLocal: "07:00", endLocal: "12:00" },
     eveningWindow: { startLocal: "19:00", endLocal: "23:00" },
   });
-  if (a2.awaitingQuestion !== "categories") {
-    return `expected categories after timezone, saw ${a2.awaitingQuestion}`;
+  if (a1.awaitingQuestion !== "categories") {
+    return `expected categories after name, saw ${a1.awaitingQuestion}`;
   }
 
   // Abandon: the owner walks away mid-flow. State persists (in_progress).
@@ -359,8 +358,8 @@ export async function channelFallbackRecorded(
   }
 
   const service = productionFirstRunService(runtime);
-  await service.runCustomizePath({ preferredName: "Jordan" });
   await service.runCustomizePath({
+    preferredName: "Jordan",
     timezone: "UTC",
     morningWindow: { startLocal: "06:00", endLocal: "11:00" },
     eveningWindow: { startLocal: "18:00", endLocal: "22:00" },

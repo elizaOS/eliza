@@ -33,6 +33,13 @@ export type DeferredLifeDefinitionDraft = {
   operation: "create_definition";
   /** Epoch ms when the draft was created. Used for expiry. */
   createdAt?: number;
+  /**
+   * Id of the owner message whose turn previewed this draft. Consent
+   * checking uses it to tell "the owner saw this preview on an earlier turn"
+   * from "the planner re-called create in the same turn it previewed":
+   * planner-asserted `confirmed` only counts against a prior-turn draft.
+   */
+  sourceMessageId?: string;
   request: {
     cadence: LifeOpsCadence;
     description?: string;
@@ -54,6 +61,8 @@ export type DeferredLifeGoalDraft = {
   operation: "create_goal";
   /** Epoch ms when the draft was created. Used for expiry. */
   createdAt?: number;
+  /** See DeferredLifeDefinitionDraft.sourceMessageId. */
+  sourceMessageId?: string;
   request: {
     cadence?: CreateLifeOpsGoalRequest["cadence"];
     description?: string;
@@ -103,7 +112,14 @@ export async function writeDeferredLifeDraftCache(
 ): Promise<void> {
   await asCacheRuntime(runtime).setCache(
     deferredLifeDraftCacheKey(runtime, message),
-    draft,
+    // Stamp the previewing turn's message id so the confirm path can tell a
+    // prior-turn draft (owner saw the preview) from a same-turn re-call.
+    {
+      ...draft,
+      ...(message.id !== undefined && message.id !== null
+        ? { sourceMessageId: String(message.id) }
+        : {}),
+    },
   );
 }
 
@@ -134,6 +150,11 @@ export function coerceDeferredLifeDraft(
     typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
       ? record.createdAt
       : undefined;
+  const sourceMessageId =
+    typeof record.sourceMessageId === "string" &&
+    record.sourceMessageId.length > 0
+      ? record.sourceMessageId
+      : undefined;
 
   if (!request || !intent) {
     return null;
@@ -157,6 +178,7 @@ export function coerceDeferredLifeDraft(
       createdAt,
       intent,
       operation,
+      sourceMessageId,
       request: {
         cadence,
         description:
@@ -192,6 +214,7 @@ export function coerceDeferredLifeDraft(
       createdAt,
       intent,
       operation,
+      sourceMessageId,
       request: {
         cadence: request.cadence as CreateLifeOpsGoalRequest["cadence"],
         description:
@@ -517,8 +540,8 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
     "",
     'Return ONLY a JSON object with exactly this field, for example {"mode":"confirm"}.',
     "",
-    "Choose confirm when the user clearly approves saving the current draft now.",
-    "Choose edit when the user wants to change the draft or continue specifying it before saving.",
+    "Choose confirm when the user clearly approves saving the current draft now, exactly as previewed.",
+    "Choose edit when the user wants to change the draft or continue specifying it before saving. This INCLUDES an approval that adds or changes details in the same message ('yes, save it — but make it 9pm', 'save that plan. draft first, citations after dinner, final pass before the deadline'): approval that carries new or changed specifics is edit, not confirm, so the added details reach the saved item.",
     "Choose cancel when the user says not to save it, never mind, not now, hold off, or equivalent.",
     "Choose none when the follow-up is unrelated or too ambiguous to attach to the draft.",
     "",

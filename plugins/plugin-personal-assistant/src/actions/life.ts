@@ -1826,6 +1826,26 @@ export function resolveOnceDueAt(args: {
   return null;
 }
 
+// Canonical comparison key for a cadence: deep key-sorted JSON, so two
+// structurally identical cadences compare equal regardless of construction
+// order. Used only by the duplicate-create guard.
+function stableCadenceKey(cadence: unknown): string {
+  const canonicalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalize);
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(record).sort()) {
+        if (record[key] === undefined) continue;
+        out[key] = canonicalize(record[key]);
+      }
+      return out;
+    }
+    return value;
+  };
+  return JSON.stringify(canonicalize(cadence));
+}
+
 function mergeMetadataRecords(
   ...records: Array<Record<string, unknown> | undefined>
 ): Record<string, unknown> | undefined {
@@ -3075,11 +3095,26 @@ export async function runLifeOperationHandler(
     params.title ??
     routedParams?.target ??
     routedParams?.title;
+  // Planner-asserted `confirmed` is only real consent when the owner has
+  // actually seen a preview: either the current owner text is an explicit
+  // yes, or a draft previewed on an EARLIER message is still pending.
+  // Observed live (#16941, child-morning-routine): after previewing a daily
+  // routine, the planner immediately re-called create with confirmed:true in
+  // the same turn — saving a routine the child never approved — then told the
+  // child nothing was saved, and the real confirm turn duplicated the row.
+  const plannerAssertedConfirmed =
+    params.confirmed === true || detailBoolean(details, "confirmed") === true;
+  const currentMessageId =
+    message.id !== undefined && message.id !== null ? String(message.id) : "";
+  const priorTurnDraftPending =
+    deferredDraft != null &&
+    (deferredDraft.sourceMessageId === undefined ||
+      currentMessageId === "" ||
+      deferredDraft.sourceMessageId !== currentMessageId);
   const createConfirmed =
     deferredDraftReuseMode === "confirm" ||
-    params.confirmed === true ||
-    detailBoolean(details, "confirmed") === true ||
-    explicitCreateConfirmation;
+    explicitCreateConfirmation ||
+    (plannerAssertedConfirmed && priorTurnDraftPending);
 
   try {
     const createDefinition = async () => {
@@ -3355,6 +3390,11 @@ export async function runLifeOperationHandler(
         createdAt: editingDeferredDefinitionDraft
           ? Date.now()
           : (deferredDefinitionDraft?.createdAt ?? Date.now()),
+        // Preserve the ORIGINAL previewing turn's id on reuse — a same-turn
+        // re-preview must not launder the draft into "prior-turn" consent.
+        sourceMessageId:
+          deferredDefinitionDraft?.sourceMessageId ??
+          (currentMessageId !== "" ? currentMessageId : undefined),
         request: {
           cadence,
           description:
@@ -3456,6 +3496,39 @@ export async function runLifeOperationHandler(
       const resolvedGoal = definitionDraft.request.goalRef
         ? await resolveGoal(service, definitionDraft.request.goalRef, domain)
         : null;
+
+      // Content-level duplicate guard, mirroring the scheduled-task one: a
+      // confirm turn that re-describes an already-saved item mints a fresh
+      // create (observed live, #16941: "yes lock it in! and can it bug me
+      // before friday too" after the plan had saved stacked a second
+      // identical "Book report…" definition). An ACTIVE definition with the
+      // same normalized title and structurally identical cadence IS the same
+      // item — report it as already saved instead of stacking a twin.
+      const duplicateOf = (await service.listDefinitions()).find(
+        (record) =>
+          record.definition.status === "active" &&
+          normalizeLifeInputText(record.definition.title).toLowerCase() ===
+            normalizeLifeInputText(
+              definitionDraft.request.title,
+            ).toLowerCase() &&
+          stableCadenceKey(record.definition.cadence) ===
+            stableCadenceKey(definitionDraft.request.cadence),
+      );
+      if (duplicateOf) {
+        await clearDeferredLifeDraftCache(runtime, message);
+        const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence)} — nothing new was created.`;
+        return {
+          success: true as const,
+          text: alreadyText,
+          userFacingText: alreadyText,
+          verifiedUserFacing: true,
+          data: {
+            actionName: ownerSurfaceActionName,
+            deduplicated: true,
+            definition: duplicateOf.definition,
+          },
+        };
+      }
 
       const created = await service.createDefinition({
         ownership,
@@ -3687,6 +3760,7 @@ export async function runLifeOperationHandler(
         intent,
         operation: "create_goal",
         createdAt: Date.now(),
+        sourceMessageId: currentMessageId !== "" ? currentMessageId : undefined,
         request: {
           cadence,
           description,

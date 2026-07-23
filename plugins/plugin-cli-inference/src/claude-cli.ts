@@ -24,6 +24,19 @@ const DEFAULT_MODEL = "claude-opus-4-8";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const CLAUDE_BINARY = "claude";
 
+// The Claude Code harness injects `<system-reminder>` blocks into its
+// prompts, and the model occasionally echoes one back verbatim in text
+// output. They are transport metadata, never legitimate reply content — one
+// leaked into a user-facing Stage-1 reply live (#16941: "On it.
+// <system-reminder> Return exactly one JSON object … </system-reminder>").
+// Strip them before the runtime ever sees the text.
+const SYSTEM_REMINDER_BLOCK_RE =
+  /<system-reminder>[\s\S]*?(?:<\/system-reminder>|$)/g;
+
+export function stripSystemReminderBlocks(text: string): string {
+  return text.replace(SYSTEM_REMINDER_BLOCK_RE, "");
+}
+
 export interface SpawnResult {
   code: number | null;
   signal: NodeJS.Signals | null;
@@ -234,7 +247,7 @@ export class ClaudeCli {
           `[cli-inference] claude exited ${result.code} signal=${result.signal}: ${redactStderr(result.stderr)}`
         );
       }
-      const text = result.stdout.trim();
+      const text = stripSystemReminderBlocks(result.stdout).trim();
       const apiError = parseProviderApiErrorText(text);
       if (apiError) {
         throw new ProviderApiError(`[cli-inference] claude upstream ${text.slice(0, 160)}`, {

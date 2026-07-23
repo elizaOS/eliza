@@ -50,6 +50,12 @@ export default scenario({
         "pack lunch",
         "math folder",
         "morning routine",
+        // Live models legitimately title this "Before-school checklist" /
+        // "School checklist"; a bare "checklist" alias would also loose-match
+        // the simulator's seeded "…launch checklist" row, so keep these
+        // school-anchored.
+        "before school",
+        "school checklist",
       ],
       delta: 1,
       cadenceKind: "daily",

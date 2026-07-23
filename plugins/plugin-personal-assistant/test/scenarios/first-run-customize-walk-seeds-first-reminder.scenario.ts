@@ -1,19 +1,21 @@
 /**
- * Onboarding journey — customize (5-question) path. A fresh owner opts to
- * customize; the LIVE message turns exercise the model with the onboarding
- * affordance surfaced (recorded trajectory = the "walk the user through"
- * evidence), while the final check drives the real `FirstRunService` through all
- * five questions, including the CONDITIONAL relationships question that fires
- * only because `follow-ups` is among the selected categories.
+ * Onboarding journey — customize path under the three-question contract
+ * (#14691: preferredName → categories → channel; timezone/windows inferred,
+ * relationships discovered passively). A fresh owner opts to customize; the
+ * LIVE message turns exercise the model with the onboarding affordance
+ * surfaced (recorded trajectory = the "walk the user through" evidence),
+ * while the final check drives the real `FirstRunService` through the walk,
+ * passing the timezone/windows/follow-up cadences the owner VOLUNTEERED in
+ * speech as volunteered input fields.
  *
  * Pass/fail is the DOMAIN outcome, not chat text (first-run is conductor-driven,
  * not model-invocable): the final check asserts the seeded default pack in the
- * real scheduled-task store, anchored to the answered morning window, via
+ * real scheduled-task store, anchored to the volunteered morning window, via
  * `LifeOpsRepository`.
  *
  * Fail-without-fix anchor: `FirstRunService.runCustomizePath` +
- * `nextCustomizeQuestion` conditional gating (`src/lifeops/first-run/service.ts`)
- * and the `relationships.shouldAsk` predicate (`.../first-run/questions.ts`).
+ * `nextCustomizeQuestion` (`src/lifeops/first-run/service.ts`,
+ * `.../first-run/questions.ts`).
  */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
@@ -24,7 +26,7 @@ import {
 export default scenario({
   lane: "live-only",
   id: "first-run-customize-walk-seeds-first-reminder",
-  title: "First-run customize: full 5-question walk → first reminder seeded",
+  title: "First-run customize: full question walk → first reminder seeded",
   domain: "lifeops.first-run",
   tags: ["lifeops", "first-run", "onboarding", "customize", "mvp", "14353"],
   status: "active",

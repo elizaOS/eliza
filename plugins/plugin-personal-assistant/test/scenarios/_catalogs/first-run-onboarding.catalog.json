@@ -27,7 +27,7 @@
       "tier": "T2",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Customize (5-question) path incl. the conditional relationships question. Verification must show the seeded pack anchored to the answered morning window and the preferred name persisted."
+      "notes": "Customize path under the three-question contract (#14691: name, categories, channel; timezone/windows volunteered or inferred). Verification must show the seeded pack anchored to the volunteered morning window and the preferred name persisted."
     },
     {
       "id": "first-run-abandon-resume-no-data-loss",

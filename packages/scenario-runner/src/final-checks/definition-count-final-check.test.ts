@@ -410,3 +410,26 @@ describe("definitionCountDelta final check", () => {
     expect(result.detail).toContain("websiteAccess");
   });
 });
+
+describe("definitionCountDelta title matching", () => {
+  beforeEach(() => {
+    mockState.definitions = [];
+  });
+
+  it("folds dashes when loose-matching titles (#16941)", async () => {
+    mockState.definitions = [
+      definitionRecord(
+        { title: "Before-school routine" },
+        { leadMinutes: [10] },
+      ),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "before school",
+      delta: 1,
+    } as ScenarioFinalCheck);
+
+    expect(result.status).toBe("passed");
+  });
+});

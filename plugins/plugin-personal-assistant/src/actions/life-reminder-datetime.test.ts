@@ -42,6 +42,7 @@ const serviceState = vi.hoisted(() => ({
     request: { preset?: string; minutes?: number };
   }>,
   createCalls: [] as Array<Record<string, unknown>>,
+  extraDefinitions: [] as Array<Record<string, unknown>>,
   goalCreateCalls: [] as Array<Record<string, unknown>>,
   deleteDefinitionCalls: [] as string[],
   deleteGoalCalls: [] as string[],
@@ -121,6 +122,7 @@ vi.mock("../lifeops/service.js", () => {
             domain: "user_lifeops",
           },
         },
+        ...serviceState.extraDefinitions,
       ];
     }
     async listGoals() {
@@ -1694,5 +1696,157 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
       (result.data as Record<string, unknown> | undefined)?.missingField,
     ).toBe("schedule");
     expect(serviceState.createCalls).toHaveLength(0);
+  });
+});
+
+describe("runLifeOperationHandler consent gate (#16941)", () => {
+  const CHILD_ASK =
+    "before school i always forget stuff. can you remind me every morning to brush teeth, pack my lunch, and put my math folder in my bag? just say it normal, not like a baby.";
+
+  function routineRuntime(): IAgentRuntime {
+    return makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Before-school checklist",
+          cadenceKind: "daily",
+          windows: ["morning"],
+        });
+      }
+      return "";
+    });
+  }
+
+  function makeMessageWithId(id: string, text: string): Memory {
+    return { ...makeMessage(text), id } as Memory;
+  }
+
+  beforeEach(() => {
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+  });
+
+  it("reports already-saved instead of stacking a structurally identical definition", async () => {
+    // Live finding: after a save, a re-described confirm turn ("yes lock it
+    // in! and can it bug me before friday too") minted a second identical
+    // definition. Same normalized title + same cadence = same item.
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-dup",
+        title: "Before-school checklist",
+        status: "active",
+        cadence: { kind: "daily", windows: ["morning"] },
+      },
+    });
+
+    const result = await runLifeOperationHandler(
+      routineRuntime(),
+      makeMessage("yes save the before-school checklist please"),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "save the before-school checklist routine",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(result.data).toMatchObject({ deduplicated: true });
+    expect(result.text).toContain("already saved");
+  });
+
+  it("ignores bare planner confirmed:true on a fresh recurring create", async () => {
+    // Live finding: the planner asserted confirmed:true on the FIRST call of
+    // a daily-routine ask and saved a definition the child never approved.
+    // Without an explicit yes in the owner text or a prior-turn draft, the
+    // flag is not consent.
+    const result = await runLifeOperationHandler(
+      routineRuntime(),
+      makeMessage(CHILD_ASK),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: CHILD_ASK,
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(result.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
+  });
+
+  it("blocks a same-turn preview→confirmed:true re-call from self-approving", async () => {
+    // Exact live repro: preview on message M, then the planner re-calls
+    // create with confirmed:true still on message M. The draft's
+    // sourceMessageId matches, so the flag still is not consent.
+    const runtime = routineRuntime();
+    const message = makeMessageWithId(
+      "00000000-0000-0000-0000-000000000011",
+      CHILD_ASK,
+    );
+
+    const preview = await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: { action: "create_reminder", intent: CHILD_ASK },
+    } as HandlerOptions);
+    expect(preview.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+
+    const recall = await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: {
+        action: "create_reminder",
+        intent: CHILD_ASK,
+        confirmed: true,
+      },
+    } as HandlerOptions);
+
+    expect(recall.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(recall.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
+  });
+
+  it("honors planner confirmed:true against a draft previewed on an earlier message", async () => {
+    // A prior-turn draft means the owner actually saw the preview; a muted
+    // acknowledgement ("mhm") plus the planner flag may then save.
+    const runtime = routineRuntime();
+
+    const preview = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId("00000000-0000-0000-0000-000000000021", CHILD_ASK),
+      undefined,
+      {
+        parameters: { action: "create_reminder", intent: CHILD_ASK },
+      } as HandlerOptions,
+    );
+    expect(preview.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+
+    const confirm = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId("00000000-0000-0000-0000-000000000022", "mhm"),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: CHILD_ASK,
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+
+    expect(confirm.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
   });
 });
