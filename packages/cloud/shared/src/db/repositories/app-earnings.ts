@@ -401,16 +401,15 @@ export class AppEarningsRepository {
                     ? "redeemable transaction user differs"
                     : !committedPlatformDelta.isFinite()
                       ? "redeemable platform revenue is non-finite"
-                      : creatorDelta.isPositive() !==
-                          committedPlatformDelta.isPositive()
+                      : creatorDelta.isPositive() !== committedPlatformDelta.isPositive()
                         ? "redeemable platform revenue direction differs"
                         : !params.redeemableDeduplicated &&
-                          !creatorDelta.equals(expectedCreatorAmountRounded)
-                        ? `redeemable amount ${creatorDelta.toFixed()} differs from requested creator movement ${expectedCreatorAmountRounded.toFixed()}`
-                        : !params.redeemableDeduplicated &&
-                            !committedPlatformDelta.equals(platformRevenueDelta)
-                          ? "redeemable platform revenue differs"
-                          : null;
+                            !creatorDelta.equals(expectedCreatorAmountRounded)
+                          ? `redeemable amount ${creatorDelta.toFixed()} differs from requested creator movement ${expectedCreatorAmountRounded.toFixed()}`
+                          : !params.redeemableDeduplicated &&
+                              !committedPlatformDelta.equals(platformRevenueDelta)
+                            ? "redeemable platform revenue differs"
+                            : null;
       if (ledgerMismatch) {
         throw new CreatorMovementReplayMismatchError(
           params.redeemableLedgerEntryId,
