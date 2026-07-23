@@ -452,9 +452,11 @@ export async function startRealVoiceServer(
           // Production parity (#16663): NO teardown revoke — production
           // dropped it in #16636 (a successful hello already claimed the jti
           // until expiry). Evidence runs must certify what production
-          // actually does. Once the poll's request-scoped store parameter
-          // lands (#16669), forward `rawRedis` here the way the route does.
-          isRevoked: (j) => isVoiceSessionTokenRevoked(j),
+          // actually does. The 400ms revocation poll reuses this run's
+          // request-scoped client (#16669), exactly as ws/route.ts forwards
+          // it, instead of falling back to the jwt module's own connection.
+          isRevoked: (j) =>
+            isVoiceSessionTokenRevoked(j, rawRedis ?? undefined),
           downlink,
         }),
     });

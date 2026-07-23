@@ -32,8 +32,9 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
     },
   }));
 
+  const fakeRequestScopedRedis = { eval() {} };
   mock.module("@/lib/cache/redis-factory", () => ({
-    buildRedisClient: () => ({ eval() {} }),
+    buildRedisClient: () => fakeRequestScopedRedis,
   }));
   mock.module("@/lib/services/voice-usage-meter", () => ({
     createDurableVoiceUsageStore: () => ({ durable: true }),
@@ -49,10 +50,12 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
     consumeConsentNonce: async () => true,
   }));
   const revokedChecks: string[] = [];
+  const revokedStores: unknown[] = [];
   mock.module("@/lib/voice-session/jwt", () => ({
     claimVoiceSessionToken: async () => true,
-    isVoiceSessionTokenRevoked: async (jti: string) => {
+    isVoiceSessionTokenRevoked: async (jti: string, store?: unknown) => {
       revokedChecks.push(jti);
+      revokedStores.push(store);
       return false;
     },
     mintVoiceSessionToken: async () => ({
@@ -193,6 +196,10 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       ).toBeUndefined();
       await lastSessionOptions?.isRevoked?.("jti-parity");
       expect(revokedChecks).toContain("jti-parity");
+      // #16669 parity: the poll must reuse the request-scoped client this run
+      // built, exactly as ws/route.ts forwards it — not fall back to the jwt
+      // module's own cached connection.
+      expect(revokedStores.at(-1)).toBe(fakeRequestScopedRedis);
 
       const minted = await server.mint();
       expect(minted.token).toBe("signed-token");
