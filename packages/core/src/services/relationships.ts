@@ -9,7 +9,6 @@
  * Consumed by relationships providers/actions, LifeOps, and the dashboard.
  */
 import { sql } from "drizzle-orm";
-import { invalidateRelatedEntityIds } from "../identity-clusters.ts";
 import { logger } from "../logger";
 import type { Component, Entity, Relationship } from "../types/environment";
 import type {
@@ -2096,12 +2095,6 @@ export class RelationshipsService extends Service {
 				metadata: identityMetadata,
 			});
 		}
-
-		// Cluster membership just changed: drop the memoized clusters for both
-		// sides so the next getRelatedEntityIds re-queries live instead of serving
-		// up-to-TTL-stale membership from the memo.
-		invalidateRelatedEntityIds(this.runtime, candidate.entityA);
-		invalidateRelatedEntityIds(this.runtime, candidate.entityB);
 
 		logger.info(
 			`[RelationshipsService] Accepted merge ${candidateId}; folded ${candidate.entityB} into ${candidate.entityA}`,
