@@ -1328,12 +1328,16 @@ function renderPhoneSurface(
 
 function renderAppsSurface(navigationPath: string): ReactNode {
   if (!APPS_ENABLED) return <ViewUnavailableFallback />;
-  if (!getAppSlugFromPath(navigationPath)) {
+  const appSlug = getAppSlugFromPath(navigationPath);
+  if (!appSlug) {
     return <HomeScreenMount initialSection="apps" />;
   }
+  // Reaching here means no registered page or remote view claimed the slug —
+  // AppsPageView decides between the app runtime and the designed not-found
+  // state (#17033), so a dead deep link never renders as the healthy grid.
   return (
     <TabContentView>
-      <AppsPageView />
+      <AppsPageView appSlug={appSlug} />
     </TabContentView>
   );
 }

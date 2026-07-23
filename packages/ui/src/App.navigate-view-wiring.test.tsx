@@ -312,8 +312,11 @@ vi.mock("./state", async () => {
   // hooks must reflect that (mirrors the original fresh-object-per-call mock).
   const getAppValue = () => ({
     actionNotice: null,
+    activeGameRunId: "",
     activeGameViewerUrl: null,
     activeOverlayApp: null,
+    appRuns: [],
+    appsSubTab: "browse",
     agentStatus: null,
     backendConnection: { state: "connected" },
     copyToClipboard: vi.fn(),
@@ -856,5 +859,22 @@ describe("App navigate-view event wiring", () => {
     expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
     expect(getByTestId("app-background-shader")).toBeTruthy();
     expect(queryByTestId("app-opaque-background")).toBeNull();
+  });
+
+  it("lands on the designed not-found state for a navigate-view id nothing serves (#17033)", async () => {
+    window.history.replaceState(null, "", "/?shellMode=full");
+    // The handler calls setTab before pushing the path; mirroring the tab into
+    // the live appState lets the popstate-triggered re-render route to /apps
+    // the way the real store would.
+    appState.setTab.mockImplementation((tab: string) => {
+      appState.tab = tab;
+    });
+    render(<App />);
+
+    navigateView({ viewId: "definitely-not-a-view" });
+
+    expect(await screen.findByTestId("app-route-not-found")).toBeTruthy();
+    expect(window.location.pathname).toBe("/apps/definitely-not-a-view");
+    expect(screen.queryByTestId("launcher-surface")).toBeNull();
   });
 });
