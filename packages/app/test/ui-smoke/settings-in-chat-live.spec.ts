@@ -66,6 +66,19 @@ function collectLogs(page: Page): CapturedLogs {
     if (/^Failed to load resource: net::ERR_CONNECTION_FAILED/i.test(text)) {
       return;
     }
+    // GET /api/location/approximate 502s by design when the host has no
+    // egress to the external IP-geolocation upstream (weather widget's
+    // no-permission fallback; see packages/agent/src/api/misc-routes.ts).
+    // That environmental failure is unrelated to the settings-in-chat
+    // surface; any other 5xx still fails the run.
+    if (
+      /^Failed to load resource: the server responded with a status of 502 /i.test(
+        text,
+      ) &&
+      /\/api\/location\/approximate/.test(message.location()?.url ?? "")
+    ) {
+      return;
+    }
     logs.failures.push(`console.error: ${text}`);
   });
   page.on("pageerror", (error) => {
@@ -204,6 +217,20 @@ async function promptForConfigCard(page: Page): Promise<void> {
 }
 
 /**
+ * Pins the newest rendered config card by index. `.last()` re-resolves on
+ * every assertion, and the agent's post-save reply can append ANOTHER
+ * `[CONFIG:…]` card to the transcript — retargeting `.last()` to a fresh
+ * unsaved card while the "Saved" badge sits on the one we acted on. An
+ * nth() locator stays on the acted-on card because transcript cards only
+ * append.
+ */
+async function pinNewestCard(page: Page) {
+  const cards = page.getByTestId("inline-plugin-config");
+  const count = await cards.count();
+  return cards.nth(Math.max(0, count - 1));
+}
+
+/**
  * Reveals the token form when the card defaults to an OAuth-style mode, then
  * returns the card's first config input.
  */
@@ -247,7 +274,7 @@ test.describe("settings-in-chat live round trip", () => {
     await input.fill(E2E_TOKEN_VALUE);
     await snap(page, "02-desktop-card-edited.jpg");
 
-    const card = page.getByTestId("inline-plugin-config").last();
+    const card = await pinNewestCard(page);
     const saveButton = card.getByRole("button", { name: /^sav(e|ing)/i });
 
     // Error leg first: abort exactly one PUT at the transport layer and prove
@@ -369,7 +396,7 @@ test.describe("settings-in-chat live round trip (mobile viewport)", () => {
 
     const input = await revealConfigForm(page);
     await input.fill(E2E_TOKEN_VALUE);
-    const card = page.getByTestId("inline-plugin-config").last();
+    const card = await pinNewestCard(page);
     const [saveResponse] = await Promise.all([
       page.waitForResponse(
         (response) =>
