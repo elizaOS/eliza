@@ -1635,6 +1635,61 @@ async function runAnimationAppearanceSuite(page) {
     `[appearance] collapse ANIMATES smoothly (${collapse.steppedFrames} stepped frames, max ${Math.round(collapse.maxStep)}px/frame < 260 — not a one-frame snap)`,
   );
 
+  // A release-velocity flick follows goToDetent("collapsed"), not closeSheet.
+  // Keep this separate from the tap probe above so both collapse entry points
+  // must retain the transcript until their shared height spring reaches zero.
+  await gotoFixture(page);
+  await page.waitForSelector('[data-testid="chat-sheet-grabber"]');
+  await page.waitForTimeout(500);
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
+  await page.waitForTimeout(SETTLE);
+  assert(
+    (await detent(page)) === "half",
+    "[appearance] mouse flick probe starts at HALF",
+  );
+  const mouseFlickCollapse = await sampleCurve(async () => {
+    await gesture(page, -24, { pointer: "mouse", slow: false, steps: 1 });
+    assert(
+      (await page.getByTestId("chat-thread").count()) === 1,
+      "[appearance] mouse flick keeps the transcript mounted during collapse",
+    );
+  });
+  assert(
+    mouseFlickCollapse.steppedFrames >= 8 && mouseFlickCollapse.maxStep < 260,
+    `[appearance] mouse flick collapse ANIMATES smoothly (${mouseFlickCollapse.steppedFrames} stepped frames, max ${Math.round(mouseFlickCollapse.maxStep)}px/frame < 260 — not a one-frame snap)`,
+  );
+  assert(
+    (await detent(page)) === "collapsed" &&
+      (await page.getByTestId("chat-thread").count()) === 0,
+    "[appearance] mouse flick settles at INPUT and unmounts the transcript",
+  );
+
+  await gotoFixture(page);
+  await page.waitForSelector('[data-testid="chat-sheet-grabber"]');
+  await page.waitForTimeout(500);
+  await gesture(page, 160, { pointer: "touch", slow: false, steps: 1 });
+  await page.waitForTimeout(SETTLE);
+  assert(
+    (await detent(page)) === "half",
+    "[appearance] touch flick probe starts at HALF",
+  );
+  const touchFlickCollapse = await sampleCurve(async () => {
+    await gesture(page, -24, { pointer: "touch", slow: false, steps: 1 });
+    assert(
+      (await page.getByTestId("chat-thread").count()) === 1,
+      "[appearance] touch flick keeps the transcript mounted during collapse",
+    );
+  });
+  assert(
+    touchFlickCollapse.steppedFrames >= 8 && touchFlickCollapse.maxStep < 260,
+    `[appearance] touch flick collapse ANIMATES smoothly (${touchFlickCollapse.steppedFrames} stepped frames, max ${Math.round(touchFlickCollapse.maxStep)}px/frame < 260 — not a one-frame snap)`,
+  );
+  assert(
+    (await detent(page)) === "collapsed" &&
+      (await page.getByTestId("chat-thread").count()) === 0,
+    "[appearance] touch flick settles at INPUT and unmounts the transcript",
+  );
+
   // (2) Pill bar is the SAME light bar as the grabber (identical through the
   // crossfade).
   await gesture(page, -120, { pointer: "mouse", slow: false, steps: 1 });
@@ -1645,7 +1700,13 @@ async function runAnimationAppearanceSuite(page) {
     `[appearance] pill bar matches the grabber bar color (pill ${JSON.stringify(pillRgb)})`,
   );
   console.log(
-    `  ℹ collapse: ${collapse.steppedFrames} frames, ${Math.round(collapse.maxStep)}px/frame max, settle ${Math.round(collapse.settleT)}ms`,
+    `  ℹ collapse: tap ${collapse.steppedFrames} frames/${Math.round(
+      collapse.maxStep,
+    )}px max; mouse flick ${mouseFlickCollapse.steppedFrames}/${Math.round(
+      mouseFlickCollapse.maxStep,
+    )}px; touch flick ${touchFlickCollapse.steppedFrames}/${Math.round(
+      touchFlickCollapse.maxStep,
+    )}px`,
   );
 }
 
@@ -2869,6 +2930,13 @@ try {
     await gesture(p, 120, { pointer: "mouse", slow: true });
     await p.waitForTimeout(200);
     assert((await variant(p)) === "open", "REDUCED-MOTION: pull-up still opens");
+    await gesture(p, -24, { pointer: "mouse", slow: false, steps: 1 });
+    await p.waitForTimeout(40);
+    assert(
+      (await detent(p)) === "collapsed" &&
+        (await p.getByTestId("chat-thread").count()) === 0,
+      "REDUCED-MOTION: downward flick settles immediately without a retained transcript",
+    );
     await snap(p, "state-reduced-motion-open");
     await p.close();
   }

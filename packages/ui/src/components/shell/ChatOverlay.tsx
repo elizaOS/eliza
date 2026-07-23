@@ -3275,6 +3275,11 @@ export function ChatOverlay({
       draggingRef.current = false;
       setFreeH(null);
       setMaximized(false);
+      // Closing through the flick-detent path must retain the same laid-out
+      // transcript preview as closeSheet; otherwise mode=input unmounts the
+      // thread before its height spring can paint the collapse. Reduced motion
+      // deliberately skips that intermediate frame and settles immediately.
+      if (to === "collapsed") setDragPreviewMounted(!reduce);
       // "collapsed" is the input bar (sheet closed); half/full open the thread.
       setMode(to === "collapsed" ? "input" : to);
       const target = to === "collapsed" ? 0 : to === "half" ? halfH : openH;
@@ -3314,6 +3319,7 @@ export function ChatOverlay({
       animateOpenProgress,
       animateFullBleedTo,
       overpullCapT,
+      setDragPreviewMounted,
     ],
   );
 

@@ -1092,6 +1092,34 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
+  it("keeps the transcript mounted while a downward flick collapses HALF→INPUT", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    const flick = (fromY: number, toY: number) => {
+      fireEvent.pointerDown(grabber, { clientY: fromY, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: toY, pointerId: 1 });
+      fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
+    };
+
+    flick(420, 280);
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(screen.getByTestId("chat-thread")).toBeTruthy();
+
+    // Less than the distance threshold: synchronous release velocity chooses
+    // the flick-detent path rather than the deliberate free-drag settle.
+    flick(280, 304);
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-revealed")).toBe("true");
+    expect(screen.getByTestId("chat-thread")).toBeTruthy();
+    expect(
+      document.getElementById("continuous-thread")?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(
+      document.getElementById("continuous-thread")?.getAttribute("tabindex"),
+    ).toBe("-1");
+  });
+
   it("lands full when a collapsed drag is released above the half threshold", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
