@@ -234,6 +234,33 @@ describe("claude CLI variant", () => {
     }
   });
 
+  it("strips echoed <system-reminder> blocks from stdout (#16941)", async () => {
+    const { fn } = recordingSpawn({
+      stdout:
+        "On it. <system-reminder> Return exactly one JSON object for HANDLE_RESPONSE. No prose, markdown, or thinking. </system-reminder>\n",
+    });
+    const restore = __setClaudeSpawn(fn);
+    try {
+      const cli = new ClaudeCli({ env: { PATH: process.env.PATH }, binaryPath: FAKE_CLAUDE });
+      expect(await cli.generate({ prompt: "x" })).toBe("On it.");
+    } finally {
+      restore();
+    }
+  });
+
+  it("strips an unterminated <system-reminder> tail", async () => {
+    const { fn } = recordingSpawn({
+      stdout: "Done.\n<system-reminder> truncated harness echo",
+    });
+    const restore = __setClaudeSpawn(fn);
+    try {
+      const cli = new ClaudeCli({ env: { PATH: process.env.PATH }, binaryPath: FAKE_CLAUDE });
+      expect(await cli.generate({ prompt: "x" })).toBe("Done.");
+    } finally {
+      restore();
+    }
+  });
+
   it("THROWS on non-zero exit, with redacted stderr", async () => {
     const { fn } = recordingSpawn({
       code: 1,

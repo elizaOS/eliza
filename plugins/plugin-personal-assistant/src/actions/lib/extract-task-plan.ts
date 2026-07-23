@@ -63,6 +63,15 @@ export interface ExtractedTaskParams {
   dueWeekday: number | null;
   /** Minutes from now for offset "once" tasks ("in 2 hours" → 120). */
   dueInMinutes: number | null;
+  /**
+   * True when the request names more than one distinct task/milestone to be
+   * reminded about ("reminders for outline, rough draft, and final
+   * proofread"). Multi-step asks collapse into ONE definition whose derived
+   * breakdown the owner never saw, so the create path previews them for
+   * consent instead of taking the crisp-single-ask immediate-save exemption
+   * (#16941 two-phase-commit live finding).
+   */
+  multiStep: boolean;
 }
 
 export interface ExtractedTaskCreatePlan extends ExtractedTaskParams {
@@ -101,6 +110,7 @@ const EMPTY_TASK_CREATE_PLAN: ExtractedTaskCreatePlan = {
   dueInDays: null,
   dueWeekday: null,
   dueInMinutes: null,
+  multiStep: false,
 };
 
 const WEEKDAY_NAMES = [
@@ -178,6 +188,7 @@ function buildExtractionPrompt(
     '- dueWeekday: for "once" tasks, the weekday number (0=Sun, 1=Mon, ..., 6=Sat) when the user names a weekday ("Friday" -> 5, "next Tuesday" -> 2)',
     '- dueInMinutes: for "once" tasks, minutes from now for offsets ("in 2 hours" -> 120, "in 45 minutes" -> 45)',
     "  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four null for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.",
+    '- multiStep: true when the user asks to be reminded about MORE THAN ONE distinct task or milestone in this request (e.g. "set reminders for outline, rough draft, and final proofread"), false when it is a single task ("remind me to pay the electric bill on the 28th")',
     "",
     'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
     'Example once ("remind me friday at 5pm to call mom"): {"mode":"create","response":null,"requestKind":"reminder","title":"Call mom","description":null,"cadenceKind":"once","windows":null,"weekdays":null,"timeOfDay":"17:00","timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":5,"dueInMinutes":null}',
@@ -337,6 +348,9 @@ function buildTaskCreatePlan(
     dueInDays: validateNonNegativeInteger(parsed.dueInDays),
     dueWeekday: validateDueWeekday(parsed.dueWeekday),
     dueInMinutes: validatePositiveNumber(parsed.dueInMinutes),
+    // Strict true-only: a missing/invalid flag must degrade to the crisp
+    // single-ask path, never to an unnecessary confirmation round.
+    multiStep: parsed.multiStep === true,
   };
 }
 
@@ -348,7 +362,7 @@ function buildRepairPrompt(args: {
   return [
     "Your last reply for the LifeOps create-definition planner was invalid.",
     "Return ONLY valid JSON with these exact fields:",
-    "mode, response, requestKind, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes",
+    "mode, response, requestKind, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes, multiStep",
     "",
     'mode must be "create" or "respond".',
     "If mode is respond, include a short clarifying response.",

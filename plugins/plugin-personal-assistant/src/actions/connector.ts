@@ -262,7 +262,7 @@ function getRuntimeMessageConnector(
   );
 }
 
-function registryStatusResult(
+export function registryStatusResult(
   runtime: IAgentRuntime,
   connector: string,
   subaction: ConnectorSubaction,
@@ -271,9 +271,19 @@ function registryStatusResult(
   if (!registration) {
     return null;
   }
+  // Registration alone is not deliverability: a connector with no linked
+  // chat context and no routable target kinds cannot actually reach the
+  // owner. Reporting connected:true for a bare registration made the model
+  // promise "Telegram is live" on a fresh install with nothing linked
+  // (#16941 live, first-run channel-fallback).
+  const deliverable =
+    registration.contexts.length > 0 ||
+    registration.supportedTargetKinds.length > 0;
   return {
     success: true,
-    text: `${registration.label} is registered in the core message connector registry. Detailed chat/user context is exposed by platform providers.`,
+    text: deliverable
+      ? `${registration.label} is registered and has linked chat/user context. Detailed chat/user context is exposed by platform providers.`
+      : `${registration.label} is registered, but no chat or delivery route is linked yet — messages cannot reach the owner there until it is connected. Offer in-app delivery meanwhile.`,
     data: {
       actionName: ACTION_NAME,
       connector,
@@ -283,7 +293,7 @@ function registryStatusResult(
         provider: connector,
         source: registration.source,
         label: registration.label,
-        connected: true,
+        connected: deliverable,
         registered: true,
         capabilities: registration.capabilities,
         supportedTargetKinds: registration.supportedTargetKinds,

@@ -317,7 +317,10 @@ function normalizeChannel(value: string): string {
 }
 
 function normalizeComparableText(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  // Dashes fold to spaces so hyphenation never defeats a loose title match:
+  // live models legitimately title a "before school" routine
+  // "Before-school routine" (#16941).
+  return value.trim().toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ");
 }
 
 function textMatchesLoose(actual: string, expected: string): boolean {
@@ -746,8 +749,31 @@ function definitionMismatchReasons(
     check.forbiddenDueLocalTimes.length > 0
   ) {
     const dueAt = cadence?.dueAt;
+    const slots = Array.isArray(cadence?.slots) ? cadence.slots : [];
     for (const forbidden of check.forbiddenDueLocalTimes) {
       if (typeof forbidden.hour !== "number") {
+        continue;
+      }
+      const forbiddenMinute = forbidden.minute ?? 0;
+      // Slot-based cadences (times_per_day) encode timezone-local clock times
+      // as minuteOfDay directly — no due instant exists to convert.
+      const forbiddenMinuteOfDay = forbidden.hour * 60 + forbiddenMinute;
+      if (slots.length > 0) {
+        if (
+          slots.some(
+            (slot) => toRecord(slot)?.minuteOfDay === forbiddenMinuteOfDay,
+          )
+        ) {
+          reasons.push(
+            `slot at local time ${String(forbidden.hour).padStart(2, "0")}:${String(forbiddenMinute).padStart(2, "0")} is forbidden`,
+          );
+        }
+        continue;
+      }
+      if (typeof dueAt !== "string" && cadence?.kind !== "once") {
+        // Window/interval cadences carry no explicit clock time at all, so
+        // there is nothing at the forbidden instant — "missing" here is not a
+        // broken pipeline, it is a cadence shape without due instants.
         continue;
       }
       const timeZone = forbidden.timeZone ?? record.definition.timezone;
@@ -786,6 +812,64 @@ function definitionMismatchReasons(
     }
   }
   return reasons;
+}
+
+/**
+ * Compact receipt line for one persisted definition row. Pass details embed
+ * these so a report reader can inspect the actual stored artifact (title,
+ * cadence, due instant, timezone, reminder-plan presence) instead of trusting
+ * a bare match count — the evidence bar for catalog verification is "store
+ * rows shown, not just asserted".
+ */
+function definitionReceipt(record: DefinitionRecordLike): string {
+  const cadence = toRecord(record.definition.cadence);
+  const parts = [`"${String(record.definition.title ?? "(untitled)")}"`];
+  if (cadence?.kind !== undefined) {
+    parts.push(`cadence=${String(cadence.kind)}`);
+  }
+  if (typeof cadence?.dueAt === "string") {
+    parts.push(`dueAt=${cadence.dueAt}`);
+  }
+  if (Array.isArray(cadence?.slots) && cadence.slots.length > 0) {
+    const slotText = cadence.slots
+      .map((slot) => {
+        const slotRecord = toRecord(slot);
+        return typeof slotRecord?.minuteOfDay === "number"
+          ? `${String(Math.floor(slotRecord.minuteOfDay / 60)).padStart(2, "0")}:${String(slotRecord.minuteOfDay % 60).padStart(2, "0")}`
+          : "?";
+      })
+      .join(",");
+    parts.push(`slots=[${slotText}]`);
+  }
+  if (typeof record.definition.timezone === "string") {
+    parts.push(`tz=${record.definition.timezone}`);
+  }
+  const planEntries = toRecord(record.reminderPlan);
+  const planSteps = Array.isArray(planEntries?.steps)
+    ? planEntries.steps
+        .map((step) => {
+          const stepRecord = toRecord(step);
+          return typeof stepRecord?.offsetMinutes === "number"
+            ? `${stepRecord.offsetMinutes}m`
+            : "?";
+        })
+        .join(",")
+    : null;
+  const planLeads = Array.isArray(planEntries?.leadMinutes)
+    ? `leadMinutes=[${planEntries.leadMinutes.join(",")}]`
+    : planSteps !== null && planSteps.length > 0
+      ? // Step offsets are the stored artifact for "nudge me before it's due
+        // too" asks (negative = minutes before the anchor), so the receipt
+        // shows them instead of a bare presence flag.
+        `steps=[${planSteps}]`
+      : recordHasEntries(record.reminderPlan)
+        ? "present"
+        : typeof record.definition.reminderPlanId === "string" &&
+            record.definition.reminderPlanId.length > 0
+          ? `id=${record.definition.reminderPlanId}`
+          : "none";
+  parts.push(`reminderPlan=${planLeads}`);
+  return parts.join(" ");
 }
 
 type GmailMockRequest = {
@@ -1419,11 +1503,18 @@ registerFinalCheckHandler(
     );
     const delta =
       typeof definitionCheck.delta === "number" ? definitionCheck.delta : 1;
+    // Pass details carry the queried store rows so the report itself is the
+    // domain-artifact receipt: a delta<=0 pass shows everything that IS stored
+    // (proving the forbidden item is absent), a delta>0 pass shows the matched
+    // rows' cadence/due/reminder-plan fields for hand inspection.
     if (delta <= 0) {
       if (matched.length === 0) {
+        const storedReceipts =
+          records.map((record) => definitionReceipt(record)).join(" | ") ||
+          "(store empty)";
         return {
           status: "passed",
-          detail: `no matching definition for "${definitionCheck.title}"`,
+          detail: `no matching definition for "${definitionCheck.title}" among ${records.length} stored definition(s): ${storedReceipts}`,
         };
       }
       return {
@@ -1432,9 +1523,12 @@ registerFinalCheckHandler(
       };
     }
     if (matched.length >= delta) {
+      const matchedReceipts = matched
+        .map((record) => definitionReceipt(record))
+        .join(" | ");
       return {
         status: "passed",
-        detail: `${matched.length} matching definition(s) for "${definitionCheck.title}"`,
+        detail: `${matched.length} matching definition(s) for "${definitionCheck.title}" — stored: ${matchedReceipts}`,
       };
     }
     const mismatchDetails = titleMatches
