@@ -84,6 +84,11 @@ describe("App navigate-view shell handler", () => {
     expect(pathForNavigateViewDetail({ viewId: "remote-ledger" })).toBe(
       "/apps/remote-ledger",
     );
+    expect(
+      pathForNavigateViewDetail({ viewId: "settings" }, [
+        view({ id: "settings", label: "Settings", path: "/settings" }),
+      ]),
+    ).toBe("/settings");
     expect(pathForNavigateViewDetail({})).toBeNull();
     expect(directTabForNavigateView({ viewPath: "/views" }, "/views")).toBe(
       "views",
@@ -135,6 +140,23 @@ describe("App navigate-view shell handler", () => {
     expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("remote-ledger");
     expect(fixture.setTab).toHaveBeenCalledWith("apps");
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/remote-ledger");
+  });
+
+  it("uses registry paths for view-id-only builtin navigation", () => {
+    const settings = view({
+      id: "settings",
+      label: "Settings",
+      path: "/settings",
+      desktopTabEnabled: false,
+    });
+    const fixture = createHandlerFixture([settings]);
+
+    fixture.handler(navigateEvent({ viewId: "settings" }));
+
+    expect(fixture.setTab).toHaveBeenCalledWith("settings");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/settings");
+    expect(fixture.navigatePath).not.toHaveBeenCalledWith("/apps/settings");
+    expect(fixture.openDesktopTab).not.toHaveBeenCalled();
   });
 
   it("auto-opens desktop-tab-enabled views without pinning them", () => {
