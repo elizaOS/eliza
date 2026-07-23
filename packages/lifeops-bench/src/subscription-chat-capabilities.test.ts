@@ -330,25 +330,26 @@ describe("claudeSubscriptionChatOnlyPlugin", () => {
         },
       ]),
     },
-  ])("fails closed on $label from the lifecycle structured stage", async ({
-    result,
-  }) => {
-    const responseHandler = vi.fn(
-      async (_runtime: IAgentRuntime, _params: GenerateTextParams) => result,
-    );
-    const restricted = claudeSubscriptionChatOnlyPlugin(
-      sourcePluginWithResponseHandler(responseHandler),
-      { lifecycleStructuredResponseTool: true },
-    );
+  ])(
+    "fails closed on $label from the lifecycle structured stage",
+    async ({ result }) => {
+      const responseHandler = vi.fn(
+        async (_runtime: IAgentRuntime, _params: GenerateTextParams) => result,
+      );
+      const restricted = claudeSubscriptionChatOnlyPlugin(
+        sourcePluginWithResponseHandler(responseHandler),
+        { lifecycleStructuredResponseTool: true },
+      );
 
-    await expect(
-      restricted.models?.[ModelType.RESPONSE_HANDLER]?.({} as IAgentRuntime, {
-        prompt: "evaluate",
-        responseSchema: { type: "object" },
-      }),
-    ).rejects.toMatchObject({
-      code: "BENCHMARK_LIFECYCLE_STRUCTURED_RESPONSE_INVALID",
-    });
-    expect(responseHandler).toHaveBeenCalledTimes(1);
-  });
+      await expect(
+        restricted.models?.[ModelType.RESPONSE_HANDLER]?.({} as IAgentRuntime, {
+          prompt: "evaluate",
+          responseSchema: { type: "object" },
+        }),
+      ).rejects.toMatchObject({
+        code: "BENCHMARK_LIFECYCLE_STRUCTURED_RESPONSE_INVALID",
+      });
+      expect(responseHandler).toHaveBeenCalledTimes(1);
+    },
+  );
 });

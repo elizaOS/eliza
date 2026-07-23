@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import http from "node:http";
 import {
   classifyRegistryVersion,
+  inspectRegistryPublisher,
   inspectRegistryVersion,
   RegistryInspectionError,
 } from "../lib/release-registry.mjs";
@@ -17,6 +18,10 @@ const packageRecord = {
   name: "@release-fixture/a",
   version: "1.2.3",
   tarball: { integrity: "sha512-planned" },
+};
+const provenance = {
+  sourceSha: "a".repeat(40),
+  publisher: "release-fixture",
 };
 
 afterEach(async () => {
@@ -85,7 +90,11 @@ describe("registry inspection", () => {
       kind: "malformed-response",
     });
     expect(() =>
-      classifyRegistryVersion(packageRecord, { name: packageRecord.name }),
+      classifyRegistryVersion(
+        packageRecord,
+        { name: packageRecord.name },
+        provenance,
+      ),
     ).toThrow("does not match");
   });
 
@@ -105,20 +114,60 @@ describe("registry inspection", () => {
   test("matching integrity resumes and conflicting integrity is explicit", () => {
     const base = { name: packageRecord.name, version: packageRecord.version };
     expect(
-      classifyRegistryVersion(packageRecord, {
-        ...base,
-        dist: { integrity: packageRecord.tarball.integrity },
-      }),
-    ).toEqual({ state: "matched", integrity: packageRecord.tarball.integrity });
+      classifyRegistryVersion(
+        packageRecord,
+        {
+          ...base,
+          gitHead: provenance.sourceSha,
+          _npmUser: { name: provenance.publisher },
+          dist: { integrity: packageRecord.tarball.integrity },
+        },
+        provenance,
+      ),
+    ).toEqual({
+      state: "matched",
+      integrity: packageRecord.tarball.integrity,
+      ...provenance,
+      provenance: "registry-metadata",
+    });
     expect(
-      classifyRegistryVersion(packageRecord, {
-        ...base,
-        dist: { integrity: "sha512-other" },
-      }),
+      classifyRegistryVersion(
+        packageRecord,
+        {
+          ...base,
+          dist: { integrity: "sha512-other" },
+        },
+        provenance,
+      ),
     ).toEqual({
       state: "conflict",
       expectedIntegrity: packageRecord.tarball.integrity,
       actualIntegrity: "sha512-other",
     });
+    expect(() =>
+      classifyRegistryVersion(
+        packageRecord,
+        {
+          ...base,
+          gitHead: "b".repeat(40),
+          _npmUser: { name: provenance.publisher },
+          dist: { integrity: packageRecord.tarball.integrity },
+        },
+        provenance,
+      ),
+    ).toThrow("Registry provenance");
+  });
+
+  test("binds the authenticated registry publisher before mutation", async () => {
+    const registryUrl = await registry((request, response) => {
+      expect(request.url).toBe("/-/whoami");
+      expect(request.headers.authorization).toBe("Bearer fixture-token");
+      response
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ username: provenance.publisher }));
+    });
+    await expect(
+      inspectRegistryPublisher({ registryUrl, token: "fixture-token" }),
+    ).resolves.toBe(provenance.publisher);
   });
 });

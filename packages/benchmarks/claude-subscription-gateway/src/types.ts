@@ -224,9 +224,5 @@ export interface GatewayAuditRecord {
   credentialTierHmacSha256?: string | null;
   credentialCapabilityHmacSha256?: string | null;
   retryAt?: string | null;
-  pauseReason?:
-    | "rate_limit"
-    | "rate_limit_unknown"
-    | "storage_reserve"
-    | null;
+  pauseReason?: "rate_limit" | "rate_limit_unknown" | "storage_reserve" | null;
 }

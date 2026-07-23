@@ -234,7 +234,7 @@ export function CloudHostedAgentAuthNotice() {
           Cloud again to create a fresh secure sign-in link.
         </p>
         <a
-          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710] focus:outline-none focus:ring-2 focus:ring-[#f3a51f] focus:ring-offset-2 focus:ring-offset-[#08090b]"
+          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710]"
           href={reopenUrl}
           rel="noopener"
           target="_top"

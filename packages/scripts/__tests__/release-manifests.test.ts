@@ -167,28 +167,15 @@ describe("release manifest transactions", () => {
     ).toMatchObject({ changedFiles: 1 });
   });
 
-  test("release workflow finalizes access before reference journaling and pack verification", () => {
+  test("release workflow refuses in-job manifest rewrites", () => {
     const workflow = fs.readFileSync(
       path.resolve(import.meta.dir, "../../../.github/workflows/release.yaml"),
       "utf8",
     );
-    const access = workflow.indexOf(
-      "node scripts/release-set-public-access.mjs",
-    );
-    const replace = workflow.indexOf(
-      "node packages/scripts/replace-workspace-versions.js",
-    );
-    const pack = workflow.indexOf(
-      "node packages/scripts/verify-npm-pack-dist.mjs --all-public-dist-packages --build",
-    );
-    expect(access).toBeGreaterThan(-1);
-    expect(access).toBeLessThan(replace);
-    expect(replace).toBeLessThan(pack);
-    expect(
-      workflow.indexOf(
-        "node scripts/release-set-public-access.mjs",
-        access + 1,
-      ),
-    ).toBe(-1);
+    expect(workflow).not.toContain("release-set-public-access.mjs");
+    expect(workflow).not.toContain("replace-workspace-versions.js");
+    expect(workflow).not.toContain("restore-workspace-refs.js");
+    expect(workflow).toContain("release-cohort.json");
+    expect(workflow).toContain("Build and pack once");
   });
 });

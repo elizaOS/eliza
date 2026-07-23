@@ -100,7 +100,7 @@ mock.module("../../utils/logger", () => ({
 }));
 
 const { resolveSharedAgent } = await import("./resolve-shared-agent");
-const { CacheTTL } = await import("../../cache/keys");
+const { CacheTTL, CacheKeys } = await import("../../cache/keys");
 
 function contextWithAgentId(agentId?: string, headers: Record<string, string> = {}) {
   const lower: Record<string, string> = {};
@@ -484,5 +484,76 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
     const [cacheKey] = cacheSet.mock.calls[0];
     expect(String(cacheKey)).not.toContain("s:");
     expect(revalidateSessionScope).not.toHaveBeenCalled();
+  });
+
+  // REGRESSION (CONVERSATIONS-500-2026-07-22): the real cache client
+  // JSON-serializes on write and JSON-parses on read, so a cached agent row's
+  // `timestamp` columns (Drizzle `Date`s on a live DB hydration) come back as
+  // ISO STRINGS on a cache HIT. The shared-agent conversations route calls
+  // `agent.created_at.toISOString()`, which throws on a string and 500s the
+  // read on EVERY cache hit (the observed "first call 200, then 20/20 = 500").
+  // The module-level in-memory cache double stores by REFERENCE, which hid this
+  // for a year; these tests seed the cache with a JSON-round-tripped entry
+  // (exactly what prod holds) and assert resolveSharedAgent restores the Date
+  // contract before returning.
+  describe("cache-hit Date rehydration", () => {
+    const CREATED = new Date("2026-06-18T12:34:56.000Z");
+
+    // Reproduce what the real cache stores: the object AFTER a JSON round-trip.
+    function jsonRoundTrip<T>(value: T): T {
+      return JSON.parse(JSON.stringify(value)) as T;
+    }
+
+    function seedCacheHit(agentOverrides: Record<string, unknown> = {}) {
+      const key = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+      const liveEntry = {
+        orgId: "org-1",
+        agent: agent({ created_at: CREATED, updated_at: CREATED, ...agentOverrides }),
+        firstWrittenAtMs: Date.now(),
+      };
+      // Store the DESERIALIZED shape a real cache.get would return.
+      cacheStore.set(key, jsonRoundTrip(liveEntry));
+    }
+
+    test("a JSON-round-tripped cache hit carries created_at as a string (bug precondition)", () => {
+      const key = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+      seedCacheHit();
+      const stored = cacheStore.get(key) as { agent: { created_at: unknown } };
+      // Precondition the fix must survive: the raw cached value is a string,
+      // NOT a Date, so a naive passthrough would 500 the route.
+      expect(typeof stored.agent.created_at).toBe("string");
+      expect(stored.agent.created_at instanceof Date).toBe(false);
+    });
+
+    test("resolveSharedAgent restores created_at to a Date on a cache hit so .toISOString() works", async () => {
+      seedCacheHit();
+
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+      expect("agent" in result).toBe(true);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+
+      // The fix: the agent handed to route consumers has Date timestamps again.
+      expect(result.agent.created_at instanceof Date).toBe(true);
+      // The exact call the conversations route makes must not throw.
+      expect(() => (result.agent.created_at as Date).toISOString()).not.toThrow();
+      expect((result.agent.created_at as Date).toISOString()).toBe(CREATED.toISOString());
+      // Served from cache -> the cold authoritative gate did NOT run.
+      expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    });
+
+    test("updated_at and other timestamp fields are rehydrated too", async () => {
+      seedCacheHit();
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+      expect(result.agent.updated_at instanceof Date).toBe(true);
+    });
+
+    test("a null/absent timestamp field is left untouched (no fabricated Date)", async () => {
+      // deleted_at is nullable; a cache hit must not fabricate a Date for it.
+      seedCacheHit({ deleted_at: null });
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+      expect(result.agent.deleted_at).toBeNull();
+    });
   });
 });
