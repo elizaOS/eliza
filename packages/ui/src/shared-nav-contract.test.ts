@@ -4,11 +4,19 @@
  * handoff must resolve on this client — either as a builtin shell view at its
  * canonical path, or as a plugin-declared page a dedicated runtime registers.
  * A new SHARED_NAV_TARGETS entry without a client resolution fails here before
- * it can ship a confident "Opening X for you." reply into the designed
- * not-found state (PR #17021 made the client resolve emitted ids against its
- * routable registry). Runs against the real builtin registry, no mocks.
+ * it can ship a confident "Opening X for you." reply into nowhere: the client
+ * resolves emitted ids against its routable registry (PR #17021), but an id
+ * that registry cannot resolve still falls back to a blind /apps/<id>
+ * navigation — the designed not-found render for unclaimed /apps/<slug> routes
+ * is #17033. Builtin ids run against the real registry, no mocks; plugin ids
+ * are pinned to their declaring plugin source files read from the monorepo, so
+ * a plugin renaming its view id or path breaks this test instead of silently
+ * reintroducing the drift.
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { describe, expect, it } from "vitest";
 import { withBuiltinShellViews } from "./hooks/useAvailableViews";
@@ -18,7 +26,6 @@ import { withBuiltinShellViews } from "./hooks/useAvailableViews";
 const BUILTIN_NAV_PATHS: Record<string, string> = {
   settings: "/settings",
   chat: "/chat",
-  camera: "/camera",
   character: "/character",
   automations: "/automations",
   background: "/background",
@@ -29,20 +36,50 @@ const BUILTIN_NAV_PATHS: Record<string, string> = {
   inventory: "/wallet",
 };
 
+/** A shared-tier view id owned by a plugin, pinned to its declaring source. */
+interface PluginViewPin {
+  /** Canonical path the plugin registers the view at. */
+  path: string;
+  /** Repo-relative source files that must declare BOTH the id and the path. */
+  sources: string[];
+}
+
 // Views declared by dedicated-runtime plugins (unavailable to a pure Tier-0
-// client, but resolvable wherever the owning plugin is loaded). Each row names
-// the declaring plugin file and its canonical registered path.
-const PLUGIN_VIEW_TARGETS: Record<string, string> = {
-  calendar: "/calendar", // plugins/plugin-calendar/src/plugin.ts
-  inbox: "/inbox", // plugins/plugin-inbox/src/plugin.ts
-  finances: "/finances", // plugins/plugin-finances/src/plugin.ts
-  focus: "/focus", // plugins/plugin-blocker/src/plugin.ts
-  goals: "/goals", // plugins/plugin-goals/src/plugin.ts
-  health: "/health", // plugins/plugin-health/src/index.ts
-  todos: "/todos", // plugins/plugin-todos/src/index.ts
-  notes: "/notes", // plugins/plugin-simple-views/src/plugin.ts + register.ts
-  "task-coordinator": "/task-coordinator", // plugins/plugin-task-coordinator/src/index.ts
+// client, but resolvable wherever the owning plugin is loaded). The literal
+// map is the expectation; the fs read below is the pin — each declaring source
+// file is read from the monorepo and must still contain the exact id + path,
+// so a plugin rename fails here instead of shipping undetected drift.
+const PLUGIN_VIEW_TARGETS: Record<string, PluginViewPin> = {
+  calendar: {
+    path: "/calendar",
+    sources: ["plugins/plugin-calendar/src/plugin.ts"],
+  },
+  inbox: { path: "/inbox", sources: ["plugins/plugin-inbox/src/plugin.ts"] },
+  finances: {
+    path: "/finances",
+    sources: ["plugins/plugin-finances/src/plugin.ts"],
+  },
+  focus: { path: "/focus", sources: ["plugins/plugin-blocker/src/plugin.ts"] },
+  goals: { path: "/goals", sources: ["plugins/plugin-goals/src/plugin.ts"] },
+  health: { path: "/health", sources: ["plugins/plugin-health/src/index.ts"] },
+  todos: { path: "/todos", sources: ["plugins/plugin-todos/src/index.ts"] },
+  notes: {
+    path: "/notes",
+    sources: [
+      "plugins/plugin-simple-views/src/plugin.ts",
+      "plugins/plugin-simple-views/src/register.ts",
+    ],
+  },
+  "task-coordinator": {
+    path: "/task-coordinator",
+    sources: ["plugins/plugin-task-coordinator/src/index.ts"],
+  },
 };
+
+// This test only runs in-repo, so the monorepo root is a fixed hop above this
+// file (packages/ui/src → repo root) and a missing source file is a hard fail,
+// never a skip.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 describe("shared-tier nav vocabulary contract", () => {
   const builtinById = new Map(
@@ -52,12 +89,12 @@ describe("shared-tier nav vocabulary contract", () => {
   it("every emitted view id resolves on the client", () => {
     for (const [matcherId, target] of Object.entries(SHARED_NAV_TARGETS)) {
       const builtin = builtinById.get(target.viewId);
-      const pluginPath = PLUGIN_VIEW_TARGETS[target.viewId];
+      const pluginPin = PLUGIN_VIEW_TARGETS[target.viewId];
       expect(
-        builtin !== undefined || pluginPath !== undefined,
+        builtin !== undefined || pluginPin !== undefined,
         `SHARED_NAV_TARGETS["${matcherId}"] emits viewId "${target.viewId}", ` +
           "which is neither a builtin shell view nor a known plugin view — " +
-          "the client would render its not-found state",
+          "the client would blind-navigate to /apps/<id> (not-found render: #17033)",
       ).toBe(true);
       if (builtin) {
         expect(
@@ -80,7 +117,29 @@ describe("shared-tier nav vocabulary contract", () => {
     }
   });
 
-  it('never emits the unroutable ids "wallet" or "help"', () => {
+  it("every plugin view pin is still declared by its plugin source", () => {
+    for (const [viewId, pin] of Object.entries(PLUGIN_VIEW_TARGETS)) {
+      for (const source of pin.sources) {
+        const filePath = resolve(REPO_ROOT, source);
+        expect(
+          existsSync(filePath),
+          `plugin view "${viewId}": declaring source ${source} is missing — ` +
+            "point PLUGIN_VIEW_TARGETS at the plugin's new declaring file",
+        ).toBe(true);
+        const contents = readFileSync(filePath, "utf8");
+        expect(
+          new RegExp(`id:\\s*"${viewId}"`).test(contents),
+          `plugin view "${viewId}": ${source} no longer declares id: "${viewId}"`,
+        ).toBe(true);
+        expect(
+          new RegExp(`path:\\s*"${pin.path}"`).test(contents),
+          `plugin view "${viewId}": ${source} no longer declares path: "${pin.path}"`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('never emits "wallet" (no such client id) nor "help"/"camera" (no shared-tier surfaces)', () => {
     for (const [matcherId, target] of Object.entries(SHARED_NAV_TARGETS)) {
       expect(
         target.viewId,
@@ -90,10 +149,18 @@ describe("shared-tier nav vocabulary contract", () => {
         target.viewId,
         `SHARED_NAV_TARGETS["${matcherId}"] emits "help", but no Help surface exists`,
       ).not.toBe("help");
+      expect(
+        target.viewId,
+        `SHARED_NAV_TARGETS["${matcherId}"] emits "camera", an AOSP-fork-only surface no shared-tier client (web/desktop/iOS) renders`,
+      ).not.toBe("camera");
     }
     expect(
       Object.keys(SHARED_NAV_TARGETS),
       'a "help" matcher entry must not exist — the utterance falls through to the LLM turn',
     ).not.toContain("help");
+    expect(
+      Object.keys(SHARED_NAV_TARGETS),
+      'a "camera" matcher entry must not exist — AOSP devices run dedicated runtimes whose VIEWS action handles camera; shared-tier utterances fall through to the LLM turn',
+    ).not.toContain("camera");
   });
 });

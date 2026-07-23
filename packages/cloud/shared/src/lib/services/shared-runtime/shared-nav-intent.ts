@@ -86,10 +86,12 @@ export function resolveSharedNavIntent(message: string | undefined): SharedNavIn
 
   // The table translates matcher vocabulary into CLIENT view ids (the two
   // namespaces differ — "wallet" emits "inventory") and intentionally omits
-  // matcher ids with no client surface (e.g. "help"), which fall through to
-  // the LLM instead of navigating into the client's not-found state. The
-  // client resolves the emitted id against its routable view registry
-  // (PR #17021); an unresolvable id renders the designed not-found state.
+  // matcher ids with no shared-tier client surface (e.g. "help", "camera"),
+  // which fall through to the LLM instead of navigating nowhere. The client
+  // resolves the emitted id against its routable view registry (PR #17021),
+  // but an id that registry misses still falls back to a blind /apps/<id>
+  // navigation — the designed not-found render for unclaimed /apps/<slug>
+  // routes is #17033 — so only client-resolvable ids may leave this table.
   const target = SHARED_NAV_TARGETS[matcherId];
   if (!target) return null;
 

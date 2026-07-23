@@ -2,15 +2,16 @@
  * Canonical navigation vocabulary for Tier-0 shared-runtime agents: the map
  * from a view-command-matcher id to the CLIENT view id + human label a turn may
  * emit in a VIEWS handoff. The shared tier emits only these ids; the client
- * owns id→path resolution against its routable view registry, and an id absent
- * from that registry renders the designed not-found state (#17020, PR #17021).
- * Matcher ids and client ids are separate namespaces — the matcher's "wallet"
- * resolves to the builtin "inventory" tab — so this table is the single
- * translation point, and it deliberately omits matcher ids with no client
- * surface at all (e.g. "help") so those utterances fall through to the normal
- * LLM turn instead of navigating into not-found (#17032). The vocabulary is
- * pinned by the cross-package contract test
- * packages/ui/src/shared-nav-contract.test.ts.
+ * resolves each id against its routable view registry (#17020, PR #17021), but
+ * an id that registry cannot resolve still falls back to a blind /apps/<id>
+ * navigation — the designed not-found render for unclaimed /apps/<slug> routes
+ * is #17033 — so every entry here must be client-resolvable. Matcher ids and
+ * client ids are separate namespaces — the matcher's "wallet" resolves to the
+ * builtin "inventory" tab — so this table is the single translation point, and
+ * it deliberately omits matcher ids with no shared-tier client surface (e.g.
+ * "help", "camera") so those utterances fall through to the normal LLM turn
+ * instead of navigating nowhere (#17032). The vocabulary is pinned by the
+ * cross-package contract test packages/ui/src/shared-nav-contract.test.ts.
  */
 
 /** A client-resolvable navigation target for one matcher id. */
@@ -43,6 +44,10 @@ export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
   character: { viewId: "character", label: "Character" },
   automations: { viewId: "automations", label: "Automations" },
   chat: { viewId: "chat", label: "Home" },
-  camera: { viewId: "camera", label: "Camera" },
+  // "camera" is deliberately absent: the camera view is an AOSP-fork-only
+  // native surface, and AOSP devices run dedicated local runtimes whose real
+  // VIEWS action handles camera — never the Tier-0 shared path. On the clients
+  // a shared-tier agent actually serves (web/desktop/iOS), /camera renders the
+  // ViewUnavailableFallback launcher grid.
   "task-coordinator": { viewId: "task-coordinator", label: "Task Coordinator" },
 };
