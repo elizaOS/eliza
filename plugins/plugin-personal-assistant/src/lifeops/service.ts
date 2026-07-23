@@ -1708,15 +1708,23 @@ export class LifeOpsService extends LifeOpsServiceBase {
     };
     const todayKey = dayKey(now);
     const lookbackMs = 36 * 60 * 60 * 1000;
+    // The owner filter lives in the SQL WHERE (not here) so the row limit is
+    // applied AFTER it: with the filter in TypeScript, agent-subject
+    // completions under multi-room load consumed the LIMIT window and
+    // silently evicted owner wins from the recap (#16966 post-merge review).
+    // The scan limit is sized for the 36h window, newest-first — the local-day
+    // filter below only trims the older-than-today tail, so today's rows are
+    // never the ones cut. The final cap bounds the provider/brief block.
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
+      { subjectType: "owner", limit: 200 },
     );
-    return views.filter(
-      (occurrence) =>
-        occurrence.subjectType === "owner" &&
-        dayKey(new Date(occurrence.updatedAt)) === todayKey,
-    );
+    return views
+      .filter(
+        (occurrence) => dayKey(new Date(occurrence.updatedAt)) === todayKey,
+      )
+      .slice(0, 24);
   }
 
   async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {

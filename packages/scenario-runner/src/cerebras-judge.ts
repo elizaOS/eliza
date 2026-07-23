@@ -35,7 +35,7 @@ export interface CerebrasJudgeOptions {
   model?: string;
   /** OpenAI-compatible base. Default `https://api.cerebras.ai/v1`. */
   baseUrl?: string;
-  /** Bearer key. Defaults to `process.env.CEREBRAS_API_KEY`. */
+  /** Bearer key. Defaults to `EVAL_CEREBRAS_API_KEY`, then `CEREBRAS_API_KEY`. */
   apiKey?: string;
   /** Per-request abort timeout. Default 60000ms. */
   timeoutMs?: number;
@@ -228,16 +228,18 @@ export class CerebrasJudge {
       process.env.CEREBRAS_BASE_URL?.trim() ??
       "https://api.cerebras.ai/v1"
     ).replace(/\/$/, "");
-    // EVAL_CEREBRAS_API_KEY is the judge-only credential slot: the generic
-    // CEREBRAS_API_KEY doubles as a live-provider selector for the model
-    // under test (live-provider.ts), so a host that wants an independent
-    // judge WITHOUT flipping the under-test provider sets the EVAL_ variant.
-    // The lifeops enable-check (isCerebrasEvalEnabled) already accepts it;
-    // the transport must too or an EVAL_-only host throws at construction.
+    // EVAL_CEREBRAS_API_KEY is the judge-only credential slot and WINS over
+    // the generic key, matching the eval-model resolution order everywhere
+    // else (cerebras-eval-model.ts / lifeops-eval-model.ts read the
+    // role-specific EVAL_ variable first). The generic CEREBRAS_API_KEY
+    // doubles as a live-provider selector for the model under test
+    // (live-provider.ts), so a host that carries both must be able to point
+    // the judge at an independent credential/proxy without the generic key
+    // silently taking over judging.
     const apiKey =
       options.apiKey ??
-      process.env.CEREBRAS_API_KEY ??
       process.env.EVAL_CEREBRAS_API_KEY ??
+      process.env.CEREBRAS_API_KEY ??
       "";
     if (!apiKey) {
       throw new Error(

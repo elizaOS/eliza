@@ -134,7 +134,31 @@ describe("CerebrasJudge", () => {
 
   it("throws when no apiKey is available", () => {
     delete process.env.CEREBRAS_API_KEY;
+    delete process.env.EVAL_CEREBRAS_API_KEY;
     expect(() => new CerebrasJudge()).toThrow(/CEREBRAS_API_KEY/);
+  });
+
+  // Regression (#16966 post-merge review): the constructor preferred the
+  // generic CEREBRAS_API_KEY, inverting the eval-model resolution order — on
+  // a host carrying both, the under-test provider credential silently took
+  // over judging. The judge-only EVAL_ slot must win.
+  it("prefers EVAL_CEREBRAS_API_KEY over CEREBRAS_API_KEY for the bearer token", async () => {
+    process.env.CEREBRAS_API_KEY = "generic-under-test-key";
+    process.env.EVAL_CEREBRAS_API_KEY = "judge-only-key";
+    try {
+      mockFetchOnceJson('{"score":1,"reason":"ok"}');
+      const judge = new CerebrasJudge();
+      await judge.judge("test prompt");
+      const fetchMock = globalThis.fetch as unknown as ReturnType<
+        typeof vi.fn
+      >;
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(
+        (init.headers as Record<string, string>).Authorization,
+      ).toBe("Bearer judge-only-key");
+    } finally {
+      delete process.env.EVAL_CEREBRAS_API_KEY;
+    }
   });
 
   it("parses strict JSON output, derives verdict from score", async () => {
