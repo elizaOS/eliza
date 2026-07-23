@@ -41,29 +41,83 @@ const AGENT_SANDBOX_DATE_FIELDS = [
 ] as const satisfies ReadonlyArray<keyof AgentSandbox>;
 
 /**
- * Restore the `AgentSandbox` DATE contract after a scope-cache round-trip
- * (CONVERSATIONS-500-2026-07-22). The cache client JSON-serializes on write and
- * JSON-parses on read, so every `timestamp` column that Drizzle hands us as a JS
- * `Date` on a live DB hydration comes back from cache as an ISO **string**.
- * Downstream consumers rely on the typed contract — e.g. the shared-agent
- * conversations route calls `agent.created_at.toISOString()`, which throws
- * (`string.toISOString is not a function`) and 500s the read on EVERY cache hit
- * (the exact "first call 200, then all 500" defect). Rehydrating the known date
- * fields at the cache-read boundary keeps a cache hit byte-for-byte equivalent
- * to a fresh DB hydration for every caller. Best-effort per field: an absent or
- * already-`Date` value is left untouched; an unparseable value is left as-is so
- * we never fabricate a bogus `Date`.
+ * The `AgentSandbox` as the scope cache actually holds it: the client
+ * JSON-serializes on write and JSON-parses on read, so every `timestamp` column
+ * comes back as an ISO **string** (nulls stay null). Model that shape directly
+ * — deriving each date field's cached type as `<original> | string` so the
+ * per-column nullability (`created_at`/`updated_at` are NOT NULL, the rest are
+ * nullable) carries over exactly — instead of pretending a cached row is still a
+ * fully-typed `AgentSandbox` and casting through `unknown` to touch its fields.
  */
-function rehydrateCachedAgentDates(agent: AgentSandbox): AgentSandbox {
-  const out = agent as unknown as Record<string, unknown>;
-  for (const field of AGENT_SANDBOX_DATE_FIELDS) {
-    const value = out[field];
-    if (typeof value === "string") {
-      const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) out[field] = parsed;
-    }
+type CachedAgentSandbox = Omit<AgentSandbox, (typeof AGENT_SANDBOX_DATE_FIELDS)[number]> & {
+  [K in (typeof AGENT_SANDBOX_DATE_FIELDS)[number]]: AgentSandbox[K] | string;
+};
+
+/** A cached timestamp column that JSON-parsed to a value `new Date()` rejects. */
+class SharedAgentCacheDateError extends Error {
+  constructor(field: string, value: string) {
+    super(
+      `shared-agent scope cache holds an unparseable ${field} timestamp: ${JSON.stringify(value)}`,
+    );
+    this.name = "SharedAgentCacheDateError";
   }
-  return agent;
+}
+
+/** Revive a NOT-NULL cached timestamp column; throws on unparseable input. */
+function reviveRequiredCachedDate(value: Date | string, field: string): Date {
+  if (value instanceof Date) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw new SharedAgentCacheDateError(field, value);
+  return parsed;
+}
+
+/** Revive a nullable cached timestamp column; throws on unparseable input. */
+function reviveNullableCachedDate(
+  value: Date | string | null | undefined,
+  field: string,
+): Date | null {
+  // Absent (undefined) or explicit null → the column is genuinely empty, not
+  // corrupt. Only a present, non-empty string that `new Date()` rejects is
+  // invalid data worth failing closed on.
+  if (value == null) return null;
+  if (value instanceof Date) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw new SharedAgentCacheDateError(field, value);
+  return parsed;
+}
+
+/**
+ * Restore the `AgentSandbox` DATE contract after a scope-cache round-trip
+ * (CONVERSATIONS-500-2026-07-22). Downstream consumers rely on the typed
+ * contract — e.g. the shared-agent conversations route calls
+ * `agent.created_at.toISOString()`, which throws (`string.toISOString is not a
+ * function`) and 500s the read on EVERY cache hit (the "first call 200, then
+ * all 500" defect). Each known date column is revived through a typed helper so
+ * a cache hit is byte-for-byte equivalent to a fresh DB hydration, with no
+ * dynamic-key mutation and no cast. An already-`Date`/null value passes through;
+ * an unparseable string FAILS CLOSED (throws) rather than leaking a `string`
+ * into a `Date` field — the caller drops the poisoned entry to a cache miss.
+ */
+function rehydrateCachedAgentDates(agent: CachedAgentSandbox): AgentSandbox {
+  return {
+    ...agent,
+    created_at: reviveRequiredCachedDate(agent.created_at, "created_at"),
+    updated_at: reviveRequiredCachedDate(agent.updated_at, "updated_at"),
+    deleted_at: reviveNullableCachedDate(agent.deleted_at, "deleted_at"),
+    claimed_at: reviveNullableCachedDate(agent.claimed_at, "claimed_at"),
+    pool_ready_at: reviveNullableCachedDate(agent.pool_ready_at, "pool_ready_at"),
+    last_backup_at: reviveNullableCachedDate(agent.last_backup_at, "last_backup_at"),
+    last_heartbeat_at: reviveNullableCachedDate(agent.last_heartbeat_at, "last_heartbeat_at"),
+    last_billed_at: reviveNullableCachedDate(agent.last_billed_at, "last_billed_at"),
+    shutdown_warning_sent_at: reviveNullableCachedDate(
+      agent.shutdown_warning_sent_at,
+      "shutdown_warning_sent_at",
+    ),
+    scheduled_shutdown_at: reviveNullableCachedDate(
+      agent.scheduled_shutdown_at,
+      "scheduled_shutdown_at",
+    ),
+  };
 }
 
 /**
@@ -78,7 +132,9 @@ function rehydrateCachedAgentDates(agent: AgentSandbox): AgentSandbox {
  */
 interface CachedSharedAgentScope {
   orgId: string;
-  agent: AgentSandbox;
+  // Holds the JSON-round-tripped shape, not a live `AgentSandbox`: the date
+  // columns are ISO strings on read (rehydrated at the read boundary below).
+  agent: CachedAgentSandbox;
   /**
    * Steward user id the entry was written for, present ONLY on session-keyed
    * entries (#SHADOW-ACCOUNT-DEBUG). A session-path hit re-verifies the JWT and
@@ -186,8 +242,19 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     // Restore the DATE contract lost to the cache's JSON round-trip before
     // handing the agent to route consumers (e.g. conversations route calls
     // `agent.created_at.toISOString()`). Without this a cache hit 500s the read
-    // (CONVERSATIONS-500-2026-07-22).
-    const agent = rehydrateCachedAgentDates(cached.agent);
+    // (CONVERSATIONS-500-2026-07-22). A poisoned entry (unparseable cached
+    // timestamp) fails closed: drop it to a MISS so the authoritative DB
+    // hydration re-populates it, never serve a row that violates AgentSandbox.
+    let agent: AgentSandbox;
+    try {
+      agent = rehydrateCachedAgentDates(cached.agent);
+    } catch (error) {
+      logger.warn(
+        "[resolveSharedAgent] dropping scope-cache hit with an invalid cached timestamp",
+        { error: error instanceof Error ? error.message : String(error) },
+      );
+      return null;
+    }
     return {
       agent,
       agentId,

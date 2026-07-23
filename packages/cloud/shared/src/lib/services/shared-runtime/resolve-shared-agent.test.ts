@@ -127,6 +127,10 @@ function agent(overrides: Record<string, unknown> = {}) {
     status: "running",
     bridge_url: null,
     agent_name: "Shared Agent",
+    // `created_at` / `updated_at` are NOT NULL columns — a real Drizzle row (and
+    // its cache round-trip) always carries them, so the fixture must too.
+    created_at: new Date("2026-01-01T00:00:00.000Z"),
+    updated_at: new Date("2026-01-01T00:00:00.000Z"),
     ...overrides,
   };
 }
@@ -554,6 +558,48 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
       const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
       if (!("agent" in result)) throw new Error("expected a resolved agent");
       expect(result.agent.deleted_at).toBeNull();
+    });
+
+    test("an already-Date cached timestamp passes through unchanged (idempotent)", async () => {
+      // The cache always JSON-round-trips, but rehydration must be idempotent:
+      // a value that is already a Date is returned as-is (the `instanceof Date`
+      // passthrough), never re-parsed. Seed a LIVE Date (no round-trip).
+      const key = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+      cacheStore.set(key, {
+        orgId: "org-1",
+        agent: agent({ created_at: CREATED, updated_at: CREATED }),
+        firstWrittenAtMs: Date.now(),
+      });
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+      expect(result.agent.created_at instanceof Date).toBe(true);
+      expect((result.agent.created_at as Date).toISOString()).toBe(CREATED.toISOString());
+    });
+
+    test("an unparseable cached timestamp fails closed: the poisoned hit is dropped and the authoritative gate re-hydrates", async () => {
+      // A truncated/garbled cache value deserializes a timestamp column to a
+      // string `new Date()` rejects. The fix must NOT leak that string into a
+      // `Date` field (the pre-fix passthrough did, then the route 500s on
+      // `.toISOString()`): it fails closed, drops the entry to a MISS, and lets
+      // the authoritative DB hydration re-populate a clean, Date-typed row.
+      const key = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+      const poisoned = jsonRoundTrip({
+        orgId: "org-1",
+        agent: agent({ created_at: CREATED, updated_at: CREATED }),
+        firstWrittenAtMs: Date.now(),
+      }) as { agent: Record<string, unknown> };
+      poisoned.agent.created_at = "not-a-real-timestamp";
+      cacheStore.set(key, poisoned);
+      findByIdAndOrg.mockResolvedValue(agent({ created_at: CREATED, updated_at: CREATED }));
+
+      const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+
+      // The poisoned entry was NOT served: the cold authoritative gate ran.
+      expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+      if (!("agent" in result)) throw new Error("expected a resolved agent");
+      // The re-hydrated row carries a real Date, never the poisoned string.
+      expect(result.agent.created_at instanceof Date).toBe(true);
+      expect(() => (result.agent.created_at as Date).toISOString()).not.toThrow();
     });
   });
 });
