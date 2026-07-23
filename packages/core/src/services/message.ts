@@ -9414,6 +9414,83 @@ async function _composeContinuationDecisionState(
  */
 export class DefaultMessageService implements IMessageService {
 	/**
+	 * Rooms (keyed `${agentId}:${roomId}`) holding a reply that has been handed
+	 * to the delivery callback but whose response-memory row is not yet stored
+	 * (the simple-path deliver-then-persist window). A follow-up turn triggered
+	 * by that delivery must not compose its prompt until the reply row exists,
+	 * or RECENT_MESSAGES silently omits the reply the user is answering —
+	 * `processMessage` awaits these barriers before any composition. Barriers
+	 * always settle (resolve, never reject) whether the persist succeeds or
+	 * fails; a persist failure propagates in the owning turn, never to the
+	 * waiting turn. Same-room turns otherwise still run concurrently — turn
+	 * preemption (`turnControllers.abortTurn` fired from a later message's
+	 * Stage-1 field evaluators) depends on that, so this is deliberately a
+	 * narrow persistence barrier, not per-room handler serialization.
+	 */
+	private readonly pendingReplyPersists = new Map<string, Set<Promise<void>>>();
+
+	private pendingReplyPersistKey(runtime: IAgentRuntime, roomId: UUID): string {
+		return `${runtime.agentId}:${roomId}`;
+	}
+
+	/**
+	 * Register a delivered-reply persistence barrier. Must be called BEFORE the
+	 * delivery callback fires: the instant the reply reaches the client a
+	 * follow-up can arrive, and its compose must find this barrier already
+	 * pending. Returns the release fn; call it once the persist settles
+	 * (success or failure). Constraint for callback authors: a delivery
+	 * callback must never await a same-room `handleMessage` to completion —
+	 * that turn waits on a barrier this turn only releases after the callback
+	 * returns. Fire-and-forget from a callback is fine.
+	 */
+	private registerPendingReplyPersist(
+		runtime: IAgentRuntime,
+		roomId: UUID,
+	): () => void {
+		const key = this.pendingReplyPersistKey(runtime, roomId);
+		let release: (() => void) | undefined;
+		const barrier = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let barriers = this.pendingReplyPersists.get(key);
+		if (!barriers) {
+			barriers = new Set();
+			this.pendingReplyPersists.set(key, barriers);
+		}
+		barriers.add(barrier);
+		return () => {
+			release?.();
+			const set = this.pendingReplyPersists.get(key);
+			if (set) {
+				set.delete(barrier);
+				if (set.size === 0) {
+					this.pendingReplyPersists.delete(key);
+				}
+			}
+		};
+	}
+
+	/**
+	 * Wait until every reply already handed to a delivery callback for this
+	 * room has finished persisting. Snapshot semantics: only barriers pending
+	 * at call time are awaited — exactly the causal set for a follow-up
+	 * reacting to a delivered reply. Rooms with no pending barrier (the
+	 * overwhelmingly common case) return without awaiting anything.
+	 */
+	private async awaitDeliveredReplyPersistence(
+		runtime: IAgentRuntime,
+		roomId: UUID,
+	): Promise<void> {
+		const barriers = this.pendingReplyPersists.get(
+			this.pendingReplyPersistKey(runtime, roomId),
+		);
+		if (!barriers || barriers.size === 0) return;
+		await timeInferenceSpan("message:compose:reply-persist-barrier", () =>
+			Promise.all([...barriers]),
+		);
+	}
+
+	/**
 	 * Main message handling entry point
 	 */
 	async handleMessage(
@@ -10098,6 +10175,13 @@ export class DefaultMessageService implements IMessageService {
 		startTime: number,
 		opts: ResolvedMessageOptions,
 	): Promise<MessageProcessingResult> {
+		// A reply already handed to a delivery callback for this room may still
+		// be persisting (deliver-then-persist fast path). Composing now would
+		// read RECENT_MESSAGES without the reply this message may be answering,
+		// so wait for those persists to settle first. Same room only, a few
+		// hundred ms worst case, and a no-op when nothing is pending.
+		await this.awaitDeliveredReplyPersistence(runtime, message.roomId);
+
 		const agentResponses = latestResponseIds.get(runtime.agentId);
 		if (!agentResponses) throw new Error("Agent responses map not found");
 
@@ -10949,11 +11033,13 @@ export class DefaultMessageService implements IMessageService {
 					// (~250-440ms measured via the message:delivery:persistence
 					// InferenceTiming span) and the user must not wait on it. The
 					// persist is still awaited before this turn proceeds, so
-					// everything downstream (MESSAGE_SENT, post-turn evaluators,
-					// followUp, and the next turn's RECENT_MESSAGES read) observes
-					// the stored reply. Do not put MESSAGE_SENT handlers or
-					// post-turn evaluators before the callback; they are side
-					// effects and must not stall user-visible streaming.
+					// everything downstream in THIS turn (MESSAGE_SENT, post-turn
+					// evaluators, followUp) observes the stored reply — and a
+					// CONCURRENT same-room turn started off this delivery waits on
+					// the pendingReplyPersists barrier before composing, so its
+					// RECENT_MESSAGES read observes it too. Do not put MESSAGE_SENT
+					// handlers or post-turn evaluators before the callback; they are
+					// side effects and must not stall user-visible streaming.
 					await timeInferenceSpan("message:delivery:hooks", () =>
 						runtime.applyPipelineHooks(
 							"outgoing_before_deliver",
@@ -10967,76 +11053,89 @@ export class DefaultMessageService implements IMessageService {
 							}),
 						),
 					);
-					let deliveryFailure: { error: unknown } | null = null;
-					if (callback) {
-						try {
-							await timeInferenceSpan("message:delivery:callback", () =>
-								callback(deliverableResponseContent),
-							);
-							markInference(INFERENCE_MARKS.replyDelivered);
-						} catch (error) {
-							// error-policy:J2 ordering rethrow — delivery now precedes
-							// the response-memory persist, so a connector failure here
-							// must not skip that persist. Held and rethrown UNCHANGED
-							// (no cause-wrapping: callers classify the raw connector
-							// error) after the persist below settles.
-							deliveryFailure = { error };
-						}
-					}
+					// Registered BEFORE the callback fires so a follow-up prompted
+					// by this delivery always finds the barrier pending; released
+					// (never rejected) in the finally once the persist settles.
+					const releaseReplyPersistBarrier = this.registerPendingReplyPersist(
+						runtime,
+						message.roomId,
+					);
 					try {
-						if (responseMessages.length > 0) {
-							for (const responseMemory of responseMessages) {
-								if (
-									responseMemory.id &&
-									persistedEarlyReplyIds.has(responseMemory.id)
-								) {
-									continue;
-								}
-								responseMemory.content = deliverableResponseContent;
-								if (shouldSkipResponseMemoryPersistence(responseMemory)) {
-									runtime.logger.debug(
-										{ src: "service:message", memoryId: responseMemory.id },
-										"Skipping transient response memory persistence",
-									);
-									continue;
-								}
-								runtime.logger.debug(
-									{ src: "service:message", memoryId: responseMemory.id },
-									"Saving response to memory",
-								);
-								await timeInferenceSpan("message:delivery:persistence", () =>
-									runtime.createMemory(responseMemory, "messages"),
-								);
-
-								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
-									this.emitMessageSent(
-										runtime,
-										responseMemory,
-										message.content.source ?? "messageHandler",
-									),
-								);
+						// Settled-result handling instead of catch blocks: a delivery
+						// failure must not skip the persist, and callers classify the
+						// raw delivery error by identity (TURN_ABORTED / generation-
+						// timeout checks at the conversation route), so both failures
+						// are rethrown UNCHANGED after both operations settle.
+						let deliveryOutcome: PromiseSettledResult<unknown> = {
+							status: "fulfilled",
+							value: undefined,
+						};
+						if (callback) {
+							[deliveryOutcome] = await Promise.allSettled([
+								timeInferenceSpan("message:delivery:callback", () =>
+									callback(deliverableResponseContent),
+								),
+							]);
+							if (deliveryOutcome.status === "fulfilled") {
+								markInference(INFERENCE_MARKS.replyDelivered);
 							}
 						}
-					} catch (persistError) {
-						// error-policy:J2 both-failures-observable rethrow — the
-						// persist failure propagates unchanged to the handleMessage
-						// boundary exactly as before the reorder; the held delivery
-						// failure (if any) would otherwise be silently superseded,
-						// so report it here first.
-						if (deliveryFailure) {
-							runtime.reportError(
-								"MessageService.simpleDeliveryCallback",
-								deliveryFailure.error,
-								{
-									agentId: runtime.agentId,
-									roomId: message.roomId,
-								},
-							);
+						const [persistOutcome] = await Promise.allSettled([
+							(async () => {
+								for (const responseMemory of responseMessages) {
+									if (
+										responseMemory.id &&
+										persistedEarlyReplyIds.has(responseMemory.id)
+									) {
+										continue;
+									}
+									responseMemory.content = deliverableResponseContent;
+									if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+										runtime.logger.debug(
+											{ src: "service:message", memoryId: responseMemory.id },
+											"Skipping transient response memory persistence",
+										);
+										continue;
+									}
+									runtime.logger.debug(
+										{ src: "service:message", memoryId: responseMemory.id },
+										"Saving response to memory",
+									);
+									await timeInferenceSpan("message:delivery:persistence", () =>
+										runtime.createMemory(responseMemory, "messages"),
+									);
+
+									detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+										this.emitMessageSent(
+											runtime,
+											responseMemory,
+											message.content.source ?? "messageHandler",
+										),
+									);
+								}
+							})(),
+						]);
+						if (persistOutcome.status === "rejected") {
+							// The persist failure (data loss) outranks the delivery
+							// failure for propagation; the held delivery failure is
+							// reported so it is never silently superseded.
+							if (deliveryOutcome.status === "rejected") {
+								runtime.reportError(
+									"MessageService.simpleDeliveryCallback",
+									deliveryOutcome.reason,
+									{
+										agentId: runtime.agentId,
+										roomId: message.roomId,
+									},
+								);
+							}
+							throw persistOutcome.reason;
 						}
-						throw persistError;
-					}
-					if (deliveryFailure) {
-						throw deliveryFailure.error;
+						if (deliveryOutcome.status === "rejected") {
+							throw deliveryOutcome.reason;
+						}
+					} finally {
+						releaseReplyPersistBarrier();
 					}
 				}
 			}

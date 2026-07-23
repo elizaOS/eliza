@@ -4,11 +4,13 @@
  * `message:delivery:persistence` span (~250-440ms live) off time-to-reply —
  * while the persist still completes before handleMessage resolves, a callback
  * failure never loses the memory, a persist failure still reaches the
- * handleMessage boundary, and an immediate follow-up read sees the stored
- * reply. Real AgentRuntime + InMemoryDatabaseAdapter end to end; only the
- * Stage-1 model surface is a deterministic registered handler (no live model,
- * no network). The adapter wrapper below observes/faults the storage boundary
- * but always delegates real writes to the real adapter.
+ * handleMessage boundary, and a same-room follow-up fired off the delivery
+ * (the racy case: concurrent handleMessage, NOT sequential) is barred from
+ * composing until the reply row is stored while other rooms stay unblocked.
+ * Real AgentRuntime + InMemoryDatabaseAdapter end to end; only the Stage-1
+ * model surface is a deterministic registered handler (no live model, no
+ * network). The adapter wrapper below observes/faults/holds the storage
+ * boundary but always delegates real writes to the real adapter.
  */
 
 import { v4 } from "uuid";
@@ -63,10 +65,17 @@ interface HarnessOptions {
 	persistDelayMs?: number;
 	/** Fail the agent-reply row write only (incoming-message write succeeds). */
 	failReplyPersist?: boolean;
+	/**
+	 * Hold the FIRST agent-reply row write open until `releaseReplyPersist()`
+	 * is called — a deterministic, sleep-free window for the compose-vs-persist
+	 * race tests. Later reply writes (follow-up turns) are never held.
+	 */
+	holdReplyPersist?: boolean;
 }
 
 async function createHarness(opts: HarnessOptions = {}) {
 	const replyText = `the build finished clean, all green. probe-${v4()}`;
+	const followUpReplyText = `and the tests passed too. probe-${v4()}`;
 	const adapter = new InMemoryDatabaseAdapter();
 	const runtime = new AgentRuntime({
 		character: createCharacter({
@@ -78,9 +87,23 @@ async function createHarness(opts: HarnessOptions = {}) {
 	});
 	activeRuntimes.push(runtime);
 	await runtime.initialize();
+	// Interleaving trace shared by the model handler and the storage seam.
+	const order: string[] = [];
+	// Serialized `messages` model input per Stage-1 invocation — lets tests
+	// assert what a turn's composed prompt actually contained.
+	const stage1Invocations: string[] = [];
 	runtime.registerModel(
 		ModelType.RESPONSE_HANDLER,
-		async () => stage1DirectReply(replyText),
+		async (_rt, params) => {
+			const invocation = stage1Invocations.length + 1;
+			stage1Invocations.push(
+				JSON.stringify((params as { messages?: unknown }).messages ?? null),
+			);
+			order.push(`stage1:${invocation}`);
+			return stage1DirectReply(
+				invocation === 1 ? replyText : followUpReplyText,
+			);
+		},
 		"deterministic-test",
 	);
 
@@ -98,9 +121,12 @@ async function createHarness(opts: HarnessOptions = {}) {
 
 	// Observation-only storage seam: records when the agent-reply row write
 	// COMPLETES relative to the delivery callback, and optionally injects
-	// latency or a fault for the failure-path tests. Real writes always reach
-	// the real in-memory adapter.
-	const order: string[] = [];
+	// latency, a hold-open gate, or a fault for the failure/race tests. Real
+	// writes always reach the real in-memory adapter.
+	let releaseReplyPersist: () => void = () => {};
+	const replyPersistGate = new Promise<void>((resolve) => {
+		releaseReplyPersist = resolve;
+	});
 	const realCreateMemories = adapter.createMemories.bind(adapter);
 	adapter.createMemories = (async (
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
@@ -113,6 +139,9 @@ async function createHarness(opts: HarnessOptions = {}) {
 		);
 		if (isReplyWrite && opts.persistDelayMs) {
 			await new Promise((resolve) => setTimeout(resolve, opts.persistDelayMs));
+		}
+		if (isReplyWrite && opts.holdReplyPersist) {
+			await replyPersistGate;
 		}
 		if (isReplyWrite && opts.failReplyPersist) {
 			throw new Error("injected reply-persist failure");
@@ -137,6 +166,47 @@ async function createHarness(opts: HarnessOptions = {}) {
 		createdAt: Date.now(),
 	});
 
+	const makeFollowUp = (): Memory => ({
+		id: asUUID(v4()),
+		entityId,
+		agentId: runtime.agentId,
+		roomId,
+		content: {
+			text: "nice — and did the tests pass?",
+			source: "test",
+			channelType: ChannelType.DM,
+		},
+		createdAt: Date.now(),
+	});
+
+	/** A second, unrelated room on the same runtime (cross-room isolation). */
+	const createSecondRoom = async () => {
+		const otherRoomId = asUUID(v4());
+		const otherEntityId = asUUID(v4());
+		await runtime.ensureConnection({
+			entityId: otherEntityId,
+			roomId: otherRoomId,
+			worldId: asUUID(v4()),
+			userName: "tester-b",
+			name: "tester-b",
+			source: "test",
+			type: ChannelType.DM,
+		});
+		const makeRoomBMessage = (): Memory => ({
+			id: asUUID(v4()),
+			entityId: otherEntityId,
+			agentId: runtime.agentId,
+			roomId: otherRoomId,
+			content: {
+				text: "unrelated question from another room",
+				source: "test",
+				channelType: ChannelType.DM,
+			},
+			createdAt: Date.now(),
+		});
+		return { roomId: otherRoomId, makeRoomBMessage };
+	};
+
 	const storedReplies = async (): Promise<Memory[]> => {
 		const memories = await runtime.getMemories({
 			roomId,
@@ -154,8 +224,13 @@ async function createHarness(opts: HarnessOptions = {}) {
 		service,
 		roomId,
 		replyText,
+		followUpReplyText,
 		order,
+		stage1Invocations,
 		makeMessage,
+		makeFollowUp,
+		createSecondRoom,
+		releaseReplyPersist,
 		storedReplies,
 	};
 }
@@ -181,7 +256,7 @@ describe("simple-path deliver-then-persist ordering", () => {
 		expect(result.mode).toBe("simple");
 		expect(result.responseContent?.text).toBe(h.replyText);
 		expect(repliesVisibleAtDelivery).toBe(0);
-		expect(h.order).toEqual(["callback", "persist:reply"]);
+		expect(h.order).toEqual(["stage1:1", "callback", "persist:reply"]);
 
 		// The persist completed before handleMessage resolved: an immediate
 		// next-turn-style read sees exactly one stored reply — no drop, no
@@ -204,7 +279,7 @@ describe("simple-path deliver-then-persist ordering", () => {
 
 		// The memory was persisted despite the delivery failure, and the error
 		// surfaced identity-preserved at the handleMessage boundary.
-		expect(h.order).toEqual(["callback-throw", "persist:reply"]);
+		expect(h.order).toEqual(["stage1:1", "callback-throw", "persist:reply"]);
 		expect(await h.storedReplies()).toHaveLength(1);
 	});
 
@@ -270,5 +345,89 @@ describe("simple-path deliver-then-persist ordering", () => {
 		expect(persistSpan.durationMs).toBeGreaterThanOrEqual(140);
 		expect(turn.timeToReplyMs).not.toBeNull();
 		expect(turn.timeToReplyMs as number).toBeLessThan(persistSpan.endMs);
+	});
+
+	it("bars a same-room follow-up fired from the delivery callback from composing until the reply persist completes", async () => {
+		// THE race deliver-then-persist opens up: the client reacts to the
+		// delivered reply while the reply row is still being written. The
+		// follow-up's compose must wait for the persist barrier, or its
+		// RECENT_MESSAGES omits the very reply it is answering. The persist is
+		// held open by a gate (no timing games): if the barrier did not work,
+		// the follow-up's Stage-1 would run while the gate is still closed.
+		const h = await createHarness({ holdReplyPersist: true });
+		let followUpTurn: Promise<unknown> | null = null;
+
+		const firstTurn = h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async () => {
+				h.order.push("callback");
+				// Fire-and-forget, exactly like a real client reacting to the
+				// delivered reply. A callback must never AWAIT a same-room turn
+				// to completion (documented on registerPendingReplyPersist).
+				followUpTurn = h.service.handleMessage(
+					h.runtime,
+					h.makeFollowUp(),
+					async () => [],
+				);
+				return [];
+			},
+		);
+
+		// Give the follow-up every opportunity to (incorrectly) reach Stage-1
+		// while the first reply's persist is still held open.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(h.order).toContain("callback");
+		expect(h.order).not.toContain("stage1:2");
+
+		h.releaseReplyPersist();
+		await firstTurn;
+		expect(followUpTurn).not.toBeNull();
+		await followUpTurn;
+
+		// Stage-1 for the follow-up ran only after the reply row was stored…
+		expect(h.order.indexOf("persist:reply")).toBeGreaterThan(-1);
+		expect(h.order.indexOf("stage1:2")).toBeGreaterThan(
+			h.order.indexOf("persist:reply"),
+		);
+		// …and its composed model input actually contains the delivered reply.
+		expect(h.stage1Invocations).toHaveLength(2);
+		expect(h.stage1Invocations[1]).toContain(h.replyText);
+	});
+
+	it("lets a different room proceed while another room's reply persist is still pending", async () => {
+		// The barrier is per-room: holding room A's reply persist open must not
+		// serialize room B behind it.
+		const h = await createHarness({ holdReplyPersist: true });
+		const roomB = await h.createSecondRoom();
+
+		let roomADelivered: () => void = () => {};
+		const delivered = new Promise<void>((resolve) => {
+			roomADelivered = resolve;
+		});
+		const turnA = h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async () => {
+				roomADelivered();
+				return [];
+			},
+		);
+
+		// Room A's reply is delivered and its persist is now held open.
+		await delivered;
+		const resultB = await h.service.handleMessage(
+			h.runtime,
+			roomB.makeRoomBMessage(),
+			async () => [],
+		);
+
+		// Room B ran to completion while room A's persist never finished.
+		expect(resultB.didRespond).toBe(true);
+		expect(h.order).not.toContain("persist:reply");
+
+		h.releaseReplyPersist();
+		await turnA;
+		expect(h.order).toContain("persist:reply");
 	});
 });
