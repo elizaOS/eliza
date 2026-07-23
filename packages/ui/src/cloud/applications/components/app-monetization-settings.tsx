@@ -75,9 +75,13 @@ interface ReviewSubmissionResponse {
 
 interface AppMonetizationSettingsProps {
   app: App;
+  onNavigateTab?: (tab: "earnings") => void;
 }
 
-export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
+export function AppMonetizationSettings({
+  app,
+  onNavigateTab,
+}: AppMonetizationSettingsProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -148,7 +152,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
       toast.error(
         t("cloud.monetization.reviewRequiredSave", {
           defaultValue:
-            "Submit this app for review before enabling monetization.",
+            "Submit this project for review before enabling monetization.",
         }),
       );
       return;
@@ -195,7 +199,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
       toast.error(
         t("cloud.monetization.reviewRequiredToggle", {
           defaultValue:
-            "Submit this app for review before enabling monetization.",
+            "Submit this project for review before enabling monetization.",
         }),
       );
       return;
@@ -316,11 +320,11 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   {reviewApproved
                     ? t("cloud.monetization.reviewApprovedDesc", {
                         defaultValue:
-                          "This app passed review and can earn from paid usage.",
+                          "This project passed review and can earn from paid usage.",
                       })
                     : t("cloud.monetization.reviewRequiredDesc", {
                         defaultValue:
-                          "Apps must pass automated review before monetization can be enabled.",
+                          "Projects must pass automated review before monetization can be enabled.",
                       })}
                 </p>
                 {reviewRationale && (
@@ -407,20 +411,24 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 {settings.monetizationEnabled
                   ? t("cloud.monetization.activeDesc", {
                       defaultValue:
-                        "Earning from inference markups and credit purchases. Users pay app-specific credits.",
+                        "Earning from inference markups and credit purchases. Users pay project-specific credits.",
                     })
                   : t("cloud.monetization.enableDesc", {
                       defaultValue:
-                        "Start earning from your app. You'll earn from inference markups and credit purchases.",
+                        "Start earning from your published project. You'll earn from inference markups and credit purchases.",
                     })}
               </p>
               {settings.totalCreatorEarnings > 0 && (
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={() =>
-                    navigate(`/dashboard/apps/${appId}?tab=earnings`)
-                  }
+                  onClick={() => {
+                    if (onNavigateTab) {
+                      onNavigateTab("earnings");
+                      return;
+                    }
+                    navigate(`/dashboard/apps/${appId}?tab=earnings`);
+                  }}
                   className="mt-2 text-xs text-muted hover:text-txt transition-colors flex items-center gap-1"
                 >
                   {t("cloud.monetization.earned", {
@@ -613,7 +621,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <AlertDialogDescription className="text-neutral-400 space-y-3 text-left">
                 {t("cloud.monetization.enableDialogIntro", {
                   defaultValue:
-                    "When monetization is enabled, users of your app will:",
+                    "When monetization is enabled, users of your published project will:",
                 })}
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -621,7 +629,8 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <ul className="list-disc list-inside space-y-1">
                 <li>
                   {t("cloud.monetization.enableDialogPoint1", {
-                    defaultValue: "Pay app-specific credits (separate balance)",
+                    defaultValue:
+                      "Pay project-specific credits (separate balance)",
                   })}
                 </li>
                 <li>
@@ -722,13 +731,13 @@ function SelfHostCTA() {
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-mono text-txt mb-1">
             {t("cloud.monetization.selfHostTitle", {
-              defaultValue: "Let this app host itself.",
+              defaultValue: "Let this project host itself.",
             })}
           </h3>
           <p className="text-sm text-muted mb-3">
             {t("cloud.monetization.selfHostDesc", {
               defaultValue:
-                "Deploy as a container — daily hosting bills are paid from your app earnings first, then your credits. No setup, no settings. Cashout still works whenever you want.",
+                "Deploy as a container — daily hosting bills are paid from your project earnings first, then your credits. No setup, no settings. Cashout still works whenever you want.",
             })}
           </p>
           <div className="flex flex-wrap gap-2">

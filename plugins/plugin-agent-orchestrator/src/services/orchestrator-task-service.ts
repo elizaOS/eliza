@@ -4904,6 +4904,7 @@ export class OrchestratorTaskService extends Service {
           : {}),
         metadata: {
           taskId,
+          ...(doc.task.projectId ? { projectId: doc.task.projectId } : {}),
           roomId: doc.task.taskRoomId ?? doc.task.roomId,
           label: agentName,
           source: "orchestrator",

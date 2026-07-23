@@ -1,6 +1,6 @@
 // Exercises app url behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
-import { deriveAppPublicUrl } from "../app-url";
+import { deriveAppPublicUrl, deriveManagedFrontendPublicUrl } from "../app-url";
 
 const BASE = "CONTAINERS_PUBLIC_BASE_DOMAIN";
 const FALLBACK = "ELIZA_CLOUD_AGENT_BASE_DOMAIN";
@@ -49,5 +49,27 @@ describe("deriveAppPublicUrl", () => {
       hostname: "aabbccdd.apps.elizacloud.ai",
       url: "https://aabbccdd.apps.elizacloud.ai",
     });
+  });
+});
+
+describe("deriveManagedFrontendPublicUrl", () => {
+  test("uses the stable project slug under the configured frontend suffix", () => {
+    expect(deriveManagedFrontendPublicUrl("Habit-Tracker", ".sites.elizacloud.ai.")).toEqual({
+      hostname: "habit-tracker.sites.elizacloud.ai",
+      url: "https://habit-tracker.sites.elizacloud.ai",
+    });
+  });
+
+  test("returns null when the operator suffix is absent", () => {
+    expect(deriveManagedFrontendPublicUrl("habit-tracker", undefined)).toBeNull();
+  });
+
+  test("rejects malformed slugs and suffixes instead of constructing a URL", () => {
+    expect(deriveManagedFrontendPublicUrl("two.labels", "sites.elizacloud.ai")).toBeNull();
+    expect(deriveManagedFrontendPublicUrl("habit-tracker", "localhost")).toBeNull();
+    const label = "a".repeat(63);
+    expect(
+      deriveManagedFrontendPublicUrl("habit-tracker", `${label}.${label}.${label}.${label}.ai`),
+    ).toBeNull();
   });
 });

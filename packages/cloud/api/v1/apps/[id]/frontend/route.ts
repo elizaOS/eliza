@@ -18,6 +18,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appFrontendHostingService } from "@/lib/services/app-frontend-hosting";
+import { deriveManagedFrontendPublicUrl } from "@/lib/services/app-url";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -69,9 +70,15 @@ app.get("/", async (c) => {
     return c.json({
       success: true,
       active_deployment_id: active?.id ?? null,
+      public_url:
+        deriveManagedFrontendPublicUrl(
+          found.slug,
+          c.env.ELIZA_FRONTEND_HOST_SUFFIX,
+        )?.url ?? null,
       deployments,
     });
   } catch (error) {
+    // error-policy:J1 authenticated HTTP boundary translates to the Cloud error envelope.
     logger.error("[Apps Frontend API] Failed to list deployments:", error);
     return failureResponse(c, error);
   }
@@ -93,6 +100,7 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
+    // error-policy:J3 malformed JSON becomes an explicit invalid Zod result.
     const parsed = DeploySchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) {
       return c.json(
@@ -124,8 +132,20 @@ app.post("/", async (c) => {
       active: deployment.status === "active",
     });
 
-    return c.json({ success: true, deployment }, 201);
+    return c.json(
+      {
+        success: true,
+        deployment,
+        public_url:
+          deriveManagedFrontendPublicUrl(
+            found.slug,
+            c.env.ELIZA_FRONTEND_HOST_SUFFIX,
+          )?.url ?? null,
+      },
+      201,
+    );
   } catch (error) {
+    // error-policy:J1 authenticated HTTP boundary translates to the Cloud error envelope.
     logger.error("[Apps Frontend API] Failed to publish deployment:", error);
     return failureResponse(c, error);
   }

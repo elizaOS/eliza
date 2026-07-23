@@ -183,7 +183,7 @@ describe("evaluateOcrContent", () => {
   it.each([
     [
       "builtin-apps",
-      "< My Apps\nInstall, create, and run your elizaOS apps.\nAsk\nEliza\n+ UR",
+      "< Projects\nStart\nNew project\nAdd from folder\nAsk\nEliza\n+ UR",
     ],
     [
       "builtin-automations",
@@ -209,7 +209,10 @@ describe("evaluateOcrContent", () => {
       "builtin-skills",
       "< skills\nA) on (0)\norr (0)\n— —\nSear\nch\nsls. gap\nar Op",
     ],
-    ["builtin-tasks", "< Tasks\nox\nI)\n\\_/ E————\nAsk\nEliza\nAr (2"],
+    [
+      "builtin-tasks",
+      "< Projects\nstart\nStart your first project\nDescribe what you want to build\nNo other installed packages.\nAsk Eliza",
+    ],
     [
       "builtin-transcripts",
       "< Live meeting\nPaste a Meet, Teams, or Zoom link\not namo (option)\n(©)\n+ AskEiza [UR",

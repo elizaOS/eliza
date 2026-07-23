@@ -26,6 +26,16 @@ locals {
   staging_agent_wildcard_records = var.environment == "staging" ? {
     for origin in var.staging_agent_wildcard_origins : origin => origin
   } : {}
+
+  managed_frontend_edge = var.environment == "production" ? {
+    suffix       = "sites.elizacloud.ai"
+    wildcard     = "*.sites.elizacloud.ai"
+    cname_target = "api.elizacloud.ai"
+    } : {
+    suffix       = "sites.staging.elizacloud.ai"
+    wildcard     = "*.sites.staging.elizacloud.ai"
+    cname_target = "api-staging.elizacloud.ai"
+  }
 }
 
 # Wrangler owns Pages deployments and branch selection. Terraform owns the
@@ -83,6 +93,41 @@ resource "cloudflare_certificate_pack" "staging_agent" {
   validation_method     = "txt"
   validity_days         = 90
   cloudflare_branding   = false
+
+  lifecycle {
+    create_before_destroy = true
+    prevent_destroy       = true
+  }
+}
+
+# R2-backed managed frontends are served by the Cloud API Worker. Their hosts
+# sit below a dedicated suffix so they cannot collide with agents, Pages, or
+# container ingress, and the proxied wildcard sends every project slug through
+# the Worker hostname resolver.
+resource "cloudflare_dns_record" "managed_frontend_wildcard" {
+  zone_id = var.cloudflare_zone_id
+  name    = local.managed_frontend_edge.wildcard
+  type    = "CNAME"
+  content = local.managed_frontend_edge.cname_target
+  ttl     = 1
+  proxied = true
+  comment = "${var.environment} managed project frontend wildcard (managed by terraform/cloudflare/pages-domains)"
+}
+
+# Universal SSL covers only one label below elizacloud.ai. Project frontends
+# are deeper, so their deterministic suffix and wildcard require an advanced
+# pack in both environments before publication can return a usable HTTPS URL.
+resource "cloudflare_certificate_pack" "managed_frontend" {
+  zone_id               = var.cloudflare_zone_id
+  certificate_authority = "google"
+  hosts = [
+    local.managed_frontend_edge.suffix,
+    local.managed_frontend_edge.wildcard,
+  ]
+  type                = "advanced"
+  validation_method   = "txt"
+  validity_days       = 90
+  cloudflare_branding = false
 
   lifecycle {
     create_before_destroy = true

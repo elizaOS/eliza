@@ -1,15 +1,10 @@
 /**
- * Native cross-domain navigation helpers for the Applications studio.
+ * Native cross-domain navigation helpers for Cloud management inside Projects.
  *
- * The native mount (`NativeAppsStudio`) runs the Applications pages in a
- * `MemoryRouter` that only mounts the `/dashboard/apps` routes. The Applications
- * components — shared verbatim with the web dashboard — also link to OTHER cloud
- * dashboard surfaces (ad-account connections, the agents list, the org earnings
- * page) and to fully external URLs (an app's verified custom domain, its
- * website/support links). On the web those resolve through the apex
- * `BrowserRouter` / open a new tab; inside the native studio a cross-domain
- * `react-router` link would dead-end on an unmounted route, and a WebView
- * `target="_blank"` is unreliable.
+ * Shared Cloud components also link to console-only surfaces and fully external
+ * URLs. On web those resolve through the apex BrowserRouter or a new tab; inside
+ * the native project shell a cross-domain router link would dead-end and a
+ * WebView `target="_blank"` is unreliable.
  *
  * These helpers route those web-only sub-flows to the system browser **on native
  * only**. Every function is a no-op that returns `false` on web, so the call
@@ -24,11 +19,10 @@ import { openExternalUrl } from "../../../utils/openExternalUrl";
 
 /**
  * True only inside a native (Capacitor iOS/Android) or Electrobun runtime — the
- * surfaces that mount the Applications pages via `NativeAppsStudio` rather than
- * the apex `CloudRouterShell`. Always false on web, so every web path is
- * unchanged.
+ * surfaces that mount Cloud controls inside Projects rather than the apex
+ * `CloudRouterShell`. Always false on web, so every web path is unchanged.
  */
-export function isNativeAppsStudioRuntime(): boolean {
+export function isNativeCloudSurfaceRuntime(): boolean {
   return Capacitor.isNativePlatform() || isElectrobunRuntime();
 }
 
@@ -57,7 +51,7 @@ export function resolveCloudConsoleUrl(path: string): string {
  * `<Link>` / `navigate()` handles it.
  */
 export function openCloudConsoleRouteExternally(path: string): boolean {
-  if (!isNativeAppsStudioRuntime()) return false;
+  if (!isNativeCloudSurfaceRuntime()) return false;
   void openExternalUrl(resolveCloudConsoleUrl(path));
   return true;
 }
@@ -70,7 +64,7 @@ export function openCloudConsoleRouteExternally(path: string): boolean {
  * them), and web always returns `false` (the anchor opens a new tab normally).
  */
 export function openExternalUrlOnNative(href: string): boolean {
-  if (!isNativeAppsStudioRuntime()) return false;
+  if (!isNativeCloudSurfaceRuntime()) return false;
   if (/^(mailto:|tel:)/i.test(href)) return false;
   void openExternalUrl(href);
   return true;

@@ -131,14 +131,12 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   },
   // The launcher grid is its own content; `builtin-views` renders the same grid.
   "builtin-apps": {
-    requireAll: ["My Apps"],
+    requireAll: ["Projects"],
     requireAny: [
-      "elizaOS apps",
-      "Advanced",
-      "Load",
-      "No apps installed",
-      "Create new app",
-      "Install, create",
+      "New project",
+      "Add from folder",
+      "Installed",
+      "Start your first project",
     ],
   },
   "builtin-views": {
@@ -164,12 +162,13 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
     requireAny: ["Plugins", "Actions", "Providers"],
   },
   "builtin-tasks": {
-    requireAll: ["Tasks"],
+    requireAll: ["Projects"],
     requireAny: [
-      "Tasks",
-      "No coding tasks yet",
-      "coding agent",
-      "Projects unavailable",
+      "Start your first project",
+      "Your projects",
+      "No other installed packages",
+      "Published",
+      "Running",
     ],
   },
   "builtin-trajectories": {

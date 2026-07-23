@@ -1,32 +1,38 @@
 ---
-title: App Domains
-description: Configure custom domains for your multi-tenant applications on elizaOS Cloud. Add wildcard subdomains and bring your own custom domains.
+title: Published Project Domains
+description: Configure system and custom domains for projects published on Eliza Cloud.
 ---
 
-# App Domains
+# Published Project Domains
 
-Configure custom domains for your multi-tenant applications with automatic SSL and DNS management.
+Every published project receives a system URL and can add custom domains with
+automatic SSL and DNS management. Domain settings belong to the project's bound
+Cloud app record; the stable API paths therefore remain `/api/v1/apps/*`.
 
 ## Overview
 
 Domain management in elizaOS Cloud supports:
 
-- **Wildcard Subdomains**: Automatic `*.apps.elizacloud.ai` subdomains for every app
+- **Managed frontend URL**: Automatic
+  `<slug>.sites.elizacloud.ai` URL for the active static deployment
+- **Container URL**: `*.apps.elizacloud.ai` for eligible backend containers
 - **Custom Domains**: Bring your own domain like `myapp.com` or `app.example.com`
 - **Automatic SSL**: Free TLS certificates provisioned automatically
 - **DNS Verification**: Easy domain ownership verification
-- **Multi-tenant Routing**: Route traffic to the correct app based on domain
+- **Multi-tenant Routing**: Route traffic to the correct published project based on domain
 
 ## Quick Start
 
 ### Dashboard
 
-Navigate to [Dashboard → Apps](/dashboard/apps) and select an app to manage its domains.
+Open **Projects**, select a project, then choose **Publish → Domains**. Domain
+controls appear only when Eliza Cloud is connected and the project has been
+published.
 
 ### API
 
 ```bash
-# Add a custom domain to your app
+# Add a custom domain to the published project's Cloud record
 curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
@@ -38,9 +44,11 @@ curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
 ## How Domain Routing Works
 
 <Steps>
-<Step title="App Deployment">
+<Step title="Project publication">
 
-When you deploy an app, it automatically receives a subdomain like `myapp.apps.elizacloud.ai`.
+When you publish a project, it automatically receives a subdomain like
+`myapp.sites.elizacloud.ai` for its managed frontend. A separately deployed
+container can also receive an `apps.elizacloud.ai` backend URL.
 
 </Step>
 
@@ -58,17 +66,18 @@ Vercel automatically provisions SSL certificates for all domains.
 
 <Step title="Traffic Routing">
 
-Requests are routed to your app based on the incoming domain.
+Requests are routed to the published project based on the incoming domain.
 
 </Step>
 </Steps>
 
 ## Using Wildcard Subdomains
 
-Every deployed app automatically gets a subdomain under `apps.elizacloud.ai`:
+Every published project automatically gets a subdomain under
+`sites.elizacloud.ai` when its managed frontend is active:
 
 ```
-https://myapp.apps.elizacloud.ai
+https://myapp.sites.elizacloud.ai
 ```
 
 This works immediately with no DNS configuration required.
@@ -245,7 +254,7 @@ curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/status" \
 
 ## Syncing Domain Status
 
-Refresh all domain statuses for an app:
+Refresh all domain statuses for a published project:
 
 ```bash
 curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/sync" \
@@ -275,7 +284,7 @@ curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains/sync" \
 
 ## Removing Custom Domains
 
-Remove a custom domain from your app:
+Remove a custom domain from a published project:
 
 ```bash
 curl -X DELETE "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
@@ -287,8 +296,9 @@ curl -X DELETE "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
 ```
 
 <Warning>
-  After removing a domain, users will no longer be able to access your app via
-  that URL. The subdomain at `*.apps.elizacloud.ai` remains active.
+  After removing a domain, users will no longer be able to access the published
+  project through that URL. The subdomain at `*.apps.elizacloud.ai` remains
+  active.
 </Warning>
 
 ## Apex and WWW Redirects
@@ -297,7 +307,7 @@ For the best user experience, configure both apex and www versions:
 
 ### Both Versions
 
-1. Add both `example.com` and `www.example.com` to your app
+1. Add both `example.com` and `www.example.com` to the published project
 2. Configure one to redirect to the other for consistent URLs
 
 ### Recommended DNS Setup
@@ -309,7 +319,8 @@ For the best user experience, configure both apex and www versions:
 
 ## Avoiding Duplicate Content
 
-If the same app is accessible via both subdomain and custom domain:
+If the same published project is accessible through both its subdomain and a
+custom domain:
 
 <Tabs>
   <Tab title="Canonical Tags">
@@ -408,7 +419,7 @@ All domains are validated for:
 - Proper format (alphanumeric with hyphens and dots)
 - Minimum/maximum length constraints
 - Reserved subdomain conflicts
-- Existing domain conflicts with other apps
+- Existing domain conflicts with other published projects
 
 ## API Reference
 
@@ -434,8 +445,8 @@ All domains are validated for:
 ## Next Steps
 
 <CardGroup>
-  <CardGroup.Card title="Apps" href="/cloud/apps">
-    Create and configure apps
+  <CardGroup.Card title="Publishing Projects" href="/cloud/apps">
+    Publish and configure projects
   </CardGroup.Card>
   <CardGroup.Card title="Containers" href="/cloud/containers">
     Deploy custom containers

@@ -294,6 +294,19 @@ describe("public hosted-frontend serve", () => {
     expect(res.status).toBe(404);
   });
 
+  test("404 for an inactive app even when it has an active frontend deployment", async () => {
+    getBySlugImpl = async (slug) =>
+      slug === "cool" ? { ...APP, is_active: false } : undefined;
+    getActiveImpl = async () => activeDeployment;
+    const res = await app.request(
+      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      {},
+      ENV,
+    );
+    expect(res.status).toBe(404);
+    expect(trackPageView).not.toHaveBeenCalled();
+  });
+
   test("404 for an unknown host (fails closed)", async () => {
     const res = await app.request(
       "/api/v1/hosted-frontend/serve?host=nobody.example.com",

@@ -1,25 +1,29 @@
-# Eliza Cloud App Platform Lifecycle
+# Published Project Lifecycle
 
-Use this reference when a user asks to create, host, deploy, monetize, promote,
-or operate an Eliza Cloud app.
+Use this reference when a user asks to publish, host, deploy, monetize, promote,
+or operate a project through Eliza Cloud.
 
 ## Product Contract
 
-The Cloud app record is the product identity. Attach capabilities to that app
-record instead of inventing separate per-feature identities.
+The project is the durable product identity. Its `cloudAppId` binds it to one
+Cloud app record, which remains the wire-level identity for Cloud capabilities.
+Do not invent another binding or per-feature identity.
 
 Use this order:
 
-1. Create or reuse an app: `POST /api/v1/apps`.
-2. Configure browser auth: `app_url`, `allowed_origins`, redirect URIs, and the
+1. Resolve or register the local project.
+2. Create, reuse, or reactivate its bound Cloud app: `POST/PATCH /api/v1/apps`.
+3. Write the id through the shared `cloudAppId` binding path.
+4. Configure browser auth: `app_url`, `allowed_origins`, redirect URIs, and the
    public app URL.
-3. Decide how the frontend is hosted.
-4. Deploy a backend container only if server-side code is required.
-5. Attach or buy a domain.
-6. Enable monetization and earnings if the app should make money.
-7. Add analytics, SEO, content generation, and promotion/ads as app-level
+5. Publish the managed frontend.
+6. Deploy a backend container only if server-side code is required and enabled
+   for the organization.
+7. Attach or buy a domain.
+8. Enable monetization and earnings if the published project should make money.
+9. Add analytics, SEO, content generation, and promotion/ads as Cloud app-level
    features.
-8. Capture evidence: screenshots/video for UI, logs, DB rows, provider
+10. Capture evidence: screenshots/video for UI, logs, DB rows, provider
    artifacts, and money-path records.
 
 ## Current Hosting Reality
@@ -30,7 +34,7 @@ advertising, and content generation.
 
 Use this hosting split:
 
-- For static frontend-only apps, publish the built site with
+- For static frontend-only projects, publish the built site with
   `POST /api/v1/apps/:id/frontend` or the `DEPLOY_FRONTEND` agent action. Cloud
   content-addresses the files to R2, creates an immutable frontend deployment,
   and can activate it immediately. `GET /api/v1/apps/:id/frontend` lists
@@ -43,14 +47,14 @@ Use this hosting split:
   the page view server-side.
 - Activate an older deployment with
   `POST /api/v1/apps/:id/frontend/:deploymentId/activate` to roll back.
-- Use an external/static host only when the app intentionally should not use
+- Use an external/static host only when the project intentionally should not use
   Cloud managed frontend hosting; register that URL in `app_url` and
   `allowed_origins`.
-- Deploy a backend container only when the app needs server-side code.
+- Deploy a backend container only when the project needs server-side code.
 
-Remaining product/operator gaps: dashboard upload/activate/rollback UI,
-production DNS/wildcard host pointing for all managed frontend hosts, and the
-remaining session/funnel analytics tail.
+The Projects publish panel handles upload, activation, version selection, and
+rollback. Remaining operator gaps are production DNS/wildcard host pointing for
+all managed frontend hosts and the session/funnel analytics tail.
 
 ## Backend Container Rule
 

@@ -52,11 +52,16 @@ bun run test:e2e
 - Shipped default skills: bundled in `@elizaos/skills`, seeded into the state-dir skills folder by `scripts/ensure-skills.mjs`
 - Eliza Cloud backend or monetization: `eliza/cloud/` and the shipped `eliza-cloud` skill
 
-## Cloud Default
+## Cloud publishing default
 
-If the task involves building an app and Eliza Cloud is enabled, linked, or explicitly requested, treat Cloud as the default managed backend before inventing custom auth, billing, analytics, or hosting. Use the `eliza-cloud` skill for app, monetization, and container details.
+If the task involves building a project and Eliza Cloud is enabled, linked, or
+explicitly requested, keep the project as the durable local object and treat
+Cloud as its optional publishing/backend layer before inventing custom auth,
+billing, analytics, or hosting. Use `PUBLISH_PROJECT` for the transition and the
+`eliza-cloud` skill for the stable Cloud app API, monetization, and container
+details. A project remains valid when it is not published.
 
 ## Related Skills
 
 - `elizaos` — core runtime abstractions and upstream plugin patterns
-- `eliza-cloud` — apps, billing, monetization, auth, containers
+- `eliza-cloud` — project publishing, Cloud app APIs, billing, monetization, auth, containers

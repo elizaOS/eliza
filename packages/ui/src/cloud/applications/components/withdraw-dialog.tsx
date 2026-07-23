@@ -228,7 +228,7 @@ export function WithdrawDialog({
             </p>
             <div className="inline-block p-3 bg-surface rounded-sm border border-border">
               <span className="text-xs text-neutral-500">
-                Remaining App Balance
+                Remaining Project Balance
               </span>
               {newBalance !== null ? (
                 <p className="text-lg font-mono font-semibold text-txt-strong">

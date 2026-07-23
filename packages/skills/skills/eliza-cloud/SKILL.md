@@ -1,11 +1,12 @@
 ---
 name: eliza-cloud
-description: "Use when the task involves Eliza Cloud or elizaOS Cloud as a managed backend, app platform, deployment target, billing layer, or monetization surface. The catch-all skill for any user request about THEIR existing apps / containers / earnings / credits / api-keys / analytics / billing / payment requests / payouts — `list my apps`, `delete this app`, `change container size`, `what are my earnings`, `top up credits`, `charge this user`, `check if they paid`, `request payout`, `regenerate api key`, `show analytics`. Covers app creation, `appId` usage, app auth flows, cloud-hosted APIs, analytics, credits, app charge requests, x402 crypto requests, affiliate links, creator monetization, payout redemptions, and custom Docker container deployments. For domain-specific ops defer to `eliza-cloud-buy-domain` / `eliza-cloud-manage-domain`."
+description: "Use when the task involves Eliza Cloud or elizaOS Cloud as a managed backend, project-publishing target, billing layer, or monetization surface. The catch-all skill for requests about publishing or managing the user's projects, containers, earnings, credits, API keys, analytics, billing, payment requests, or payouts — `publish my project`, `show my published projects`, `unpublish this project`, `what are its analytics`, `change container size`, `what are my earnings`, `top up credits`, `charge this user`, `request payout`, or `regenerate the API key`. Covers the stable Cloud `apps` API, appId auth flows, managed hosting, analytics, credits, charges, x402 requests, affiliate links, creator monetization, payout redemptions, and custom Docker container deployments. For domain-specific operations defer to `eliza-cloud-buy-domain` / `eliza-cloud-manage-domain`."
 ---
 
 # Eliza Cloud
 
-Use this skill whenever Eliza Cloud is enabled, linked, or the task involves building an app that could use Cloud as its backend.
+Use this skill whenever Eliza Cloud is enabled, linked, or the task involves
+publishing a project or using Cloud as its backend.
 
 ## Default Stance
 
@@ -31,23 +32,29 @@ Treat Eliza Cloud as the default managed backend before inventing separate auth,
 
 ## Skill Pairing
 
-Use `build-monetized-app` alongside this skill for any new Cloud app that
-should earn money. `build-monetized-app` owns the build, deploy, monetize, and
-custom-domain offer flow; `eliza-cloud` owns the current Cloud backend surface,
-existing-app management, app charge requests, x402 requests, affiliate earnings,
-payout redemptions, media/promotion, and account-bound parent-agent commands.
-Spawned code agents should load or request both skills for Cloud app builds.
+Use `build-monetized-app` alongside this skill for any project that should be
+published and earn money. `build-monetized-app` owns the build, publish,
+monetize, and custom-domain offer flow; `eliza-cloud` owns the stable Cloud
+backend surface, published-project management, app charge requests, x402
+requests, affiliate earnings, payout redemptions, media/promotion, and
+account-bound parent-agent commands. Spawned code agents should load or request
+both skills for published-project builds.
 
 ## Default Build Flow
 
-For new agent-built apps, defer to `build-monetized-app`: register a Cloud app,
-publish the frontend, deploy a container only if the app needs server-side code,
-enable monetization, and then offer a custom domain.
+For new work, defer to `build-monetized-app`: resolve or create a local project,
+publish it by creating or reusing its bound Cloud app record, publish the
+frontend, deploy a container only if the project needs server-side code, enable
+monetization, and then offer a custom domain.
 
-Managed frontend hosting is now first-class. To ship a full app on Cloud:
+Managed frontend hosting is now first-class. To publish a complete project on
+Cloud:
 
-1. Create or reuse a Cloud app.
-2. **Publish the frontend**: `POST /api/v1/apps/:id/frontend` with the built site
+1. Resolve the active project and its `cloudAppId`; use `PUBLISH_PROJECT` for
+   the complete transition.
+2. Create or reuse the project's bound Cloud app record. Never keep a second
+   project-to-app mapping.
+3. **Publish the frontend**: `POST /api/v1/apps/:id/frontend` with the built site
    files (or the `DEPLOY_FRONTEND` agent action pointed at the build directory,
    e.g. `./dist`). Cloud content-addresses the files to R2, finalizes an
    immutable deployment, and activates it. The active deployment is served with
@@ -55,9 +62,10 @@ Managed frontend hosting is now first-class. To ship a full app on Cloud:
    - Deployments are immutable + versioned: `POST .../frontend/:deploymentId/activate`
      switches the live version, which is also **rollback** (activate an older one).
    - `GET .../frontend` lists deployments + the active id.
-3. **Deploy a backend container** only when the app needs server-side code
-   (`POST /api/v1/apps/:id/deploy`). A static/frontend-only app does not need one.
-4. **Attach a custom domain** (`domains/buy` + attach), or use the app's system
+4. **Deploy a backend container** only when the project needs server-side code
+   (`POST /api/v1/apps/:id/deploy`). A static/frontend-only project does not
+   need one.
+5. **Attach a custom domain** (`domains/buy` + attach), or use the project's system
    frontend host. The same domain can target the hosted frontend or a backend.
 
 The public site is served by Cloud at the app's frontend host / verified custom
@@ -65,19 +73,20 @@ domain (operator DNS points the host at the Cloud Worker). Until a host is
 pointed at Cloud, preview the active deployment at
 `/api/v1/apps/:id/frontend/preview`.
 
-For existing app work:
+For an existing project:
 
-1. create or reuse an Eliza Cloud app
-2. capture the app's `appId` and API key
-3. configure `app_url`, allowed origins, and redirect URIs
+1. resolve the project and its bound `cloudAppId`
+2. publish or reactivate it when the user asks
+3. configure `app_url`, allowed origins, and redirect URIs on the Cloud record
 4. use Cloud APIs as the backend
-5. enable monetization if the app should earn
+5. enable monetization if the published project should earn
 6. deploy a container only if server-side code is required
 
-For static-hosted apps, do not deploy a container unless the app truly needs its
-own server. Register the public static URL as the Cloud app, store the returned
-`appId` in non-secret local config, and use a same-origin proxy to call Cloud
-APIs. The config's `cloudUrl` is the browser-facing Cloud frontend/OAuth base
+For static-hosted projects, do not deploy a container unless the project truly
+needs its own server. Bind the Cloud record to the project, publish the static
+frontend, store the returned `appId` in non-secret runtime config, and use a
+same-origin proxy to call Cloud APIs. The config's `cloudUrl` is the
+browser-facing Cloud frontend/OAuth base
 that serves `/app-auth/authorize`; it must come from
 `ELIZA_CLOUD_PUBLIC_URL`, then `ELIZA_CLOUD_URL`, then `ELIZA_CLOUD_BASE_URL`
 only when that same origin serves the frontend too. Do not point `cloudUrl` at
@@ -87,8 +96,8 @@ http://localhost:8787/api/v1` pairs with `cloudUrl:
 http://127.0.0.1:3000`; if `ELIZA_CLOUD_PUBLIC_URL` is set, use that public
 frontend/OAuth origin instead.
 
-AI inference apps are monetized apps by default. They must use app auth plus the
-app-specific chat endpoint:
+Published AI inference projects are monetized through their Cloud app record by
+default. They must use app auth plus the app-specific chat endpoint:
 
 - Browser starts sign-in at `/app-auth/authorize` with `app_id`, `redirect_uri`, and `state`.
 - Browser stores only the returned user token, never an owner API key.
@@ -140,14 +149,22 @@ status fields. Show or store the returned values.
 
 ## Management surface — what users can ask for
 
-This is the catch-all skill for any user request about apps they already own. Endpoints + intent map:
+This is the catch-all skill for requests about projects the user wants to
+publish or has already published. Product-level project actions resolve
+`ProjectRecord.cloudAppId`; the endpoint column names the stable Cloud wire
+surface underneath them.
 
-| User says | Endpoint | Method |
+| User says | Action / endpoint | Method |
 |---|---|---|
-| `list my apps` | `/api/v1/apps` | GET |
-| `show me my app X` / `app details` | `/api/v1/apps/{id}` | GET |
-| `rename my app` / `change app config` | `/api/v1/apps/{id}` | PATCH |
-| `delete this app` | `/api/v1/apps/{id}` | DELETE |
+| `publish my project` | `PUBLISH_PROJECT` → `/api/v1/apps` + hosting route | create/reactivate + deploy |
+| `how is my published project doing?` | `GET_PUBLISHED_PROJECT` | read status, URL, analytics, earnings |
+| `unpublish this project` | `UNPUBLISH_PROJECT` → `/api/v1/apps/{id}` | PATCH `is_active:false` |
+| `list my projects` | `LIST_PROJECTS` → `/api/projects` | GET |
+| `show me project X` | `GET_PROJECT` → `/api/projects` | GET |
+| `make this the active project` | `SET_ACTIVE_PROJECT` → `/api/projects/switch` | POST |
+| `show my published projects` | `/api/v1/apps` | GET |
+| `rename the publication` / `change Cloud config` | `/api/v1/apps/{id}` | PATCH |
+| `delete the published artifact` | `/api/v1/apps/{id}` | DELETE |
 | `list my containers` | `/api/v1/containers` | GET |
 | `change container tier / size` | `/api/v1/apps/{id}` (container fields) | PATCH |
 | `what are my earnings` | `/api/v1/apps/{id}/earnings` | GET |
@@ -160,9 +177,9 @@ This is the catch-all skill for any user request about apps they already own. En
 | `show payout balance` | `/api/v1/redemptions/balance` | GET |
 | `quote payout` | `/api/v1/redemptions/quote` | GET |
 | `request payout` | `/api/v1/redemptions` | POST |
-| `show app analytics / usage` | `/api/v1/apps/{id}/analytics` | GET |
+| `show project analytics / usage` | `GET_APP_ANALYTICS` → `/api/v1/apps/{id}/analytics` | GET |
 | `regenerate my api key` | `/api/v1/apps/{id}/regenerate-api-key` | POST |
-| `list app users` | `/api/v1/apps/{id}/users` | GET |
+| `list project users` | `LIST_APP_USERS` → `/api/v1/apps/{id}/users` | GET |
 | `top up org credits` | `/api/v1/credits/checkout` or `/dashboard/billing` | POST / hosted |
 | `top up app credits` | `/api/v1/app-credits/checkout` | POST |
 | `start/provision a cloud tunnel` | `/api/v1/apis/tunnels/tailscale/auth-key` via `@elizaos/plugin-tailscale` | POST |
@@ -175,26 +192,28 @@ forces `tag:eliza-tunnel`, and the public proxy only forwards generated
 signed `eliza-<org>-<random>-<expiry>-<signature>` hostnames into the Headscale
 tailnet. Signed public hostnames expire with the tunnel provisioning window.
 
-Always confirm before destructive actions (delete app, regenerate key) — show the user what's about to happen, ask for explicit yes.
+Always confirm before unpublishing, deleting the Cloud artifact, regenerating a
+key, spending money, or moving money. State exactly which project and Cloud
+artifact will change before requesting explicit confirmation.
 
 For domain-specific ops:
 - `eliza-cloud-buy-domain` — register a brand-new domain through cloudflare (paid from cloud credits)
 - `eliza-cloud-manage-domain` — list / edit dns records / detach domains
 
 For the build-and-monetize flow specifically:
-- `build-monetized-app` — ships a new app, then proactively offers a custom domain at the end
+- `build-monetized-app` — publishes a project, then proactively offers a custom domain at the end
 
 ## Monetization & promotion surfaces (ads + influencers)
 
-Beyond inference markup / purchase share, an app can **earn from ads** and the
-agent can **promote** by hiring influencers — reusing existing credit + earnings
-rails only (no new payment infra).
+Beyond inference markup / purchase share, a published project can **earn from
+ads** and the agent can **promote** by hiring influencers — reusing existing
+credit + earnings rails only (no new payment infra).
 
-**Ad inventory / SSP — the app *sells* ad placements and earns.**
+**Ad inventory / SSP — the published project *sells* ad placements and earns.**
 
 | User says | Endpoint | Method | Agent action |
 |---|---|---|---|
-| `monetize my app with ads` / `sell ad space` | `/api/v1/marketing/inventory` | POST | `CREATE_AD_SLOT` |
+| `monetize my project with ads` / `sell ad space` | `/api/v1/marketing/inventory` | POST | `CREATE_AD_SLOT` |
 | `show my ad slots / ad earnings` | `/api/v1/marketing/inventory` | GET | `LIST_AD_SLOTS` |
 | `pause/edit an ad slot` | `/api/v1/marketing/inventory/{slotId}` | PATCH/DELETE | — |
 | `ad slot analytics` | `/api/v1/marketing/inventory/{slotId}/analytics` | GET | — |
@@ -222,7 +241,7 @@ money at most once. `BOOK_INFLUENCER` never moves money on the first ask; it
 funds only on an explicit structured confirmation (and sends a per-confirmation
 idempotency key so a transport retry cannot fund twice).
 
-Together with managed **frontend hosting** (publish a full app site via
+Together with managed **frontend hosting** (publish a complete project site via
 `DEPLOY_FRONTEND` / `/api/v1/apps/{id}/frontend`), this is the complete agent
-loop: **build → host a full app → deploy backend → attach a domain → monetize
+loop: **build → host a project → deploy backend → attach a domain → monetize
 (markup / purchase / ads) → promote (influencers) → track earnings → pay out.**

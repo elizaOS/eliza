@@ -595,8 +595,12 @@ function ThreadDetailPane({
 
 export function CodingAgentTasksPanel({
   fullPage,
+  projectId,
+  limit = 30,
 }: {
   fullPage?: boolean;
+  projectId?: string;
+  limit?: number;
 } = {}) {
   const { t: appT, uiLanguage: appUiLanguage } = useAppSelectorShallow((s) => ({
     t: s.t,
@@ -616,7 +620,7 @@ export function CodingAgentTasksPanel({
   // across all projects (today's behavior).
   const [activeProjectId, setActiveProjectId] = useState<
     string | null | undefined
-  >(undefined);
+  >(projectId);
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   // The coding-agent endpoint is owned by the Node-only orchestrator plugin and
@@ -659,6 +663,12 @@ export function CodingAgentTasksPanel({
   }, []);
 
   useEffect(() => {
+    if (projectId !== undefined) {
+      setActiveProjectId(projectId);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
     if (activeProjectId === undefined) return;
     let cancelled = false;
 
@@ -671,7 +681,7 @@ export function CodingAgentTasksPanel({
           includeArchived: showArchived,
           search: deferredSearch || undefined,
           projectId: activeProjectId ?? undefined,
-          limit: 30,
+          limit,
         });
         if (cancelled) return;
         setLoadError(null);
@@ -731,7 +741,7 @@ export function CodingAgentTasksPanel({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [deferredSearch, showArchived, activeProjectId, t]);
+  }, [deferredSearch, showArchived, activeProjectId, limit, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -789,7 +799,7 @@ export function CodingAgentTasksPanel({
         includeArchived: showArchived,
         search: deferredSearch || undefined,
         projectId: activeProjectId ?? undefined,
-        limit: 30,
+        limit,
       });
       setLoadError(null);
       setDetailError(null);
@@ -821,7 +831,7 @@ export function CodingAgentTasksPanel({
         includeArchived: false,
         search: deferredSearch || undefined,
         projectId: activeProjectId ?? undefined,
-        limit: 30,
+        limit,
       });
       setLoadError(null);
       setDetailError(null);
@@ -912,7 +922,11 @@ export function CodingAgentTasksPanel({
           ) : (
             <span aria-hidden="true" />
           )}
-          <ProjectSwitcher onActiveProjectChange={handleActiveProjectChange} />
+          {projectId === undefined ? (
+            <ProjectSwitcher
+              onActiveProjectChange={handleActiveProjectChange}
+            />
+          ) : null}
         </div>
       ) : (
         <TaskListHeader
@@ -936,9 +950,11 @@ export function CodingAgentTasksPanel({
             ) : null
           }
           action={
-            <ProjectSwitcher
-              onActiveProjectChange={handleActiveProjectChange}
-            />
+            projectId === undefined ? (
+              <ProjectSwitcher
+                onActiveProjectChange={handleActiveProjectChange}
+              />
+            ) : null
           }
         />
       )}

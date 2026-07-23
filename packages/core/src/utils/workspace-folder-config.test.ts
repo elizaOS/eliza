@@ -1,8 +1,6 @@
 /**
- * Tests for the workspace-folder config store (`read`/`write`/`clear` +
- * `workspaceFolderConfigPath`): round-trips path + bookmark, tolerates null
- * bookmarks and malformed JSON, and honors `ELIZA_STATE_DIR`, all against a real
- * temp state directory.
+ * Exercises legacy workspace-folder persistence against a real temporary state
+ * directory, including the strict migration read used by Projects.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -12,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	clearWorkspaceFolderConfig,
 	readWorkspaceFolderConfig,
+	readWorkspaceFolderConfigOrThrow,
 	workspaceFolderConfigPath,
 	writeWorkspaceFolderConfig,
 } from "./workspace-folder-config";
@@ -31,6 +30,7 @@ describe("workspace-folder-config", () => {
 
 	it("returns null when no config exists", () => {
 		expect(readWorkspaceFolderConfig(env)).toBeNull();
+		expect(readWorkspaceFolderConfigOrThrow(env)).toBeNull();
 	});
 
 	it("round-trips path + bookmark + adds updatedAt timestamp", () => {
@@ -57,6 +57,9 @@ describe("workspace-folder-config", () => {
 		writeWorkspaceFolderConfig({ path: "/x", bookmark: null }, env);
 		writeFileSync(path, "not-json{", "utf8");
 		expect(readWorkspaceFolderConfig(env)).toBeNull();
+		expect(() => readWorkspaceFolderConfigOrThrow(env)).toThrow(
+			/malformed JSON/,
+		);
 	});
 
 	it("clear removes the stored config", () => {

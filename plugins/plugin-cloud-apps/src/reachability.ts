@@ -74,6 +74,22 @@ export function respondedLive(result: ReachabilityResult): boolean {
 }
 
 /**
+ * Managed static hosting must return public content (or an intentional
+ * redirect). Unlike the container health rule, an auth/404 response can come
+ * from the Cloud routing gate itself and does not prove the uploaded frontend
+ * is publicly served.
+ */
+export function respondedManagedFrontendLive(
+  result: ReachabilityResult,
+): boolean {
+  return (
+    typeof result.status === "number" &&
+    result.status >= 200 &&
+    result.status < 400
+  );
+}
+
+/**
  * Probe a URL with a bounded HTTP GET. Never throws — a network error or abort
  * resolves to `{ ok: false }` with no `status`; any HTTP response resolves with
  * its `status` (and `ok` reflecting a strict 2xx). Redirects are NOT followed

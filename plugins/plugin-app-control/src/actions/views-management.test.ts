@@ -7,6 +7,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -16,6 +17,7 @@ import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { viewFollowupRoutingEvaluator } from "../evaluators/view-followup-routing.js";
 import { runCreate } from "./app-create.js";
+import { runLoadFromDirectory } from "./app-load-from-directory.js";
 import { createViewsAction, createViewsAliasAction } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { runViewsCreate } from "./views-create.js";
@@ -57,11 +59,14 @@ const coreMock = vi.hoisted(() => ({
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
+		...actual,
 		...coreMock,
 		ElizaError: actual.ElizaError,
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
 		getUserMessageText: actual.getUserMessageText,
+		readProjectRegistry: actual.readProjectRegistry,
 		resolveStateDir: actual.resolveStateDir,
+		upsertProject: actual.upsertProject,
 	};
 });
 
@@ -222,6 +227,36 @@ function createRepoFixture() {
 	return {
 		repoRoot,
 		pluginsDir,
+		cleanup: () => rmSync(repoRoot, { recursive: true, force: true }),
+	};
+}
+
+function createAppRepoFixture() {
+	const repoRoot = mkdtempSync(path.join(tmpdir(), "app-create-actions-"));
+	const templateDir = path.join(
+		repoRoot,
+		"packages/elizaos/templates/min-project",
+	);
+	mkdirSync(path.join(templateDir, "src"), { recursive: true });
+	writeFileSync(
+		path.join(templateDir, "package.json"),
+		JSON.stringify({
+			name: "@local/app-__APP_NAME__",
+			displayName: "__APP_DISPLAY_NAME__",
+			elizaos: {
+				app: {
+					slug: "__APP_NAME__",
+					displayName: "__APP_DISPLAY_NAME__",
+				},
+			},
+		}),
+	);
+	writeFileSync(
+		path.join(templateDir, "src/index.ts"),
+		"export const name = '__APP_NAME__';\n",
+	);
+	return {
+		repoRoot,
 		cleanup: () => rmSync(repoRoot, { recursive: true, force: true }),
 	};
 }
@@ -3217,7 +3252,7 @@ describe("view management actions", () => {
 		});
 		expect(empty).toMatchObject({
 			success: false,
-			text: "Tell me what app you want to build.",
+			text: "Tell me what project you want to build.",
 		});
 		expect(appClient.listInstalledApps).not.toHaveBeenCalled();
 
@@ -3231,7 +3266,7 @@ describe("view management actions", () => {
 		});
 		expect(missingTarget).toMatchObject({
 			success: false,
-			text: 'Cannot find an installed app named "missing".',
+			text: 'Cannot find an installed project package named "missing".',
 		});
 
 		const pendingTasks: RuntimeTask[] = [
@@ -3261,6 +3296,128 @@ describe("view management actions", () => {
 			"pending-app-create",
 		);
 		expect(emptyRuntime.actions[0]?.handler).not.toHaveBeenCalled();
+	});
+
+	it("registers a newly scaffolded APP as a project before coding dispatch", async () => {
+		const repo = createAppRepoFixture();
+		const stateDir = mkdtempSync(path.join(tmpdir(), "app-create-projects-"));
+		vi.stubEnv("ELIZA_STATE_DIR", stateDir);
+		try {
+			const { runtime, codingHandler } = createRuntime({
+				modelText: "name: proof-project\ndisplayName: Proof Project",
+			});
+
+			const result = await runCreate({
+				runtime: runtime as never,
+				client: { listInstalledApps: vi.fn(async () => []) } as never,
+				message: message("Build a proof project", "project-room") as never,
+				options: { action: "create" },
+				callback: vi.fn(),
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(result.success).toBe(true);
+			expect(result.values).toMatchObject({
+				mode: "create",
+				subMode: "new",
+				name: "proof-project",
+				projectId: expect.any(String),
+			});
+
+			const persisted = JSON.parse(
+				readFileSync(path.join(stateDir, "projects.json"), "utf8"),
+			) as {
+				activeProjectId: string;
+				projects: Array<{ id: string; name: string; localPath: string }>;
+			};
+			expect(persisted.projects).toHaveLength(1);
+			const project = persisted.projects[0];
+			expect(project).toMatchObject({
+				id: result.values?.projectId,
+				name: "proof-project",
+				localPath: realpathSync(
+					path.join(repo.repoRoot, "eliza/apps/app-proof-project"),
+				),
+			});
+			expect(persisted.activeProjectId).toBe(project?.id);
+
+			const handlerOptions = codingHandler.mock.calls[0]?.[3] as {
+				parameters: Record<string, unknown>;
+			};
+			expect(handlerOptions.parameters).toMatchObject({
+				projectId: project?.id,
+				workdir: project?.localPath,
+				lockWorkdir: true,
+			});
+		} finally {
+			repo.cleanup();
+			rmSync(stateDir, { recursive: true, force: true });
+		}
+	});
+
+	it("registers a directly selected APP workspace folder as the active project", async () => {
+		const repo = createAppRepoFixture();
+		const stateDir = mkdtempSync(path.join(tmpdir(), "app-load-projects-"));
+		const loadRoot = path.join(repo.repoRoot, "owned-apps");
+		const appDir = path.join(loadRoot, "app-ledger");
+		mkdirSync(appDir, { recursive: true });
+		writeFileSync(
+			path.join(appDir, "package.json"),
+			JSON.stringify({
+				name: "@local/app-ledger",
+				elizaos: {
+					app: { slug: "ledger", displayName: "Ledger Project" },
+				},
+			}),
+		);
+		vi.stubEnv("ELIZA_STATE_DIR", stateDir);
+		try {
+			const { runtime } = createRuntime();
+			const registry = {
+				register: vi.fn(async () => undefined),
+				recordManifestRejection: vi.fn(async () => undefined),
+			};
+			Object.assign(runtime, {
+				getService: vi.fn((type: string) =>
+					type === "app-registry" ? registry : null,
+				),
+			});
+
+			const result = await runLoadFromDirectory({
+				runtime: runtime as never,
+				message: message("Load my ledger project") as never,
+				options: { directory: appDir },
+				callback: vi.fn(),
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(result.success).toBe(true);
+			expect(registry.register).toHaveBeenCalledTimes(1);
+			expect(result.data).toMatchObject({
+				projects: [
+					{
+						id: expect.any(String),
+						name: "Ledger Project",
+						localPath: realpathSync(appDir),
+					},
+				],
+			});
+			const persisted = JSON.parse(
+				readFileSync(path.join(stateDir, "projects.json"), "utf8"),
+			) as {
+				activeProjectId: string;
+				projects: Array<{ id: string; name: string; localPath: string }>;
+			};
+			expect(persisted.projects).toHaveLength(1);
+			expect(persisted.projects[0]).toMatchObject({
+				name: "Ledger Project",
+				localPath: realpathSync(appDir),
+			});
+			expect(persisted.activeProjectId).toBe(persisted.projects[0]?.id);
+		} finally {
+			repo.cleanup();
+			rmSync(stateDir, { recursive: true, force: true });
+		}
 	});
 
 	it("keeps an APP edit task in its chat room with bounded verification retries", async () => {

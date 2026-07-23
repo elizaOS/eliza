@@ -99,6 +99,7 @@ import type {
   ProjectSummary,
   ProviderModelRecord,
   RawAcpSession,
+  RegisterProjectInput,
   RelationshipsActivityResponse,
   RelationshipsGraphQuery,
   RelationshipsGraphSnapshot,
@@ -1052,7 +1053,13 @@ declare module "./client-base" {
     archiveCodingAgentTaskThread(threadId: string): Promise<boolean>;
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
     listProjects(): Promise<ProjectListResponse>;
+    registerProject(input: RegisterProjectInput): Promise<ProjectSummary>;
     activateProject(projectId: string): Promise<ProjectSummary>;
+    bindProjectCloudApp(
+      projectId: string,
+      cloudAppId: string,
+    ): Promise<ProjectSummary>;
+    unbindProjectCloudApp(projectId: string): Promise<ProjectSummary>;
     getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
     getOrchestratorAccounts(): Promise<OrchestratorAccountOverview>;
     getOrchestratorAccountReadiness(opts?: {
@@ -4075,10 +4082,10 @@ ElizaClient.prototype.reopenCodingAgentTaskThread = async function (
   return true;
 };
 
-// --- Project registry (#13776 item 5): list + switch the active project ----
-// The switcher reads the merged core registry through these; an absent registry
-// (mobile/web where the surface isn't hosted) resolves to an empty list so the
-// switcher renders its no-projects empty state instead of erroring.
+// --- Project registry: register, list, and switch the active project --------
+// An absent registry on list (mobile/web where the surface isn't hosted)
+// resolves to an empty list so consumers render their designed no-projects
+// state instead of an error.
 
 ElizaClient.prototype.listProjects = async function (this: ElizaClient) {
   try {
@@ -4091,6 +4098,17 @@ ElizaClient.prototype.listProjects = async function (this: ElizaClient) {
   }
 };
 
+ElizaClient.prototype.registerProject = async function (
+  this: ElizaClient,
+  input,
+) {
+  return this.fetch<ProjectSummary>("/api/projects/register", {
+    method: "POST",
+    body: JSON.stringify(input),
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
 ElizaClient.prototype.activateProject = async function (
   this: ElizaClient,
   projectId,
@@ -4098,6 +4116,31 @@ ElizaClient.prototype.activateProject = async function (
   return this.fetch<ProjectSummary>(
     `/api/projects/${encodeURIComponent(projectId)}/activate`,
     { method: "POST" },
+  );
+};
+
+ElizaClient.prototype.bindProjectCloudApp = async function (
+  this: ElizaClient,
+  projectId,
+  cloudAppId,
+) {
+  return this.fetch<ProjectSummary>(
+    `/api/projects/${encodeURIComponent(projectId)}/cloud-app`,
+    {
+      method: "POST",
+      body: JSON.stringify({ cloudAppId }),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+};
+
+ElizaClient.prototype.unbindProjectCloudApp = async function (
+  this: ElizaClient,
+  projectId,
+) {
+  return this.fetch<ProjectSummary>(
+    `/api/projects/${encodeURIComponent(projectId)}/cloud-app`,
+    { method: "DELETE" },
   );
 };
 

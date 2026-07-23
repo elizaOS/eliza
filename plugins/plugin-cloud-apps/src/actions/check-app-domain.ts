@@ -1,18 +1,17 @@
 /**
- * CHECK_APP_DOMAIN — READ-ONLY availability + price quote for a domain.
+ * Quotes domain availability and annual pricing for a published Project.
  *
  * Wraps `POST /api/v1/apps/:id/domains/check` (a dry run: the server never
  * charges and never registers on this route). Reports availability, the
  * purchase price, and the annual renewal price the renewal cron will
  * re-charge, then points the user at BUY_APP_DOMAIN for the actual purchase.
  *
- * The check endpoint is app-scoped but its answer is app-agnostic, so when no
- * app reference matches this action quietly falls back to any app of the
- * user's (sole app first) instead of interrogating the user — the app only
- * matters when buying.
+ * The Cloud endpoint is app-scoped even though its quote is app-agnostic. The
+ * action therefore resolves a local Project first and uses only that project's
+ * durable Cloud binding; it never borrows an unrelated Cloud app as transport.
  */
 
-import type { AppDto, CheckAppDomainResponse } from "@elizaos/cloud-sdk";
+import type { CheckAppDomainResponse } from "@elizaos/cloud-sdk";
 import type {
   Action,
   ActionResult,
@@ -24,8 +23,9 @@ import type {
 import { logger } from "@elizaos/core";
 import { getCloudClient, resolveCloudApiKey } from "../client.js";
 import {
+  domainProjectResolutionMessage,
   extractDomainReferences,
-  resolveDomainTargetApp,
+  resolveDomainTargetProject,
   usdFromCents,
 } from "../domain-intent.js";
 
@@ -33,8 +33,6 @@ const NO_KEY_MESSAGE =
   "I can't reach Eliza Cloud yet — no Cloud API key is configured. Add your ELIZAOS_CLOUD_API_KEY and I can check domains.";
 const NO_DOMAIN_MESSAGE =
   "Which domain should I check? Give me the full name, e.g. yourbrand.com.";
-const NO_APPS_MESSAGE =
-  "You don't have any Cloud apps yet — domains attach to an app, so create one first and I can check and buy domains for it.";
 const ERROR_MESSAGE =
   "I couldn't check that domain right now — the Cloud API returned an error. Try again in a moment.";
 
@@ -101,9 +99,9 @@ export const checkAppDomainAction: Action = {
       schema: { type: "string" },
     },
     {
-      name: "appName",
+      name: "project",
       description:
-        "Optional name, slug, or id of the Cloud app the domain is for.",
+        "Optional local project name or id. Omit to use the active or sole project.",
       required: false,
       schema: { type: "string" },
     },
@@ -145,40 +143,36 @@ export const checkAppDomainAction: Action = {
       };
     }
 
-    // The quote is app-agnostic — any app of the user's satisfies the
-    // app-scoped route, so fall back through match → sole app → first app
-    // rather than asking "which app?" for a read-only price check.
-    let app: AppDto | null;
+    let target: Awaited<ReturnType<typeof resolveDomainTargetProject>>;
     try {
-      const resolved = await resolveDomainTargetApp(client, message, options);
-      app = resolved.app ?? resolved.apps[0] ?? null;
+      target = await resolveDomainTargetProject(client, message, options);
     } catch (err) {
+      // error-policy:J1 The action boundary translates project and Cloud failures for the planner.
       logger.warn(
-        `[CHECK_APP_DOMAIN] failed to resolve an app: ${
+        `[CHECK_APP_DOMAIN] failed to resolve a published project: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
       await callback?.({ text: ERROR_MESSAGE, actions: ["CHECK_APP_DOMAIN"] });
       return {
         success: false,
-        text: "Failed to resolve a Cloud app for the domain check.",
+        text: "Failed to resolve a published project for the domain check.",
         userFacingText: ERROR_MESSAGE,
         error: err instanceof Error ? err : new Error(String(err)),
         data: { reason: "error" },
       };
     }
-    if (!app) {
-      await callback?.({
-        text: NO_APPS_MESSAGE,
-        actions: ["CHECK_APP_DOMAIN"],
-      });
+    if (!target.project || !target.app) {
+      const reply = domainProjectResolutionMessage(target);
+      await callback?.({ text: reply, actions: ["CHECK_APP_DOMAIN"] });
       return {
         success: false,
-        text: "User has no Cloud apps to scope the domain check to.",
-        userFacingText: NO_APPS_MESSAGE,
-        data: { reason: "no_apps" },
+        text: "Published project could not be resolved.",
+        userFacingText: reply,
+        data: { reason: target.reason },
       };
     }
+    const { app, project } = target;
 
     // Per-domain checks are independent — a failure on one must not discard
     // the quotes already fetched for the others.
@@ -190,6 +184,7 @@ export const checkAppDomainAction: Action = {
         const res = await client.checkAppDomain(app.id, { domain });
         quotes.push(toQuote(res));
       } catch (err) {
+        // error-policy:J4 Each independent quote failure is named in the partial-result reply.
         logger.warn(
           `[CHECK_APP_DOMAIN] checkAppDomain(${app.id}, ${domain}) failed: ${
             err instanceof Error ? err.message : String(err)
@@ -235,6 +230,11 @@ export const checkAppDomainAction: Action = {
       userFacingText: reply,
       verifiedUserFacing: true,
       data: {
+        project: {
+          id: project.id,
+          name: project.name,
+          cloudAppId: project.cloudAppId,
+        },
         app: { id: app.id, name: app.name, slug: app.slug },
         quotes,
         ...(failed.length > 0 ? { failed } : {}),

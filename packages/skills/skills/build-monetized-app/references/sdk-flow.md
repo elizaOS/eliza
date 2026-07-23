@@ -1,6 +1,8 @@
-# SDK flow: build + deploy + monetize
+# SDK flow: build + publish + monetize
 
-The full 6-step flow. Each step is one or two `@elizaos/cloud-sdk` calls. The whole sequence is idempotent at the step boundary — if step 5 fails, restart from step 5.
+The product flow starts from a registered project and publishes its Cloud
+artifact. Each Cloud step is one or two `@elizaos/cloud-sdk` calls and is
+restartable at its boundary.
 
 ## Setup
 
@@ -17,7 +19,20 @@ invent your own key, and do not pass owner API keys or wallet private keys into
 spawned child workers. In orchestrated workers, use `USE_SKILL parent-agent`
 Cloud commands for account-bound operations.
 
-## 1. Register the app
+## 0. Resolve the project
+
+Use `GET_PROJECT` or the active-project provider to resolve the durable
+`ProjectRecord`. Prefer the `PUBLISH_PROJECT` action for the whole lifecycle:
+it reuses `project.cloudAppId`, creates a Cloud record only when absent,
+deploys the selected artifact, checks liveness, and writes the binding through
+the shared registry path.
+
+Do not key publication from a package name, coding-task id, or a second mapping.
+
+## 1. Register or reuse the Cloud record
+
+If `project.cloudAppId` is already set, fetch that record and reactivate it when
+necessary. Only create a wire-level app when no binding exists:
 
 ```ts
 const { app, apiKey } = await cloud.createApp({
@@ -42,9 +57,31 @@ const retried = await cloud.createApp({
 });
 ```
 
-## 2. The app image — PREBUILT and first-party only
+After creation, write `app.id` through the same shared `cloudAppId` binding path
+used by `PUBLISH_PROJECT` and the coding-task broker.
 
-You do **not** build and push your own container image. App deploys are gated to
+## 2. Publish the managed frontend
+
+Managed frontend hosting is the default publish path and does not require the
+container allowlist:
+
+```ts
+const frontend = await cloud.deployAppFrontend(appId, {
+  files: builtFiles,
+  entrypoint: "index.html",
+  spaFallback: true,
+  buildMeta: { source: "project-publish" },
+});
+```
+
+The deployment is immutable and active by default. List versions with
+`cloud.listAppFrontendDeployments(appId)` and roll back by activating an older
+deployment with `cloud.activateAppFrontend(appId, deploymentId)`.
+
+## 3. Optional backend image — PREBUILT and first-party only
+
+Skip this and the next step unless the project needs server-side code. You do
+**not** build and push your own container image. App deploys are gated to
 a **prebuilt, allowlisted, first-party image**:
 
 - **Template apps** (`skipGitHubRepo: true`, step 1) get the first-party template
@@ -52,7 +89,7 @@ a **prebuilt, allowlisted, first-party image**:
   (`app.metadata.imageTag`). The default is
   `ghcr.io/elizaos/example-edad:showcase` — a working chat-forwarder showcase app
   — overridable via the `APP_DEFAULT_TEMPLATE_IMAGE` env on the deploy backend.
-  So a template app needs no image work from you at all: go straight to step 3.
+  So a template app needs no image work from you at all: go straight to step 4.
 - **The apps-deploy allowlist is `ghcr.io/elizaos/*` ONLY by default**
   (`APPS_DEPLOY_IMAGE_ALLOWLIST`, fail-closed). An image outside the first-party
   namespace — Docker Hub, your own GHCR org, anything you built and pushed — is
@@ -124,7 +161,7 @@ The template image also ships the frontend. For reference, a chat frontend:
 
 The frontend can be served by the same container or by any static host pointing at the same domain — the cloud doesn't care.
 
-## 3. Deploy the app
+## 4. Deploy the backend container (optional)
 
 Deploy is a single typed call on the app — the backend resolves the app's
 prebuilt image (`metadata.imageTag`, stamped in step 1) and runs it. You do not
@@ -159,7 +196,7 @@ const appUrl = status.vercelUrl; // the deployed URL (else the app's *.apps.eliz
 > than working around it. There is no per-container logs/health/metrics SDK
 > surface; the deploy status (`status` + `error` above) is the signal.
 
-## 4. Set markup
+## 5. Set markup
 
 ```ts
 await cloud.updateMonetization(appId, {
@@ -175,7 +212,7 @@ directly on the app row are stale.
 
 100% markup is the current default for agent-built v1 apps. Tune later from real usage and `redeemable_earnings_ledger` data.
 
-## 5. Patch app_url + allowed_origins
+## 6. Patch app_url + allowed_origins
 
 ```ts
 await cloud.updateApp(appId, {
@@ -184,24 +221,28 @@ await cloud.updateApp(appId, {
 });
 ```
 
-`appUrl` is the deployed URL from step 3 (`getAppDeployStatus().vercelUrl`, else
-the app's auto-assigned `*.apps.elizacloud.ai` subdomain). Without this, the
-OAuth redirect flow can't return users to your app, and CORS rejects browser
-calls from the deployed origin.
+`appUrl` is the managed frontend/system URL for frontend-only projects, or the
+container URL from step 4. Without this, the OAuth redirect flow cannot return
+users to the published project and CORS rejects browser calls from the live
+origin.
 
-## 6. Report to the human
+## 7. Report to the human
 
 Print the audit trail so the owner can verify + cash out:
 
 ```
-✓ App:        https://www.elizacloud.ai/dashboard/apps/<APP_ID>
+✓ Project:    <local project name>
+✓ Published:  https://www.elizacloud.ai/dashboard/apps/<APP_ID>
 ✓ Live URL:   <appUrl from getAppDeployStatus().vercelUrl, else *.apps.elizacloud.ai>
 ✓ Markup:     100%
 ✓ Survival:   earnings auto-fund hosting; agent stays alive while profitable
 → Cashout:    https://www.elizacloud.ai/dashboard/earnings (Redeem for elizaOS)
 ```
 
-Done. The earnings loop is now active. Subsequent user activity on the app credits the owner's `redeemable_earnings_ledger`, the daily container-billing cron pulls those earnings before touching credits, and the agent stays online as long as the app is profitable.
+Done. The earnings loop is now active. Subsequent user activity on the
+published project credits the owner's `redeemable_earnings_ledger`; when a
+container exists, the daily billing cron pulls those earnings before touching
+credits.
 
 ## What you do not need to do
 

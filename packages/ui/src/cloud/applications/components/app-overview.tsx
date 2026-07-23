@@ -62,6 +62,7 @@ import { openExternalUrlOnNative } from "../lib/native-cloud-nav";
 interface AppOverviewProps {
   app: App;
   showApiKey?: string;
+  onNavigateTab?: (tab: "monetization" | "settings") => void;
 }
 
 const DEPLOY_STATUS_POLL_INTERVAL_MS = 3_000;
@@ -71,7 +72,11 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function AppOverview({ app, showApiKey }: AppOverviewProps) {
+export function AppOverview({
+  app,
+  showApiKey,
+  onNavigateTab,
+}: AppOverviewProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -171,7 +176,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           toast.error(
             t("cloud.apps.overview.deployPollTimeout", {
               defaultValue:
-                "Deployment is still running. Refresh the app to check status.",
+                "Deployment is still running. Refresh the project to check status.",
             }),
           );
         }
@@ -407,7 +412,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             : app.deployment_status === "deployed"
               ? t("cloud.apps.overview.deployLive", {
                   defaultValue:
-                    "Your app is live. Redeploy to push the latest build.",
+                    "Your project is live. Redeploy to push the latest build.",
                 })
               : t("cloud.apps.overview.deployDraft", {
                   defaultValue:
@@ -688,9 +693,16 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               <Button
                 variant="ghost"
                 type="button"
-                onClick={() =>
-                  navigate(`/dashboard/apps/${app.id}?tab=monetization`)
-                }
+                onClick={() => {
+                  if (onNavigateTab) {
+                    onNavigateTab("monetization");
+                    return;
+                  }
+                  navigate(`/dashboard/apps/${app.id}?tab=monetization`);
+                }}
+                aria-label={t("cloud.apps.tab.monetize", {
+                  defaultValue: "Monetize",
+                })}
                 className="p-2 hover:bg-bg-hover rounded-sm transition-colors"
               >
                 <ChevronRight className="h-4 w-4 text-neutral-400" />
@@ -710,7 +722,13 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           <Button
             variant="ghost"
             type="button"
-            onClick={() => navigate(`/dashboard/apps/${app.id}?tab=settings`)}
+            onClick={() => {
+              if (onNavigateTab) {
+                onNavigateTab("settings");
+                return;
+              }
+              navigate(`/dashboard/apps/${app.id}?tab=settings`);
+            }}
             className="text-xs text-neutral-400 hover:text-txt transition-colors"
           >
             Edit

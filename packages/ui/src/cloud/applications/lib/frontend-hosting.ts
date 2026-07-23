@@ -43,7 +43,15 @@ export interface FrontendDeployment {
 
 export interface FrontendDeploymentsList {
   active_deployment_id: string | null;
+  /** Authoritative system URL, null when the operator host is not configured. */
+  public_url: string | null;
   deployments: FrontendDeployment[];
+}
+
+export interface FrontendPublishResult {
+  deployment: FrontendDeployment;
+  /** Authoritative system URL, null when the operator host is not configured. */
+  public_url: string | null;
 }
 
 /** One file entry in a publish payload (server FileSchema). */
@@ -60,10 +68,12 @@ export async function listFrontendDeployments(
 ): Promise<FrontendDeploymentsList> {
   const data = await api<{
     active_deployment_id: string | null;
+    public_url: string | null;
     deployments: FrontendDeployment[];
   }>(`/api/v1/apps/${appId}/frontend`);
   return {
     active_deployment_id: data.active_deployment_id,
+    public_url: data.public_url,
     deployments: data.deployments,
   };
 }
@@ -78,15 +88,11 @@ export async function publishFrontendBundle(
     activate?: boolean;
     buildMeta?: FrontendBuildMeta;
   },
-): Promise<FrontendDeployment> {
-  const data = await api<{ deployment: FrontendDeployment }>(
-    `/api/v1/apps/${appId}/frontend`,
-    {
-      method: "POST",
-      json: { ...input, buildMeta: input.buildMeta ?? { source: "dashboard" } },
-    },
-  );
-  return data.deployment;
+): Promise<FrontendPublishResult> {
+  return api<FrontendPublishResult>(`/api/v1/apps/${appId}/frontend`, {
+    method: "POST",
+    json: { ...input, buildMeta: input.buildMeta ?? { source: "dashboard" } },
+  });
 }
 
 /**
@@ -96,12 +102,11 @@ export async function publishFrontendBundle(
 export async function activateFrontendDeployment(
   appId: string,
   deploymentId: string,
-): Promise<FrontendDeployment> {
-  const data = await api<{ deployment: FrontendDeployment }>(
+): Promise<FrontendPublishResult> {
+  return api<FrontendPublishResult>(
     `/api/v1/apps/${appId}/frontend/${deploymentId}/activate`,
     { method: "POST" },
   );
-  return data.deployment;
 }
 
 /** DELETE /api/v1/apps/:id/frontend/:deploymentId — non-active only (409 otherwise). */

@@ -51,8 +51,8 @@ describe("AppsManagementSection failure states", () => {
     });
     render(<AppsManagementSection />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create new app" }));
-    fireEvent.change(screen.getByLabelText("What should the app do?"), {
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    fireEvent.change(screen.getByLabelText("What do you want to build?"), {
       target: { value: "Summarize project updates" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
@@ -62,8 +62,11 @@ describe("AppsManagementSection failure states", () => {
     );
     expect(createError.getAttribute("role")).toBe("alert");
     expect(
-      (screen.getByLabelText("What should the app do?") as HTMLTextAreaElement)
-        .value,
+      (
+        screen.getByLabelText(
+          "What do you want to build?",
+        ) as HTMLTextAreaElement
+      ).value,
     ).toBe("Summarize project updates");
     expect(appMock.setActionNotice).not.toHaveBeenCalled();
   });
@@ -75,9 +78,7 @@ describe("AppsManagementSection failure states", () => {
     });
     render(<AppsManagementSection />);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Load from directory" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Add from folder" }));
     fireEvent.change(screen.getByLabelText("Directory path"), {
       target: { value: "/workspace/my-app" },
     });
@@ -91,6 +92,46 @@ describe("AppsManagementSection failure states", () => {
       (screen.getByLabelText("Directory path") as HTMLInputElement).value,
     ).toBe("/workspace/my-app");
     expect(appMock.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("reports the created project id so Projects can activate and open it", async () => {
+    const onProjectsChanged = vi.fn();
+    clientMock.fetch.mockResolvedValue({
+      success: true,
+      text: "Project creation started.",
+      data: { projectId: "project-created" },
+    });
+    render(<AppsManagementSection onProjectsChanged={onProjectsChanged} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    fireEvent.change(screen.getByLabelText("What do you want to build?"), {
+      target: { value: "Build a status page" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(onProjectsChanged).toHaveBeenCalledWith("project-created");
+    });
+  });
+
+  it("reports the directly loaded project id so Projects can activate and open it", async () => {
+    const onProjectsChanged = vi.fn();
+    clientMock.fetch.mockResolvedValue({
+      ok: true,
+      registered: 1,
+      projects: [{ id: "project-loaded" }],
+    });
+    render(<AppsManagementSection onProjectsChanged={onProjectsChanged} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add from folder" }));
+    fireEvent.change(screen.getByLabelText("Directory path"), {
+      target: { value: "/workspace/status-page" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load" }));
+
+    await waitFor(() => {
+      expect(onProjectsChanged).toHaveBeenCalledWith("project-loaded");
+    });
   });
 
   it("offers a retry after the installed-app inventory fails", async () => {
@@ -107,6 +148,39 @@ describe("AppsManagementSection failure states", () => {
     await waitFor(() => {
       expect(clientMock.listInstalledApps).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByText("No apps installed yet.")).toBeTruthy();
+    expect(await screen.findByText("No installed packages yet.")).toBeTruthy();
+  });
+
+  it("renders a compact Installed list without project-owned packages", async () => {
+    clientMock.listInstalledApps.mockResolvedValue([
+      {
+        name: "plugin-owned",
+        displayName: "Owned",
+        pluginName: "plugin-owned",
+        version: "1.0.0",
+        installedAt: "2026-07-20T00:00:00.000Z",
+      },
+      {
+        name: "weather-tools",
+        displayName: "Weather tools",
+        pluginName: "weather-tools",
+        version: "2.0.0",
+        installedAt: "2026-07-20T00:00:00.000Z",
+      },
+    ]);
+    render(
+      <AppsManagementSection
+        inventoryOnly
+        inventoryVariant="compact"
+        excludedAppNames={new Set(["plugin-owned"])}
+      />,
+    );
+
+    expect(await screen.findByTestId("apps-mgmt-compact-list")).toBeTruthy();
+    expect(screen.queryByText("Owned")).toBeNull();
+    expect(screen.getByText("Weather tools")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Launch Weather tools" }),
+    ).toBeTruthy();
   });
 });

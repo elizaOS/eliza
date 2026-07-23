@@ -144,4 +144,19 @@ describe("CodingAgentTasksPanel project switcher integration", () => {
       limit: 30,
     });
   });
+
+  it("uses the project detail's forced id without loading the switcher", async () => {
+    render(<CodingAgentTasksPanel fullPage projectId="proj-b" />);
+
+    await waitFor(() =>
+      expect(calls.listCodingAgentTaskThreads).toHaveBeenCalledTimes(1),
+    );
+    expect(calls.listProjects).not.toHaveBeenCalled();
+    expect(calls.listCodingAgentTaskThreads).toHaveBeenCalledWith({
+      includeArchived: false,
+      search: undefined,
+      projectId: "proj-b",
+      limit: 30,
+    });
+  });
 });

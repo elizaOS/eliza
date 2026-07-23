@@ -19,6 +19,14 @@ export type TaskCoordinatorCodingAgentSettingsSectionProps = Record<
 
 export interface TaskCoordinatorCodingAgentTasksPanelProps {
   fullPage?: boolean;
+  /** Bounds embedded summaries while the dedicated Activity tab remains full. */
+  limit?: number;
+  /**
+   * Pins the panel to one project and suppresses its project switcher. The
+   * Projects detail surface owns navigation in this mode; the standalone panel
+   * keeps its existing switcher when this is omitted.
+   */
+  projectId?: string;
 }
 
 export type TaskCoordinatorCodingAgentControlChipProps = Record<string, never>;

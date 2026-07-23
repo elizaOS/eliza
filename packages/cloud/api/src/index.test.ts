@@ -317,6 +317,33 @@ describe("cloud-api worker entrypoint", () => {
     expect(stagingRoutes).toContain("app-staging.elizacloud.ai/*");
   });
 
+  test("configures distinct production and staging managed-frontend wildcard hosts", async () => {
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      env?: Record<
+        string,
+        {
+          routes?: Array<{ pattern?: string }>;
+          vars?: { ELIZA_FRONTEND_HOST_SUFFIX?: string };
+        }
+      >;
+    };
+
+    expect(config.env?.production?.vars?.ELIZA_FRONTEND_HOST_SUFFIX).toBe(
+      "sites.elizacloud.ai",
+    );
+    expect(
+      config.env?.production?.routes?.map((route) => route.pattern),
+    ).toContain("*.sites.elizacloud.ai/*");
+    expect(config.env?.staging?.vars?.ELIZA_FRONTEND_HOST_SUFFIX).toBe(
+      "sites.staging.elizacloud.ai",
+    );
+    expect(
+      config.env?.staging?.routes?.map((route) => route.pattern),
+    ).toContain("*.sites.staging.elizacloud.ai/*");
+  });
+
   test("feed.elizacloud.ai is inert when FEED_ORIGIN_HOST is unset", () => {
     // No env / empty host => falls through to the cloud-api app (no regression).
     expect(

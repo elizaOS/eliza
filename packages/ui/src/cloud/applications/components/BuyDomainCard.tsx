@@ -121,7 +121,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
                   "Setting up DNS — it may take a few minutes to go live.",
               })
             : t("cloud.appDomains.buyLive", {
-                defaultValue: "Connecting it to your app now.",
+                defaultValue: "Connecting it to your project now.",
               }),
         },
       );
@@ -178,7 +178,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
         <p className="text-xs text-neutral-500 mt-1">
           {t("cloud.appDomains.buySubtitle", {
             defaultValue:
-              "Register a new domain through Cloudflare and connect it to this app.",
+              "Register a new domain through Cloudflare and connect it to this project.",
           })}
         </p>
       </div>

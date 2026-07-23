@@ -21,6 +21,7 @@ import {
   type ApiKeyCreateRequest,
   type ApiKeyCreateResponse,
   type ApiKeyListResponse,
+  type AppAnalyticsResponse,
   type AppBackupSnapshot,
   type AppCreditsBalanceResponse,
   type AppDeployStatusResponse,
@@ -107,10 +108,13 @@ import {
   type LinkAffiliateResponse,
   type ListAdSlotsResponse,
   type ListAppChargesResponse,
+  type ListAppDomainDnsRecordsResponse,
   type ListAppDomainsResponse,
   type ListAppFrontendDeploymentsResponse,
   type ListAppsResponse,
+  type ListAppUsersResponse,
   type ListInfluencersResponse,
+  type ListManagedDomainsResponse,
   type ListPressCoverageResponse,
   type ListPressReleasesResponse,
   type ListRedemptionsResponse,
@@ -128,6 +132,8 @@ import {
   type ResponsesCreateResponse,
   type RestoreAppBackupResponse,
   type RevokeCampaignReportShareResponse,
+  type SearchDomainsInput,
+  type SearchDomainsResponse,
   type SettleX402PaymentRequestResponse,
   type SnapshotListResponse,
   type SnapshotType,
@@ -879,6 +885,40 @@ export class ElizaCloudClient {
   }
 
   /**
+   * `GET /api/v1/apps/:id/analytics` — real-time request/user/cost buckets plus
+   * lifetime counters for the authenticated app owner.
+   */
+  getAppAnalytics(
+    appId: string,
+    options: {
+      period?: "hourly" | "daily" | "monthly";
+      startDate?: string;
+      endDate?: string;
+    } = {},
+  ): Promise<AppAnalyticsResponse> {
+    const query = {
+      ...(options.period ? { period: options.period } : {}),
+      ...(options.startDate ? { start_date: options.startDate } : {}),
+      ...(options.endDate ? { end_date: options.endDate } : {}),
+    };
+    return this.routes.getApiV1AppsByIdAnalytics<AppAnalyticsResponse>({
+      pathParams: { id: appId },
+      query: Object.keys(query).length > 0 ? query : undefined,
+    });
+  }
+
+  /** `GET /api/v1/apps/:id/users` — users who interacted with the app. */
+  listAppUsers(
+    appId: string,
+    options: { limit?: number } = {},
+  ): Promise<ListAppUsersResponse> {
+    return this.routes.getApiV1AppsByIdUsers<ListAppUsersResponse>({
+      pathParams: { id: appId },
+      query: options.limit === undefined ? undefined : { limit: options.limit },
+    });
+  }
+
+  /**
    * `POST /api/v1/apps/:id/frontend` — publish a managed static-site bundle
    * (create → content-address files to R2 → finalize manifest → activate) in
    * one call. Returns the (by default active) deployment. The site is then
@@ -991,6 +1031,36 @@ export class ElizaCloudClient {
       pathParams: { id: appId },
       json: input,
     });
+  }
+
+  /**
+   * `POST /api/v1/domains/search` — read-only registrar keyword search for
+   * priced domain suggestions across the authenticated organization.
+   */
+  searchDomains(input: SearchDomainsInput): Promise<SearchDomainsResponse> {
+    return this.routes.postApiV1DomainsSearch<SearchDomainsResponse>({
+      json: input,
+    });
+  }
+
+  /** `GET /api/v1/domains` — list every domain owned or managed by the organization. */
+  listManagedDomains(): Promise<ListManagedDomainsResponse> {
+    return this.routes.getApiV1Domains<ListManagedDomainsResponse>();
+  }
+
+  /**
+   * `GET /api/v1/apps/:id/domains/:domain/dns` — list Cloudflare DNS records
+   * for one managed domain attached to the app.
+   */
+  listAppDomainDnsRecords(
+    appId: string,
+    domain: string,
+  ): Promise<ListAppDomainDnsRecordsResponse> {
+    return this.routes.getApiV1AppsByIdDomainsByDomainDns<ListAppDomainDnsRecordsResponse>(
+      {
+        pathParams: { id: appId, domain },
+      },
+    );
   }
 
   listContainers(): Promise<ContainerListResponse> {

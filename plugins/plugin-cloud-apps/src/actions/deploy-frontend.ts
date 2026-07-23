@@ -147,7 +147,7 @@ async function resolveBuildDirectory(
 }
 
 /** Walk a build directory into upload files (text as utf8, binary as base64). */
-async function readDirectoryAsFiles(
+export async function readDirectoryAsFiles(
   root: string,
 ): Promise<FrontendUploadFileInput[]> {
   const files: FrontendUploadFileInput[] = [];

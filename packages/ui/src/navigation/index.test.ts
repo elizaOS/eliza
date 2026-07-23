@@ -152,6 +152,14 @@ describe("navigation prefix sub-tab resolution is registry-derived", () => {
     expect(titleForTab("tasks")).toBe("Projects");
     expect(TAB_PATHS.tasks).toBe("/apps/tasks");
   });
+
+  it("routes retired creator-management paths to Projects", () => {
+    expect(tabFromPath("/apps")).toBe("apps");
+    expect(tabFromPath("/apps/my-apps")).toBe("tasks");
+    expect(tabFromPath("/cloud-apps")).toBe("tasks");
+    expect(TAB_PATHS["my-apps"]).toBe("/apps/my-apps");
+    expect(titleForTab("my-apps")).toBe("Projects");
+  });
 });
 
 describe("navigation index: no reintroduced hardcoded prefix alias record", () => {

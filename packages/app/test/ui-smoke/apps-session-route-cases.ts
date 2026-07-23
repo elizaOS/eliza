@@ -46,9 +46,9 @@ function launcherTileTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
-    name: "my-apps app window",
+    name: "my-apps legacy alias",
     path: "/apps/my-apps",
-    readyChecks: [{ text: "My Apps" }],
+    readyChecks: [{ selector: '[data-testid="tasks-view"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -64,9 +64,15 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "my apps app window",
-    path: "/apps/my-apps",
-    readyChecks: [{ text: "My Apps" }, { text: "Install, create, and run" }],
+    name: "bare apps launcher",
+    path: "/apps",
+    readyChecks: [
+      {
+        selector:
+          '[data-testid="home-launcher-surface"][data-page="launcher"]',
+      },
+      { selector: '[data-testid="launcher"]' },
+    ],
     timeoutMs: 90_000,
   },
   {

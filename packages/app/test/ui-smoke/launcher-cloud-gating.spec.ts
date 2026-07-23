@@ -14,31 +14,21 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
 
 /**
- * Rendered launcher evidence that the Cloud Applications studio never tiles.
+ * Rendered launcher evidence that Projects is the one creator-work tile.
  *
- * The launcher carries exactly ONE apps destination — the My Apps tile. The
- * `cloud-apps` studio is folded into My Apps (its view surfaces as a row inside
- * MyAppsView and via the /cloud-apps deep link), so `curateLauncherPages`
- * drops it unconditionally (`LAUNCHER_HIDDEN_IDS` in launcher-curation.ts,
- * unit-tested in launcher-curation.test.ts). This spec renders the REAL
- * launcher in both cloud states and captures the proof: with a `cloud-apps`
- * view present in the catalog, the tile must be absent whether
- * `/api/cloud/status` reports disconnected or connected, while the My Apps
- * tile stays visible — on desktop (1280×800) and mobile (390×844).
+ * Historical `my-apps` and `cloud-apps` registrations are hidden while the
+ * stable `tasks` tile presents as Projects. This spec renders the real launcher
+ * in both cloud states and proves Cloud connection cannot create a second
+ * creator-management destination.
  *
- * The `cloud-apps` registration is platform-gated (packages/app/src/
- * cloud-apps-view.ts registers it only on non-web shells, where the launcher is
- * the sole route to the Cloud Applications dashboard). The web smoke harness
- * therefore injects the same registry entry through `GET /api/views` — the
- * network half of the exact catalog merge the native app-shell registration
- * flows through (useAvailableViews merges network + app-shell entries before
- * `curateLauncherPages` ever sees them), so the curation path under test is the
- * real one, not a mock of it.
+ * The harness injects a stale `cloud-apps` catalog entry through GET /api/views
+ * to prove curation remains safe even when a remote agent still advertises the
+ * retired surface.
  *
  * Capture artifacts are written into Playwright's per-test output directory.
  * The walkthrough test also records a video of the agent-first cloud setup
- * flow: launcher without the tile → Settings → Cloud → Connect → connected →
- * launcher STILL without the tile (My Apps remains the one apps entry).
+ * flow: Projects-only launcher → Settings → Cloud → Connect → connected →
+ * Projects remains the only creator-work entry.
  */
 
 const VIEWPORTS = [
@@ -67,9 +57,8 @@ async function screenshot(
 }
 
 /**
- * Append the `cloud-apps` view (the entry `packages/app/src/cloud-apps-view.ts`
- * registers on native shells) to the stub backend's GET /api/views response.
- * Field shape mirrors `appShellPageToViewEntry` in useAvailableViews.ts.
+ * Append a stale `cloud-apps` view to the stub backend's GET /api/views
+ * response. Field shape mirrors `appShellPageToViewEntry`.
  */
 async function injectCloudAppsView(page: Page): Promise<void> {
   await page.route("**/api/views", async (route) => {
@@ -185,17 +174,18 @@ async function bootLauncher(
 const cloudTile = (page: Page) => page.getByTestId("launcher-tile-cloud-apps");
 const chatTile = (page: Page) => page.getByTestId("launcher-tile-chat");
 const myAppsTile = (page: Page) => page.getByTestId("launcher-tile-my-apps");
+const projectsTile = (page: Page) => page.getByTestId("launcher-tile-tasks");
 
-test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
+test.describe("launcher: Projects is the one creator-work tile", () => {
   for (const viewport of VIEWPORTS) {
     test(`cloud INACTIVE hides the cloud-apps tile on ${viewport.name}`, async ({
       page,
     }, testInfo) => {
       await bootLauncher(page, viewport, { connected: false });
-      // The catalog HAS the cloud-apps view (injected above); the launcher must
-      // still not surface it — My Apps is the one apps destination.
+      // The stale catalog entry is present, but only Projects may tile.
       await expect(chatTile(page)).toBeVisible();
-      await expect(myAppsTile(page)).toBeVisible();
+      await expect(projectsTile(page)).toBeVisible();
+      await expect(myAppsTile(page)).toHaveCount(0);
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(
         page,
@@ -208,10 +198,10 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       page,
     }, testInfo) => {
       await bootLauncher(page, viewport, { connected: true });
-      // Signed in changes nothing for the studio tile: it is consolidated into
-      // My Apps (the MyAppsView Eliza Cloud row + the /cloud-apps deep link).
+      // Signing in does not reintroduce either retired creator surface.
       await expect(chatTile(page)).toBeVisible();
-      await expect(myAppsTile(page)).toBeVisible();
+      await expect(projectsTile(page)).toBeVisible();
+      await expect(myAppsTile(page)).toHaveCount(0);
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(
         page,
@@ -224,7 +214,7 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
   test.describe("cloud setup walkthrough (recorded)", () => {
     // `test.use({ video })` is not allowed inside a describe group, so the
     // walkthrough records through its own context (recordVideo) instead.
-    test("connect flow keeps My Apps as the one apps tile", async ({
+    test("connect flow keeps Projects as the one creator-work tile", async ({
       browser,
     }, testInfo) => {
       const context = await browser.newContext({
@@ -270,9 +260,9 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       await expect(page.getByTestId("launcher")).toBeVisible({
         timeout: 60_000,
       });
-      // Connecting cloud must NOT grow a second apps tile: the studio lives
-      // inside My Apps, so the grid still shows only the My Apps entry.
-      await expect(myAppsTile(page)).toBeVisible({ timeout: 30_000 });
+      // Connecting Cloud must not grow a second creator-management tile.
+      await expect(projectsTile(page)).toBeVisible({ timeout: 30_000 });
+      await expect(myAppsTile(page)).toHaveCount(0);
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(page, testInfo, "walkthrough-4-launcher-connected");
 
@@ -296,7 +286,7 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
             "Recorded by launcher-cloud-gating.spec.ts (cloud setup walkthrough).",
             "Flow: launcher without cloud-apps tile → Settings → Eliza Cloud →",
             "Connect Cloud → status flips connected → launcher still shows only",
-            "the My Apps tile (the studio lives inside My Apps).",
+            "the Projects creator-work tile.",
             "",
             "Repro: bun run --cwd packages/app test:e2e -- --project=chromium test/ui-smoke/launcher-cloud-gating.spec.ts",
           ].join("\n"),

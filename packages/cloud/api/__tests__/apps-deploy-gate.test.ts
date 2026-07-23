@@ -2,12 +2,25 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  appsDeployCapability,
   appsDeployOrganizationDecision,
   appsDeployTriggerDecision,
   parseAppsDeployAllowedOrgIds,
 } from "../src/lib/apps-deploy-gate";
 
 describe("apps deploy production gate", () => {
+  test("reports an explicit disabled capability before any org decision", () => {
+    expect(
+      appsDeployCapability(
+        { APPS_DEPLOY_ENABLED: "0", ENVIRONMENT: "production" },
+        "org-a",
+      ),
+    ).toEqual({
+      enabled: false,
+      reason: "deployment_disabled",
+    });
+  });
+
   test("keeps non-production deploys unchanged when the trigger is enabled", () => {
     expect(
       appsDeployTriggerDecision({
@@ -60,6 +73,11 @@ describe("apps deploy production gate", () => {
     });
     expect(appsDeployOrganizationDecision(env, "org-z")).toEqual({
       allowed: false,
+      reason: "organization_not_allowlisted",
+    });
+    expect(appsDeployCapability(env, "org-b")).toEqual({ enabled: true });
+    expect(appsDeployCapability(env, "org-z")).toEqual({
+      enabled: false,
       reason: "organization_not_allowlisted",
     });
   });

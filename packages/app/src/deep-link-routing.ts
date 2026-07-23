@@ -4,7 +4,7 @@
  * primitives.
  *
  * `resolveDeepLinkNavigationIntent()` handles top-level surfaces (Settings,
- * Wallet/Inventory, Browser, Cloud Apps, Settings → Connectors), returning a
+ * Wallet/Inventory, Browser, Projects, Settings → Connectors), returning a
  * `DeepLinkNavigationIntent` the caller dispatches on the `eliza:navigate:view`
  * event bus. `buildAssistantLaunchHashRoute()` handles chat-launch entries
  * (ask / chat / voice / smart-reply / LifeOps briefs and tasks, plus Android
@@ -23,7 +23,8 @@ export interface AssistantLaunchHashRouteOptions {
 
 /**
  * In-app navigation intent for a deep link that targets a top-level surface
- * (Settings, Wallet, Browser, Connectors) instead of the chat-launch flow.
+ * (Settings, Wallet, Browser, Projects, Connectors) instead of the chat-launch
+ * flow.
  *
  * Structurally a subset of the app's `NavigateViewDetail` (packages/ui
  * app-navigate-view.ts): `viewPath` drives `tabFromPath` → `setTab`, and
@@ -66,11 +67,10 @@ export function resolveDeepLinkNavigationIntent(
   switch (path) {
     case "apps/deploy":
     case "cloud-apps":
-      // eliza://apps/deploy (and https://eliza.app/apps/deploy) → the Eliza
-      // Cloud Applications studio, the registered `cloud-apps` app-shell page
-      // (NativeAppsStudio → ApplicationsPage → detail → Deploy/Redeploy). The
-      // in-app entry point for the Apps Deploy UI (#10823).
-      return { viewId: "cloud-apps", viewPath: "/cloud-apps" };
+      // Publishing and local project management share one Projects home.
+      // Preserve both historical deep-link spellings without preserving a
+      // second Applications surface.
+      return { viewId: "tasks", viewPath: "/apps/tasks" };
     case "settings":
       return { viewId: "settings", viewPath: "/settings" };
     case "wallet":

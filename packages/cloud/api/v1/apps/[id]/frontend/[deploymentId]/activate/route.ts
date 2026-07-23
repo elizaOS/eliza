@@ -12,6 +12,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appFrontendHostingService } from "@/lib/services/app-frontend-hosting";
+import { deriveManagedFrontendPublicUrl } from "@/lib/services/app-url";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -52,8 +53,17 @@ app.post("/", async (c) => {
       deploymentId,
       version: activated.version,
     });
-    return c.json({ success: true, deployment: activated });
+    return c.json({
+      success: true,
+      deployment: activated,
+      public_url:
+        deriveManagedFrontendPublicUrl(
+          found.slug,
+          c.env.ELIZA_FRONTEND_HOST_SUFFIX,
+        )?.url ?? null,
+    });
   } catch (error) {
+    // error-policy:J1 authenticated HTTP boundary translates to the Cloud error envelope.
     logger.error("[Apps Frontend API] Failed to activate deployment:", error);
     return failureResponse(c, error);
   }

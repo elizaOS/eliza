@@ -109,6 +109,7 @@ jobs:
         run: |
           terraform output -json pages_domains > "$RUNNER_TEMP/pages-domains.json"
           terraform output -json staging_agent_edge > "$RUNNER_TEMP/staging-agent-edge.json"
+          terraform output -json managed_frontend_edge > "$RUNNER_TEMP/managed-frontend-edge.json"
           node -e '
             const fs = require("node:fs");
             const domains = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -121,10 +122,24 @@ jobs:
               if (Object.keys(agentEdge.dns_records).length !== 2) throw new Error("staging agent wildcard does not have two DNS records");
               if (agentEdge.certificate_pack.status !== "active") throw new Error(`staging agent certificate is ${agentEdge.certificate_pack.status}, expected active`);
             }
-          ' "$RUNNER_TEMP/pages-domains.json" "$RUNNER_TEMP/staging-agent-edge.json"
+            const frontendEdge = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+            if (!frontendEdge.dns_record.proxied) throw new Error("managed frontend wildcard must stay proxied");
+            if (frontendEdge.certificate_pack.status !== "active") throw new Error(`managed frontend certificate is ${frontendEdge.certificate_pack.status}, expected active`);
+            if (!frontendEdge.certificate_pack.hosts.includes(`*.${frontendEdge.suffix}`)) throw new Error("managed frontend certificate is missing its wildcard host");
+          ' "$RUNNER_TEMP/pages-domains.json" "$RUNNER_TEMP/staging-agent-edge.json" "$RUNNER_TEMP/managed-frontend-edge.json"
       - name: Verify staging agent wildcard TLS
         if: github.event.inputs.action == 'apply' && github.event.inputs.environment == 'staging'
         run: curl --silent --show-error --output /dev/null https://terraform-probe.staging.elizacloud.ai/api/health
+      - name: Verify managed frontend wildcard TLS and fail-closed routing
+        if: github.event.inputs.action == 'apply'
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "staging" ]; then
+            suffix="sites.staging.elizacloud.ai"
+          else
+            suffix="sites.elizacloud.ai"
+          fi
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://terraform-probe.${suffix}/")"
+          [ "$status" = "404" ] || { echo "::error::managed frontend probe returned $status, expected fail-closed 404"; exit 1; }
       - name: Verify live environment routing
         if: github.event.inputs.action == 'apply'
         run: node packages/scripts/cloud/verify-environment-routing-cli.mjs --environment "${{ github.event.inputs.environment }}" --require-beacon

@@ -884,6 +884,8 @@ export interface CreateAppInput {
   contact_email?: string;
   allowed_origins?: string[];
   logo_url?: string;
+  /** Create the Cloud row inactive while its first deployment is staged. */
+  is_active?: boolean;
   /** Skip provisioning a GitHub repo for the app. */
   skipGitHubRepo?: boolean;
   /**
@@ -983,6 +985,63 @@ export interface AppDeployStatusResponse {
   startedAt: string | null;
 }
 
+/** One real-time bucket returned by `GET /api/v1/apps/:id/analytics`. */
+export interface AppAnalyticsPointDto {
+  period_start: string;
+  total_requests: number;
+  unique_users: number;
+  new_users: number;
+  total_cost: string;
+}
+
+/** Lifetime counters returned alongside an app's time-series analytics. */
+export interface AppAnalyticsTotalStatsDto {
+  totalRequests: number;
+  totalUsers: number;
+  totalCreditsUsed: string;
+}
+
+/** Requested analytics window echoed by the Cloud API. */
+export interface AppAnalyticsPeriodDto {
+  type: "hourly" | "daily" | "monthly";
+  start: string;
+  end: string;
+}
+
+/** `GET /api/v1/apps/:id/analytics` response. */
+export interface AppAnalyticsResponse {
+  success: boolean;
+  analytics: AppAnalyticsPointDto[];
+  totalStats: AppAnalyticsTotalStatsDto;
+  period: AppAnalyticsPeriodDto;
+}
+
+/** One user who has interacted with a Cloud app. */
+export interface AppUserDto {
+  id: string;
+  app_id: string;
+  user_id: string;
+  signup_source: string | null;
+  referral_code_used: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  total_requests: number;
+  total_credits_used: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  metadata: Record<string, unknown>;
+}
+
+/** `GET /api/v1/apps/:id/users` response. */
+export interface ListAppUsersResponse {
+  success: boolean;
+  users: AppUserDto[];
+  pagination: {
+    total: number;
+    limit: number;
+  };
+}
+
 // ---- Managed frontend hosting (#10690) -----------------------------------
 
 /** One file in a frontend deploy bundle. `content` is UTF-8 unless base64. */
@@ -1035,12 +1094,16 @@ export interface AppFrontendDeploymentDto {
 export interface DeployAppFrontendResponse {
   success: boolean;
   deployment: AppFrontendDeploymentDto;
+  /** Stable managed-hosting URL; null when the operator suffix is not configured. */
+  public_url: string | null;
 }
 
 /** `GET /api/v1/apps/:id/frontend` response. */
 export interface ListAppFrontendDeploymentsResponse {
   success: boolean;
   active_deployment_id: string | null;
+  /** Stable managed-hosting URL; null when the operator suffix is not configured. */
+  public_url: string | null;
   deployments: AppFrontendDeploymentDto[];
 }
 
@@ -1048,6 +1111,8 @@ export interface ListAppFrontendDeploymentsResponse {
 export interface ActivateAppFrontendResponse {
   success: boolean;
   deployment: AppFrontendDeploymentDto;
+  /** Stable managed-hosting URL; null when the operator suffix is not configured. */
+  public_url: string | null;
 }
 
 /** Per-resource counts the cleanup pass reports on app deletion. */
@@ -1192,13 +1257,84 @@ export interface AppDomainStatusResponse {
   registrar?: "external" | "cloudflare";
   status?: string;
   verified?: boolean;
-  sslStatus?: string;
+  /** Nullable because managed_domains.ssl_status is not constrained NOT NULL. */
+  sslStatus?: string | null;
   expiresAt?: string | null;
   live?: {
     status: string;
     completedAt: string | null;
     failureReason: string | null;
   } | null;
+  error?: string;
+}
+
+/** Read-only keyword search request for organization-level domain suggestions. */
+export interface SearchDomainsInput {
+  query: string;
+  limit?: number;
+}
+
+/** One registrar-backed candidate from `POST /api/v1/domains/search`. */
+export interface DomainSearchCandidateDto {
+  domain: string;
+  available: boolean;
+  reason?: string;
+  currency: string;
+  years: number;
+  price: AppDomainPriceQuote | null;
+}
+
+/** `POST /api/v1/domains/search` response. */
+export interface SearchDomainsResponse {
+  success: boolean;
+  query: string;
+  candidates: DomainSearchCandidateDto[];
+  error?: string;
+}
+
+/** One organization-owned domain from `GET /api/v1/domains`. */
+export interface ManagedDomainDto {
+  id: string;
+  domain: string;
+  registrar: "external" | "cloudflare";
+  status: "pending" | "active" | "expired" | "suspended" | "transferring";
+  verified: boolean;
+  sslStatus: "pending" | "provisioning" | "active" | "error" | null;
+  expiresAt: string | null;
+  autoRenew: boolean;
+  resourceType: "app" | "container" | "agent" | "mcp" | null;
+  appId: string | null;
+  containerId: string | null;
+  agentId: string | null;
+  mcpId: string | null;
+  cloudflareZoneId: string | null;
+}
+
+/** `GET /api/v1/domains` response. */
+export interface ListManagedDomainsResponse {
+  success: boolean;
+  domains: ManagedDomainDto[];
+  error?: string;
+}
+
+/** One public DNS record returned by Cloudflare for a managed domain. */
+export interface DomainDnsRecordDto {
+  id: string;
+  type: string;
+  name: string;
+  content: string;
+  ttl: number;
+  proxied: boolean;
+  priority?: number;
+  createdOn?: string;
+  modifiedOn?: string;
+}
+
+/** `GET /api/v1/apps/:id/domains/:domain/dns` response. */
+export interface ListAppDomainDnsRecordsResponse {
+  success: boolean;
+  domain: string;
+  records: DomainDnsRecordDto[];
   error?: string;
 }
 

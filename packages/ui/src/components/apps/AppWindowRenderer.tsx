@@ -101,7 +101,7 @@ export function AppWindowRenderer({
 
   const exitToApps = useCallback(() => {
     // Exit a running overlay app back to the launcher grid, which lives at
-    // `/views` (`/apps` is now the My Apps management view).
+    // `/views` (`/apps` now resolves to the Projects workspace).
     window.location.href = "/views";
   }, []);
 

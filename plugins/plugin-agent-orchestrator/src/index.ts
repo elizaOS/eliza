@@ -61,11 +61,22 @@ export {
   sanitizeCompletionRelay,
   stripToolTranscript,
 } from "./services/transcript-sanitizer.js";
+export {
+  getProjectAction,
+  listProjectsAction,
+  setActiveProjectAction,
+} from "./actions/projects.js";
+export { activeProjectProvider } from "./providers/active-project.js";
 
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
 } from "./actions/sandbox-stub.js";
+import {
+  getProjectAction,
+  listProjectsAction,
+  setActiveProjectAction,
+} from "./actions/projects.js";
 import { tasksAction } from "./actions/tasks.js";
 import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 import { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
@@ -74,6 +85,7 @@ import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
 import { availableAgentsProvider } from "./providers/available-agents.js";
 import { codingSessionChangesProvider } from "./providers/coding-session-changes.js";
+import { activeProjectProvider } from "./providers/active-project.js";
 import { AcpService } from "./services/acp-service.js";
 import {
   createActiveSessionForwardHandler,
@@ -152,6 +164,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
 
   const orchestratorActions = codeExecutionAllowed
     ? [
+        listProjectsAction,
+        getProjectAction,
+        setActiveProjectAction,
         ...promoteSubactionsToActions(tasksAction, {
           // Override the auto-generated description for `spawn_agent` so
           // the planner reliably picks it over inline tools (e.g.
@@ -183,6 +198,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
         }),
       ]
     : [
+        listProjectsAction,
+        getProjectAction,
+        setActiveProjectAction,
         localCodeAllowed
           ? createTerminalUnsupportedTasksAction(terminalSupport)
           : tasksSandboxStubAction,
@@ -190,13 +208,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
 
   const orchestratorProviders = codeExecutionAllowed
     ? [
+        activeProjectProvider, // Registry selection + Cloud publication binding
         availableAgentsProvider, // Adapter inventory + raw session list
         activeSubAgentsProvider, // Cache-stable view of routed sub-agent sessions
         activeWorkspaceContextProvider, // Live workspace/session state
         codingAgentExamplesProvider, // Structured action call examples
         codingSessionChangesProvider, // Real git change set for "show me the diff"
       ]
-    : [];
+    : [activeProjectProvider];
 
   // Captured so dispose() can unregister on hot-reload (otherwise listeners
   // stack and fan out to N orphaned closures per reload).
@@ -232,7 +251,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
         id: "agent-orchestrator.apps",
         pluginId: "agent-orchestrator",
         slot: "chat-sidebar",
-        label: "App Runs",
+        label: "Project Runs",
         icon: "Activity",
         order: 150,
         defaultEnabled: true,

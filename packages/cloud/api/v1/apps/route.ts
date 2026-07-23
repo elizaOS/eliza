@@ -27,6 +27,7 @@ const CreateAppSchema = z.object({
   contact_email: z.string().email().optional(),
   allowed_origins: z.array(z.string()).optional(),
   logo_url: z.string().url().optional(),
+  is_active: z.boolean().optional(),
   skipGitHubRepo: z.boolean().optional(),
   // Optional monetization config applied immediately after creation. A `true`
   // enable request is never honored at create time — the app is created with
@@ -102,6 +103,7 @@ app.post("/", async (c) => {
           contact_email: data.contact_email,
           allowed_origins: data.allowed_origins,
           logo_url: data.logo_url,
+          is_active: data.is_active,
         },
         { createGitHubRepo: data.skipGitHubRepo === false },
       );

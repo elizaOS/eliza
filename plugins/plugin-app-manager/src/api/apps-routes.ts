@@ -34,7 +34,7 @@ import type {
   IAgentRuntime,
   RouteRequestMeta,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, setActiveProject, upsertProject } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppLaunchResult,
@@ -1603,18 +1603,39 @@ export async function handleAppsRoutes(
       const entries = await fs.readdir(directory, { withFileTypes: true });
       let registered = 0;
       const items: Array<{ slug: string; canonicalName: string }> = [];
+      const projects: Array<{
+        id: string;
+        name: string;
+        localPath: string;
+      }> = [];
       const rejectedManifests: Array<{
         directory: string;
         packageName: string | null;
         reason: string;
         path: string;
       }> = [];
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const subdir = path.join(directory, entry.name);
+      const candidateDirectories = [
+        directory,
+        ...entries
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => path.join(directory, entry.name)),
+      ];
+      for (const subdir of candidateDirectories) {
         const pkgPath = path.join(subdir, "package.json");
-        const raw = await fs.readFile(pkgPath, "utf8").catch(() => null);
-        if (raw === null) continue;
+        let raw: string;
+        try {
+          raw = await fs.readFile(pkgPath, "utf8");
+        } catch (cause) {
+          if (
+            typeof cause === "object" &&
+            cause !== null &&
+            "code" in cause &&
+            cause.code === "ENOENT"
+          ) {
+            continue;
+          }
+          throw cause;
+        }
         const parsed = JSON.parse(raw) as Record<string, unknown>;
         const elizaos =
           parsed.elizaos && typeof parsed.elizaos === "object"
@@ -1673,14 +1694,28 @@ export async function handleAppsRoutes(
           requesterRoomId: null,
           trust: "external",
         });
+        // A successfully owner-loaded app directory is also a durable project
+        // workspace. The core upsert canonicalizes realpaths and deduplicates
+        // repeated folder loads while projects.json remains the only store.
+        const project = upsertProject({
+          name: displayName,
+          localPath: subdir,
+        });
+        projects.push({
+          id: project.id,
+          name: project.name,
+          localPath: project.localPath,
+        });
         registered += 1;
         items.push({ slug, canonicalName: packageName });
       }
+      if (projects[0]) setActiveProject(projects[0].id);
       json(res, {
         ok: true,
         directory,
         registered,
         items,
+        projects,
         rejectedManifests,
       });
     } catch (err) {

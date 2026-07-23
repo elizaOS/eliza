@@ -1,14 +1,14 @@
 /**
- * Application detail — Settings tab (edit fields, allowed origins, danger zone).
- *
- * Bare `fetch` is replaced with the typed `updateApp` / `regenerateAppApiKey` /
- * `deleteApp` helpers; the single-app + list query keys are invalidated after a
- * save/delete so the detail page and list reflect changes without a full reload.
+ * Manages Cloud publication metadata, origins, credentials, and destructive
+ * controls. Routed Cloud details and embedded project publication share this
+ * component; callbacks let the project owner preserve or clear its local
+ * binding at the correct boundary.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  CloudOff,
   Key,
   Loader2,
   Plus,
@@ -49,17 +49,29 @@ import {
 } from "../lib/apps";
 import { storeOneTimeAppApiKey } from "../lib/one-time-app-api-key";
 
-interface AppSettingsProps {
+export interface AppSettingsProps {
   app: App;
+  /** Project-owned mode keeps publication state out of the generic edit form. */
+  projectPublication?: boolean;
+  onApiKeyRegenerated?: (apiKey: string) => void;
+  onUnpublish?: () => Promise<void>;
+  onDelete?: () => Promise<void>;
 }
 
-export function AppSettings({ app }: AppSettingsProps) {
+export function AppSettings({
+  app,
+  projectPublication = false,
+  onApiKeyRegenerated,
+  onUnpublish,
+  onDelete,
+}: AppSettingsProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isUnpublishing, setIsUnpublishing] = useState(false);
 
   const [allowedOrigins, setAllowedOrigins] = useState<string[]>(() => {
     const origins = app.allowed_origins;
@@ -81,10 +93,16 @@ export function AppSettings({ app }: AppSettingsProps) {
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      await updateApp(app.id, { ...formData, allowed_origins: allowedOrigins });
+      const { is_active, ...editableFields } = formData;
+      await updateApp(app.id, {
+        ...(projectPublication
+          ? editableFields
+          : { ...editableFields, is_active }),
+        allowed_origins: allowedOrigins,
+      });
       toast.success(
         t("cloud.appSettings.updateSuccess", {
-          defaultValue: "App updated successfully",
+          defaultValue: "Project updated successfully",
         }),
       );
       await Promise.all([
@@ -92,9 +110,10 @@ export function AppSettings({ app }: AppSettingsProps) {
         queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY }),
       ]);
     } catch (error) {
+      // error-policy:J4 save failures remain visible through a destructive-safe toast.
       toast.error(
         t("cloud.appSettings.updateFailed", {
-          defaultValue: "Failed to update app",
+          defaultValue: "Failed to update project",
         }),
         {
           description:
@@ -126,10 +145,15 @@ export function AppSettings({ app }: AppSettingsProps) {
           }),
         },
       );
-      navigate(`/dashboard/apps/${app.id}?tab=overview`, {
-        preventScrollReset: true,
-      });
+      if (onApiKeyRegenerated) {
+        onApiKeyRegenerated(apiKey);
+      } else {
+        navigate(`/dashboard/apps/${app.id}?tab=overview`, {
+          preventScrollReset: true,
+        });
+      }
     } catch (error) {
+      // error-policy:J4 credential rotation failures surface without losing the form.
       toast.error(
         t("cloud.appSettings.regenerateFailed", {
           defaultValue: "Failed to regenerate API key",
@@ -151,18 +175,23 @@ export function AppSettings({ app }: AppSettingsProps) {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      await deleteApp(app.id);
+      if (onDelete) {
+        await onDelete();
+      } else {
+        await deleteApp(app.id);
+      }
       toast.success(
         t("cloud.appSettings.deleteSuccess", {
-          defaultValue: "App deleted successfully",
+          defaultValue: "Published project deleted",
         }),
       );
       await queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY });
-      navigate("/dashboard/apps");
+      if (!onDelete) navigate("/dashboard/apps");
     } catch (error) {
+      // error-policy:J4 deletion failures leave the publication and dialog recoverable.
       toast.error(
         t("cloud.appSettings.deleteFailed", {
-          defaultValue: "Failed to delete app",
+          defaultValue: "Failed to delete published project",
         }),
         {
           description:
@@ -175,6 +204,43 @@ export function AppSettings({ app }: AppSettingsProps) {
       );
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    setIsUnpublishing(true);
+    try {
+      if (onUnpublish) {
+        await onUnpublish();
+      } else {
+        await updateApp(app.id, { is_active: false });
+      }
+      toast.success(
+        t("cloud.appSettings.unpublishSuccess", {
+          defaultValue: "Project unpublished",
+        }),
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: appQueryKey(app.id) }),
+        queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY }),
+      ]);
+    } catch (error) {
+      // error-policy:J4 unpublish failures preserve the live publication state.
+      toast.error(
+        t("cloud.appSettings.unpublishFailed", {
+          defaultValue: "Failed to unpublish project",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.appSettings.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
+    } finally {
+      setIsUnpublishing(false);
     }
   };
 
@@ -191,7 +257,6 @@ export function AppSettings({ app }: AppSettingsProps) {
 
   return (
     <div className="space-y-4">
-      {/* Basic Settings */}
       <div className="bg-card rounded-sm p-4 space-y-4">
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
           <Settings className="h-4 w-4 text-muted" />
@@ -203,7 +268,9 @@ export function AppSettings({ app }: AppSettingsProps) {
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name" className="text-xs text-neutral-400">
-              {t("cloud.appSettings.appName", { defaultValue: "App Name" })}
+              {t("cloud.appSettings.appName", {
+                defaultValue: "Published Project Name",
+              })}
             </Label>
             <Input
               id="name"
@@ -212,7 +279,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, name: e.target.value })
               }
               placeholder={t("cloud.appSettings.appNamePlaceholder", {
-                defaultValue: "My Awesome App",
+                defaultValue: "My Awesome Project",
               })}
               className="bg-surface border-border  rounded-sm"
             />
@@ -231,7 +298,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, description: e.target.value })
               }
               placeholder={t("cloud.appSettings.descriptionPlaceholder", {
-                defaultValue: "A brief description of your app...",
+                defaultValue: "A brief description of your project...",
               })}
               rows={3}
               className="bg-surface border-border  resize-none rounded-sm"
@@ -241,7 +308,9 @@ export function AppSettings({ app }: AppSettingsProps) {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="app_url" className="text-xs text-neutral-400">
-                {t("cloud.appSettings.appUrl", { defaultValue: "App URL" })}
+                {t("cloud.appSettings.appUrl", {
+                  defaultValue: "Published URL",
+                })}
               </Label>
               <Input
                 id="app_url"
@@ -250,7 +319,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 onChange={(e) =>
                   setFormData({ ...formData, app_url: e.target.value })
                 }
-                placeholder="https://myapp.com"
+                placeholder="https://project.example"
                 className="bg-surface border-border  rounded-sm"
               />
             </div>
@@ -287,37 +356,39 @@ export function AppSettings({ app }: AppSettingsProps) {
               onChange={(e) =>
                 setFormData({ ...formData, contact_email: e.target.value })
               }
-              placeholder="contact@myapp.com"
+              placeholder="contact@project.example"
               className="bg-surface border-border  rounded-sm"
             />
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border">
-            <div>
-              <p className="text-sm font-medium text-txt">
-                {t("cloud.appSettings.activeStatus", {
-                  defaultValue: "Active Status",
-                })}
-              </p>
-              <p className="text-xs text-neutral-500 mt-0.5">
-                {t("cloud.appSettings.activeStatusHint", {
-                  defaultValue: "Inactive apps cannot make API requests",
-                })}
-              </p>
+          {!projectPublication ? (
+            <div className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border">
+              <div>
+                <p className="text-sm font-medium text-txt">
+                  {t("cloud.appSettings.activeStatus", {
+                    defaultValue: "Active Status",
+                  })}
+                </p>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  {t("cloud.appSettings.activeStatusHint", {
+                    defaultValue:
+                      "Unpublished projects cannot make API requests",
+                  })}
+                </p>
+              </div>
+              <Switch
+                id="is_active"
+                checked={formData.is_active}
+                onCheckedChange={(checked) =>
+                  setFormData({ ...formData, is_active: checked })
+                }
+                className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-neutral-700"
+              />
             </div>
-            <Switch
-              id="is_active"
-              checked={formData.is_active}
-              onCheckedChange={(checked) =>
-                setFormData({ ...formData, is_active: checked })
-              }
-              className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-neutral-700"
-            />
-          </div>
+          ) : null}
         </div>
       </div>
 
-      {/* Allowed Origins */}
       <div className="bg-card rounded-sm p-4 space-y-4">
         <div>
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
@@ -379,7 +450,6 @@ export function AppSettings({ app }: AppSettingsProps) {
         )}
       </div>
 
-      {/* Save Button */}
       <div className="flex justify-end">
         <Button
           onClick={handleSave}
@@ -402,7 +472,6 @@ export function AppSettings({ app }: AppSettingsProps) {
         </Button>
       </div>
 
-      {/* Danger Zone */}
       <div className="bg-red-500/10 rounded-sm p-4 space-y-4 border border-red-500/20">
         <h3 className="text-sm font-medium text-red-400 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" />
@@ -410,6 +479,75 @@ export function AppSettings({ app }: AppSettingsProps) {
         </h3>
 
         <div className="space-y-3">
+          {projectPublication && app.is_active ? (
+            <div className="flex items-center justify-between p-4 bg-surface rounded-sm border border-red-500/10">
+              <div className="min-w-0 flex-1 mr-3">
+                <p className="text-sm font-medium text-txt">
+                  {t("cloud.appSettings.unpublishProject", {
+                    defaultValue: "Unpublish project",
+                  })}
+                </p>
+                <p className="text-xs text-neutral-400 mt-1">
+                  {t("cloud.appSettings.unpublishProjectHint", {
+                    defaultValue:
+                      "Take the public project offline while keeping its Cloud settings and project binding",
+                  })}
+                </p>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 border-red-500/40 text-red-400 hover:border-red-500 hover:bg-red-500/10 hover:text-red-300"
+                    disabled={isUnpublishing}
+                  >
+                    {isUnpublishing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <CloudOff className="h-4 w-4 mr-1.5" />
+                        {t("cloud.appSettings.unpublishProject", {
+                          defaultValue: "Unpublish project",
+                        })}
+                      </>
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-card border-border">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-txt">
+                      {t("cloud.appSettings.unpublishDialogTitle", {
+                        defaultValue: "Unpublish this project?",
+                      })}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="text-neutral-400">
+                      {t("cloud.appSettings.unpublishDialogDescription", {
+                        defaultValue:
+                          "Its public URL and API access will stop working. Hosting versions, domains, analytics, earnings, and the Cloud binding stay in place so you can republish later.",
+                      })}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="border-border text-txt hover:bg-bg-hover">
+                      {t("cloud.appSettings.cancel", {
+                        defaultValue: "Cancel",
+                      })}
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleUnpublish}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      {t("cloud.appSettings.confirmUnpublish", {
+                        defaultValue: "Yes, unpublish",
+                      })}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          ) : null}
+
           <div className="flex items-center justify-between p-4 bg-surface rounded-sm border border-red-500/10">
             <div className="min-w-0 flex-1 mr-3">
               <p className="text-sm font-medium text-txt">
@@ -452,7 +590,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   <AlertDialogDescription className="text-neutral-400">
                     {t("cloud.appSettings.regenerateDialogDescription", {
                       defaultValue:
-                        "This action will immediately invalidate your current API key. Your app will stop working until you update it with the new key. This cannot be undone.",
+                        "This action will immediately invalidate your current API key. Your published project will stop working until you update it with the new key. This cannot be undone.",
                     })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -477,12 +615,13 @@ export function AppSettings({ app }: AppSettingsProps) {
             <div className="min-w-0 flex-1 mr-3">
               <p className="text-sm font-medium text-txt">
                 {t("cloud.appSettings.deleteApp", {
-                  defaultValue: "Delete App",
+                  defaultValue: "Delete published project",
                 })}
               </p>
               <p className="text-xs text-neutral-400 mt-1">
                 {t("cloud.appSettings.deleteAppHint", {
-                  defaultValue: "Permanently delete this app and all data",
+                  defaultValue:
+                    "Permanently delete this publication and its Cloud data",
                 })}
               </p>
             </div>
@@ -499,7 +638,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                     <>
                       <Trash2 className="h-4 w-4 mr-1.5" />
                       {t("cloud.appSettings.deleteApp", {
-                        defaultValue: "Delete App",
+                        defaultValue: "Delete published project",
                       })}
                     </>
                   )}
@@ -509,13 +648,13 @@ export function AppSettings({ app }: AppSettingsProps) {
                 <AlertDialogHeader>
                   <AlertDialogTitle className="text-txt">
                     {t("cloud.appSettings.deleteDialogTitle", {
-                      defaultValue: "Delete App?",
+                      defaultValue: "Delete published project?",
                     })}
                   </AlertDialogTitle>
                   <AlertDialogDescription className="text-neutral-400">
                     {t("cloud.appSettings.deleteDialogIntro", {
                       defaultValue:
-                        "This action cannot be undone. This will permanently delete the app",
+                        "This action cannot be undone. This will permanently delete the published project",
                     })}
                     <strong className="text-txt"> {app.name}</strong>{" "}
                     {t("cloud.appSettings.deleteDialogOutro", {
@@ -533,7 +672,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                     className="bg-red-600 hover:bg-red-700 text-white"
                   >
                     {t("cloud.appSettings.deleteApp", {
-                      defaultValue: "Delete App",
+                      defaultValue: "Delete published project",
                     })}
                   </AlertDialogAction>
                 </AlertDialogFooter>

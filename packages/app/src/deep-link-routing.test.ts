@@ -317,17 +317,17 @@ describe("top-level-surface deep-link navigation intents", () => {
     });
   });
 
-  it("routes apps/deploy to the cloud-apps studio page (#10823 Apps Deploy UI entry)", () => {
+  it("routes the historical apps/deploy entry to Projects", () => {
     expect(resolveDeepLinkNavigationIntent("apps/deploy")).toEqual({
-      viewId: "cloud-apps",
-      viewPath: "/cloud-apps",
+      viewId: "tasks",
+      viewPath: "/apps/tasks",
     });
   });
 
-  it("treats the cloud-apps page id as an alias for the Apps Deploy studio", () => {
+  it("treats cloud-apps as a Projects alias", () => {
     expect(resolveDeepLinkNavigationIntent("cloud-apps")).toEqual({
-      viewId: "cloud-apps",
-      viewPath: "/cloud-apps",
+      viewId: "tasks",
+      viewPath: "/apps/tasks",
     });
   });
 

@@ -1,6 +1,10 @@
 /**
- * Apps management settings panel — installed app inventory plus the
- * "Create new app" and "Load from directory" entry points.
+ * Project creation controls and installed-package lifecycle inventory.
+ *
+ * The Projects surface reuses the compact inventory mode so authored work is
+ * presented as projects while third-party packages remain a separate,
+ * operational list. Technical API and agent-element ids retain their stable
+ * `apps-*` names because those are protocol identifiers, not product copy.
  */
 
 import { Loader2, Play, RotateCw, Square } from "lucide-react";
@@ -59,7 +63,7 @@ function AppRowActionButton({
       type="button"
       size="sm"
       variant="ghost"
-      className={className ?? "h-7 px-2 text-xs"}
+      className={className ?? "min-h-11 min-w-11 px-3 text-xs"}
       disabled={disabled}
       onClick={onClick}
       title={label}
@@ -73,17 +77,24 @@ function AppRowActionButton({
 
 interface CreateAppResponse {
   ok?: boolean;
+  success?: boolean;
   status?: string;
   message?: string;
+  text?: string;
   appId?: string;
   taskId?: string;
+  data?: {
+    projectId?: string;
+  } | null;
 }
 
 interface LoadFromDirectoryResponse {
   ok?: boolean;
   loaded?: number;
   count?: number;
+  registered?: number;
   message?: string;
+  projects?: Array<{ id: string }>;
 }
 
 interface RelaunchResponse {
@@ -98,8 +109,57 @@ type AsyncStatus =
 
 const HEAD_CELL_CLASS = "px-3 py-2 text-xs font-medium text-muted";
 const BODY_CELL_CLASS = "px-3 py-2.5 align-middle text-sm";
+const TERMINAL_RUN_STATUSES = new Set([
+  "stopped",
+  "offline",
+  "error",
+  "failed",
+  "completed",
+  "exited",
+]);
 
-export function AppsManagementSection() {
+function isActiveRun(run: AppRunSummary): boolean {
+  return !TERMINAL_RUN_STATUSES.has(run.status.trim().toLowerCase());
+}
+
+export interface AppsInventorySnapshot {
+  installed: InstalledAppInfo[];
+  runs: AppRunSummary[];
+}
+
+export interface AppsManagementSectionProps {
+  /** Omits authored-project controls and renders only lifecycle inventory. */
+  inventoryOnly?: boolean;
+  /** A compact responsive list for Projects; settings keeps its dense table. */
+  inventoryVariant?: "table" | "compact";
+  /** Installed package names already represented by project rows. */
+  excludedAppNames?: ReadonlySet<string>;
+  /** Restricts inventory to one project's launchable package in Run detail. */
+  includedAppNames?: ReadonlySet<string>;
+  inventoryTitle?: string;
+  inventoryEmptyMessage?: string;
+  actionsTitle?: string;
+  showAdvancedToggle?: boolean;
+  /** Lets the Projects surface join run state without a duplicate poller. */
+  onInventoryChange?: (snapshot: AppsInventorySnapshot) => void;
+  /** Refreshes the registry after create/add requests complete. */
+  onProjectsChanged?: (preferredProjectId?: string) => void | Promise<void>;
+  children?: React.ReactNode;
+}
+
+export function AppsManagementSection({
+  inventoryOnly = false,
+  inventoryVariant = "table",
+  excludedAppNames,
+  includedAppNames,
+  inventoryTitle,
+  inventoryEmptyMessage,
+  actionsTitle,
+  showAdvancedToggle = true,
+  onInventoryChange,
+  onProjectsChanged,
+  children,
+}: AppsManagementSectionProps = {}) {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
   const advancedEnabled = useAdvancedSettingsEnabled();
@@ -142,15 +202,21 @@ export function AppsManagementSection() {
       if (!mountedRef.current) return;
       setInstalled(apps);
       setRuns(appRuns);
+      onInventoryChange?.({ installed: apps, runs: appRuns });
       setListStatus({ state: "idle" });
     } catch (err) {
+      // error-policy:J4 inventory failures render as an explicit error state,
+      // never as an empty Installed list.
       if (!mountedRef.current) return;
       setListStatus({
         state: "error",
-        message: err instanceof Error ? err.message : "Failed to load apps.",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to load installed packages.",
       });
     }
-  }, []);
+  }, [onInventoryChange]);
 
   useEffect(() => {
     void refresh();
@@ -159,12 +225,22 @@ export function AppsManagementSection() {
   const runsByName = useMemo(() => {
     const map = new Map<string, AppRunSummary[]>();
     for (const run of runs) {
+      if (!isActiveRun(run)) continue;
       const list = map.get(run.appName) ?? [];
       list.push(run);
       map.set(run.appName, list);
     }
     return map;
   }, [runs]);
+
+  const visibleInstalled = useMemo(
+    () =>
+      installed.filter((app) => {
+        if (includedAppNames && !includedAppNames.has(app.name)) return false;
+        return !excludedAppNames?.has(app.name);
+      }),
+    [excludedAppNames, includedAppNames, installed],
+  );
 
   const handleLaunch = useCallback(
     async (app: InstalledAppInfo) => {
@@ -174,6 +250,7 @@ export function AppsManagementSection() {
         setActionNotice(`${app.displayName} launched.`, "success", 3000);
         await refresh();
       } catch (err) {
+        // error-policy:J4 launch failures surface in the shell action notice.
         setActionNotice(
           err instanceof Error
             ? err.message
@@ -209,6 +286,7 @@ export function AppsManagementSection() {
         );
         await refresh();
       } catch (err) {
+        // error-policy:J4 relaunch failures surface in the shell action notice.
         setActionNotice(
           err instanceof Error
             ? err.message
@@ -243,6 +321,7 @@ export function AppsManagementSection() {
           4000,
         );
       } catch (err) {
+        // error-policy:J4 edit-start failures surface in the shell action notice.
         setActionNotice(
           err instanceof Error
             ? err.message
@@ -269,6 +348,7 @@ export function AppsManagementSection() {
         );
         await refresh();
       } catch (err) {
+        // error-policy:J4 stop failures surface in the shell action notice.
         setActionNotice(
           err instanceof Error
             ? err.message
@@ -288,7 +368,7 @@ export function AppsManagementSection() {
       event.preventDefault();
       const intent = createIntent.trim();
       if (!intent) return;
-      setCreateStatus({ state: "loading", message: "Creating app…" });
+      setCreateStatus({ state: "loading", message: "Starting project…" });
       try {
         const response = await client.fetch<CreateAppResponse>(
           "/api/apps/create",
@@ -301,10 +381,11 @@ export function AppsManagementSection() {
           },
         );
         if (!mountedRef.current) return;
-        if (response.ok === false) {
+        if (response.ok === false || response.success === false) {
           setCreateStatus({
             state: "error",
-            message: response.message ?? "Failed to create app.",
+            message:
+              response.message ?? response.text ?? "Failed to start project.",
           });
           return;
         }
@@ -313,20 +394,29 @@ export function AppsManagementSection() {
         setCreateEditTarget("");
         setShowCreate(false);
         setActionNotice(
-          response.message ?? "App creation started.",
+          response.message ?? response.text ?? "Project creation started.",
           "success",
           4500,
         );
         await refresh();
+        await onProjectsChanged?.(response.data?.projectId);
       } catch (err) {
+        // error-policy:J4 creation failures stay visible beside the form.
         if (!mountedRef.current) return;
         setCreateStatus({
           state: "error",
-          message: err instanceof Error ? err.message : "Failed to create app.",
+          message:
+            err instanceof Error ? err.message : "Failed to start project.",
         });
       }
     },
-    [createEditTarget, createIntent, refresh, setActionNotice],
+    [
+      createEditTarget,
+      createIntent,
+      onProjectsChanged,
+      refresh,
+      setActionNotice,
+    ],
   );
 
   const handleLoadSubmit = useCallback(
@@ -354,14 +444,19 @@ export function AppsManagementSection() {
         setLoadStatus({ state: "idle" });
         setLoadDirectory("");
         setShowLoad(false);
-        const count = response.loaded ?? response.count ?? 0;
+        const count = response.registered ?? response.loaded ?? response.count;
         setActionNotice(
-          response.message ?? `Loaded ${count} app${count === 1 ? "" : "s"}.`,
+          response.message ??
+            (typeof count === "number" && count > 0
+              ? `Added ${count} package${count === 1 ? "" : "s"} from the folder.`
+              : "Project added from folder."),
           "success",
           4000,
         );
         await refresh();
+        await onProjectsChanged?.(response.projects?.[0]?.id);
       } catch (err) {
+        // error-policy:J4 folder-import failures stay visible beside the form.
         if (!mountedRef.current) return;
         setLoadStatus({
           state: "error",
@@ -370,7 +465,7 @@ export function AppsManagementSection() {
         });
       }
     },
-    [loadDirectory, refresh, setActionNotice],
+    [loadDirectory, onProjectsChanged, refresh, setActionNotice],
   );
 
   const isCreating = createStatus.state === "loading";
@@ -381,7 +476,7 @@ export function AppsManagementSection() {
       id: "apps-create-toggle",
       role: "button",
       label: t("settings.sections.apps.createNew", {
-        defaultValue: "Create new app",
+        defaultValue: "New project",
       }),
       group: "apps-management",
       status: showCreate ? "active" : "inactive",
@@ -395,7 +490,7 @@ export function AppsManagementSection() {
       id: "apps-load-toggle",
       role: "button",
       label: t("settings.sections.apps.loadFromDirectory", {
-        defaultValue: "Load from directory",
+        defaultValue: "Add from folder",
       }),
       group: "apps-management",
       status: showLoad ? "active" : "inactive",
@@ -420,7 +515,7 @@ export function AppsManagementSection() {
       id: "apps-create-intent",
       role: "textarea",
       label: t("settings.sections.apps.intentLabel", {
-        defaultValue: "What should the app do?",
+        defaultValue: "What do you want to build?",
       }),
       group: "apps-create",
       getValue: () => createIntent,
@@ -491,258 +586,275 @@ export function AppsManagementSection() {
 
   return (
     <SettingsStack>
-      <SettingsGroup
-        title={t("settings.sections.apps.groupTitle", { defaultValue: "Apps" })}
-        action={<AdvancedToggle label="Advanced" />}
-      >
-        <div className="flex flex-wrap items-center gap-2 pb-1">
-          <Button
-            ref={createToggleRef}
-            type="button"
-            variant="default"
-            className="min-h-11 rounded-md px-4 text-sm"
-            onClick={() => {
-              setShowCreate((v) => !v);
-              setShowLoad(false);
-            }}
-            {...createToggleAgentProps}
+      {!inventoryOnly ? (
+        <>
+          <SettingsGroup
+            title={
+              actionsTitle ??
+              t("settings.sections.apps.groupTitle", {
+                defaultValue: "Projects",
+              })
+            }
+            action={
+              showAdvancedToggle ? <AdvancedToggle label="Advanced" /> : null
+            }
           >
-            {t("settings.sections.apps.createNew", {
-              defaultValue: "Create new app",
-            })}
-          </Button>
-          <Button
-            ref={loadToggleRef}
-            type="button"
-            variant="outline"
-            className="min-h-11 rounded-md px-4 text-sm"
-            onClick={() => {
-              setShowLoad((v) => !v);
-              setShowCreate(false);
-            }}
-            {...loadToggleAgentProps}
-          >
-            {t("settings.sections.apps.loadFromDirectory", {
-              defaultValue: "Load from directory",
-            })}
-          </Button>
-        </div>
-        {advancedEnabled ? (
-          <SettingsRow
-            label={t("settings.sections.apps.verifyOnRelaunch", {
-              defaultValue: "Verify on relaunch",
-            })}
-            control={
-              <Checkbox
-                ref={verifyRef}
-                checked={verifyOnRelaunch}
-                onCheckedChange={(checked: boolean | "indeterminate") =>
-                  setVerifyOnRelaunch(!!checked)
-                }
-                aria-current={verifyOnRelaunch ? "true" : undefined}
-                aria-label={t("settings.sections.apps.verifyOnRelaunchLabel", {
+            <div className="flex flex-wrap items-center gap-2 pb-1">
+              <Button
+                ref={createToggleRef}
+                type="button"
+                variant="default"
+                className="min-h-11 rounded-md px-4 text-sm"
+                onClick={() => {
+                  setShowCreate((v) => !v);
+                  setShowLoad(false);
+                }}
+                {...createToggleAgentProps}
+              >
+                {t("settings.sections.apps.createNew", {
+                  defaultValue: "New project",
+                })}
+              </Button>
+              <Button
+                ref={loadToggleRef}
+                type="button"
+                variant="outline"
+                className="min-h-11 rounded-md px-4 text-sm"
+                onClick={() => {
+                  setShowLoad((v) => !v);
+                  setShowCreate(false);
+                }}
+                {...loadToggleAgentProps}
+              >
+                {t("settings.sections.apps.loadFromDirectory", {
+                  defaultValue: "Add from folder",
+                })}
+              </Button>
+            </div>
+            {advancedEnabled ? (
+              <SettingsRow
+                label={t("settings.sections.apps.verifyOnRelaunch", {
                   defaultValue: "Verify on relaunch",
                 })}
-                {...verifyAgentProps}
-              />
-            }
-          />
-        ) : null}
-      </SettingsGroup>
-
-      {showCreate ? (
-        <form onSubmit={handleCreateSubmit}>
-          <SettingsGroup
-            title={t("settings.sections.apps.createNew", {
-              defaultValue: "Create new app",
-            })}
-            footer={
-              createStatus.state === "error" ? (
-                <span role="alert" className="text-danger">
-                  {createStatus.message}
-                </span>
-              ) : undefined
-            }
-          >
-            <SettingsRow
-              htmlFor="apps-create-intent"
-              stacked
-              label={t("settings.sections.apps.intentLabel", {
-                defaultValue: "What should the app do?",
-              })}
-            >
-              <SettingsTextarea
-                ref={createIntentRef}
-                id="apps-create-intent"
-                rows={3}
-                value={createIntent}
-                disabled={isCreating}
-                onChange={(e) => setCreateIntent(e.target.value)}
-                className="block w-full resize-y font-sans text-sm text-txt"
-                placeholder={t("settings.sections.apps.intentPlaceholder", {
-                  defaultValue: "Describe what the app should do.",
-                })}
-                {...createIntentAgentProps}
-              />
-            </SettingsRow>
-            {advancedEnabled ? (
-              <SettingsSelectRow
-                agentId="apps-create-edit-target"
-                group="apps-create"
-                label={t("settings.sections.apps.basedOnLabel", {
-                  defaultValue: "Based on existing app (optional)",
-                })}
-                value={createEditTarget || CREATE_FROM_SCRATCH_VALUE}
-                onValueChange={(value) =>
-                  setCreateEditTarget(
-                    value === CREATE_FROM_SCRATCH_VALUE ? "" : value,
-                  )
+                control={
+                  <Checkbox
+                    ref={verifyRef}
+                    checked={verifyOnRelaunch}
+                    onCheckedChange={(checked: boolean | "indeterminate") =>
+                      setVerifyOnRelaunch(!!checked)
+                    }
+                    aria-current={verifyOnRelaunch ? "true" : undefined}
+                    aria-label={t(
+                      "settings.sections.apps.verifyOnRelaunchLabel",
+                      {
+                        defaultValue: "Verify on relaunch",
+                      },
+                    )}
+                    {...verifyAgentProps}
+                  />
                 }
-                disabled={isCreating}
-                options={[
-                  {
-                    value: CREATE_FROM_SCRATCH_VALUE,
-                    label: t("settings.sections.apps.basedOnNone", {
-                      defaultValue: "Start from scratch",
-                    }),
-                  },
-                  ...installed.map((app) => ({
-                    value: app.name,
-                    label: `${app.displayName} (${app.name})`,
-                  })),
-                ]}
               />
             ) : null}
-            <SettingsRow label="" stacked>
-              <div className="flex items-center gap-2">
-                <Button
-                  ref={createSubmitRef}
-                  type="submit"
-                  variant="default"
-                  className="h-11 rounded-md px-4 text-sm"
-                  disabled={isCreating || createIntent.trim().length === 0}
-                  {...createSubmitAgentProps}
-                >
-                  {isCreating ? (
-                    <span className="inline-flex items-center gap-1">
-                      <Loader2
-                        className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-                        aria-hidden
-                      />
-                      <span>
-                        {createStatus.state === "loading"
-                          ? (createStatus.message ?? "Working…")
-                          : "Working…"}
-                      </span>
-                    </span>
-                  ) : (
-                    t("common.create", { defaultValue: "Create" })
-                  )}
-                </Button>
-                <Button
-                  ref={createCancelRef}
-                  type="button"
-                  variant="ghost"
-                  className="h-11 rounded-md px-4 text-sm text-muted"
-                  onClick={() => {
-                    setShowCreate(false);
-                    setCreateIntent("");
-                    setCreateEditTarget("");
-                    setCreateStatus({ state: "idle" });
-                  }}
-                  disabled={isCreating}
-                  {...createCancelAgentProps}
-                >
-                  {t("common.cancel", { defaultValue: "Cancel" })}
-                </Button>
-              </div>
-            </SettingsRow>
           </SettingsGroup>
-        </form>
+
+          {showCreate ? (
+            <form onSubmit={handleCreateSubmit}>
+              <SettingsGroup
+                title={t("settings.sections.apps.createNew", {
+                  defaultValue: "New project",
+                })}
+                footer={
+                  createStatus.state === "error" ? (
+                    <span role="alert" className="text-danger">
+                      {createStatus.message}
+                    </span>
+                  ) : undefined
+                }
+              >
+                <SettingsRow
+                  htmlFor="apps-create-intent"
+                  stacked
+                  label={t("settings.sections.apps.intentLabel", {
+                    defaultValue: "What do you want to build?",
+                  })}
+                >
+                  <SettingsTextarea
+                    ref={createIntentRef}
+                    id="apps-create-intent"
+                    rows={3}
+                    value={createIntent}
+                    disabled={isCreating}
+                    onChange={(e) => setCreateIntent(e.target.value)}
+                    className="block w-full resize-y font-sans text-sm text-txt"
+                    placeholder={t("settings.sections.apps.intentPlaceholder", {
+                      defaultValue: "Describe the project you want to create.",
+                    })}
+                    {...createIntentAgentProps}
+                  />
+                </SettingsRow>
+                {advancedEnabled ? (
+                  <SettingsSelectRow
+                    agentId="apps-create-edit-target"
+                    group="apps-create"
+                    label={t("settings.sections.apps.basedOnLabel", {
+                      defaultValue:
+                        "Start from an installed package (optional)",
+                    })}
+                    value={createEditTarget || CREATE_FROM_SCRATCH_VALUE}
+                    onValueChange={(value) =>
+                      setCreateEditTarget(
+                        value === CREATE_FROM_SCRATCH_VALUE ? "" : value,
+                      )
+                    }
+                    disabled={isCreating}
+                    options={[
+                      {
+                        value: CREATE_FROM_SCRATCH_VALUE,
+                        label: t("settings.sections.apps.basedOnNone", {
+                          defaultValue: "Start from scratch",
+                        }),
+                      },
+                      ...installed.map((app) => ({
+                        value: app.name,
+                        label: `${app.displayName} (${app.name})`,
+                      })),
+                    ]}
+                  />
+                ) : null}
+                <SettingsRow label="" stacked>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      ref={createSubmitRef}
+                      type="submit"
+                      variant="default"
+                      className="h-11 rounded-md px-4 text-sm"
+                      disabled={isCreating || createIntent.trim().length === 0}
+                      {...createSubmitAgentProps}
+                    >
+                      {isCreating ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Loader2
+                            className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                            aria-hidden
+                          />
+                          <span>
+                            {createStatus.state === "loading"
+                              ? (createStatus.message ?? "Working…")
+                              : "Working…"}
+                          </span>
+                        </span>
+                      ) : (
+                        t("common.create", { defaultValue: "Create" })
+                      )}
+                    </Button>
+                    <Button
+                      ref={createCancelRef}
+                      type="button"
+                      variant="ghost"
+                      className="h-11 rounded-md px-4 text-sm text-muted"
+                      onClick={() => {
+                        setShowCreate(false);
+                        setCreateIntent("");
+                        setCreateEditTarget("");
+                        setCreateStatus({ state: "idle" });
+                      }}
+                      disabled={isCreating}
+                      {...createCancelAgentProps}
+                    >
+                      {t("common.cancel", { defaultValue: "Cancel" })}
+                    </Button>
+                  </div>
+                </SettingsRow>
+              </SettingsGroup>
+            </form>
+          ) : null}
+
+          {showLoad ? (
+            <form onSubmit={handleLoadSubmit}>
+              <SettingsGroup
+                title={t("settings.sections.apps.loadFromDirectory", {
+                  defaultValue: "Add from folder",
+                })}
+                footer={
+                  loadStatus.state === "error" ? (
+                    <span role="alert" className="text-danger">
+                      {loadStatus.message}
+                    </span>
+                  ) : undefined
+                }
+              >
+                <SettingsRow
+                  htmlFor="apps-load-directory"
+                  stacked
+                  label={t("settings.sections.apps.directoryLabel", {
+                    defaultValue: "Directory path",
+                  })}
+                >
+                  <SettingsInput
+                    ref={loadDirectoryRef}
+                    id="apps-load-directory"
+                    variant="touch"
+                    type="text"
+                    value={loadDirectory}
+                    disabled={isLoading}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setLoadDirectory(e.target.value)
+                    }
+                    placeholder="/Users/me/code/my-app"
+                    className="w-full"
+                    {...loadDirectoryAgentProps}
+                  />
+                </SettingsRow>
+                <SettingsRow label="" stacked>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      ref={loadSubmitRef}
+                      type="submit"
+                      variant="default"
+                      className="h-11 rounded-md px-4 text-sm"
+                      disabled={isLoading || loadDirectory.trim().length === 0}
+                      {...loadSubmitAgentProps}
+                    >
+                      {isLoading ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Loader2
+                            className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                            aria-hidden
+                          />
+                          <span>
+                            {t("common.loading", { defaultValue: "Loading…" })}
+                          </span>
+                        </span>
+                      ) : (
+                        t("settings.sections.apps.loadButton", {
+                          defaultValue: "Load",
+                        })
+                      )}
+                    </Button>
+                    <Button
+                      ref={loadCancelRef}
+                      type="button"
+                      variant="ghost"
+                      className="h-11 rounded-md px-4 text-sm text-muted"
+                      onClick={() => {
+                        setShowLoad(false);
+                        setLoadDirectory("");
+                        setLoadStatus({ state: "idle" });
+                      }}
+                      disabled={isLoading}
+                      {...loadCancelAgentProps}
+                    >
+                      {t("common.cancel", { defaultValue: "Cancel" })}
+                    </Button>
+                  </div>
+                </SettingsRow>
+              </SettingsGroup>
+            </form>
+          ) : null}
+        </>
       ) : null}
 
-      {showLoad ? (
-        <form onSubmit={handleLoadSubmit}>
-          <SettingsGroup
-            title={t("settings.sections.apps.loadFromDirectory", {
-              defaultValue: "Load from directory",
-            })}
-            footer={
-              loadStatus.state === "error" ? (
-                <span role="alert" className="text-danger">
-                  {loadStatus.message}
-                </span>
-              ) : undefined
-            }
-          >
-            <SettingsRow
-              htmlFor="apps-load-directory"
-              stacked
-              label={t("settings.sections.apps.directoryLabel", {
-                defaultValue: "Directory path",
-              })}
-            >
-              <SettingsInput
-                ref={loadDirectoryRef}
-                id="apps-load-directory"
-                variant="touch"
-                type="text"
-                value={loadDirectory}
-                disabled={isLoading}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setLoadDirectory(e.target.value)
-                }
-                placeholder="/Users/me/code/my-app"
-                className="w-full"
-                {...loadDirectoryAgentProps}
-              />
-            </SettingsRow>
-            <SettingsRow label="" stacked>
-              <div className="flex items-center gap-2">
-                <Button
-                  ref={loadSubmitRef}
-                  type="submit"
-                  variant="default"
-                  className="h-11 rounded-md px-4 text-sm"
-                  disabled={isLoading || loadDirectory.trim().length === 0}
-                  {...loadSubmitAgentProps}
-                >
-                  {isLoading ? (
-                    <span className="inline-flex items-center gap-1">
-                      <Loader2
-                        className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-                        aria-hidden
-                      />
-                      <span>
-                        {t("common.loading", { defaultValue: "Loading…" })}
-                      </span>
-                    </span>
-                  ) : (
-                    t("settings.sections.apps.loadButton", {
-                      defaultValue: "Load",
-                    })
-                  )}
-                </Button>
-                <Button
-                  ref={loadCancelRef}
-                  type="button"
-                  variant="ghost"
-                  className="h-11 rounded-md px-4 text-sm text-muted"
-                  onClick={() => {
-                    setShowLoad(false);
-                    setLoadDirectory("");
-                    setLoadStatus({ state: "idle" });
-                  }}
-                  disabled={isLoading}
-                  {...loadCancelAgentProps}
-                >
-                  {t("common.cancel", { defaultValue: "Cancel" })}
-                </Button>
-              </div>
-            </SettingsRow>
-          </SettingsGroup>
-        </form>
-      ) : null}
+      {children}
 
       {listStatus.state === "loading" ? (
         <SettingsGroup bare>
@@ -757,7 +869,7 @@ export function AppsManagementSection() {
             />
             <span>
               {t("settings.sections.apps.loadingApps", {
-                defaultValue: "Loading apps…",
+                defaultValue: "Loading installed packages…",
               })}
             </span>
           </div>
@@ -778,135 +890,222 @@ export function AppsManagementSection() {
             </Button>
           </div>
         </SettingsGroup>
-      ) : installed.length === 0 ? (
+      ) : visibleInstalled.length === 0 ? (
         <SettingsGroup bare>
           <p className="py-4 text-center text-sm text-muted">
-            {t("settings.sections.apps.empty", {
-              defaultValue: "No apps installed yet.",
-            })}
+            {inventoryEmptyMessage ??
+              t("settings.sections.apps.empty", {
+                defaultValue: "No installed packages yet.",
+              })}
           </p>
         </SettingsGroup>
       ) : (
         <SettingsGroup
           bare
-          title={t("settings.sections.apps.installedTitle", {
-            defaultValue: "Installed apps",
-          })}
+          title={
+            inventoryTitle ??
+            t("settings.sections.apps.installedTitle", {
+              defaultValue: "Installed",
+            })
+          }
         >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-left text-sm">
-              <thead>
-                <tr className="border-b border-border/50">
-                  <th className={HEAD_CELL_CLASS}>
-                    {t("settings.sections.apps.col.name", {
-                      defaultValue: "App",
-                    })}
-                  </th>
-                  <th className={HEAD_CELL_CLASS}>
-                    {t("settings.sections.apps.col.id", {
-                      defaultValue: "ID",
-                    })}
-                  </th>
-                  <th className={HEAD_CELL_CLASS}>
-                    {t("settings.sections.apps.col.version", {
-                      defaultValue: "Version",
-                    })}
-                  </th>
-                  <th className={HEAD_CELL_CLASS}>
-                    {t("settings.sections.apps.col.runs", {
-                      defaultValue: "Runs",
-                    })}
-                  </th>
-                  <th className={`${HEAD_CELL_CLASS} text-right`}>
-                    {t("settings.sections.apps.col.actions", {
-                      defaultValue: "Actions",
-                    })}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {installed.map((app) => {
-                  const appRuns = runsByName.get(app.name) ?? [];
-                  const running = appRuns.length > 0;
-                  const busy = busyApp === app.name;
-                  return (
-                    <tr
-                      key={app.name}
-                      className="border-t border-border/60 hover:bg-bg-hover/40"
-                      data-testid={`apps-mgmt-row-${app.name}`}
-                    >
-                      <td className={`${BODY_CELL_CLASS} font-medium text-txt`}>
+          {inventoryVariant === "compact" ? (
+            <div
+              className="divide-y divide-border/60 border-y border-border/60"
+              data-testid="apps-mgmt-compact-list"
+            >
+              {visibleInstalled.map((app) => {
+                const appRuns = runsByName.get(app.name) ?? [];
+                const running = appRuns.length > 0;
+                const busy = busyApp === app.name;
+                return (
+                  <div
+                    key={app.name}
+                    className="flex min-h-16 flex-wrap items-center gap-x-3 gap-y-2 py-2"
+                    data-testid={`apps-mgmt-row-${app.name}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-txt">
                         {app.displayName}
-                      </td>
-                      <td
-                        className={`${BODY_CELL_CLASS} font-mono text-xs text-muted`}
-                      >
+                      </div>
+                      <div className="truncate font-mono text-xs text-muted">
                         {app.name}
-                      </td>
-                      <td className={`${BODY_CELL_CLASS} text-xs text-muted`}>
-                        {app.version || "—"}
-                      </td>
-                      <td className={BODY_CELL_CLASS}>
-                        {running ? (
-                          <span className="inline-flex items-center rounded-full bg-ok/10 px-2 py-0.5 text-xs font-medium text-ok">
-                            {appRuns.length}{" "}
-                            {appRuns.length === 1 ? "run" : "runs"}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted">—</span>
-                        )}
-                      </td>
-                      <td className={`${BODY_CELL_CLASS} text-right`}>
-                        <div className="inline-flex items-center gap-1">
-                          <AppRowActionButton
-                            agentId={`apps-launch-${app.name}`}
-                            label={`Launch ${app.displayName}`}
-                            group="apps-list"
-                            disabled={busy}
-                            onClick={() => void handleLaunch(app)}
-                          >
-                            <Play className="h-3.5 w-3.5" aria-hidden />
-                          </AppRowActionButton>
-                          <AppRowActionButton
-                            agentId={`apps-relaunch-${app.name}`}
-                            label={`Relaunch ${app.displayName}`}
-                            group="apps-list"
-                            disabled={busy}
-                            onClick={() => void handleRelaunch(app)}
-                          >
-                            <RotateCw className="h-3.5 w-3.5" aria-hidden />
-                          </AppRowActionButton>
-                          <AppRowActionButton
-                            agentId={`apps-edit-${app.name}`}
-                            label={`Edit ${app.displayName}`}
-                            group="apps-list"
-                            disabled={busy}
-                            onClick={() => void handleEdit(app)}
-                          >
-                            {t("settings.sections.apps.edit", {
-                              defaultValue: "Edit",
-                            })}
-                          </AppRowActionButton>
+                        {app.version ? ` · ${app.version}` : ""}
+                      </div>
+                    </div>
+                    <span
+                      className={
+                        running
+                          ? "inline-flex items-center gap-1.5 text-xs font-medium text-ok"
+                          : "text-xs text-muted"
+                      }
+                    >
+                      {running ? (
+                        <>
+                          <span
+                            className="h-2 w-2 rounded-full bg-ok"
+                            aria-hidden
+                          />
+                          Running
+                        </>
+                      ) : (
+                        "Stopped"
+                      )}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <AppRowActionButton
+                        agentId={`apps-launch-${app.name}`}
+                        label={`Launch ${app.displayName}`}
+                        group="apps-list"
+                        disabled={busy}
+                        onClick={() => void handleLaunch(app)}
+                      >
+                        <Play className="h-4 w-4" aria-hidden />
+                      </AppRowActionButton>
+                      <AppRowActionButton
+                        agentId={`apps-relaunch-${app.name}`}
+                        label={`Relaunch ${app.displayName}`}
+                        group="apps-list"
+                        disabled={busy}
+                        onClick={() => void handleRelaunch(app)}
+                      >
+                        <RotateCw className="h-4 w-4" aria-hidden />
+                      </AppRowActionButton>
+                      {running ? (
+                        <AppRowActionButton
+                          agentId={`apps-stop-${app.name}`}
+                          label={`Stop ${app.displayName}`}
+                          group="apps-list"
+                          className="min-h-11 min-w-11 px-3 text-xs text-danger hover:text-danger"
+                          disabled={busy}
+                          onClick={() => void handleStop(app)}
+                        >
+                          <Square className="h-4 w-4" aria-hidden />
+                        </AppRowActionButton>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[34rem] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className={HEAD_CELL_CLASS}>
+                      {t("settings.sections.apps.col.name", {
+                        defaultValue: "Package",
+                      })}
+                    </th>
+                    <th className={HEAD_CELL_CLASS}>
+                      {t("settings.sections.apps.col.id", {
+                        defaultValue: "ID",
+                      })}
+                    </th>
+                    <th className={HEAD_CELL_CLASS}>
+                      {t("settings.sections.apps.col.version", {
+                        defaultValue: "Version",
+                      })}
+                    </th>
+                    <th className={HEAD_CELL_CLASS}>
+                      {t("settings.sections.apps.col.runs", {
+                        defaultValue: "Runs",
+                      })}
+                    </th>
+                    <th className={`${HEAD_CELL_CLASS} text-right`}>
+                      {t("settings.sections.apps.col.actions", {
+                        defaultValue: "Actions",
+                      })}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleInstalled.map((app) => {
+                    const appRuns = runsByName.get(app.name) ?? [];
+                    const running = appRuns.length > 0;
+                    const busy = busyApp === app.name;
+                    return (
+                      <tr
+                        key={app.name}
+                        className="border-t border-border/60 hover:bg-bg-hover/40"
+                        data-testid={`apps-mgmt-row-${app.name}`}
+                      >
+                        <td
+                          className={`${BODY_CELL_CLASS} font-medium text-txt`}
+                        >
+                          {app.displayName}
+                        </td>
+                        <td
+                          className={`${BODY_CELL_CLASS} font-mono text-xs text-muted`}
+                        >
+                          {app.name}
+                        </td>
+                        <td className={`${BODY_CELL_CLASS} text-xs text-muted`}>
+                          {app.version || "—"}
+                        </td>
+                        <td className={BODY_CELL_CLASS}>
                           {running ? (
+                            <span className="inline-flex items-center rounded-full bg-ok/10 px-2 py-0.5 text-xs font-medium text-ok">
+                              {appRuns.length}{" "}
+                              {appRuns.length === 1 ? "run" : "runs"}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted">—</span>
+                          )}
+                        </td>
+                        <td className={`${BODY_CELL_CLASS} text-right`}>
+                          <div className="inline-flex items-center gap-1">
                             <AppRowActionButton
-                              agentId={`apps-stop-${app.name}`}
-                              label={`Stop ${app.displayName}`}
+                              agentId={`apps-launch-${app.name}`}
+                              label={`Launch ${app.displayName}`}
                               group="apps-list"
-                              className="h-7 px-2 text-xs text-danger hover:text-danger"
                               disabled={busy}
-                              onClick={() => void handleStop(app)}
+                              onClick={() => void handleLaunch(app)}
                             >
-                              <Square className="h-3.5 w-3.5" aria-hidden />
+                              <Play className="h-3.5 w-3.5" aria-hidden />
                             </AppRowActionButton>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            <AppRowActionButton
+                              agentId={`apps-relaunch-${app.name}`}
+                              label={`Relaunch ${app.displayName}`}
+                              group="apps-list"
+                              disabled={busy}
+                              onClick={() => void handleRelaunch(app)}
+                            >
+                              <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                            </AppRowActionButton>
+                            <AppRowActionButton
+                              agentId={`apps-edit-${app.name}`}
+                              label={`Edit ${app.displayName}`}
+                              group="apps-list"
+                              disabled={busy}
+                              onClick={() => void handleEdit(app)}
+                            >
+                              {t("settings.sections.apps.edit", {
+                                defaultValue: "Edit",
+                              })}
+                            </AppRowActionButton>
+                            {running ? (
+                              <AppRowActionButton
+                                agentId={`apps-stop-${app.name}`}
+                                label={`Stop ${app.displayName}`}
+                                group="apps-list"
+                                className="min-h-11 min-w-11 px-3 text-xs text-danger hover:text-danger"
+                                disabled={busy}
+                                onClick={() => void handleStop(app)}
+                              >
+                                <Square className="h-3.5 w-3.5" aria-hidden />
+                              </AppRowActionButton>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </SettingsGroup>
       )}
     </SettingsStack>

@@ -2,16 +2,18 @@
  * LIST_APP_DOMAINS tests — read-only domain inventory per app.
  */
 
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   captureCallback,
   FakeElizaCloudClient,
+  installTestProjectRegistry,
   keyedRuntime,
   makeApp,
   makeMessage,
   resetSdk,
+  setGetApp,
   setListAppDomains,
-  setListApps,
+  type TestProjectRegistry,
   unkeyedRuntime,
 } from "./helpers";
 
@@ -28,11 +30,28 @@ const OTHER = makeApp({
   name: "Other App",
   slug: "other-app",
 });
+let registry: TestProjectRegistry;
+
+function installProjects(
+  entries: Array<{ name: string; cloudAppId?: string }>,
+  activeIndex?: number | null,
+): void {
+  registry?.cleanup();
+  registry = installTestProjectRegistry(entries, { activeIndex });
+}
 
 beforeEach(() => {
   resetSdk();
-  setListApps(() => Promise.resolve({ success: true, apps: [APP] }));
+  installProjects([{ name: "Acme Bot", cloudAppId: APP.id }]);
+  setGetApp((id) =>
+    Promise.resolve({
+      success: true,
+      app: id === OTHER.id ? OTHER : APP,
+    }),
+  );
 });
+
+afterEach(() => registry.cleanup());
 
 describe("LIST_APP_DOMAINS", () => {
   it("validate is true with a key, false without", async () => {
@@ -117,8 +136,11 @@ describe("LIST_APP_DOMAINS", () => {
     expect(result?.userFacingText).toContain("Acme Bot");
   });
 
-  it("asks which app when several exist and none matches", async () => {
-    setListApps(() => Promise.resolve({ success: true, apps: [APP, OTHER] }));
+  it("refuses to guess when several Projects exist without an active one", async () => {
+    installProjects([
+      { name: "Acme Bot", cloudAppId: APP.id },
+      { name: "Other Project", cloudAppId: OTHER.id },
+    ]);
     const runtime = keyedRuntime();
     const result = await listAppDomainsAction.handler?.(
       runtime,
@@ -128,12 +150,12 @@ describe("LIST_APP_DOMAINS", () => {
       undefined,
     );
     expect(result?.success).toBe(false);
-    expect(result?.data?.reason).toBe("not_found");
-    expect(result?.userFacingText).toContain("Other App");
+    expect(result?.data?.reason).toBe("no_active");
+    expect(result?.userFacingText).toContain("Select an active project");
   });
 
-  it("says there are no apps when the user has none", async () => {
-    setListApps(() => Promise.resolve({ success: true, apps: [] }));
+  it("says there are no registered Projects when the registry is empty", async () => {
+    installProjects([]);
     const runtime = keyedRuntime();
     const result = await listAppDomainsAction.handler?.(
       runtime,
@@ -143,7 +165,7 @@ describe("LIST_APP_DOMAINS", () => {
       undefined,
     );
     expect(result?.success).toBe(false);
-    expect(result?.data?.reason).toBe("no_apps");
+    expect(result?.data?.reason).toBe("no_projects");
   });
 
   it("returns an honest generic error when the API fails", async () => {

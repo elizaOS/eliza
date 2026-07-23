@@ -318,10 +318,6 @@ const MemoryViewerView = lazyNamedView(
   () => import("./components/pages/MemoryViewerView"),
   "MemoryViewerView",
 );
-const MyAppsView = lazyNamedView(
-  () => import("./components/pages/MyAppsView"),
-  "MyAppsView",
-);
 const PluginsPageView = lazyNamedView(
   () => import("./components/pages/PluginsPageView"),
   "PluginsPageView",
@@ -1414,7 +1410,6 @@ function buildStaticTabRenderers(): Record<
       </TabContentView>
     ),
     memories: wrap(<MemoryViewerView />),
-    "my-apps": wrap(<MyAppsView />),
     files: () => (
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">

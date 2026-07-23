@@ -1,24 +1,35 @@
 ---
-title: Monetized Apps
-description: Create, deploy, and monetize Eliza Cloud apps.
+title: Monetizing Published Projects
+description: Publish a project on Eliza Cloud, configure creator markup, and fund optional hosting from earnings.
 ---
 
-# Monetized Apps
+# Monetizing Published Projects
 
-Build an Eliza Cloud app, route user chat through the app-scoped endpoint, earn creator markup, and deploy the app as a container whose hosting can be paid from earnings before credits.
+Publish a project on Eliza Cloud, route user chat through its app-scoped API,
+earn creator markup, and optionally pay container hosting from earnings before
+credits. Publishing is optional: projects can remain local-only.
 
 ## Concepts
 
-- **Project**: Your deployable product workspace. For container hosting, use `projectName` as the stable project identifier.
+- **Project**: Your durable product workspace. Its canonical local path is its
+  identity; it can be built and run without Cloud.
+- **Published project**: A project whose `cloudAppId` resolves to an active
+  Cloud `apps` row. Cloud state is fetched live instead of cached locally.
+- **Publish**: Create or reactivate that Cloud record, deploy a managed frontend
+  or eligible container, and retain the binding for future updates.
 - **App plugin**: An `@elizaos/app-*` package inside Eliza. This is code loaded by an Eliza runtime.
-- **Eliza Cloud app**: The Cloud app record created with `POST /api/v1/apps`. It owns app hosting metadata, marketplace/domain settings, chat routing, analytics, and monetization settings.
+- **Cloud app record**: The wire-level record created with
+  `POST /api/v1/apps`. API routes, SDK methods, and database identifiers retain
+  the word `app`.
 
-Keep the Cloud app `id` in your project configuration and pass it to the app-scoped chat endpoint. Do not use package names or deployment project names as app IDs.
+Keep the Cloud app `id` in `ProjectRecord.cloudAppId` and pass it to the
+app-scoped chat endpoint. Do not use package names or deployment project names
+as app ids, and do not introduce a second project-to-Cloud mapping.
 
 ## Flow
 
 ```
-user signs in and chats with your app
+user signs in and chats with your published project
   -> your server forwards the user's bearer token to /api/v1/apps/{id}/chat
   -> Eliza Cloud charges the user's organization credit balance
   -> creator markup is credited to your redeemable earnings
@@ -30,24 +41,31 @@ user signs in and chats with your app
   The hosting funding loop is controlled by the organization billing setting `payAsYouGoFromEarnings`. It is on by default. When off, container hosting uses credits only and earnings remain available for token cashout.
 </Info>
 
-## Register and Configure
+## Publish and configure
 
 <Steps>
-<Step title="Create a Cloud app">
+<Step title="Publish the project">
+
+Use the Projects publish panel or `PUBLISH_PROJECT` to create or reuse the bound
+Cloud record and publish the built frontend. Direct API clients can register the
+wire-level record themselves:
 
 ```bash
 curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "My App",
+    "name": "My Project",
     "app_url": "https://placeholder.invalid",
     "allowed_origins": ["https://placeholder.invalid"],
     "skipGitHubRepo": true
   }'
 ```
 
-The response includes `app.id` and a one-time `apiKey`. Store the app ID in your project; keep API keys server-side only.
+The response includes `app.id` and a one-time `apiKey`. Bind the id to the
+project and keep API keys server-side only. Publish built static files with
+`deployAppFrontend()` or `POST /api/v1/apps/{id}/frontend`; each successful
+publish creates an immutable version that can be rolled back by activation.
 
 </Step>
 
@@ -64,7 +82,9 @@ curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
   }'
 ```
 
-`inferenceMarkupPercentage` is the creator markup on app-scoped chat inference. `purchaseSharePercentage` is reserved for app credit purchase share flows.
+`inferenceMarkupPercentage` is the creator markup on app-scoped chat inference.
+`purchaseSharePercentage` is reserved for app-credit purchase-share flows and
+must not be presented as live inference revenue.
 
 </Step>
 
@@ -85,11 +105,17 @@ const response = await fetch(`${ELIZA_CLOUD_URL}/api/v1/apps/${APP_ID}/chat`, {
 });
 ```
 
-Forward the user's bearer token, not your app admin API key, for user-facing chat. The user's organization credit balance is charged and your app's markup is recorded as creator earnings.
+Forward the user's bearer token, not the Cloud admin API key, for user-facing
+chat. The user's organization credit balance is charged and the published
+project's markup is recorded as creator earnings.
 
 </Step>
 
-<Step title="Deploy the container">
+<Step title="Deploy a backend container (optional)">
+
+Managed frontend hosting is sufficient for static projects. Use a container only
+when the project needs server-side code, and only when the organization is
+allowlisted by the `APPS_DEPLOY_ENABLED` gate.
 
 ```ts
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
@@ -114,7 +140,7 @@ const { data: container } = await cloud.createContainer({
 });
 ```
 
-When the container is running, patch the Cloud app to the real URL:
+When the container is running, patch the Cloud record to the real URL:
 
 ```bash
 curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
@@ -145,7 +171,11 @@ curl "https://www.elizacloud.ai/api/v1/redemptions/balance" \
 The optional `X-Affiliate-Code` header is implemented on the generic chat and messages APIs, including `POST /api/v1/chat/completions` and `POST /api/v1/messages`. It credits affiliate markup to the affiliate owner's redeemable earnings.
 
 <Warning>
-  The app-scoped chat endpoint `POST /api/v1/apps/{id}/chat` does not currently read `X-Affiliate-Code` in the API route. Forwarding the header is harmless, but affiliate earnings on app-scoped chat need product/API confirmation.
+  The app-scoped chat endpoint `POST /api/v1/apps/{id}/chat` does not currently
+  read `X-Affiliate-Code` in the API route. Forwarding the header is harmless,
+  but affiliate earnings on app-scoped chat need product/API confirmation.
+  Affiliate codes and redeemable balances are account-level context, not
+  per-project settings.
 </Warning>
 
 ## Hosting Billing
@@ -155,8 +185,11 @@ Daily container billing calculates the container's hosting cost, then tries to p
 ## Next Steps
 
 <CardGroup>
+  <CardGroup.Card title="Publishing Projects" href="/cloud/apps">
+    Publish and manage a project
+  </CardGroup.Card>
   <CardGroup.Card title="Apps API" href="/cloud/api/apps">
-    Register Cloud apps and configure monetization
+    Use the stable Cloud wire API
   </CardGroup.Card>
   <CardGroup.Card title="Containers API" href="/cloud/api/containers">
     Deploy and monitor app containers

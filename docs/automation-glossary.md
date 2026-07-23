@@ -18,6 +18,9 @@ concept in code identifiers, API paths, DB names, UI copy, and docs.
 | **task** (unqualified) | ONLY the core runtime infra unit (`packages/core/src/types/task.ts`): a persisted unit of deferred/recurring work run by `TaskService` via a registered `TaskWorker`. Infrastructure vocabulary — never user-facing. | `tasks` table (`plugins/plugin-sql/src/schema/tasks.ts`) |
 | **scheduled item** | A LifeOps `ScheduledTask` record (reminder / check-in / follow-up / approval / recap / watcher / output). The code type stays `ScheduledTask` (frozen contract); prose and UI say "scheduled item". | `app_lifeops.life_scheduled_tasks` |
 | **coding task** | An orchestrator work item (`OrchestratorTaskRecord`) — a coding delegation to a sub-agent. Code keeps its `Orchestrator*` prefix; UI/docs always qualify as "coding task", never bare "task". | `orchestrator_tasks` table |
+| **project** | The durable user-owned workspace that is built, run, and optionally published. Its canonical real path is its identity. A project is not a CLI scaffold template, a workbench VFS `projectId`, an installed third-party package, or a Cloud `apps` row. | `ProjectRecord` in `<stateDir>/projects.json` · `/api/projects` |
+| **publish** | The optional transition that creates or reactivates a Cloud `apps` record for a project, deploys its frontend or eligible container, and writes the resulting Cloud id to `ProjectRecord.cloudAppId`. Unpublishing deactivates that Cloud record but retains the binding for republish. | `PUBLISH_PROJECT` / `UNPUBLISH_PROJECT` · `/api/v1/apps/*` |
+| **published project** | A project whose `cloudAppId` resolves to an active Cloud `apps` row. URL, hosting, domains, monetization, earnings, analytics, and users are fetched live from Cloud rather than copied into the project registry. In Cloud API and database identifiers the published artifact remains an `app`. | `ProjectRecord.cloudAppId` + active Cloud `apps` row |
 | **automation** | The UI umbrella read-model only (`/api/automations` + merged scheduled items): "anything that runs without you asking in the moment". Never a storage concept or a backend type outside the read-model builders. | `plugins/plugin-workflow/src/routes/automations.ts` |
 | **heartbeat** | A connector keep-alive repeat `Task` (tag `heartbeat`), and nothing else. Correct English for what those are; the misuse was applying it to user triggers. | core `Task` tagged `["queue","repeat","heartbeat"]` |
 | **prompt automation** | A workbench task expressed as a **prompt trigger**: a prompt + a trigger, no node graph (`TriggerConfig.kind === "prompt"`). | core `Task` with `metadata.trigger.kind === "prompt"` |
@@ -91,6 +94,8 @@ schedule-trigger node as a `TRIGGER_DISPATCH` core Task
 | automation (umbrella read-model) | `GET /api/automations` | `plugins/plugin-workflow/src/routes/automations.ts` |
 | scheduled item (LifeOps) | `/api/lifeops/scheduled-tasks/*` | `plugins/plugin-scheduling/src/routes/scheduled-tasks.ts` |
 | coding task (orchestrator) | `/api/orchestrator/tasks*` | `plugins/plugin-agent-orchestrator/src/setup-routes.ts` |
+| project (registry list, register, activate) | `/api/projects*` | `packages/agent/src/api/project-routes.ts` |
+| published project (Cloud artifact management) | `/api/v1/apps/*` | `packages/cloud/api/v1/apps` |
 
 There is no `/api/heartbeats` route — it was an alias for `/api/triggers` and has
 been removed. Connector keep-alive heartbeats still surface read-only in the

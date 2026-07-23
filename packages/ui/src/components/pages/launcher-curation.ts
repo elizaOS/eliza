@@ -43,7 +43,6 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "wallet",
   "tasks",
   "automations",
-  "my-apps",
   "browser",
   // Cloud account app — gated to cloud-signed-in sessions via
   // LAUNCHER_CLOUD_IDS below.
@@ -122,11 +121,9 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   // `chat` is the home/primary surface, not a launcher tile — a Chat tile is
   // pure redundancy next to the always-present home chat (#14479).
   "chat",
-  // The Eliza Cloud Applications studio (`cloud-apps`, registered by
-  // `@elizaos/app` on native shells). My Apps is the ONE apps destination in
-  // the launcher: the studio is reached from the My Apps view's Eliza Cloud
-  // row and by the /cloud-apps deep link, so a second tile next to My Apps
-  // would double one destination.
+  // Authored work has one launcher destination: Projects (`tasks`). Keep both
+  // historical management ids hidden while their routes redirect to Projects.
+  "my-apps",
   "cloud-apps",
   // Removed apps.
   "companion",
@@ -250,8 +247,7 @@ function preferenceScore(entry: ViewEntry): number {
  * Launcher tiles that back an Eliza Cloud surface and must not appear unless
  * the user is signed into cloud (#10725). The Cloud Applications studio
  * (`cloud-apps`) needs no entry here: it never tiles at all
- * (LAUNCHER_HIDDEN_IDS) — My Apps owns its entry point and applies the same
- * signed-in gate to that row.
+ * (LAUNCHER_HIDDEN_IDS) and its deep link redirects to Projects.
  */
 export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud"]);
 

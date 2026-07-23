@@ -112,20 +112,20 @@ describe("createDeepLinkHandler — top-level-surface navigation intents", () =>
     expect(window.location.hash).toBe("");
   });
 
-  it("routes apps/deploy (the #10823 Apps Deploy UI entry) to the cloud-apps page", () => {
+  it("routes the historical apps/deploy entry to Projects", () => {
     const { handle, dispatchNavigationIntent } = makeHandler();
     handle("elizaos://apps/deploy");
     expect(dispatchNavigationIntent).toHaveBeenCalledWith({
-      viewId: "cloud-apps",
-      viewPath: "/cloud-apps",
+      viewId: "tasks",
+      viewPath: "/apps/tasks",
     });
     expect(window.location.hash).toBe("");
 
     dispatchNavigationIntent.mockClear();
     handle("https://eliza.app/apps/deploy");
     expect(dispatchNavigationIntent).toHaveBeenCalledWith({
-      viewId: "cloud-apps",
-      viewPath: "/cloud-apps",
+      viewId: "tasks",
+      viewPath: "/apps/tasks",
     });
   });
 
@@ -141,7 +141,7 @@ describe("createDeepLinkHandler — top-level-surface navigation intents", () =>
     } finally {
       window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
     }
-    expect(seen).toEqual([{ viewId: "cloud-apps", viewPath: "/cloud-apps" }]);
+    expect(seen).toEqual([{ viewId: "tasks", viewPath: "/apps/tasks" }]);
     expect(window.location.hash).toBe("");
   });
 });

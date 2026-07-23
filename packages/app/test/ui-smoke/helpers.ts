@@ -3492,6 +3492,39 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // Projects joins the registry with installed-package and run inventory.
+  // Stub the two exact list reads so its designed empty state does not render
+  // alongside an unrelated transport-error state in keyless visual lanes.
+  await page.route("**/api/apps/installed", async (route) => {
+    if (
+      route.request().method() !== "GET" ||
+      new URL(route.request().url()).pathname !== "/api/apps/installed"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
+  await page.route("**/api/apps/runs", async (route) => {
+    if (
+      route.request().method() !== "GET" ||
+      new URL(route.request().url()).pathname !== "/api/apps/runs"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
   await page.route("**/api/automations", async (route) => {
     // Only the bare list endpoint — the /nodes sub-route has its own stub above.
     if (

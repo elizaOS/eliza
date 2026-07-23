@@ -42,9 +42,9 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
     viewId: "tasks",
     sourceFiles: ["packages/ui/src/components/pages/TasksPageView.tsx"],
     semanticActions: ["SCHEDULED_TASKS"],
-    maxMutationSites: 0,
+    maxMutationSites: 6,
     notes:
-      "Task list filters and row selection are covered by the scheduled-task semantic action.",
+      "Project selection, detail tabs, retries, and URL normalization are local navigation/read controls; task mutations remain covered by the scheduled-task semantic action.",
   },
   {
     viewId: "plugins-page",

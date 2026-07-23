@@ -43,7 +43,7 @@ export interface DeepLinkHandlerContext {
   appLinkHosts?: string[];
   /**
    * Dispatch seam for top-level-surface navigation intents (Settings, Wallet,
-   * Browser, Connectors, the cloud-apps Deploy studio). Defaults to the in-app
+   * Browser, Connectors, and Projects). Defaults to the in-app
    * `eliza:navigate:view` CustomEvent bus — the platform-agnostic navigation
    * path the rest of the app uses (a raw `window.location.hash` write never
    * opens a tab on the mobile/Capacitor entrypoint). Injectable for tests.

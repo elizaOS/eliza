@@ -141,6 +141,7 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   transcripts: "/apps/transcripts",
   relationships: "/apps/relationships",
   memories: "/apps/memories",
+  "my-apps": "/apps/my-apps",
   rolodex: "/rolodex",
   runtime: "/apps/runtime",
   database: "/apps/database",

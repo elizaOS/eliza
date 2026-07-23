@@ -1,15 +1,22 @@
 /**
- * Unit tests for the project registry HTTP routes (#13776 item 5). The handler
- * takes injectable `readRegistry`/`activate` deps so these tests drive the
- * request/response contract without touching a real state dir: list shape,
- * activate success (200 + record), unknown id (404), invalid id (400), and
- * pass-through (returns false) for unrelated paths.
+ * Verifies the project registry HTTP contract through injected route
+ * collaborators and temporary on-disk registries. The filesystem cases protect
+ * the strict-read invariant: missing state is empty, while malformed state must
+ * surface as an error instead of being replaced with a healthy-looking list.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import { join } from "node:path";
+import { readProjectRegistryOrThrow } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   handleProjectRoutes,
@@ -48,12 +55,15 @@ const PROJECT_A: ProjectSummaryDTO = {
   localPath: "/home/dev/alpha",
   repoUrl: "https://github.com/x/alpha",
   defaultBranch: "main",
+  packageName: "@example/alpha",
+  cloudAppId: "cloud-app-alpha",
   lastOpenedAt: "2026-07-05T00:00:00.000Z",
 };
 const PROJECT_B: ProjectSummaryDTO = {
   id: "proj-b",
   name: "Beta",
   localPath: "/home/dev/beta",
+  packageName: null,
   lastOpenedAt: "2026-07-04T00:00:00.000Z",
 };
 
@@ -97,6 +107,122 @@ describe("handleProjectRoutes", () => {
     });
   });
 
+  it("POST /api/projects/register validates and forwards an owned workspace", async () => {
+    const helpers = makeHelpers();
+    helpers.readJsonBody.mockResolvedValue({
+      name: "  Alpha  ",
+      localPath: "/home/dev/alpha",
+      repoUrl: "  https://github.com/x/alpha  ",
+      defaultBranch: " main ",
+    });
+    const register = vi.fn(() => PROJECT_A);
+
+    const handled = await handleProjectRoutes(
+      ctx("POST", "/api/projects/register", helpers),
+      { register },
+    );
+
+    expect(handled).toBe(true);
+    expect(register).toHaveBeenCalledWith({
+      name: "Alpha",
+      localPath: "/home/dev/alpha",
+      repoUrl: "https://github.com/x/alpha",
+      defaultBranch: "main",
+    });
+    expect(helpers.json).toHaveBeenCalledWith(res, PROJECT_A);
+    expect(helpers.error).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/projects/register rejects relative paths and binding fields", async () => {
+    const register = vi.fn();
+
+    const relative = makeHelpers();
+    relative.readJsonBody.mockResolvedValue({
+      name: "Alpha",
+      localPath: "relative/alpha",
+    });
+    await handleProjectRoutes(ctx("POST", "/api/projects/register", relative), {
+      register,
+    });
+    expect(relative.error).toHaveBeenCalledWith(
+      res,
+      "localPath must be an absolute path",
+      400,
+    );
+
+    const cloudBinding = makeHelpers();
+    cloudBinding.readJsonBody.mockResolvedValue({
+      name: "Alpha",
+      localPath: "/home/dev/alpha",
+      cloudAppId: "must-use-publish-binding",
+    });
+    await handleProjectRoutes(
+      ctx("POST", "/api/projects/register", cloudBinding),
+      { register },
+    );
+    expect(cloudBinding.error).toHaveBeenCalledWith(
+      res,
+      "Unknown field: cloudAppId",
+      400,
+    );
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/projects/register writes the real atomic registry and returns its canonical record", async () => {
+    const stateDir = mkdtempSync(join(os.tmpdir(), "project-routes-register-"));
+    const projectDir = join(stateDir, "owned-project");
+    mkdirSync(projectDir);
+    const canonicalProjectDir = realpathSync(projectDir);
+    writeFileSync(
+      join(projectDir, "package.json"),
+      `${JSON.stringify({ name: "@example/owned-project" }, null, 2)}\n`,
+      "utf8",
+    );
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = stateDir;
+    try {
+      expect(readProjectRegistryOrThrow()).toBeNull();
+      const helpers = makeHelpers();
+      helpers.readJsonBody.mockResolvedValue({
+        name: "Owned Project",
+        localPath: canonicalProjectDir,
+      });
+
+      const handled = await handleProjectRoutes(
+        ctx("POST", "/api/projects/register", helpers),
+      );
+      expect(handled).toBe(true);
+      expect(helpers.error).not.toHaveBeenCalled();
+      expect(helpers.json.mock.calls[0]?.[1]).toMatchObject({
+        name: "Owned Project",
+        localPath: canonicalProjectDir,
+        packageName: "@example/owned-project",
+      });
+
+      const persisted = JSON.parse(
+        readFileSync(join(stateDir, "projects.json"), "utf8"),
+      ) as {
+        activeProjectId: string | null;
+        projects: Array<{ id: string; name: string; localPath: string }>;
+      };
+      expect(persisted.activeProjectId).toBeNull();
+      expect(persisted.projects).toHaveLength(1);
+      expect(persisted.projects[0]).toMatchObject({
+        id: expect.any(String),
+        name: "Owned Project",
+        localPath: canonicalProjectDir,
+      });
+      expect(persisted.projects[0]).not.toHaveProperty("packageName");
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("POST /api/projects/:id/activate switches the active project", async () => {
     const helpers = makeHelpers();
     const activate = vi.fn((id: string) =>
@@ -110,6 +236,60 @@ describe("handleProjectRoutes", () => {
     expect(activate).toHaveBeenCalledWith("proj-b");
     expect(helpers.json).toHaveBeenCalledWith(res, PROJECT_B);
     expect(helpers.error).not.toHaveBeenCalled();
+  });
+
+  it("binds and unbinds a project's Cloud record through the dedicated path", async () => {
+    const bindHelpers = makeHelpers();
+    bindHelpers.readJsonBody.mockResolvedValue({
+      cloudAppId: " cloud-app-beta ",
+    });
+    const bindCloudApp = vi.fn((projectId: string, cloudAppId: string) => ({
+      ...PROJECT_B,
+      id: projectId,
+      cloudAppId,
+    }));
+
+    await handleProjectRoutes(
+      ctx("POST", "/api/projects/proj-b/cloud-app", bindHelpers),
+      { bindCloudApp },
+    );
+
+    expect(bindCloudApp).toHaveBeenCalledWith("proj-b", "cloud-app-beta");
+    expect(bindHelpers.json).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        id: "proj-b",
+        cloudAppId: "cloud-app-beta",
+      }),
+    );
+
+    const unbindHelpers = makeHelpers();
+    const unbindCloudApp = vi.fn(() => PROJECT_B);
+    await handleProjectRoutes(
+      ctx("DELETE", "/api/projects/proj-b/cloud-app", unbindHelpers),
+      { unbindCloudApp },
+    );
+
+    expect(unbindCloudApp).toHaveBeenCalledWith("proj-b");
+    expect(unbindHelpers.json).toHaveBeenCalledWith(res, PROJECT_B);
+  });
+
+  it("rejects invalid Cloud binding input without touching the registry", async () => {
+    const helpers = makeHelpers();
+    helpers.readJsonBody.mockResolvedValue({ cloudAppId: " ", extra: true });
+    const bindCloudApp = vi.fn();
+
+    await handleProjectRoutes(
+      ctx("POST", "/api/projects/proj-b/cloud-app", helpers),
+      { bindCloudApp },
+    );
+
+    expect(bindCloudApp).not.toHaveBeenCalled();
+    expect(helpers.error).toHaveBeenCalledWith(
+      res,
+      "cloudAppId is required",
+      400,
+    );
   });
 
   it("POST activate with an unknown id returns 404", async () => {

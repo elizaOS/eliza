@@ -32,6 +32,7 @@ import {
   isAppBuildTask,
   resolveAppDeployConfig,
 } from "./app-deploy-guidance.js";
+import { resolveTaskProjectId } from "./project-binding.js";
 import type { SessionInfo } from "./types.js";
 
 export interface BuiltAppRecord {
@@ -45,6 +46,8 @@ export interface BuiltAppRecord {
   target: "eliza-cloud" | "custom";
   /** The sub-agent session that produced this deploy. */
   sessionId: string;
+  /** The durable project whose workspace produced this deploy, when bound. */
+  projectId?: string;
   /** The task label the deploy ran under, when known. */
   label?: string;
   /** ISO timestamp of registration (redeploys refresh it). */
@@ -141,7 +144,9 @@ function asRecordList(value: unknown): BuiltAppRecord[] {
       entry !== null &&
       typeof (entry as BuiltAppRecord).slug === "string" &&
       typeof (entry as BuiltAppRecord).url === "string" &&
-      typeof (entry as BuiltAppRecord).target === "string",
+      typeof (entry as BuiltAppRecord).target === "string" &&
+      ((entry as BuiltAppRecord).projectId === undefined ||
+        typeof (entry as BuiltAppRecord).projectId === "string"),
   );
 }
 
@@ -189,13 +194,21 @@ export async function registerBuiltApp(
   if (!hasCache(runtime)) return false;
   return withRegistryLock(runtime, async () => {
     const existing = asRecordList(await runtime.getCache(BUILT_APPS_CACHE_KEY));
+    const previous = existing.find(
+      (entry) =>
+        entry.target === record.target && entry.slug === record.slug,
+    );
+    const nextRecord =
+      record.projectId || !previous?.projectId
+        ? record
+        : { ...record, projectId: previous.projectId };
     const rest = existing.filter(
       (entry) =>
         !(entry.target === record.target && entry.slug === record.slug),
     );
     await runtime.setCache(
       BUILT_APPS_CACHE_KEY,
-      [record, ...rest].slice(0, MAX_BUILT_APPS),
+      [nextRecord, ...rest].slice(0, MAX_BUILT_APPS),
     );
     return true;
   });
@@ -232,7 +245,8 @@ export async function deleteBuiltApp(
  */
 export async function registerBuiltAppsForCompletion(
   runtime: unknown,
-  session: Pick<SessionInfo, "id" | "metadata">,
+  session: Pick<SessionInfo, "id" | "metadata"> &
+    Partial<Pick<SessionInfo, "workdir">>,
   verifiedUrls: readonly string[],
   log?: (level: "info" | "warn", message: string, ctx?: unknown) => void,
 ): Promise<BuiltAppRecord | null> {
@@ -257,9 +271,20 @@ export async function registerBuiltAppsForCompletion(
     );
     if (!derived) return null;
     const label = typeof meta?.label === "string" ? meta.label : undefined;
+    const metadataProjectId =
+      typeof meta?.projectId === "string" && meta.projectId.trim()
+        ? meta.projectId.trim()
+        : undefined;
+    const projectId =
+      metadataProjectId ??
+      resolveTaskProjectId({
+        workdir:
+          typeof session.workdir === "string" ? session.workdir : undefined,
+      });
     const record: BuiltAppRecord = {
       ...derived,
       sessionId: session.id,
+      ...(projectId ? { projectId } : {}),
       ...(label ? { label } : {}),
       registeredAt: new Date().toISOString(),
     };
@@ -275,6 +300,7 @@ export async function registerBuiltAppsForCompletion(
       slug: record.slug,
       target: record.target,
       url: record.url,
+      projectId: record.projectId,
     });
     return record;
   } catch (err) {

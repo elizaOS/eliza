@@ -33,6 +33,14 @@ export const appQueryKey = (id: string) => ["app", id] as const;
 
 export type DeploymentStatus = "BUILDING" | "READY" | "ERROR" | "DRAFT";
 
+export interface AppDeployCapability {
+  enabled: boolean;
+  reason?:
+    | "deployment_disabled"
+    | "production_allowlist_missing"
+    | "organization_not_allowlisted";
+}
+
 export interface AppDeploymentRecord {
   success?: boolean;
   deploymentId: string | null;
@@ -106,6 +114,7 @@ export function validateDeployAppInput(
   try {
     parsedRepoUrl = new URL(repoUrl);
   } catch {
+    // error-policy:J3 untrusted form input returns an explicit invalid result.
     return { ok: false, error: "Enter a valid repository URL." };
   }
 
@@ -155,6 +164,32 @@ export function deployRepoUrlFromApp(app: App): string {
   return githubRepo ? normalizeDeployRepoUrl(githubRepo) : "";
 }
 
+/** GET /api/v1/apps/deploy-capability — complete global + org gate verdict. */
+export async function getAppDeployCapability(): Promise<AppDeployCapability> {
+  const data = await api<unknown>("/api/v1/apps/deploy-capability");
+  if (!isRecord(data) || typeof data.enabled !== "boolean") {
+    throw new Error("Cloud returned an invalid container capability response");
+  }
+  const reasons = new Set<AppDeployCapability["reason"]>([
+    "deployment_disabled",
+    "production_allowlist_missing",
+    "organization_not_allowlisted",
+  ]);
+  if (
+    data.reason !== undefined &&
+    (typeof data.reason !== "string" ||
+      !reasons.has(data.reason as AppDeployCapability["reason"]))
+  ) {
+    throw new Error("Cloud returned an invalid container capability reason");
+  }
+  return {
+    enabled: data.enabled,
+    ...(data.reason
+      ? { reason: data.reason as AppDeployCapability["reason"] }
+      : {}),
+  };
+}
+
 /** GET /api/v1/apps — list of the caller's apps. */
 export function useApps() {
   const gate = useAuthenticatedQueryGate();
@@ -180,6 +215,12 @@ export function useApp(id: string | undefined) {
   });
 }
 
+/** GET /api/v1/apps/:id — imperative read for project publication joins. */
+export async function getApp(id: string): Promise<App> {
+  const data = await api<{ app: App }>(`/api/v1/apps/${id}`);
+  return data.app;
+}
+
 /** POST /api/v1/apps/check-name — debounced availability check. */
 export async function checkAppNameAvailable(name: string): Promise<boolean> {
   const data = await api<{ available?: boolean }>("/api/v1/apps/check-name", {
@@ -192,8 +233,10 @@ export async function checkAppNameAvailable(name: string): Promise<boolean> {
 /** POST /api/v1/apps — create an app; returns the record + one-time API key. */
 export async function createApp(input: {
   name: string;
+  description?: string;
   app_url: string;
   allowed_origins: string[];
+  is_active?: boolean;
   /**
    * Create a TEMPLATE app (no GitHub repo). The dashboard has no
    * build-from-repo flow, and build-from-repo is intentionally OFF, so a

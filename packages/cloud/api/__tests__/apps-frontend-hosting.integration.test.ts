@@ -43,7 +43,10 @@ const KEY_B = "eliza_test_org_b_key";
 const APP_ID = "99999999-9999-4999-8999-000000000001";
 const OTHER_APP = "99999999-9999-4999-8999-000000000002";
 
-const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+const ENV = {
+  NODE_ENV: "test",
+  ELIZA_FRONTEND_HOST_SUFFIX: "sites.elizacloud.ai",
+} as unknown as AppEnv["Bindings"];
 
 // ---- in-memory app store ----
 const appStore = new Map<string, Partial<App>>();
@@ -320,13 +323,18 @@ describe("apps frontend hosting routes", () => {
     appStore.set(APP_ID, {
       id: APP_ID,
       name: "Cool App",
+      slug: "cool-app",
       description: "A cool app",
       logo_url: null,
       production_url: null,
       app_url: "https://placeholder.invalid",
       organization_id: ORG_A,
     });
-    appStore.set(OTHER_APP, { id: OTHER_APP, organization_id: ORG_A });
+    appStore.set(OTHER_APP, {
+      id: OTHER_APP,
+      slug: "other-app",
+      organization_id: ORG_A,
+    });
   });
 
   test("POST publishes and activates a bundle (201)", async () => {
@@ -338,10 +346,14 @@ describe("apps frontend hosting routes", () => {
       BUNDLE,
     );
     expect(res.status).toBe(201);
-    const json = (await res.json()) as { deployment: AppFrontendDeployment };
+    const json = (await res.json()) as {
+      deployment: AppFrontendDeployment;
+      public_url: string | null;
+    };
     expect(json.deployment.status).toBe("active");
     expect(json.deployment.version).toBe(1);
     expect(json.deployment.file_count).toBe(2);
+    expect(json.public_url).toBe("https://cool-app.sites.elizacloud.ai");
   });
 
   test("POST rejects a bundle with no files (400)", async () => {
@@ -378,9 +390,11 @@ describe("apps frontend hosting routes", () => {
     const json = (await res.json()) as {
       deployments: AppFrontendDeployment[];
       active_deployment_id: string | null;
+      public_url: string | null;
     };
     expect(json.deployments).toHaveLength(1);
     expect(json.active_deployment_id).toBe(json.deployments[0].id);
+    expect(json.public_url).toBe("https://cool-app.sites.elizacloud.ai");
   });
 
   test("activate an older deployment rolls back", async () => {

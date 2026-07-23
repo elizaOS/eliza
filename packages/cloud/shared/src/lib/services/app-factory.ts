@@ -29,6 +29,7 @@ export interface CreateAppInput {
   logo_url?: string;
   website_url?: string;
   contact_email?: string;
+  is_active?: boolean;
 }
 
 export interface CreateAppOptions {

@@ -3,7 +3,14 @@
  * dispatcher against a mock AppManager/plugin-manager (AppsRouteContext) over a
  * real temp state dir on disk — no live agent runtime.
  */
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -87,6 +94,7 @@ async function callRoute(args: {
   favoriteApps?: FavoriteAppsStore;
   getPluginManager?: AppsRouteContext["getPluginManager"];
   actorRole?: AppsRouteActorRole | null;
+  runtime?: unknown | null;
 }): Promise<{
   handled: boolean;
   res: CapturedResponse;
@@ -105,7 +113,7 @@ async function callRoute(args: {
     appManager,
     favoriteApps: args.favoriteApps,
     actorRole: args.actorRole,
-    runtime: null,
+    runtime: args.runtime ?? null,
     getPluginManager:
       args.getPluginManager ??
       (() =>
@@ -337,6 +345,94 @@ describe("handleAppsRoutes", () => {
       expect(refreshRegistry).toHaveBeenCalledTimes(1);
     } finally {
       await rm(packageDir, { recursive: true, force: true });
+    }
+  });
+
+  it("registers each successfully loaded app directory as one deduplicated project", async () => {
+    const stateDir = await mkdtemp(
+      path.join(os.tmpdir(), "app-manager-project-state-"),
+    );
+    const loadRoot = await mkdtemp(
+      path.join(os.tmpdir(), "app-manager-project-load-"),
+    );
+    const appDir = path.join(loadRoot, "app-proof");
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = stateDir;
+    try {
+      await mkdir(appDir);
+      await writeFile(
+        path.join(appDir, "package.json"),
+        JSON.stringify({
+          name: "@local/app-proof",
+          elizaos: {
+            app: {
+              slug: "proof",
+              displayName: "Proof Project",
+            },
+          },
+        }),
+      );
+      const registry = {
+        register: vi.fn(async () => undefined),
+        recordManifestRejection: vi.fn(async () => undefined),
+      };
+      const runtime = {
+        getService: vi.fn((type: string) =>
+          type === "app-registry" ? registry : null,
+        ),
+      };
+
+      const first = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: loadRoot },
+        runtime,
+      });
+      const second = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: loadRoot },
+        runtime,
+      });
+
+      expect(first.handled).toBe(true);
+      expect(first.res.status).toBe(200);
+      expect(first.res.body).toMatchObject({
+        ok: true,
+        registered: 1,
+        items: [{ slug: "proof", canonicalName: "@local/app-proof" }],
+        projects: [
+          {
+            id: expect.any(String),
+            name: "Proof Project",
+            localPath: await realpath(appDir),
+          },
+        ],
+      });
+      expect(second.res.status).toBe(200);
+      expect(registry.register).toHaveBeenCalledTimes(2);
+
+      const persisted = JSON.parse(
+        await readFile(path.join(stateDir, "projects.json"), "utf8"),
+      ) as {
+        activeProjectId: string;
+        projects: Array<{ id: string; name: string; localPath: string }>;
+      };
+      expect(persisted.projects).toHaveLength(1);
+      expect(persisted.projects[0]).toMatchObject({
+        id: expect.any(String),
+        name: "Proof Project",
+        localPath: await realpath(appDir),
+      });
+      expect(persisted.activeProjectId).toBe(persisted.projects[0]?.id);
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(loadRoot, { recursive: true, force: true });
     }
   });
 });

@@ -1,5 +1,6 @@
 /**
- * Tests for the pure reachability probe (probeReachable, respondedLive, healthUrl) with an injected fetch. Asserts the probe uses redirect:"manual" to mirror the server's live decision. No SDK or runtime.
+ * Exercises the bounded HTTP probe and the intentionally different container
+ * and managed-frontend liveness rules through an injected fetch boundary.
  */
 import { describe, expect, it } from "bun:test";
 import {
@@ -7,6 +8,7 @@ import {
   healthUrl,
   probeReachable,
   respondedLive,
+  respondedManagedFrontendLive,
 } from "../src/reachability.ts";
 
 describe("healthUrl", () => {
@@ -35,6 +37,22 @@ describe("respondedLive", () => {
       expect(respondedLive({ ok: false, status })).toBe(false);
     }
     expect(respondedLive({ ok: false, error: "ECONNREFUSED" })).toBe(false);
+  });
+});
+
+describe("respondedManagedFrontendLive", () => {
+  it("accepts public content and redirects but rejects routing/auth/error pages", () => {
+    for (const status of [200, 204, 301, 302, 307, 308]) {
+      expect(respondedManagedFrontendLive({ ok: status < 300, status })).toBe(
+        true,
+      );
+    }
+    for (const status of [401, 403, 404, 500, 502, 503, 504]) {
+      expect(respondedManagedFrontendLive({ ok: false, status })).toBe(false);
+    }
+    expect(
+      respondedManagedFrontendLive({ ok: false, error: "ECONNREFUSED" }),
+    ).toBe(false);
   });
 });
 

@@ -50,6 +50,7 @@ export type CloudAppConfirmationAction =
   | "BUY_APP_DOMAIN"
   | "DELETE_APP"
   | "REGENERATE_APP_API_KEY"
+  | "UNPUBLISH_PROJECT"
   | "WITHDRAW_APP_EARNINGS"
   | "BOOK_INFLUENCER"
   | "SUBMIT_PRESS_RELEASE";
@@ -62,6 +63,8 @@ export interface CloudAppConfirmationMetadata {
   appId: string;
   appName: string;
   appSlug?: string;
+  /** Local project owning the Cloud binding, for project-keyed confirmations. */
+  projectId?: string;
   amount?: number;
   /**
    * The confirmed charge in integer USD cents (BUY_APP_DOMAIN) — compared

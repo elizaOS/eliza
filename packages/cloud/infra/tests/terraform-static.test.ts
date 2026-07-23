@@ -192,6 +192,22 @@ describe("Cloudflare Pages domain durability", () => {
     expect(workflow).toContain("terraform-probe.staging.elizacloud.ai");
   });
 
+  test("owns managed-project frontend wildcard DNS, TLS, and post-apply proof", () => {
+    expect(main).toContain('suffix       = "sites.elizacloud.ai"');
+    expect(main).toContain('suffix       = "sites.staging.elizacloud.ai"');
+    expect(main).toContain(
+      'resource "cloudflare_dns_record" "managed_frontend_wildcard"',
+    );
+    expect(main).toContain(
+      'resource "cloudflare_certificate_pack" "managed_frontend"',
+    );
+    expect(main).toContain("local.managed_frontend_edge.wildcard");
+    expect(main).toContain("prevent_destroy       = true");
+    expect(workflow).toContain("terraform output -json managed_frontend_edge");
+    expect(workflow).toContain("terraform-probe.${suffix}");
+    expect(workflow).toContain("expected fail-closed 404");
+  });
+
   test("keeps real writes manual and verifies certificate plus routing after apply", () => {
     expect(workflow).toContain("oven-sh/setup-bun@");
     expect(workflow).toContain(

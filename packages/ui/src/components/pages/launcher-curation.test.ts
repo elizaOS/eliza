@@ -222,13 +222,12 @@ describe("curateLauncherPages", () => {
     ).toEqual(["wallet", "cloud"]);
   });
 
-  it("never tiles the Cloud Applications studio — My Apps is the one apps tile", () => {
-    // Shaw's consolidation: `cloud-apps` (the native Cloud Applications studio,
-    // label "Cloud Apps") is reached from inside My Apps and by /cloud-apps
-    // deep link; the launcher must show exactly one apps destination whether or
-    // not cloud is signed in.
+  it("keeps Projects as the one creator-work tile", () => {
+    // Retired My Apps and Cloud Applications registrations remain routable
+    // aliases, but neither may create a second launcher destination.
     const views = [
       entry("wallet"),
+      entry("tasks", { label: "Projects", builtin: true }),
       entry("my-apps", { label: "My Apps", builtin: true }),
       entry("cloud-apps", { label: "Cloud Apps" }),
     ];
@@ -238,8 +237,8 @@ describe("curateLauncherPages", () => {
         enabledKinds: ENABLED,
         cloudActive,
       });
-      expect(ids(page)).toEqual(["wallet", "my-apps"]);
-      expect(page.find((e) => e.id === "my-apps")?.label).toBe("My Apps");
+      expect(ids(page)).toEqual(["wallet", "tasks"]);
+      expect(page.find((e) => e.id === "tasks")?.label).toBe("Projects");
     }
   });
 
@@ -381,7 +380,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("task-coordinator", { viewKind: "preview" }),
     // Everyday apps.
     entry("my-apps", { label: "My Apps", builtin: true }),
-    // The native Cloud Applications studio — folded into My Apps, never a tile.
+    // Historical creator-management registrations stay hidden aliases.
     entry("cloud-apps", { label: "Cloud Apps" }),
     entry("browser"),
     entry("character", { viewKind: "system" }),
@@ -425,13 +424,11 @@ describe("curateLauncherPages — full realistic view set", () => {
         }),
       ),
     ).toEqual([
-      // chat is the home surface — no launcher tile (#14479); cloud-apps folds
-      // into my-apps rather than tiling.
+      // chat is the home surface; creator work has one Projects tile.
       "settings",
       "wallet",
       "tasks",
       "automations",
-      "my-apps",
       "browser",
       "character",
       "documents",
@@ -464,7 +461,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "wallet",
       "tasks",
       "automations",
-      "my-apps",
       "browser",
       "character",
       "documents",

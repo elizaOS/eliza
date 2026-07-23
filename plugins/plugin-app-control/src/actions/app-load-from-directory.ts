@@ -1,9 +1,7 @@
 /**
- * @module plugin-app-control/actions/app-load-from-directory
- *
- * load_from_directory sub-mode: scan an absolute directory for subdirs that
- * contain a package.json with an `elizaos.app` field. For each match, register
- * a curated app definition (security-audited; never auto-launches).
+ * Adds owner-selected project packages from a local directory to the runtime
+ * registry and durable project registry. Discovery honors manifest permissions
+ * and protected-package rules, and registration never launches code.
  */
 
 import { promises as fs } from "node:fs";
@@ -14,7 +12,12 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+	ElizaError,
+	logger,
+	setActiveProject,
+	upsertProject,
+} from "@elizaos/core";
 import {
 	type AppIsolation,
 	type AppPermissionsManifest,
@@ -47,8 +50,26 @@ async function readPackageJson(
 	dir: string,
 ): Promise<Record<string, unknown> | null> {
 	const pkgPath = path.join(dir, "package.json");
-	const raw = await fs.readFile(pkgPath, "utf8").catch(() => null);
-	if (raw === null) return null;
+	let raw: string;
+	try {
+		raw = await fs.readFile(pkgPath, "utf8");
+	} catch (cause) {
+		if (
+			typeof cause === "object" &&
+			cause !== null &&
+			"code" in cause &&
+			cause.code === "ENOENT"
+		) {
+			// error-policy:J4 a directory without package.json is not a project package.
+			return null;
+		}
+		throw new ElizaError("Project package manifest could not be read", {
+			code: "PROJECT_PACKAGE_READ_FAILED",
+			context: { pkgPath },
+			cause,
+			severity: "fatal",
+		});
+	}
 	const parsed = JSON.parse(raw) as unknown;
 	if (!parsed || typeof parsed !== "object") return null;
 	return parsed as Record<string, unknown>;
@@ -80,8 +101,8 @@ interface DiscoveryResult {
 }
 
 async function discoverApps(directory: string): Promise<DiscoveryResult> {
-	const stat = await fs.stat(directory).catch(() => null);
-	if (!stat?.isDirectory()) {
+	const stat = await fs.stat(directory);
+	if (!stat.isDirectory()) {
 		throw new Error(`Not a directory: ${directory}`);
 	}
 
@@ -89,9 +110,13 @@ async function discoverApps(directory: string): Promise<DiscoveryResult> {
 	const apps: DiscoveredApp[] = [];
 	const rejectedManifests: DiscoveryResult["rejectedManifests"] = [];
 
-	for (const entry of entries) {
-		if (!entry.isDirectory()) continue;
-		const subdir = path.join(directory, entry.name);
+	const candidateDirectories = [
+		directory,
+		...entries
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => path.join(directory, entry.name)),
+	];
+	for (const subdir of candidateDirectories) {
 		const pkg = await readPackageJson(subdir);
 		if (!pkg) continue;
 
@@ -195,14 +220,14 @@ export async function runLoadFromDirectory({
 		APP_REGISTRY_SERVICE_TYPE,
 	) as AppRegistryService | null;
 	if (!service) {
-		const text = "AppRegistryService is not registered; cannot load apps.";
+		const text = "The local project loader is unavailable right now.";
 		await callback?.({ text });
 		return { success: false, text };
 	}
 
 	const { apps: discovered, rejectedManifests } = await discoverApps(directory);
 	if (discovered.length === 0 && rejectedManifests.length === 0) {
-		const text = `No apps found under ${directory} (no subdir contained a package.json with elizaos.app).`;
+		const text = `No project packages were found at or under ${directory} (the folder and its immediate subdirectories did not contain package.json with elizaos.app).`;
 		await callback?.({ text });
 		return { success: true, text, data: { directory, registered: [] } };
 	}
@@ -214,6 +239,11 @@ export async function runLoadFromDirectory({
 		typeof message.roomId === "string" ? message.roomId : null;
 
 	const registered: AppRegistryEntry[] = [];
+	const registeredProjects: Array<{
+		id: string;
+		name: string;
+		localPath: string;
+	}> = [];
 	const rejected: RejectedApp[] = [];
 
 	for (const rejection of rejectedManifests) {
@@ -258,7 +288,17 @@ export async function runLoadFromDirectory({
 			trust: "external",
 		});
 		registered.push(entry);
+		const project = upsertProject({
+			name: app.displayName,
+			localPath: app.directory,
+		});
+		registeredProjects.push({
+			id: project.id,
+			name: project.name,
+			localPath: project.localPath,
+		});
 	}
+	if (registeredProjects[0]) setActiveProject(registeredProjects[0].id);
 
 	logger.info(
 		`[plugin-app-control] APP/load_from_directory ${directory} registered=${registered.length} rejected=${rejected.length} rejectedManifests=${rejectedManifests.length}`,
@@ -267,17 +307,17 @@ export async function runLoadFromDirectory({
 	const lines: string[] = [];
 	if (registered.length > 0) {
 		lines.push(
-			`Registered ${registered.length} app${registered.length === 1 ? "" : "s"} from ${directory}:`,
+			`Added ${registered.length} project${registered.length === 1 ? "" : "s"} from ${directory}:`,
 			...registered.map((r) => `  - ${r.displayName} (${r.canonicalName})`),
 		);
 	} else {
-		lines.push(`Registered 0 apps from ${directory}.`);
+		lines.push(`Added 0 projects from ${directory}.`);
 	}
 	if (rejected.length > 0) {
 		const names = rejected.map((r) => r.app.packageName).join(", ");
 		lines.push(
 			"",
-			`Skipped ${rejected.length} protected app${rejected.length === 1 ? "" : "s"}: ${names} (cannot override first-party apps).`,
+			`Skipped ${rejected.length} protected package${rejected.length === 1 ? "" : "s"}: ${names} (first-party packages cannot be overridden).`,
 		);
 	}
 	if (rejectedManifests.length > 0) {
@@ -286,12 +326,12 @@ export async function runLoadFromDirectory({
 		);
 		lines.push(
 			"",
-			`Skipped ${rejectedManifests.length} app${rejectedManifests.length === 1 ? "" : "s"} with malformed elizaos.app.permissions:`,
+			`Skipped ${rejectedManifests.length} project package${rejectedManifests.length === 1 ? "" : "s"} with malformed elizaos.app.permissions:`,
 			...summaries.map((s) => `  - ${s}`),
 		);
 	}
 	if (registered.length > 0) {
-		lines.push("", "Apps are registered only — none were launched.");
+		lines.push("", "Projects were added without starting them.");
 	}
 	const text = lines.join("\n");
 	await callback?.({ text });
@@ -309,6 +349,7 @@ export async function runLoadFromDirectory({
 		data: {
 			directory,
 			registered,
+			projects: registeredProjects,
 			rejected: rejected.map((r) => ({
 				packageName: r.app.packageName,
 				directory: r.app.directory,

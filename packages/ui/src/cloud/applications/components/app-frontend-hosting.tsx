@@ -42,7 +42,7 @@ import {
   listFrontendDeployments,
   publishFrontendBundle,
 } from "../lib/frontend-hosting";
-import { isNativeAppsStudioRuntime } from "../lib/native-cloud-nav";
+import { isNativeCloudSurfaceRuntime } from "../lib/native-cloud-nav";
 
 interface AppFrontendHostingProps {
   appId: string;
@@ -116,7 +116,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
     setIsPublishing(true);
     try {
       const files = await filesToBundle(selectedFiles);
-      const deployment = await publishFrontendBundle(appId, {
+      const { deployment } = await publishFrontendBundle(appId, {
         files,
         activate: activateOnPublish,
         buildMeta: { source: "dashboard" },
@@ -211,7 +211,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
   const activeVersion =
     deployments.find((d) => d.id === activeId)?.version ?? null;
   const selectedBytes = selectedFiles.reduce((sum, f) => sum + f.size, 0);
-  const showPreviewLinks = !isNativeAppsStudioRuntime();
+  const showPreviewLinks = !isNativeCloudSurfaceRuntime();
 
   if (isLoading) {
     return (
@@ -246,7 +246,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
           <p className="text-xs text-muted">
             {t("cloud.appHosting.publishDescription", {
               defaultValue:
-                "Upload a built static site (index.html entrypoint). Cloud serves it on your app domains.",
+                "Upload a built static site (index.html entrypoint). Cloud serves it on your project domains.",
             })}
           </p>
         </div>
@@ -359,7 +359,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
             })}
             description={t("cloud.appHosting.emptyDescription", {
               defaultValue:
-                "Publish your first version to serve this app's frontend from Cloud",
+                "Publish your first version to serve this project's frontend from Cloud",
             })}
           />
         ) : (
@@ -493,7 +493,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
             <AlertDialogDescription>
               {t("cloud.appHosting.activateConfirmDescription", {
                 defaultValue:
-                  "The current live version is replaced immediately on all app domains. It stays available for rollback.",
+                  "The current live version is replaced immediately on all project domains. It stays available for rollback.",
               })}
             </AlertDialogDescription>
           </AlertDialogHeader>

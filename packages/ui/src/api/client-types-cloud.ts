@@ -41,6 +41,7 @@ import type {
   AppUiExtensionConfig,
   AppViewerAuthMessage,
   AppViewerConfig,
+  InstalledAppInfo,
   RegistryAppInfo,
 } from "@elizaos/shared";
 import type { TrajectoryExportFormat } from "./client-types-core";
@@ -74,6 +75,7 @@ export type {
   AppUiExtensionConfig,
   AppViewerAuthMessage,
   AppViewerConfig,
+  InstalledAppInfo,
   RegistryAppInfo,
 };
 
@@ -481,20 +483,6 @@ export interface CloudCompatLaunchResult {
     apiBase: string;
     token: string;
   };
-}
-
-// App types — the App-run / App-session DTO contract is owned by
-// @elizaos/shared/contracts/apps (re-exported from the shared root barrel and
-// re-exported above). Only InstalledAppInfo is defined here: the client's
-// installed-app view (installPath / isRunning) is a distinct shape from shared's
-// registry-oriented InstalledAppInfo (pluginName), so it stays UI-local.
-export interface InstalledAppInfo {
-  name: string;
-  displayName: string;
-  version: string;
-  installPath: string;
-  installedAt: string;
-  isRunning: boolean;
 }
 
 // Trajectories
@@ -919,7 +907,17 @@ export interface ProjectSummary {
   localPath: string;
   repoUrl?: string;
   defaultBranch?: string;
+  /** Present on current hosts; null means package.json has no valid name. */
+  packageName?: string | null;
+  cloudAppId?: string;
   lastOpenedAt: string;
+}
+
+export interface RegisterProjectInput {
+  name: string;
+  localPath: string;
+  repoUrl?: string;
+  defaultBranch?: string;
 }
 
 /** `GET /api/projects` payload: the registry list plus the active pointer. */

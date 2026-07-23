@@ -24,19 +24,43 @@ import {
 
 export { default as ApplicationDetailPage } from "./ApplicationDetailPage";
 export { default as ApplicationsPage } from "./ApplicationsPage";
-export { AppDetailsTabs } from "./components/app-details-tabs";
+export {
+  AppDetailsTabs,
+  type AppDetailsTabValue,
+} from "./components/app-details-tabs";
+export { ProjectPublicationBadge } from "./components/project-publication-badge";
+export {
+  ProjectPublishPanel,
+  type ProjectPublishPanelProps,
+} from "./components/project-publish-panel";
 export {
   APPS_QUERY_KEY,
   type App,
+  type AppDeployCapability,
   appQueryKey,
   checkAppNameAvailable,
   createApp,
   deleteApp,
+  getApp,
+  getAppDeployCapability,
   regenerateAppApiKey,
   updateApp,
   useApp,
   useApps,
 } from "./lib/apps";
+export {
+  type FrontendDeploymentsList,
+  type FrontendPublishResult,
+  listFrontendDeployments,
+  publishFrontendBundle,
+} from "./lib/frontend-hosting";
+export {
+  loadProjectPublication,
+  notifyProjectPublicationChanged,
+  type ProjectPublicationSnapshot,
+  type ProjectPublicationStatus,
+  useProjectPublication,
+} from "./lib/project-publication";
 
 /** Stable surface label + URL path slugs for the Applications surface. */
 export const APPLICATIONS_SURFACE_LABEL = "Applications";

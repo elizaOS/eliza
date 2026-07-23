@@ -30,8 +30,13 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { ElizaError } from "../errors.ts";
 import { resolveStateDir } from "./state-dir.ts";
-import { readWorkspaceFolderConfig } from "./workspace-folder-config.ts";
+import {
+	readWorkspaceFolderConfig,
+	readWorkspaceFolderConfigOrThrow,
+	type WorkspaceFolderConfig,
+} from "./workspace-folder-config.ts";
 
 export interface ProjectRecord {
 	id: string;
@@ -155,6 +160,60 @@ export function readProjectRegistry(
 }
 
 /**
+ * Read the registry for user-facing data paths where malformed or unreadable
+ * storage must surface as an error instead of looking like a healthy empty
+ * registry. A genuinely absent file still returns the legacy projection or
+ * `null`, matching first-run behavior.
+ */
+export function readProjectRegistryOrThrow(
+	env: NodeJS.ProcessEnv = process.env,
+): ProjectRegistry | null {
+	const filePath = projectRegistryPath(env);
+	let raw: string;
+	try {
+		raw = readFileSync(filePath, "utf8");
+	} catch (cause) {
+		if (
+			typeof cause === "object" &&
+			cause !== null &&
+			"code" in cause &&
+			cause.code === "ENOENT"
+		) {
+			return synthesizeFromLegacyWorkspaceFolder(
+				env,
+				readWorkspaceFolderConfigOrThrow,
+			);
+		}
+		throw new ElizaError("Project registry could not be read", {
+			code: "PROJECT_REGISTRY_READ_FAILED",
+			context: { filePath },
+			cause,
+			severity: "fatal",
+		});
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (cause) {
+		throw new ElizaError("Project registry is malformed JSON", {
+			code: "PROJECT_REGISTRY_INVALID",
+			context: { filePath },
+			cause,
+			severity: "fatal",
+		});
+	}
+	if (isProjectRegistry(parsed)) return parsed;
+	throw new ElizaError(
+		"Project registry is malformed or uses an unsupported schema version",
+		{
+			code: "PROJECT_REGISTRY_INVALID",
+			context: { filePath },
+			severity: "fatal",
+		},
+	);
+}
+
+/**
  * Deterministic id for the project synthesized from the legacy
  * workspace-folder.json. The synthesized registry is re-minted on every read
  * (reads never write), so a random id would differ between reads: a task bound
@@ -172,8 +231,11 @@ function legacyProjectId(localPath: string): string {
 
 function synthesizeFromLegacyWorkspaceFolder(
 	env: NodeJS.ProcessEnv,
+	readLegacy: (
+		env: NodeJS.ProcessEnv,
+	) => WorkspaceFolderConfig | null = readWorkspaceFolderConfig,
 ): ProjectRegistry | null {
-	const legacy = readWorkspaceFolderConfig(env);
+	const legacy = readLegacy(env);
 	if (!legacy?.path?.trim()) return null;
 	const now = legacy.updatedAt ?? new Date().toISOString();
 	const project: ProjectRecord = {
@@ -203,10 +265,22 @@ function canonicalizeLocalPath(localPath: string): string {
 	const abs = resolve(localPath);
 	try {
 		return realpathSync(abs);
-	} catch {
-		// error-policy:J3 path may not exist yet (project registered pre-clone);
-		// the resolved absolute form is still a stable identity key.
-		return abs;
+	} catch (cause) {
+		if (
+			typeof cause === "object" &&
+			cause !== null &&
+			"code" in cause &&
+			(cause.code === "ENOENT" || cause.code === "ENOTDIR")
+		) {
+			// error-policy:J3 a pre-clone path is an explicit unresolved signal.
+			return abs;
+		}
+		throw new ElizaError("Project path could not be canonicalized", {
+			code: "PROJECT_PATH_RESOLUTION_FAILED",
+			context: { localPath: abs },
+			cause,
+			severity: "fatal",
+		});
 	}
 }
 
@@ -222,20 +296,43 @@ function readRegistryVersionOnDisk(env: NodeJS.ProcessEnv): number | null {
 	let raw: string;
 	try {
 		raw = readFileSync(filePath, "utf8");
-	} catch {
-		// error-policy:J4 absent registry — no version to guard against.
-		return null;
-	}
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		if (parsed !== null && typeof parsed === "object") {
-			const version = (parsed as Record<string, unknown>).version;
-			return typeof version === "number" ? version : null;
+	} catch (cause) {
+		if (
+			typeof cause === "object" &&
+			cause !== null &&
+			"code" in cause &&
+			cause.code === "ENOENT"
+		) {
+			// error-policy:J4 absent registry — no version to guard against.
+			return null;
 		}
-	} catch {
-		// error-policy:J3 corrupt JSON — no readable version; treat as unversioned.
+		throw new ElizaError("Project registry version could not be read", {
+			code: "PROJECT_REGISTRY_READ_FAILED",
+			context: { filePath },
+			cause,
+			severity: "fatal",
+		});
 	}
-	return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (cause) {
+		throw new ElizaError("Project registry is malformed JSON", {
+			code: "PROJECT_REGISTRY_INVALID",
+			context: { filePath },
+			cause,
+			severity: "fatal",
+		});
+	}
+	if (parsed !== null && typeof parsed === "object") {
+		const version = (parsed as Record<string, unknown>).version;
+		if (typeof version === "number") return version;
+	}
+	throw new ElizaError("Project registry has no numeric schema version", {
+		code: "PROJECT_REGISTRY_INVALID",
+		context: { filePath },
+		severity: "fatal",
+	});
 }
 
 /**
@@ -277,8 +374,9 @@ function emptyRegistry(): ProjectRegistry {
 
 /**
  * Insert or update a project keyed by `localPath` identity, persist, and return
- * the upserted record. An existing project's id/createdAt are preserved; the
- * caller's other fields overwrite. Does NOT change the active project — call
+ * the upserted record. An existing project's id/createdAt and omitted optional
+ * fields are preserved, which prevents repeated scaffold/folder registration
+ * from erasing its Cloud binding. Does NOT change the active project — call
  * {@link setActiveProject} for that.
  */
 export function upsertProject(
@@ -286,7 +384,7 @@ export function upsertProject(
 		Partial<Pick<ProjectRecord, "id" | "createdAt" | "lastOpenedAt">>,
 	env: NodeJS.ProcessEnv = process.env,
 ): ProjectRecord {
-	const registry = readProjectRegistry(env) ?? emptyRegistry();
+	const registry = readProjectRegistryOrThrow(env) ?? emptyRegistry();
 	const now = new Date().toISOString();
 	// Canonicalize before matching AND storing so the same directory reached by
 	// different path spellings (symlink, `/tmp` vs `/private/tmp`) upserts one
@@ -301,11 +399,19 @@ export function upsertProject(
 		id: existing?.id ?? input.id ?? randomUUID(),
 		name: input.name,
 		localPath,
-		repoUrl: input.repoUrl,
-		defaultBranch: input.defaultBranch,
+		repoUrl: Object.hasOwn(input, "repoUrl")
+			? input.repoUrl
+			: existing?.repoUrl,
+		defaultBranch: Object.hasOwn(input, "defaultBranch")
+			? input.defaultBranch
+			: existing?.defaultBranch,
 		worldId: input.worldId ?? existing?.worldId,
-		bookmark: input.bookmark,
-		cloudAppId: input.cloudAppId,
+		bookmark: Object.hasOwn(input, "bookmark")
+			? input.bookmark
+			: existing?.bookmark,
+		cloudAppId: Object.hasOwn(input, "cloudAppId")
+			? input.cloudAppId
+			: existing?.cloudAppId,
 		createdAt: existing?.createdAt ?? input.createdAt ?? now,
 		lastOpenedAt: input.lastOpenedAt ?? now,
 	};
@@ -324,7 +430,7 @@ export function setActiveProject(
 	projectId: string,
 	env: NodeJS.ProcessEnv = process.env,
 ): ProjectRecord | null {
-	const registry = readProjectRegistry(env);
+	const registry = readProjectRegistryOrThrow(env);
 	if (!registry) return null;
 	const target = registry.projects.find((p) => p.id === projectId);
 	if (!target) return null;
@@ -343,7 +449,7 @@ export function setActiveProject(
 export function getActiveProject(
 	env: NodeJS.ProcessEnv = process.env,
 ): ProjectRecord | null {
-	const registry = readProjectRegistry(env);
+	const registry = readProjectRegistryOrThrow(env);
 	if (!registry?.activeProjectId) return null;
 	return (
 		registry.projects.find((p) => p.id === registry.activeProjectId) ?? null
@@ -355,6 +461,43 @@ export function getProjectById(
 	projectId: string,
 	env: NodeJS.ProcessEnv = process.env,
 ): ProjectRecord | null {
-	const registry = readProjectRegistry(env);
+	const registry = readProjectRegistryOrThrow(env);
 	return registry?.projects.find((p) => p.id === projectId) ?? null;
+}
+
+/**
+ * Persist the one Project-to-Cloud-app binding used by publishing and coding
+ * tasks. Keeping this beside the registry makes every caller share the same
+ * atomic, localPath-keyed upsert instead of introducing a second relation
+ * store. Unknown projects and blank app ids are rejected without writing.
+ */
+export function bindProjectCloudApp(
+	projectId: string | undefined,
+	cloudAppId: string | undefined,
+	env: NodeJS.ProcessEnv = process.env,
+): ProjectRecord | null {
+	const id = projectId?.trim();
+	const appId = cloudAppId?.trim();
+	if (!id || !appId) return null;
+	const project = getProjectById(id, env);
+	if (!project) return null;
+	if (project.cloudAppId === appId) return project;
+	return upsertProject({ ...project, cloudAppId: appId }, env);
+}
+
+/**
+ * Clear the Project-to-Cloud-app binding without removing either durable
+ * object. This is reserved for Cloud-record deletion or explicit stale-binding
+ * recovery; ordinary unpublish keeps the binding for one-click republish.
+ */
+export function unbindProjectCloudApp(
+	projectId: string | undefined,
+	env: NodeJS.ProcessEnv = process.env,
+): ProjectRecord | null {
+	const id = projectId?.trim();
+	if (!id) return null;
+	const project = getProjectById(id, env);
+	if (!project) return null;
+	if (project.cloudAppId === undefined) return project;
+	return upsertProject({ ...project, cloudAppId: undefined }, env);
 }

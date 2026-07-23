@@ -23,12 +23,16 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  bindProjectCloudApp as bindProjectCloudAppInRegistry,
+  ElizaError,
   getProjectById,
   logger,
   type ProjectRecord,
-  readProjectRegistry,
-  upsertProject,
+  readProjectRegistryOrThrow,
 } from "@elizaos/core";
+
+/** Shared core registry write used by both coding-task and publish actions. */
+export const bindProjectCloudApp = bindProjectCloudAppInRegistry;
 
 /** Canonicalize a path for identity comparison; falls back to a resolved
  * (non-realpath) absolute path when the target does not exist on disk. */
@@ -36,10 +40,22 @@ function canonical(p: string): string {
   const abs = resolve(p);
   try {
     return realpathSync(abs);
-  } catch {
-    // error-policy:J3 path may not exist yet (a project localPath can be
-    // registered before its dir is cloned); compare the resolved absolute form.
-    return abs;
+  } catch (cause) {
+    if (
+      typeof cause === "object" &&
+      cause !== null &&
+      "code" in cause &&
+      (cause.code === "ENOENT" || cause.code === "ENOTDIR")
+    ) {
+      // error-policy:J3 a not-yet-cloned path is an explicit unresolved signal.
+      return abs;
+    }
+    throw new ElizaError("Project path could not be canonicalized", {
+      code: "PROJECT_PATH_RESOLUTION_FAILED",
+      context: { path: abs },
+      cause,
+      severity: "fatal",
+    });
   }
 }
 
@@ -51,7 +67,7 @@ export function findProjectByWorkdir(
 ): ProjectRecord | null {
   const trimmed = workdir?.trim();
   if (!trimmed) return null;
-  const registry = readProjectRegistry(env);
+  const registry = readProjectRegistryOrThrow(env);
   if (!registry) return null;
   const target = canonical(trimmed);
   return (
@@ -177,28 +193,4 @@ export function resolveBoundProjectCloudAppId(
   const id = projectId?.trim();
   if (!id) return null;
   return getProjectById(id, env)?.cloudAppId ?? null;
-}
-
-/**
- * Persist a Project↔Cloud-app binding: write `cloudAppId` onto the registered
- * project so the next task on it updates the existing app instead of creating a
- * duplicate (#14119). The registry is the single source of truth for this
- * relation — the broker calls this on an `apps.create` success for a
- * project-bound task. No-op returning `null` when the project id is unknown or
- * the app id is blank; when the project already carries a DIFFERENT cloudAppId
- * this overwrites it (the latest successful create wins). The underlying
- * `upsertProject` write is atomic (tmp-file + rename).
- */
-export function bindProjectCloudApp(
-  projectId: string | undefined,
-  cloudAppId: string | undefined,
-  env: NodeJS.ProcessEnv = process.env,
-): ProjectRecord | null {
-  const id = projectId?.trim();
-  const appId = cloudAppId?.trim();
-  if (!id || !appId) return null;
-  const project = getProjectById(id, env);
-  if (!project) return null;
-  if (project.cloudAppId === appId) return project;
-  return upsertProject({ ...project, cloudAppId: appId }, env);
 }

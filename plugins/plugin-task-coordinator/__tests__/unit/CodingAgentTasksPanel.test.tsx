@@ -366,6 +366,16 @@ describe("CodingAgentTasksPanel — list", () => {
     });
   });
 
+  it("keeps the sparse-list watermark out of phone-width layouts", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([ACTIVE_THREAD]);
+    render(<CodingAgentTasksPanel />);
+    await screen.findByText("Fix the broken CI build");
+
+    const watermark = screen.getByTestId("task-sparse-watermark");
+    expect(watermark.className).toContain("hidden");
+    expect(watermark.className).toContain("sm:block");
+  });
+
   it("renders a designed empty state with no suggestion chips when the list is empty", async () => {
     listCodingAgentTaskThreads.mockResolvedValue([]);
     render(<CodingAgentTasksPanel />);

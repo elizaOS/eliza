@@ -30,11 +30,6 @@ import "./web-ws-base-fix";
  */
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
-// Native-only (ios/android/desktop): register the Eliza Cloud Applications
-// dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
-// self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
-// the same surfaces.
-import "./cloud-apps-view";
 // Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
 // running build's identity is observable in-app and assertable on-device (#9309).
 import "./renderer-build-stamp";

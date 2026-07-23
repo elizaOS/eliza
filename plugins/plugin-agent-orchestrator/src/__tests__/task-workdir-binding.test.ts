@@ -32,7 +32,11 @@ const BINDER_AGENT_ID: UUID = "00000000-0000-4000-8000-000000000abc";
  * passes a concrete, non-isolated workdir). */
 function makeWorkdirCapturingAcp() {
   let counter = 0;
-  const spawns: Array<{ sessionId: string; workdir: string | undefined }> = [];
+  const spawns: Array<{
+    sessionId: string;
+    workdir: string | undefined;
+    metadata: SpawnOptions["metadata"];
+  }> = [];
   const service = {
     onSessionEvent() {
       return () => undefined;
@@ -45,7 +49,11 @@ function makeWorkdirCapturingAcp() {
     spawnSession: async (opts: SpawnOptions): Promise<SpawnResult> => {
       counter += 1;
       const sessionId = `binding-spawn-${counter}`;
-      spawns.push({ sessionId, workdir: opts.workdir });
+      spawns.push({
+        sessionId,
+        workdir: opts.workdir,
+        metadata: opts.metadata,
+      });
       return {
         sessionId,
         id: sessionId,
@@ -425,6 +433,9 @@ describe("durable task→workdir binding (#13776)", () => {
         // binding. The project localPath (firstDir) must win, not overrideDir.
         await service.spawnAgentForTask(taskId, { workdir: overrideDir });
         expect(acp.spawns.at(0)?.workdir).toBe(firstDir);
+        expect(acp.spawns.at(0)?.metadata).toMatchObject({
+          projectId: project.id,
+        });
 
         // The ignored explicit workdir must NOT re-pin the binding away from
         // the project localPath.

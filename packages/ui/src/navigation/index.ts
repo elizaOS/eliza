@@ -90,7 +90,6 @@ export type BuiltinTab =
 export type Tab = BuiltinTab | (string & {});
 
 export const APPS_TOOL_TABS = [
-  "my-apps",
   "plugins",
   "skills",
   "fine-tuning",
@@ -388,10 +387,9 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   experience: "/character/experience",
   "character-skills": "/character/skills",
   memories: "/apps/memories",
-  // My Apps is the canonical `/apps` destination (the launcher grid lives at
-  // `/views`). Defined after `apps` so it wins the `PATH_TO_TAB` reverse lookup
-  // for the bare `/apps` path; `/apps/<slug>` still resolves to the app runtime.
-  "my-apps": "/apps",
+  // Retained route id for telemetry and saved links. Both this path and the
+  // historical bare `/apps` management path resolve to Projects.
+  "my-apps": "/apps/my-apps",
   rolodex: "/rolodex",
   runtime: "/apps/runtime",
   database: "/apps/database",
@@ -513,6 +511,12 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // chat-native flow launched from the home card, not a routable page.
   if (normalized === "/tutorial") {
     return "chat";
+  }
+
+  // Retired creator-management aliases converge on the stable Projects tab.
+  // Bare `/apps` remains the launcher runtime owned by AppsPageView.
+  if (normalized === "/apps/my-apps" || normalized === "/cloud-apps") {
+    return "tasks";
   }
 
   // /views — legacy launcher alias; renders the combined Home/Launcher.
@@ -656,7 +660,7 @@ export function titleForTab(tab: Tab): string {
     case "memories":
       return "Memories";
     case "my-apps":
-      return "My Apps";
+      return "Projects";
     case "files":
       return "Files";
     case "rolodex":

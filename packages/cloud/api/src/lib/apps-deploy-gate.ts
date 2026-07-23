@@ -1,4 +1,9 @@
-// Boots cloud API src lib apps deploy gate Worker infrastructure under Cloudflare runtime constraints.
+/**
+ * Resolves the managed-container publication gate from Worker configuration.
+ *
+ * The route and deploy boundary share these decisions so capability discovery
+ * cannot advertise access that the authoritative mutation will reject.
+ */
 type EnvLike = Record<string, unknown>;
 
 export type AppsDeployGateReason =
@@ -13,6 +18,14 @@ export interface AppsDeployTriggerDecision {
 export interface AppsDeployOrganizationDecision {
   allowed: boolean;
   reason?: AppsDeployGateReason;
+}
+
+export interface AppsDeployCapability {
+  enabled: boolean;
+  reason?:
+    | "deployment_disabled"
+    | "production_allowlist_missing"
+    | "organization_not_allowlisted";
 }
 
 function envString(env: EnvLike, key: string): string | undefined {
@@ -84,4 +97,29 @@ export function appsDeployOrganizationDecision(
   }
 
   return { allowed: true };
+}
+
+/** Human/agent-facing capability verdict for the complete container gate. */
+export function appsDeployCapability(
+  env: EnvLike,
+  organizationId: string | null | undefined,
+): AppsDeployCapability {
+  if (envString(env, "APPS_DEPLOY_ENABLED") !== "1") {
+    return { enabled: false, reason: "deployment_disabled" };
+  }
+  const trigger = appsDeployTriggerDecision(env);
+  if (!trigger.enabled) {
+    return {
+      enabled: false,
+      reason: trigger.reason ?? "deployment_disabled",
+    };
+  }
+  const organization = appsDeployOrganizationDecision(env, organizationId);
+  if (!organization.allowed) {
+    return {
+      enabled: false,
+      reason: organization.reason ?? "organization_not_allowlisted",
+    };
+  }
+  return { enabled: true };
 }

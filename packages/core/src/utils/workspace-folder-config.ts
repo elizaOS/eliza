@@ -15,6 +15,7 @@
 
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { ElizaError } from "../errors.js";
 import { resolveStateDir } from "./state-dir.js";
 
 export interface WorkspaceFolderConfig {
@@ -59,6 +60,54 @@ export function readWorkspaceFolderConfig(
 	return isWorkspaceFolderConfig(parsed) ? parsed : null;
 }
 
+/**
+ * Read legacy workspace state for migrations that must distinguish first-run
+ * absence from corruption or I/O failure.
+ */
+export function readWorkspaceFolderConfigOrThrow(
+	env: NodeJS.ProcessEnv = process.env,
+): WorkspaceFolderConfig | null {
+	const filePath = workspaceFolderConfigPath(env);
+	let raw: string;
+	try {
+		raw = readFileSync(filePath, "utf8");
+	} catch (cause) {
+		if (
+			typeof cause === "object" &&
+			cause !== null &&
+			"code" in cause &&
+			cause.code === "ENOENT"
+		) {
+			return null;
+		}
+		throw new ElizaError("Workspace folder config could not be read", {
+			code: "WORKSPACE_FOLDER_CONFIG_READ_FAILED",
+			context: { filePath },
+			cause,
+			severity: "fatal",
+		});
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (cause) {
+		throw new ElizaError("Workspace folder config is malformed JSON", {
+			code: "WORKSPACE_FOLDER_CONFIG_INVALID",
+			context: { filePath },
+			cause,
+			severity: "fatal",
+		});
+	}
+	if (!isWorkspaceFolderConfig(parsed)) {
+		throw new ElizaError("Workspace folder config has an invalid schema", {
+			code: "WORKSPACE_FOLDER_CONFIG_INVALID",
+			context: { filePath },
+			severity: "fatal",
+		});
+	}
+	return parsed;
+}
+
 export function writeWorkspaceFolderConfig(
 	value: Omit<WorkspaceFolderConfig, "updatedAt">,
 	env: NodeJS.ProcessEnv = process.env,
@@ -79,7 +128,21 @@ export function clearWorkspaceFolderConfig(
 ): void {
 	try {
 		unlinkSync(workspaceFolderConfigPath(env));
-	} catch {
-		// Already absent — nothing to do.
+	} catch (cause) {
+		if (
+			typeof cause === "object" &&
+			cause !== null &&
+			"code" in cause &&
+			cause.code === "ENOENT"
+		) {
+			// error-policy:J4 an already-absent config is the requested end state.
+			return;
+		}
+		throw new ElizaError("Workspace folder config could not be cleared", {
+			code: "WORKSPACE_FOLDER_CONFIG_CLEAR_FAILED",
+			context: { filePath: workspaceFolderConfigPath(env) },
+			cause,
+			severity: "fatal",
+		});
 	}
 }

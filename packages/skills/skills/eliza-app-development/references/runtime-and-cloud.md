@@ -36,21 +36,24 @@ Eliza Cloud is treated as a first-class managed backend:
 - credit balance and in-app billing proxies
 - cloud-hosted agent provisioning
 - cloud media and TTS paths
-- app platform integration
+- project publishing through the Cloud app platform
 - containers and remote runtimes
 
-If a task is about app building and Cloud is enabled or requested, prefer the Cloud backend path before inventing custom auth, billing, analytics, or hosting.
+If a task is about building a project and Cloud is enabled or requested, keep
+the project as the durable workspace and prefer the Cloud publishing/backend
+path before inventing custom auth, billing, analytics, or hosting.
 
 ## Cloud-as-backend heuristic
 
-For new app work, the default path should usually be:
+For new project work, the default path should usually be:
 
-1. create or reuse an Eliza Cloud app
-2. use its `appId` plus API key
-3. configure origins, redirect URIs, and domains
-4. use Cloud APIs for chat/media/agent features
-5. turn on monetization if the app should earn
-6. deploy a container only if server-side code is required
+1. create or resolve a registered local project
+2. publish it with `PUBLISH_PROJECT`, creating or reusing its bound Cloud app
+3. keep that binding only in `ProjectRecord.cloudAppId`
+4. configure origins, redirect URIs, and domains on the Cloud record
+5. use Cloud APIs for chat/media/agent features
+6. turn on monetization if the published project should earn
+7. deploy a container only if server-side code is required
 
 ## Current cloud monetization reality
 

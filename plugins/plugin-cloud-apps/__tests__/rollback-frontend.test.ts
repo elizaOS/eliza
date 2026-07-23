@@ -96,6 +96,7 @@ describe("ROLLBACK_FRONTEND", () => {
       Promise.resolve({
         success: true,
         active_deployment_id: "d3",
+        public_url: "https://acme-bot.frontends.test",
         deployments: [dep(3, "active", "d3"), dep(2, "superseded", "d2")],
       }),
     );
@@ -105,6 +106,7 @@ describe("ROLLBACK_FRONTEND", () => {
       return Promise.resolve({
         success: true,
         deployment: dep(2, "active", "d2"),
+        public_url: "https://acme-bot.frontends.test",
       });
     });
     const cb = captureCallback();
@@ -127,6 +129,7 @@ describe("ROLLBACK_FRONTEND", () => {
       Promise.resolve({
         success: true,
         active_deployment_id: "d1",
+        public_url: "https://acme-bot.frontends.test",
         deployments: [dep(1, "active", "d1")],
       }),
     );
@@ -155,6 +158,7 @@ describe("LIST_FRONTEND_DEPLOYMENTS", () => {
       Promise.resolve({
         success: true,
         active_deployment_id: "d3",
+        public_url: "https://acme-bot.frontends.test",
         deployments: [dep(3, "active", "d3"), dep(2, "superseded", "d2")],
       }),
     );

@@ -145,6 +145,7 @@ describe("DEPLOY_FRONTEND", () => {
         return Promise.resolve({
           success: true,
           deployment: makeFeDeployment(),
+          public_url: "https://acme-bot.frontends.test",
         });
       });
       const cb = captureCallback();
@@ -173,6 +174,7 @@ describe("DEPLOY_FRONTEND", () => {
             status: "ready",
             activated_at: null,
           }),
+          public_url: "https://acme-bot.frontends.test",
         }),
       );
 
@@ -212,6 +214,7 @@ describe("DEPLOY_FRONTEND", () => {
             created_at: "2026-06-29T00:00:00.000Z",
             activated_at: null,
           },
+          public_url: "https://acme-bot.frontends.test",
         }),
       );
       const cb = captureCallback();
@@ -264,6 +267,7 @@ describe("DEPLOY_FRONTEND", () => {
             created_at: "2026-06-29T00:00:00.000Z",
             activated_at: "2026-06-29T00:00:00.000Z",
           },
+          public_url: "https://acme-bot.frontends.test",
         });
       });
 

@@ -1,8 +1,7 @@
 /**
- * Unit test for the project registry — a real on-disk JSON store under a temp
- * ELIZA_STATE_DIR (no mocks). Covers upsert-by-localPath identity, active-project
- * selection, malformed-JSON rejection, and the legacy workspace-folder.json
- * synthesis path that keeps single-folder installs working without a write.
+ * Exercises the atomic Project registry against a real temporary state
+ * directory, including canonical identity, publication binding, strict failure
+ * semantics, and migration from the legacy single-workspace file.
  */
 
 import {
@@ -17,11 +16,14 @@ import os from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	bindProjectCloudApp,
 	getActiveProject,
 	getProjectById,
 	projectRegistryPath,
 	readProjectRegistry,
+	readProjectRegistryOrThrow,
 	setActiveProject,
+	unbindProjectCloudApp,
 	upsertProject,
 	writeProjectRegistry,
 } from "./project-registry.ts";
@@ -42,6 +44,7 @@ describe("project-registry", () => {
 
 	it("returns null when no registry and no legacy config exists", () => {
 		expect(readProjectRegistry(env)).toBeNull();
+		expect(readProjectRegistryOrThrow(env)).toBeNull();
 		expect(getActiveProject(env)).toBeNull();
 	});
 
@@ -95,9 +98,85 @@ describe("project-registry", () => {
 		expect(getProjectById("nope", env)).toBeNull();
 	});
 
+	it("bindProjectCloudApp persists the shared project publishing relation", () => {
+		const project = upsertProject(
+			{ name: "publishable", localPath: "/tmp/publishable" },
+			env,
+		);
+
+		const bound = bindProjectCloudApp(project.id, "app_cloud_1", env);
+
+		expect(bound?.cloudAppId).toBe("app_cloud_1");
+		expect(getProjectById(project.id, env)?.cloudAppId).toBe("app_cloud_1");
+		expect(bindProjectCloudApp(project.id, "app_cloud_1", env)).toEqual(bound);
+		expect(bindProjectCloudApp("missing", "app_cloud_2", env)).toBeNull();
+		expect(bindProjectCloudApp(project.id, "  ", env)).toBeNull();
+	});
+
+	it("preserves the Cloud binding when a creation flow re-registers the same workspace", () => {
+		const project = upsertProject(
+			{
+				name: "publishable",
+				localPath: "/tmp/re-register-published",
+				repoUrl: "https://github.com/example/publishable",
+				cloudAppId: "app_cloud_1",
+			},
+			env,
+		);
+
+		const registeredAgain = upsertProject(
+			{ name: "renamed", localPath: project.localPath },
+			env,
+		);
+
+		expect(registeredAgain).toMatchObject({
+			id: project.id,
+			name: "renamed",
+			repoUrl: "https://github.com/example/publishable",
+			cloudAppId: "app_cloud_1",
+		});
+	});
+
+	it("unbindProjectCloudApp clears only the publishing relation", () => {
+		const project = upsertProject(
+			{
+				name: "publishable",
+				localPath: "/tmp/unpublishable",
+				repoUrl: "https://github.com/example/project",
+				cloudAppId: "app_cloud_1",
+			},
+			env,
+		);
+
+		const unbound = unbindProjectCloudApp(project.id, env);
+
+		expect(unbound).toMatchObject({
+			id: project.id,
+			name: project.name,
+			repoUrl: project.repoUrl,
+		});
+		expect(unbound?.cloudAppId).toBeUndefined();
+		expect(getProjectById(project.id, env)?.cloudAppId).toBeUndefined();
+		expect(unbindProjectCloudApp(project.id, env)).toEqual(unbound);
+		expect(unbindProjectCloudApp("missing", env)).toBeNull();
+	});
+
 	it("treats malformed JSON as absent (null), never a fabricated empty registry", () => {
 		writeFileSync(projectRegistryPath(env), "{ not json", "utf8");
 		expect(readProjectRegistry(env)).toBeNull();
+		expect(() => readProjectRegistryOrThrow(env)).toThrow(
+			/Project registry is malformed/,
+		);
+		expect(() =>
+			upsertProject({ name: "must-not-clobber", localPath: "/tmp/new" }, env),
+		).toThrow(/Project registry is malformed/);
+		expect(() =>
+			writeProjectRegistry(
+				{ version: 1, activeProjectId: null, projects: [] },
+				env,
+			),
+		).toThrow(/Project registry is malformed/);
+		expect(readFileSync(projectRegistryPath(env), "utf8")).toBe("{ not json");
 	});
 
 	it("rejects a registry whose version is not 1", () => {
@@ -107,6 +186,9 @@ describe("project-registry", () => {
 			"utf8",
 		);
 		expect(readProjectRegistry(env)).toBeNull();
+		expect(() => readProjectRegistryOrThrow(env)).toThrow(
+			/unsupported schema version/,
+		);
 	});
 
 	it("synthesizes an in-memory active project from legacy workspace-folder.json WITHOUT writing projects.json", () => {
@@ -210,7 +292,7 @@ describe("project-registry", () => {
 		);
 		expect(() =>
 			upsertProject({ name: "a", localPath: "/tmp/a" }, env),
-		).toThrow(/refusing to overwrite/);
+		).toThrow(/unsupported schema version/);
 		// The v2 file is untouched.
 		const onDisk = JSON.parse(readFileSync(projectRegistryPath(env), "utf8"));
 		expect(onDisk.version).toBe(2);

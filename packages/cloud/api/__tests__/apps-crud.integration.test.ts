@@ -191,6 +191,7 @@ const createApp = mock(
       contact_email?: string;
       allowed_origins?: string[];
       logo_url?: string;
+      is_active?: boolean;
     },
     options: { createGitHubRepo?: boolean } = {},
   ) => {
@@ -227,6 +228,7 @@ const createApp = mock(
       contact_email: data.contact_email ?? null,
       allowed_origins: data.allowed_origins ?? [data.app_url],
       logo_url: data.logo_url ?? null,
+      is_active: data.is_active ?? true,
       github_repo: githubRepoCreated ? `elizaOS-apps/${slug}` : null,
     });
     store.set(app.id, app);
@@ -551,6 +553,17 @@ describe("POST /api/v1/apps (create)", () => {
     // Persisted: a follow-up list sees it.
     const list = await req("GET", "/api/v1/apps", { key: KEY_A });
     expect((list.json.apps as App[]).map((a) => a.id)).toContain(created.id);
+  });
+
+  test("200 can create an inactive row for deployment staging", async () => {
+    const { status, json } = await req("POST", "/api/v1/apps", {
+      key: KEY_A,
+      body: { ...VALID_CREATE, name: "Staged Project", is_active: false },
+    });
+
+    expect(status).toBe(200);
+    expect((json.app as App).is_active).toBe(false);
+    expect(createApp.mock.calls[0][0]).toMatchObject({ is_active: false });
   });
 
   test("200 skipGitHubRepo:false explicitly creates a GitHub repo", async () => {

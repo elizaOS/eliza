@@ -74,7 +74,7 @@ export function AppUsers({ appId }: AppUsersProps) {
     } catch {
       toast.error(
         t("cloud.appUsers.loadFailed", {
-          defaultValue: "Failed to load app users",
+          defaultValue: "Failed to load project users",
         }),
       );
     } finally {
@@ -104,7 +104,8 @@ export function AppUsers({ appId }: AppUsersProps) {
         icon={<UsersIcon className="h-6 w-6" />}
         title={t("cloud.appUsers.emptyTitle", { defaultValue: "No users yet" })}
         description={t("cloud.appUsers.emptyDescription", {
-          defaultValue: "Users will appear here once they start using your app",
+          defaultValue:
+            "Users will appear here once they start using your published project",
         })}
       />
     );

@@ -63,6 +63,7 @@ import {
 | Inference | `listModels`, `createResponse`, `createChatCompletion`, `createEmbeddings`, `generateImage` |
 | Credits | `getCreditsBalance`, `getCreditsSummary`, `createCreditsCheckout`, `getAppCreditsBalance`, `createAppCreditsCheckout`, `verifyAppCreditsCheckout` |
 | App charges | `createAppCharge`, `listAppCharges`, `getAppCharge`, `createAppChargeCheckout` |
+| Domains | `searchDomains`, `listManagedDomains`, `listAppDomainDnsRecords` |
 | X402 payments | `getX402Supported`, `verifyX402Payment`, `settleX402Payment`, `createX402PaymentRequest`, `listX402PaymentRequests`, `getX402PaymentRequest`, `settleX402PaymentRequest` |
 | Affiliates | `getAffiliateCode`, `createAffiliateCode`, `updateAffiliateCode`, `linkAffiliateCode` |
 | Earnings | `getAppEarnings`, `getAppEarningsHistory`, `withdrawAppEarnings` |

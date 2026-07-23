@@ -39,12 +39,12 @@ test("chat, apps, and settings routes render through the real shell", async ({
 
   await openAppPath(page, "/apps");
   await expect(page).toHaveURL(/\/apps$/);
-  // My Apps is the canonical bare /apps destination; the launcher grid lives
-  // at /views.
-  await expect(page.getByRole("heading", { name: "My Apps" })).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(page.getByText("Install, create, and run")).toBeVisible();
+  await expect(
+    page.locator(
+      '[data-testid="home-launcher-surface"][data-page="launcher"]',
+    ),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("launcher")).toBeVisible();
 
   await openAppPath(page, "/settings");
   await expect(page).toHaveURL(/\/settings$/);

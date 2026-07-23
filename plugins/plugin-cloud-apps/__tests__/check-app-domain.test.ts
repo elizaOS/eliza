@@ -2,17 +2,19 @@
  * CHECK_APP_DOMAIN tests — read-only availability + price quotes.
  */
 
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { CheckAppDomainInput } from "@elizaos/cloud-sdk";
 import {
   captureCallback,
   FakeElizaCloudClient,
+  installTestProjectRegistry,
   keyedRuntime,
   makeApp,
   makeMessage,
   resetSdk,
   setCheckAppDomain,
-  setListApps,
+  setGetApp,
+  type TestProjectRegistry,
   unkeyedRuntime,
 } from "./helpers";
 
@@ -29,6 +31,15 @@ const OTHER = makeApp({
   name: "Other App",
   slug: "other-app",
 });
+let registry: TestProjectRegistry;
+
+function installProjects(
+  entries: Array<{ name: string; cloudAppId?: string }>,
+  activeIndex?: number | null,
+): void {
+  registry?.cleanup();
+  registry = installTestProjectRegistry(entries, { activeIndex });
+}
 
 function trackChecks() {
   const calls: Array<{ id: string; input: CheckAppDomainInput }> = [];
@@ -54,8 +65,16 @@ function trackChecks() {
 
 beforeEach(() => {
   resetSdk();
-  setListApps(() => Promise.resolve({ success: true, apps: [APP] }));
+  installProjects([{ name: "Acme Bot", cloudAppId: APP.id }]);
+  setGetApp((id) =>
+    Promise.resolve({
+      success: true,
+      app: id === OTHER.id ? OTHER : APP,
+    }),
+  );
 });
+
+afterEach(() => registry.cleanup());
 
 describe("CHECK_APP_DOMAIN", () => {
   it("validate is true with a key, false without", async () => {
@@ -119,8 +138,14 @@ describe("CHECK_APP_DOMAIN", () => {
     expect(result?.userFacingText).toContain("I checked the first 3");
   });
 
-  it("falls back to any app for the quote when no reference matches (app-agnostic)", async () => {
-    setListApps(() => Promise.resolve({ success: true, apps: [APP, OTHER] }));
+  it("uses the active Project binding instead of an arbitrary Cloud app", async () => {
+    installProjects(
+      [
+        { name: "Acme Bot", cloudAppId: APP.id },
+        { name: "Other Project", cloudAppId: OTHER.id },
+      ],
+      1,
+    );
     const runtime = keyedRuntime();
     const { calls } = trackChecks();
     const result = await checkAppDomainAction.handler?.(
@@ -131,7 +156,11 @@ describe("CHECK_APP_DOMAIN", () => {
       undefined,
     );
     expect(result?.success).toBe(true);
-    expect(calls[0]?.id).toBe(APP.id);
+    expect(calls[0]?.id).toBe(OTHER.id);
+    expect(result?.data?.project).toMatchObject({
+      name: "Other Project",
+      cloudAppId: OTHER.id,
+    });
   });
 
   it("asks for a domain when none is named", async () => {
@@ -147,8 +176,8 @@ describe("CHECK_APP_DOMAIN", () => {
     expect(result?.data?.reason).toBe("no_domain");
   });
 
-  it("explains that domains need an app when the user has none", async () => {
-    setListApps(() => Promise.resolve({ success: true, apps: [] }));
+  it("explains that a registered Project is required", async () => {
+    installProjects([]);
     const runtime = keyedRuntime();
     const result = await checkAppDomainAction.handler?.(
       runtime,
@@ -158,7 +187,7 @@ describe("CHECK_APP_DOMAIN", () => {
       undefined,
     );
     expect(result?.success).toBe(false);
-    expect(result?.data?.reason).toBe("no_apps");
+    expect(result?.data?.reason).toBe("no_projects");
   });
 
   it("returns an honest generic error when the check API fails", async () => {

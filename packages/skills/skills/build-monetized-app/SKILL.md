@@ -1,13 +1,20 @@
 ---
 name: build-monetized-app
-description: "Use when the task is building a new app on Eliza Cloud that earns money — chat apps, agent apps, MCP-backed tools, anything that calls the cloud's chat/messages/inference endpoints on behalf of users. Covers app registration, container deploy, markup configuration, affiliate header, app charge requests, x402 payment requests, payout redemptions, and the survival-economics loop where earnings auto-fund the agent's own hosting. Pairs with the `eliza-cloud` skill (which covers Cloud as a backend in general) by focusing specifically on the build-and-monetize flow."
+description: "Use when building and publishing a project on Eliza Cloud that should earn money — chat projects, agent projects, MCP-backed tools, or anything that calls Cloud chat/messages/inference endpoints for users. Starts from a registered local project, preserves its single cloudAppId binding, then covers managed frontend publishing, optional container deploy, markup, affiliate headers, app charge requests, x402 payment requests, payout redemptions, and the survival-economics loop where earnings can fund hosting. Pair with `eliza-cloud` for the full Cloud backend surface."
 ---
 
-# Build a monetized app on Eliza Cloud
+# Build and publish a monetized project
 
-Use this skill when you need to build an app that takes a markup on every chat or inference call and credits the earnings back to your owner. Eliza Cloud already supports app registration, per-app API keys, container deploys, the `appId`-based auth and redirect flow, app-scoped chat endpoints, optional affiliate headers, exact app charge requests, x402 payment requests, payout redemptions, and creator-monetization plumbing — you do not need to invent any of these.
+Use this skill when a project should be published and take a markup on chat or
+inference calls, crediting the earnings back to its owner. The project is the
+durable workspace; the Cloud `apps` record is its published artifact and stable
+wire identity. Eliza Cloud already supports managed frontend hosting, per-app
+API keys, optional container deploys, `appId` auth and redirects, app-scoped
+chat, affiliate headers, exact charge requests, x402 requests, payout
+redemptions, and creator monetization.
 
-Read `references/sdk-flow.md` for the 6-step build flow with a self-contained code example. External references (all public):
+Read `references/sdk-flow.md` for the project-first publish flow with a
+self-contained code example. External references (all public):
 
 - **Working chat-app**: [`packages/examples/cloud/edad`](https://github.com/elizaos/eliza/tree/develop/packages/examples/cloud/edad) — copyable end-to-end implementation. Read its `server.ts` for the canonical chat-forwarder shape using `@elizaos/cloud-sdk`.
 - **SDK reference**: [`@elizaos/cloud-sdk` README](https://github.com/elizaos/eliza/blob/develop/packages/cloud/sdk/README.md) — typed methods + helpers + auth.
@@ -16,50 +23,62 @@ Read `references/sdk-flow.md` for the 6-step build flow with a self-contained co
 ## Skill Pairing
 
 Always pair this skill with [`eliza-cloud`](../eliza-cloud/SKILL.md). This
-skill owns the new-app build-and-monetize flow; `eliza-cloud` owns the current
-Cloud backend surface, existing-app operations, app charge requests, x402
+skill owns the project build-publish-monetize flow; `eliza-cloud` owns the
+current Cloud backend surface, published-project operations, app charge requests, x402
 requests, affiliate earnings, payout redemptions, media/promotion, and
 parent-agent Cloud command details. Spawned coding agents should load or
-request both skills for Cloud app builds.
+request both skills for published-project builds.
 
 ## The survival-economics loop
 
-An Eliza-style agent running in an Eliza Cloud container costs ~$0.67/day at the default tier (256 MB CPU + 512 MB RAM). When the org's credit balance and the owner's redeemable earnings both hit zero, the container is stopped after a 48-hour grace window. The container-billing cron pulls earnings before credits, so an app that earns more than its hosting costs keeps the agent alive indefinitely. See `references/survival-economics.md` for the exact accounting (`redeemable_earnings_ledger`, `credit_transactions`, the cron at `packages/cloud/api/cron/container-billing/route.ts`).
+An Eliza-style agent running in an Eliza Cloud container costs ~$0.67/day at the default tier (256 MB CPU + 512 MB RAM). When the org's credit balance and the owner's redeemable earnings both hit zero, the container is stopped after a 48-hour grace window. The container-billing cron pulls earnings before credits, so a published project that earns more than its hosting costs keeps the agent alive indefinitely. See `references/survival-economics.md` for the exact accounting (`redeemable_earnings_ledger`, `credit_transactions`, the cron at `packages/cloud/api/cron/container-billing/route.ts`).
 
 This is why the skill exists: making money is how the agent stays online.
 
 ## Default flow
+
+At the product/action layer, start by resolving the active `ProjectRecord` and
+use `PUBLISH_PROJECT`. It reuses an existing `cloudAppId`, creates a Cloud
+record only when absent, publishes or reactivates it, deploys the selected
+artifact, verifies liveness, and writes the binding through the shared registry
+path. Never keep a second mapping.
+
+The SDK below shows the Cloud-side operations for trusted runtime code after a
+project has been resolved:
 
 ```ts
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 
 const cloud = new ElizaCloudClient({ apiKey: process.env.ELIZAOS_CLOUD_API_KEY });
 
-// 1. register the app. skipGitHubRepo: true makes this a TEMPLATE app — the
-//    cloud stamps the first-party template image onto it, so create -> deploy
-//    resolves to a prebuilt, allowlisted image with NO build step.
+// 1. Create the wire-level Cloud record only when project.cloudAppId is absent.
 const { app, apiKey } = await cloud.createApp({
   name,
   app_url: "https://placeholder.invalid",
   skipGitHubRepo: true,
 });
 
-// 2. the app image: PREBUILT + first-party only. Apps deploy an allowlisted
-//    `ghcr.io/elizaos/*` image (default `ghcr.io/elizaos/example-edad:showcase`,
-//    override APP_DEFAULT_TEMPLATE_IMAGE). You do NOT build or push your own
-//    image to an arbitrary registry — build-from-repo is disabled.
-// 3. deploy: await cloud.deployApp(app.id); then poll cloud.getAppDeployStatus(app.id).
-//    GATED: returns 503 { code: "apps_deploy_disabled" } unless APPS_DEPLOY_ENABLED=1
-//    on the Worker AND the org is allowlisted.
+// 2. Publish the built static frontend. This is the default, ungated path.
+await cloud.deployAppFrontend(app.id, {
+  files: builtFiles,
+  buildMeta: { source: "project-publish" },
+});
+
+// 3. Only projects with server-side code deploy a container:
+//    await cloud.deployApp(app.id), then poll cloud.getAppDeployStatus(app.id).
+//    This returns apps_deploy_disabled unless APPS_DEPLOY_ENABLED=1 and the org
+//    is allowlisted. The image is prebuilt + first-party; arbitrary images and
+//    build-from-repo are disabled.
 // 4. enable monetization: await cloud.updateMonetization(app.id, { ... })
-// 5. patch app_url + allowed_origins to the deployed URL: await cloud.updateApp(app.id, { ... })
-// 6. report URLs to the human (the auto-assigned *.apps.elizacloud.ai
+// 5. patch app_url + allowed_origins to the live URL: await cloud.updateApp(app.id, { ... })
+// 6. report URLs and bind app.id through the shared cloudAppId write path.
+//    PUBLISH_PROJECT already does this. The auto-assigned *.apps.elizacloud.ai
 //    subdomain is the default; if the user wants a custom branded domain
 //    instead, hand off to the `eliza-cloud-buy-domain` skill)
 ```
 
 If this flow is being executed by a spawned coding agent, use the `parent-agent`
-Cloud command bridge for account-bound app creation, deployment, monetization,
+Cloud command bridge for account-bound project publishing, deployment, monetization,
 charges, x402 requests, domains, media, and advertising. The direct SDK examples
 show the parent/app runtime shape; they are not permission to pass raw owner
 API keys or wallet keys to child workers.
@@ -113,17 +132,17 @@ Every cloud-SDK call your deployed app makes on behalf of a user MUST carry:
 
 This pattern is shared with the [`eliza-cloud`](../eliza-cloud/SKILL.md) skill; see that skill for the auth flow itself. This skill assumes you've already read it.
 
-## Legacy static-hosted variant
+## External static-host variant
 
-Some old/local apps are static frontends served by an existing host instead of
-Cloud containers. They are still real Eliza Cloud apps when they use AI
-inference, but this is not the production default for agent-built Cloud apps.
-New production apps should deploy as their own Eliza Cloud container.
+Some projects intentionally use an external static host instead of Cloud's
+managed frontend. They are still published projects when bound to an active
+Cloud record, but this is not the default. Prefer managed frontend hosting;
+deploy a Cloud container only when server-side code is required.
 
-For a static-hosted AI app:
+For an externally hosted AI project:
 
-1. Build the static UI under the host's app directory.
-2. Register the app with `/api/v1/apps` using the public URL and `skipGitHubRepo:true`.
+1. Build the static UI in the project workspace.
+2. Register or reuse the bound Cloud record with `/api/v1/apps` using the public URL and `skipGitHubRepo:true`.
 3. Enable monetization with `PUT /api/v1/apps/<appId>/monetization` and the current markup/share schema:
    `{"monetizationEnabled":true,"inferenceMarkupPercentage":100,"purchaseSharePercentage":10}`.
 4. Store only non-secret app config next to the frontend: `appId`, `cloudUrl`, `apiBase`, optional `affiliateCode`, and a model such as `openai/gpt-5-mini`. `cloudUrl` is the browser-facing Cloud frontend/OAuth base that serves `/app-auth/authorize`; `apiBase` is the Cloud API base. Use `ELIZA_CLOUD_PUBLIC_URL` if set, otherwise `ELIZA_CLOUD_URL`, otherwise use `ELIZA_CLOUD_BASE_URL` only when that origin also serves the frontend. In local testing, if `apiBase` is `http://localhost:8787/api/v1` and no `ELIZA_CLOUD_PUBLIC_URL` is configured, `cloudUrl` must be `http://127.0.0.1:3000`. Do not point OAuth at an API-only local worker such as `:8787`, and do not silently mix a localhost API base with production OAuth.
@@ -133,26 +152,31 @@ For a static-hosted AI app:
 
 ## Read these references in order
 
-1. `references/sdk-flow.md` — the 6-step deploy + monetize flow with full code
+1. `references/sdk-flow.md` — the project-first publish + monetize flow with full code
 2. `references/survival-economics.md` — why this matters; how earnings flow into hosting
 3. `references/failure-modes.md` — recovery table for the failures you'll actually hit (name collision, container deploy failure, auth blocker, etc.)
 
 ## What this skill is NOT
 
-- **It is not the app's product code.** The skill is the deploy + monetize + survive surface. What the app DOES is up to you given the task.
+- **It is not the project's product code.** The skill is the publish + monetize + survive surface. What the project does is determined by the task.
 - **It is not a retry loop.** Each SDK call is idempotent; if step 5 fails, restart from there.
-- **It does not configure affiliate codes.** Affiliate codes belong to the owner, not the app, and live across all of an owner's apps. The skill inherits whatever is configured.
+- **It does not configure affiliate codes.** Affiliate codes belong to the
+  owner, not a project, and span all published projects. The skill inherits
+  whatever is configured.
 - **It does not assume always-on billing.** The org may have set `pay_as_you_go_from_earnings = false`, in which case hosting comes purely from credits and earnings stay on the redemption ledger. The skill works either way; the org's owner controls the toggle.
 
-## After the app is live — ALWAYS offer a custom domain
+## After the project is published — ALWAYS offer a custom domain
 
-The deployed app gets an auto-assigned `*.apps.elizacloud.ai` subdomain that works immediately. **At the end of every successful build, proactively offer the user a custom branded domain** (this is part of the standard build flow, not optional polish). Pattern:
+The published project gets an auto-assigned `*.apps.elizacloud.ai` subdomain
+that works immediately. **At the end of every successful publish, proactively
+offer the user a custom branded domain** (this is part of the standard flow,
+not optional polish). Pattern:
 
-1. Use the `eliza-cloud-buy-domain` skill to call `POST /api/v1/domains/search` with the app name as the query (limit 3-5 candidates).
+1. Use the `eliza-cloud-buy-domain` skill to call `POST /api/v1/domains/search` with the project name as the query (limit 3-5 candidates).
 2. Filter to `.com` / `.io` / `.dev` / `.app` if available, sort by price ascending.
 3. Present the top 1-2 in your reply, e.g.:
 
-   > Your app is live at `<subdomain>` — works right now.
+   > Your project is published at `<subdomain>` — works right now.
    > Want me to also grab one of these custom domains for it (one-time charge from your cloud credits)?
    >  • `myapp.com` — $14.95/yr
    >  • `myapp.io` — $35.20/yr

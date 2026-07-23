@@ -19,9 +19,12 @@
  *     {deleted:true} on success, list reflects immediately).
  */
 
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { IAgentRuntime } from "@elizaos/core";
+import os from "node:os";
+import path from "node:path";
+import { type IAgentRuntime, upsertProject } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeGrillingRuntime } from "../../test/scenarios/_helpers/orchestrator-grilling-harness.ts";
 import { makeSpawnCapturingAcp } from "../../test/scenarios/_helpers/reflexion-scenario.ts";
@@ -163,6 +166,26 @@ describe("registry round-trip", () => {
     const apps = await listBuiltApps(runtime);
     expect(apps).toHaveLength(2);
     expect(apps[0]).toEqual(redeploy);
+  });
+
+  it("preserves a project binding when a later same-slug record omits it", async () => {
+    const { runtime } = cacheRuntime();
+    await registerBuiltApp(runtime, record({ projectId: "project-snake" }));
+    await registerBuiltApp(
+      runtime,
+      record({
+        sessionId: "sess-unbound-redeploy",
+        registeredAt: new Date(1000).toISOString(),
+      }),
+    );
+
+    expect(await listBuiltApps(runtime)).toMatchObject([
+      {
+        slug: "snake-game",
+        sessionId: "sess-unbound-redeploy",
+        projectId: "project-snake",
+      },
+    ]);
   });
 
   it("deletes one record by target+slug and reports absence honestly", async () => {
@@ -308,15 +331,64 @@ describe("durable-task spawn path (#12036 follow-up)", () => {
     const { runtime, cache } = cacheRuntime();
     const registered = await registerBuiltAppsForCompletion(
       runtime,
-      { id: spawned?.sessionId ?? "", metadata: spawned?.metadata },
+      {
+        id: spawned?.sessionId ?? "",
+        metadata: {
+          ...spawned?.metadata,
+          projectId: "project-workouts",
+        },
+      },
       ["https://workouts.apps.elizacloud.example/"],
     );
     expect(registered).toMatchObject({
       slug: "workouts",
       target: "eliza-cloud",
       url: "https://workouts.apps.elizacloud.example/",
+      projectId: "project-workouts",
     });
     expect(cache.get(BUILT_APPS_CACHE_KEY)).toHaveLength(1);
+  });
+
+  it("derives projectId from a registered completion workdir when older session metadata lacks it", async () => {
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const stateDir = realpathSync(
+      mkdtempSync(path.join(os.tmpdir(), "built-app-project-state-")),
+    );
+    const projectDir = realpathSync(
+      mkdtempSync(path.join(os.tmpdir(), "built-app-project-workdir-")),
+    );
+    process.env.ELIZA_STATE_DIR = stateDir;
+    try {
+      const project = upsertProject({
+        name: "Workouts",
+        localPath: projectDir,
+      });
+      const { runtime } = cacheRuntime();
+      const registered = await registerBuiltAppsForCompletion(
+        runtime,
+        {
+          id: "session-with-old-metadata",
+          workdir: projectDir,
+          metadata: {
+            goal: "build a website for tracking my workouts and deploy it",
+          },
+        },
+        ["https://workouts.apps.elizacloud.example/"],
+      );
+
+      expect(registered).toMatchObject({
+        slug: "workouts",
+        projectId: project.id,
+      });
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      rmSync(stateDir, { recursive: true, force: true });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -1,20 +1,24 @@
 /**
- * Pure helpers shared by the domain actions (CHECK_APP_DOMAIN, BUY_APP_DOMAIN,
- * LIST_APP_DOMAINS): extracting domain names from planner options / message
- * text, resolving which app a domain request targets (with a sole-app
- * default), money formatting, and duck-typed CloudApiError inspection so the
- * money action can branch on 402/409/502 without importing the SDK error
- * class (the test suite mocks `@elizaos/cloud-sdk` with only the client).
+ * Pure helpers shared by the domain actions: extracting domain names from
+ * planner options or message text, resolving which app a request targets,
+ * money formatting, and duck-typed CloudApiError inspection. Keeping these
+ * decisions shared makes read-only status checks and paid purchases resolve
+ * the same user references without importing the SDK error class at runtime.
  */
 
 import type { AppDto, ElizaCloudClient } from "@elizaos/cloud-sdk";
-import type { Memory } from "@elizaos/core";
+import { ElizaError, type Memory, type ProjectRecord } from "@elizaos/core";
 import {
   extractAppReference,
   looksLikeAppId,
   matchAppByReference,
   type ResolvedApp,
 } from "./client.js";
+import {
+  type ProjectResolution,
+  projectResolutionMessage,
+  resolveProject,
+} from "./project-resolution.js";
 
 /**
  * Mirror of the server's canonical domain schema
@@ -110,8 +114,123 @@ export interface DomainTargetApp extends ResolvedApp {
   apps: AppDto[];
 }
 
-/** Planner-option keys that carry an explicit app reference (client.ts mirror). */
+export type DomainProjectResolutionReason =
+  | NonNullable<ProjectResolution["reason"]>
+  | "not_published";
+
+/**
+ * Project-scoped domain reads resolve locally first, then cross the Cloud
+ * boundary through the registry's sole `cloudAppId` binding.
+ */
+export interface DomainTargetProject {
+  project: ProjectRecord | null;
+  app: AppDto | null;
+  resolution: ProjectResolution;
+  reason?: DomainProjectResolutionReason;
+}
+
+/** Planner-option keys used by the legacy app-inventory resolver. */
 const EXPLICIT_APP_KEYS = ["app", "appName", "name", "id", "appId"] as const;
+
+const PROJECT_OPTION_KEYS = ["projectId", "project", "projectName"] as const;
+const LEGACY_PROJECT_OPTION_KEYS = EXPLICIT_APP_KEYS;
+
+/**
+ * Older planner schemas called the target `appName`/`appId`. Preserve those
+ * inputs as references to a local Project while making project-native keys win.
+ */
+function projectScopedOptions(options?: unknown): unknown {
+  const params = actionParams(options);
+  const hasProjectReference = PROJECT_OPTION_KEYS.some(
+    (key) =>
+      typeof params[key] === "string" &&
+      (params[key] as string).trim().length > 0,
+  );
+  if (hasProjectReference) return options;
+
+  for (const key of LEGACY_PROJECT_OPTION_KEYS) {
+    const value = params[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      const top =
+        options && typeof options === "object"
+          ? (options as Record<string, unknown>)
+          : {};
+      return {
+        ...top,
+        parameters: { ...params, project: value.trim() },
+      };
+    }
+  }
+  return options;
+}
+
+/**
+ * Resolve an app-scoped domain read through ProjectRecord → cloudAppId.
+ *
+ * The shared project resolver supplies explicit, active, and sole-project
+ * semantics. Cloud inventory is never used as a fallback because that would
+ * let a creator-side project command escape the durable local binding model.
+ */
+export async function resolveDomainTargetProject(
+  client: ElizaCloudClient,
+  message: Memory,
+  options?: unknown,
+): Promise<DomainTargetProject> {
+  const resolution = resolveProject(message, projectScopedOptions(options));
+  const project = resolution.project;
+  if (!project) {
+    if (!resolution.reason) {
+      throw new ElizaError(
+        "Project resolution returned no project and no failure reason",
+        {
+          code: "PROJECT_RESOLUTION_INVALID",
+          severity: "fatal",
+        },
+      );
+    }
+    return {
+      project: null,
+      app: null,
+      resolution,
+      reason: resolution.reason,
+    };
+  }
+  if (!project.cloudAppId) {
+    return {
+      project,
+      app: null,
+      resolution,
+      reason: "not_published",
+    };
+  }
+
+  const response = await client.getApp(project.cloudAppId);
+  if (!response.app || response.app.id !== project.cloudAppId) {
+    throw new ElizaError(
+      "Cloud returned an invalid app for the project's publication binding",
+      {
+        code: "PROJECT_CLOUD_APP_INVALID",
+        context: {
+          projectId: project.id,
+          cloudAppId: project.cloudAppId,
+          returnedAppId: response.app?.id,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  return { project, app: response.app, resolution };
+}
+
+/** User-facing failure for an app-scoped domain read. */
+export function domainProjectResolutionMessage(
+  target: DomainTargetProject,
+): string {
+  if (target.reason === "not_published" && target.project) {
+    return `"${target.project.name}" is not published yet, so it has no Cloud domain settings.`;
+  }
+  return projectResolutionMessage(target.resolution);
+}
 
 function hasExplicitAppReference(options?: unknown): boolean {
   const params = actionParams(options);

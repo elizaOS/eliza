@@ -228,7 +228,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
         {
           description: t("cloud.appDomains.invalidDomainHint", {
             defaultValue:
-              "Please enter a valid domain like example.com or app.example.com",
+              "Please enter a valid domain like example.com or project.example.com",
           }),
         },
       );
@@ -355,7 +355,8 @@ export function AppDomains({ appId }: AppDomainsProps) {
               </h3>
               <p className="text-xs text-muted mt-1">
                 {t("cloud.appDomains.subtitle", {
-                  defaultValue: "Connect custom domains to your app",
+                  defaultValue:
+                    "Connect custom domains to your published project",
                 })}
               </p>
             </div>
@@ -403,7 +404,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                     <p className="text-xs text-muted mt-0.5">
                       {t("cloud.appDomains.developmentUrlHint", {
                         defaultValue:
-                          "Deploy your app to get a permanent subdomain and add custom domains.",
+                          "Publish your project to get a permanent subdomain and add custom domains.",
                       })}
                     </p>
                   </div>
@@ -418,13 +419,13 @@ export function AppDomains({ appId }: AppDomainsProps) {
               </div>
               <h4 className="text-sm font-medium text-txt-strong mb-1">
                 {t("cloud.appDomains.noAppDeployed", {
-                  defaultValue: "No App Deployed",
+                  defaultValue: "No Project Published",
                 })}
               </h4>
               <p className="text-xs text-muted max-w-sm mx-auto">
                 {t("cloud.appDomains.noAppDeployedHint", {
                   defaultValue:
-                    "Deploy your app first to get a subdomain. Once deployed, you can add custom domains here.",
+                    "Publish your project first to get a subdomain. Once published, you can add custom domains here.",
                 })}
               </p>
             </div>
@@ -547,7 +548,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   <p className="text-xs text-muted max-w-xs mx-auto mt-2">
                     {t("cloud.appDomains.useYourOwnDomainHint", {
                       defaultValue:
-                        "Connect a custom domain to make your app accessible at your own branded URL",
+                        "Connect a custom domain to make your published project accessible at your own branded URL",
                     })}
                   </p>
                 </div>
@@ -600,7 +601,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   })}
                 </p>
                 <p className="text-xs text-muted font-mono mt-1">
-                  app.example.com
+                  project.example.com
                 </p>
               </div>
               <div className="text-right">
@@ -819,7 +820,7 @@ function DomainCard({
                     </code>
                     {t("cloud.appDomains.removeDomainConfirmPost", {
                       defaultValue:
-                        "? Users will no longer be able to access your app via this domain.",
+                        "? Users will no longer be able to access your published project via this domain.",
                     })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>

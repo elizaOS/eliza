@@ -1,6 +1,8 @@
-// Shared visual task-card language for the /orchestrator and /task-coordinator
-// single-pane landings. Both views render the same card medallion + chips so the
-// two surfaces read as one product. Pure presentation — no data fetching.
+/**
+ * Shared visual task-card language for the orchestrator and task-coordinator
+ * landings. Both views use the same medallions and metadata vocabulary so they
+ * read as one product; this module performs no data fetching.
+ */
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
@@ -221,13 +223,15 @@ export function TaskSearchInput({
 }
 
 /** A quiet oversized watermark glyph pinned bottom-right, used to ground the
- * empty void beneath a short task list. Decorative only, very low opacity. */
+ * empty void beneath a short task list. Phone-width panels omit it because the
+ * decoration otherwise competes with task metadata in the narrow content rail. */
 export function SparseWatermark({ icon }: { icon: LucideIcon }) {
   const Icon = icon;
   return (
     <div
-      className="pointer-events-none absolute bottom-6 right-4 select-none"
+      className="pointer-events-none absolute bottom-6 right-4 hidden select-none sm:block"
       aria-hidden
+      data-testid="task-sparse-watermark"
     >
       <Icon className="h-44 w-44 text-accent opacity-[0.05]" strokeWidth={1} />
     </div>

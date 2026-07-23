@@ -128,6 +128,10 @@ NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+# Managed frontend deployments are served at <project-slug>.sites.elizacloud.ai.
+# The environment-specific blocks repeat this value because Wrangler does not
+# inherit vars into named environments.
+ELIZA_FRONTEND_HOST_SUFFIX = "sites.elizacloud.ai"
 # Internal Worker-to-agent calls must target the control-plane origin directly;
 # same-zone fetches to a UUID host bypass its Worker route and hit wildcard DNS.
 AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
@@ -325,6 +329,9 @@ routes = [
   { pattern = "staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "app-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "api-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  # Managed project frontends are two labels below the staging zone. Keep this
+  # more-specific route beside the matching Terraform wildcard DNS/certificate.
+  { pattern = "*.sites.staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   # Per-agent subdomains for staging (#15205): mirrors prod's *.elizacloud.ai so
   # the STAGING Worker (not the prod one) proxies staging agents. Requires the
   # matching *.staging.elizacloud.ai DNS wildcard and ELIZA_CLOUD_AGENT_BASE_DOMAIN
@@ -362,6 +369,7 @@ NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"
 # Was "elizacloud.ai", which minted staging agent URLs on the PROD wildcard so
 # the prod worker (which has no staging agents) served CORS-less 404s (#15205).
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "staging.elizacloud.ai"
+ELIZA_FRONTEND_HOST_SUFFIX = "sites.staging.elizacloud.ai"
 # Routes agent-subdomain traffic to the staging control-plane VM. Without this
 # the Worker falls back to DEFAULT_AGENT_ROUTER_ORIGIN_HOST in
 # packages/cloud/api/src/index.ts (= eliza-production-1.elizacloud.ai) so
@@ -516,6 +524,7 @@ workers_dev = false
 routes = [
   { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "*.sites.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "*.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
@@ -546,6 +555,7 @@ NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+ELIZA_FRONTEND_HOST_SUFFIX = "sites.elizacloud.ai"
 FEED_ORIGIN_HOST = "feed-web-production.up.railway.app"
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That

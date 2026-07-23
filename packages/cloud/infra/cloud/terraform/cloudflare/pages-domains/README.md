@@ -1,7 +1,8 @@
 # Cloudflare Pages public domains
 
 This Terraform root owns the four stable Pages custom-domain bindings, their
-proxied CNAME records, and the staging dedicated-agent wildcard edge assets:
+proxied CNAME records, the staging dedicated-agent wildcard edge assets, and
+the managed-project frontend wildcard DNS/TLS edge in both environments:
 
 | Environment | Project | Public domain | CNAME target |
 | --- | --- | --- | --- |
@@ -9,6 +10,16 @@ proxied CNAME records, and the staging dedicated-agent wildcard edge assets:
 | staging | `eliza-app` | `app-staging.elizacloud.ai` | `develop.eliza-app.pages.dev` |
 | production | `eliza-cloud` | `elizacloud.ai` | `eliza-cloud.pages.dev` |
 | production | `eliza-app` | `app.elizacloud.ai` | `eliza-app.pages.dev` |
+
+Managed frontends published from Projects are served by the Cloud API Worker:
+
+| Environment | Public URL shape | Wildcard CNAME |
+| --- | --- | --- |
+| staging | `<slug>.sites.staging.elizacloud.ai` | `*.sites.staging.elizacloud.ai` → `api-staging.elizacloud.ai` |
+| production | `<slug>.sites.elizacloud.ai` | `*.sites.elizacloud.ai` → `api.elizacloud.ai` |
+
+Both suffixes have an advanced certificate pack covering the suffix and its
+wildcard. Universal SSL does not cover these multi-label project hosts.
 
 For staging agents it also adopts both proxied A records at
 `*.staging.elizacloud.ai` and advanced certificate pack `02490878…`. Universal
@@ -35,7 +46,8 @@ push or pull request.
 
 Required GitHub Environment configuration:
 
-- `CLOUDFLARE_API_TOKEN` secret with Pages Read/Write and DNS Read/Write.
+- `CLOUDFLARE_API_TOKEN` secret with Pages Read/Write, DNS Read/Write, and SSL
+  and Certificates Write.
 - `CLOUDFLARE_ACCOUNT_ID` secret.
 - `APPS_CLOUDFLARE_ZONE_ID` secret or variable.
 - `R2_STATE_ACCESS_KEY_ID` and `R2_STATE_SECRET_ACCESS_KEY` secrets.
@@ -45,7 +57,8 @@ Required GitHub Environment configuration:
   inventory. Keeping these as protected Environment variables avoids guessing
   or committing live edge inventory while still making every plan reproducible.
 
-The outputs expose Pages domain state plus wildcard DNS and advanced-certificate
-status; the post-apply workflow verifies both, completes a real wildcard TLS
-handshake, probes the public Pages endpoints, and requires the environment
-routing beacon.
+The outputs expose Pages domain state plus both wildcard DNS and
+advanced-certificate states. The post-apply workflow verifies them, completes
+real wildcard TLS handshakes, proves unknown project hosts fail closed with
+404, probes the public Pages endpoints, and requires the environment routing
+beacon.

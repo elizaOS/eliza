@@ -484,7 +484,7 @@ function AppRunsWidget({
         getClientErrorMessage(
           refreshError,
           t("agentorchestrator.loadRunsError", {
-            defaultValue: "Failed to load app runs.",
+            defaultValue: "Failed to load project runs.",
           }),
         ),
       );
@@ -533,7 +533,7 @@ function AppRunsWidget({
 
   const section = (
     <WidgetSection
-      title={t("appsview.Running", { defaultValue: "Apps" })}
+      title={t("appsview.Running", { defaultValue: "Project runs" })}
       icon={<Activity className="h-4 w-4" />}
       action={
         <div className="flex items-center gap-1">
@@ -562,12 +562,11 @@ function AppRunsWidget({
             size="sm"
             className="h-6 w-6 p-0"
             aria-label={t("agentorchestrator.openApps", {
-              defaultValue: "Open apps",
+              defaultValue: "Open Projects",
             })}
             onClick={() => {
               setState("appRuns", runs);
-              setTab("apps");
-              setState("appsSubTab", "running");
+              setTab("tasks");
             }}
           >
             <SquareArrowOutUpRight className="h-3.5 w-3.5" />
@@ -585,14 +584,14 @@ function AppRunsWidget({
         loading ? (
           <div className="text-xs-tight text-muted">
             {t("agentorchestrator.loadingRuns", {
-              defaultValue: "Loading app runs...",
+              defaultValue: "Loading project runs...",
             })}
           </div>
         ) : (
           <EmptyWidgetState
             icon={<Activity className="h-8 w-8" />}
             title={t("agentorchestrator.noGamesRunning", {
-              defaultValue: "No games are running",
+              defaultValue: "No project runs",
             })}
           />
         )

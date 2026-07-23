@@ -1,11 +1,9 @@
 /**
- * Unit coverage for deployApp's contract (endpoint/method, gated-error
- * propagation) against a mocked api client, no network (#9145).
+ * Verifies the Cloud deployment client contract and its runtime validation
+ * against a deterministic API boundary.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// #9145 — deployApp's contract (endpoint + method) and gated-error propagation,
-// without a network. Mock the typed api client the lib delegates to.
 const apiMock = vi.fn();
 vi.mock("../../lib/api-client", () => ({
   api: (...args: unknown[]) => apiMock(...args),
@@ -17,6 +15,8 @@ const {
   deleteApp,
   deployRepoUrlFromApp,
   deployApp,
+  getApp,
+  getAppDeployCapability,
   getLatestAppDeployment,
   regenerateAppApiKey,
   updateApp,
@@ -28,6 +28,40 @@ afterEach(() => {
 });
 
 describe("deployApp (#9145)", () => {
+  it("GETs the signed-in organization's complete container capability", async () => {
+    apiMock.mockResolvedValue({
+      enabled: false,
+      reason: "organization_not_allowlisted",
+    });
+
+    await expect(getAppDeployCapability()).resolves.toEqual({
+      enabled: false,
+      reason: "organization_not_allowlisted",
+    });
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/apps/deploy-capability");
+  });
+
+  it("rejects malformed container capability responses", async () => {
+    apiMock.mockResolvedValue({
+      enabled: false,
+      reason: "allow_everyone",
+    });
+
+    await expect(getAppDeployCapability()).rejects.toThrow(
+      "invalid container capability reason",
+    );
+  });
+
+  it("GETs one app imperatively for project publication joins", async () => {
+    apiMock.mockResolvedValue({ app: { id: "app_42", is_active: true } });
+
+    await expect(getApp("app_42")).resolves.toEqual({
+      id: "app_42",
+      is_active: true,
+    });
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/apps/app_42");
+  });
+
   it("POSTs to /api/v1/apps/:id/deploy and returns the deployment record", async () => {
     apiMock.mockResolvedValue({ deploymentId: "dep_1", status: "BUILDING" });
     const result = await deployApp("app_42");

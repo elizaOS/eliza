@@ -40,7 +40,16 @@ export function CodingAgentTasksPanel(
   props: TaskCoordinatorCodingAgentTasksPanelProps,
 ): React.JSX.Element | null {
   const Component = registeredTaskCoordinatorSlots.CodingAgentTasksPanel;
-  return Component ? <Component {...props} /> : null;
+  return Component ? (
+    <Component {...props} />
+  ) : (
+    <div
+      className="flex min-h-32 items-center justify-center px-4 text-center text-sm text-muted"
+      data-testid="coding-agent-tasks-unavailable"
+    >
+      Coding tasks are not available in this build.
+    </div>
+  );
 }
 
 export function CodingAgentControlChip(

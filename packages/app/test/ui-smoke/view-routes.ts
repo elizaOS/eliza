@@ -41,6 +41,7 @@ export const VIEW_ROUTES: readonly ViewRoute[] = [
   { id: "transcripts", path: "/apps/transcripts" },
   { id: "relationships", path: "/apps/relationships" },
   { id: "memories", path: "/apps/memories" },
+  { id: "my-apps", path: "/apps/my-apps" },
   { id: "rolodex", path: "/rolodex" },
   { id: "voice", path: "/settings/voice" },
   { id: "runtime", path: "/apps/runtime" },

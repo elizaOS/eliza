@@ -28,3 +28,21 @@ output "staging_agent_edge" {
     }
   } : null
 }
+
+output "managed_frontend_edge" {
+  description = "Environment-specific managed-project frontend wildcard DNS and advanced-certificate state."
+  value = {
+    suffix = local.managed_frontend_edge.suffix
+    dns_record = {
+      id      = cloudflare_dns_record.managed_frontend_wildcard.id
+      name    = cloudflare_dns_record.managed_frontend_wildcard.name
+      content = cloudflare_dns_record.managed_frontend_wildcard.content
+      proxied = cloudflare_dns_record.managed_frontend_wildcard.proxied
+    }
+    certificate_pack = {
+      id     = cloudflare_certificate_pack.managed_frontend.id
+      hosts  = cloudflare_certificate_pack.managed_frontend.hosts
+      status = cloudflare_certificate_pack.managed_frontend.status
+    }
+  }
+}

@@ -42,6 +42,8 @@ src/
                          secret/amount). CloudAppConfirmationAction is the gated-action union.
   deploy-gate.ts         runDeployGate: poll deploy status → READY, then reachability-probe the
                          authoritative production_url before claiming live (pure + injectable).
+  project-resolution.ts  Ambiguity-safe Project registry resolution (explicit → named in prose →
+                         active/sole) shared by every project-keyed Cloud action.
   reachability.ts        probeReachable + respondedLive (2xx / non-gateway-down = live).
   app-facts.ts           record/removeAppDeployFact — durable "app is live at <url>" memory fact.
   domain-facts.ts        record/remove/hasInterruptedDomainPurchase — durable marker for a 502
@@ -53,8 +55,8 @@ src/
                          WeakMap cache with invalidateAppsCache(runtime).
   actions/               One file per action (see below).
 __tests__/               bun test suites (helpers.ts fakes ONLY the SDK boundary).
-test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK over a loopback
-                         cloud, proving the two-phase confirm on the pr-deterministic lane.
+test/scenarios/          Real SDK over loopback HTTP: structured confirmation plus the full
+                         project publish/read-safe-domain/unpublish lifecycle on pr-deterministic.
 ```
 
 ## Actions
@@ -62,9 +64,15 @@ test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK 
 **Read-core**
 - `LIST_CLOUD_APPS` — list the user's apps (name / url / status).
 - `GET_APP` — details for one app by name or id.
+- `GET_PUBLISHED_PROJECT` — live project publication status, URL, analytics, and earnings.
+- `GET_APP_ANALYTICS` / `LIST_APP_USERS` — project-keyed Cloud reads.
 - Provider `CLOUD_APPS` — injects the app inventory into planner context.
 
 **Create → deploy → live loop + safe delete**
+- `PUBLISH_PROJECT` — create/reuse + immediately bind a Cloud record, deploy,
+  verify liveness, then activate; managed frontend is the default.
+- `UNPUBLISH_PROJECT` — two-phase confirmation; deactivate while preserving the
+  Cloud record and Project binding for republish.
 - `CREATE_APP` — create from name/description/monetization intent.
 - `DEPLOY_APP` — deploy + COMPLETION GATE (READY, then `/health` 2xx on the
   authoritative `production_url`) before claiming live; records a deploy fact.
@@ -80,7 +88,11 @@ test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK 
   safe, idempotent, server-gated request endpoint fires on confirm.
 - `REGENERATE_APP_API_KEY` — SECURITY: two-phase confirm; new key shown ONCE, never logged.
 
-**Domains (check → buy → list)**
+**Domains**
+- `SEARCH_DOMAINS` — READ-ONLY organization-level registrar keyword search
+  with exact marked-up prices; never reserves or purchases a domain.
+- `LIST_MANAGED_DOMAINS` — READ-ONLY account-wide domain inventory including
+  assignment, renewal, SSL, and registrar state.
 - `CHECK_APP_DOMAIN` — READ-ONLY availability + purchase/renewal price quote.
 - `BUY_APP_DOMAIN` — MONEY-OUT: read-only quote first, two-phase confirm with a
   15-min quote TTL + confirm-time price re-check; maps the server's idempotent
@@ -88,6 +100,10 @@ test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK 
   replies; interrupted purchases are tracked in `domain-facts.ts`.
 - `LIST_APP_DOMAINS` — READ-ONLY: registrar/status/SSL/verification per domain
   (with the exact `_eliza-cloud-verify` TXT record for unverified external domains).
+- `GET_APP_DOMAIN_STATUS` — READ-ONLY live registrar progress plus stored
+  verification/SSL state for one attached domain.
+- `LIST_DOMAIN_DNS_RECORDS` — READ-ONLY public DNS records for one
+  Cloudflare-managed domain attached to a published project.
 
 **Growth surfaces**
 - `DEPLOY_FRONTEND` / `ROLLBACK_FRONTEND` / `LIST_FRONTEND_DEPLOYMENTS` — managed

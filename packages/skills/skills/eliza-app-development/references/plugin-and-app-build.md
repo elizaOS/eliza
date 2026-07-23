@@ -1,6 +1,7 @@
-# Plugin And App Build Workflow
+# Plugin and project build workflow
 
-Use this reference when implementing an Eliza app feature, shipped plugin, local plugin, Cloud app, or worker-built app.
+Use this reference when implementing an Eliza host-app feature, shipped plugin,
+local plugin, published project, or worker-built project.
 
 ## Decide The Ownership Boundary
 
@@ -29,18 +30,24 @@ Follow elizaOS plugin conventions:
 
 Use the `elizaos` skill for upstream details. Keep app-specific product glue in app packages and upstream abstractions in elizaOS packages.
 
-## App Build Shape
+## Project build shape
 
-For new app experiences:
+For new user-created projects:
 
-1. Prefer Eliza Cloud for auth, app users, credits, analytics, billing, domains, and deployment when Cloud is enabled or requested.
-2. Use an app record and `appId` for browser-facing identity.
-3. Keep API keys and owner credentials server-side only.
-4. Use app auth for users and app-scoped Cloud endpoints for chat/inference.
-5. Enable monetization when the app calls paid inference on behalf of users.
-6. Use app charge requests or x402 payment requests when the product needs exact prices or arbitrary payment approvals.
-7. Use Cloud promotion/image/video/music/TTS APIs for launch assets; use the parent runtime only for extra media capabilities that are not exposed by the Cloud API.
-8. Deploy a container only when server code is needed; static hosting is acceptable for legacy/local static apps.
+1. Register or resolve the durable local project before publishing.
+2. Prefer Eliza Cloud for auth, users, credits, analytics, billing, domains, and
+   hosting when Cloud is connected and publishing is requested.
+3. Bind exactly one Cloud app record through `ProjectRecord.cloudAppId`; do not
+   introduce another identity map.
+4. Publish the managed frontend first. Deploy a container only when server code
+   is needed and the organization is allowlisted.
+5. Keep API keys and owner credentials server-side only.
+6. Use app auth and the stable app-scoped Cloud endpoints for chat/inference.
+7. Enable monetization when the published project calls paid inference for users.
+8. Use app charge requests or x402 payment requests for exact prices or
+   arbitrary payment approvals.
+9. Use Cloud promotion/image/video/music/TTS APIs for launch assets; use the
+   parent runtime only for media capabilities not exposed by the Cloud API.
 
 Use `eliza-cloud`, `build-monetized-app`, and `eliza-cloud-buy-domain` for Cloud-specific implementation details.
 
@@ -78,4 +85,7 @@ bun run verify
 bun run test
 ```
 
-For Cloud app builds, verify app auth, proxy behavior, health checks, monetization settings, and container URL/origins. For orchestrated workers, verify `SKILLS.md` generation and a `USE_SKILL parent-agent` callback path.
+For published projects, verify the project binding, managed frontend or
+container liveness, app auth, proxy behavior, monetization settings, and public
+URL/origins. For orchestrated workers, verify `SKILLS.md` generation and a
+`USE_SKILL parent-agent` callback path.

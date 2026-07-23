@@ -54,11 +54,11 @@ const STOP_VERBS = /\b(close|stop|exit|quit|kill|shut\s*down|terminate)\b/i;
 const LIST_VERBS =
 	/\b(list|show|what['’]s open|running|whats? open|whats? running)\b/i;
 const CREATE_VERBS =
-	/\b(create|build|make|new|scaffold|generate|spin up)\b.*?\b(app|application|game|tool|widget|dashboard)\b/i;
+	/\b(create|build|make|new|scaffold|generate|spin up)\b.*?\b(project|app|application|game|tool|widget|dashboard|site)\b/i;
 const PLUGIN_ONLY = /\bplugin\b/i;
 const APP_NOUN = /\b(app|apps|application|applications|mini)\b/i;
 const LOAD_FROM_DIR =
-	/\b(load|register|import|scan)\b.*\b(directory|folder|dir|path)\b/i;
+	/\b(add|load|register|import|scan)\b.*\b(directory|folder|dir|path)\b/i;
 
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
@@ -190,11 +190,11 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"scaffold",
 		],
 		description:
-			"Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
+			"Installed-package control plus project creation. action=launch starts an installed item; action=relaunch stops then launches it (optionally with verification); action=list shows installed and running items; action=load_from_directory registers project packages from an absolute folder; action=create runs the multi-turn project create-or-edit flow, scaffolds from min-project, and dispatches a coding agent with AppVerificationService.",
 		descriptionCompressed:
-			"apps launch|relaunch|list|load_folder|create; create scaffolds, coding-agent, verify",
+			"installed items launch|relaunch|list; projects load_folder|create; create scaffolds, delegates, verifies",
 		routingHint:
-			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|relaunch|load_from_directory|create) — answer app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications.",
+			"Installed applications themselves -> APP. Listing, launching, or restarting installed items uses APP action=list|launch|relaunch. Adding project packages from a folder or building a new project uses APP action=load_from_directory|create, including when the user colloquially asks to build an app. VIEWS covers navigation to the Projects surface; APP performs the package or project operation.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -220,7 +220,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			{
 				name: "app",
 				description:
-					"App name, slug, or display name (launch / relaunch / create-edit).",
+					"Installed package or editable project name, slug, or display name.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -426,7 +426,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "[CHOICE:app-create id=app-create-…]\nnew = Create a new app\nedit-1 = Edit existing: Notes (notes)\ncancel = Cancel\n[/CHOICE]",
+						text: "[CHOICE:app-create id=app-create-…]\nnew = Create a new project\nedit-1 = Edit existing: Notes (notes)\ncancel = Cancel\n[/CHOICE]",
 						action: "APP",
 					},
 				},
@@ -439,7 +439,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Scaffolded Note Taker at /…/eliza/plugins/app-note-taker and spawned a coding agent in the background. I'll verify when it's done.",
+						text: "Started a build task for project Note Taker at /…/eliza/apps/app-note-taker. I'll verify it when the task completes.",
 						action: "APP",
 					},
 				},
@@ -448,13 +448,13 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				{
 					name: "{{user1}}",
 					content: {
-						text: "load apps from /Users/me/dev/my-apps directory",
+						text: "add projects from /Users/me/dev/my-projects",
 					},
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Registered 2 apps from /Users/me/dev/my-apps:\n  - My App (@me/app-mine)\n  - Other App (@me/app-other)",
+						text: "Added 2 projects from /Users/me/dev/my-projects:\n  - My Project (@me/app-mine)\n  - Other Project (@me/app-other)",
 						action: "APP",
 					},
 				},

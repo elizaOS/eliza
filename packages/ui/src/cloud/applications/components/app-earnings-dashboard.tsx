@@ -97,11 +97,15 @@ interface EarningsResponse {
 
 interface AppEarningsDashboardProps {
   appId: string;
+  onNavigateTab?: (tab: "monetization") => void;
 }
 
 const PAYOUT_THRESHOLD = 25;
 
-export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
+export function AppEarningsDashboard({
+  appId,
+  onNavigateTab,
+}: AppEarningsDashboardProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const testDataParam = searchParams.get("testData") === "true";
@@ -237,15 +241,21 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           </h3>
           {monetizationEnabled ? (
             <p className="text-neutral-500 text-sm">
-              Earnings will appear here once users start using your app
+              Earnings will appear here once users start using your published
+              project
             </p>
           ) : (
             <>
               <p className="text-neutral-500 text-sm mb-4">
-                Enable monetization to start earning from your app
+                Enable monetization to start earning from your published
+                project
               </p>
               <Button
                 onClick={() => {
+                  if (onNavigateTab) {
+                    onNavigateTab("monetization");
+                    return;
+                  }
                   navigate(`/dashboard/apps/${appId}?tab=monetization`);
                 }}
                 className="bg-txt hover:bg-txt/90 text-bg"

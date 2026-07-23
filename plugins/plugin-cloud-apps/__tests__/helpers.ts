@@ -8,11 +8,17 @@
  */
 
 import { mock } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type {
   ActivateAppFrontendResponse,
   AdCampaignAttributionResponse,
+  AppAnalyticsResponse,
   AppBackupSnapshot,
   AppDeployStatusResponse,
+  AppDomainStatusInput,
+  AppDomainStatusResponse,
   AppDto,
   AppEarningsResponse,
   AppMonetizationResponse,
@@ -44,13 +50,18 @@ import type {
   DuplicateAdCampaignResponse,
   ExportAppBackupResponse,
   ListAdSlotsResponse,
+  ListAppDomainDnsRecordsResponse,
   ListAppDomainsResponse,
   ListAppFrontendDeploymentsResponse,
   ListAppsResponse,
+  ListAppUsersResponse,
   ListInfluencersResponse,
+  ListManagedDomainsResponse,
   ListPressReleasesResponse,
   PressReleaseDto,
   RegenerateAppApiKeyResponse,
+  SearchDomainsInput,
+  SearchDomainsResponse,
   SubmitPressReleaseInput,
   SubmitPressReleaseResponse,
   UpdateAppInput,
@@ -59,7 +70,15 @@ import type {
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
 } from "@elizaos/cloud-sdk";
-import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  type ProjectRecord,
+  setActiveProject,
+  type Task,
+  type UUID,
+  upsertProject,
+} from "@elizaos/core";
 
 /** Per-request options the SDK's poll-friendly app getters accept. */
 type SdkRequestOptions = { signal?: AbortSignal; timeoutMs?: number };
@@ -127,6 +146,18 @@ type GetAppDeployStatusFn = (
   id: string,
   options?: SdkRequestOptions,
 ) => Promise<AppDeployStatusResponse>;
+type GetAppAnalyticsFn = (
+  id: string,
+  options?: {
+    period?: "hourly" | "daily" | "monthly";
+    startDate?: string;
+    endDate?: string;
+  },
+) => Promise<AppAnalyticsResponse>;
+type ListAppUsersFn = (
+  id: string,
+  options?: { limit?: number },
+) => Promise<ListAppUsersResponse>;
 type DeleteAppFn = (id: string) => Promise<DeleteAppResponse>;
 type UpdateAppFn = (id: string, patch: UpdateAppInput) => Promise<AppResponse>;
 type UpdateMonetizationFn = (
@@ -153,6 +184,18 @@ type BuyAppDomainFn = (
   input: BuyAppDomainInput,
 ) => Promise<BuyAppDomainResponse>;
 type ListAppDomainsFn = (id: string) => Promise<ListAppDomainsResponse>;
+type GetAppDomainStatusFn = (
+  id: string,
+  input: AppDomainStatusInput,
+) => Promise<AppDomainStatusResponse>;
+type SearchDomainsFn = (
+  input: SearchDomainsInput,
+) => Promise<SearchDomainsResponse>;
+type ListManagedDomainsFn = () => Promise<ListManagedDomainsResponse>;
+type ListAppDomainDnsRecordsFn = (
+  id: string,
+  domain: string,
+) => Promise<ListAppDomainDnsRecordsResponse>;
 
 type CloudAppsTestRuntime = Pick<
   IAgentRuntime,
@@ -187,6 +230,8 @@ interface SdkState {
   submitPressRelease: SubmitPressReleaseFn;
   exportAppBackup: ExportAppBackupFn;
   getAppDeployStatus: GetAppDeployStatusFn;
+  getAppAnalytics: GetAppAnalyticsFn;
+  listAppUsers: ListAppUsersFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
   updateMonetization: UpdateMonetizationFn;
@@ -196,6 +241,10 @@ interface SdkState {
   checkAppDomain: CheckAppDomainFn;
   buyAppDomain: BuyAppDomainFn;
   listAppDomains: ListAppDomainsFn;
+  getAppDomainStatus: GetAppDomainStatusFn;
+  searchDomains: SearchDomainsFn;
+  listManagedDomains: ListManagedDomainsFn;
+  listAppDomainDnsRecords: ListAppDomainDnsRecordsFn;
 }
 
 function defaultState(): SdkState {
@@ -358,11 +407,13 @@ function defaultState(): SdkState {
           created_at: "2026-06-29T00:00:00.000Z",
           activated_at: "2026-06-29T00:00:00.000Z",
         },
+        public_url: "https://app.frontends.test",
       }),
     listAppFrontendDeployments: () =>
       Promise.resolve({
         success: true,
         active_deployment_id: null,
+        public_url: "https://app.frontends.test",
         deployments: [],
       }),
     activateAppFrontend: (_a, id) =>
@@ -381,6 +432,7 @@ function defaultState(): SdkState {
           created_at: "2020-01-01",
           activated_at: "2020-01-01",
         },
+        public_url: "https://app.frontends.test",
       }),
     createInfluencerProfile: () =>
       Promise.resolve({
@@ -490,6 +542,27 @@ function defaultState(): SdkState {
         error: null,
         startedAt: null,
       }),
+    getAppAnalytics: () =>
+      Promise.resolve({
+        success: true,
+        analytics: [],
+        totalStats: {
+          totalRequests: 0,
+          totalUsers: 0,
+          totalCreditsUsed: "0.00",
+        },
+        period: {
+          type: "daily",
+          start: "2026-06-23T00:00:00.000Z",
+          end: "2026-07-23T00:00:00.000Z",
+        },
+      }),
+    listAppUsers: () =>
+      Promise.resolve({
+        success: true,
+        users: [],
+        pagination: { total: 0, limit: 0 },
+      }),
     deleteApp: () => Promise.resolve({ success: true, message: "deleted" }),
     updateApp: () =>
       Promise.resolve({ success: true, app: undefined as unknown as AppDto }),
@@ -528,11 +601,98 @@ function defaultState(): SdkState {
         debited: { totalUsdCents: 1399, currency: "USD" },
       }),
     listAppDomains: () => Promise.resolve({ success: true, domains: [] }),
+    getAppDomainStatus: (_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        registrar: "cloudflare",
+        status: "active",
+        verified: true,
+        sslStatus: "active",
+        expiresAt: "2027-07-01T00:00:00.000Z",
+        live: {
+          status: "active",
+          completedAt: "2026-07-23T12:00:00.000Z",
+          failureReason: null,
+        },
+      }),
+    searchDomains: (input) =>
+      Promise.resolve({
+        success: true,
+        query: input.query,
+        candidates: [],
+      }),
+    listManagedDomains: () => Promise.resolve({ success: true, domains: [] }),
+    listAppDomainDnsRecords: (_id, domain) =>
+      Promise.resolve({ success: true, domain, records: [] }),
   };
 }
 
 const state: SdkState = defaultState();
 const TEST_AGENT_ID = "agent-0000-0000-0000-000000000000" as UUID;
+
+export interface TestProjectInput {
+  name: string;
+  cloudAppId?: string;
+  localPathName?: string;
+}
+
+export interface TestProjectRegistry {
+  stateDir: string;
+  projects: ProjectRecord[];
+  cleanup: () => void;
+}
+
+/**
+ * Install a real temporary projects.json for action tests.
+ *
+ * Domain actions read core storage directly, so this keeps their identity and
+ * active/sole fallback behavior real while the Cloud SDK remains the only fake.
+ */
+export function installTestProjectRegistry(
+  inputs: TestProjectInput[],
+  options: { activeIndex?: number | null } = {},
+): TestProjectRegistry {
+  const previousStateDir = process.env.ELIZA_STATE_DIR;
+  const stateDir = mkdtempSync(path.join(os.tmpdir(), "cloud-apps-projects-"));
+  process.env.ELIZA_STATE_DIR = stateDir;
+  const projects = inputs.map((input, index) => {
+    const directoryName =
+      input.localPathName ??
+      `${index}-${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    const localPath = path.join(stateDir, directoryName);
+    mkdirSync(localPath, { recursive: true });
+    return upsertProject({
+      name: input.name,
+      localPath,
+      ...(input.cloudAppId ? { cloudAppId: input.cloudAppId } : {}),
+    });
+  });
+  const activeIndex = options.activeIndex;
+  if (
+    typeof activeIndex === "number" &&
+    activeIndex >= 0 &&
+    activeIndex < projects.length
+  ) {
+    setActiveProject(projects[activeIndex].id);
+  }
+
+  let cleaned = false;
+  return {
+    stateDir,
+    projects,
+    cleanup: () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      rmSync(stateDir, { recursive: true, force: true });
+    },
+  };
+}
 
 export function setListApps(fn: ListAppsFn): void {
   state.listApps = fn;
@@ -612,6 +772,12 @@ export function setExportAppBackup(fn: ExportAppBackupFn): void {
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
 }
+export function setGetAppAnalytics(fn: GetAppAnalyticsFn): void {
+  state.getAppAnalytics = fn;
+}
+export function setListAppUsers(fn: ListAppUsersFn): void {
+  state.listAppUsers = fn;
+}
 export function setDeleteApp(fn: DeleteAppFn): void {
   state.deleteApp = fn;
 }
@@ -638,6 +804,20 @@ export function setBuyAppDomain(fn: BuyAppDomainFn): void {
 }
 export function setListAppDomains(fn: ListAppDomainsFn): void {
   state.listAppDomains = fn;
+}
+export function setGetAppDomainStatus(fn: GetAppDomainStatusFn): void {
+  state.getAppDomainStatus = fn;
+}
+export function setSearchDomains(fn: SearchDomainsFn): void {
+  state.searchDomains = fn;
+}
+export function setListManagedDomains(fn: ListManagedDomainsFn): void {
+  state.listManagedDomains = fn;
+}
+export function setListAppDomainDnsRecords(
+  fn: ListAppDomainDnsRecordsFn,
+): void {
+  state.listAppDomainDnsRecords = fn;
 }
 
 /** Restore default (empty / no-op) behavior between tests. */
@@ -744,6 +924,22 @@ export class FakeElizaCloudClient {
   ): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id, options);
   }
+  getAppAnalytics(
+    id: string,
+    options?: {
+      period?: "hourly" | "daily" | "monthly";
+      startDate?: string;
+      endDate?: string;
+    },
+  ): Promise<AppAnalyticsResponse> {
+    return state.getAppAnalytics(id, options);
+  }
+  listAppUsers(
+    id: string,
+    options?: { limit?: number },
+  ): Promise<ListAppUsersResponse> {
+    return state.listAppUsers(id, options);
+  }
   deleteApp(id: string): Promise<DeleteAppResponse> {
     return state.deleteApp(id);
   }
@@ -785,6 +981,24 @@ export class FakeElizaCloudClient {
   }
   listAppDomains(id: string): Promise<ListAppDomainsResponse> {
     return state.listAppDomains(id);
+  }
+  getAppDomainStatus(
+    id: string,
+    input: AppDomainStatusInput,
+  ): Promise<AppDomainStatusResponse> {
+    return state.getAppDomainStatus(id, input);
+  }
+  searchDomains(input: SearchDomainsInput): Promise<SearchDomainsResponse> {
+    return state.searchDomains(input);
+  }
+  listManagedDomains(): Promise<ListManagedDomainsResponse> {
+    return state.listManagedDomains();
+  }
+  listAppDomainDnsRecords(
+    id: string,
+    domain: string,
+  ): Promise<ListAppDomainDnsRecordsResponse> {
+    return state.listAppDomainDnsRecords(id, domain);
   }
 }
 

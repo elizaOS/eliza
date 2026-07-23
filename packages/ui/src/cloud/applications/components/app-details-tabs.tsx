@@ -1,7 +1,7 @@
 /**
- * Application detail — tab bar + tab content router.
- * The active tab is the `?tab=` search param (so deep links + the create flow's
- * `?tab=monetization` redirect work).
+ * Cloud publication detail tabs for both routed console pages and an embedded
+ * project panel. Routed callers persist the active tab in `?tab=`; embedded
+ * callers control it directly while reusing the same management components.
  */
 
 import {
@@ -27,15 +27,18 @@ import { AppFrontendHosting } from "./app-frontend-hosting";
 import { AppMonetizationSettings } from "./app-monetization-settings";
 import { AppOverview } from "./app-overview";
 import { AppPromote } from "./app-promote";
-import { AppSettings } from "./app-settings";
+import { AppSettings, type AppSettingsProps } from "./app-settings";
 import { AppUsers } from "./app-users";
 
-interface AppDetailsTabsProps {
+export interface AppDetailsTabsProps {
   app: App;
   showApiKey?: string;
+  activeTab?: AppDetailsTabValue;
+  onTabChange?: (tab: AppDetailsTabValue) => void;
+  settingsProps?: Omit<AppSettingsProps, "app">;
 }
 
-type TabValue =
+export type AppDetailsTabValue =
   | "overview"
   | "hosting"
   | "domains"
@@ -46,10 +49,16 @@ type TabValue =
   | "users"
   | "settings";
 
-export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
+export function AppDetailsTabs({
+  app,
+  showApiKey,
+  activeTab: controlledTab,
+  onTabChange,
+  settingsProps,
+}: AppDetailsTabsProps) {
   const t = useCloudT();
   const tabs: {
-    value: TabValue;
+    value: AppDetailsTabValue;
     label: string;
     icon: typeof Grid3x3;
   }[] = [
@@ -101,9 +110,17 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
   ];
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const activeTab = (searchParams.get("tab") || "overview") as TabValue;
+  const requestedTab = searchParams.get("tab");
+  const routeTab = tabs.some((tab) => tab.value === requestedTab)
+    ? (requestedTab as AppDetailsTabValue)
+    : "overview";
+  const activeTab = controlledTab ?? routeTab;
 
-  const handleTabChange = (value: TabValue) => {
+  const handleTabChange = (value: AppDetailsTabValue) => {
+    if (onTabChange) {
+      onTabChange(value);
+      return;
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.delete("showApiKey");
     params.set("tab", value);
@@ -114,7 +131,6 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
 
   return (
     <div className="space-y-3 sm:space-y-6">
-      {/* Tabs */}
       <div className="grid grid-cols-2 gap-1 rounded-sm border border-border bg-bg-accent p-1 sm:grid-cols-3 xl:grid-cols-9">
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -138,19 +154,31 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
         })}
       </div>
 
-      {/* Tab Content */}
       <div className="min-w-0">
         {activeTab === "overview" && (
-          <AppOverview app={app} showApiKey={showApiKey} />
+          <AppOverview
+            app={app}
+            showApiKey={showApiKey}
+            onNavigateTab={handleTabChange}
+          />
         )}
         {activeTab === "hosting" && <AppFrontendHosting appId={app.id} />}
         {activeTab === "domains" && <AppDomains appId={app.id} />}
         {activeTab === "promote" && <AppPromote app={app} />}
         {activeTab === "analytics" && <AppAnalytics appId={app.id} />}
-        {activeTab === "earnings" && <AppEarningsDashboard appId={app.id} />}
-        {activeTab === "monetization" && <AppMonetizationSettings app={app} />}
+        {activeTab === "earnings" && (
+          <AppEarningsDashboard
+            appId={app.id}
+            onNavigateTab={handleTabChange}
+          />
+        )}
+        {activeTab === "monetization" && (
+          <AppMonetizationSettings app={app} onNavigateTab={handleTabChange} />
+        )}
         {activeTab === "users" && <AppUsers appId={app.id} />}
-        {activeTab === "settings" && <AppSettings app={app} />}
+        {activeTab === "settings" && (
+          <AppSettings app={app} {...settingsProps} />
+        )}
       </div>
     </div>
   );

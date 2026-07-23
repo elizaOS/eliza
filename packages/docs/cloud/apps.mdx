@@ -1,29 +1,44 @@
 ---
-title: Apps
-description: Create and manage Eliza Cloud apps for hosting, chat routing, domains, analytics, and monetization.
+title: Publishing Projects
+description: Publish an optional Eliza Cloud edition of a project with hosting, domains, analytics, and monetization.
 ---
 
-# Apps
+# Publishing Projects
 
-Apps are Cloud records that connect your product to Eliza Cloud APIs. A Cloud app is separate from your deployable project and from any `@elizaos/app-*` app plugin loaded inside an Eliza runtime.
+Every project can be published when Eliza Cloud is connected, but publishing is
+optional. A local project remains fully usable for building and running without
+Cloud. Publishing creates or reactivates the Cloud artifact for that project,
+deploys its frontend or eligible container, and records the Cloud id on the
+project.
+
+The Cloud API and database continue to call that artifact an `app`. The
+`/api/v1/apps/*` routes, `AppDto`, and app-scoped authentication fields are
+stable wire names; creator-facing product language calls the combined result a
+**published project**.
 
 ## Overview
 
-An Eliza Cloud app provides:
+A published project provides:
 
-- **App identity**: A stable `id` for chat routing, domains, analytics, and marketplace records.
-- **API key**: A one-time key for server-side app administration.
+- **Cloud identity**: A stable app `id` for chat routing, domains, analytics, and marketplace records.
+- **API key**: A one-time key for server-side administration.
 - **Allowed origins**: The browser origins allowed to call app-owned surfaces.
 - **Monetization**: Creator markup for app-scoped chat usage.
-- **Domains and hosting metadata**: App URL, managed app domains, and custom domains.
+- **Hosting and domains**: Versioned managed frontend hosting, an optional
+  allowlisted container, a system URL, and custom domains.
 
-Use a **project** for deployable product workspace state and container `projectName`. Use the **Cloud app** `id` when calling `/api/v1/apps/{id}/chat`.
+The local `ProjectRecord.cloudAppId` is the only project-to-Cloud binding.
+Publishing status and all Cloud details are read live from the bound record;
+they are never copied into `projects.json`. Use the project for workspace state
+and container `projectName`. Use its bound Cloud app `id` when calling
+`/api/v1/apps/{id}/chat`.
 
 ## Launch Readiness
 
-Container deploys and isolated app databases are behind an explicit production
-gate. Staging has a CI-backed deploy proof, but production deploy is only live
-after operators apply the production apps data plane, merge the
+Managed frontend hosting is the default publish path and does not require the
+container gate. Container deploys and isolated databases are behind an explicit
+production gate. Staging has a CI-backed deploy proof, but production container
+deploy is only live after operators apply the production apps data plane, merge the
 `APPS_DEPLOY_ENABLED` cutover switch, and arm the production daemon.
 
 **Why:** the Worker flag only decides whether deploy requests enqueue real
@@ -33,17 +48,21 @@ accepted while apps remain stuck in `building`.
 
 See [Launch Status](/cloud/launch-status) for the current cutover checklist.
 
-## Quick Start
+## Low-level API quick start
+
+The Projects publish panel and `PUBLISH_PROJECT` action perform this lifecycle
+and preserve the project binding. Direct API clients first register the
+Cloud-side artifact:
 
 ```bash
 curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "My App",
+    "name": "My Project",
     "app_url": "https://placeholder.invalid",
     "allowed_origins": ["https://placeholder.invalid"],
-    "description": "Custom AI app",
+    "description": "Published AI project",
     "website_url": "https://example.com",
     "skipGitHubRepo": true
   }'
@@ -54,7 +73,7 @@ curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
   "success": true,
   "app": {
     "id": "uuid-abc123",
-    "name": "My App",
+    "name": "My Project",
     "app_url": "https://placeholder.invalid",
     "allowed_origins": ["https://placeholder.invalid"],
     "created_at": "2026-05-05T10:30:00Z"
@@ -64,19 +83,54 @@ curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
 ```
 
 <Warning>
-  The app API key is returned as one-time plaintext and is server-side only. Store it immediately. For user-facing chat, forward the user's bearer token to the app-scoped chat endpoint so the user's organization balance is charged.
+  The Cloud app API key is returned as one-time plaintext and is server-side
+  only. Store it immediately. For user-facing chat, forward the user's bearer
+  token to the app-scoped chat endpoint so the user's organization balance is
+  charged.
 </Warning>
 
-## Creating an App
+## Publish lifecycle
 
 <Steps>
-<Step title="Register the app">
+<Step title="Choose or register the project">
 
-Create the Cloud app with `name`, `app_url`, and optional metadata. If your container URL does not exist yet, use a placeholder URL and patch it after deployment.
+Start from a registered local project. The Projects surface can create a project
+or add an owned folder. Direct clients register the Cloud artifact with `name`,
+`app_url`, and optional metadata, then persist its `app.id` as that project's
+`cloudAppId`.
 
 </Step>
 
-<Step title="Enable monetization">
+<Step title="Publish the managed frontend">
+
+Managed frontend hosting is the production-real default. The SDK accepts the
+built files, creates an immutable version, and activates it:
+
+```ts
+await cloud.deployAppFrontend(APP_ID, {
+  files: [
+    {
+      path: "index.html",
+      content: "<!doctype html><title>My Project</title>",
+    },
+  ],
+  buildMeta: { source: "project-publish" },
+});
+```
+
+`GET /api/v1/apps/{id}/frontend` lists every version.
+`POST /api/v1/apps/{id}/frontend/{deploymentId}/activate` activates a previous
+version and therefore performs rollback.
+
+An active production deployment receives
+`https://<project-slug>.sites.elizacloud.ai`; staging uses
+`https://<project-slug>.sites.staging.elizacloud.ai`. Those URLs are returned
+authoritatively by the frontend deploy/list endpoints. Clients must not invent
+the hostname when `public_url` is absent.
+
+</Step>
+
+<Step title="Enable monetization (optional)">
 
 ```bash
 curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
@@ -91,13 +145,16 @@ curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
 
 </Step>
 
-<Step title="Deploy your project">
+<Step title="Deploy a backend container (optional)">
 
-Deploy your project as a container with `POST /api/v1/containers` or the SDK `createContainer()` helper. Use `projectName` for the deployment identifier and pass the Cloud app ID through environment variables.
+Only projects that need server-side code require a container. Container publish
+is available when `APPS_DEPLOY_ENABLED` is enabled for the organization; a
+frontend-only project does not need it. Use `projectName` for the deployment
+identifier and pass the bound Cloud app id through environment variables.
 
 </Step>
 
-<Step title="Patch the app URL">
+<Step title="Patch the public URL and origins">
 
 ```bash
 curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
@@ -112,9 +169,14 @@ curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
 </Step>
 </Steps>
 
+On success the project is shown with a **Published** tag. Unpublish sets the
+Cloud record to `is_active: false` while retaining `cloudAppId`, so republishing
+reactivates the same artifact. Deleting the Cloud artifact remains a separate,
+destructive operation.
+
 ## App-Scoped Chat
 
-Route user chats through the Cloud app record:
+Route user chats through the published project's bound Cloud app record:
 
 ```ts
 const response = await fetch(`https://www.elizacloud.ai/api/v1/apps/${APP_ID}/chat`, {
@@ -131,7 +193,9 @@ const response = await fetch(`https://www.elizacloud.ai/api/v1/apps/${APP_ID}/ch
 });
 ```
 
-The app-scoped endpoint charges the user's organization credit balance. If `monetizationEnabled` is true, `inferenceMarkupPercentage` is credited to the Cloud app creator's redeemable earnings.
+The app-scoped endpoint charges the user's organization credit balance. If
+`monetizationEnabled` is true, `inferenceMarkupPercentage` is credited to the
+published project's creator as redeemable earnings.
 
 <Info>
   `X-Affiliate-Code` is currently implemented on generic chat/message routes such as `/api/v1/chat/completions` and `/api/v1/messages`. The app-scoped route `/api/v1/apps/{id}/chat` does not currently read that header.
@@ -141,7 +205,7 @@ The app-scoped endpoint charges the user's organization credit balance. If `mone
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `monetizationEnabled` | boolean | Enables creator earnings for the app. |
+| `monetizationEnabled` | boolean | Enables creator earnings for the published project. |
 | `inferenceMarkupPercentage` | number | Creator markup on inference, 0-1000. |
 | `purchaseSharePercentage` | number | Purchase share percentage, 0-100. |
 
@@ -157,20 +221,21 @@ Redeem available earnings for elizaOS tokens from [Dashboard -> Earnings](https:
 
 - Keep admin API keys on the server.
 - Forward user bearer tokens for user-facing app-scoped chat.
-- Store the Cloud app `id` separately from container `projectName`.
+- Keep the Cloud app `id` in `ProjectRecord.cloudAppId`; do not create a second binding store.
 - Patch `app_url` and `allowed_origins` after container deployment.
-- Treat `databaseMode: "isolated"` as the production default for apps that need
+- Prefer managed frontend hosting; deploy a container only for server-side workloads.
+- Treat `databaseMode: "isolated"` as the production default for published projects that need
   persistence; verify the deployed image reads the injected `DATABASE_URL`.
 - Handle 402 responses by sending users to [Dashboard -> Billing](https://elizacloud.ai/dashboard/billing).
 
 ## Next Steps
 
 <CardGroup>
-  <CardGroup.Card title="Monetized Apps" href="/cloud/monetized-apps">
-    Build and deploy a monetized app
+  <CardGroup.Card title="Monetizing Published Projects" href="/cloud/monetized-apps">
+    Monetize a published project
   </CardGroup.Card>
-  <CardGroup.Card title="App Domains" href="/cloud/app-domains">
-    Configure custom domains
+  <CardGroup.Card title="Published Project Domains" href="/cloud/app-domains">
+    Configure a published project's domains
   </CardGroup.Card>
   <CardGroup.Card title="Containers" href="/cloud/containers">
     Deploy custom containers

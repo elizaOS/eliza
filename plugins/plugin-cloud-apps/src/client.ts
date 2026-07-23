@@ -318,6 +318,8 @@ export function looksLikeAppId(value: string): boolean {
 
 /** Planner-option keys that may carry an app reference, in priority order. */
 const REFERENCE_OPTION_KEYS = [
+  "project",
+  "projectName",
   "app",
   "appName",
   "name",
