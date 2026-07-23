@@ -5715,6 +5715,23 @@ export function ChatOverlay({
                     </motion.div>
                   </MessageScroller>
                 </MessageScrollerProvider>
+                {!firstRunOpen ? (
+                  <div
+                    data-testid="chat-thread-top-fade"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 top-0 z-20 h-12"
+                    style={{
+                      // A fixed compositor layer lets messages dissolve beneath
+                      // the floating grabber without masking the scrolling
+                      // subtree. WebKit re-rasterizes CSS-masked scrollers while
+                      // their flex basis changes, which makes the pull gesture
+                      // stutter; this overlay preserves hit-testing and 1:1 drag.
+                      backgroundImage: fullBleed
+                        ? "linear-gradient(to bottom, var(--bg) 0%, color-mix(in srgb, var(--bg) 72%, transparent) 52%, transparent 100%)"
+                        : "linear-gradient(to bottom, var(--card) 0%, color-mix(in srgb, var(--card) 62%, transparent) 52%, transparent 100%)",
+                    }}
+                  />
+                ) : null}
               </motion.div>
             ) : null}
             {/* Cloud-agent provisioning status — rendered IN the chat, just
