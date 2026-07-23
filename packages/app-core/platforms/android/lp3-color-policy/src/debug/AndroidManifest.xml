@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Direct-debug-only LP3 color persistence overlay. Gradle attaches this source
+  set only when ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED is explicit; ordinary
+  debug, release, AOSP, ordinary Cloud/Play, and whitelabel artifacts cannot
+  merge it.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <application>
+        <service
+            android:name=".Lp3ColorPolicyService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Maintain the operator-selected full-color display state on Light Phone III" />
+        </service>
+
+        <receiver
+            android:name=".Lp3ColorPolicyBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY" />
+                <action android:name="ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY" />
+                <action android:name="ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

@@ -155,7 +155,9 @@
       "ElizaVoiceInteractionService",
       "ElizaVoiceInteractionSessionService",
       "ElizaRecognitionService",
-      "ElizaVoiceInputMethodService"
+      "ElizaVoiceInputMethodService",
+      "Lp3ColorPolicyService",
+      "Lp3ColorPolicyBootReceiver"
     ],
     "mustStripPermissions": [
       "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
@@ -169,7 +171,8 @@
       "android.permission.INJECT_EVENTS",
       "android.permission.REAL_GET_TASKS",
       "android.permission.BIND_ACCESSIBILITY_SERVICE",
-      "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+      "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+      "android.permission.WRITE_SECURE_SETTINGS"
     ],
     "mustStripPlugins": [
       "@elizaos/capacitor-agent",
