@@ -19,6 +19,10 @@ const repoRoot = path.resolve(
 );
 const distPathsConfig = path.join(repoRoot, "tsconfig.dist-paths.json");
 const ignoredDirs = new Set([
+  // .claude holds agent tooling state, including .claude/worktrees — complete
+  // sibling checkouts that appear and vanish mid-run (workflow subagents).
+  // Walking them both typechecks foreign checkouts and races their deletion.
+  ".claude",
   ".git",
   ".next",
   ".turbo",
