@@ -669,6 +669,12 @@ def parse_hermes_env_result(
     )
 
 
+# Both pinned terminal envs (tblite, terminalbench_2) run HermesAgentLoop with
+# max_agent_turns=60; a rollout that spent its whole budget is a completed
+# failure measurement, not a harness cut-off.
+ENV_MAX_AGENT_TURNS = 60
+
+
 def _annotate_sample_completion(
     metrics: dict[str, Any],
     samples_path: Path,
@@ -697,6 +703,14 @@ def _annotate_sample_completion(
             continue
         last = messages[-1]
         if isinstance(last, dict) and last.get("role") == "tool" and not row.get("passed"):
+            # A trailing tool result normally means the loop was cut off before
+            # the agent could conclude. The exception: the agent spent its full
+            # turn budget — that rollout is a real, scoreable failure. Without
+            # this, hard tasks (which exhaust budgets most often) would be
+            # systematically excluded from scoring.
+            turns = row.get("turns_used")
+            if isinstance(turns, int) and turns >= ENV_MAX_AGENT_TURNS:
+                continue
             incomplete += 1
     if expected_samples is not None and total != expected_samples:
         raise RuntimeError(
