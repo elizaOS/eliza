@@ -27,8 +27,22 @@ chat sheet and notification cards used it, each with hand-tuned numbers.
   document (App root, next to `AppBackground`).
 - **`useNativeGlass`** — the tier probe: `native` → `css-refraction`
   (Chromium `@supports (backdrop-filter: url(#x))`) → `css-frosted`
-  (universal). Resolves synchronously to a CSS tier and upgrades to native
-  async — no flash, no layout shift.
+  (universal). Resolves synchronously to a CSS tier; `native` requires BOTH
+  the plugin capability probe AND an active native-hosted wallpaper (see
+  `native-backdrop.ts` below) — an under-webview material without a backdrop
+  would sample the black window.
+- **`native-backdrop.ts` + `useNativeGlassAnchor`** — the wallpaper
+  coordinator and the anchoring hook. CSS `backdrop-filter` can only sample
+  WebView pixels, so the moment the wallpaper is hosted natively every CSS
+  glass surface goes blind to it — the wallpaper is therefore native ONLY
+  while an anchor holds a lease (the chat sheet settled at rest), and the DOM
+  paints it the rest of the time. The image crosses the bridge as
+  screen-downsampled BYTES the page already loaded (never a URL — the #16656
+  review found URL fetching forwarded the iOS cookie jar to arbitrary
+  wallpaper origins). The handoff is acknowledgement-ordered: wallpaper ack →
+  region ack → one-commit flip, so no frame ever lacks a material. Anchoring
+  is iOS-only: Android's panel is near-opaque, so per-surface anchoring there
+  is pure native-view churn (#16200 finding).
 - **`native-bridge.ts` + `GlassBridge.swift` + `GlassBridgePlugin.java`** —
   real native material on both mobile platforms, one JS API. The Swift plugin
   (`packages/app-core/platforms/ios/App/App/GlassBridge.swift`, same
@@ -38,10 +52,14 @@ chat sheet and notification cards used it, each with hand-tuned numbers.
   `#if compiler(>=6.2)` + `if #available(iOS 26, *)`. The Java plugin
   (`packages/app-core/platforms/android/.../GlassBridgePlugin.java`,
   registered in `MainActivity`) mirrors the API with a Material
-  dynamic-palette panel, gated on API 31+. On anything older on either
-  platform, `isAvailable()` answers false and every surface stays on its CSS
-  tier. Reads the bridge-injected `globalThis.Capacitor` — never a static
-  `@capacitor/core` import (`@elizaos/ui` is loaded server-side, #15221).
+  dynamic-palette panel, gated on API 31+. Both host the wallpaper via
+  `setBackdrop({imageBase64?, color?})` / `clearBackdrop()` (no network, no
+  cookies — decode-before-acknowledge; contract test:
+  `packages/app-core/scripts/native-glass-backdrop-contract.test.mjs`). On
+  anything older on either platform, `isAvailable()` answers false and every
+  surface stays on its CSS tier. Reads the bridge-injected
+  `globalThis.Capacitor` — never a static `@capacitor/core` import
+  (`@elizaos/ui` is loaded server-side, #15221).
 
 ## The honest native-glass constraint
 
@@ -73,13 +91,13 @@ Findings that shaped this (2026-07 research):
 | Surface | State |
 | --- | --- |
 | Notification cards | already on the liquid-glass optical stack (shade v4) |
-| Chat sheet | already on sheet-tier numbers; tokens now canonical in `glass/tokens.ts` |
+| Chat sheet | sheet-tier tokens canonical in `glass/tokens.ts`; on iOS 26 the SETTLED open sheet adopts real `UIGlassEffect` over the temporally-hosted wallpaper (`useNativeGlassAnchor` in `ChatOverlay`), CSS during every drag/settle; Android stays CSS by design |
 | + menu (chat composer) | migrated — `DropdownMenuContent glass` → `menu` variant |
 | Other dropdowns/popovers (slash menu, config selects) | pending — same `glass` prop |
 | ViewHeader back button / pills | pending — `pill` variant |
 | NotificationBanners (toasts) | pending — `banner` variant |
 | `HOME_GLASS_CLASS` / `WALLPAPER_GLASS` family | pending consolidation into tokens |
-| Native tier wiring (attach pill/sheet regions) | plugin + probe shipped on iOS AND Android (device e2e: `packages/app/test/android/glass-bridge.android.spec.ts`); surface adoption blocked on native-hosted wallpaper — design + workplan in #15891 |
+| Native tier wiring (wallpaper + sheet region) | `setBackdrop`/`clearBackdrop` (byte-piped) + settle-anchored chat sheet shipped for iOS; Android device e2e covers the bridge contract (`packages/app/test/android/glass-bridge.android.spec.ts`); attended iOS 26 captures + GPU/battery traces remain the release-verification gate for #15891 |
 
 Each pending row is a small mechanical PR: swap the hand-rolled recipe for a
 variant, delete the local numbers, screenshot before/after.

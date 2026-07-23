@@ -201,9 +201,27 @@ function deactivate(): void {
  * the caller stays on the CSS tier. Cached per (url, color) — wallpapers
  * change rarely and re-anchoring must not re-decode.
  */
+type WallpaperEncoder = (
+  target: NativeWallpaperSource,
+) => Promise<string | null>;
+
+/** Test seam: jsdom has no real image decode/canvas readback. */
+let encoderOverride: WallpaperEncoder | null = null;
+export function setNativeBackdropEncoderForTests(
+  encoder: WallpaperEncoder | null,
+): void {
+  encoderOverride = encoder;
+  encoded = null;
+}
+
 function encodeSource(target: NativeWallpaperSource): Promise<string | null> {
   const key = `${target.imageUrl}|${target.color}`;
   if (encoded?.key === key) return encoded.promise;
+  if (encoderOverride) {
+    const promise = encoderOverride(target);
+    encoded = { key, promise };
+    return promise;
+  }
   const promise = (async () => {
     try {
       const image = new Image();

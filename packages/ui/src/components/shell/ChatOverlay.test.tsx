@@ -69,6 +69,12 @@ import type {
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
 import {
+  resetNativeBackdropForTests,
+  setNativeBackdropEncoderForTests,
+  setNativeWallpaperSource,
+} from "../../glass/native-backdrop";
+import { resetGlassBridgeForTests } from "../../glass/native-bridge";
+import {
   GLASS_SHEET_BACKDROP_FILTER,
   GLASS_SHEET_FILL,
 } from "../../glass/tokens";
@@ -112,6 +118,11 @@ afterEach(() => {
   // Search-jump tests seed the AppContext store with spies; clear it so the
   // inert test-fallback proxy backs every other test again.
   __setAppValueForTests(null);
+  (globalThis as { Capacitor?: unknown }).Capacitor = undefined;
+  resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
+  setNativeBackdropEncoderForTests(null);
+  document.documentElement.classList.remove("eliza-native-backdrop");
 });
 
 function makeController(
@@ -433,6 +444,54 @@ describe("ChatOverlay", () => {
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
+
+  it("adopts native glass only once the open sheet SETTLES, after both native acks", async () => {
+    const bridge = {
+      attachGlass: vi.fn(async () => ({ attached: true })),
+      updateRect: vi.fn(async () => {}),
+      detachGlass: vi.fn(async () => {}),
+      setGrouping: vi.fn(async () => {}),
+      setBackdrop: vi.fn(async () => ({ applied: true })),
+      clearBackdrop: vi.fn(async () => {}),
+      isAvailable: vi.fn(async () => ({ available: true })),
+    };
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => "ios",
+      registerPlugin: () => bridge,
+    };
+    resetGlassBridgeForTests();
+    setNativeBackdropEncoderForTests(async () => "Zm9vYmFy");
+    setNativeWallpaperSource({
+      imageUrl: "https://localhost/wallpapers/canopy.webp",
+      color: "#160d07",
+    });
+
+    render(<ChatOverlay controller={makeController()} />);
+    const surface = screen.getByTestId("chat-sheet-surface");
+    // Closed sheet: never native, and the CSS material is untouched.
+    expect(surface.dataset.glassTier).toMatch(/^css-/);
+
+    fireEvent.focus(screen.getByLabelText("message"));
+    // The open detent runs the release spring; adoption must wait for TRUE
+    // rest (sheetSettled), then for both native acknowledgements.
+    await waitFor(() => expect(surface.dataset.glassTier).toBe("native"), {
+      timeout: 10_000,
+    });
+    // Wallpaper hosted BEFORE the region attached — the ack order that
+    // guarantees no frame ever samples the black window.
+    const backdropOrder = bridge.setBackdrop.mock.invocationCallOrder[0] ?? 0;
+    const attachOrder = bridge.attachGlass.mock.invocationCallOrder[0] ?? 0;
+    expect(backdropOrder).toBeGreaterThan(0);
+    expect(backdropOrder).toBeLessThan(attachOrder);
+    // Native material: fill + blur drop (the OS paints them); border, bevel,
+    // and sheen stay — the branded edge survives on every tier.
+    expect(surface.style.backgroundColor).toBe("transparent");
+    expect(surface.style.backdropFilter).toBe("");
+    expect(screen.getByTestId("chat-glass-tier-probe").textContent).toBe(
+      "chat-glass-tier:native",
+    );
+  }, 20_000);
 
   it("flips the overlay to data-open when the composer textarea is focused (the ui-smoke contract)", () => {
     render(<ChatOverlay controller={makeController()} />);

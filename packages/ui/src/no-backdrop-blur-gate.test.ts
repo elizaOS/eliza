@@ -84,6 +84,10 @@ const ALLOWED_BLUR = new Set<string>([
   "packages/ui/src/glass/GlassSurface.tsx",
   "packages/ui/src/glass/tokens.ts",
   "packages/ui/src/glass/useNativeGlass.ts",
+  // Comment-only reference (documents WHY the wallpaper is native-hosted only
+  // while an anchor holds it: backdrop-filter cannot sample below the
+  // WebView); no runtime backdrop-filter of its own.
+  "packages/ui/src/glass/native-backdrop.ts",
   // The theme-aware wallpaper readability scrim (`app-background-scrim`): a
   // frosted veil (bg/75 + blur) applied ONLY on text-dense shared-background
   // views (`wallpaperScrimActive`), so agent copy stays legible over any

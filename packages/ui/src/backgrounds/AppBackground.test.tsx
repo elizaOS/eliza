@@ -6,8 +6,16 @@
  * `mode: shader`, an image host for `mode: image`. jsdom render over a seeded
  * store double.
  */
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  acquireNativeBackdrop,
+  activateNativeBackdrop,
+  releaseNativeBackdrop,
+  resetNativeBackdropForTests,
+  setNativeBackdropEncoderForTests,
+} from "../glass/native-backdrop";
+import { resetGlassBridgeForTests } from "../glass/native-bridge";
 import { __setAppValueForTests } from "../state/app-store";
 import { AppBackground } from "./AppBackground";
 
@@ -18,9 +26,37 @@ function seed(backgroundConfig: unknown) {
   } as never);
 }
 
+function installNativeGlassBridge() {
+  const bridge = {
+    attachGlass: vi.fn(async () => ({ attached: true })),
+    updateRect: vi.fn(async () => {}),
+    detachGlass: vi.fn(async () => {}),
+    setGrouping: vi.fn(async () => {}),
+    setBackdrop: vi.fn(async () => ({ applied: true })),
+    clearBackdrop: vi.fn(async () => {}),
+    isAvailable: vi.fn(async () => ({ available: true })),
+  };
+  (globalThis as { Capacitor?: unknown }).Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => "ios",
+    registerPlugin: () => bridge,
+  };
+  resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
+  setNativeBackdropEncoderForTests(async () => "Zm9vYmFy");
+  return bridge;
+}
+
 afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
+  (globalThis as { Capacitor?: unknown }).Capacitor = undefined;
+  resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
+  setNativeBackdropEncoderForTests(null);
+  document.documentElement.classList.remove("eliza-native-backdrop");
+  document.documentElement.style.backgroundColor = "";
+  document.documentElement.style.backgroundImage = "";
 });
 
 describe("AppBackground", () => {
@@ -178,6 +214,102 @@ describe("AppBackground", () => {
     expect(
       container.querySelector('[data-testid="app-background-image"]'),
     ).toBeNull();
+  });
+
+  it("publishes the wallpaper passively — nothing goes native without a consumer lease", async () => {
+    // The shader-tax guard: merely mounting with an image wallpaper must not
+    // touch the bridge (a permanently-transparent WebView costs the compositor
+    // its opaque fast path app-wide). Hosting starts only when a glass anchor
+    // acquires the backdrop.
+    const bridge = installNativeGlassBridge();
+    seed({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/wallpapers/canopy.webp",
+    });
+    const { container } = render(<AppBackground />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(bridge.setBackdrop).not.toHaveBeenCalled();
+    const image = container.querySelector<HTMLElement>(
+      '[data-testid="app-background-image"]',
+    );
+    expect(image?.style.backgroundImage).toContain("canopy.webp");
+    expect(image?.dataset.nativeHosted).toBe("false");
+  });
+
+  it("hides only the image paint while native hosts it — the scrim stays", async () => {
+    const bridge = installNativeGlassBridge();
+    seed({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/wallpapers/canopy.webp",
+    });
+    const { container } = render(<AppBackground />);
+    // Simulate the chat-sheet anchor's lease + atomic flip.
+    await act(async () => {
+      expect(await acquireNativeBackdrop()).toBe(true);
+      activateNativeBackdrop();
+    });
+    expect(bridge.setBackdrop).toHaveBeenCalledTimes(1);
+    expect(bridge.setBackdrop).toHaveBeenCalledWith({
+      imageBase64: "Zm9vYmFy",
+      color: "#160d07",
+    });
+    const image = container.querySelector<HTMLElement>(
+      '[data-testid="app-background-image"]',
+    );
+    expect(image?.dataset.nativeHosted).toBe("true");
+    expect(image?.style.backgroundImage).toBe("");
+    // Legibility scrim keeps painting: a translucent DOM layer composites
+    // correctly over the native pixels, so text keeps winning on both tiers.
+    expect(
+      container.querySelector('[data-testid="app-background-image-scrim"]'),
+    ).not.toBeNull();
+    // Every root-canvas layer goes transparent together (html inline + the
+    // body/#root class), or the launch-bg fill would mask the native pixels.
+    expect(document.documentElement.classList).toContain(
+      "eliza-native-backdrop",
+    );
+    expect(document.documentElement.style.backgroundColor).toBe("transparent");
+    expect(document.documentElement.style.backgroundImage).toBe("");
+  });
+
+  it("restores the DOM paint the moment the lease is released", async () => {
+    const bridge = installNativeGlassBridge();
+    seed({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/wallpapers/canopy.webp",
+    });
+    const { container } = render(<AppBackground />);
+    await act(async () => {
+      expect(await acquireNativeBackdrop()).toBe(true);
+      activateNativeBackdrop();
+    });
+    act(() => {
+      releaseNativeBackdrop();
+    });
+    const image = container.querySelector<HTMLElement>(
+      '[data-testid="app-background-image"]',
+    );
+    expect(image?.dataset.nativeHosted).toBe("false");
+    expect(image?.style.backgroundImage).toContain("canopy.webp");
+    expect(document.documentElement.classList).not.toContain(
+      "eliza-native-backdrop",
+    );
+    // The native layer clears a couple of frames later (it covers the swap).
+    await waitFor(() => expect(bridge.clearBackdrop).toHaveBeenCalledTimes(1));
+  });
+
+  it("never publishes shader/color configs to the native coordinator", async () => {
+    const bridge = installNativeGlassBridge();
+    seed({ mode: "shader", color: "#3a1f0d" });
+    render(<AppBackground />);
+    await act(async () => {
+      // No image wallpaper published → a lease attempt must refuse.
+      expect(await acquireNativeBackdrop()).toBe(false);
+    });
+    expect(bridge.setBackdrop).not.toHaveBeenCalled();
   });
 
   it("mirrors an image background onto the ROOT canvas so the strip shows the wallpaper, not #160d07", () => {

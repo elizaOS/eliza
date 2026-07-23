@@ -141,8 +141,7 @@ export function useNativeGlassAnchor(
     };
   }, []);
 
-  const wantNative =
-    enabled && available && nativeGlassPlatform() === "ios";
+  const wantNative = enabled && available && nativeGlassPlatform() === "ios";
 
   useEffect(() => {
     if (!wantNative) return;
