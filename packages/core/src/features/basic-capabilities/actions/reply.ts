@@ -15,6 +15,7 @@
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { replyTemplate } from "../../../prompts.ts";
+import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
 import type {
 	Action,
 	ActionExample,
@@ -396,6 +397,39 @@ export const replyAction = {
 			parsedText ||
 			plannerReplyFallback ||
 			(rawText.startsWith("<") ? "" : rawText);
+
+		// Planner-path twin of the Stage-1 `core.simple_completed_side_effect_claim`
+		// reroute: a REPLY that claims a completed scheduling/save side effect is
+		// fabricated unless some tool actually succeeded earlier in this turn
+		// (observed live, #16941: a bare REPLY shipped "Saved! ✅ Your book report
+		// plan is now set up as reminders" with zero tool calls). Failing the step
+		// BEFORE the callback keeps the fabricated text off the wire and feeds the
+		// violation back into the planner loop, where the model can run the real
+		// action or rephrase honestly.
+		const sideEffectGrounded = previousResults.some(
+			(prev) =>
+				prev?.success === true &&
+				(prev.data as { actionName?: string } | undefined)?.actionName !==
+					"REPLY",
+		);
+		if (!sideEffectGrounded && replyClaimsCompletedSideEffect(text)) {
+			const guidance =
+				"REPLY text claims a completed save/schedule side effect, but no tool ran this turn. Call the action that actually performs it, or rephrase the reply without claiming it is done.";
+			return {
+				success: false,
+				text: guidance,
+				values: {
+					success: false,
+					error: "FABRICATED_SIDE_EFFECT_CLAIM",
+				},
+				data: {
+					actionName: "REPLY",
+					error: "FABRICATED_SIDE_EFFECT_CLAIM",
+					rejectedText: text,
+				},
+				error: new Error(guidance),
+			};
+		}
 
 		const responseContent = {
 			thought,

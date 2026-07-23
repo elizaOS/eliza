@@ -168,6 +168,7 @@ function makeParams(
     dueInDays: null,
     dueWeekday: null,
     dueInMinutes: null,
+    multiStep: false,
     ...overrides,
   };
 }
@@ -247,6 +248,73 @@ describe("resolveOnceDueAt", () => {
     expect(
       resolveOnceDueAt({ ...base, dueInDays: 0, timeOfDayMinute: 8 * 60 }),
     ).toBeNull();
+  });
+});
+
+describe("buildCadenceFromLlmParams (explicit daily slots, negation scope)", () => {
+  // Live-proven defect (#16941, student-term-paper-night-owl-deadline): the
+  // slot extractor turned "no 8am/9am reminders" into 8am + 9am slots, so the
+  // saved plan contradicted both the owner's ask and the assistant's reply.
+  it("excludes clock times under a negation cue in the same clause", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW,
+        timeZone: DENVER,
+        intent:
+          "Break the seminar paper into work sessions and remind me at 1pm and 5pm — no 8am/9am reminders",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 1020]);
+  });
+
+  it("excludes clock times after 'do not' across a slash group", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW,
+        timeZone: DENVER,
+        intent:
+          "please break it up, but do not set me some 8am/9am reminder. remind me at 1pm and 9pm",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 1260]);
+  });
+
+  it("keeps a time affirmed by the 'don't forget' idiom", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW,
+        timeZone: DENVER,
+        intent: "remind me at 8am and don't forget the 5pm one",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([480, 1020]);
+  });
+
+  it("resets negation scope at a contrastive connective", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW,
+        timeZone: DENVER,
+        intent: "no morning pings but 9pm works, also 1pm please",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 1260]);
   });
 });
 
@@ -1473,6 +1541,10 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
       } as HandlerOptions,
     );
     expect(result.success).toBe(true);
+    // A completed persist is canonical: the planner must echo the action's
+    // own confirmation instead of paraphrasing the save state (#16941).
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.userFacingText ?? "").not.toBe("");
     expect(serviceState.createCalls).toHaveLength(1);
     const cadence = serviceState.createCalls[0]?.cadence as {
       kind: string;
@@ -1489,6 +1561,48 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     expect(weekday).toBe(5);
     expect(parts.hour).toBe(17);
     expect(parts.minute).toBe(0);
+  });
+
+  it("previews (never writes) a multi-milestone dated ask until the owner confirms (#16941)", async () => {
+    // Live finding: "history report due Monday 9am — set reminders for
+    // outline, rough draft, and final proofread" took the crisp-single-ask
+    // immediate-save exemption and persisted pre-consent. multiStep asks must
+    // keep the two-phase preview even with a resolved once cadence.
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "History report milestones",
+          cadenceKind: "once",
+          dueWeekday: 1,
+          timeOfDay: "09:00",
+          multiStep: true,
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "my history report is due next monday at 9am. can you set reminders for outline, rough draft, and final proofread?",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent:
+            "my history report is due next monday at 9am - set reminders for outline, rough draft, and final proofread",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(result.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
   });
 
   it('anchors "remind me tomorrow at 9am" to the owner timezone fact, not the host clock (#13509)', async () => {

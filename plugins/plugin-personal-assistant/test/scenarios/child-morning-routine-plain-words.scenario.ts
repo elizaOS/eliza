@@ -2,6 +2,11 @@
  * Child-voice routine scenario. The child asks in ordinary words, so the
  * assistant should materialize a simple morning routine without adding parent
  * rails, shame, or clinical framing.
+ *
+ * The explicit confirmation turn is load-bearing: the pack's consent bar
+ * (two-phase commit — preview an owner write, save only after a yes) means the
+ * first ask correctly yields an unsaved draft, so the stored-outcome final
+ * checks can only be satisfied after the child says yes.
  */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
@@ -28,6 +33,11 @@ export default scenario({
       kind: "message",
       name: "plain routine ask",
       text: "before school i always forget stuff. can you remind me every morning to brush teeth, pack my lunch, and put my math folder in my bag? just say it normal, not like a baby.",
+    },
+    {
+      kind: "message",
+      name: "confirm the routine",
+      text: "yes turn it on please. normal words like that is good.",
     },
   ],
   finalChecks: [

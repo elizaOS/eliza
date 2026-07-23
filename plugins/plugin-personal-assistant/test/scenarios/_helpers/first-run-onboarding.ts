@@ -69,6 +69,16 @@ async function readFirstRunTasks(
   const tasks = await repoOf(runtime).listScheduledTasks(agentIdOf(runtime), {
     source: "first_run",
   });
+  // Print the queried rows into the runner log: catalog verification requires
+  // the persisted store artifacts to be SHOWN in captured evidence, not merely
+  // asserted, so every flow's final check emits a per-row receipt here.
+  for (const task of tasks) {
+    const idempotencyKey =
+      (task as { idempotencyKey?: string }).idempotencyKey ?? "(none)";
+    runtime.logger.info(
+      `[first-run-scenario] seeded row receipt: idempotencyKey=${idempotencyKey} kind=${task.kind} trigger=${JSON.stringify(task.trigger)}`,
+    );
+  }
   return tasks;
 }
 

@@ -91,6 +91,28 @@ describe("replyClaimsCompletedSideEffect", () => {
 		expect(
 			replyClaimsCompletedSideEffect("Your reminders are set for tomorrow."),
 		).toBe(true);
+		// Live L1 shapes (#16941): bare completion opener and "is now set up".
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Saved! ✅ Your book report plan is now set up as reminders.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Your study schedule is now set up — three blocks before Thursday.",
+			),
+		).toBe(true);
+	});
+
+	it("does not flag descriptions of existing scheduled state", () => {
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Your dentist appointment is scheduled for Tuesday at 3pm.",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect("Saved by the bell — great show."),
+		).toBe(false);
 	});
 
 	it("matches bare simple-past assertions and perfective claims with a tag question", () => {

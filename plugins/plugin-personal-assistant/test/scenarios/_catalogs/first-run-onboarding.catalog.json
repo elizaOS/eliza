@@ -1,0 +1,49 @@
+{
+  "catalogId": "first-run-onboarding",
+  "title": "Pack FR1 - First-run onboarding journey verification catalog",
+  "source": {
+    "parentIssue": "#16941",
+    "packId": "FR1",
+    "persona": "fresh owner, first boot (onboarding journey)",
+    "targetCount": 4,
+    "notes": [
+      "Verification ledger for the four first-run onboarding scenarios (fast-start, customize walk, abandon/resume, channel fallback). Wired into the check-lifeops-persona-catalog-coverage.mjs EXPECTED_CATALOGS gate under the row-evidence contract: every verified row carries a structured evidence receipt (model, judge, judgeScore, pointer, artifactReceipt).",
+      "Scope of the claim, stated precisely: first-run is conductor-driven, not model-invocable — the production in-chat conductor lives in the client (packages/ui/src/first-run/), which a headless runner cannot exercise. Each scenario therefore splits the proof: LIVE judged message turns show the model engaging with the surfaced firstRunProvider affordance (trajectory evidence), while the final check drives the real FirstRunService through the PRODUCTION scheduled-task runner (the same seam the conductor uses) and asserts the persisted app_lifeops.life_scheduled_tasks rows via LifeOpsRepository. These rows are DOMAIN-CONTRACT proofs of FirstRunService + the persisted store, NOT an end-to-end UI onboarding-journey proof; the conductor UI leg is client e2e territory.",
+      "PR #15016's earlier live evidence is deliberately NOT back-filled here: it recorded no judge scores and attached no report JSON/JSONL, so these rows verify only from current-SHA runs with full artifacts."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "first-run-fast-start-seeds-first-reminder",
+      "pack": "FR1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Fast-start (defaults) path. Verification must show the default pack (gm/gn/checkin/morning-brief) materialized in the real scheduled-task store with the gm cron anchored to the answered wake time, plus judged live turns engaging the onboarding affordance."
+    },
+    {
+      "id": "first-run-customize-walk-seeds-first-reminder",
+      "pack": "FR1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Customize (5-question) path incl. the conditional relationships question. Verification must show the seeded pack anchored to the answered morning window and the preferred name persisted."
+    },
+    {
+      "id": "first-run-abandon-resume-no-data-loss",
+      "pack": "FR1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Abandon mid-customize then resume. Verification must show resume advances to the first unanswered question (no re-asking), partial answers survive, and the flow still reaches the seeded pack."
+    },
+    {
+      "id": "first-run-channel-fallback-to-in-app",
+      "pack": "FR1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Unconnected channel choice (telegram) must record fallbackToInApp with a surfaced warning and a '(fallback)' completion message, and the pack must still seed."
+    }
+  ]
+}

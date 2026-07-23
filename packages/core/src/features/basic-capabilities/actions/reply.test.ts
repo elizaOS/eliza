@@ -55,6 +55,60 @@ describe("REPLY action", () => {
 		);
 	});
 
+	it("rejects a fabricated completed-save claim when no tool ran this turn (#16941)", async () => {
+		const runtime = createRuntime(
+			'{"thought":"wrap up","text":"Saved! ✅ Your book report plan is now set up as reminders."}',
+		);
+		const callback = vi.fn();
+
+		const result = await replyAction.handler?.(
+			runtime,
+			createMessage(),
+			undefined,
+			{ actionContext: { previousResults: [] } } as never,
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.data).toMatchObject({
+			actionName: "REPLY",
+			error: "FABRICATED_SIDE_EFFECT_CLAIM",
+		});
+		// The fabricated text must never reach the wire.
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("allows a completed-save claim grounded by a successful tool earlier in the turn", async () => {
+		const runtime = createRuntime(
+			'{"thought":"confirm","text":"Done — your reminders are set for tomorrow morning."}',
+		);
+		const callback = vi.fn();
+
+		const result = await replyAction.handler?.(
+			runtime,
+			createMessage(),
+			undefined,
+			{
+				actionContext: {
+					previousResults: [
+						{
+							success: true,
+							data: { actionName: "OWNER_REMINDERS" },
+						},
+					],
+				},
+			} as never,
+			callback,
+		);
+
+		expect(result?.success).not.toBe(false);
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "Done — your reminders are set for tomorrow morning.",
+			}),
+		);
+	});
+
 	it("falls back to non-structured raw model text", async () => {
 		const runtime = createRuntime("plain reply");
 

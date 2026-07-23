@@ -1839,14 +1839,41 @@ function mergeMetadataRecords(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+// A clock token under a preceding negation cue in the same clause is an
+// EXCLUDED time ("no 8am/9am reminders", "do not set me a 9am ping"), not a
+// requested slot. Clause scope resets at sentence boundaries and at
+// contrastive connectives, so "no mornings, but 9pm works" still yields 9pm.
+// "don't forget" is an idiom that AFFIRMS the following time, hence the
+// lookahead carve-out.
+const NEGATED_CLOCK_CUE_RE =
+  /\b(?:no|not|don'?t|do\s+not|never|avoid|without|skip|drop|stop|instead\s+of|rather\s+than|none\s+of)\b(?!\s+forget\b)/i;
+const CLOCK_CLAUSE_BOUNDARY_RE = /[.;!?\n—–]|\bbut\b/gi;
+
+function clockTokenIsNegated(intent: string, tokenStart: number): boolean {
+  let clauseStart = 0;
+  for (const boundary of intent.matchAll(CLOCK_CLAUSE_BOUNDARY_RE)) {
+    if (boundary.index >= tokenStart) {
+      break;
+    }
+    clauseStart = boundary.index + boundary[0].length;
+  }
+  return NEGATED_CLOCK_CUE_RE.test(intent.slice(clauseStart, tokenStart));
+}
+
 function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
-  const tokens = [
-    ...intent.matchAll(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|noon|midnight)\b/gi),
-  ]
-    .map((match) => match[1])
-    .filter(
-      (token): token is string => typeof token === "string" && token.length > 0,
-    );
+  const tokens: string[] = [];
+  for (const match of intent.matchAll(
+    /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|noon|midnight)\b/gi,
+  )) {
+    const token = match[1];
+    if (typeof token !== "string" || token.length === 0) {
+      continue;
+    }
+    if (clockTokenIsNegated(intent, match.index)) {
+      continue;
+    }
+    tokens.push(token);
+  }
   const seen = new Set<number>();
   const slots: LifeOpsDailySlot[] = [];
   for (const [index, token] of tokens.entries()) {
@@ -2556,11 +2583,17 @@ function shouldRequireLifeCreateConfirmation(args: {
   messageSource: string | undefined;
   requestKind?: NativeAppleReminderLikeKind | null;
   cadence?: LifeOpsCadence;
+  multiStep?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
     return false;
   }
-  if (args.requestKind && args.cadence?.kind === "once") {
+  // Crisp single dated asks save immediately (#16935); a multi-milestone ask
+  // ("reminders for outline, rough draft, and final proofread") collapses into
+  // one definition whose derived breakdown the owner has not seen, so it keeps
+  // the two-phase preview even when extraction resolved a once cadence
+  // (#16941 live finding: the exemption over-triggered and wrote pre-consent).
+  if (args.requestKind && args.cadence?.kind === "once" && !args.multiStep) {
     return false;
   }
   return !args.confirmed;
@@ -3378,6 +3411,7 @@ export async function runLifeOperationHandler(
               : undefined,
           requestKind: timedRequestKind,
           cadence: definitionDraft.request.cadence,
+          multiStep: llmPlan?.multiStep === true,
         })
       ) {
         const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}. Confirm and I'll save it, or tell me what to change.`;
@@ -3444,23 +3478,30 @@ export async function runLifeOperationHandler(
       });
       await clearDeferredLifeDraftCache(runtime, message);
       const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}.`;
+      const savedText = await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "saved_definition",
+        fallback,
+        context: {
+          created: {
+            title: created.definition.title,
+            cadence: created.definition.cadence,
+          },
+          requestKind: timedRequestKind,
+        },
+      });
+      // verifiedUserFacing mirrors the preview branch: a completed persist is
+      // exactly the state the evaluator must not paraphrase — observed live
+      // (#16941): the synthesized reply told the owner "nothing is saved yet"
+      // after this branch had already persisted the definition.
       return {
         success: true as const,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "saved_definition",
-          fallback,
-          context: {
-            created: {
-              title: created.definition.title,
-              cadence: created.definition.cadence,
-            },
-            requestKind: timedRequestKind,
-          },
-        }),
+        text: savedText,
+        userFacingText: savedText,
+        verifiedUserFacing: true,
         data: toActionData(created),
       };
     };
