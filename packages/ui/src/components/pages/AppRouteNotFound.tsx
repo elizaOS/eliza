@@ -8,8 +8,21 @@
  */
 import type * as React from "react";
 import { navigateBrowserPath } from "../../app-navigate-view";
+import { shouldUseHashNavigation } from "../../navigation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+
+// Hash-mode surfaces (file:-protocol shells and ?appWindow=1 desktop windows)
+// route on window.location.hash — the router never observes a pushState there,
+// so plain navigateBrowserPath would leave both recovery buttons dead. Mirror
+// the shell's hash-aware idiom (the same two-branch split AppsPageView uses).
+function navigateHashAware(path: string): void {
+  if (typeof window !== "undefined" && shouldUseHashNavigation()) {
+    window.location.hash = path;
+    return;
+  }
+  navigateBrowserPath(path);
+}
 
 export interface AppRouteNotFoundMatchedView {
   label: string;
@@ -20,14 +33,14 @@ export interface AppRouteNotFoundProps {
   slug: string;
   /** Routable view whose id equals the slug but whose canonical path is elsewhere. */
   matchedView?: AppRouteNotFoundMatchedView | null;
-  /** Navigation seam for tests; defaults to real browser navigation. */
+  /** Navigation seam for tests; defaults to hash-aware browser navigation. */
   navigatePath?: (path: string) => void;
 }
 
 export function AppRouteNotFound({
   slug,
   matchedView = null,
-  navigatePath = navigateBrowserPath,
+  navigatePath = navigateHashAware,
 }: AppRouteNotFoundProps): React.JSX.Element {
   const { t } = useTranslation();
   return (

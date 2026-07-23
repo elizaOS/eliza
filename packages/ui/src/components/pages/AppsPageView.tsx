@@ -7,7 +7,7 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
 import {
   getWindowNavigationPath,
@@ -37,7 +37,9 @@ function findMatchedViewElsewhere(
   slug: string,
 ): AppRouteNotFoundMatchedView | null {
   for (const view of views) {
-    if (view.id !== slug) continue;
+    // Never offer a CTA into a dead route: an unavailable entry keeps its
+    // canonical path in the registry, but navigating there would fail too.
+    if (view.id !== slug || !view.available) continue;
     const path = view.path;
     if (typeof path === "string" && path.length > 0 && path !== `/apps/${slug}`)
       return { label: view.label, path };
@@ -49,6 +51,14 @@ function findMatchedViewElsewhere(
 // for a dead deep link, without spamming on re-render or route re-entry.
 const warnedUnknownSlugs = new Set<string>();
 
+// registerAppShellPage registrations are idle-deferred until after first paint
+// and plugin navTab claims populate asynchronously, so on a cold deep link the
+// views fetch can settle BEFORE a valid claim registers. A slug observed
+// settled-and-unclaimed must therefore survive this grace window before the
+// route is asserted dead — otherwise a working route flashes not-found and
+// burns its once-per-session warning.
+const UNCLAIMED_SLUG_GRACE_MS = 1500;
+
 export function AppsPageView({ appSlug = null }: AppsPageViewProps) {
   const { appRuns, appsSubTab, activeGameRunId, setState } =
     useAppSelectorShallow((s) => ({
@@ -57,7 +67,7 @@ export function AppsPageView({ appSlug = null }: AppsPageViewProps) {
       activeGameRunId: s.activeGameRunId,
       setState: s.setState,
     }));
-  const { views, loading } = useRoutableViews();
+  const { views, loading, error } = useRoutableViews();
   const hasActiveGame = activeGameRunId.trim().length > 0;
   const activeGameRun = hasActiveGame
     ? appRuns.find((run) => run.runId === activeGameRunId)
@@ -92,15 +102,41 @@ export function AppsPageView({ appSlug = null }: AppsPageViewProps) {
 
   const slug = appSlug?.trim() ?? "";
   const gameFullscreen = appsSubTab === "games" && hasActiveGame;
-  // Three-state gate: while the view registry is still loading, a cold deep
-  // link renders the grid rather than flashing not-found — the registry claim
-  // upstream (App.tsx remote-view/app-shell routing) re-renders when it lands.
-  // Only a settled registry with no claimant is a real dead route.
+  // An `available: false` entry keeps its declared path in the registry while
+  // its bundle is unloadable (e.g. missing on disk) — it must never claim the
+  // slug, or a deep link into a broken install renders as the healthy grid,
+  // the exact masking class this gate exists to kill.
   const slugClaimed =
-    views.some((view) => view.path === `/apps/${slug}`) ||
+    views.some((view) => view.available && view.path === `/apps/${slug}`) ||
     appRuns.some((run) => getAppSlug(run.appName) === slug);
-  const showNotFound =
-    slug.length > 0 && !loading && !slugClaimed && !gameFullscreen;
+  // Three-state gate: asserting "nothing is mounted here" requires knowing
+  // what IS mounted, so the not-found claim needs a SETTLED, SUCCESSFUL
+  // registry read. While loading, render the grid rather than flashing
+  // not-found; on a registry error, also render the grid and never warn — a
+  // failed load must not read as not-found (three-state rule), and the claim
+  // re-renders when the registry recovers.
+  const settledUnclaimed =
+    slug.length > 0 && !loading && !error && !slugClaimed && !gameFullscreen;
+
+  // Grace window for the idle-registration race (see UNCLAIMED_SLUG_GRACE_MS):
+  // the timer arms when the slug is first observed settled-and-unclaimed and
+  // is cleared when a claim appears, the slug changes, or the view unmounts.
+  // Keying the fired state on the slug means a slug change mid-grace restarts
+  // the window instead of inheriting the previous slug's verdict.
+  const [deadRouteSlug, setDeadRouteSlug] = useState<string | null>(null);
+  useEffect(() => {
+    if (!settledUnclaimed) {
+      setDeadRouteSlug(null);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setDeadRouteSlug(slug),
+      UNCLAIMED_SLUG_GRACE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [settledUnclaimed, slug]);
+
+  const showNotFound = settledUnclaimed && deadRouteSlug === slug;
   const matchedView = showNotFound
     ? findMatchedViewElsewhere(views, slug)
     : null;

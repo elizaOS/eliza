@@ -873,7 +873,12 @@ describe("App navigate-view event wiring", () => {
 
     navigateView({ viewId: "definitely-not-a-view" });
 
-    expect(await screen.findByTestId("app-route-not-found")).toBeTruthy();
+    // The settled-unclaimed slug must survive AppsPageView's ~1.5s
+    // idle-registration grace window before not-found renders, so the wait
+    // outlasts it (this suite runs real timers).
+    expect(
+      await screen.findByTestId("app-route-not-found", {}, { timeout: 4000 }),
+    ).toBeTruthy();
     expect(window.location.pathname).toBe("/apps/definitely-not-a-view");
     expect(screen.queryByTestId("launcher-surface")).toBeNull();
   });
