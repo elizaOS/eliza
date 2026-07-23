@@ -1,18 +1,20 @@
 /**
  * Stage-1 fabricated state-claim guards: `replyClaimsCompletedSideEffect` /
  * `replyClaimsEmptyTrackedWorkState` shape detection, the
- * `core.simple_completed_side_effect_claim` and
- * `core.simple_empty_tracked_state_claim` response-handler evaluators'
- * reroute-to-planner patches, and the planned-reply egress guard
- * (`evaluatePlannedReplyEgress`) that bounces a bare planner REPLY carrying an
- * ungrounded claim. Runs against a REAL AgentRuntime (PGLite-backed, no mocks)
- * so the backstop-rule registry and evaluator wiring are exercised on the
- * production architecture; no live model.
+ * deterministic plugin-owned capability routing, and claim-specific planned
+ * reply egress validation. Runs against a real PGLite-backed AgentRuntime so
+ * action registration, role gates, validate(), and evaluator wiring use the
+ * production architecture; only model transport is absent.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { stringToUuid } from "../index";
 import { registerCandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { getDefaultContextDefinitions } from "../runtime/default-contexts";
+import {
+	__resetDirectActionRoutingRulesForTests,
+	getDirectActionRoutingRules,
+	registerDirectActionRoutingRule,
+} from "../runtime/direct-action-routing";
 import type {
 	ResponseHandlerEvaluatorContext,
 	ResponseHandlerPatch,
@@ -21,21 +23,26 @@ import {
 	createTestRuntime,
 	type TestRuntimeResult,
 } from "../testing/pglite-runtime";
-import type { ActionResult, MessageHandlerResult } from "../types/components";
+import type {
+	Action,
+	ActionResult,
+	MessageHandlerResult,
+} from "../types/components";
 import type { Memory } from "../types/memory";
 import type { State } from "../types/state";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	evaluatePlannedReplyEgress,
 	formatAvailableContextsForPrompt,
-	plannedReplyHasGroundingActionResult,
-	registeredTrackedWorkContexts,
+	plannedReplyHasClaimGroundingReceipt,
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
+	resolveEligibleDirectActionRoutes,
 } from "./message";
 
 const CLAIM_EVALUATOR_NAME = "core.simple_completed_side_effect_claim";
 const EMPTY_CLAIM_EVALUATOR_NAME = "core.simple_empty_tracked_state_claim";
+const DIRECT_ROUTE_EVALUATOR_NAME = "core.direct_registered_capability_request";
 
 // The byte-exact fabricated empty-day reply from #17058 run 729acaf2: a recap
 // ask routed contexts=["simple"] and invented an absent day with no read tool.
@@ -96,6 +103,7 @@ function makeContext(
 		state,
 		messageHandler,
 		availableContexts: [],
+		userRoles: ["USER"],
 	};
 }
 
@@ -419,190 +427,279 @@ describe("replyClaimsEmptyTrackedWorkState", () => {
 });
 
 describe(EMPTY_CLAIM_EVALUATOR_NAME, () => {
-	function getEmptyClaimEvaluator() {
+	function getEvaluator(name: string) {
 		const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
-			(candidate) => candidate.name === EMPTY_CLAIM_EVALUATOR_NAME,
+			(candidate) => candidate.name === name,
 		);
 		if (!evaluator) {
-			throw new Error(`${EMPTY_CLAIM_EVALUATOR_NAME} is not registered`);
+			throw new Error(`${name} is not registered`);
 		}
 		return evaluator;
 	}
 
-	// A runtime with no tasks-class surface genuinely cannot look the answer
-	// up, so the reply is an honest capability statement there and must pass
-	// through. The default runtime already ships a tracked-work action (core
-	// TASKS declares the "tasks" context), so the empty-surface case is
-	// exercised by removing those actions for the duration of the assertion.
-	it("does not fire when no tracked-work action is registered", async () => {
+	it("replaces a route with the same stable id during plugin reload", () => {
 		const runtime = testRuntime.runtime;
-		expect(registeredTrackedWorkContexts(runtime).length).toBeGreaterThan(0);
-		const original = [...runtime.actions];
-		const untracked = original.filter(
-			(action) =>
-				registeredTrackedWorkContexts({ actions: [action] }).length === 0,
-		);
-		runtime.actions.length = 0;
-		runtime.actions.push(...untracked);
-		try {
-			expect(registeredTrackedWorkContexts(runtime)).toEqual([]);
-			expect(
-				await getEmptyClaimEvaluator().shouldRun(
-					makeContext(simpleReplyHandler(FABRICATED_EMPTY_DAY_REPLY), {
-						userText: "Recap my day — what did I get done today?",
-					}),
-				),
-			).toBe(false);
-		} finally {
-			runtime.actions.length = 0;
-			runtime.actions.push(...original);
-		}
+		__resetDirectActionRoutingRulesForTests(runtime);
+		const original = {
+			id: "test.reload-safe-route",
+			actionNames: ["OLD_READER"],
+			requiredActionTags: ["resource:tracked-work", "capability:read"],
+			contexts: ["tasks"] as const,
+			matches: (text: string) => /\brecap\b/iu.test(text),
+		};
+		registerDirectActionRoutingRule(runtime, original);
+		registerDirectActionRoutingRule(runtime, {
+			...original,
+			actionNames: ["CURRENT_READER"],
+		});
+		expect(getDirectActionRoutingRules(runtime)).toHaveLength(1);
+		expect(getDirectActionRoutingRules(runtime)[0]?.actionNames).toEqual([
+			"CURRENT_READER",
+		]);
 	});
 
-	it("fires on a simple-path empty-day claim once tracked-work actions exist, and reroutes with tracked contexts + backstop candidates", async () => {
+	it("does not mistake CHOOSE_OPTION's tasks context for a tracked-work reader", async () => {
 		const runtime = testRuntime.runtime;
+		__resetDirectActionRoutingRulesForTests(runtime);
+		const chooseOption = runtime.actions.find(
+			(action) => action.name === "CHOOSE_OPTION",
+		);
+		expect(chooseOption?.contexts).toContain("tasks");
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.invalid-context-only-reader",
+			actionNames: ["CHOOSE_OPTION"],
+			requiredActionTags: ["resource:tracked-work", "capability:read"],
+			contexts: ["tasks"],
+			matches: (text) => /\brecap\b/iu.test(text),
+		});
+		const context = makeContext(
+			simpleReplyHandler(FABRICATED_EMPTY_DAY_REPLY),
+			{ userText: "Recap my day." },
+		);
+		expect(
+			await resolveEligibleDirectActionRoutes({
+				runtime,
+				message: context.message,
+				state: context.state,
+				userRoles: context.userRoles,
+			}),
+		).toEqual([]);
+		const direct = getEvaluator(DIRECT_ROUTE_EVALUATOR_NAME);
+		expect(await direct.shouldRun(context)).toBe(true);
+		expect(await direct.evaluate(context)).toBeUndefined();
+	});
+
+	it("routes recap intent before reply delivery only through an executable tagged reader", async () => {
+		const runtime = testRuntime.runtime;
+		__resetDirectActionRoutingRulesForTests(runtime);
 		runtime.registerAction({
-			name: "SCHEDULED_TASKS",
+			name: "TEST_TRACKED_WORK_READER",
 			description: "tracked-work test action",
-			contexts: ["tasks", "productivity"],
+			tags: ["resource:tracked-work", "capability:read"],
+			contexts: ["tasks"],
+			roleGate: { minRole: "USER" },
 			validate: async () => true,
 			handler: async () => ({ success: true, text: "" }),
 		});
-		registerCandidateActionBackstopRule(runtime, {
-			actionNames: ["SCHEDULED_TASKS", "SCHEDULED_TASKS_LIST"],
-			matches: (text) => /\b(?:recap|tasks?)\b/i.test(text),
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.tracked-work-recap",
+			actionNames: ["TEST_TRACKED_WORK_READER"],
+			requiredActionTags: ["resource:tracked-work", "capability:read"],
+			contexts: ["tasks"],
+			matches: (text) =>
+				/\b(?:recap|what did i get done|what's left)\b/iu.test(text),
 		});
-		const evaluator = getEmptyClaimEvaluator();
-		const context = makeContext(
-			simpleReplyHandler(FABRICATED_EMPTY_DAY_REPLY),
-			{ userText: "Recap my day — what did I get done today?" },
-		);
-		expect(await evaluator.shouldRun(context)).toBe(true);
-		const patch = (await evaluator.evaluate(context)) as ResponseHandlerPatch;
-		expect(patch.requiresTool).toBe(true);
-		// Reroute contexts: up to two tracked-work ids the registered actions
-		// declare (registration order decides which two), then "general".
-		expect(patch.addContexts?.at(-1)).toBe("general");
-		expect(patch.addContexts).toContain("tasks");
-		expect(patch.addContexts?.length).toBeLessThanOrEqual(3);
-		expect(patch.addCandidateActions).toEqual([
-			"SCHEDULED_TASKS",
-			"SCHEDULED_TASKS_LIST",
-		]);
-		// The fabricated empty day must never ship — replaced by a plain ack the
-		// planner path then supersedes with a tool-grounded recap.
-		expect(patch.reply).toBe("On it.");
+		const evaluator = getEvaluator(DIRECT_ROUTE_EVALUATOR_NAME);
+		for (const userText of [
+			"Recap my day.",
+			"What did I get done today?",
+			"What's left today?",
+		]) {
+			const context = makeContext(
+				simpleReplyHandler("There is not much to report from today."),
+				{ userText },
+			);
+			expect(await evaluator.shouldRun(context)).toBe(true);
+			const patch = (await evaluator.evaluate(context)) as ResponseHandlerPatch;
+			expect(patch).toMatchObject({
+				requiresTool: true,
+				addContexts: ["tasks"],
+				addCandidateActions: ["TEST_TRACKED_WORK_READER"],
+				clearReply: true,
+			});
+			expect(patch.reply).toBeUndefined();
+		}
 	});
 
-	it("does not fire on non-task chat or on already-planning turns", async () => {
-		const evaluator = getEmptyClaimEvaluator();
-		expect(
-			await evaluator.shouldRun(
-				makeContext(
-					simpleReplyHandler(
-						"No word from Bob today — his last message was yesterday.",
-					),
-				),
-			),
-		).toBe(false);
-		// A non-simple routed turn grounds through the planner; the egress guard
-		// below owns that path, not the Stage-1 evaluator.
-		const planning = simpleReplyHandler(FABRICATED_EMPTY_DAY_REPLY);
-		planning.plan.contexts = ["simple", "tasks"];
-		expect(await evaluator.shouldRun(makeContext(planning))).toBe(false);
+	it("replaces a fabricated empty reply honestly when the declared reader is unavailable", async () => {
+		const runtime = testRuntime.runtime;
+		__resetDirectActionRoutingRulesForTests(runtime);
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.missing-reader",
+			actionNames: ["MISSING_TRACKED_WORK_READER"],
+			requiredActionTags: ["resource:tracked-work", "capability:read"],
+			contexts: ["tasks"],
+			matches: (text) => /\brecap\b/iu.test(text),
+		});
+		const context = makeContext(
+			simpleReplyHandler(FABRICATED_EMPTY_DAY_REPLY),
+			{ userText: "Recap my day." },
+		);
+		const evaluator = getEvaluator(EMPTY_CLAIM_EVALUATOR_NAME);
+		expect(await evaluator.shouldRun(context)).toBe(true);
+		const patch = (await evaluator.evaluate(context)) as ResponseHandlerPatch;
+		expect(patch.requiresTool).toBe(false);
+		expect(patch.reply).toContain("wasn't able to check");
+		expect(replyClaimsEmptyTrackedWorkState(patch.reply ?? "")).toBe(false);
 	});
 });
 
 describe("evaluatePlannedReplyEgress", () => {
 	const FABRICATED_ALL_SET_REPLY =
 		"You're all set — I've seeded your first reminder for tomorrow at 9am.";
+	const action = (name: string, tags: string[]): Action => ({
+		name,
+		description: name,
+		tags,
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	});
+	const trackedReader = action("BRIEF", [
+		"domain:briefing",
+		"resource:tracked-work",
+		"capability:read",
+	]);
+	const reminderSurface = action("OWNER_REMINDERS", [
+		"resource:scheduled-item",
+		"capability:read",
+		"capability:write",
+		"capability:schedule",
+	]);
+	const webSearch = action("WEB_SEARCH", ["resource:web", "capability:read"]);
+	const settingsWriter = action("UPDATE_SETTINGS", [
+		"resource:settings",
+		"capability:write",
+	]);
 
-	it("bounces a bare planner REPLY that claims completed work with zero executed actions", () => {
+	it("rejects a planner completion claim with no matching mutation receipt", () => {
 		const decision = evaluatePlannedReplyEgress({
 			reply: FABRICATED_ALL_SET_REPLY,
-			hasGroundingActionResult: false,
-			trackedWorkContexts: ["tasks"],
+			actionResults: [],
+			actions: [reminderSurface],
 		});
-		expect(decision.verdict).toBe("bounce");
-		if (decision.verdict !== "bounce") throw new Error("expected bounce");
+		expect(decision.verdict).toBe("reject");
+		if (decision.verdict !== "reject") throw new Error("expected rejection");
 		expect(decision.kind).toBe("completed_side_effect");
-		// The corrective instruction quotes the rejected claim so the re-run
-		// knows exactly what was refused.
-		expect(decision.correctiveInstruction).toContain("all set");
-		// The honest fallback must not itself trip either claim detector.
 		expect(replyClaimsCompletedSideEffect(decision.fallbackReply)).toBe(false);
 		expect(replyClaimsEmptyTrackedWorkState(decision.fallbackReply)).toBe(
 			false,
 		);
 	});
 
-	it("allows the same claim when a successful non-control tool grounded it", () => {
+	it("allows a completion claim only for a successful mutating operation", () => {
+		const created: ActionResult = {
+			success: true,
+			userFacingText: FABRICATED_ALL_SET_REPLY,
+			verifiedUserFacing: true,
+			data: { actionName: "OWNER_REMINDERS", action: "create" },
+		};
 		expect(
 			evaluatePlannedReplyEgress({
 				reply: FABRICATED_ALL_SET_REPLY,
-				hasGroundingActionResult: true,
-				trackedWorkContexts: ["tasks"],
+				actionResults: [created],
+				actions: [reminderSurface],
 			}),
 		).toEqual({ verdict: "allow" });
 	});
 
-	it("bounces an ungrounded empty-day claim only when a tracked-work surface exists", () => {
-		const bounced = evaluatePlannedReplyEgress({
-			reply: FABRICATED_EMPTY_DAY_REPLY,
-			hasGroundingActionResult: false,
-			trackedWorkContexts: ["tasks"],
-		});
-		expect(bounced.verdict).toBe("bounce");
-		if (bounced.verdict !== "bounce") throw new Error("expected bounce");
-		expect(bounced.kind).toBe("empty_tracked_state");
-		expect(replyClaimsEmptyTrackedWorkState(bounced.fallbackReply)).toBe(false);
-		// No tasks surface registered: "I don't have your list" is an honest
-		// capability statement, not a skipped read.
+	it("does not let an unrelated successful tool launder either claim kind", () => {
+		const searched: ActionResult = {
+			success: true,
+			data: { actionName: "WEB_SEARCH", query: "weather" },
+		};
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_ALL_SET_REPLY,
+				actionResults: [searched],
+				actions: [webSearch, reminderSurface],
+			}).verdict,
+		).toBe("reject");
 		expect(
 			evaluatePlannedReplyEgress({
 				reply: FABRICATED_EMPTY_DAY_REPLY,
-				hasGroundingActionResult: false,
-				trackedWorkContexts: [],
-			}),
-		).toEqual({ verdict: "allow" });
+				actionResults: [searched],
+				actions: [webSearch, trackedReader],
+			}).verdict,
+		).toBe("reject");
 	});
 
-	it("allows a genuinely-empty grounded read and plain answers", () => {
-		expect(
-			evaluatePlannedReplyEgress({
-				reply: "Nothing was recorded this morning — your list is clear.",
-				hasGroundingActionResult: true,
-				trackedWorkContexts: ["tasks"],
-			}),
-		).toEqual({ verdict: "allow" });
-		expect(
-			evaluatePlannedReplyEgress({
-				reply: "I haven't set the reminder yet — want me to?",
-				hasGroundingActionResult: false,
-				trackedWorkContexts: ["tasks"],
-			}),
-		).toEqual({ verdict: "allow" });
-	});
-
-	it("counts only successful non-control tool results as grounding", () => {
-		const successfulTool: ActionResult = {
+	it("requires a tracked-work read receipt for an empty-day claim", () => {
+		const ungrounded = evaluatePlannedReplyEgress({
+			reply: FABRICATED_EMPTY_DAY_REPLY,
+			actionResults: [],
+			actions: [trackedReader],
+		});
+		expect(ungrounded.verdict).toBe("reject");
+		if (ungrounded.verdict !== "reject") throw new Error("expected rejection");
+		expect(ungrounded.kind).toBe("empty_tracked_state");
+		expect(replyClaimsEmptyTrackedWorkState(ungrounded.fallbackReply)).toBe(
+			false,
+		);
+		const read: ActionResult = {
 			success: true,
-			data: { actionName: "OWNER_REMINDERS" },
+			userFacingText: FABRICATED_EMPTY_DAY_REPLY,
+			verifiedUserFacing: true,
+			data: { actionName: "BRIEF", subaction: "compose_evening" },
 		};
-		const failedTool: ActionResult = {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_EMPTY_DAY_REPLY,
+				actionResults: [read],
+				actions: [trackedReader],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+
+	it("does not let an unrelated mutation receipt launder a completion claim", () => {
+		const updatedSettings: ActionResult = {
+			success: true,
+			userFacingText: "Your settings were updated.",
+			verifiedUserFacing: true,
+			data: { actionName: "UPDATE_SETTINGS", operation: "update" },
+		};
+		const decision = evaluatePlannedReplyEgress({
+			reply: FABRICATED_ALL_SET_REPLY,
+			actionResults: [updatedSettings],
+			actions: [settingsWriter, reminderSurface],
+		});
+		expect(decision.verdict).toBe("reject");
+	});
+
+	it("fails closed for failed results and read operations on mixed surfaces", () => {
+		const failedCreate: ActionResult = {
 			success: false,
-			data: { actionName: "OWNER_REMINDERS" },
+			data: { actionName: "OWNER_REMINDERS", action: "create" },
 		};
-		const executedReply: ActionResult = {
+		const successfulList: ActionResult = {
 			success: true,
-			data: { actionName: "REPLY" },
+			data: { actionName: "OWNER_REMINDERS", action: "list" },
 		};
-		expect(plannedReplyHasGroundingActionResult([successfulTool])).toBe(true);
-		expect(plannedReplyHasGroundingActionResult([failedTool])).toBe(false);
-		// An executed REPLY re-composes prose; it performs no side effect and
-		// reads no state, so it cannot ground a completion or empty-state claim.
-		expect(plannedReplyHasGroundingActionResult([executedReply])).toBe(false);
-		expect(plannedReplyHasGroundingActionResult([])).toBe(false);
+		expect(
+			plannedReplyHasClaimGroundingReceipt({
+				kind: "completed_side_effect",
+				reply: FABRICATED_ALL_SET_REPLY,
+				results: [failedCreate],
+				actions: [reminderSurface],
+			}),
+		).toBe(false);
+		expect(
+			plannedReplyHasClaimGroundingReceipt({
+				kind: "completed_side_effect",
+				reply: FABRICATED_ALL_SET_REPLY,
+				results: [successfulList],
+				actions: [reminderSurface],
+			}),
+		).toBe(false);
 	});
 });
 
