@@ -20,6 +20,7 @@ import {
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService, readAdminCanaryImageJobData } from "./provisioning-jobs";
+import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
 
 export interface AdminCanaryRolloutTargetResponse extends AdminCanaryPlannedTarget {
   jobId?: string;
@@ -55,6 +56,9 @@ function assertRunningDedicatedAgent(
   }
   if (!agent.docker_image || !agent.image_digest) {
     throw conflict(`Agent ${target.agentId} has no authoritative source image pair`);
+  }
+  if (!hasReadyWarmClaimCredential(agent)) {
+    throw conflict(`Agent ${target.agentId} warm-claim credential handoff is not ready`);
   }
   return agent;
 }

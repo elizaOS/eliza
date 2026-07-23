@@ -167,7 +167,9 @@ export class AgentBillingRepository {
         scheduled_shutdown_at: shutdownTime,
         updated_at: now,
       })
-      .where(eq(agentSandboxes.id, sandboxId));
+      .where(
+        and(eq(agentSandboxes.id, sandboxId), sql`${agentSandboxes.deletion_attempt_id} IS NULL`),
+      );
   }
 
   async suspendSandboxForInsufficientCredits(sandboxId: string, now: Date): Promise<void> {
@@ -181,7 +183,9 @@ export class AgentBillingRepository {
         health_url: null,
         updated_at: now,
       })
-      .where(eq(agentSandboxes.id, sandboxId));
+      .where(
+        and(eq(agentSandboxes.id, sandboxId), sql`${agentSandboxes.deletion_attempt_id} IS NULL`),
+      );
   }
 
   async reactivateSandboxBillingAfterFunding(sandboxId: string, now: Date): Promise<void> {
@@ -193,7 +197,13 @@ export class AgentBillingRepository {
         scheduled_shutdown_at: null,
         updated_at: now,
       })
-      .where(and(eq(agentSandboxes.id, sandboxId), ne(agentSandboxes.billing_status, "exempt")));
+      .where(
+        and(
+          eq(agentSandboxes.id, sandboxId),
+          ne(agentSandboxes.billing_status, "exempt"),
+          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+        ),
+      );
   }
 
   async recordHourlyBilling(input: AgentHourlyBillingInput): Promise<AgentHourlyBillingOutcome> {
@@ -204,6 +214,8 @@ export class AgentBillingRepository {
         .where(
           and(
             eq(agentSandboxes.id, input.sandboxId),
+            eq(agentSandboxes.organization_id, input.organizationId),
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             or(
               isNull(agentSandboxes.last_billed_at),
               lt(agentSandboxes.last_billed_at, input.rebillCutoff),
@@ -273,7 +285,13 @@ export class AgentBillingRepository {
           total_billed: sql`${agentSandboxes.total_billed} + ${String(input.hourlyCost)}`,
           updated_at: input.now,
         })
-        .where(eq(agentSandboxes.id, input.sandboxId));
+        .where(
+          and(
+            eq(agentSandboxes.id, input.sandboxId),
+            eq(agentSandboxes.organization_id, input.organizationId),
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ),
+        );
 
       return { status: "billed" as const, newBalance, transactionId: creditTx.id };
     });

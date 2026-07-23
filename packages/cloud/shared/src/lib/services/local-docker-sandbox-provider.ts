@@ -15,6 +15,7 @@ import { promisify } from "node:util";
 
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
+import { isContainerAbsentMessage } from "./docker-error-classifier";
 import {
   allocatePort,
   buildAgentContainerLabelArgs,
@@ -400,6 +401,46 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
         `${LOG_PREFIX} docker rm failed for ${sandboxId}: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
+
+    if (meta) {
+      this.ports.release(meta.bridgePort);
+      this.ports.release(meta.healthPort);
+      this.containers.delete(sandboxId);
+    }
+  }
+
+  async stopForReplacement(sandboxId: string): Promise<void> {
+    validateContainerName(sandboxId);
+    const meta = this.containers.get(sandboxId);
+    let stopError: unknown;
+    let removeError: unknown;
+
+    try {
+      await this.execDocker(["stop", "-t", "10", sandboxId]);
+    } catch (error) {
+      // error-policy:J1 Docker transport boundary — preserve both teardown
+      // outcomes so only explicit container absence can authorize replacement.
+      stopError = error;
+    }
+    try {
+      await this.execDocker(["rm", "-f", sandboxId]);
+    } catch (error) {
+      // error-policy:J1 Docker transport boundary — removal failure remains
+      // distinguishable from canonical absence and fails closed below.
+      removeError = error;
+    }
+
+    if (stopError && removeError) {
+      const stopMessage = stopError instanceof Error ? stopError.message : String(stopError);
+      const removeMessage =
+        removeError instanceof Error ? removeError.message : String(removeError);
+      if (!isContainerAbsentMessage(stopMessage) && !isContainerAbsentMessage(removeMessage)) {
+        throw new Error(
+          `${LOG_PREFIX} Cannot prove ${sandboxId} stopped before replacement: ` +
+            `docker stop -> ${stopMessage}; docker rm -f -> ${removeMessage}`,
+        );
+      }
+    }
 
     if (meta) {
       this.ports.release(meta.bridgePort);

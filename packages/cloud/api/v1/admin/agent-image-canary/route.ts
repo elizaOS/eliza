@@ -9,11 +9,16 @@ import { z } from "zod";
 import {
   ForbiddenError,
   failureResponse,
+  NotFoundError,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import { adminAgentImageRolloutService } from "@/lib/services/admin-agent-image-rollout";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
+import {
+  provisioningJobService,
+  readAdminCanaryImageJobData,
+} from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -60,7 +65,10 @@ interface AdminAgentImageCanaryRouteDependencies {
     typeof adminAgentImageRolloutService,
     "previewOrEnqueue"
   >;
-  jobService: Pick<typeof provisioningJobService, "triggerImmediate">;
+  jobService: Pick<
+    typeof provisioningJobService,
+    "getJob" | "triggerImmediate"
+  >;
   logger: Pick<typeof logger, "info" | "warn">;
 }
 
@@ -130,7 +138,7 @@ export function createAdminAgentImageCanaryRoute(
                 polling: result.targets.map((target) => ({
                   agentId: target.agentId,
                   jobId: target.jobId,
-                  endpoint: `/api/v1/jobs/${target.jobId}`,
+                  endpoint: `/api/v1/admin/agent-image-canary/jobs/${target.jobId}`,
                   intervalMs: 5_000,
                   expectedDurationMs: 180_000,
                 })),
@@ -138,6 +146,68 @@ export function createAdminAgentImageCanaryRoute(
         },
         result.dryRun ? 200 : 202,
       );
+    } catch (error) {
+      // error-policy:J1 Translate route failures into the canonical API envelope.
+      return failureResponse(c, error);
+    }
+  });
+
+  app.get("/jobs/:jobId", async (c) => {
+    try {
+      const { user, role } = await dependencies.requireAdmin(c);
+      if (role !== "super_admin") {
+        throw ForbiddenError("Super admin access required");
+      }
+
+      const jobId = c.req.param("jobId");
+      const parsedJobId = z.string().uuid().safeParse(jobId);
+      if (!parsedJobId.success) {
+        throw ValidationError("jobId must be a UUID");
+      }
+
+      const job = await dependencies.jobService.getJob(parsedJobId.data);
+      if (
+        !job ||
+        job.type !== JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE ||
+        job.user_id !== user.id
+      ) {
+        throw NotFoundError("Canary image job not found");
+      }
+
+      const data = readAdminCanaryImageJobData(job);
+      if (
+        data.actorUserId !== user.id ||
+        data.userId !== user.id ||
+        data.organizationId !== job.organization_id ||
+        data.agentId !== job.agent_id
+      ) {
+        throw new Error(
+          `Admin canary job ${job.id} has inconsistent actor or target identity`,
+        );
+      }
+
+      return c.json({
+        success: true,
+        data: {
+          id: job.id,
+          type: job.type,
+          status: job.status,
+          result: job.result,
+          error: job.error,
+          attempts: job.attempts,
+          maxAttempts: job.max_attempts,
+          estimatedCompletionAt: job.estimated_completion_at,
+          scheduledFor: job.scheduled_for,
+          startedAt: job.started_at,
+          completedAt: job.completed_at,
+          createdAt: job.created_at,
+          updatedAt: job.updated_at,
+        },
+        polling:
+          job.status === "pending" || job.status === "in_progress"
+            ? { intervalMs: 5_000, shouldContinue: true }
+            : { shouldContinue: false },
+      });
     } catch (error) {
       // error-policy:J1 Translate route failures into the canonical API envelope.
       return failureResponse(c, error);

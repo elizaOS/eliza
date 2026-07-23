@@ -14,13 +14,45 @@
  * suites in the same `bun test` invocation.
  */
 
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
+import * as realHelpersNs from "../../db/helpers";
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
+
+const realHelpers = { ...realHelpersNs };
+const conflictQueryTx = {
+  execute: async () => ({ rows: [] }),
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        orderBy: () => ({
+          limit: async () => [],
+        }),
+      }),
+    }),
+  }),
+};
+const dispatchDbWrite = {
+  ...(realHelpers.dbWrite as unknown as Record<string, unknown>),
+  transaction: async <T>(fn: (tx: typeof conflictQueryTx) => Promise<T>): Promise<T> =>
+    fn(conflictQueryTx),
+};
+let provisioningJobService: typeof import("./provisioning-jobs").provisioningJobService;
+
+beforeAll(async () => {
+  mock.module("../../db/helpers", () => ({
+    ...realHelpers,
+    dbWrite: dispatchDbWrite,
+  }));
+  ({ provisioningJobService } = await import("./provisioning-jobs.ts?dispatch-harness"));
+});
+
+afterAll(() => {
+  mock.module("../../db/helpers", () => realHelpers);
+});
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -336,14 +368,21 @@ describe("executeJob dispatch — success path per job type marks the job comple
         expect(res.retried).toBe(0);
         const completed = completedCall(ctx);
         if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
-          expect(completed).toBeUndefined();
+          expect(completed).toBeDefined();
+          expect(completed?.[2]?.result).toMatchObject({
+            success: true,
+            cleanupPending: false,
+          });
           expect(atomicAuditUpdates).toMatchObject({
-            status: "completed",
             result_storage: "inline",
             error: null,
+            completed_at: null,
           });
-          expect(atomicAuditUpdates?.result).toBeTruthy();
-          expect(atomicAuditUpdates?.completed_at).toBeInstanceOf(Date);
+          expect(atomicAuditUpdates?.result).toMatchObject({
+            success: false,
+            cleanupPending: true,
+          });
+          expect(atomicAuditUpdates).not.toHaveProperty("status");
         } else {
           expect(completed).toBeDefined();
           expect(completed?.[2]?.result).toBeTruthy();
@@ -361,6 +400,91 @@ describe("executeJob dispatch — success path per job type marks the job comple
       }
     });
   }
+
+  test("admin canary remains retryable after cutover until old-placement cleanup converges", async () => {
+    const arm = AGENT_ARMS.find(
+      (candidate) => candidate.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+    );
+    if (!arm) throw new Error("admin canary dispatch arm missing");
+    const first = harness(makeJob(arm.type, arm.data));
+    let pendingAudit: Record<string, unknown> | undefined;
+    const canarySpy = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
+      async (params) => {
+        const tx = {
+          update: () => ({
+            set: (updates: Record<string, unknown>) => {
+              pendingAudit = updates.result as Record<string, unknown>;
+              return {
+                where: () => ({
+                  returning: async () => [{ id: first.job.id }],
+                }),
+              };
+            },
+          }),
+        };
+        await params.onCutoverInTx(tx as never, {
+          oldNodeId: "node-a",
+          oldContainerName: "c-old",
+          newNodeId: "node-b",
+          newContainerName: "c-new",
+          newDigest: params.targetDigest,
+        });
+        return {
+          ...arm.success,
+          cleanupPending: true,
+          error: "old node unreachable",
+        } as never;
+      },
+    );
+    serviceSpies.push(canarySpy);
+    try {
+      const pending = await run(arm.type);
+      expect(pending).toMatchObject({ succeeded: 0, retried: 1, failed: 0 });
+      expect(first.retryLaterSpy).toHaveBeenCalledTimes(1);
+      expect(completedCall(first)).toBeUndefined();
+      expect(pendingAudit).toMatchObject({
+        success: false,
+        cleanupPending: true,
+      });
+    } finally {
+      first.claimSpy.mockRestore();
+      first.recoverSpy.mockRestore();
+      first.updateStatusSpy.mockRestore();
+      first.updateSpy.mockRestore();
+      first.incrementSpy.mockRestore();
+      first.retryLaterSpy.mockRestore();
+    }
+
+    if (!pendingAudit) throw new Error("pending cutover audit was not captured");
+    const retry = harness(
+      makeJob(arm.type, arm.data, {
+        result: pendingAudit,
+        status: "in_progress",
+      }),
+    );
+    const convergeSpy = spyOn(
+      elizaSandboxService,
+      "convergeReplacementCleanupFence",
+    ).mockResolvedValue(undefined);
+    serviceSpies.push(convergeSpy);
+    try {
+      const converged = await run(arm.type);
+      expect(converged).toMatchObject({ succeeded: 1, retried: 0, failed: 0 });
+      expect(convergeSpy).toHaveBeenCalledWith(AGENT, ORG);
+      expect(canarySpy).toHaveBeenCalledTimes(1);
+      expect(completedCall(retry)?.[2]?.result).toMatchObject({
+        success: true,
+        cleanupPending: false,
+      });
+    } finally {
+      retry.claimSpy.mockRestore();
+      retry.recoverSpy.mockRestore();
+      retry.updateStatusSpy.mockRestore();
+      retry.updateSpy.mockRestore();
+      retry.incrementSpy.mockRestore();
+      retry.retryLaterSpy.mockRestore();
+    }
+  });
 
   test("message: bridge reply is stored on the job result and completes", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_MESSAGE, { text: "hello", nonce: "n-1" }));
@@ -458,6 +582,31 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
       expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("warm-claim restart recovery is bounded and installs terminal cleanup writeback", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_RESTART));
+    stub("executeRestart", {
+      success: false,
+      containerStopped: true,
+      containerStarted: true,
+      error: "Warm-claim credential recovery failed: source-key revocation unavailable",
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_RESTART);
+      expect(res.retried).toBe(0);
+      expect(res.failed).toBe(1);
+      expect(ctx.retryLaterSpy).not.toHaveBeenCalled();
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+      expect(typeof ctx.incrementSpy.mock.calls[0]?.[3]).toBe("function");
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();

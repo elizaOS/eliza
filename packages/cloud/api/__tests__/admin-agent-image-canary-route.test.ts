@@ -12,8 +12,10 @@ type RouteDependencies = NonNullable<
 >;
 
 const ACTOR = "33333333-3333-4333-8333-333333333333";
+const OTHER_ACTOR = "66666666-6666-4666-8666-666666666666";
 const AGENT = "11111111-1111-4111-8111-111111111111";
 const ORG = "22222222-2222-4222-8222-222222222222";
+const ACTOR_ORG = "77777777-7777-4777-8777-777777777777";
 const JOB = "44444444-4444-4444-8444-444444444444";
 const ROLLOUT = "55555555-5555-4555-8555-555555555555";
 const SOURCE_DIGEST = `sha256:${"a".repeat(64)}`;
@@ -21,8 +23,8 @@ const TARGET_DIGEST = `sha256:${"b".repeat(64)}`;
 const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TARGET_DIGEST}`;
 const AUTH_USER = {
   id: ACTOR,
-  organization_id: ORG,
-  organization: { id: ORG, name: "Canary Test Org", is_active: true },
+  organization_id: ACTOR_ORG,
+  organization: { id: ACTOR_ORG, name: "Admin Actor Org", is_active: true },
 };
 
 const requireAdmin = mock<RouteDependencies["requireAdmin"]>(async () => ({
@@ -52,10 +54,68 @@ const previewOrEnqueue = mock<
 const triggerImmediate = mock<
   RouteDependencies["jobService"]["triggerImmediate"]
 >(async () => undefined);
+
+type PolledJob = NonNullable<
+  Awaited<ReturnType<RouteDependencies["jobService"]["getJob"]>>
+>;
+
+function canaryJob(overrides: Record<string, unknown> = {}): PolledJob {
+  const now = new Date("2026-07-23T00:00:00.000Z");
+  return {
+    id: JOB,
+    type: "agent_admin_canary_image",
+    status: "pending",
+    data: {
+      operation: "upgrade",
+      rolloutId: ROLLOUT,
+      actorUserId: ACTOR,
+      userId: ACTOR,
+      decisionAt: now.toISOString(),
+      agentId: AGENT,
+      organizationId: ORG,
+      targetOwnerUserId: OTHER_ACTOR,
+      sourceImage: "ghcr.io/elizaos/eliza:sha-production",
+      sourceDigest: SOURCE_DIGEST,
+      targetImage: TARGET_IMAGE,
+      targetDigest: TARGET_DIGEST,
+    },
+    data_storage: "inline",
+    data_key: null,
+    result: null,
+    result_storage: "inline",
+    result_key: null,
+    error: null,
+    error_storage: "inline",
+    error_key: null,
+    organization_id: ORG,
+    user_id: ACTOR,
+    agent_id: AGENT,
+    attempts: 0,
+    max_attempts: 1,
+    scheduled_for: null,
+    estimated_completion_at: new Date("2026-07-23T00:03:00.000Z"),
+    started_at: null,
+    completed_at: null,
+    webhook_url: null,
+    webhook_status: null,
+    webhook_attempts: 0,
+    webhook_last_attempt_at: null,
+    webhook_error: null,
+    parent_job_id: null,
+    worker_id: null,
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  } as unknown as PolledJob;
+}
+
+const getJob = mock<RouteDependencies["jobService"]["getJob"]>(async () =>
+  canaryJob(),
+);
 const route = createAdminAgentImageCanaryRoute({
   requireAdmin,
   rolloutService: { previewOrEnqueue },
-  jobService: { triggerImmediate },
+  jobService: { getJob, triggerImmediate },
   logger: {
     info: () => undefined,
     warn: () => undefined,
@@ -89,6 +149,8 @@ afterEach(() => {
   });
   triggerImmediate.mockReset();
   triggerImmediate.mockResolvedValue(undefined);
+  getJob.mockReset();
+  getJob.mockResolvedValue(canaryJob());
 });
 
 function request(body: unknown): Request {
@@ -178,9 +240,70 @@ describe("POST /api/v1/admin/agent-image-canary", () => {
     expect(payload.polling).toEqual([
       expect.objectContaining({
         jobId: JOB,
-        endpoint: `/api/v1/jobs/${JOB}`,
+        endpoint: `/api/v1/admin/agent-image-canary/jobs/${JOB}`,
       }),
     ]);
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
+  function pollRequest(jobId = JOB): Request {
+    return new Request(`http://test.local/jobs/${jobId}`);
+  }
+
+  test("the authenticated super-admin can poll their cross-org canary job", async () => {
+    const response = await route.fetch(pollRequest());
+    expect(response.status).toBe(200);
+    expect(getJob).toHaveBeenCalledWith(JOB);
+    const payload = (await response.json()) as {
+      data: { id: string; status: string };
+      polling: { shouldContinue: boolean };
+    };
+    expect(payload.data).toEqual(
+      expect.objectContaining({ id: JOB, status: "pending" }),
+    );
+    expect(payload.polling.shouldContinue).toBe(true);
+  });
+
+  test("a different super-admin receives the same 404 as a missing job", async () => {
+    requireAdmin.mockResolvedValue({
+      user: { ...AUTH_USER, id: OTHER_ACTOR },
+      role: "super_admin",
+    });
+    const response = await route.fetch(pollRequest());
+    expect(response.status).toBe(404);
+  });
+
+  test("rejects non-super-admins before the unscoped lookup", async () => {
+    requireAdmin.mockResolvedValue({ user: AUTH_USER, role: "moderator" });
+    const response = await route.fetch(pollRequest());
+    expect(response.status).toBe(403);
+    expect(getJob).not.toHaveBeenCalled();
+  });
+
+  test("invalid UUIDs fail validation before the unscoped lookup", async () => {
+    const response = await route.fetch(pollRequest("not-a-uuid"));
+    expect(response.status).toBe(400);
+    expect(getJob).not.toHaveBeenCalled();
+  });
+
+  test("ordinary jobs are indistinguishable from missing canary jobs", async () => {
+    getJob.mockResolvedValue(canaryJob({ type: "agent_upgrade" }));
+    const response = await route.fetch(pollRequest());
+    expect(response.status).toBe(404);
+  });
+
+  test("own-row payload identity corruption fails closed", async () => {
+    getJob.mockResolvedValue(
+      canaryJob({
+        data: {
+          ...canaryJob().data,
+          organizationId: ACTOR_ORG,
+        },
+      }),
+    );
+    const response = await route.fetch(pollRequest());
+    expect(response.status).toBe(500);
   });
 });

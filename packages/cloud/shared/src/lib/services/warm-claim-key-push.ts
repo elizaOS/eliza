@@ -35,12 +35,48 @@
  *   - the pool-org key the container BOOTED with is named for the DELETED
  *     pool row (`agent-sandbox:<poolRowId>`), so the claim-time mint cannot
  *     touch it; `pushClaimedWarmContainerInferenceKey` revokes it by
- *     `warm_pool_row_id` BEFORE the live push, so no usable sentinel-org
- *     credential survives the handoff — a failed push recovers by container
- *     restart from the claimed row's already-persisted env.
+ *     `warm_pool_row_id` only after live fingerprint attestation is durable,
+ *     and the row becomes ready only after that revocation succeeds.
  */
 
 export const WARM_CLAIM_KEY_PUSH_TIMEOUT_MS = 10_000;
+export const WARM_CLAIM_RECOVERY_FAILURE_PREFIX = "Warm-claim credential recovery failed:";
+
+/**
+ * A claimed sandbox is ineligible for image changes until its server-owned
+ * handoff state records a live user-org credential attestation. Cold-created
+ * sandboxes have no pool credential to replace and therefore bypass this gate.
+ */
+export function hasReadyWarmClaimCredential(
+  sandbox: Pick<
+    {
+      claimed_at: Date | null;
+      warm_claim_credential_state: "pending" | "attested" | "ready" | "failed" | null;
+      warm_claim_attested_at: Date | null;
+      warm_claim_source_pool_id: string | null;
+      warm_claim_key_fingerprint: string | null;
+      warm_claim_attested_environment_revision: number | null;
+      environment_revision: number;
+    },
+    | "claimed_at"
+    | "warm_claim_credential_state"
+    | "warm_claim_attested_at"
+    | "warm_claim_source_pool_id"
+    | "warm_claim_key_fingerprint"
+    | "warm_claim_attested_environment_revision"
+    | "environment_revision"
+  >,
+): boolean {
+  if (!sandbox.claimed_at) return true;
+  return (
+    sandbox.warm_claim_credential_state === "ready" &&
+    sandbox.warm_claim_attested_at instanceof Date &&
+    sandbox.warm_claim_source_pool_id === null &&
+    Boolean(sandbox.warm_claim_key_fingerprint) &&
+    sandbox.warm_claim_attested_environment_revision !== null &&
+    sandbox.warm_claim_attested_environment_revision === sandbox.environment_revision
+  );
+}
 
 /**
  * The safe-to-log correlation prefix length for a minted `eliza_` key. Matches
@@ -59,9 +95,9 @@ export interface WarmClaimKeyPushBody {
 
 /**
  * Build the `POST /api/cloud/login/persist` request body for a warm-claim
- * re-credential. Returns null when there is no usable key/org to push; the
- * warm-claim service treats that as a failed handoff (fail closed), never as
- * a ready claim.
+ * re-credential. Null is an explicit validation failure; durable callers must
+ * reject it rather than treating a missing key or organization as a successful
+ * handoff.
  */
 export function buildWarmClaimKeyPushBody(params: {
   apiKey: string | null | undefined;

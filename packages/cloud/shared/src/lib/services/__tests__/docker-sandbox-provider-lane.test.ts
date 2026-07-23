@@ -14,6 +14,7 @@ import "./docker-sandbox-headscale-route.test.ts";
 import "./docker-sandbox-health-fallback.test.ts";
 import "./docker-sandbox-health-stale-node.test.ts";
 import "./docker-sandbox-probe-transport.test.ts";
+import "./docker-sandbox-replacement-cleanup.test.ts";
 import "./docker-sandbox-unreachable-terminal.test.ts";
 import "./docker-ssh-probe-classify.test.ts";
 

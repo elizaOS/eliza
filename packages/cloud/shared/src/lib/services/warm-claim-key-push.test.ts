@@ -17,9 +17,86 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildWarmClaimKeyPushBody,
+  hasReadyWarmClaimCredential,
   safeKeyPrefix,
   WARM_CLAIM_KEY_LOG_PREFIX_LEN,
 } from "./warm-claim-key-push";
+
+describe("warm-claim credential readiness", () => {
+  const claimedAt = new Date("2026-07-23T00:00:00.000Z");
+
+  test("requires server-owned ready state and an attestation timestamp", () => {
+    expect(
+      hasReadyWarmClaimCredential({
+        claimed_at: claimedAt,
+        warm_claim_credential_state: "pending",
+        warm_claim_attested_at: null,
+        warm_claim_source_pool_id: "44444444-4444-4444-8444-444444444444",
+        warm_claim_key_fingerprint: null,
+        warm_claim_attested_environment_revision: null,
+        environment_revision: 2,
+      }),
+    ).toBe(false);
+    expect(
+      hasReadyWarmClaimCredential({
+        claimed_at: claimedAt,
+        warm_claim_credential_state: "ready",
+        warm_claim_attested_at: null,
+        warm_claim_source_pool_id: null,
+        warm_claim_key_fingerprint: "deadbeefdeadbeef",
+        warm_claim_attested_environment_revision: 2,
+        environment_revision: 2,
+      }),
+    ).toBe(false);
+    expect(
+      hasReadyWarmClaimCredential({
+        claimed_at: claimedAt,
+        warm_claim_credential_state: "ready",
+        warm_claim_attested_at: claimedAt,
+        warm_claim_source_pool_id: "44444444-4444-4444-8444-444444444444",
+        warm_claim_key_fingerprint: "deadbeefdeadbeef",
+        warm_claim_attested_environment_revision: 2,
+        environment_revision: 2,
+      }),
+    ).toBe(false);
+    expect(
+      hasReadyWarmClaimCredential({
+        claimed_at: claimedAt,
+        warm_claim_credential_state: "ready",
+        warm_claim_attested_at: claimedAt,
+        warm_claim_source_pool_id: null,
+        warm_claim_key_fingerprint: "deadbeefdeadbeef",
+        warm_claim_attested_environment_revision: 2,
+        environment_revision: 2,
+      }),
+    ).toBe(true);
+    expect(
+      hasReadyWarmClaimCredential({
+        claimed_at: claimedAt,
+        warm_claim_credential_state: "ready",
+        warm_claim_attested_at: claimedAt,
+        warm_claim_source_pool_id: null,
+        warm_claim_key_fingerprint: "deadbeefdeadbeef",
+        warm_claim_attested_environment_revision: 2,
+        environment_revision: 3,
+      }),
+    ).toBe(false);
+  });
+
+  test("does not gate cold-provisioned rows", () => {
+    expect(
+      hasReadyWarmClaimCredential({
+        claimed_at: null,
+        warm_claim_credential_state: null,
+        warm_claim_attested_at: null,
+        warm_claim_source_pool_id: null,
+        warm_claim_key_fingerprint: null,
+        warm_claim_attested_environment_revision: null,
+        environment_revision: 0,
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("buildWarmClaimKeyPushBody", () => {
   test("builds a body that forces inference on, with org + user", () => {
