@@ -13,6 +13,8 @@ export const ADMIN_CANARY_DEMO_IMAGE_REPOSITORY = "ghcr.io/elizaos/eliza-demo";
 export const ADMIN_CANARY_CANONICAL_IMAGE_REPOSITORY = "ghcr.io/elizaos/eliza";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_REQUEST_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 
 export type AdminCanaryImageOperation = "upgrade" | "rollback";
@@ -24,9 +26,22 @@ export interface AdminCanaryTargetExpectation {
   expectedSourceDigest: string;
 }
 
-export interface AdminCanaryUpgradeInput {
+interface AdminCanaryRequestIdentity {
+  requestId: string;
+}
+
+interface AdminCanaryPreviewRequest {
+  dryRun: true;
+  expectedPlanFingerprint?: never;
+}
+
+interface AdminCanaryExecuteRequest {
+  dryRun: false;
+  expectedPlanFingerprint: string;
+}
+
+interface AdminCanaryUpgradeRequest {
   operation: "upgrade";
-  dryRun: boolean;
   targetImage: string;
   targets: AdminCanaryTargetExpectation[];
 }
@@ -36,11 +51,18 @@ export interface AdminCanaryRollbackSource {
   jobId?: string;
 }
 
-export interface AdminCanaryRollbackInput {
+interface AdminCanaryRollbackRequest {
   operation: "rollback";
-  dryRun: boolean;
   source: AdminCanaryRollbackSource;
 }
+
+export type AdminCanaryUpgradeInput = AdminCanaryRequestIdentity &
+  AdminCanaryUpgradeRequest &
+  (AdminCanaryPreviewRequest | AdminCanaryExecuteRequest);
+
+export type AdminCanaryRollbackInput = AdminCanaryRequestIdentity &
+  AdminCanaryRollbackRequest &
+  (AdminCanaryPreviewRequest | AdminCanaryExecuteRequest);
 
 export type AdminCanaryRolloutInput = AdminCanaryUpgradeInput | AdminCanaryRollbackInput;
 
@@ -62,7 +84,18 @@ export interface AdminCanaryImageJobData extends AdminCanaryPlannedTarget {
   actorUserId: string;
   userId: string;
   decisionAt: string;
+  /**
+   * Rows created before request recovery existed omit this all-or-nothing
+   * metadata group. They remain executable and valid rollback evidence, but
+   * can never satisfy a request-id replay lookup.
+   */
+  requestId?: string;
+  planFingerprint?: string;
+  canonicalRequestHash?: string;
 }
+
+export type RecoverableAdminCanaryImageJobData = AdminCanaryImageJobData &
+  Required<Pick<AdminCanaryImageJobData, "requestId" | "planFingerprint" | "canonicalRequestHash">>;
 
 export interface AdminCanaryImageJobResult {
   success: boolean;
@@ -102,6 +135,12 @@ export function assertSha256Digest(value: string, field: string): void {
 export function assertUuid(value: string, field: string): void {
   if (!UUID_RE.test(value)) {
     throw ValidationError(`${field} must be a UUID`);
+  }
+}
+
+export function assertAdminCanaryRequestId(value: string): void {
+  if (!CANONICAL_REQUEST_ID_RE.test(value)) {
+    throw ValidationError("requestId must be a canonical lowercase UUID");
   }
 }
 
@@ -158,7 +197,25 @@ function assertTargetExpectations(targets: AdminCanaryTargetExpectation[]): void
   }
 }
 
+function compareTargetIdentity(
+  left: Pick<AdminCanaryTargetExpectation, "organizationId" | "agentId">,
+  right: Pick<AdminCanaryTargetExpectation, "organizationId" | "agentId">,
+): number {
+  const leftKey = `${left.organizationId}:${left.agentId}`;
+  const rightKey = `${right.organizationId}:${right.agentId}`;
+  return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+}
+
 export function assertAdminCanaryRolloutInput(input: AdminCanaryRolloutInput): void {
+  assertAdminCanaryRequestId(input.requestId);
+  if (input.dryRun) {
+    if (input.expectedPlanFingerprint !== undefined) {
+      throw ValidationError("dry-run requests cannot include expectedPlanFingerprint");
+    }
+  } else {
+    assertSha256Digest(input.expectedPlanFingerprint, "expectedPlanFingerprint");
+  }
+
   if (input.operation === "upgrade") {
     assertTargetExpectations(input.targets);
     parseAdminCanaryDemoImage(input.targetImage);
@@ -175,6 +232,92 @@ export function assertAdminCanaryRolloutInput(input: AdminCanaryRolloutInput): v
     throw ValidationError("rollback source identifier is required");
   }
   assertUuid(sourceId, "rollback source");
+}
+
+function canonicalRequestPayload(
+  input: AdminCanaryRolloutInput,
+  actorUserId: string,
+): Record<string, unknown> {
+  if (input.operation === "upgrade") {
+    return {
+      actorUserId,
+      requestId: input.requestId,
+      operation: input.operation,
+      dryRun: input.dryRun,
+      expectedPlanFingerprint: input.dryRun ? null : input.expectedPlanFingerprint,
+      targetImage: input.targetImage,
+      targets: [...input.targets].sort(compareTargetIdentity).map((target) => ({
+        agentId: target.agentId,
+        organizationId: target.organizationId,
+        expectedSourceImage: target.expectedSourceImage,
+        expectedSourceDigest: target.expectedSourceDigest,
+      })),
+    };
+  }
+
+  return {
+    actorUserId,
+    requestId: input.requestId,
+    operation: input.operation,
+    dryRun: input.dryRun,
+    expectedPlanFingerprint: input.dryRun ? null : input.expectedPlanFingerprint,
+    source: input.source.rolloutId
+      ? { rolloutId: input.source.rolloutId }
+      : { jobId: input.source.jobId },
+  };
+}
+
+function canonicalPlannedTarget(target: AdminCanaryPlannedTarget): Record<string, unknown> {
+  return {
+    operation: target.operation,
+    agentId: target.agentId,
+    organizationId: target.organizationId,
+    targetOwnerUserId: target.targetOwnerUserId,
+    sourceImage: target.sourceImage,
+    sourceDigest: target.sourceDigest,
+    targetImage: target.targetImage,
+    targetDigest: target.targetDigest,
+    sourceRolloutId: target.sourceRolloutId ?? null,
+    sourceJobId: target.sourceJobId ?? null,
+  };
+}
+
+async function sha256Fingerprint(domain: string, payload: unknown): Promise<string> {
+  const encoded = new TextEncoder().encode(`${domain}\0${JSON.stringify(payload)}`);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+  return `sha256:${hex}`;
+}
+
+export async function hashAdminCanaryRequest(
+  input: AdminCanaryRolloutInput,
+  actorUserId: string,
+): Promise<string> {
+  assertUuid(actorUserId, "actorUserId");
+  assertAdminCanaryRolloutInput(input);
+  return await sha256Fingerprint(
+    "eliza-admin-canary-canonical-request:v1",
+    canonicalRequestPayload(input, actorUserId),
+  );
+}
+
+export async function fingerprintAdminCanaryPlan(params: {
+  actorUserId: string;
+  requestId: string;
+  operation: AdminCanaryImageOperation;
+  targets: AdminCanaryPlannedTarget[];
+}): Promise<string> {
+  assertUuid(params.actorUserId, "actorUserId");
+  assertAdminCanaryRequestId(params.requestId);
+  const targets = [...params.targets].sort(compareTargetIdentity).map(canonicalPlannedTarget);
+  return await sha256Fingerprint("eliza-admin-canary-plan:v1", {
+    actorUserId: params.actorUserId,
+    requestId: params.requestId,
+    operation: params.operation,
+    targets,
+  });
 }
 
 export function isAdminCanaryImageJobData(value: unknown): value is AdminCanaryImageJobData {
@@ -195,6 +338,11 @@ export function isAdminCanaryImageJobData(value: unknown): value is AdminCanaryI
     "decisionAt",
   ] as const;
   if (!stringFields.every((field) => typeof data[field] === "string")) return false;
+  const recoveryFields = [data.requestId, data.planFingerprint, data.canonicalRequestHash];
+  const hasRecoveryMetadata = recoveryFields.some((field) => field !== undefined);
+  if (hasRecoveryMetadata && !recoveryFields.every((field) => typeof field === "string")) {
+    return false;
+  }
   return (
     (data.sourceRolloutId === undefined || typeof data.sourceRolloutId === "string") &&
     (data.sourceJobId === undefined || typeof data.sourceJobId === "string")
@@ -240,6 +388,25 @@ export function assertAdminCanaryImageJobData(data: AdminCanaryImageJobData): vo
   }
   if (data.sourceJobId !== undefined) {
     assertUuid(data.sourceJobId, "sourceJobId");
+  }
+  if (data.requestId !== undefined) {
+    assertAdminCanaryRequestId(data.requestId);
+    if (!data.planFingerprint || !data.canonicalRequestHash) {
+      throw ValidationError("request recovery metadata must be all present or all absent");
+    }
+    assertSha256Digest(data.planFingerprint, "planFingerprint");
+    assertSha256Digest(data.canonicalRequestHash, "canonicalRequestHash");
+  } else if (data.planFingerprint !== undefined || data.canonicalRequestHash !== undefined) {
+    throw ValidationError("request recovery metadata must be all present or all absent");
+  }
+}
+
+export function assertRecoverableAdminCanaryImageJobData(
+  data: AdminCanaryImageJobData,
+): asserts data is RecoverableAdminCanaryImageJobData {
+  assertAdminCanaryImageJobData(data);
+  if (!data.requestId || !data.planFingerprint || !data.canonicalRequestHash) {
+    throw new Error("Admin canary job predates request recovery metadata");
   }
 }
 

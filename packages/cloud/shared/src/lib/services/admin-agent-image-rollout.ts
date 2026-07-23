@@ -12,8 +12,12 @@ import {
   type AdminCanaryPlannedTarget,
   type AdminCanaryRolloutInput,
   assertAdminCanaryImageJobData,
+  assertAdminCanaryRequestId,
   assertAdminCanaryRolloutInput,
+  assertRecoverableAdminCanaryImageJobData,
   assertUuid,
+  fingerprintAdminCanaryPlan,
+  hashAdminCanaryRequest,
   isCompletedAdminCanaryJobResult,
   parseAdminCanaryDemoImage,
 } from "./admin-canary-image";
@@ -30,6 +34,8 @@ export interface AdminCanaryRolloutTargetResponse extends AdminCanaryPlannedTarg
 export interface AdminCanaryRolloutResponse {
   dryRun: boolean;
   operation: "upgrade" | "rollback";
+  requestId: string;
+  planFingerprint: string;
   rolloutId: string | null;
   decisionAt: string;
   targets: AdminCanaryRolloutTargetResponse[];
@@ -37,6 +43,103 @@ export interface AdminCanaryRolloutResponse {
 
 function conflict(message: string, details?: Record<string, unknown>): ApiError {
   return new ApiError(409, "session_not_ready", message, details);
+}
+
+function requestConflict(requestId: string): ApiError {
+  return conflict("requestId was already used for a different canary request", { requestId });
+}
+
+async function responseFromRecoverableJobs(
+  jobs: Job[],
+  actorUserId: string,
+  requestId: string,
+  expected?: {
+    canonicalRequestHash: string;
+    planFingerprint: string;
+  },
+): Promise<AdminCanaryRolloutResponse> {
+  const firstJob = jobs[0];
+  if (!firstJob) {
+    throw new Error(`Admin canary request ${requestId} has no durable jobs`);
+  }
+  const firstData = readAdminCanaryImageJobData(firstJob);
+  assertRecoverableAdminCanaryImageJobData(firstData);
+
+  const targets = jobs.map((job) => {
+    const data = readAdminCanaryImageJobData(job);
+    assertRecoverableAdminCanaryImageJobData(data);
+    if (
+      job.type !== JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE ||
+      job.user_id !== actorUserId ||
+      data.actorUserId !== actorUserId ||
+      data.userId !== actorUserId ||
+      data.requestId !== requestId ||
+      data.organizationId !== job.organization_id ||
+      data.agentId !== job.agent_id
+    ) {
+      throw new Error(`Admin canary request ${requestId} has inconsistent job identity`);
+    }
+    if (
+      data.operation !== firstData.operation ||
+      data.rolloutId !== firstData.rolloutId ||
+      data.decisionAt !== firstData.decisionAt ||
+      data.planFingerprint !== firstData.planFingerprint ||
+      data.canonicalRequestHash !== firstData.canonicalRequestHash
+    ) {
+      throw new Error(`Admin canary request ${requestId} has inconsistent durable metadata`);
+    }
+    if (
+      expected &&
+      (data.canonicalRequestHash !== expected.canonicalRequestHash ||
+        data.planFingerprint !== expected.planFingerprint)
+    ) {
+      throw requestConflict(requestId);
+    }
+    return {
+      operation: data.operation,
+      agentId: data.agentId,
+      organizationId: data.organizationId,
+      targetOwnerUserId: data.targetOwnerUserId,
+      sourceImage: data.sourceImage,
+      sourceDigest: data.sourceDigest,
+      targetImage: data.targetImage,
+      targetDigest: data.targetDigest,
+      ...(data.sourceRolloutId ? { sourceRolloutId: data.sourceRolloutId } : {}),
+      ...(data.sourceJobId ? { sourceJobId: data.sourceJobId } : {}),
+      jobId: job.id,
+      status: job.status,
+    };
+  });
+  const uniqueTargets = new Set(
+    targets.map((target) => `${target.organizationId}:${target.agentId}`),
+  );
+  if (uniqueTargets.size !== targets.length) {
+    throw new Error(`Admin canary request ${requestId} has duplicate durable targets`);
+  }
+  const durablePlanFingerprint = await fingerprintAdminCanaryPlan({
+    actorUserId,
+    requestId,
+    operation: firstData.operation,
+    targets,
+  });
+  if (durablePlanFingerprint !== firstData.planFingerprint) {
+    throw new Error(`Admin canary request ${requestId} has an incomplete or changed target set`);
+  }
+
+  targets.sort((left, right) =>
+    `${left.organizationId}:${left.agentId}`.localeCompare(
+      `${right.organizationId}:${right.agentId}`,
+    ),
+  );
+  return {
+    dryRun: false,
+    operation: firstData.operation,
+    requestId,
+    planFingerprint: firstData.planFingerprint,
+    rolloutId: firstData.rolloutId,
+    decisionAt: firstData.decisionAt,
+    targets,
+  };
 }
 
 function assertRunningDedicatedAgent(
@@ -102,6 +205,26 @@ function readSuccessfulUpgradeAudit(job: Job): AdminCanaryImageJobData {
 }
 
 export class AdminAgentImageRolloutService {
+  private async readReplay(
+    input: AdminCanaryRolloutInput,
+    actorUserId: string,
+    canonicalRequestHash: string,
+  ): Promise<AdminCanaryRolloutResponse | undefined> {
+    const jobs = await jobsRepository.findAdminCanaryRequestForWrite(
+      JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      actorUserId,
+      input.requestId,
+    );
+    if (jobs.length === 0) return undefined;
+    if (input.dryRun) {
+      throw requestConflict(input.requestId);
+    }
+    return await responseFromRecoverableJobs(jobs, actorUserId, input.requestId, {
+      canonicalRequestHash,
+      planFingerprint: input.expectedPlanFingerprint,
+    });
+  }
+
   private async planUpgrade(
     input: Extract<AdminCanaryRolloutInput, { operation: "upgrade" }>,
   ): Promise<AdminCanaryPlannedTarget[]> {
@@ -223,47 +346,80 @@ export class AdminAgentImageRolloutService {
   ): Promise<AdminCanaryRolloutResponse> {
     assertUuid(actorUserId, "actorUserId");
     assertAdminCanaryRolloutInput(input);
-    const targets =
-      input.operation === "upgrade"
-        ? await this.planUpgrade(input)
-        : await this.planRollback(input);
-    const decisionAt = new Date().toISOString();
+    const canonicalRequestHash = await hashAdminCanaryRequest(input, actorUserId);
+    const replay = await this.readReplay(input, actorUserId, canonicalRequestHash);
+    if (replay) return replay;
 
-    if (input.dryRun) {
-      return {
-        dryRun: true,
+    try {
+      const targets =
+        input.operation === "upgrade"
+          ? await this.planUpgrade(input)
+          : await this.planRollback(input);
+      const planFingerprint = await fingerprintAdminCanaryPlan({
+        actorUserId,
+        requestId: input.requestId,
         operation: input.operation,
-        rolloutId: null,
-        decisionAt,
         targets,
-      };
-    }
+      });
+      const decisionAt = new Date().toISOString();
 
-    const rolloutId = crypto.randomUUID();
-    const jobs = await provisioningJobService.enqueueAdminCanaryImageRollout({
-      rolloutId,
-      actorUserId,
-      decisionAt,
-      targets,
-    });
-    const jobsByAgent = new Map(jobs.map((job) => [job.agent_id, job]));
-    return {
-      dryRun: false,
-      operation: input.operation,
-      rolloutId,
-      decisionAt,
-      targets: targets.map((target) => {
-        const job = jobsByAgent.get(target.agentId);
-        if (!job) {
-          throw new Error(`Atomic canary enqueue omitted agent ${target.agentId}`);
-        }
+      if (input.dryRun) {
         return {
-          ...target,
-          jobId: job.id,
-          status: job.status,
+          dryRun: true,
+          operation: input.operation,
+          requestId: input.requestId,
+          planFingerprint,
+          rolloutId: null,
+          decisionAt,
+          targets,
         };
-      }),
-    };
+      }
+      if (planFingerprint !== input.expectedPlanFingerprint) {
+        throw conflict("Canary plan changed after preview", {
+          requestId: input.requestId,
+          expectedPlanFingerprint: input.expectedPlanFingerprint,
+          actualPlanFingerprint: planFingerprint,
+        });
+      }
+
+      const rolloutId = crypto.randomUUID();
+      const enqueued = await provisioningJobService.enqueueAdminCanaryImageRollout({
+        rolloutId,
+        actorUserId,
+        decisionAt,
+        requestId: input.requestId,
+        planFingerprint,
+        canonicalRequestHash,
+        targets,
+      });
+      return await responseFromRecoverableJobs(enqueued.jobs, actorUserId, input.requestId, {
+        canonicalRequestHash,
+        planFingerprint,
+      });
+    } catch (error) {
+      // error-policy:J1 The idempotency operation boundary accepts a racing
+      // fresh-attempt failure only when the actor's durable request now exists.
+      const committed = await this.readReplay(input, actorUserId, canonicalRequestHash);
+      if (committed) return committed;
+      throw error;
+    }
+  }
+
+  async recoverRequest(
+    actorUserId: string,
+    requestId: string,
+  ): Promise<AdminCanaryRolloutResponse> {
+    assertUuid(actorUserId, "actorUserId");
+    assertAdminCanaryRequestId(requestId);
+    const jobs = await jobsRepository.findAdminCanaryRequestForWrite(
+      JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      actorUserId,
+      requestId,
+    );
+    if (jobs.length === 0) {
+      throw NotFoundError("Canary image request not found");
+    }
+    return await responseFromRecoverableJobs(jobs, actorUserId, requestId);
   }
 }
 

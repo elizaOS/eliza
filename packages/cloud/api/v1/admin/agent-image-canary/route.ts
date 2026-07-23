@@ -1,7 +1,7 @@
 /**
- * Exposes the super-admin-only dry-run and execute boundary for named agent
- * image canaries. The request cannot choose audit identity, rollout IDs, or
- * rollback image pairs; those are resolved server-side from primary state.
+ * Exposes super-admin preview, execute, recovery, and polling boundaries for
+ * named agent image canaries. The caller cannot choose audit identity, rollout
+ * IDs, or rollback image pairs; those resolve from primary durable state.
  */
 
 import { Hono } from "hono";
@@ -23,6 +23,21 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const digestSchema = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+const requestIdSchema = z
+  .string()
+  .uuid()
+  .refine((value) => value === value.toLowerCase(), {
+    message: "requestId must be a canonical lowercase UUID",
+  });
+const previewRequestSchema = {
+  requestId: requestIdSchema,
+  dryRun: z.literal(true),
+};
+const executeRequestSchema = {
+  requestId: requestIdSchema,
+  dryRun: z.literal(false),
+  expectedPlanFingerprint: digestSchema,
+};
 const targetSchema = z
   .object({
     agentId: z.string().uuid(),
@@ -31,39 +46,57 @@ const targetSchema = z
     expectedSourceDigest: digestSchema,
   })
   .strict();
-const upgradeSchema = z
+const upgradePreviewSchema = z
   .object({
     operation: z.literal("upgrade"),
-    dryRun: z.boolean(),
+    ...previewRequestSchema,
     targetImage: z.string().min(1),
     targets: z.array(targetSchema).min(1).max(5),
   })
   .strict();
-const rollbackSchema = z
+const upgradeExecuteSchema = z
   .object({
-    operation: z.literal("rollback"),
-    dryRun: z.boolean(),
-    source: z
-      .object({
-        rolloutId: z.string().uuid().optional(),
-        jobId: z.string().uuid().optional(),
-      })
-      .strict()
-      .refine((source) => Boolean(source.rolloutId) !== Boolean(source.jobId), {
-        message: "source must contain exactly one of rolloutId or jobId",
-      }),
+    operation: z.literal("upgrade"),
+    ...executeRequestSchema,
+    targetImage: z.string().min(1),
+    targets: z.array(targetSchema).min(1).max(5),
   })
   .strict();
-const requestSchema = z.discriminatedUnion("operation", [
-  upgradeSchema,
-  rollbackSchema,
+const rollbackSourceSchema = z
+  .object({
+    rolloutId: z.string().uuid().optional(),
+    jobId: z.string().uuid().optional(),
+  })
+  .strict()
+  .refine((source) => Boolean(source.rolloutId) !== Boolean(source.jobId), {
+    message: "source must contain exactly one of rolloutId or jobId",
+  });
+const rollbackPreviewSchema = z
+  .object({
+    operation: z.literal("rollback"),
+    ...previewRequestSchema,
+    source: rollbackSourceSchema,
+  })
+  .strict();
+const rollbackExecuteSchema = z
+  .object({
+    operation: z.literal("rollback"),
+    ...executeRequestSchema,
+    source: rollbackSourceSchema,
+  })
+  .strict();
+const requestSchema = z.union([
+  upgradePreviewSchema,
+  upgradeExecuteSchema,
+  rollbackPreviewSchema,
+  rollbackExecuteSchema,
 ]);
 
 interface AdminAgentImageCanaryRouteDependencies {
   requireAdmin: typeof requireAdmin;
   rolloutService: Pick<
     typeof adminAgentImageRolloutService,
-    "previewOrEnqueue"
+    "previewOrEnqueue" | "recoverRequest"
   >;
   jobService: Pick<
     typeof provisioningJobService,
@@ -121,6 +154,7 @@ export function createAdminAgentImageCanaryRoute(
         "[admin-agent-image-canary] Canary decision accepted",
         {
           actorUserId: user.id,
+          requestId: result.requestId,
           operation: result.operation,
           dryRun: result.dryRun,
           rolloutId: result.rolloutId,
@@ -142,10 +176,48 @@ export function createAdminAgentImageCanaryRoute(
                   intervalMs: 5_000,
                   expectedDurationMs: 180_000,
                 })),
+                recovery: {
+                  endpoint: `/api/v1/admin/agent-image-canary/requests/${result.requestId}`,
+                },
               }),
         },
         result.dryRun ? 200 : 202,
       );
+    } catch (error) {
+      // error-policy:J1 Translate route failures into the canonical API envelope.
+      return failureResponse(c, error);
+    }
+  });
+
+  app.get("/requests/:requestId", async (c) => {
+    try {
+      const { user, role } = await dependencies.requireAdmin(c);
+      if (role !== "super_admin") {
+        throw ForbiddenError("Super admin access required");
+      }
+
+      const parsedRequestId = requestIdSchema.safeParse(
+        c.req.param("requestId"),
+      );
+      if (!parsedRequestId.success) {
+        throw ValidationError("requestId must be a UUID");
+      }
+      const result = await dependencies.rolloutService.recoverRequest(
+        user.id,
+        parsedRequestId.data,
+      );
+      return c.json({
+        success: true,
+        data: result,
+        polling: result.targets.map((target) => ({
+          agentId: target.agentId,
+          jobId: target.jobId,
+          endpoint: `/api/v1/admin/agent-image-canary/jobs/${target.jobId}`,
+          intervalMs: 5_000,
+          shouldContinue:
+            target.status === "pending" || target.status === "in_progress",
+        })),
+      });
     } catch (error) {
       // error-policy:J1 Translate route failures into the canonical API envelope.
       return failureResponse(c, error);
