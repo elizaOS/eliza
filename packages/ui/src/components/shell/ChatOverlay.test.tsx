@@ -3836,10 +3836,15 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    // No row until the bubble is clicked.
-    expect(screen.queryByTestId("thread-line-actions")).toBeNull();
+    // Keeping the rail mounted prevents message geometry from shifting when it appears.
+    const actions = screen.getByTestId("thread-line-actions");
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+    expect(actions.style.opacity).toBe("0");
     fireEvent.click(bubbleFor("the answer"));
-    expect(screen.getByTestId("thread-line-actions")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-actions")).toBe(actions);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(actions.hasAttribute("inert")).toBe(false);
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
     expect(screen.getByTestId("thread-line-speak")).toBeTruthy();
     // Assistant has no edit affordance.
@@ -3975,10 +3980,16 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       ],
       speak: vi.fn(),
     });
+    const actions = screen.getByTestId("thread-line-actions");
     fireEvent.click(bubbleFor("tap away"));
-    expect(screen.getByTestId("thread-line-actions")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-actions")).toBe(actions);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(actions.hasAttribute("inert")).toBe(false);
     fireEvent.pointerDown(document.body);
-    expect(screen.queryByTestId("thread-line-actions")).toBeNull();
+    expect(screen.getByTestId("thread-line-actions")).toBe(actions);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+    expect(actions.style.opacity).toBe("0");
   });
 
   it("Escape cancels the inline editor without resending", () => {
