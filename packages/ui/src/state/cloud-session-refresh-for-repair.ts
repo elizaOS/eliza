@@ -114,10 +114,12 @@ export async function ensureCloudSessionForRepair(
   if (!token) return null;
 
   writeToken(token);
-  try {
+  // error-policy:J6 best-effort nudge — token consumers re-read next tick.
+  // dispatchEvent reports listener errors instead of rethrowing, so no
+  // try/catch is needed; the guard only skips environments without
+  // CustomEvent (never a real browser).
+  if (typeof CustomEvent === "function") {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
-  } catch {
-    // error-policy:J6 best-effort nudge — token consumers re-read next tick.
   }
   return token;
 }
