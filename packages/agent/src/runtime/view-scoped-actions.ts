@@ -171,7 +171,7 @@ export function buildViewScopedAction(
       return getActiveViewContext()?.viewId === viewId;
     },
     handler: async (
-      _runtime: IAgentRuntime,
+      runtime: IAgentRuntime,
       _message: Memory,
       _state?: State,
       options?: unknown,
@@ -235,7 +235,7 @@ export function buildViewScopedAction(
           viewId,
           capability,
           stepParams,
-          broadcastWs ? { broadcastWs } : {},
+          { ...(broadcastWs ? { broadcastWs } : {}), runtime },
           SCOPED_ACTION_STEP_TIMEOUT_MS,
         );
 
