@@ -546,7 +546,7 @@ describe("planner-loop failed-operation correlation", () => {
 
 	it("keeps the unresolved failure receipt authoritative over a fenced action-envelope reply", async () => {
 		const leakedEnvelope =
-			'```json\n{"action":"VIEWS","parameters":{"view":"notes","capability":"get-notes"}}\n```';
+			'```json\n{"action":"VIEWS","parameters":{"action":"interact","view":"notes","capability":"update-note","params":{"id":"note-a","title":"A"}}}\n```';
 		const runtime = {
 			useModel: vi
 				.fn()

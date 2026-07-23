@@ -551,66 +551,122 @@ describe("looksLikeSpawnEnvelopeJson — spawn-arg leak detector", () => {
 });
 
 describe("looksLikeActionEnvelopeJson — planner fallback-envelope leak detector", () => {
-	it("flags the documented plain-JSON planner fallback envelope", () => {
+	it("flags raw and fenced planner fallback envelopes", () => {
+		const envelope =
+			'{"action":"BROWSER","parameters":{"url":"https://example.com"},"thought":"open it"}';
+		const invocation = [
+			{
+				name: "BROWSER",
+				params: { url: "https://example.com" },
+			},
+		];
+		expect(looksLikeActionEnvelopeJson(envelope, invocation)).toBe(true);
 		expect(
 			looksLikeActionEnvelopeJson(
-				'{"action":"BROWSER","parameters":{"url":"https://example.com","subaction":"open"},"thought":"open the browser"}',
+				"```json\n" + envelope + "\n```",
+				invocation,
 			),
 		).toBe(true);
 	});
 
-	it("flags the envelope without a thought", () => {
+	it("preserves exact requested action JSON without matching invocation evidence", () => {
 		expect(
 			looksLikeActionEnvelopeJson(
-				'{"action":"VIEWS","parameters":{"view":"settings"}}',
+				'{"action":"proceed","parameters":{"count":2}}',
 			),
-		).toBe(true);
-	});
-
-	it("flags the envelope wrapped in a ```json fence", () => {
+		).toBe(false);
 		expect(
 			looksLikeActionEnvelopeJson(
-				'```json\n{"action":"WEB_SEARCH","parameters":{"query":"x"}}\n```',
+				'{"action":"VIEWS","parameters":{"view":"notes"}}',
 			),
-		).toBe(true);
-	});
-
-	it("does NOT flag a genuine JSON answer with foreign keys", () => {
+		).toBe(false);
 		expect(
 			looksLikeActionEnvelopeJson(
-				'{"action":"proceed","parameters":{"a":1},"status":"done","summary":"…"}',
+				'{"action":"VIEWS","parameters":{"view":"notes"}}',
+				[{ name: "VIEWS", params: { view: "simple-calendar" } }],
 			),
 		).toBe(false);
 	});
 
-	it("does NOT flag an action string without a parameters object", () => {
-		expect(looksLikeActionEnvelopeJson('{"action":"","parameters":{}}')).toBe(
-			false,
-		);
-		expect(looksLikeActionEnvelopeJson('{"action":"approve"}')).toBe(false);
+	it("matches invocation parameters independently of object key order", () => {
 		expect(
-			looksLikeActionEnvelopeJson('{"action":"approve","parameters":"yes"}'),
+			looksLikeActionEnvelopeJson(
+				'{"action":"VIEWS","parameters":{"capability":"update-note","params":{"title":"A","id":"note-a"}}}',
+				[
+					{
+						name: "views",
+						params: {
+							params: { id: "note-a", title: "A" },
+							capability: "update-note",
+						},
+					},
+				],
+			),
+		).toBe(true);
+	});
+
+	it("does not treat a terminal REPLY call as invocation evidence", () => {
+		expect(
+			looksLikeActionEnvelopeJson(
+				'{"action":"REPLY","parameters":{"text":"hello"}}',
+				[{ name: "REPLY", params: { text: "hello" } }],
+			),
 		).toBe(false);
 	});
 
-	it("does NOT flag prose or unparseable text", () => {
-		expect(looksLikeActionEnvelopeJson("The action succeeded.")).toBe(false);
-		expect(looksLikeActionEnvelopeJson('[{"action":"BROWSER"}]')).toBe(false);
-		expect(looksLikeActionEnvelopeJson('{"action": broken')).toBe(false);
-		expect(looksLikeActionEnvelopeJson("")).toBe(false);
+	it("preserves requested JSON with result fields outside the invocation vocabulary", () => {
+		expect(
+			looksLikeActionEnvelopeJson(
+				'{"action":"proceed","parameters":{"count":2},"status":"ready","summary":"requested JSON"}',
+				[{ name: "proceed", params: { count: 2 } }],
+			),
+		).toBe(false);
 	});
 
-	it("preserves structured chat markers even when their form data uses action-shaped keys", () => {
+	it("preserves structured chat markers even with matching invocation evidence", () => {
 		expect(
 			looksLikeActionEnvelopeJson(
 				'[FORM]\n{"action":"proceed","parameters":{"count":2}}\n[/FORM]',
+				[{ name: "proceed", params: { count: 2 } }],
 			),
 		).toBe(false);
 		expect(
 			looksLikeActionEnvelopeJson(
 				"[CHOICE:approval id=next]\nvalue=Proceed\n[/CHOICE]",
+				[{ name: "proceed", params: { count: 2 } }],
 			),
 		).toBe(false);
+	});
+
+	it("requires a non-empty action and a parameters object", () => {
+		expect(
+			looksLikeActionEnvelopeJson('{"action":"","parameters":{}}', [
+				{ name: "", params: {} },
+			]),
+		).toBe(false);
+		expect(
+			looksLikeActionEnvelopeJson('{"action":"approve"}', [
+				{ name: "approve" },
+			]),
+		).toBe(false);
+		expect(
+			looksLikeActionEnvelopeJson(
+				'{"action":"approve","parameters":"requested"}',
+				[{ name: "approve", params: {} }],
+			),
+		).toBe(false);
+	});
+	it("does not classify prose, arrays, or malformed JSON", () => {
+		const invocation = [{ name: "BROWSER", params: {} }];
+		expect(
+			looksLikeActionEnvelopeJson("The action completed.", invocation),
+		).toBe(false);
+		expect(
+			looksLikeActionEnvelopeJson('[{"action":"BROWSER"}]', invocation),
+		).toBe(false);
+		expect(looksLikeActionEnvelopeJson('{"action": broken', invocation)).toBe(
+			false,
+		);
 	});
 });
 

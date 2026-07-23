@@ -109,7 +109,6 @@ export {
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 export {
-	looksLikeActionEnvelopeJson,
 	looksLikeEvaluatorEnvelopeJson,
 	looksLikeSpawnEnvelopeJson,
 } from "./user-visible-model-output";
@@ -3944,7 +3943,14 @@ function combinedVerifiedToolTextAndProse(
 	const prose = modelText.trim();
 	// Combining must preserve the same user-safety boundary as selecting model
 	// text directly; evaluator channels can contain serialized tool invocations.
-	if (isUnsafeUserVisibleText(prose)) return undefined;
+	if (
+		isUnsafeUserVisibleText(
+			prose,
+			actionEnvelopeEvidenceFromTrajectory(trajectory),
+		)
+	) {
+		return undefined;
+	}
 	// Prose that already embeds the verbatim output IS the combined message.
 	if (prose.includes(verified)) return prose;
 	const normalize = (text: string) =>
@@ -4203,7 +4209,10 @@ function completedToolStepCount(trajectory: PlannerTrajectory): number {
 
 function selectGatedEvaluatorReply(
 	latestResult: PlannerToolResult,
-	args: { lastPlannerExplicitMessageToUser: string | undefined },
+	args: {
+		trajectory: PlannerTrajectory;
+		lastPlannerExplicitMessageToUser: string | undefined;
+	},
 ): GatedEvaluatorDecision | null {
 	if (latestResult.turnComplete === true) {
 		const message = latestResult.userFacingText?.trim();
@@ -4222,7 +4231,15 @@ function selectGatedEvaluatorReply(
 	if (latestResult.turnComplete === false) return null;
 
 	const message = args.lastPlannerExplicitMessageToUser?.trim();
-	if (!message || isUnsafeUserVisibleText(message)) return null;
+	if (
+		!message ||
+		isUnsafeUserVisibleText(
+			message,
+			actionEnvelopeEvidenceFromTrajectory(args.trajectory),
+		)
+	) {
+		return null;
+	}
 	return {
 		reason: "explicit_terminal_reply",
 		output: {
@@ -4289,7 +4306,8 @@ function userSafeFinalMessage(
 	// rejected wholesale (or worse, sent verbatim when the unsafe-text heuristic
 	// doesn't match the markup shape).
 	const candidate = sanitizePlannerMessage(message);
-	if (candidate && !isUnsafeUserVisibleText(candidate)) {
+	const invocationEvidence = actionEnvelopeEvidenceFromTrajectory(trajectory);
+	if (candidate && !isUnsafeUserVisibleText(candidate, invocationEvidence)) {
 		return candidate;
 	}
 	const latest = sanitizePlannerMessage(latestToolResultText(trajectory));
@@ -4307,16 +4325,80 @@ function userSafeFinalMessage(
  */
 export const HANDLED_STEP_FALLBACK_MESSAGE = "I handled the available step.";
 
-function isUnsafeUserVisibleText(value: string | undefined): boolean {
+/**
+ * Detects the planner's plain-JSON fallback invocation envelope in a
+ * user-visible channel. Shape alone is ambiguous because users may request
+ * that exact JSON schema, so the candidate must also match a non-terminal
+ * invocation already recorded in this turn.
+ */
+export function looksLikeActionEnvelopeJson(
+	text: string,
+	invokedToolCalls: readonly PlannerToolCall[] = [],
+): boolean {
+	const output = sanitizeUserVisibleModelOutput(text);
+	if (output.kind !== "control" || output.envelope !== "action") return false;
+
+	let body = text.trim();
+	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (fence?.[1]) body = fence[1].trim();
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		// error-policy:J3 untrusted-input sanitizing — the shared classifier
+		// already established the control shape; malformed JSON cannot provide
+		// the exact operation identity required to suppress user-visible text.
+		return false;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return false;
+	}
+
+	const record = parsed as Record<string, unknown>;
+	if (
+		typeof record.action !== "string" ||
+		record.action.trim().length === 0 ||
+		!record.parameters ||
+		typeof record.parameters !== "object" ||
+		Array.isArray(record.parameters)
+	) {
+		return false;
+	}
+
+	const candidateKey = plannerToolOperationKey({
+		name: record.action.trim(),
+		params: record.parameters as Record<string, unknown>,
+	});
+	return invokedToolCalls.some(
+		(toolCall) =>
+			!isTerminalToolCall(toolCall) &&
+			plannerToolOperationKey(toolCall) === candidateKey,
+	);
+}
+
+function actionEnvelopeEvidenceFromTrajectory(
+	trajectory: PlannerTrajectory,
+): PlannerToolCall[] {
+	return [...trajectory.archivedSteps, ...trajectory.steps].flatMap((step) =>
+		step.toolCall && !isTerminalToolCall(step.toolCall) ? [step.toolCall] : [],
+	);
+}
+
+function isUnsafeUserVisibleText(
+	value: string | undefined,
+	invokedToolCalls: readonly PlannerToolCall[] = [],
+): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
 	const output = sanitizeUserVisibleModelOutput(text);
-	if (
-		output.kind === "control" ||
-		output.kind === "invalid" ||
-		output.fieldPath.length > 0
-	) {
+	if (output.kind === "control") {
+		return output.envelope === "action"
+			? looksLikeActionEnvelopeJson(text, invokedToolCalls)
+			: true;
+	}
+	if (output.kind === "invalid" || output.fieldPath.length > 0) {
 		return true;
 	}
 	return [
