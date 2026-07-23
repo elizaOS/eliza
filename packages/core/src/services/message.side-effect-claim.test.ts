@@ -100,14 +100,14 @@ describe("replyClaimsCompletedSideEffect", () => {
 			replyClaimsCompletedSideEffect("I set a reminder for the 28th at 9am."),
 		).toBe(true);
 		expect(
-			replyClaimsCompletedSideEffect("I added it to your calendar for Tuesday."),
+			replyClaimsCompletedSideEffect(
+				"I added it to your calendar for Tuesday.",
+			),
 		).toBe(true);
 		// A perfective assertion stays a claim even when a consent tag follows in
 		// the same sentence — the completed-work assertion already happened.
 		expect(
-			replyClaimsCompletedSideEffect(
-				"I've set two reminders — anything else?",
-			),
+			replyClaimsCompletedSideEffect("I've set two reminders — anything else?"),
 		).toBe(true);
 	});
 

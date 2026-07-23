@@ -149,13 +149,11 @@ describe("CerebrasJudge", () => {
       mockFetchOnceJson('{"score":1,"reason":"ok"}');
       const judge = new CerebrasJudge();
       await judge.judge("test prompt");
-      const fetchMock = globalThis.fetch as unknown as ReturnType<
-        typeof vi.fn
-      >;
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
       const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(
-        (init.headers as Record<string, string>).Authorization,
-      ).toBe("Bearer judge-only-key");
+      expect((init.headers as Record<string, string>).Authorization).toBe(
+        "Bearer judge-only-key",
+      );
     } finally {
       delete process.env.EVAL_CEREBRAS_API_KEY;
     }

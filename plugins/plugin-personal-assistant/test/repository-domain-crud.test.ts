@@ -741,9 +741,7 @@ describe("LifeOpsRepository domain CRUD", () => {
     await repository.createDefinition(agentDefinition);
 
     const completedAt = (minutesAfterNow: number) =>
-      new Date(
-        Date.parse(NOW) + minutesAfterNow * 60_000,
-      ).toISOString();
+      new Date(Date.parse(NOW) + minutesAfterNow * 60_000).toISOString();
     const seedCompleted = async (
       base: typeof ownerBase | typeof agentBase,
       definitionId: string,
@@ -772,8 +770,18 @@ describe("LifeOpsRepository domain CRUD", () => {
 
     // Two OLDER owner wins, then six NEWER agent completions: newest-first
     // ordering puts every agent row ahead of the owner rows.
-    await seedCompleted(ownerBase, ownerDefinition.id, "owner-1", completedAt(1));
-    await seedCompleted(ownerBase, ownerDefinition.id, "owner-2", completedAt(2));
+    await seedCompleted(
+      ownerBase,
+      ownerDefinition.id,
+      "owner-1",
+      completedAt(1),
+    );
+    await seedCompleted(
+      ownerBase,
+      ownerDefinition.id,
+      "owner-2",
+      completedAt(2),
+    );
     for (let i = 0; i < 6; i += 1) {
       await seedCompleted(
         agentBase,
@@ -791,9 +799,7 @@ describe("LifeOpsRepository domain CRUD", () => {
       { limit: 4 },
     );
     expect(unfiltered).toHaveLength(4);
-    expect(
-      unfiltered.every((view) => view.subjectType === "agent"),
-    ).toBe(true);
+    expect(unfiltered.every((view) => view.subjectType === "agent")).toBe(true);
 
     // With the subject filter in SQL, the same limit returns every owner win.
     const ownerOnly = await repository.listCompletedOccurrenceViewsSince(
