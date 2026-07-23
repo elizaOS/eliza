@@ -192,6 +192,7 @@
     "dev:cloud:web": "bun run --cwd packages/app dev",
     "build:cloud": "bun run --cwd packages/cloud/api build",
     "build:android:cloud": "node packages/app-core/scripts/run-mobile-build.mjs android-cloud",
+    "build:android:lp3-cloud:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 node packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",
     "test:cloud": "node packages/scripts/test-cloud-run.mjs",
     "test:cloud:helpers:self-test": "node packages/scripts/test-cloud-run-helpers.self-test.mjs",
