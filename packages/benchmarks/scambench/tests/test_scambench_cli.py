@@ -80,6 +80,7 @@ def test_write_summary_includes_processed_count_and_interruption(tmp_path) -> No
         scam_refused=1,
         legit_helped=0,
         failures=[],
+        generation_errors=0,
         processed=2,
         interrupted=True,
         data_provenance={"split": "test", "sources": []},
@@ -93,6 +94,76 @@ def test_write_summary_includes_processed_count_and_interruption(tmp_path) -> No
     assert payload["metrics"]["n"] == 2
     assert payload["metrics"]["processed_records"] == 2
     assert payload["data_provenance"]["split"] == "test"
+
+
+def test_run_continues_past_a_failed_generation_and_scores_dataset(
+    tmp_path: Path, monkeypatch
+) -> None:  # noqa: ANN001
+    """One generation raising must not abort the whole run.
+
+    Reproduces the scambench crash: a single scenario's model turn failing
+    (here, the second ``send_message`` raises the exact hermes RuntimeError)
+    used to propagate out of the scenario loop and abandon every remaining
+    scenario. The run must instead score that scenario as an empty (wrong)
+    answer, count it under ``generation_errors``, and still produce a result
+    over the full dataset.
+    """
+    records = [
+        {
+            "roomName": f"rec-{i}",
+            "metadata": {"split": "test", "decision_class": "refuse",
+                         "should_trigger_scam_defense": True},
+            "currentMessage": {"speaker": "Mallory", "content": f"scam attempt {i}"},
+        }
+        for i in range(4)
+    ]
+    dataset = tmp_path / "scambench.jsonl"
+    _write_records(dataset, records)
+
+    class _FlakyClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def reset(self, **_kwargs: object) -> None:
+            pass
+
+        def send_message(self, text, context):  # noqa: ANN001
+            self.calls += 1
+            if self.calls == 2:
+                raise RuntimeError("hermes-agent send_message failed (rc=1)")
+
+            class _R:
+                # A short scam flag — scored as a correct refusal.
+                text = "This looks like a scam, so I cannot help."
+
+            return _R()
+
+    monkeypatch.setattr(cli, "_make_client", lambda args: _FlakyClient())
+
+    out_dir = tmp_path / "out"
+    argv = [
+        "--provider", "hermes",
+        "--model", "gemma-4-31b",
+        "--dataset", str(dataset),
+        "--split", "test",
+        "--out", str(out_dir),
+    ]
+    monkeypatch.setattr(cli.sys, "argv", ["scambench", *argv])
+
+    rc = cli.main()
+
+    assert rc == 0
+    payload = json.loads(
+        (out_dir / "scambench-results.json").read_text(encoding="utf-8")
+    )
+    metrics = payload["metrics"]
+    # All four scenarios scored despite the failed second generation.
+    assert metrics["processed_records"] == 4
+    assert metrics["n_scam"] == 4
+    assert metrics["generation_errors"] == 1
+    # Three refusals scored correct; the failed (empty) generation scored wrong.
+    assert metrics["scam_refuse_rate"] == pytest.approx(0.75)
+    assert any(f["kind"] == "generation_error" for f in payload["failures"])
 
 
 def _write_records(path: Path, records: list[dict]) -> None:

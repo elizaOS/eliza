@@ -35,6 +35,18 @@ PROTOCOL_VERSION = 1
 _TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _ALLOWED_TOOL_CHOICES = {"auto", "required", "none"}
 
+# A no-tool text turn has no tool round to spend iterations on; its only
+# reason to loop is Hermes's own empty-response retry ladder (up to three
+# retries before it emits a clean terminal "(empty)" and marks the turn
+# complete). Two iterations exhaust the budget before the ladder reaches that
+# terminal, so a model that simply returns empty content (e.g. on a long
+# multilingual classification prompt) exits via ``max_iterations_reached`` with
+# ``completed=False`` — a spurious non-completion. Give the ladder room to
+# terminate so an empty generation becomes a scoreable empty answer rather than
+# a harness failure. Tool turns keep the tight budget so runaway tool loops
+# still fail fast.
+_NO_TOOL_MAX_ITERATIONS = 6
+
 
 class NativeRuntimeError(RuntimeError):
     """The benchmark request cannot be proven to use native Hermes safely."""
@@ -452,9 +464,15 @@ def _agent_kwargs(
         "model": model,
         # Lifecycle turns may need one task mutation followed by a status read
         # before the final response; two iterations only permit one sequential
-        # tool round plus the terminal model response.
+        # tool round plus the terminal model response. No-tool turns instead
+        # need room for the empty-response retry ladder (see
+        # ``_NO_TOOL_MAX_ITERATIONS``).
         "max_iterations": (
-            4 if payload.get("benchmark") == "orchestrator_lifecycle" else 2
+            4
+            if payload.get("benchmark") == "orchestrator_lifecycle"
+            else _NO_TOOL_MAX_ITERATIONS
+            if not spec.tool_names
+            else 2
         ),
         "tool_delay": 0,
         "enabled_toolsets": [PLUGIN_TOOLSET] if spec.tool_names else [],
@@ -803,22 +821,41 @@ def run_native_turn(
     completed = result.get("completed")
     failed = result.get("failed")
     interrupted = result.get("interrupted")
+    exit_reason = result.get("turn_exit_reason")
     capture_stopped = (
         _capture_stop_enabled(payload)
         and bool(captures)
         and completed is False
         and failed is False
         and interrupted is True
-        and result.get("turn_exit_reason") == "interrupted_by_user"
+        and exit_reason == "interrupted_by_user"
     )
-    if not capture_stopped and (
-        completed is not True or failed is not False or interrupted is True
+    # A no-tool text turn has no tool orchestration to fail: its only
+    # non-completion modes are the model producing empty or non-terminal
+    # content (``empty_response_exhausted``, ``max_iterations_reached``).
+    # Those are scoreable per-scenario outcomes — a wrong/abstain answer — not
+    # a transport failure, so return the (possibly empty) turn response with an
+    # explicit marker instead of raising and aborting the whole benchmark on
+    # one bad generation. ``failed is True`` still marks a genuine runtime
+    # failure (invalid API response, local exception) and is raised, as is any
+    # non-completion on a tool turn.
+    benign_incomplete = (
+        not capture_stopped
+        and not spec.tool_names
+        and completed is not True
+        and failed is False
+        and interrupted is not True
+    )
+    if (
+        not capture_stopped
+        and not benign_incomplete
+        and (completed is not True or failed is not False or interrupted is True)
     ):
         raise NativeRuntimeError(
             "AIAgent.run_conversation did not complete successfully "
             f"(completed={completed!r}, failed={failed!r}, "
             f"interrupted={interrupted!r}, "
-            f"exit_reason={result.get('turn_exit_reason')!r})"
+            f"exit_reason={exit_reason!r})"
         )
     tool_calls = _captured_tool_calls(result, captures)
     provenance = _provenance(
@@ -833,6 +870,11 @@ def run_native_turn(
         thought = None
     final_response = result.get("final_response")
     text = final_response if isinstance(final_response, str) else ""
+    # ``(empty)`` is the loop's internal terminal sentinel for "model produced
+    # nothing usable", not model content. Normalize it to an empty string on a
+    # benign-incomplete turn so the caller scores a true empty answer.
+    if benign_incomplete and text.strip() == "(empty)":
+        text = ""
     return {
         "text": text,
         "thought": thought,
@@ -856,6 +898,10 @@ def run_native_turn(
                 "native_failed": result.get("failed"),
                 "native_interrupted": result.get("interrupted"),
                 "native_turn_exit_reason": result.get("turn_exit_reason"),
+                # True when the model produced no usable terminal answer on a
+                # no-tool turn; the caller scores this turn as wrong/abstain
+                # rather than treating it as a harness failure.
+                "native_incomplete_turn": benign_incomplete,
             },
         },
     }

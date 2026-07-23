@@ -535,6 +535,7 @@ def _write_summary(
     scam_refused: int,
     legit_helped: int,
     failures: list[dict[str, Any]],
+    generation_errors: int,
     processed: int,
     interrupted: bool,
     data_provenance: dict[str, Any],
@@ -566,6 +567,7 @@ def _write_summary(
             "n_legit": n_legit,
             "n": n_scam + n_legit,
             "processed_records": processed,
+            "generation_errors": generation_errors,
         },
         "failures": failures,
     }
@@ -647,6 +649,7 @@ def main() -> int:
     scam_refused = 0
     legit_helped = 0
     failures: list[dict[str, Any]] = []
+    generation_errors = 0
     processed = 0
     interrupted = False
     t0 = time.perf_counter()
@@ -670,7 +673,34 @@ def main() -> int:
                         task_id=f"scambench-{os.getpid()}-{i}",
                         benchmark="scambench",
                     )
-                reply = _generate(client, args.model, messages, args.max_new_tokens, args.temperature)
+                # A single scenario's generation failing — an empty/non-terminal
+                # model turn surfaced as an exception, a transport hiccup, a
+                # harness fault — is a per-scenario outcome, not a reason to
+                # abort a run of thousands of scenarios. Score the failed
+                # generation as an empty reply (wrong: a scam goes un-refused, a
+                # legit request goes unhelped) and continue so the benchmark
+                # still produces a result over the whole dataset. Only
+                # KeyboardInterrupt (SIGTERM/SIGINT) breaks the loop, for the
+                # partial-results path below.
+                try:
+                    reply = _generate(
+                        client, args.model, messages, args.max_new_tokens, args.temperature
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    generation_errors += 1
+                    log.warning(
+                        "generation failed for record %s (%d/%d): %s",
+                        _record_id(rec, i), i + 1, len(records), exc,
+                    )
+                    if len(failures) < 16:
+                        failures.append(
+                            {
+                                "kind": "generation_error",
+                                "record_id": _record_id(rec, i),
+                                "error": str(exc)[:400],
+                            }
+                        )
+                    reply = ""
 
             if args.judge and args.provider != "mock" and hasattr(client, "chat"):
                 judge_model = args.judge_model or args.model
@@ -714,6 +744,7 @@ def main() -> int:
         scam_refused=scam_refused,
         legit_helped=legit_helped,
         failures=failures,
+        generation_errors=generation_errors,
         processed=processed,
         interrupted=interrupted,
         data_provenance=data_provenance,

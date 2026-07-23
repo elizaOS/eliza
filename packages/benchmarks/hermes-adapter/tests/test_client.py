@@ -46,6 +46,7 @@ def _fake_native_run(
     response: dict[str, object] | None = None,
     *,
     prefix: str = "",
+    extra_meta: dict[str, object] | None = None,
 ):
     """Build a subprocess fake that derives provenance from the stdin bridge."""
 
@@ -88,6 +89,7 @@ def _fake_native_run(
             params["_meta"] = {
                 **provenance,
                 "tool_bridge_captured_calls": captured,
+                **(extra_meta or {}),
             }
             output["params"] = params
         return _fake_completed(
@@ -738,6 +740,44 @@ def test_client_send_message_passes_env(client_with_fake_venv: HermesClient) -> 
     assert captured_env["OPENAI_MODEL"] == "gemma-4-31b"
     assert captured_env["TERMINAL_ENV"] == "local"
     assert captured_env["HERMES_HOME"] == str(client_with_fake_venv.hermes_home)
+
+
+def test_send_message_returns_empty_incomplete_turn_without_raising(
+    client_with_fake_venv: HermesClient,
+) -> None:
+    """A benign-incomplete no-tool turn is a scoreable empty response.
+
+    The native runner marks such a turn ``native_incomplete_turn`` and returns
+    it with a zero exit code; the client must surface it as an empty
+    MessageResponse rather than raising and aborting the whole benchmark on one
+    empty generation.
+    """
+    incomplete = _fake_native_run(
+        {"text": "", "thought": None, "actions": [], "params": {}},
+        extra_meta={"native_incomplete_turn": True},
+    )
+    with patch("hermes_adapter.client.subprocess.run", side_effect=incomplete):
+        response = client_with_fake_venv.send_message("classify this Thai message")
+
+    assert response.text == ""
+    assert response.actions == []
+    assert response.params["_meta"]["native_incomplete_turn"] is True
+
+
+def test_send_message_still_raises_on_adapter_error_when_complete(
+    client_with_fake_venv: HermesClient,
+) -> None:
+    """A genuine adapter error on a completed turn still fails closed.
+
+    The incomplete-turn escape hatch must not swallow real adapter faults: an
+    ``error`` payload with no content and no marker still raises.
+    """
+    faulted = _fake_native_run(
+        {"text": "", "thought": None, "actions": [], "params": {"error": "boom"}},
+    )
+    with patch("hermes_adapter.client.subprocess.run", side_effect=faulted):
+        with pytest.raises(RuntimeError, match="adapter error"):
+            client_with_fake_venv.send_message("hi")
 
 
 def test_client_health_runs_native_runner(client_with_fake_venv: HermesClient) -> None:

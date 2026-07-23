@@ -1069,6 +1069,15 @@ class HermesClient:
             )
         if any(call.get("name") not in bridge.tool_names for call in returned_calls):
             raise RuntimeError("Hermes returned a tool call outside the scoped plugin")
+        # A benign-incomplete no-tool turn (the model produced no usable
+        # terminal answer) is a scoreable per-scenario outcome, not a transport
+        # failure — the native runner already returns it as an empty response
+        # with this marker rather than a nonzero exit. Surfacing it to the
+        # caller (who scores it wrong/abstain) must not be turned back into an
+        # exception here, which would abort the whole benchmark on one bad
+        # generation.
+        if meta.get("native_incomplete_turn") is True:
+            return response
         adapter_error = response.params.get("error")
         if (
             isinstance(adapter_error, str)

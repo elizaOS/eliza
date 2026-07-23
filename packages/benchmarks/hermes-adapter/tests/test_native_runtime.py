@@ -816,3 +816,149 @@ def test_remote_gateway_cannot_generate_publishable_plugin(tmp_path: Path) -> No
             model="claude-sonnet-test",
             base_url="https://api.example.test/v1",
         )
+
+
+def test_no_tool_turn_raises_iteration_ceiling_for_empty_retry_ladder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A no-tool turn must budget enough iterations for the empty-retry ladder.
+
+    Two iterations exhaust the budget before Hermes emits its clean terminal
+    "(empty)", turning a plain empty generation into a spurious
+    ``max_iterations_reached`` non-completion. Tool turns keep the tight budget.
+    """
+    repo_path = tmp_path / "upstream"
+    repo_path.mkdir()
+    home = tmp_path / "home"
+    bridge = prepare_scoped_benchmark_plugin(
+        home, [], model="claude-sonnet-test", base_url="http://127.0.0.1:9411/v1"
+    )
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    module, agent_class = _fake_run_agent(repo_path, home, [])
+
+    run_native_turn(
+        _payload(repo_path, home, bridge, tools=[]),
+        module_loader=lambda name: module,
+    )
+
+    assert agent_class.instances[-1].kwargs["max_iterations"] == 6
+
+
+def test_no_tool_empty_generation_is_scoreable_not_raised(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty/non-terminal no-tool generation returns a scoreable empty turn.
+
+    This is the scambench Thai-classification crash: gemma returned empty
+    content, the loop exhausted its empty-retry ladder, and the turn ended
+    ``completed=False`` with the ``(empty)`` sentinel. That is a wrong/abstain
+    answer, not a transport failure — the runner must return it, not raise.
+    """
+    repo_path = tmp_path / "upstream"
+    repo_path.mkdir()
+    home = tmp_path / "home"
+    bridge = prepare_scoped_benchmark_plugin(
+        home, [], model="claude-sonnet-test", base_url="http://127.0.0.1:9411/v1"
+    )
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    module, agent_class = _fake_run_agent(
+        repo_path,
+        home,
+        [],
+        result_overrides={
+            "final_response": "(empty)",
+            "completed": False,
+            "failed": False,
+            "interrupted": False,
+            "turn_exit_reason": "empty_response_exhausted",
+        },
+    )
+
+    result = run_native_turn(
+        _payload(repo_path, home, bridge, tools=[]),
+        module_loader=lambda name: module,
+    )
+
+    # "(empty)" is an internal sentinel — normalized to a true empty answer.
+    assert result["text"] == ""
+    assert result["actions"] == []
+    meta = result["params"]["_meta"]
+    assert meta["native_incomplete_turn"] is True
+    assert meta["native_completed"] is False
+    assert meta["native_turn_exit_reason"] == "empty_response_exhausted"
+    assert meta["publishable_native"] is True
+    assert agent_class.instances[-1].closed is True
+
+
+def test_no_tool_max_iterations_without_final_response_is_scoreable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A no-tool turn that hits max_iterations with no answer scores empty."""
+    repo_path = tmp_path / "upstream"
+    repo_path.mkdir()
+    home = tmp_path / "home"
+    bridge = prepare_scoped_benchmark_plugin(
+        home, [], model="claude-sonnet-test", base_url="http://127.0.0.1:9411/v1"
+    )
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    module, _agent_class = _fake_run_agent(
+        repo_path,
+        home,
+        [],
+        result_overrides={
+            "final_response": None,
+            "completed": False,
+            "failed": False,
+            "interrupted": False,
+            "turn_exit_reason": "max_iterations_reached(6/6)",
+        },
+    )
+
+    result = run_native_turn(
+        _payload(repo_path, home, bridge, tools=[]),
+        module_loader=lambda name: module,
+    )
+
+    assert result["text"] == ""
+    assert result["params"]["_meta"]["native_incomplete_turn"] is True
+
+
+def test_tool_turn_non_completion_still_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The benign carve-out is scoped to no-tool turns.
+
+    A tool turn that fails to complete is a real orchestration failure and must
+    still fail closed rather than be silently scored as an empty answer.
+    """
+    repo_path = tmp_path / "upstream"
+    repo_path.mkdir()
+    home = tmp_path / "home"
+    tools = [_tool("lookup")]
+    bridge = prepare_scoped_benchmark_plugin(
+        home, tools, model="claude-sonnet-test", base_url="http://127.0.0.1:9411/v1"
+    )
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    module, _agent_class = _fake_run_agent(
+        repo_path,
+        home,
+        ["lookup"],
+        invocations=[],
+        result_overrides={
+            "final_response": "(empty)",
+            "completed": False,
+            "failed": False,
+            "interrupted": False,
+            "turn_exit_reason": "max_iterations_reached(2/2)",
+        },
+    )
+
+    with pytest.raises(NativeRuntimeError, match="did not complete successfully"):
+        run_native_turn(
+            _payload(repo_path, home, bridge, tools=tools),
+            module_loader=lambda name: module,
+        )
