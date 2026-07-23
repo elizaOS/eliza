@@ -178,6 +178,60 @@ describe("builtin view action ratchet (#14369)", () => {
     },
   );
 
+  it("fails with stale-baseline when observed drops below the pinned count (#16951)", () => {
+    const automations = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "automations",
+    );
+    if (!automations) throw new Error("automations baseline entry missing");
+    // Blank one file of the multi-file aggregate: the remaining files land
+    // below the pinned total, which must surface as a stale baseline rather
+    // than silently accruing headroom for future local-only mutations.
+    const readSource = (sourcePath: string) =>
+      sourcePath === automations.sourceFiles[0]
+        ? "export const nowInert = true;"
+        : readRepoSource(sourcePath);
+
+    const result = validateBuiltinViewMutationCoverage({
+      baseline: [automations],
+      readSource,
+      registeredActions: REGISTERED_ACTIONS,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        viewId: "automations",
+        code: "stale-baseline",
+        message: expect.stringContaining("pin maxMutationSites"),
+      }),
+    ]);
+  });
+
+  it("reports only missing-source when a baseline file cannot be read", () => {
+    const automations = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "automations",
+    );
+    if (!automations) throw new Error("automations baseline entry missing");
+    // With a file unreadable the partial count is meaningless, so the
+    // stale-baseline check must stay quiet instead of piling on.
+    const result = validateBuiltinViewMutationCoverage({
+      baseline: [automations],
+      readSource: (sourcePath) =>
+        sourcePath === automations.sourceFiles[0]
+          ? null
+          : readRepoSource(sourcePath),
+      registeredActions: REGISTERED_ACTIONS,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        viewId: "automations",
+        code: "missing-source",
+      }),
+    ]);
+  });
+
   it("fails when a non-exempt builtin mapping references an unregistered action", () => {
     const result = validateBuiltinViewMutationCoverage({
       baseline: [
