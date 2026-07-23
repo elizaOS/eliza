@@ -66,9 +66,9 @@ import { PermissionPrimingOverlay } from "./components/permissions/PermissionPri
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
+import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
-import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
@@ -606,7 +606,7 @@ function TabScrollView({
       main={
         <div
           data-shell-scroll-region="true"
-          className={`eliza-continuous-chat-scroll flex-1 min-h-0 min-w-0 w-full overflow-y-auto pb-[var(--eliza-continuous-chat-clearance,5.25rem)] pe-[var(--eliza-continuous-chat-side-clearance,0px)] ${className}`}
+          className={`eliza-chat-scroll flex-1 min-h-0 min-w-0 w-full overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)] ${className}`}
         >
           {children}
         </div>
@@ -635,7 +635,7 @@ function TabContentView({
       main={
         <div
           data-shell-content-region="true"
-          className="eliza-continuous-chat-scroll flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden pb-[var(--eliza-continuous-chat-clearance,5.25rem)] pe-[var(--eliza-continuous-chat-side-clearance,0px)]"
+          className="eliza-chat-scroll flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
         >
           {children}
         </div>
@@ -1262,7 +1262,7 @@ function ViewLayoutSurface({
           className={`grid min-h-0 flex-1 gap-2 overflow-auto p-2 ${viewLayoutGridClass(
             layout,
             entries.length,
-          )} eliza-continuous-chat-scroll pb-[calc(0.5rem+var(--eliza-continuous-chat-clearance,5.25rem))]`}
+          )} eliza-chat-scroll pb-[calc(0.5rem+var(--eliza-chat-clearance,5.25rem))]`}
         >
           {entries.length > 0 ? (
             entries.map((view) => (
@@ -1305,7 +1305,7 @@ function ViewLayoutSurface({
 
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
- * ContinuousChatOverlay that floats over every view — views never embed an
+ * ChatOverlay that floats over every view — views never embed an
  * inline ChatView — so an unavailable view falls back to the Launcher page
  * of the retained Home/Launcher surface, not a chat surface.
  */
@@ -1419,7 +1419,7 @@ function buildStaticTabRenderers(): Record<
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">
           <ViewHeader title={titleForTab("files")} />
-          <div className="eliza-continuous-chat-scroll min-h-0 flex-1 overflow-y-auto pb-[var(--eliza-continuous-chat-clearance,5.25rem)]">
+          <div className="eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)]">
             <FilesView />
           </div>
         </div>
@@ -1758,7 +1758,7 @@ type ShellContentProps = {
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
-  // always-present ContinuousChatOverlay (mounted at the shell root), which is
+  // always-present ChatOverlay (mounted at the shell root), which is
   // the whole chat experience. Ask it anything, or ask it to open a view ("show
   // me the coding view") which surfaces over this base. The home is wordless,
   // sitting directly on the unified app background (mounted once at the shell
@@ -1806,7 +1806,7 @@ function routedShellMainClass(tab: string): string {
  * The single routed shell for every view. ViewRouter already resolves every tab
  * — static page views, dynamic plugin pages, and remote view bundles — so the
  * shell only adds the desktop tab bar and per-tab padding around it. Chat is the
- * always-present ContinuousChatOverlay floating over this base, never embedded
+ * always-present ChatOverlay floating over this base, never embedded
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
@@ -1952,12 +1952,12 @@ function ShellFoundationMount() {
 
 /**
  * Reads the shared shell controller from context and renders the always-present
- * continuous chat overlay — one ambient glass conversation (the app's single
+ * chat overlay — one ambient glass conversation (the app's single
  * active conversation via useShellController) that floats over every view,
  * including the /chat route's ambient home. Returns null until a controller
  * provider is present.
  */
-function ContinuousChatOverlayMount(): ReactNode {
+function ChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
     useAppSelectorShallow((s) => ({
@@ -1981,7 +1981,7 @@ function ContinuousChatOverlayMount(): ReactNode {
   const agentName =
     characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
   return (
-    <ContinuousChatOverlay
+    <ChatOverlay
       controller={controller}
       agentName={agentName}
       slash={slash}
@@ -3004,7 +3004,7 @@ function AppContent() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         {/*
-          Continuous chat overlay (ContinuousChatOverlay) — one ambient glass
+          Chat overlay (ChatOverlay) — one ambient glass
           conversation (the app's single active conversation via
           useShellController) that floats over EVERY view, including the /chat
           route (whose base is now just ambient space). It survives tab/view
@@ -3012,7 +3012,7 @@ function AppContent() {
           is pointer-events-none except its own composer/messages, so the view
           behind stays live.
         */}
-        <ContinuousChatOverlayMount />
+        <ChatOverlayMount />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the

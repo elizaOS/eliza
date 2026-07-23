@@ -192,7 +192,7 @@ const stubElizaCore = {
 // Install the engine's console-error + layout-shift observers before the surface
 // mounts, so a shift or error during the initial paint is counted too.
 const headHtml = `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>
+<style>:root{--eliza-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>
 <script>${LAUNCHER_LOOP_INIT_SCRIPT}</script>`;
 const url = await writeFixturePage({
   entry: join(here, "home-screen-fixture.tsx"),

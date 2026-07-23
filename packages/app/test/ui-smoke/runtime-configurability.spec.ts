@@ -68,7 +68,7 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
 }
 
 async function expectInChatFirstRun(page: Page): Promise<void> {
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
   await expect(
     page.getByText("First, where should your agent run?", { exact: false }),
@@ -125,7 +125,7 @@ test("in-chat first-run exposes cloud and local runtimes and Local is configurab
   ).toBeVisible();
 
   await expectNoRenderTelemetryErrors(page, "runtime configurability");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible();
+  await expect(page.getByTestId("chat-overlay")).toBeVisible();
 });
 
 test("in-chat first-run survives browser back and forward while it churns", async ({

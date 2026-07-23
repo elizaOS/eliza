@@ -307,16 +307,16 @@ export async function seedFirstRunCompleteBeforeLoad(
   });
 }
 
-export async function hideContinuousChatOverlay(page: Page): Promise<void> {
+export async function hideChatOverlay(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const install = () => {
-      if (document.getElementById("ui-smoke-hide-continuous-chat-overlay")) {
+      if (document.getElementById("ui-smoke-hide-chat-overlay")) {
         return;
       }
       const style = document.createElement("style");
-      style.id = "ui-smoke-hide-continuous-chat-overlay";
+      style.id = "ui-smoke-hide-chat-overlay";
       style.textContent =
-        '[data-testid="continuous-chat-overlay"] { display: none !important; }';
+        '[data-testid="chat-overlay"] { display: none !important; }';
       (document.head ?? document.documentElement).appendChild(style);
     };
 

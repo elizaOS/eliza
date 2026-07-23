@@ -35,8 +35,8 @@ Outputs:
 | Literal-set duplicate | String-literal unions, `enum`s, and `as const` maps that enumerate the **same value set** across ≥2 packages, even under different names | share one union in `@elizaos/core` |
 | Runtime schema ↔ exported type | `z.object(...)` and JSON-schema-like `{ type: "object", properties: ... }` validators whose key sets exactly match or strongly overlap exported TS object types | pair shared DTO with runtime validation, or keep separate with a reason |
 
-Plus a weak-type inventory (`as unknown as`, `as any`, explicit `: any`) — the
-actionable casts the `type-safety-ratchet` gates.
+Plus a weak-type inventory (`as unknown as`, `as any`, explicit `: any`) for
+reviewers to assess alongside the structural findings.
 
 ## When to consolidate
 

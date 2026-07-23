@@ -43,7 +43,7 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
+import { ChatOverlay } from "./ChatOverlay";
 import type { ShellController } from "./useShellController";
 
 beforeAll(() => {
@@ -159,7 +159,7 @@ function drag(el: Element) {
 
 describe("layout-shift-intent marker (#15257)", () => {
   it("a continuous drag arms the marker ONCE, not per height tick", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const el = grabber();
     // The transcript-churn effect arms the marker at MOUNT; wait (real clock)
     // for that burst to clear so the drag below starts from a disarmed marker
@@ -196,7 +196,7 @@ describe("layout-shift-intent marker (#15257)", () => {
 
 describe("adversarial mouse drags — up/down 200%, back-and-forth", () => {
   it("A) up ~200% above the screen then all the way back to the bottom COLLAPSES (not stranded open/maximized)", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const g = drag(grabber()).down(740);
     // Up past the ceiling …
     await g.move(200); // up 540
@@ -215,7 +215,7 @@ describe("adversarial mouse drags — up/down 200%, back-and-forth", () => {
   });
 
   it("B) over-drag DOWN ~200% then all the way UP to the top MAXIMIZES", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const g = drag(grabber()).down(300);
     // Down ~200% below the screen (past the bottom → collapses toward the pill).
     await g.move(1840); // down ~1540
@@ -239,7 +239,7 @@ describe("adversarial mouse drags — up/down 200%, back-and-forth", () => {
   });
 
   it("C) oscillating UP/DOWN 3× across the detents tracks the cursor 1:1", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     // Start near the bottom; every waypoint keeps the cursor ABOVE the press
     // point (offset > 0) so the open panel height == the upward offset, and the
     // peak stays under the 80%-viewport maximize threshold (614) so this is a
@@ -257,7 +257,7 @@ describe("adversarial mouse drags — up/down 200%, back-and-forth", () => {
   });
 
   it("D) oscillating past the maximize threshold then releasing at the BOTTOM does not surprise-maximize", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const g = drag(grabber()).down(740);
     // Pull high — past 80% of the viewport (up 700 > 614) so the maximize
     // "long-haul" intent is armed …

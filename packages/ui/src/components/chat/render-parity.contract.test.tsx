@@ -3,7 +3,7 @@
 // Component-tree render-parity contract (#9954).
 //
 // The chat thread renders through TWO React trees: the overlay
-// (ContinuousChatOverlay → ThreadLine → InlineWidgetText) and the full ChatView
+// (ChatOverlay → ThreadLine → InlineWidgetText) and the full ChatView
 // (ChatTranscript → MessageContent). The PARSER layer is already deduped + pinned
 // (parser-parity.contract.test.ts, #9304) — both call the same `parseSegments`.
 // This contract guards the layer ABOVE the parser: that the two component trees
@@ -53,7 +53,7 @@ vi.mock("../../api/client", () => ({ client: clientMock }));
 
 // MessageContent (ChatView path) and ThreadLine (overlay path) both render real
 // inline widgets; import them after the mocks are in place.
-import { __renderThreadLineForParity } from "../shell/ContinuousChatOverlay";
+import { __renderThreadLineForParity } from "../shell/ChatOverlay";
 import { MessageContent } from "./MessageContent";
 // Side effect: register the built-in inline widgets so both surfaces resolve them.
 import "./widgets/inline-builtins";

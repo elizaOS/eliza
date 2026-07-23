@@ -29,7 +29,7 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
+import { ChatOverlay } from "./ChatOverlay";
 import { SHEET_TOP_MARGIN } from "./chat-panel-layout";
 import type { ShellController } from "./useShellController";
 
@@ -199,7 +199,7 @@ async function expectThreadHeight(target: number): Promise<void> {
 
 describe("free-rest release bands + detent magnetism (matrix: FREE / slow drag rows)", () => {
   it("rests FREE under half (OPEN_UNDER_HALF) and a flick down then lands INPUT", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     await slowPullUpBy(150); // gap between 64 and half−64
     expect(chatState()).toBe("OPEN_UNDER_HALF");
     expect(variant()).toBe("open");
@@ -212,7 +212,7 @@ describe("free-rest release bands + detent magnetism (matrix: FREE / slow drag r
   });
 
   it("rests FREE above half and a flick down steps to HALF FIRST, then INPUT", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     await slowPullUpBy(HALF_H + 150); // 503: gap between half+64 (417) and full−64 (632)
     expect(chatState()).toBe("OPEN_HALF_OR_OVER");
     expect(maximized()).toBeNull();
@@ -228,7 +228,7 @@ describe("free-rest release bands + detent magnetism (matrix: FREE / slow drag r
   });
 
   it("snaps to HALF when released just INSIDE the ±64 magnet band", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     await slowPullUpBy(HALF_H + MAGNET - 4); // 413: inside the magnet band
     expect(detent()).toBe("half");
     // The magnet SNAPPED the height to the detent — not a free rest at 413.
@@ -236,21 +236,21 @@ describe("free-rest release bands + detent magnetism (matrix: FREE / slow drag r
   });
 
   it("rests FREE when released just OUTSIDE the ±64 magnet band", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     await slowPullUpBy(HALF_H + MAGNET + 6); // 423: just outside → keeps its height
     expect(chatState()).toBe("OPEN_HALF_OR_OVER");
     await expectThreadHeight(HALF_H + MAGNET + 6);
   });
 
   it("collapses to INPUT when released within 64px of the bottom (no free sliver)", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     await slowPullUpBy(MAGNET - 10); // 54: "not enough to see a full row"
     expect(chatState()).toBe("INPUT");
     expect(variant()).toBe("closed");
   });
 
   it("snaps to FULL when released within 64px of the top", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     // 640 travel lands in the full magnet band (≥ 632) without crossing the
     // 80%-viewport long-haul mark only if 640 < 614 is false — long-haul WOULD
     // maximize; the matrix gives long-haul precedence, so assert that contract
@@ -266,7 +266,7 @@ describe("free-rest release bands + detent magnetism (matrix: FREE / slow drag r
 
 describe("bottom-band split: INPUT vs PILL (matrix: HALF slow-drag row)", () => {
   it("a slow drag from HALF released near the bottom (no overshoot) lands INPUT, not PILL", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     openToHalf();
     // Down by half−20 → h = 20 ≤ 64; started at half (≤ half+64), never past
     // the bottom → INPUT.
@@ -276,7 +276,7 @@ describe("bottom-band split: INPUT vs PILL (matrix: HALF slow-drag row)", () => 
   });
 
   it("a slow drag from HALF carried ≥40px PAST the bottom lands PILL", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     openToHalf();
     // Down by half+45 → cont −45 (past the 40px overshoot) → PILL.
     await slowDrag(grabber(), [200, 360, 520, 598]);
@@ -293,7 +293,7 @@ describe("pill-start mid-band releases (matrix: PILL held-drag row)", () => {
   }
 
   it("a slow pill drag released in the half magnet band lands HALF", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     collapseToPillFirst();
     const pill = screen.getByTestId("chat-pill");
     // Travel = 120 (pill→input morph) + halfH − 10 → h lands inside the band.
@@ -311,7 +311,7 @@ describe("pill-start mid-band releases (matrix: PILL held-drag row)", () => {
   });
 
   it("a slow pill drag released in the free gap rests FREE (pill → input → chat continuum)", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     collapseToPillFirst();
     const pill = screen.getByTestId("chat-pill");
     const freeTarget = HALF_H + 100; // 453: inside the upper free gap
@@ -331,7 +331,7 @@ describe("pill-start mid-band releases (matrix: PILL held-drag row)", () => {
 
 describe("restore-drag release bands (matrix: MAXIMIZED pull-down row)", () => {
   it("a slow restore pull released near HALF lands the HALF detent", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     bigPullUp();
     const zone = screen.getByTestId("chat-maximize-restore-zone");
     // Maximized rests at the full-bleed ceiling (VIEWPORT_H). Down-travel to
@@ -351,7 +351,7 @@ describe("restore-drag release bands (matrix: MAXIMIZED pull-down row)", () => {
   });
 
   it("a slow restore pull released in a gap rests FREE (no surprise FULL snap, no collapse)", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     bigPullUp();
     const zone = screen.getByTestId("chat-maximize-restore-zone");
     const freeTarget = HALF_H + 130; // 483: gap between half+64 and full−64
@@ -370,7 +370,7 @@ describe("restore-drag release bands (matrix: MAXIMIZED pull-down row)", () => {
   });
 
   it("a TAP on the restore strip stays MAXIMIZED (only a drag exits)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     bigPullUp();
     const zone = screen.getByTestId("chat-maximize-restore-zone");
     fireEvent.pointerDown(zone, { clientY: 30, pointerId: 45 });
@@ -382,7 +382,7 @@ describe("restore-drag release bands (matrix: MAXIMIZED pull-down row)", () => {
 
 describe("no lingering state across consecutive gestures", () => {
   it("after a restore to a free rest, the NEXT flick up lands FULL — never re-maximizes from the stale peak", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     bigPullUp();
     const zone = screen.getByTestId("chat-maximize-restore-zone");
     const freeTarget = HALF_H + 130;
@@ -403,7 +403,7 @@ describe("no lingering state across consecutive gestures", () => {
   });
 
   it("a maximize → Escape → reopen lands HALF with no residual full-bleed", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     bigPullUp();
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(variant()).toBe("closed");
@@ -415,7 +415,7 @@ describe("no lingering state across consecutive gestures", () => {
   });
 
   it("an abandoned over-pull (reversed below FULL) releases where the finger left it — never re-maximizing", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     openToHalf();
     const g = grabber();
     // Up into the over-pull zone, then reverse back to a mid height, slow.
@@ -436,7 +436,7 @@ describe("maximize commit hysteresis (MAXIMIZE_COMMIT_T / MAXIMIZE_RELEASE_T)", 
         Haptics: { impact: (o: { style: string }) => impacts.push(o.style) },
       },
     };
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const g = grabber();
     // Hold a drag into the mid-drag maximize commit zone (long-haul + over-pull),
     // one delivered frame per move so the commit is observed while held.
@@ -481,14 +481,14 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
 
   it("a grabber tap open fires exactly one haptic", () => {
     const impacts = armHaptics();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     openToHalf();
     expect(impacts.length).toBe(1);
   });
 
   it("a sub-threshold nudge fires none", async () => {
     const impacts = armHaptics();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     await slowDrag(grabber(), [420, 440]); // 20px drift down — springs back
     expect(chatState()).toBe("INPUT");
     expect(impacts.length).toBe(0);
@@ -496,7 +496,7 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
 
   it("a drag out the bottom haptics ONCE (mid-drag pill commit; the release settles silently)", async () => {
     const impacts = armHaptics();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     openToHalf(); // 1 haptic
     await slowDrag(grabber(), [200, 360, 520, 598]); // past the bottom → PILL
     await waitFor(() => expect(detent()).toBe("pill"));
@@ -505,7 +505,7 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
 
   it("each detent step of a flick sequence fires exactly one haptic", () => {
     const impacts = armHaptics();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     openToHalf(); // 1
     flick(grabber(), 400, 300); // half → full: 2
     expect(detent()).toBe("full");
@@ -518,9 +518,7 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
 describe("thread-less grabber tap (matrix: INPUT tap row)", () => {
   it("focuses the composer instead of opening an empty sheet", () => {
     render(
-      <ContinuousChatOverlay
-        controller={makeController({ messages: [] } as never)}
-      />,
+      <ChatOverlay controller={makeController({ messages: [] } as never)} />,
     );
     const input = screen.getByLabelText("message");
     fireEvent.pointerDown(grabber(), { clientY: 420, pointerId: 47 });
@@ -532,7 +530,7 @@ describe("thread-less grabber tap (matrix: INPUT tap row)", () => {
 
 describe("pill capsule horizontal swipe (matrix: PILL swipe row)", () => {
   it("is a consumed no-op — stays PILL, never opens", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     flick(grabber(), 600, 700); // INPUT → PILL
     expect(detent()).toBe("pill");
     const pill = screen.getByTestId("chat-pill");

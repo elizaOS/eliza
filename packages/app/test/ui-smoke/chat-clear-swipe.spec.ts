@@ -198,7 +198,7 @@ test("collapsed chat grabber horizontal swipe neither opens chat nor navigates",
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   const surface = page.getByTestId("home-launcher-surface");
@@ -227,7 +227,7 @@ test.describe("real touch input (CDP dispatchTouchEvent) — #9943 item 6", () =
     page,
   }, testInfo) => {
     await openAppPath(page, "/chat");
-    const overlay = page.getByTestId("continuous-chat-overlay");
+    const overlay = page.getByTestId("chat-overlay");
     await expect(overlay).toBeVisible({ timeout: 60_000 });
 
     const surface = page.getByTestId("home-launcher-surface");
@@ -253,7 +253,7 @@ test("single-thread open thread: search lives in the composer + menu (no header 
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   // Open the sheet: flick the grabber UP (≥ distance threshold → onPullUp).

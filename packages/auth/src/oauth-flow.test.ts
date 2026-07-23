@@ -46,9 +46,9 @@ describe("fetchAnthropicOAuthProfile", () => {
       _input,
       init,
     ) => {
-      expect((init?.headers as Record<string, string>).Authorization).toBe(
-        "Bearer access-token",
-      );
+      expect(
+        (init?.headers as Record<string, string> | undefined)?.Authorization,
+      ).toBe("Bearer access-token");
       return Response.json({
         account: { uuid: "account-1", email: "person@example.com" },
         organization: { uuid: "organization-1" },
@@ -95,13 +95,14 @@ describe("fetchAnthropicOAuthProfile", () => {
       },
       "anthropic_oauth.profile_request_failed",
     ],
-  ] as Array<
-    [string, () => Promise<Response>, string]
-  >)("surfaces %s instead of fabricating an empty profile", async (_name, fetchImpl, code) => {
-    await expect(
-      fetchAnthropicOAuthProfile("access-token", fetchImpl as typeof fetch),
-    ).rejects.toMatchObject({ code });
-  });
+  ] as Array<[string, () => Promise<Response>, string]>)(
+    "surfaces %s instead of fabricating an empty profile",
+    async (_name, fetchImpl, code) => {
+      await expect(
+        fetchAnthropicOAuthProfile("access-token", fetchImpl as typeof fetch),
+      ).rejects.toMatchObject({ code });
+    },
+  );
 });
 
 function useTempElizaHome(): string {

@@ -95,7 +95,7 @@ test.describe("real cloud login + provisioning + chat", () => {
 
     // Wait for the in-chat first-run surface: #9952 onboarding IS the chat, so
     // the seeded greeting + runtime choice render inside the floating overlay.
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 60_000,
     });
 

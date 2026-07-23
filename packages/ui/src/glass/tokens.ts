@@ -58,7 +58,7 @@ export interface GlassRecipe {
 
 /**
  * Fill for the chat sheet — the single source of truth for the frosted panel
- * material `ContinuousChatOverlay` renders. A mostly-translucent theme-aware
+ * material `ChatOverlay` renders. A mostly-translucent theme-aware
  * card at 62%: the live view behind reads as a soft, bright frost rather than
  * the grayish near-opaque slab a high fill produced. Paired with
  * {@link GLASS_SHEET_BACKDROP_FILTER}; the overlay imports both, so the chat

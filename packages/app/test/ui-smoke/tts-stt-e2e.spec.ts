@@ -761,7 +761,7 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
 
   const initialState = await readSttState();
   if (!initialState?.started) {
-    const overlay = page.getByTestId("continuous-chat-overlay");
+    const overlay = page.getByTestId("chat-overlay");
     await expect(overlay).toBeVisible({ timeout: 15_000 });
     const micButton = overlay
       .getByRole("button", { name: /^(talk|voice input)$/i })

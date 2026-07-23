@@ -1,6 +1,6 @@
 # In-chat onboarding status
 
-First-run onboarding now renders in the real `ContinuousChatOverlay` over the
+First-run onboarding now renders in the real `ChatOverlay` over the
 normal app shell. The old full-screen first-run gate, `FirstRunChat` surface,
 and standalone runtime chooser are no longer part of the shipped UI.
 
@@ -27,12 +27,12 @@ not write repo-local evidence folders.
 ## The onboarding surface (#9952 → relaxed by #12178)
 
 While first-run is pending, the shell passes `firstRunOpen={firstRunComplete
-=== false}` to `ContinuousChatOverlay` (`App.tsx`). `firstRunOpen` turns the
+=== false}` to `ChatOverlay` (`App.tsx`). `firstRunOpen` turns the
 overlay into a **full-screen onboarding surface** — the chat is the first
 painted surface over the shared wallpaper, and it cannot be dismissed until
 onboarding completes. The composer remains locked until cloud sign-in, so the
 choice turn is the only pre-auth input. The contract, enforced in
-`ContinuousChatOverlay.tsx` and covered by `ContinuousChatOverlay.firstrun.test.tsx`:
+`ChatOverlay.tsx` and covered by `ChatOverlay.firstrun.test.tsx`:
 
 - **Opens pinned at FULL.** Initial detent is `full` when `firstRunOpen`; a
   falling-edge-guarded effect re-pins to FULL on every change while

@@ -1,5 +1,5 @@
 /**
- * Renders the continuous chat overlay that keeps the composer and transcript
+ * Renders the chat overlay that keeps the composer and transcript
  * available across views.
  */
 import { logger } from "@elizaos/logger";
@@ -183,7 +183,7 @@ const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
 };
 
 /**
- * The continuous-chat overlay: one always-present, ambient glass conversation
+ * The chat overlay: one always-present, ambient glass conversation
  * that floats over EVERY view. There are no separate chats and no switcher — it
  * is a single endless thread (the app's one active conversation, via
  * useShellController).
@@ -334,7 +334,7 @@ const SHEET_DETENT_MAGNET = 64;
 // expand-to-maximize — and dragging back down within the same gesture reverses
 // it. Release commits the maximize once the morph is at least half-complete.
 const COMPOSER_TYPING_PAUSE_MS = 2_000;
-const COMPOSER_ACTIVITY_SURFACE = "continuous_chat_overlay";
+const COMPOSER_ACTIVITY_SURFACE = "chat_overlay";
 
 // A light iOS-style impact on each detent cross. Self-contained + guarded so it
 // is a no-op off-native (and in jsdom tests) without coupling the overlay to the
@@ -1086,7 +1086,7 @@ export function __renderThreadLineForParity(
   );
 }
 
-export function ContinuousChatOverlay({
+export function ChatOverlay({
   controller,
   agentName = "Eliza",
   slash: slashProp,
@@ -1178,7 +1178,7 @@ export function ContinuousChatOverlay({
     copyTextToClipboard(text).catch((err: unknown) => {
       // error-policy:J7 best-effort copy — the failure is logged, never thrown
       // into the gesture handler.
-      logger.warn({ err }, "[ContinuousChatOverlay] copy to clipboard failed");
+      logger.warn({ err }, "[ChatOverlay] copy to clipboard failed");
     });
   }, []);
   // Press-and-hold copy adds a light haptic on top of the copy (the only
@@ -1186,7 +1186,7 @@ export function ContinuousChatOverlay({
   const handleLongPressCopy = React.useCallback((text: string) => {
     copyTextToClipboard(text).catch((err: unknown) => {
       // error-policy:J7 best-effort copy — logged, never thrown (see above).
-      logger.warn({ err }, "[ContinuousChatOverlay] copy to clipboard failed");
+      logger.warn({ err }, "[ChatOverlay] copy to clipboard failed");
     });
     detentHaptic();
   }, []);
@@ -1704,7 +1704,7 @@ export function ContinuousChatOverlay({
     };
     scheduleClear(180);
   }, []);
-  // Publish the RESTING composer footprint to --eliza-continuous-chat-clearance
+  // Publish the RESTING composer footprint to --eliza-chat-clearance
   // so content below (home widgets, launcher tiles) always reserves exactly the
   // space the collapsed composer occupies. Without this the var was never set —
   // every surface rode the 5.25rem fallback, which a multi-line draft or pending
@@ -1728,7 +1728,7 @@ export function ContinuousChatOverlay({
       // reserving that in the home/launcher layout clips the top apps off-screen.
       if (h > 0)
         root.style.setProperty(
-          "--eliza-continuous-chat-clearance",
+          "--eliza-chat-clearance",
           `${Math.min(Math.ceil(h), CHAT_CLEARANCE_MAX_PX)}px`,
         );
     };
@@ -2639,7 +2639,7 @@ export function ContinuousChatOverlay({
     if (typeof window === "undefined") return;
     const root = document.documentElement;
     const reset = () => {
-      root.style.setProperty("--eliza-continuous-chat-side-clearance", "0px");
+      root.style.setProperty("--eliza-chat-side-clearance", "0px");
     };
     if (!compactLanding) {
       reset();
@@ -2653,7 +2653,7 @@ export function ContinuousChatOverlay({
     const publish = () => {
       const width = panel.getBoundingClientRect().width;
       root.style.setProperty(
-        "--eliza-continuous-chat-side-clearance",
+        "--eliza-chat-side-clearance",
         width > 0 ? `${Math.ceil(width + 24)}px` : "0px",
       );
     };
@@ -5043,7 +5043,7 @@ export function ContinuousChatOverlay({
             ? overlayPadBottom
             : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
       }}
-      data-testid="continuous-chat-overlay"
+      data-testid="chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
       {/* NO reclaimed-bottom-floor element here (removed): it used to paint a

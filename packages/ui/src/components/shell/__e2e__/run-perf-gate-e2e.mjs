@@ -1,6 +1,6 @@
 /**
  * Perf-gate e2e (#9954 Item 5, retargeted for #13531): drives the REAL
- * ContinuousChatOverlay over a long overflowing thread and feeds REAL rAF /
+ * ChatOverlay over a long overflowing thread and feeds REAL rAF /
  * PerformanceObserver entries into the SAME shared, unit-tested detectors the dev
  * HUD uses — frame-budget.ts (per-gesture windows via FRAME_SAMPLER_INIT) and
  * layout-stability.ts (steady-state CLS via LAYOUT_SHIFT_OBSERVER_INIT). It opens

@@ -381,7 +381,7 @@ test("dashboard notification center: row tap marks read in place, hover-X dismis
   expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
   // The tap had no deepLink: the home surface must not have navigated.
   await expect(page.getByTestId("home-screen")).toBeVisible();
-  await expect(page.getByTestId("continuous-chat-overlay")).not.toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
     "data-open",
     "true",
   );
@@ -427,7 +427,7 @@ test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, a
   page,
 }) => {
   await openHome(page);
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   await expect(overlay).not.toHaveAttribute("data-open", "true");
   const grabber = page.locator('[data-testid="chat-sheet-grabber"]').first();
@@ -503,9 +503,10 @@ test.describe("real touch (hasTouch project)", () => {
     await page.waitForTimeout(500);
     await expect(page.getByTestId("settings-shell")).toHaveCount(0);
     await expect(surface).toHaveAttribute("data-page", "home");
-    await expect(
-      page.getByTestId("continuous-chat-overlay"),
-    ).not.toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
+      "data-open",
+      "true",
+    );
 
     // The paired opposite flick is equally inert.
     await cdpTouchDrag(page, appsRegion, 220, 4, 10);
@@ -581,9 +582,10 @@ test.describe("real touch (hasTouch project)", () => {
       OVERFLOW_ROWS,
     );
     await expect(center.getByTestId("notification-row-options")).toHaveCount(0);
-    await expect(
-      page.getByTestId("continuous-chat-overlay"),
-    ).not.toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
+      "data-open",
+      "true",
+    );
     await evidenceShot(page, "touch-notification-list-pan-contained");
   });
 

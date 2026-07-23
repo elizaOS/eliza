@@ -346,8 +346,7 @@ registered action surface** scanned from source
 declaration under `packages/core`, `packages/agent`, and `plugins/*`, plus
 view-scoped actions. An action can be real and registered without having a
 canonical spec entry — before concluding an action "does not exist", check this
-list. CI (`node packages/scripts/view-action-ratchet.mjs`) fails when this
-section drifts from source.
+list. Regenerate this document after changing the registered action surface.
 
 - `ACTIVATE_PLUGIN_IF_READY` — `packages/core/src/features/plugin-config/actions/activate-plugin-if-ready.ts`
 - `AGENT_SWITCH` — `plugins/plugin-app-control/src/actions/agent-switch.ts`
