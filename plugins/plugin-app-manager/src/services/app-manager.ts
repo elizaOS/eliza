@@ -86,7 +86,6 @@ const MAX_RUN_EVENTS = 20;
 const RUN_HEARTBEAT_TIMEOUT_MS = 90_000;
 /** How often the sweeper wakes to look for stale runs. */
 const RUN_HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
-const DEFAULT_REGISTRY_REFRESH_TIMEOUT_MS = 5_000;
 
 type AgentsListSnapshot = unknown[] | undefined;
 
@@ -120,35 +119,6 @@ function restoreAgentsListAfterAppLaunchIfNeeded(
   logger.warn(
     `[app-manager] Restored agents.list after ${appName} ${phase}; app launch must not replace the user's active character config.`,
   );
-}
-
-function resolveRegistryRefreshTimeoutMs(): number {
-  const raw = process.env.ELIZA_APPS_REGISTRY_REFRESH_TIMEOUT_MS?.trim();
-  if (!raw) return DEFAULT_REGISTRY_REFRESH_TIMEOUT_MS;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 250
-    ? parsed
-    : DEFAULT_REGISTRY_REFRESH_TIMEOUT_MS;
-}
-
-async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  label: string,
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
 }
 
 type AppViewerConfig = NonNullable<AppLaunchResult["viewer"]>;
@@ -1451,7 +1421,6 @@ export class AppManager {
   private sweeperTimer: ReturnType<typeof setInterval> | null = null;
   private sweeperRuntimeFn: (() => IAgentRuntime | null) | null = null;
   private sweeperReapInFlight = false;
-  private registryRefreshInFlight = false;
 
   constructor(options: AppManagerOptions = {}) {
     this.stateDir = options.stateDir;
@@ -2243,25 +2212,10 @@ export class AppManager {
   ): Promise<InstalledAppInfo[]> {
     const installed = await pluginManager.listInstalledPlugins();
     const registry = await getRegistryPlugins();
-    // Serve the cached registry and refresh out-of-band. Awaiting
-    // refreshRegistry() here nulled the registry caches and refetched over
-    // the network on every call, so each message turn that rendered the
-    // available_apps provider paid a multi-second cold registry fetch.
-    // POST /api/apps/refresh remains the force-refresh path.
-    if (!this.registryRefreshInFlight) {
-      this.registryRefreshInFlight = true;
-      void withTimeout(
-        pluginManager.refreshRegistry(),
-        resolveRegistryRefreshTimeoutMs(),
-        "app registry refresh",
-      )
-        // error-policy:J6 background registry refresh is best-effort; this
-        // request was already served from the cached registry.
-        .catch(() => undefined)
-        .finally(() => {
-          this.registryRefreshInFlight = false;
-        });
-    }
+    // A read must preserve the registry client's memory/file TTL. Forced
+    // invalidation belongs exclusively to POST /api/apps/refresh; doing it on
+    // every list call created continuous background network churn and defeated
+    // the cache that keeps message-time app inventory cheap.
     const mergedRegistry = new Map<string, RegistryPluginInfo>(registry);
     const installedByName = new Map(
       installed.map((plugin) => [plugin.name, plugin] as const),

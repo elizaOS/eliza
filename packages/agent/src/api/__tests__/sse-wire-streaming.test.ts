@@ -118,6 +118,7 @@ describe("SSE wire format", () => {
       text: "Hello",
       fullText: "Hello",
     });
+    expect(payload).not.toHaveProperty("inferenceTiming");
   });
 
   it("emits N token frames followed by a single done frame, in order", () => {

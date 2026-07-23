@@ -141,7 +141,10 @@ describe("recall-query embed prefetch (per-turn cache warm)", () => {
 			([modelType]) => modelType === ModelType.TEXT_EMBEDDING,
 		);
 		expect(embedCalls).toHaveLength(1);
-		expect(embedCalls[0][1]).toEqual({ text });
+		expect(embedCalls[0][1]).toEqual({
+			text,
+			signal: expect.any(AbortSignal),
+		});
 	});
 
 	it("warms the cache entry the compose-time recall providers hit (same seam, normalized key)", async () => {

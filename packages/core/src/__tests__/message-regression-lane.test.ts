@@ -16,7 +16,10 @@
  */
 import "../services/message.mute-drop.test";
 import "../services/message.shortcut-gate.test";
+import "../services/message.ttft-prefetch.test";
 import "../services/message.voice-gate.test";
+import "../services/message-handler-abort.test";
+import "../services/message.persistence.test";
 import "./message-answer-clobber-rescue.test";
 import "./message-failure-reply.test";
 import "./message-routing-live-regression.test";

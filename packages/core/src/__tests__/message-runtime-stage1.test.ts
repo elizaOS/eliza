@@ -3284,6 +3284,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(providerNames).toContain("RUNTIME_MODEL_CONTEXT");
 		expect(providerNames).not.toContain("PROVIDERS");
 		expect(providerNames).not.toContain("CHARACTER");
+		expect(composeState.mock.calls[0]?.[4]).toEqual([]);
 	});
 
 	it("emits a response-handler reply before planner recomposition when provided", async () => {
@@ -3322,6 +3323,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				text: "I'll check that now.",
 			}),
 		);
+		const composeState = runtime.composeState as {
+			mock: { calls: unknown[][] };
+		};
+		expect(composeState.mock.calls[0]?.[4]).toEqual(["RECENT_MESSAGES"]);
 		expect(order).toEqual(["early-reply", "compose-planner-state"]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {

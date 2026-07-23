@@ -10,6 +10,10 @@
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import {
+	InferenceTurnTimer,
+	runWithInferenceTiming,
+} from "../../inference-timing";
 import { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 
@@ -64,15 +68,30 @@ describe("AgentRuntime.useModel span window", () => {
 			},
 		});
 		const span = captureModelSpan(runtime);
-
-		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt: "measure me",
+		const timer = new InferenceTurnTimer({
+			turnId: "model-phases",
+			label: "test",
 		});
+
+		const result = await runWithInferenceTiming(timer, () =>
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "measure me",
+			}),
+		);
+		const timing = timer.close();
 
 		expect(result).toBe("handler-result");
 		expect(span.durationMs).toHaveLength(1);
 		expect(span.durationMs[0]).toBeGreaterThanOrEqual(HANDLER_DELAY_MS - 5);
 		expect(span.durationMs[0]).toBeLessThan(SPAN_CEILING_MS);
+		expect(timing.byName["model-routing:TEXT_SMALL"]?.count).toBe(1);
+		expect(
+			timing.byName["model-preprocess:TEXT_SMALL"]?.totalMs,
+		).toBeGreaterThanOrEqual(PRE_HOOK_DELAY_MS - 5);
+		expect(timing.byName["model:TEXT_SMALL"]?.totalMs).toBeLessThan(
+			SPAN_CEILING_MS,
+		);
+		expect(timing.byName["model-postprocess:TEXT_SMALL"]?.count).toBe(1);
 	});
 
 	it("keeps the handler-only window on the streaming path", async () => {
@@ -108,5 +127,40 @@ describe("AgentRuntime.useModel span window", () => {
 		expect(result).toBe("streamed");
 		expect(span.durationMs).toHaveLength(1);
 		expect(span.durationMs[0]).toBeLessThan(SPAN_CEILING_MS);
+	});
+
+	it("records failed handler time so provider failover latency is not hidden", async () => {
+		const runtime = makeRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async () => {
+				await sleep(10);
+				throw new Error("provider unavailable");
+			},
+			"failing-provider",
+			0,
+		);
+		const timer = new InferenceTurnTimer({
+			turnId: "model-error",
+			label: "test",
+		});
+
+		await expect(
+			runWithInferenceTiming(timer, () =>
+				runtime.useModel(ModelType.TEXT_SMALL, {
+					prompt: "measure failure",
+				}),
+			),
+		).rejects.toThrow("provider unavailable");
+
+		const failed = timer
+			.close()
+			.spans.find((entry) => entry.name === "model:TEXT_SMALL");
+		expect(failed?.durationMs).toBeGreaterThanOrEqual(5);
+		expect(failed?.meta).toMatchObject({
+			outcome: "error",
+			provider: "failing-provider",
+			attempt: 1,
+		});
 	});
 });

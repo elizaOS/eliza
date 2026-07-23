@@ -157,11 +157,13 @@ function createHarness(): TestHarness {
       clearChannel: async () => undefined,
     },
     createMemory,
+    createLogs: vi.fn(async () => undefined),
     getMemories: vi.fn(async () => storedMemories),
     ensureConnection: vi.fn(async () => undefined),
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
     getRoom: vi.fn(async () => null),
+    reportError: vi.fn(),
     adapter: {} as never,
   } satisfies Partial<AgentRuntime> & Record<string, unknown>;
 

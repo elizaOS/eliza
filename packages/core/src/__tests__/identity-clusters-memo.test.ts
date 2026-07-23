@@ -15,14 +15,19 @@ const AGENT = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const SENDER = "11111111-1111-1111-1111-111111111111" as UUID;
 const ALIAS = "22222222-2222-2222-2222-222222222222" as UUID;
 
-function runtimeWith(
-	getMemberEntityIds: (id: UUID) => Promise<UUID[]>,
-): IAgentRuntime {
-	const service = { getMemberEntityIds };
+function runtimeWithResolver(service: {
+	getMemberEntityIds: (id: UUID) => Promise<UUID[]>;
+}): IAgentRuntime {
 	return {
 		agentId: AGENT,
 		getService: (name: string) => (name === "relationships" ? service : null),
 	} as unknown as IAgentRuntime;
+}
+
+function runtimeWith(
+	getMemberEntityIds: (id: UUID) => Promise<UUID[]>,
+): IAgentRuntime {
+	return runtimeWithResolver({ getMemberEntityIds });
 }
 
 afterEach(() => {
@@ -31,6 +36,18 @@ afterEach(() => {
 });
 
 describe("getRelatedEntityIds memo", () => {
+	it("preserves the relationship service receiver while memoizing", async () => {
+		const service = {
+			member: ALIAS,
+			async getMemberEntityIds() {
+				return [this.member];
+			},
+		};
+		const runtime = runtimeWithResolver(service);
+
+		expect(await getRelatedEntityIds(runtime, SENDER)).toEqual([SENDER, ALIAS]);
+	});
+
 	it("shares one in-flight resolver call across concurrent callers", async () => {
 		let calls = 0;
 		const runtime = runtimeWith(async () => {
