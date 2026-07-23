@@ -56,6 +56,7 @@ const REPLACEMENT_ATTEMPT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const REPLACEMENT_STARTED_AT = "2026-07-23T12:00:00.000Z";
 let pgliteReady = true;
 let seq = 0;
+let requestSeq = 0;
 
 type ReplacementStageService = {
   persistReplacementCleanupStage(
@@ -114,6 +115,69 @@ function replacementHandle(params: {
 function uniq(prefix: string): string {
   seq += 1;
   return `${prefix}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function nextRequestId(): string {
+  requestSeq += 1;
+  return `9abc0000-0000-4000-8000-${String(requestSeq).padStart(12, "0")}`;
+}
+
+async function executeUpgradeCanary(params: {
+  actorUserId: string;
+  targets: AdminCanaryTargetExpectation[];
+  targetImage?: string;
+  requestId?: string;
+}) {
+  const requestId = params.requestId ?? nextRequestId();
+  const targetImage = params.targetImage ?? TARGET_IMAGE;
+  const preview = await adminAgentImageRolloutService.previewOrEnqueue(
+    {
+      operation: "upgrade",
+      requestId,
+      dryRun: true,
+      targetImage,
+      targets: params.targets,
+    },
+    params.actorUserId,
+  );
+  return await adminAgentImageRolloutService.previewOrEnqueue(
+    {
+      operation: "upgrade",
+      requestId,
+      dryRun: false,
+      expectedPlanFingerprint: preview.planFingerprint,
+      targetImage,
+      targets: params.targets,
+    },
+    params.actorUserId,
+  );
+}
+
+async function executeRollbackCanary(params: {
+  actorUserId: string;
+  source: { rolloutId: string } | { jobId: string };
+  requestId?: string;
+}) {
+  const requestId = params.requestId ?? nextRequestId();
+  const preview = await adminAgentImageRolloutService.previewOrEnqueue(
+    {
+      operation: "rollback",
+      requestId,
+      dryRun: true,
+      source: params.source,
+    },
+    params.actorUserId,
+  );
+  return await adminAgentImageRolloutService.previewOrEnqueue(
+    {
+      operation: "rollback",
+      requestId,
+      dryRun: false,
+      expectedPlanFingerprint: preview.planFingerprint,
+      source: params.source,
+    },
+    params.actorUserId,
+  );
 }
 
 async function seedAgents(count: number): Promise<{
@@ -1151,6 +1215,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       adminAgentImageRolloutService.previewOrEnqueue(
         {
           operation: "upgrade",
+          requestId: nextRequestId(),
           dryRun: true,
           targetImage: TARGET_IMAGE,
           targets: [
@@ -1178,6 +1243,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     const preview = await adminAgentImageRolloutService.previewOrEnqueue(
       {
         operation: "upgrade",
+        requestId: nextRequestId(),
         dryRun: true,
         targetImage: TARGET_IMAGE,
         targets: [
@@ -1296,6 +1362,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     const preview = await adminAgentImageRolloutService.previewOrEnqueue(
       {
         operation: "upgrade",
+        requestId: nextRequestId(),
         dryRun: true,
         targetImage: TARGET_IMAGE,
         targets: [
@@ -1647,9 +1714,11 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("dry-run preserves requested targets exactly and writes no jobs; execute inserts all five", async () => {
     const seeded = await seedAgents(5);
     const requested = [...seeded.targets].reverse();
+    const requestId = nextRequestId();
     const dryRun = await adminAgentImageRolloutService.previewOrEnqueue(
       {
         operation: "upgrade",
+        requestId,
         dryRun: true,
         targetImage: TARGET_IMAGE,
         targets: requested,
@@ -1666,7 +1735,9 @@ describe("admin agent image rollout on primary PGlite", () => {
     const executed = await adminAgentImageRolloutService.previewOrEnqueue(
       {
         operation: "upgrade",
+        requestId,
         dryRun: false,
+        expectedPlanFingerprint: dryRun.planFingerprint,
         targetImage: TARGET_IMAGE,
         targets: requested,
       },
@@ -1674,7 +1745,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     );
     expect(executed.rolloutId).toMatch(/^[0-9a-f-]{36}$/);
     expect(executed.targets.map((target) => target.agentId)).toEqual(
-      requested.map((target) => target.agentId),
+      seeded.targets.map((target) => target.agentId),
     );
     const persisted = await dbWrite
       .select()
@@ -1711,15 +1782,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       max_attempts: 1,
     });
 
-    const attempt = adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    const attempt = executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     await expect(attempt).rejects.toBeInstanceOf(ApiError);
     const persisted = await dbWrite.select().from(jobs);
     expect(persisted).toHaveLength(1);
@@ -1748,15 +1814,10 @@ describe("admin agent image rollout on primary PGlite", () => {
     expect(ordinary.created).toBe(true);
 
     await expect(
-      adminAgentImageRolloutService.previewOrEnqueue(
-        {
-          operation: "upgrade",
-          dryRun: false,
-          targetImage: TARGET_IMAGE,
-          targets: seeded.targets,
-        },
-        seeded.actorUserId,
-      ),
+      executeUpgradeCanary({
+        actorUserId: seeded.actorUserId,
+        targets: seeded.targets,
+      }),
     ).rejects.toMatchObject({
       status: 409,
       details: {
@@ -1774,15 +1835,10 @@ describe("admin agent image rollout on primary PGlite", () => {
   test("canary first blocks an ordinary upgrade for the same agent under the lifecycle lock", async () => {
     const seeded = await seedAgents(1);
     const target = seeded.targets[0]!;
-    const canary = await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    const canary = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const canaryJobId = canary.targets[0]?.jobId;
     expect(canaryJobId).toBeDefined();
 
@@ -1814,9 +1870,22 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("concurrent execute requests serialize to exactly one durable rollout", async () => {
     const seeded = await seedAgents(5);
+    const requestId = nextRequestId();
+    const preview = await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        requestId,
+        dryRun: true,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
     const input = {
       operation: "upgrade" as const,
-      dryRun: false,
+      requestId,
+      dryRun: false as const,
+      expectedPlanFingerprint: preview.planFingerprint,
       targetImage: TARGET_IMAGE,
       targets: seeded.targets,
     };
@@ -1826,8 +1895,11 @@ describe("admin agent image rollout on primary PGlite", () => {
       adminAgentImageRolloutService.previewOrEnqueue(input, seeded.actorUserId),
     ]);
 
-    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
-    expect(attempts.filter((attempt) => attempt.status === "rejected")).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(2);
+    const fulfilled = attempts.flatMap((attempt) =>
+      attempt.status === "fulfilled" ? [attempt.value] : [],
+    );
+    expect(fulfilled[1]).toEqual(fulfilled[0]);
     const persisted = await dbWrite
       .select()
       .from(jobs)
@@ -1838,17 +1910,344 @@ describe("admin agent image rollout on primary PGlite", () => {
     );
   });
 
-  test("rollback target pair comes only from one successful durable upgrade audit", async () => {
-    const seeded = await seedAgents(1);
-    const upgrade = await adminAgentImageRolloutService.previewOrEnqueue(
+  test("request recovery replays across target ordering and source drift while changed requests conflict", async () => {
+    const seeded = await seedAgents(2);
+    const requestId = nextRequestId();
+    const preview = await adminAgentImageRolloutService.previewOrEnqueue(
       {
         operation: "upgrade",
-        dryRun: false,
+        requestId,
+        dryRun: true,
         targetImage: TARGET_IMAGE,
         targets: seeded.targets,
       },
       seeded.actorUserId,
     );
+    const executeInput = {
+      operation: "upgrade" as const,
+      requestId,
+      dryRun: false as const,
+      expectedPlanFingerprint: preview.planFingerprint,
+      targetImage: TARGET_IMAGE,
+      targets: seeded.targets,
+    };
+    const executed = await adminAgentImageRolloutService.previewOrEnqueue(
+      executeInput,
+      seeded.actorUserId,
+    );
+    const recovered = await adminAgentImageRolloutService.recoverRequest(
+      seeded.actorUserId,
+      requestId,
+    );
+    expect(recovered).toEqual(executed);
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ image_digest: NEXT_DIGEST })
+      .where(eq(agentSandboxes.id, seeded.targets[0]!.agentId));
+    const reordered = await adminAgentImageRolloutService.previewOrEnqueue(
+      { ...executeInput, targets: [...executeInput.targets].reverse() },
+      seeded.actorUserId,
+    );
+    expect(reordered).toEqual(executed);
+
+    await expect(
+      adminAgentImageRolloutService.previewOrEnqueue(
+        {
+          operation: "upgrade",
+          requestId,
+          dryRun: true,
+          targetImage: TARGET_IMAGE,
+          targets: seeded.targets,
+        },
+        seeded.actorUserId,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      adminAgentImageRolloutService.previewOrEnqueue(
+        {
+          ...executeInput,
+          expectedPlanFingerprint: `sha256:${"f".repeat(64)}`,
+        },
+        seeded.actorUserId,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      adminAgentImageRolloutService.previewOrEnqueue(
+        { ...executeInput, targets: [seeded.targets[0]!] },
+        seeded.actorUserId,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      adminAgentImageRolloutService.recoverRequest(
+        "88888888-8888-4888-8888-888888888888",
+        requestId,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      adminAgentImageRolloutService.recoverRequest(seeded.actorUserId, requestId.toUpperCase()),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  test("a post-commit source mutation cannot defeat catch-time replay after a missed prelookup", async () => {
+    const seeded = await seedAgents(1);
+    const requestId = nextRequestId();
+    const preview = await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        requestId,
+        dryRun: true,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+    const input = {
+      operation: "upgrade" as const,
+      requestId,
+      dryRun: false as const,
+      expectedPlanFingerprint: preview.planFingerprint,
+      targetImage: TARGET_IMAGE,
+      targets: seeded.targets,
+    };
+    const executed = await adminAgentImageRolloutService.previewOrEnqueue(
+      input,
+      seeded.actorUserId,
+    );
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ image_digest: NEXT_DIGEST })
+      .where(eq(agentSandboxes.id, seeded.targets[0]!.agentId));
+
+    const originalLookup = jobsRepository.findAdminCanaryRequestForWrite.bind(jobsRepository);
+    let missFirstLookup = true;
+    const lookup = spyOn(jobsRepository, "findAdminCanaryRequestForWrite").mockImplementation(
+      async (...args) => {
+        if (missFirstLookup) {
+          missFirstLookup = false;
+          return [];
+        }
+        return await originalLookup(...args);
+      },
+    );
+    try {
+      expect(
+        await adminAgentImageRolloutService.previewOrEnqueue(input, seeded.actorUserId),
+      ).toEqual(executed);
+      expect(lookup).toHaveBeenCalledTimes(2);
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
+  test("execute rejects tampered fingerprints and owner, warm-fence, or source drift", async () => {
+    const cases = ["fingerprint", "owner", "warm", "source"] as const;
+    for (const drift of cases) {
+      const seeded = await seedAgents(1);
+      const requestId = nextRequestId();
+      const preview = await adminAgentImageRolloutService.previewOrEnqueue(
+        {
+          operation: "upgrade",
+          requestId,
+          dryRun: true,
+          targetImage: TARGET_IMAGE,
+          targets: seeded.targets,
+        },
+        seeded.actorUserId,
+      );
+      if (drift === "owner") {
+        const [replacementOwner] = await dbWrite
+          .insert(users)
+          .values({
+            steward_user_id: uniq("canary-owner-drift"),
+            organization_id: seeded.organizationId,
+          })
+          .returning();
+        if (!replacementOwner) throw new Error("expected replacement canary owner");
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ user_id: replacementOwner.id })
+          .where(eq(agentSandboxes.id, seeded.targets[0]!.agentId));
+      } else if (drift === "warm") {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({
+            claimed_at: new Date(),
+            warm_claim_credential_state: "pending",
+          })
+          .where(eq(agentSandboxes.id, seeded.targets[0]!.agentId));
+      } else if (drift === "source") {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ image_digest: NEXT_DIGEST })
+          .where(eq(agentSandboxes.id, seeded.targets[0]!.agentId));
+      }
+
+      await expect(
+        adminAgentImageRolloutService.previewOrEnqueue(
+          {
+            operation: "upgrade",
+            requestId,
+            dryRun: false,
+            expectedPlanFingerprint:
+              drift === "fingerprint" ? `sha256:${"e".repeat(64)}` : preview.planFingerprint,
+            targetImage: TARGET_IMAGE,
+            targets: seeded.targets,
+          },
+          seeded.actorUserId,
+        ),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+
+      await dbWrite.delete(agentSandboxes);
+      await dbWrite.delete(users);
+      await dbWrite.delete(organizations);
+    }
+  });
+
+  test("recovery fails closed when durable targets or request metadata are missing or changed", async () => {
+    const seeded = await seedAgents(2);
+    const requestId = nextRequestId();
+    const executed = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      requestId,
+      targets: seeded.targets,
+    });
+    const persisted = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE))
+      .orderBy(jobs.id);
+    expect(persisted).toHaveLength(2);
+
+    await dbWrite.delete(jobs).where(eq(jobs.id, persisted[0]!.id));
+    await expect(
+      adminAgentImageRolloutService.recoverRequest(seeded.actorUserId, requestId),
+    ).rejects.toThrow("incomplete or changed target set");
+
+    await dbWrite.insert(jobs).values(persisted[0]!);
+    const restored = await adminAgentImageRolloutService.recoverRequest(
+      seeded.actorUserId,
+      requestId,
+    );
+    expect(restored.rolloutId).toBe(executed.rolloutId);
+
+    await dbWrite
+      .update(jobs)
+      .set({
+        data: {
+          ...persisted[0]!.data,
+          targetOwnerUserId: "77777777-7777-4777-8777-777777777777",
+        },
+      })
+      .where(eq(jobs.id, persisted[0]!.id));
+    await expect(
+      adminAgentImageRolloutService.recoverRequest(seeded.actorUserId, requestId),
+    ).rejects.toThrow("incomplete or changed target set");
+
+    await dbWrite
+      .update(jobs)
+      .set({
+        data: {
+          ...persisted[0]!.data,
+          canonicalRequestHash: 42,
+        },
+      })
+      .where(eq(jobs.id, persisted[0]!.id));
+    await expect(
+      adminAgentImageRolloutService.recoverRequest(seeded.actorUserId, requestId),
+    ).rejects.toThrow("Invalid admin canary image job data");
+  });
+
+  test("legacy canary rows without recovery metadata still execute and remain rollback evidence", async () => {
+    const seeded = await seedAgents(1);
+    const upgradeRequestId = nextRequestId();
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      requestId: upgradeRequestId,
+      targets: seeded.targets,
+    });
+    const [queuedUpgrade] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
+    if (!queuedUpgrade) throw new Error("expected queued upgrade job");
+
+    const legacyData = { ...queuedUpgrade.data };
+    delete legacyData.requestId;
+    delete legacyData.planFingerprint;
+    delete legacyData.canonicalRequestHash;
+    await dbWrite.update(jobs).set({ data: legacyData }).where(eq(jobs.id, queuedUpgrade.id));
+
+    const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
+      async (params) => {
+        await dbWrite.transaction(async (tx) => {
+          await tx
+            .update(agentSandboxes)
+            .set({
+              node_id: "node-legacy-blue",
+              container_name: "agent-legacy-blue",
+              docker_image: params.targetImage,
+              image_digest: params.targetDigest,
+              previous_docker_image: params.sourceImage,
+              previous_image_digest: params.sourceDigest,
+            })
+            .where(eq(agentSandboxes.id, params.agentId));
+          await params.onCutoverInTx(tx, {
+            oldNodeId: "node-legacy-old",
+            oldContainerName: "agent-legacy-old",
+            newNodeId: "node-legacy-blue",
+            newContainerName: "agent-legacy-blue",
+            newDigest: params.targetDigest,
+          });
+        });
+        await dbWrite.transaction(params.onConvergedInTx);
+        return {
+          success: true,
+          oldNodeId: "node-legacy-old",
+          oldContainerName: "agent-legacy-old",
+          newNodeId: "node-legacy-blue",
+          newContainerName: "agent-legacy-blue",
+          newDigest: params.targetDigest,
+        };
+      },
+    );
+    try {
+      const processed = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      });
+      expect(processed).toMatchObject({ succeeded: 1, failed: 0 });
+    } finally {
+      execution.mockRestore();
+    }
+
+    const completedUpgrade = await jobsRepository.findByIdForWrite(queuedUpgrade.id);
+    expect(completedUpgrade).toMatchObject({ status: "completed" });
+    expect(completedUpgrade?.data).not.toHaveProperty("requestId");
+    await expect(
+      adminAgentImageRolloutService.recoverRequest(seeded.actorUserId, upgradeRequestId),
+    ).rejects.toMatchObject({ status: 404 });
+
+    const rollback = await executeRollbackCanary({
+      actorUserId: seeded.actorUserId,
+      source: { jobId: queuedUpgrade.id },
+    });
+    expect(rollback.targets).toEqual([
+      expect.objectContaining({
+        operation: "rollback",
+        sourceJobId: queuedUpgrade.id,
+        sourceImage: TARGET_IMAGE,
+        targetImage: SOURCE_IMAGE,
+      }),
+    ]);
+  });
+
+  test("rollback target pair comes only from one successful durable upgrade audit", async () => {
+    const seeded = await seedAgents(1);
+    const upgrade = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const [upgradeJob] = await dbWrite
       .select()
       .from(jobs)
@@ -1856,9 +2255,11 @@ describe("admin agent image rollout on primary PGlite", () => {
     if (!upgradeJob) throw new Error("expected durable upgrade job");
     await completeUpgradeJob(upgradeJob);
 
+    const rollbackRequestId = nextRequestId();
     const preview = await adminAgentImageRolloutService.previewOrEnqueue(
       {
         operation: "rollback",
+        requestId: rollbackRequestId,
         dryRun: true,
         source: { jobId: upgradeJob.id },
       },
@@ -1880,7 +2281,9 @@ describe("admin agent image rollout on primary PGlite", () => {
     const rollback = await adminAgentImageRolloutService.previewOrEnqueue(
       {
         operation: "rollback",
+        requestId: rollbackRequestId,
         dryRun: false,
+        expectedPlanFingerprint: preview.planFingerprint,
         source: { jobId: upgradeJob.id },
       },
       seeded.actorUserId,
@@ -1895,15 +2298,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("rollout rollback resolves every target from primary durable jobs", async () => {
     const seeded = await seedAgents(2);
-    const upgrade = await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    const upgrade = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const upgradeJobs = await dbWrite
       .select()
       .from(jobs)
@@ -1918,6 +2316,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     const rollback = await adminAgentImageRolloutService.previewOrEnqueue(
       {
         operation: "rollback",
+        requestId: nextRequestId(),
         dryRun: true,
         source: { rolloutId: upgrade.rolloutId },
       },
@@ -1970,15 +2369,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("ordinary and canary claims share one transaction-locked three-running budget", async () => {
     const seeded = await seedAgents(5);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     for (let index = 0; index < 2; index += 1) {
       await dbWrite.insert(jobs).values({
         type: JOB_TYPES.AGENT_UPGRADE,
@@ -2018,15 +2412,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("primary audit queries preserve identity and interrupted canaries fail closed", async () => {
     const seeded = await seedAgents(1);
-    const rollout = await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    const rollout = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     if (!rollout.rolloutId) throw new Error("expected durable rollout ID");
     const [persisted] = await dbWrite
       .select()
@@ -2134,15 +2523,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       capacity: 8,
       allocated_count: 1,
     });
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const [claimed] = await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
       type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
       sharedTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
@@ -2332,6 +2716,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       const rollback = await adminAgentImageRolloutService.previewOrEnqueue(
         {
           operation: "rollback",
+          requestId: nextRequestId(),
           dryRun: true,
           source: { jobId: claimed.id },
         },
@@ -2366,15 +2751,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       capacity: 8,
       allocated_count: 1,
     });
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
 
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
@@ -2511,15 +2891,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("an already-cleaned cutover completes only while the exact serving generation remains active", async () => {
     const seeded = await seedAgents(1);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const [claimed] = await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
       type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
       sharedTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
@@ -2606,15 +2981,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       capacity: 8,
       allocated_count: 1,
     });
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const [claimed] = await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
       type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
       sharedTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
@@ -2742,6 +3112,9 @@ describe("admin agent image rollout on primary PGlite", () => {
         rolloutId: "00000000-0000-4000-8000-000000000020",
         actorUserId: seeded.actorUserId,
         decisionAt,
+        requestId: "00000000-0000-4000-8000-000000000120",
+        planFingerprint: `sha256:${"1".repeat(64)}`,
+        canonicalRequestHash: `sha256:${"2".repeat(64)}`,
         targets: [],
       }),
     ).rejects.toBeInstanceOf(ApiError);
@@ -2761,6 +3134,9 @@ describe("admin agent image rollout on primary PGlite", () => {
         rolloutId: "00000000-0000-4000-8000-000000000021",
         actorUserId: seeded.actorUserId,
         decisionAt,
+        requestId: "00000000-0000-4000-8000-000000000121",
+        planFingerprint: `sha256:${"3".repeat(64)}`,
+        canonicalRequestHash: `sha256:${"4".repeat(64)}`,
         targets: [target, target],
       }),
     ).rejects.toBeInstanceOf(ApiError);
@@ -2822,15 +3198,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       fromDigest: SOURCE_DIGEST,
       toDigest: NEXT_DIGEST,
     });
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: [seeded.targets[1]!],
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: [seeded.targets[1]!],
+    });
 
     const ordinaryExecution = spyOn(elizaSandboxService, "executeUpgrade").mockResolvedValue({
       success: true,
@@ -2933,15 +3304,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       userId: seeded.actorUserId,
       snapshotType: "auto",
     });
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: [seeded.targets[4]!],
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: [seeded.targets[4]!],
+    });
 
     const restartExecution = spyOn(elizaSandboxService, "executeRestart").mockResolvedValue({
       success: true,
@@ -3045,15 +3411,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("a queued canary does not block a real chat job for that same running agent", async () => {
     const seeded = await seedAgents(1);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const chat = await provisioningJobService.enqueueAgentMessage({
       agentId: seeded.targets[0]!.agentId,
       organizationId: seeded.targets[0]!.organizationId,
@@ -3130,15 +3491,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("a chat 401 is durably failed while the independent canary still completes", async () => {
     const seeded = await seedAgents(1);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const chat = await provisioningJobService.enqueueAgentMessage({
       agentId: seeded.targets[0]!.agentId,
       organizationId: seeded.targets[0]!.organizationId,
@@ -3204,15 +3560,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("terminal execution failure retains actor, decision, error, and result timestamps", async () => {
     const seeded = await seedAgents(1);
-    const rollout = await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    const rollout = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockResolvedValue({
       success: false,
       error: "blue digest unavailable",
@@ -3248,15 +3599,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("successful upgrade commits agent cutover and completed audit in one transaction", async () => {
     const seeded = await seedAgents(1);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
         await dbWrite.transaction(async (tx) => {
@@ -3334,15 +3680,10 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("upgrade audit CAS failure rolls back agent cutover before terminal failure audit", async () => {
     const seeded = await seedAgents(1);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     let blueTornDown = false;
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
@@ -3421,29 +3762,20 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("rollback audit CAS failure preserves demo image and completed upgrade source", async () => {
     const seeded = await seedAgents(1);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const [upgradeJob] = await dbWrite
       .select()
       .from(jobs)
       .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
     if (!upgradeJob) throw new Error("expected source upgrade job");
     await completeUpgradeJob(upgradeJob);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "rollback",
-        dryRun: false,
-        source: { jobId: upgradeJob.id },
-      },
-      seeded.actorUserId,
-    );
+    await executeRollbackCanary({
+      actorUserId: seeded.actorUserId,
+      source: { jobId: upgradeJob.id },
+    });
 
     let blueTornDown = false;
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryRollback").mockImplementation(
@@ -3524,29 +3856,20 @@ describe("admin agent image rollout on primary PGlite", () => {
 
   test("successful rollback commits the canonical pair and durable audit atomically", async () => {
     const seeded = await seedAgents(1);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "upgrade",
-        dryRun: false,
-        targetImage: TARGET_IMAGE,
-        targets: seeded.targets,
-      },
-      seeded.actorUserId,
-    );
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
     const [upgradeJob] = await dbWrite
       .select()
       .from(jobs)
       .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
     if (!upgradeJob) throw new Error("expected source upgrade job");
     await completeUpgradeJob(upgradeJob);
-    await adminAgentImageRolloutService.previewOrEnqueue(
-      {
-        operation: "rollback",
-        dryRun: false,
-        source: { jobId: upgradeJob.id },
-      },
-      seeded.actorUserId,
-    );
+    await executeRollbackCanary({
+      actorUserId: seeded.actorUserId,
+      source: { jobId: upgradeJob.id },
+    });
 
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryRollback").mockImplementation(
       async (params) => {

@@ -45,6 +45,7 @@ import {
   type AdminCanaryImageJobResult,
   type AdminCanaryPlannedTarget,
   assertAdminCanaryImageJobData,
+  assertRecoverableAdminCanaryImageJobData,
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
@@ -1923,8 +1924,11 @@ export class ProvisioningJobService {
     rolloutId: string;
     actorUserId: string;
     decisionAt: string;
+    requestId: string;
+    planFingerprint: string;
+    canonicalRequestHash: string;
     targets: AdminCanaryPlannedTarget[];
-  }): Promise<Job[]> {
+  }): Promise<{ jobs: Job[]; created: boolean }> {
     if (params.targets.length < 1 || params.targets.length > ADMIN_CANARY_MAX_TARGETS) {
       throw new ApiError(
         400,
@@ -1940,6 +1944,9 @@ export class ProvisioningJobService {
         actorUserId: params.actorUserId,
         userId: params.actorUserId,
         decisionAt: params.decisionAt,
+        requestId: params.requestId,
+        planFingerprint: params.planFingerprint,
+        canonicalRequestHash: params.canonicalRequestHash,
       };
       assertAdminCanaryImageJobData(data);
       return data;
@@ -1953,6 +1960,45 @@ export class ProvisioningJobService {
 
     return await dbWrite.transaction(async (tx) => {
       await tx.execute(elizaAdminCanaryRolloutAdvisoryLockSql());
+
+      const replay = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE),
+            eq(jobs.user_id, params.actorUserId),
+            sql`${jobs.data}->>'requestId' = ${params.requestId}`,
+          ),
+        )
+        .orderBy(jobs.created_at, jobs.id);
+      if (replay.length > 0) {
+        for (const job of replay) {
+          const data = readAdminCanaryImageJobData(job);
+          assertRecoverableAdminCanaryImageJobData(data);
+          if (
+            data.actorUserId !== params.actorUserId ||
+            data.userId !== params.actorUserId ||
+            data.requestId !== params.requestId ||
+            data.organizationId !== job.organization_id ||
+            data.agentId !== job.agent_id
+          ) {
+            throw new Error(`Admin canary request ${params.requestId} has inconsistent identity`);
+          }
+          if (
+            data.canonicalRequestHash !== params.canonicalRequestHash ||
+            data.planFingerprint !== params.planFingerprint
+          ) {
+            throw new ApiError(
+              409,
+              "session_not_ready",
+              "requestId was already used for a different canary request",
+              { requestId: params.requestId },
+            );
+          }
+        }
+        return { jobs: replay, created: false };
+      }
 
       const [activeCanary] = await tx
         .select({ count: sql<number>`count(*)::int` })
@@ -2096,7 +2142,7 @@ export class ProvisioningJobService {
         }
         inserted.push(result.job);
       }
-      return inserted;
+      return { jobs: inserted, created: true };
     });
   }
 

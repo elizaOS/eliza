@@ -420,6 +420,29 @@ export class JobsRepository {
   }
 
   /**
+   * Reads one actor-owned admin-canary request from the primary. Legacy rows
+   * have no requestId and therefore cannot accidentally satisfy this lookup.
+   */
+  async findAdminCanaryRequestForWrite(
+    type: string,
+    actorUserId: string,
+    requestId: string,
+  ): Promise<Job[]> {
+    const rows = await dbWrite
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.type, type),
+          eq(jobs.user_id, actorUserId),
+          sql`${jobs.data}->>'requestId' = ${requestId}`,
+        ),
+      )
+      .orderBy(jobs.created_at, jobs.id);
+    return await Promise.all(rows.map(hydrateJob));
+  }
+
+  /**
    * Gets jobs filtered by type, status, and organization.
    * Generic method that can be used by any service.
    *

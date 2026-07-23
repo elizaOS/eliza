@@ -18,8 +18,11 @@ const ORG = "22222222-2222-4222-8222-222222222222";
 const ACTOR_ORG = "77777777-7777-4777-8777-777777777777";
 const JOB = "44444444-4444-4444-8444-444444444444";
 const ROLLOUT = "55555555-5555-4555-8555-555555555555";
+const REQUEST = "88888888-8888-4888-8888-888888888888";
 const SOURCE_DIGEST = `sha256:${"a".repeat(64)}`;
 const TARGET_DIGEST = `sha256:${"b".repeat(64)}`;
+const PLAN_FINGERPRINT = `sha256:${"c".repeat(64)}`;
+const REQUEST_HASH = `sha256:${"d".repeat(64)}`;
 const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TARGET_DIGEST}`;
 const AUTH_USER = {
   id: ACTOR,
@@ -36,6 +39,8 @@ const previewOrEnqueue = mock<
 >(async () => ({
   dryRun: true,
   operation: "upgrade" as const,
+  requestId: REQUEST,
+  planFingerprint: PLAN_FINGERPRINT,
   rolloutId: null,
   decisionAt: "2026-07-23T00:00:00.000Z",
   targets: [
@@ -48,6 +53,30 @@ const previewOrEnqueue = mock<
       sourceDigest: SOURCE_DIGEST,
       targetImage: TARGET_IMAGE,
       targetDigest: TARGET_DIGEST,
+    },
+  ],
+}));
+const recoverRequest = mock<
+  RouteDependencies["rolloutService"]["recoverRequest"]
+>(async () => ({
+  dryRun: false,
+  operation: "upgrade" as const,
+  requestId: REQUEST,
+  planFingerprint: PLAN_FINGERPRINT,
+  rolloutId: ROLLOUT,
+  decisionAt: "2026-07-23T00:00:00.000Z",
+  targets: [
+    {
+      operation: "upgrade" as const,
+      agentId: AGENT,
+      organizationId: ORG,
+      targetOwnerUserId: ACTOR,
+      sourceImage: "ghcr.io/elizaos/eliza:sha-production",
+      sourceDigest: SOURCE_DIGEST,
+      targetImage: TARGET_IMAGE,
+      targetDigest: TARGET_DIGEST,
+      jobId: JOB,
+      status: "pending",
     },
   ],
 }));
@@ -78,6 +107,9 @@ function canaryJob(overrides: Record<string, unknown> = {}): PolledJob {
       sourceDigest: SOURCE_DIGEST,
       targetImage: TARGET_IMAGE,
       targetDigest: TARGET_DIGEST,
+      requestId: REQUEST,
+      planFingerprint: PLAN_FINGERPRINT,
+      canonicalRequestHash: REQUEST_HASH,
     },
     data_storage: "inline",
     data_key: null,
@@ -114,7 +146,7 @@ const getJob = mock<RouteDependencies["jobService"]["getJob"]>(async () =>
 );
 const route = createAdminAgentImageCanaryRoute({
   requireAdmin,
-  rolloutService: { previewOrEnqueue },
+  rolloutService: { previewOrEnqueue, recoverRequest },
   jobService: { getJob, triggerImmediate },
   logger: {
     info: () => undefined,
@@ -132,6 +164,8 @@ afterEach(() => {
   previewOrEnqueue.mockResolvedValue({
     dryRun: true,
     operation: "upgrade",
+    requestId: REQUEST,
+    planFingerprint: PLAN_FINGERPRINT,
     rolloutId: null,
     decisionAt: "2026-07-23T00:00:00.000Z",
     targets: [
@@ -144,6 +178,29 @@ afterEach(() => {
         sourceDigest: SOURCE_DIGEST,
         targetImage: TARGET_IMAGE,
         targetDigest: TARGET_DIGEST,
+      },
+    ],
+  });
+  recoverRequest.mockReset();
+  recoverRequest.mockResolvedValue({
+    dryRun: false,
+    operation: "upgrade",
+    requestId: REQUEST,
+    planFingerprint: PLAN_FINGERPRINT,
+    rolloutId: ROLLOUT,
+    decisionAt: "2026-07-23T00:00:00.000Z",
+    targets: [
+      {
+        operation: "upgrade",
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: ACTOR,
+        sourceImage: "ghcr.io/elizaos/eliza:sha-production",
+        sourceDigest: SOURCE_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TARGET_DIGEST,
+        jobId: JOB,
+        status: "pending",
       },
     ],
   });
@@ -164,6 +221,7 @@ function request(body: unknown): Request {
 function upgradeBody(extra: Record<string, unknown> = {}) {
   return {
     operation: "upgrade",
+    requestId: REQUEST,
     dryRun: true,
     targetImage: TARGET_IMAGE,
     targets: [
@@ -210,6 +268,8 @@ describe("POST /api/v1/admin/agent-image-canary", () => {
     previewOrEnqueue.mockResolvedValue({
       dryRun: false,
       operation: "upgrade",
+      requestId: REQUEST,
+      planFingerprint: PLAN_FINGERPRINT,
       rolloutId: ROLLOUT,
       decisionAt: "2026-07-23T00:00:00.000Z",
       targets: [
@@ -227,7 +287,11 @@ describe("POST /api/v1/admin/agent-image-canary", () => {
         },
       ],
     });
-    const body = { ...upgradeBody(), dryRun: false };
+    const body = {
+      ...upgradeBody(),
+      dryRun: false,
+      expectedPlanFingerprint: PLAN_FINGERPRINT,
+    };
     const response = await route.fetch(request(body), {
       CRON_SECRET: "test",
     });
@@ -235,6 +299,7 @@ describe("POST /api/v1/admin/agent-image-canary", () => {
     const payload = (await response.json()) as {
       data: { rolloutId: string };
       polling: Array<{ jobId: string; endpoint: string }>;
+      recovery: { endpoint: string };
     };
     expect(payload.data.rolloutId).toBe(ROLLOUT);
     expect(payload.polling).toEqual([
@@ -243,7 +308,59 @@ describe("POST /api/v1/admin/agent-image-canary", () => {
         endpoint: `/api/v1/admin/agent-image-canary/jobs/${JOB}`,
       }),
     ]);
+    expect(payload.recovery.endpoint).toBe(
+      `/api/v1/admin/agent-image-canary/requests/${REQUEST}`,
+    );
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("requires requestId for preview and the preview fingerprint for execute", async () => {
+    const { requestId: _requestId, ...withoutRequestId } = upgradeBody();
+    expect((await route.fetch(request(withoutRequestId))).status).toBe(400);
+    expect(
+      (
+        await route.fetch(
+          request({
+            ...upgradeBody(),
+            dryRun: false,
+          }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(previewOrEnqueue).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/v1/admin/agent-image-canary/requests/:requestId", () => {
+  function recoveryRequest(requestId = REQUEST): Request {
+    return new Request(`http://test.local/requests/${requestId}`);
+  }
+
+  test("recovers the authenticated actor's durable rollout and polling jobs", async () => {
+    const response = await route.fetch(recoveryRequest());
+    expect(response.status).toBe(200);
+    expect(recoverRequest).toHaveBeenCalledWith(ACTOR, REQUEST);
+    const payload = (await response.json()) as {
+      data: { requestId: string; rolloutId: string };
+      polling: Array<{ jobId: string; shouldContinue: boolean }>;
+    };
+    expect(payload.data).toMatchObject({
+      requestId: REQUEST,
+      rolloutId: ROLLOUT,
+    });
+    expect(payload.polling).toEqual([
+      expect.objectContaining({ jobId: JOB, shouldContinue: true }),
+    ]);
+  });
+
+  test("authenticates before lookup and rejects invalid request IDs", async () => {
+    requireAdmin.mockResolvedValue({ user: AUTH_USER, role: "moderator" });
+    expect((await route.fetch(recoveryRequest())).status).toBe(403);
+    expect(recoverRequest).not.toHaveBeenCalled();
+
+    requireAdmin.mockResolvedValue({ user: AUTH_USER, role: "super_admin" });
+    expect((await route.fetch(recoveryRequest("not-a-uuid"))).status).toBe(400);
+    expect(recoverRequest).not.toHaveBeenCalled();
   });
 });
 
