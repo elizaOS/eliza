@@ -26,8 +26,10 @@ export function mergedRecoverySkipPlugins(
   operatorSkipPlugins: string | undefined,
   recovery: string[],
 ): string {
+  const operatorList =
+    typeof operatorSkipPlugins === "string" ? operatorSkipPlugins : "";
   const merged = new Set(
-    (operatorSkipPlugins ?? "")
+    operatorList
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean),

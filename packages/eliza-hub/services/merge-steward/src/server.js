@@ -2548,7 +2548,10 @@ async function readJson(request, config) {
 
 async function readRawBody(request, config = {}) {
   const maxBodyBytes = Math.max(1, config.http?.maxBodyBytes ?? 1024 * 1024);
-  const declaredBytes = Number.parseInt(request.headers["content-length"] ?? "", 10);
+  const declaredBytes = Number.parseInt(
+    request.headers["content-length"] ?? "",
+    10,
+  );
   if (Number.isFinite(declaredBytes) && declaredBytes > maxBodyBytes) {
     const error = new Error("request_body_too_large");
     error.statusCode = 413;
