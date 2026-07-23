@@ -269,6 +269,11 @@
       "import": "./dist/navigation/index.js",
       "default": "./dist/navigation/index.js"
     },
+    "./os-intent": {
+      "types": "./dist/os-intent/index.d.ts",
+      "import": "./dist/os-intent/index.js",
+      "default": "./dist/os-intent/index.js"
+    },
     "./platform": {
       "types": "./dist/platform/index.d.ts",
       "import": "./dist/platform/index.js",
