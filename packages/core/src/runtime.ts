@@ -128,6 +128,10 @@ import {
 } from "./services/message/fallback-reply";
 import { sanitizeOutboundText } from "./services/message/outbound-sanitize";
 import { ensureAgentVoice } from "./services/message/voice-gate";
+import {
+	drainPostDeliveryTasks,
+	pendingPostDeliveryTaskCount,
+} from "./services/post-delivery-task-tracker.ts";
 import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
@@ -2258,6 +2262,16 @@ export class AgentRuntime implements IAgentRuntime {
 			return;
 		}
 		const fast = options?.fast === true;
+		if (!fast) {
+			const pending = pendingPostDeliveryTaskCount(this);
+			if (pending > 0) {
+				this.logger.info(
+					{ src: "agent", agentId: this.agentId, pending },
+					"Draining post-delivery work before runtime shutdown",
+				);
+				await drainPostDeliveryTasks(this);
+			}
+		}
 		const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
 		if (fast) {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";

@@ -13,6 +13,7 @@ import {
   buildInferenceTimingDevPayload,
   ChannelType,
   createMessageMemory,
+  drainPostDeliveryTasks,
   type InferenceFlowStage,
   type InferenceHistogramSummary,
   inferenceTimingRegistry,
@@ -192,12 +193,18 @@ async function main(): Promise<void> {
       const wallMs = performance.now() - startedAt;
       verifyProofResponse(result.text, proof);
       verifyProofResponse(streamed.join(""), proof);
+      const quiescenceStartedAt = performance.now();
+      const backgroundTasks = await drainPostDeliveryTasks(runtime);
+      const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
       return {
         index,
         proof,
         prompt,
         output: result.text,
         wallMs: rounded(wallMs),
+        backgroundTasks,
+        backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
+        totalToQuiescenceMs: rounded(performance.now() - startedAt),
         streamedCharacters: streamed.join("").length,
         outputCharacters: result.text.length,
         usage: result.usage,
@@ -240,6 +247,12 @@ async function main(): Promise<void> {
       samples: sampleCount,
       registeredProviders: runtime.providers.map((provider) => provider.name),
       wallMs: distribution(turns.map((turn) => turn.wallMs)),
+      backgroundQuiescenceMs: distribution(
+        turns.map((turn) => turn.backgroundQuiescenceMs),
+      ),
+      totalToQuiescenceMs: distribution(
+        turns.map((turn) => turn.totalToQuiescenceMs),
+      ),
       stageHistograms: stageHistograms(telemetry.flows),
       derivedHistograms: telemetry.derivedHistograms satisfies Record<
         string,

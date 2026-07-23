@@ -506,37 +506,53 @@ function actionResultsFromState(state: State | undefined): unknown[] {
 	return Array.isArray(raw) ? raw : [];
 }
 
+const reflectionContextByMessage = new WeakMap<
+	Memory,
+	Promise<ReflectionPrepared>
+>();
+
 async function prepareReflectionContext(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<ReflectionPrepared> {
-	const agentId = message.agentId ?? runtime.agentId;
-	const [recentMessagesRaw, existingRelationships, entities] =
-		await Promise.all([
-			runtime.getMemories({
-				tableName: "messages",
-				roomId: message.roomId,
-				limit: RECENT_MESSAGES_LIMIT,
-				unique: false,
-			}),
-			runtime.getRelationships({
-				entityIds: message.entityId ? [message.entityId, agentId] : [agentId],
-			}),
-			getEntityDetails({ runtime, roomId: message.roomId }),
-		]);
-	const recentMessages = recentMessagesRaw.filter(
-		(memory) => !isSyntheticConversationArtifactMemory(memory),
-	);
-	return {
-		recentMessages,
-		existingRelationships,
-		entities: boundReflectionEntities({
-			entities,
-			agentId,
-			message,
+	const existing = reflectionContextByMessage.get(message);
+	if (existing) return existing;
+	const prepared = (async () => {
+		const agentId = message.agentId ?? runtime.agentId;
+		const [recentMessagesRaw, existingRelationships, entities] =
+			await Promise.all([
+				runtime.getMemories({
+					tableName: "messages",
+					roomId: message.roomId,
+					limit: RECENT_MESSAGES_LIMIT,
+					unique: false,
+				}),
+				runtime.getRelationships({
+					entityIds: message.entityId ? [message.entityId, agentId] : [agentId],
+				}),
+				getEntityDetails({ runtime, roomId: message.roomId }),
+			]);
+		const recentMessages = recentMessagesRaw.filter(
+			(memory) => !isSyntheticConversationArtifactMemory(memory),
+		);
+		return {
 			recentMessages,
-		}),
-	};
+			existingRelationships,
+			entities: boundReflectionEntities({
+				entities,
+				agentId,
+				message,
+				recentMessages,
+			}),
+		};
+	})();
+	reflectionContextByMessage.set(message, prepared);
+	try {
+		return await prepared;
+	} catch (error) {
+		reflectionContextByMessage.delete(message);
+		throw error;
+	}
 }
 
 async function prepareFacts(
@@ -986,9 +1002,13 @@ async function storeTaskCompletionReflection(
 	}
 }
 
-export function canEvaluateMessage(message: Memory): boolean {
+export function canEvaluateMessage(
+	message: Memory,
+	options?: { semanticSignal?: boolean },
+): boolean {
 	return Boolean(
-		message.content.text?.trim() &&
+		options?.semanticSignal !== false &&
+			message.content.text?.trim() &&
 			message.entityId &&
 			message.roomId &&
 			!isSyntheticConversationArtifactMemory(message),
@@ -1001,8 +1021,8 @@ export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 		"Extracts durable/current fact-store ops from recent conversation.",
 	priority: EvaluatorPriority.REFLECTION_FACTS,
 	schema: factOpsSchema,
-	async shouldRun({ message }) {
-		return canEvaluateMessage(message);
+	async shouldRun({ message, options }) {
+		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message }) {
 		return prepareFacts(runtime, message);
@@ -1116,8 +1136,8 @@ export const relationshipEvaluator: Evaluator<
 	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
 	schema: relationshipSchema,
-	async shouldRun({ message }) {
-		return canEvaluateMessage(message);
+	async shouldRun({ message, options }) {
+		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
@@ -1171,8 +1191,8 @@ export const identityEvaluator: Evaluator<
 	description: "Extracts platform identities for known room participants.",
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
-	async shouldRun({ message }) {
-		return canEvaluateMessage(message);
+	async shouldRun({ message, options }) {
+		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message }) {
 		return prepareReflectionContext(runtime, message);
@@ -1223,8 +1243,8 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	description: "Evaluates whether user task is complete this turn.",
 	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,
-	async shouldRun({ message }) {
-		return canEvaluateMessage(message);
+	async shouldRun({ message, options }) {
+		return canEvaluateMessage(message, options);
 	},
 	async prepare({ runtime, message, state }) {
 		const cachedActionResults = message.id

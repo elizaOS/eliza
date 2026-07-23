@@ -66,6 +66,7 @@ export * from "./services/approval";
 export * from "./services/message";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
+export * from "./services/post-delivery-task-tracker";
 export * from "./services/runtime-capability-service";
 export * from "./services/setup-cli";
 export * from "./services/setup-rpc";

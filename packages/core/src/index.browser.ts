@@ -126,6 +126,7 @@ export * from "./services/agentEvent";
 // list them in `services` (see @elizaos/agent runtime).
 export { AgentEventService } from "./services/agentEvent";
 export * from "./services/message";
+export * from "./services/post-delivery-task-tracker";
 export * from "./services/trajectories";
 export * from "./settings";
 // Settings-debug sanitizers are pure functions (process access is feature-detected),

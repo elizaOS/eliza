@@ -15,6 +15,12 @@ export interface EvaluatorRunOptions {
 	responses?: Memory[];
 	callback?: HandlerCallback;
 	phase?: string;
+	/**
+	 * Whether the turn contains durable user/action information worth semantic
+	 * reflection. Evaluators that extract memory may skip false; explicit
+	 * plugin evaluators such as link extraction retain their own gates.
+	 */
+	semanticSignal?: boolean;
 }
 
 export interface EvaluatorRunContext {
