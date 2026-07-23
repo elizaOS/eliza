@@ -22,6 +22,7 @@ import {
   isChecked,
   isRowSatisfied,
   isRowSatisfiedForContext,
+  markerFreeBodyHint,
   parseLabels,
   REQUIRED_EVIDENCE_ROWS,
   requiresSurfaceArtifacts,
@@ -222,6 +223,20 @@ describe("check-pr-evidence parser", () => {
     assert.equal(ok, false);
     assert.equal(findings.length, REQUIRED_EVIDENCE_ROWS.length);
     assert.ok(findings.every((finding) => finding.status === "missing"));
+  });
+
+  it("marker-free hint names the marker mechanism and one --row flag per required row", () => {
+    // The hint is the fix instruction shown on the #16925/#16913 shape; a row
+    // list that drifted from REQUIRED_EVIDENCE_ROWS would tell authors to
+    // patch the wrong rows — the exact misdiagnosis class the hint exists to
+    // prevent.
+    const hint = markerFreeBodyHint();
+    assert.match(hint, /NO evidence-row markers found/);
+    assert.match(hint, /<!-- evidence-row:<id> -->/);
+    assert.match(hint, /pr-evidence\.mjs rows/);
+    for (const { id } of REQUIRED_EVIDENCE_ROWS) {
+      assert.ok(hint.includes(`--row ${id}=`), `hint must offer --row ${id}=…`);
+    }
   });
 });
 

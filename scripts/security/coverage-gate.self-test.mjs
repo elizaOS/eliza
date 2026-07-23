@@ -155,6 +155,10 @@ try {
     assert.match(result.stdout, /100\.00% packages\/demo\/src\/covered\.ts/);
     assert.match(result.stdout, /MISSING: packages\/demo\/src\/missing\.ts/);
     assert.match(result.stdout, /changed source missing from LCOV/);
+    // The MISSING verdict must carry its remediation text — an unexplained
+    // failure is the tooling defect this hint was added to fix.
+    assert.match(result.stdout, /How to fix: a MISSING file was changed/);
+    assert.match(result.stdout, /coverage-lcov-excluded\.txt/);
   });
 
   assertGate("prefers the longest matching changed path", () => {
@@ -292,6 +296,13 @@ try {
         result.stdout,
         /BELOW: packages\/agent\/src\/runtime\/eliza\.ts/,
       );
+      // The BELOW verdict must carry its remediation text, quoting the active
+      // threshold and the changed-tests-only rule.
+      assert.match(
+        result.stdout,
+        /How to fix: every BELOW file needs >=50% of its lines/,
+      );
+      assert.match(result.stdout, /unit tests CHANGED in this PR/);
     },
   );
 

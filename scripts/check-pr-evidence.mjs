@@ -623,6 +623,28 @@ export function runSelfTest() {
   console.log("check-pr-evidence self-test passed (14 cases).");
 }
 
+// The diagnostic for a PR body carrying NONE of the template's evidence-row
+// markers (the #16925/#16913 failure shape). The --row flags are generated
+// from REQUIRED_EVIDENCE_ROWS so the hint can never drift from the rows the
+// gate actually enforces.
+export function markerFreeBodyHint() {
+  const rowFlags = REQUIRED_EVIDENCE_ROWS.map(
+    ({ id }) => `    --row ${id}=<file|url|"N/A - <reason>">`,
+  ).join(" \\\n");
+  return `NO evidence-row markers found in the PR body. The gate locates each row
+by its HTML marker (\`<!-- evidence-row:<id> -->\`) from the PR template —
+prose like "Evidence rows: N/A - backend only" cannot be matched without them.
+This usually means the PR template section was deleted or the body was written
+from scratch.
+
+Fix in one command (uploads/patches rows AND re-adds the missing markers; each
+row takes a local file, an existing URL, or an "N/A - <reason>" string):
+  node scripts/pr-evidence.mjs rows <pr> \\
+${rowFlags}
+Or copy the \`<!-- evidence-row:* -->\` block from .github/pull_request_template.md
+into the PR description and fill each row.`;
+}
+
 function main() {
   const args = process.argv.slice(2);
   if (args.includes("--help") || args.includes("-h")) {
@@ -671,22 +693,7 @@ function main() {
       .filter((finding) => requiredIds.has(finding.id))
       .every((finding) => finding.status === "missing");
     if (allRequiredMissing) {
-      console.error(
-        `\nNO evidence-row markers found in the PR body. The gate locates each row
-by its HTML marker (\`<!-- evidence-row:<id> -->\`) from the PR template —
-prose like "Evidence rows: N/A - backend only" cannot be matched without them.
-This usually means the PR template section was deleted or the body was written
-from scratch.
-
-Fix in one command (uploads/patches rows AND re-adds the missing markers):
-  node scripts/pr-evidence.mjs rows <pr> \\
-    --row before-screenshots="N/A - <reason>" --row after-screenshots="N/A - <reason>" \\
-    --row walkthrough-video="N/A - <reason>" --row backend-logs=<file-or-url> \\
-    --row frontend-logs="N/A - <reason>" --row llm-trajectory="N/A - <reason>" \\
-    --row domain-artifacts="N/A - <reason>"
-Or copy the \`<!-- evidence-row:* -->\` block from .github/pull_request_template.md
-into the PR description and fill each row.`,
-      );
+      console.error(`\n${markerFreeBodyHint()}`);
     }
     console.error(
       `\nEvidence gate FAILED: ${bad.length} row(s) need attention, ${retiredEvidenceFiles.length} retired repo evidence file(s) changed.
