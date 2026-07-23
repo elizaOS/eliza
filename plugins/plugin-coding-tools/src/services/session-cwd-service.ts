@@ -24,8 +24,9 @@ import { CODING_TOOLS_LOG_PREFIX, SESSION_CWD_SERVICE } from "../types.js";
  * - Bash invocations inherit it but cannot mutate it (changes inside the
  *   command don't persist, matching Claude's semantics).
  *
- * Note: tools requiring `file_path` (Read/Write/Edit/NotebookEdit) ignore
- * this and demand absolute paths.
+ * File tools taking `file_path` (Read/Write/Edit) also use it: a relative
+ * `file_path` resolves against this cwd via `resolveInputPath` before sandbox
+ * validation; absolute paths pass through untouched.
  */
 export class SessionCwdService extends Service {
   static serviceType = SESSION_CWD_SERVICE;
