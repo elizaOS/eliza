@@ -19,6 +19,7 @@ import {
 } from "../actions/to-tool";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { createUniqueUuid } from "../entities";
+import { ElizaError } from "../errors";
 import {
 	formatTaskCompletionStatus,
 	type TaskCompletionAssessment,
@@ -170,6 +171,10 @@ import {
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
+import {
+	sanitizeUserVisibleModelOutput,
+	type UserVisibleModelOutput,
+} from "../runtime/user-visible-model-output";
 import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
@@ -4001,6 +4006,42 @@ function exposedActionMatches(
 	});
 }
 
+function userVisibleOutputClassification(
+	output: Exclude<UserVisibleModelOutput, { kind: "empty" }>,
+): string {
+	if (output.kind === "control") {
+		return `${output.malformed ? "malformed-" : ""}${output.envelope}`;
+	}
+	if (output.kind === "invalid") {
+		return output.reason;
+	}
+	return output.format === "json" ? "unexpected-json" : "unexpected-text";
+}
+
+function reportRejectedUserVisibleModelOutput(args: {
+	runtime: IAgentRuntime;
+	scope: string;
+	code: string;
+	message: string;
+	stage: string;
+	output: Exclude<UserVisibleModelOutput, { kind: "empty" }>;
+	context?: Record<string, unknown>;
+}): void {
+	args.runtime.reportError(
+		args.scope,
+		new ElizaError(args.message, {
+			code: args.code,
+			context: {
+				stage: args.stage,
+				classification: userVisibleOutputClassification(args.output),
+				fieldPath: args.output.fieldPath,
+				...args.context,
+			},
+			severity: "ephemeral",
+		}),
+	);
+}
+
 export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
@@ -6983,6 +7024,28 @@ export async function runV5MessageRuntimeStage1(args: {
 			throw new Error(
 				"v5 messageHandler returned invalid MessageHandlerResult",
 			);
+		}
+		const stageOneVisibleReply = sanitizeUserVisibleModelOutput(
+			getMessageHandlerReply(messageHandler),
+		);
+		if (stageOneVisibleReply.kind === "text") {
+			messageHandler.plan.reply = stageOneVisibleReply.text;
+		} else {
+			messageHandler.plan.reply = "";
+			if (stageOneVisibleReply.kind !== "empty") {
+				// error-policy:J3 Stage 1 is an untrusted model boundary. A
+				// control/invalid reply becomes an observable invalid signal,
+				// never a string that a direct or early-reply channel can send.
+				reportRejectedUserVisibleModelOutput({
+					runtime: args.runtime,
+					scope: "MessageService.runV5MessageRuntimeStage1",
+					code: "STAGE1_INVALID_USER_VISIBLE_OUTPUT",
+					message:
+						"Stage-1 model placed control data in the user-visible reply field",
+					stage: "response-handler",
+					output: stageOneVisibleReply,
+				});
+			}
 		}
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
@@ -11663,19 +11726,30 @@ export class DefaultMessageService implements IMessageService {
 				}
 
 				const cleaned = stripReasoningBlocks(response);
-				const looksStructuredReply =
-					cleaned.startsWith("{") && cleaned.includes("}");
-				const parsed = looksStructuredReply
-					? parseJSONObjectFromText(cleaned)
-					: null;
-				const replyText =
-					typeof parsed?.text === "string" && parsed.text.trim().length > 0
-						? parsed.text.trim()
-						: cleaned;
-				if (replyText) {
-					return { kind: "text", value: replyText };
+				const visible = sanitizeUserVisibleModelOutput(cleaned);
+				if (visible.kind === "text" && visible.format === "plain") {
+					return { kind: "text", value: visible.text };
 				}
+				if (visible.kind === "empty") {
+					continue;
+				}
+
+				// error-policy:J3 the fallback prompt requires plain text. A
+				// typed invalid/control result advances to the next model slot
+				// and is reported instead of masquerading as a valid reply.
+				reportRejectedUserVisibleModelOutput({
+					runtime,
+					scope: "MessageService.generateFailureReplyText",
+					code: "FAILURE_REPLY_INVALID_MODEL_OUTPUT",
+					message:
+						"Failure-reply model violated the plain-text output contract",
+					stage,
+					output: visible,
+					context: { modelType },
+				});
 			} catch (error) {
+				// error-policy:J1 this model-fallback boundary translates
+				// provider failures into the typed outcome the caller renders.
 				// If the runtime reports no LLM provider is configured at all,
 				// no further model attempts will succeed. Surface the actionable
 				// hint instead of the generic transient-failure message. See

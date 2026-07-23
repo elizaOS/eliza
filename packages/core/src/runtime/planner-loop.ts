@@ -102,11 +102,17 @@ import type {
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
 import { captureToolStageIO } from "./trajectory-recorder";
+import { sanitizeUserVisibleModelOutput } from "./user-visible-model-output";
 
 export {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
+export {
+	looksLikeActionEnvelopeJson,
+	looksLikeEvaluatorEnvelopeJson,
+	looksLikeSpawnEnvelopeJson,
+} from "./user-visible-model-output";
 
 // Test-only re-exports for the rendering memoization unit tests.
 // Underscore-prefixed so they're impossible to mistake for production API.
@@ -1448,6 +1454,18 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	raw: Record<string, unknown>;
 } {
 	if (typeof raw === "string") {
+		const visibleOutput = sanitizeUserVisibleModelOutput(raw);
+		if (
+			visibleOutput.kind === "text" &&
+			visibleOutput.format === "json" &&
+			visibleOutput.fieldPath.length === 0
+		) {
+			return {
+				toolCalls: [],
+				messageToUser: visibleOutput.text,
+				raw: { text: raw },
+			};
+		}
 		return parseJsonPlannerOutput(raw);
 	}
 
@@ -1521,17 +1539,11 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
  * `decision`).
  */
 function looksLikePlannerControlJson(text: string): boolean {
-	if (looksLikeEvaluatorEnvelopeJson(text)) return true;
-	const parsed = parseJsonObject<RawPlannerOutput & { decision?: unknown }>(
-		text.trim(),
-	);
-	if (!parsed) return false;
+	const output = sanitizeUserVisibleModelOutput(text);
 	return (
-		parsed.action !== undefined ||
-		parsed.toolCalls !== undefined ||
-		parsed.messageToUser !== undefined ||
-		parsed.text !== undefined ||
-		parsed.decision !== undefined
+		output.kind === "control" ||
+		output.kind === "invalid" ||
+		output.fieldPath.length > 0
 	);
 }
 
@@ -1559,9 +1571,11 @@ function parseJsonPlannerOutput(raw: string): {
 			raw: { text: trimmed },
 		};
 	}
-	let messageToUser = sanitizePlannerMessage(
-		parsed.messageToUser ?? parsed.text,
-	);
+	const visibleOutput = sanitizeUserVisibleModelOutput(trimmed);
+	let messageToUser =
+		visibleOutput.kind === "text" && visibleOutput.fieldPath.length > 0
+			? visibleOutput.text
+			: sanitizePlannerMessage(parsed.messageToUser ?? parsed.text);
 	const toolCalls = normalizeToolCalls(parsed.toolCalls);
 	const bareActionCalls =
 		toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
@@ -2717,6 +2731,14 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 	}
 	const calls: PlannerToolCall[] = [];
 	for (const objectText of extractJsonObjects(text)) {
+		const visibleOutput = sanitizeUserVisibleModelOutput(objectText);
+		if (
+			visibleOutput.kind !== "control" ||
+			(visibleOutput.envelope !== "action" &&
+				visibleOutput.envelope !== "planner")
+		) {
+			continue;
+		}
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(objectText);
@@ -2733,6 +2755,16 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 
 function recoverMessageFieldToolCalls(value: unknown): PlannerToolCall[] {
 	if (value == null || value === "") {
+		return [];
+	}
+	const visibleOutput = sanitizeUserVisibleModelOutput(
+		typeof value === "string" ? value : JSON.stringify(value),
+	);
+	if (
+		visibleOutput.kind !== "control" ||
+		(visibleOutput.envelope !== "action" &&
+			visibleOutput.envelope !== "planner")
+	) {
 		return [];
 	}
 	const parsed =
@@ -2801,7 +2833,10 @@ function recoverEmbeddedToolCalls(text: string): PlannerToolCall[] {
 function sanitizePlannerMessage(value: unknown): string | undefined {
 	const text = getNonEmptyString(value);
 	if (!text) return undefined;
-	return getNonEmptyString(stripJsonStructuralJunkReply(text));
+	const cleaned = getNonEmptyString(stripJsonStructuralJunkReply(text));
+	if (!cleaned) return undefined;
+	const output = sanitizeUserVisibleModelOutput(cleaned);
+	return output.kind === "text" ? getNonEmptyString(output.text) : undefined;
 }
 
 /**
@@ -4033,98 +4068,15 @@ function userSafeFinalMessage(
  */
 export const HANDLED_STEP_FALLBACK_MESSAGE = "I handled the available step.";
 
-// Canonical TASKS/spawn-arg vocabulary. A planner that hallucinates its own
-// tool-call arguments into messageToUser leaks a JSON object like
-// {"task":"…","agentType":"opencode","approvalPreset":"standard","brief":"…"}.
-// Detect it by SHAPE — the reply itself must JSON.parse to an object whose keys
-// are a subset of this vocabulary with at least two discriminators — never by
-// matching the user's words. Real prose cannot JSON.parse to this object, and a
-// genuine user-requested JSON answer carries foreign keys, so this never fires
-// on a real reply.
-const SPAWN_ARG_KEYS = new Set([
-	"task",
-	"agentType",
-	"approvalPreset",
-	"brief",
-	"workdir",
-	"model",
-	"memoryContent",
-	"agents",
-	"repo",
-	"keepAliveAfterComplete",
-	"op",
-	"action",
-]);
-const SPAWN_ARG_DISCRIMINATORS = [
-	"task",
-	"agentType",
-	"approvalPreset",
-	"brief",
-];
-
-export function looksLikeSpawnEnvelopeJson(text: string): boolean {
-	let body = text.trim();
-	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	if (fence?.[1]) body = fence[1].trim();
-	if (!body.startsWith("{") || !body.endsWith("}")) return false;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(body);
-	} catch {
-		return false;
-	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return false;
-	}
-	const keys = Object.keys(parsed as Record<string, unknown>);
-	if (keys.length === 0) return false;
-	if (!keys.every((k) => SPAWN_ARG_KEYS.has(k))) return false;
-	return (
-		SPAWN_ARG_DISCRIMINATORS.filter((k) => k in (parsed as object)).length >= 2
-	);
-}
-
-/**
- * Detects a planner/evaluator CONTROL envelope returned in a user-visible
- * channel — `{"decision":"CONTINUE"|"FINISH"|"NEXT_RECOMMENDED", …}` (or
- * `route`) carrying at least one evaluator discriminator
- * (`success`/`thought`/`nextTool`/`recommendedToolCallId`). Narrow by design:
- * a bare `{"decision":"approve"}` from a real reply does not match.
- */
-export function looksLikeEvaluatorEnvelopeJson(text: string): boolean {
-	let body = text.trim();
-	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	if (fence?.[1]) body = fence[1].trim();
-	if (!body.startsWith("{") || !body.endsWith("}")) return false;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(body);
-	} catch {
-		return false;
-	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return false;
-	}
-	const record = parsed as Record<string, unknown>;
-	const decision = String(record.decision ?? record.route ?? "").toUpperCase();
-	if (!["FINISH", "CONTINUE", "NEXT_RECOMMENDED"].includes(decision)) {
-		return false;
-	}
-	return (
-		typeof record.success === "boolean" ||
-		typeof record.thought === "string" ||
-		typeof record.nextTool === "object" ||
-		typeof record.recommendedToolCallId === "string"
-	);
-}
-
 function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
+	const output = sanitizeUserVisibleModelOutput(text);
 	if (
-		looksLikeSpawnEnvelopeJson(text) ||
-		looksLikeEvaluatorEnvelopeJson(text)
+		output.kind === "control" ||
+		output.kind === "invalid" ||
+		output.fieldPath.length > 0
 	) {
 		return true;
 	}
