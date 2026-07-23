@@ -12800,7 +12800,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -13000,7 +13000,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -13200,7 +13200,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -13400,7 +13400,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -13600,7 +13600,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -13800,7 +13800,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -14000,7 +14000,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -14200,7 +14200,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -14400,7 +14400,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -14600,7 +14600,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -14800,7 +14800,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -15000,7 +15000,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",
@@ -15200,7 +15200,7 @@
             },
             "taskId": {
               "type": "string",
-              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history."
+              "description": "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen. Optional for history (omit to read recent history across all scheduled items)."
             },
             "kind": {
               "type": "string",

@@ -52,6 +52,12 @@ export interface LifeOpsBriefingSections {
   readonly calendar?: readonly LifeOpsBriefingCalendarItem[];
   readonly inbox?: readonly LifeOpsBriefingInboxItem[];
   readonly life?: readonly LifeOpsBriefingLifeItem[];
+  /**
+   * Owner items completed within the current local day (additive, #16935).
+   * The evening/recap narrative leads with these — real wins — before the
+   * still-open `life` items; morning/weekly composers may omit it.
+   */
+  readonly completedToday?: readonly LifeOpsBriefingLifeItem[];
   readonly money?: readonly LifeOpsBriefingMoneyItem[];
 }
 

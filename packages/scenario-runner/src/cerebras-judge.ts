@@ -215,15 +215,33 @@ export class CerebrasJudge {
   private readonly maxRetries: number;
 
   constructor(options: CerebrasJudgeOptions = {}) {
-    this.model = options.model ?? "gemma-4-31b";
-    this.baseUrl = (options.baseUrl ?? "https://api.cerebras.ai/v1").replace(
-      /\/$/,
-      "",
-    );
-    const apiKey = options.apiKey ?? process.env.CEREBRAS_API_KEY ?? "";
+    this.model =
+      options.model ??
+      process.env.CEREBRAS_JUDGE_MODEL?.trim() ??
+      "gemma-4-31b";
+    // CEREBRAS_BASE_URL keeps parity with the lifeops eval-model transport:
+    // an OpenAI-compatible proxy (e.g. the Eliza Cloud gateway) can serve the
+    // judge on hosts that carry a proxy credential instead of a direct
+    // Cerebras key — judging stays independent of the model under test.
+    this.baseUrl = (
+      options.baseUrl ??
+      process.env.CEREBRAS_BASE_URL?.trim() ??
+      "https://api.cerebras.ai/v1"
+    ).replace(/\/$/, "");
+    // EVAL_CEREBRAS_API_KEY is the judge-only credential slot: the generic
+    // CEREBRAS_API_KEY doubles as a live-provider selector for the model
+    // under test (live-provider.ts), so a host that wants an independent
+    // judge WITHOUT flipping the under-test provider sets the EVAL_ variant.
+    // The lifeops enable-check (isCerebrasEvalEnabled) already accepts it;
+    // the transport must too or an EVAL_-only host throws at construction.
+    const apiKey =
+      options.apiKey ??
+      process.env.CEREBRAS_API_KEY ??
+      process.env.EVAL_CEREBRAS_API_KEY ??
+      "";
     if (!apiKey) {
       throw new Error(
-        "[cerebras-judge] CEREBRAS_API_KEY is not set and no apiKey was provided to the constructor.",
+        "[cerebras-judge] CEREBRAS_API_KEY / EVAL_CEREBRAS_API_KEY is not set and no apiKey was provided to the constructor.",
       );
     }
     this.apiKey = apiKey;
@@ -231,9 +249,12 @@ export class CerebrasJudge {
     this.maxRetries = options.maxRetries ?? 2;
   }
 
-  /** Returns true when an API key is present in env. */
+  /** Returns true when a judge API key is present in env. */
   static isAvailable(): boolean {
-    return Boolean(process.env.CEREBRAS_API_KEY?.trim());
+    return Boolean(
+      process.env.CEREBRAS_API_KEY?.trim() ||
+        process.env.EVAL_CEREBRAS_API_KEY?.trim(),
+    );
   }
 
   /**

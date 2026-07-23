@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -12,11 +13,27 @@ from benchmarks.orchestrator import cli
 from benchmarks.orchestrator.latest_publishability import validate_latest_publishability
 from benchmarks.orchestrator.runtime_provenance import EXPECTED_NATIVE_RUNTIME
 from benchmarks.orchestrator.subscription_provenance import (
+    subscription_gateway_logical_key_sha256,
     summarize_subscription_gateway_audit,
 )
 
 
 AUDIT_HASH = "a" * 64
+NAMESPACE_HASH = "b" * 64
+EPOCH_HMAC = "c" * 64
+TIER_HMAC = "d" * 64
+CAPABILITY_HMAC = "e" * 64
+
+
+def _canonical_sha256(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _write_latest(latest_dir: Path, name: str, payload: dict) -> None:
@@ -35,44 +52,70 @@ def _subscription_gateway_summary(
 ) -> tuple[Path, dict]:
     audit = tmp_path / f"{harness}-subscription-audit.jsonl"
     records = []
+    previous = "0" * 64
     for index in range(request_count):
-        records.append(
-            {
-                "schema_version": 1,
-                "request_id": f"{harness}-{index}",
-                "recorded_at": "2026-07-20T20:00:00Z",
-                "harness": harness,
-                "transport": "claude-agent-sdk",
-                "credential_source": "claude-code-managed",
-                "sdk_version": "0.3.200",
-                "sdk_api_key_source": "none",
-                "claude_code_version": "2.1.214",
-                "fresh_session": True,
-                "tool_execution": "capture-only",
-                "serializer": "openai-full-history-v1",
-                "response_mode": "json",
-                "model_requested": "claude-opus-4-6",
-                "model_effective": "claude-opus-4-6",
-                "reasoning_effort": "medium",
-                "message_count": 2,
-                "message_roles": ["system", "user"],
-                "tool_names": ["lookup"],
-                "tool_choice": "auto",
-                "tool_call_names": [],
-                "prompt_sha256": AUDIT_HASH,
-                "system_prompt_sha256": AUDIT_HASH,
-                "tool_schema_sha256": AUDIT_HASH,
-                "request_sha256": AUDIT_HASH,
-                "queue_wait_ms": 0,
-                "service_ms": 250.0,
-                "status": "succeeded",
-                "finish_reason": "stop",
-                "result_subtype": "success",
-                "terminal_reason": None,
-                "unapplied_parameters": [],
-                "error_code": None,
-            }
+        # The publication gate only accepts durable sha256-chain-v2 audits
+        # (legacy schema_version 1 quarantines as
+        # subscription_gateway_durable_audit_required), so the fixture seals a
+        # full logical-completion chain the way the gateway does.
+        logical_key = subscription_gateway_logical_key_sha256(
+            harness=harness,
+            logical_namespace_sha256=NAMESPACE_HASH,
+            logical_ordinal=index,
+            request_sha256=AUDIT_HASH,
+            model_requested="claude-opus-4-6",
+            reasoning_effort="medium",
         )
+        record = {
+            "schema_version": 2,
+            "audit_event": "logical_completion",
+            "audit_sequence": index,
+            "previous_record_sha256": previous,
+            "logical_namespace_sha256": NAMESPACE_HASH,
+            "logical_key_sha256": logical_key,
+            "logical_ordinal": index,
+            "delivery_attempt": 1,
+            "execution_origin": "original",
+            "credential_epoch_hmac_sha256": EPOCH_HMAC,
+            "credential_tier_hmac_sha256": TIER_HMAC,
+            "credential_capability_hmac_sha256": CAPABILITY_HMAC,
+            "request_id": f"logical_{logical_key}",
+            "recorded_at": "2026-07-20T20:00:00Z",
+            "harness": harness,
+            "transport": "claude-agent-sdk",
+            "credential_source": "claude-code-managed",
+            "sdk_version": "0.3.200",
+            "sdk_api_key_source": "none",
+            "claude_code_version": "2.1.214",
+            "fresh_session": True,
+            "tool_execution": "capture-only",
+            "serializer": "openai-full-history-v1",
+            "response_mode": "json",
+            "model_requested": "claude-opus-4-6",
+            "model_effective": "claude-opus-4-6",
+            "reasoning_effort": "medium",
+            "message_count": 2,
+            "message_roles": ["system", "user"],
+            "tool_names": ["lookup"],
+            "tool_choice": "auto",
+            "tool_call_names": [],
+            "prompt_sha256": AUDIT_HASH,
+            "system_prompt_sha256": AUDIT_HASH,
+            "tool_schema_sha256": AUDIT_HASH,
+            "tool_schema_sha256_by_name": {"lookup": AUDIT_HASH},
+            "request_sha256": AUDIT_HASH,
+            "queue_wait_ms": 0,
+            "service_ms": 250.0,
+            "status": "succeeded",
+            "finish_reason": "stop",
+            "result_subtype": "success",
+            "terminal_reason": None,
+            "unapplied_parameters": [],
+            "error_code": None,
+        }
+        record["record_sha256"] = _canonical_sha256(record)
+        previous = record["record_sha256"]
+        records.append(record)
     audit.write_text(
         "".join(f"{json.dumps(record, sort_keys=True)}\n" for record in records),
         encoding="utf-8",

@@ -38,6 +38,11 @@ HASH_FIELDS = (
 _ZERO_SHA256 = "0" * 64
 _AUDIT_READ_CHUNK_BYTES = 64 * 1024
 _MAX_AUDIT_LINE_BYTES = 8 * 1024 * 1024
+# Real audit records nest at most a handful of levels; anything deeper is a
+# pathological payload. json.loads only raises RecursionError below some
+# interpreter-specific C recursion limit (~10k on CPython >= 3.12.1), so the
+# scanner enforces its own deterministic depth cap instead of relying on it.
+_MAX_AUDIT_JSON_DEPTH = 64
 _MAX_DIMENSION_VALUES = 8
 _DURABLE_AUDIT_FIELDS = frozenset(
     {
@@ -1317,6 +1322,21 @@ class _AuditIntegrityState:
         return True, valid
 
 
+def _json_depth_exceeds(value: Any, limit: int) -> bool:
+    """Iteratively bound container nesting so the check itself cannot recurse."""
+
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > limit:
+            return True
+        if isinstance(node, Mapping):
+            stack.extend((child, depth + 1) for child in node.values())
+        elif isinstance(node, list):
+            stack.extend((child, depth + 1) for child in node)
+    return False
+
+
 def _scan_subscription_gateway_audit(
     audit_path: Path,
     visit_record: Callable[[Mapping[str, Any], bool, bool], None],
@@ -1339,6 +1359,9 @@ def _scan_subscription_gateway_audit(
             decoded = json.loads(committed_line.payload)
         except (ValueError, UnicodeDecodeError, RecursionError):
             # error-policy:J3 committed malformed input is an explicit rejection.
+            invalid_json_lines += 1
+            continue
+        if _json_depth_exceeds(decoded, _MAX_AUDIT_JSON_DEPTH):
             invalid_json_lines += 1
             continue
         if not isinstance(decoded, Mapping):

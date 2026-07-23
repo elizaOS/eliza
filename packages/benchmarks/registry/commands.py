@@ -2688,8 +2688,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("data/realm",),
-                notes="Uses ./data/realm by default; set --data-path via extra config.",
+                paths=("benchmarks/realm/upstream/datasets",),
+                notes=(
+                    "Uses the vendored upstream dataset at benchmarks/realm/upstream/datasets "
+                    "by default; set --data-path via extra config."
+                ),
             ),
             build_command=_realm_cmd,
             locate_result=_realm_result,
@@ -2790,10 +2793,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel="benchmarks/tau-bench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("benchmark-data/tau-bench",),
+                # No repo path requirement: upstream tau-bench data is fetched
+                # lazily into ~/.cache/elizaos_tau_bench (override with
+                # TAU_BENCH_DATA_DIR); the repo only ships compact smoke
+                # fixtures inside the package (elizaos_tau_bench/data_assets.py).
+                paths=(),
                 notes=(
                     "Real matrix rows use provider-backed LLM execution. Explicit mock mode "
-                    "is available only for smoke checks."
+                    "is available only for smoke checks. Upstream domain data is fetched "
+                    "lazily into a user cache (TAU_BENCH_DATA_DIR overrides the location)."
                 ),
             ),
             build_command=_tau_cmd,
@@ -3029,7 +3037,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         BenchmarkDefinition(
             id="configbench",
             display_name="ConfigBench",
-            description="Plugin configuration & secrets security benchmark (50 scripted scenarios)",
+            description="Plugin configuration & secrets security benchmark (682 scripted scenarios: 62 authored baselines + 620 edge variants)",
             cwd_rel="benchmarks/configbench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
@@ -3220,7 +3228,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("training/data/native/records/hermes-fc-v1.jsonl",),
+                paths=("packages/training/data/native/records/hermes-fc-v1.jsonl",),
                 notes=(
                     "Samples native planner records and sends OpenAI-compatible tools to the provider. "
                     "Asserts real tool-call emission, tool-name match, args JSON parse, required-arg presence, "
@@ -3272,8 +3280,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                     "'eliza'/'hermes'/'openclaw' for live adapters. "
                     "STATIC-only sample (10 scenarios) — no ANTHROPIC key or LIVE judge needed. "
                     "CEREBRAS_API_KEY is required for the live harnesses (agent model gemma-4-31b). "
-                    "The eliza live lane also needs the per-session usage-buffer fix in packages/lifeops-bench/src/server.ts (issue #13777 PR 1); "
-                    "set MULTITASK_ELIZA_USAGE_FIX=1 once it is in tree. "
+                    "The eliza live lane builds ungated: per-session usage attribution is the "
+                    "AsyncLocalStorage buffer in packages/lifeops-bench/src/server.ts (#13777). "
                     "extra.lanes (default '1,5,10') sets concurrency; N=1 is the interference baseline and is required. "
                     "isolation is 'shared_runtime' for eliza, 'process_per_turn' for hermes/openclaw. "
                     "Score: mean_task_score of the N=10 lane. Higher is better."

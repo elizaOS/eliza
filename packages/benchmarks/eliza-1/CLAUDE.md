@@ -89,7 +89,10 @@ bun run --cwd packages/benchmarks/eliza-1/vision-cua-e2e test
 ## Notes
 
 - Results write to `./bench-results-<ISO>.json` by default; override with `--out <path>`.
-- Not registered in the suite registry; there is no orchestrator invocation path.
+- Not in `registry/commands.py`, but runnable through the suite orchestrator via
+  the `eliza_1` adapter in `orchestrator/adapters.py`
+  (`python -m benchmarks.orchestrator run --benchmarks eliza_1 ...`; scored by
+  `_score_from_eliza_1`, CI lane `smoke` in `orchestrator/ci_coverage.py`).
 - The vitest suite exercises all metric helpers and the runner's mock-mode path — safe to run on CI without keys or GGUF.
 - Vision CUA e2e runs in stub mode by default; set `ELIZA_VISION_CUA_E2E_REAL=1` + wire real plugin adapters for live runs (see `vision-cua-e2e/README.md`).
 - Vision CUA trace JSONs write to `vision-cua-e2e/reports/` (gitignored).

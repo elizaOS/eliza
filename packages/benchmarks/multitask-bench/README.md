@@ -39,10 +39,10 @@ N=10 is one wave of ten.
 | hermes   | `process_per_turn` | shared rate/cost budget only (process-isolated) |
 | openclaw | `process_per_turn` | shared rate/cost budget only (process-isolated) |
 
-The eliza lane's per-session usage attribution depends on the
-AsyncLocalStorage fix in `packages/lifeops-bench/src/server.ts` (issue #13777
-PR 1). Until that is in tree, the eliza live lane is gated behind
-`MULTITASK_ELIZA_USAGE_FIX=1`.
+The eliza lane's per-session usage attribution rides the AsyncLocalStorage
+buffer in `packages/lifeops-bench/src/server.ts` (#13777): each turn's
+MODEL_USED events bind to their own async call chain, so overlapping sessions
+never double-count cost or tokens.
 
 ## Metrics per lane
 
@@ -62,7 +62,7 @@ The registry scalar score is the `mean_task_score` of the N=10 lane.
 # Hermetic oracle — no keys. Perfect scores 1.0 with zero interference.
 python -m multitask_bench --harness perfect --lanes 1,5,10 --output-dir results
 
-# Live harness (needs CEREBRAS_API_KEY); eliza also needs the server usage fix.
+# Live harness (needs CEREBRAS_API_KEY).
 CEREBRAS_API_KEY=... python -m multitask_bench --harness hermes --lanes 1,5,10 \
     --model gemma-4-31b --output-dir results
 ```

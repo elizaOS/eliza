@@ -9,7 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.standard._base import MockClient
+import argparse
+
+from benchmarks.standard._base import (
+    ENDPOINT_ENV_CHAIN,
+    HTTPOpenAICompatibleClient,
+    MockClient,
+)
 from benchmarks.standard._cli import main_entry
 from benchmarks.standard.mt_bench import (
     BENCHMARK_ID,
@@ -369,3 +375,101 @@ def test_mt_bench_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
     assert data["dataset_version"].endswith("+edge-v1")
     assert data["n"] == 22
     assert data["metrics"]["score"] == 0.8
+
+
+def _factory_args(**overrides: object) -> argparse.Namespace:
+    """Namespace matching what ``_cli.build_parser`` + ``augment_parser`` emit."""
+
+    base: dict[str, object] = {
+        "mock": False,
+        "model_endpoint": None,
+        "provider": "cerebras",
+        "judge_endpoint": None,
+        "judge_provider": None,
+        "judge_model": "gpt-4o",
+        "judge_api_key_env": "DOES_NOT_EXIST",
+        "max_tokens": DEFAULT_MAX_TOKENS,
+        "judge_max_tokens": DEFAULT_JUDGE_MAX_TOKENS,
+        "temperature": 0.7,
+        "expand_scenarios": False,
+    }
+    base.update(overrides)
+    return argparse.Namespace(**base)
+
+
+def _clear_endpoint_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ENDPOINT_ENV_CHAIN:
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_mt_bench_judge_honors_base_url_env_over_provider_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_endpoint_env(monkeypatch)
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://elizacloud.ai/api/v1")
+
+    runner, mock_responses = _MTBenchFactory().build(_factory_args())
+
+    assert mock_responses is None
+    judge = runner._judge
+    assert isinstance(judge, HTTPOpenAICompatibleClient)
+    assert judge._endpoint == "https://elizacloud.ai/api/v1"
+
+
+def test_mt_bench_judge_env_chain_falls_through_to_cerebras_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_endpoint_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://elizacloud.ai/api/v1")
+
+    runner, _ = _MTBenchFactory().build(_factory_args())
+
+    assert runner._judge._endpoint == "https://elizacloud.ai/api/v1"
+
+
+def test_mt_bench_explicit_judge_endpoint_beats_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_endpoint_env(monkeypatch)
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://elizacloud.ai/api/v1")
+
+    runner, _ = _MTBenchFactory().build(
+        _factory_args(judge_endpoint="http://localhost:9999/v1")
+    )
+
+    assert runner._judge._endpoint == "http://localhost:9999/v1"
+
+
+def test_mt_bench_explicit_model_endpoint_beats_env_for_judge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ``--extra model_endpoint`` reaches adapters as ``--model-endpoint``; the
+    # judge inherits it when no separate --judge-endpoint is supplied.
+    _clear_endpoint_env(monkeypatch)
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://elizacloud.ai/api/v1")
+
+    runner, _ = _MTBenchFactory().build(
+        _factory_args(model_endpoint="http://localhost:8001/v1")
+    )
+
+    assert runner._judge._endpoint == "http://localhost:8001/v1"
+
+
+def test_mt_bench_judge_falls_back_to_provider_default_without_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_endpoint_env(monkeypatch)
+
+    runner, _ = _MTBenchFactory().build(_factory_args())
+
+    assert runner._judge._endpoint == "https://api.cerebras.ai/v1"
+
+
+def test_mt_bench_unknown_judge_provider_fails_fast(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A bogus --judge-provider must not silently reuse the candidate endpoint.
+    _clear_endpoint_env(monkeypatch)
+
+    with pytest.raises(ValueError):
+        _MTBenchFactory().build(_factory_args(judge_provider="not-a-real-provider"))

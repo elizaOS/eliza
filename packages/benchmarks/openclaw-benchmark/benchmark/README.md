@@ -1,76 +1,16 @@
-# AI Agent Benchmarks
+# Benchmark task specifications
 
-Benchmark-Ergebnisse für verschiedene OpenCode Plugins/Tools in isolierten Docker-Containern.
+Task material for the `openclaw_bench` registry entry. The registry requires
+this directory (`BenchmarkRequirements.paths`), and the sandbox image bakes the
+task PRD into the agent workspace:
 
-## Testumgebung
+- [`standard_tasks.md`](./standard_tasks.md) — the standardized Weather-CLI
+  task set (four tasks: implementation, CLI flags, error handling, tests).
+  `openclaw/Dockerfile` copies it into the container as `/workspace/PRD.md`, so
+  its content is part of the benchmark definition — do not edit it casually;
+  changing the PRD changes what every run is scored against. The text is the
+  original upstream German; harnesses receive it verbatim.
 
-- **Container Base**: `node:20-slim` (Debian)
-- **Isolation**: 100% (kein Zugriff auf Host-Konfigurationen)
-- **OpenCode**: Frisch installiert via `curl -fsSL https://opencode.ai/install | bash`
-- **Token-Tracking**: Langfuse Plugin (OpenTelemetry)
-
----
-
-## Docker Naming-Convention
-
-Alle Benchmark-Container folgen diesem Schema für einfache Filterung:
-
-### Images
-```
-benchmark/<tool-name>
-```
-Beispiele:
-- `benchmark/ralphy`
-- `benchmark/openclaw`
-- `benchmark/ohmyopencode`
-- `benchmark/bmadmethod`
-
-### Container
-```
-benchmark--<tool-name>
-```
-Beispiele:
-- `benchmark--ralphy`
-- `benchmark--openclaw`
-
-### Labels
-Jeder Container hat diese Labels:
-```
-project=benchmark
-component=<tool-name>
-purpose=benchmark
-```
-
-### Filter-Befehle
-```bash
-# Alle Benchmark-Container anzeigen
-docker ps --filter 'label=project=benchmark'
-
-# Nur Ralphy
-docker ps --filter 'label=component=ralphy'
-
-# Alle Benchmark-Images
-docker images 'benchmark/*'
-
-# Aufräumen (alle Benchmark-Container)
-docker rm $(docker ps -aq --filter 'label=project=benchmark')
-docker rmi $(docker images -q 'benchmark/*')
-```
-
----
-
-## Tools im Vergleich
-
-| Tool | Ordner | Status | Typ |
-|------|--------|--------|-----|
-| Ralphy | `/ralphy` | ✅ Ready | PRD-Orchestrator |
-| OpenClaw | `/openclaw` | 🔧 Setup | Autonomous Agent |
-| oh-my-opencode | `/ohmyopencode` | ⏳ Pending | OpenCode Plugin |
-| BMAD-METHOD | `/bmadmethod` | ⏳ Pending | Methodik |
-
----
-
-## Standard-Benchmark
-
-Alle Tools werden mit der gleichen PRD getestet:
-→ [`standard_tasks.md`](./standard_tasks.md) (Weather CLI mit 4 Tasks)
+Evidence and scoring land under the adapter's run output, not in this
+directory. See the package [`README.md`](../README.md) and
+[`AGENTS.md`](../AGENTS.md) for how runs are launched.
