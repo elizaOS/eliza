@@ -4020,6 +4020,12 @@ export class AgentRuntime implements IAgentRuntime {
 			...params,
 			source: params.source ?? "default",
 		});
+		// ensureConnectionStandalone writes the room through adapter.upsertRooms directly
+		// rather than this.upsertRooms, so it bypasses the room-read memo invalidation.
+		// Invalidate here to uphold the "every room mutation is immediately visible"
+		// invariant — otherwise a concurrent compose could be served a memoized null (for
+		// a just-created room) or a <=1s-stale Room after a metadata upsert.
+		this.roomReadMemo.invalidate(params.roomId);
 		if (result.createdRoomParticipants > 0) {
 			this.logger.debug(
 				{
@@ -9630,7 +9636,11 @@ ${section_end}`;
 			params.metadata !== undefined ||
 			params.textContains !== undefined ||
 			params.orderDirection === "asc" ||
-			params.includeEmbedding === false ||
+			// The coalesced superset scan omits includeEmbedding, so it can only serve
+			// callers that don't pin the flag either way — a `true` caller would get
+			// embedding-less rows from an adapter that honors it, a `false` caller would
+			// get embeddings it asked to skip. Bypass the memo whenever it's set.
+			params.includeEmbedding !== undefined ||
 			params.accessContext !== undefined
 		) {
 			return null;

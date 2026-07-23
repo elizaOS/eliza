@@ -152,6 +152,29 @@ describe("getRoom single-flight coalescing", () => {
 		expect(counts.getRoomsByIds).toBe(2);
 	});
 
+	it("invalidates the memo when ensureConnection creates the room (bypasses the upsertRooms wrapper)", async () => {
+		const { runtime, counts } = await makeRuntime();
+		const newRoomId = "33333333-3333-3333-3333-33333333333e" as UUID;
+		// A pre-create read memoizes null for the not-yet-existing room.
+		expect(await runtime.getRoom(newRoomId)).toBeNull();
+		// ensureConnection writes the room through adapter.upsertRooms directly, not
+		// this.upsertRooms — so without an explicit invalidation this read would be
+		// served the stale memoized null.
+		await runtime.ensureConnection({
+			entityId: SENDER_ID,
+			roomId: newRoomId,
+			worldId: WORLD_ID,
+			type: ChannelType.DM,
+			source: "test",
+		});
+		const before = counts.getRoomsByIds;
+		const created = await runtime.getRoom(newRoomId);
+		// The post-ensureConnection read must hit the adapter (memo invalidated) and
+		// return the created room, not the stale null.
+		expect(counts.getRoomsByIds).toBe(before + 1);
+		expect(created?.id).toBe(newRoomId);
+	});
+
 	it("re-queries after the TTL lapses (bounds cross-process staleness)", async () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		const { runtime, counts } = await makeRuntime();
