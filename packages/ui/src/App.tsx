@@ -624,10 +624,12 @@ function TabContentView({
   // is transparent unless a view opts back into its own opaque surface.
   surface = "transparent",
   nav,
+  reserveChatClearance = true,
 }: {
   children: ReactNode;
   surface?: "opaque" | "transparent";
   nav?: ReactNode;
+  reserveChatClearance?: boolean;
 }) {
   return (
     <AppWorkspaceChrome
@@ -637,13 +639,24 @@ function TabContentView({
       main={
         <div
           data-shell-content-region="true"
-          className="eliza-chat-scroll flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
+          className={cn(
+            "eliza-chat-scroll flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden",
+            reserveChatClearance &&
+              "pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]",
+          )}
         >
           {children}
         </div>
       }
     />
   );
+}
+
+function surfaceOwnsViewport(
+  declaration: SurfaceManifestBearer | null | undefined,
+): boolean {
+  const header = resolveSurfaceManifest(declaration).header;
+  return header === "fullscreen" || header === "immersive";
 }
 
 interface ResolvedDynamicPage {
@@ -1157,9 +1170,12 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   // matching #13586 ("the shell enforces the shared ViewHeader on every normal
   // view"); `fullscreen`/`modal`/`immersive` opt out. A section nav (Wallet /
   // Character strip) already supplies the header, so it suppresses this one.
-  const showHeader = !nav && resolveSurfaceManifest(view).header === "normal";
+  const manifest = resolveSurfaceManifest(view);
+  const showHeader = !nav && manifest.header === "normal";
+  const ownsViewport =
+    manifest.header === "fullscreen" || manifest.header === "immersive";
   return (
-    <TabContentView nav={nav}>
+    <TabContentView nav={nav} reserveChatClearance={!ownsViewport}>
       {showHeader ? <ViewHeader title={view.label} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <DynamicViewLoader
@@ -1548,14 +1564,18 @@ function renderViewRouterContent({
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
     return (
-      <TabContentView>
+      <TabContentView
+        reserveChatClearance={!surfaceOwnsViewport(dynamicPage.registration)}
+      >
         <DynamicPluginPage resolved={dynamicPage} />
       </TabContentView>
     );
   }
   if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
     return (
-      <TabContentView>
+      <TabContentView
+        reserveChatClearance={!surfaceOwnsViewport(dynamicAppPage.registration)}
+      >
         <DynamicPluginPage resolved={dynamicAppPage} />
       </TabContentView>
     );
@@ -1579,7 +1599,10 @@ function renderViewRouterContent({
     isViewVisible(appShellPageForRoute, enabledKinds)
   ) {
     return (
-      <TabContentView nav={walletNav}>
+      <TabContentView
+        nav={walletNav}
+        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
+      >
         <RegisteredAppShellPage registration={appShellPageForRoute} />
       </TabContentView>
     );
@@ -2398,7 +2421,10 @@ function AppContent() {
     tab,
     trimmedNavigationPath(navigationPath),
   );
-  const isFullBleed = useTabIsFullBleed(tab);
+  const isFullBleed =
+    useTabIsFullBleed(tab) ||
+    activeViewSurface.manifest.header === "fullscreen" ||
+    activeViewSurface.manifest.header === "immersive";
 
   // Keep hook order stable across first-run/auth state transitions.
   // Otherwise React can throw when first-run setup completes and the main shell mounts.
@@ -2901,7 +2927,9 @@ function AppContent() {
           // clear their status bar. Top banners bleed their bg back up via
           // `.mobile-top-banner:first-child` (styles.css). No-op on web.
           style={{
-            paddingTop: "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
+            paddingTop: isFullBleed
+              ? 0
+              : "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
           }}
         >
           {/* BOTTOM-BAR / SAFE-AREA FLOOR (do not remove): a viewport-filling

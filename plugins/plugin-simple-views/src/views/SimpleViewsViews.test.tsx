@@ -96,29 +96,53 @@ describe("Simple Views state labels", () => {
     ).toBeNull();
   });
 
-  it("lets each view own scrolling inside the overflow-hidden host", () => {
-    stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
-    const notes = render(<NotesView />);
-    const notesRoot = notes.getByTestId("simple-notes-view");
-    expect(notesRoot.style.overflowY).toBe("auto");
-    expect(notesRoot.style.scrollPaddingBottom).toContain(
-      "--eliza-continuous-chat-clearance",
-    );
-    expect(notesRoot.style.scrollPaddingInlineEnd).toContain(
-      "--eliza-continuous-chat-side-clearance",
-    );
-    notes.unmount();
+  it.each([
+    { height: 499, label: "compact", width: 315 },
+    { height: 800, label: "desktop", width: 1280 },
+  ])(
+    "lets each view own scrolling inside the overflow-hidden host at $label size",
+    ({ height, width }) => {
+      Object.defineProperties(window, {
+        innerHeight: { configurable: true, value: height },
+        innerWidth: { configurable: true, value: width },
+      });
+      stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
+      const notes = render(<NotesView />);
+      const notesRoot = notes.getByTestId("simple-notes-view");
+      expect(notesRoot.style.height).toBe("100%");
+      expect(notesRoot.style.minHeight).toBe("0px");
+      expect(notesRoot.style.overflowY).toBe("auto");
+      expect(notesRoot.style.paddingBottom).toContain("--eliza-chat-clearance");
+      expect(notesRoot.style.paddingInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+      expect(notesRoot.style.scrollPaddingBottom).toContain(
+        "--eliza-chat-clearance",
+      );
+      expect(notesRoot.style.scrollPaddingInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+      notes.unmount();
 
-    const calendar = render(<SimpleCalendarView />);
-    const calendarRoot = calendar.getByTestId("simple-calendar-view");
-    expect(calendarRoot.style.overflowY).toBe("auto");
-    expect(calendarRoot.style.scrollPaddingBottom).toContain(
-      "--eliza-continuous-chat-clearance",
-    );
-    expect(calendarRoot.style.scrollPaddingInlineEnd).toContain(
-      "--eliza-continuous-chat-side-clearance",
-    );
-  });
+      const calendar = render(<SimpleCalendarView />);
+      const calendarRoot = calendar.getByTestId("simple-calendar-view");
+      expect(calendarRoot.style.height).toBe("100%");
+      expect(calendarRoot.style.minHeight).toBe("0px");
+      expect(calendarRoot.style.overflowY).toBe("auto");
+      expect(calendarRoot.style.paddingBottom).toContain(
+        "--eliza-chat-clearance",
+      );
+      expect(calendarRoot.style.paddingInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+      expect(calendarRoot.style.scrollPaddingBottom).toContain(
+        "--eliza-chat-clearance",
+      );
+      expect(calendarRoot.style.scrollPaddingInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+    },
+  );
 
   it("does not report healthy zero counts before the first snapshot", () => {
     stateHook.mockReturnValue(hookState({ loading: true }));
@@ -188,6 +212,22 @@ describe("Simple Views state labels", () => {
       }),
     ).toBeTruthy();
     expect(screen.getByText("No plans yet")).toBeTruthy();
+  });
+
+  it("stacks native date controls before their values can truncate", () => {
+    stateHook.mockReturnValue(hookState({ snapshot: snapshot(7) }));
+    render(<SimpleCalendarView />);
+
+    const fields = screen.getByTestId("calendar-event-schedule-fields");
+    expect(fields.style.gridTemplateColumns).toBe(
+      "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
+    );
+    expect(
+      screen.getByLabelText<HTMLInputElement>("Calendar event date").value,
+    ).toBe("2026-07-15");
+    expect(
+      screen.getByLabelText<HTMLInputElement>("Calendar event time").value,
+    ).toBe("09:00");
   });
 });
 

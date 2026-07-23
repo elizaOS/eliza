@@ -745,9 +745,11 @@ export function SimpleCalendarView() {
                 />
               </label>
               <div
+                data-testid="calendar-event-schedule-fields"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
                   gap: 10,
                 }}
               >
