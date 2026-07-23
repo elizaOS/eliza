@@ -1474,19 +1474,39 @@ interface StreamingToolCallAcc {
  * becomes true once the WHOLE object has arrived, which is exactly the resend
  * boundary. A brace counter would be fooled by that inner close.
  */
-function isCompleteJsonObject(value: string): boolean {
+function parseCompleteJsonObject(value: string): Record<string, unknown> | undefined {
   const trimmed = value.trim();
-  if (!trimmed.startsWith("{")) return false;
+  if (!trimmed.startsWith("{")) return undefined;
   try {
     const parsed: unknown = JSON.parse(trimmed);
-    return (
-      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-    );
+    return isRecord(parsed) ? parsed : undefined;
   } catch {
     // error-policy:J3 an incomplete fragment is an explicit false predicate;
     // finalization separately parses and surfaces invalid terminal arguments.
-    return false;
+    return undefined;
   }
+}
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => jsonValuesEqual(value, right[index]))
+    );
+  }
+  if (!isRecord(left) || !isRecord(right)) return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && jsonValuesEqual(left[key], right[key])
+    )
+  );
 }
 
 /** Fold one SSE `delta.tool_calls[]` array into the per-index accumulator. */
@@ -1563,21 +1583,25 @@ export function accumulateToolCallDeltas(
       // Cerebras streams the tool-call arguments incrementally, then emits a
       // FINAL aggregated frame that re-sends the COMPLETE arguments object
       // (re-carrying id + name). Blindly appending that re-send doubles the
-      // JSON (`{…}{…}`); downstream parsing can only recover when both copies
-      // are byte-identical, and the cloud character ("lowercase naturally")
-      // makes the copies diverge on casing — dead-ending terse replies. When
-      // the accumulated args AND the incoming fragment are each a complete,
-      // self-contained object the incoming is the authoritative full copy:
-      // replace rather than concatenate.
+      // JSON (`{…}{…}`). When both values are complete objects, the latter is a
+      // consolidated copy rather than another fragment. The incremental bytes
+      // may already be visible to the runtime, so an equivalent copy is
+      // ignored and a divergent copy fails closed instead of rewriting history.
+      const accumulatedObject = parseCompleteJsonObject(cur.args);
+      const incomingObject = parseCompleteJsonObject(fn.arguments);
       if (
         id !== undefined &&
         name !== undefined &&
         previousId === id &&
         previousName === name &&
-        isCompleteJsonObject(cur.args) &&
-        isCompleteJsonObject(fn.arguments)
+        accumulatedObject !== undefined &&
+        incomingObject !== undefined
       ) {
-        cur.args = fn.arguments;
+        if (!jsonValuesEqual(accumulatedObject, incomingObject)) {
+          throw invalidNativeToolCall(
+            `tool-call index ${index} consolidated arguments conflict with streamed fragments`
+          );
+        }
       } else {
         cur.args += fn.arguments;
       }

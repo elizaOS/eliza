@@ -60,6 +60,7 @@ import {
   finalizeStreamedToolCalls,
   handleResponseHandler,
   handleTextSmall,
+  lowestIndexToolCallArgs,
   parseOpenAiSseStream,
   resolveStreamingEnabled,
   resolveTextTimeoutMs,
@@ -398,10 +399,7 @@ describe("streamed tool-call delta assembly", () => {
     ]);
   });
 
-  it("takes the authoritative re-send even when it diverges from the incremental copy", () => {
-    // The cloud character ("lowercase naturally") can make the model emit a
-    // different casing in the aggregated re-send than in the streamed fragments.
-    // The re-send is the authoritative full copy — keep a single, valid object.
+  it("rejects a consolidated re-send that diverges from streamed fragments", () => {
     const acc = new Map();
     accumulateToolCallDeltas(acc, [
       {
@@ -410,21 +408,40 @@ describe("streamed tool-call delta assembly", () => {
         function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"PONG"}' },
       },
     ]);
+    expect(() =>
+      accumulateToolCallDeltas(acc, [
+        {
+          index: 0,
+          id: "call_1",
+          function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"pong"}' },
+        },
+      ])
+    ).toThrow("invalid tool call");
+  });
+
+  it("deduplicates a semantically equal consolidated re-send without rewriting bytes", () => {
+    const acc = new Map();
     accumulateToolCallDeltas(acc, [
       {
         index: 0,
         id: "call_1",
-        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"pong"}' },
+        function: {
+          name: "HANDLE_RESPONSE",
+          arguments: '{"replyText":"PONG","meta":{"ok":true}}',
+        },
       },
     ]);
-    expect(finalizeStreamedToolCalls(acc)).toEqual([
+    accumulateToolCallDeltas(acc, [
       {
-        type: "tool-call",
-        toolCallId: "call_1",
-        toolName: "HANDLE_RESPONSE",
-        input: { replyText: "pong" },
+        index: 0,
+        id: "call_1",
+        function: {
+          name: "HANDLE_RESPONSE",
+          arguments: '{ "meta": { "ok": true }, "replyText": "PONG" }',
+        },
       },
     ]);
+    expect(lowestIndexToolCallArgs(acc)).toBe('{"replyText":"PONG","meta":{"ok":true}}');
   });
 
   it("does not treat an identity-less complete object as a consolidated re-send", () => {
@@ -924,6 +941,37 @@ describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope",
 
     // The envelope is streamed exactly once — the re-send adds nothing.
     expect((await readStream(result)).join("")).toBe(full);
+  });
+
+  it("fails closed when a consolidated envelope conflicts with streamed bytes", async () => {
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","replyText":"PONG"}')),
+      dataFrame(
+        toolCallDelta('{"shouldRespond":"RESPOND","replyText":"pong"}', {
+          id: "call_1",
+          name: "HANDLE_RESPONSE",
+        })
+      ),
+      dataFrame(finishFrame("tool_calls")),
+      DONE_FRAME,
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    await expect(readStream(result)).rejects.toMatchObject({
+      code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
+    });
+    for (const field of ["text", "usage", "finishReason", "toolCalls"] as const) {
+      await expect(result[field]).rejects.toMatchObject({
+        code: "ELIZA_CLOUD_TOOL_CALL_INVALID",
+      });
+    }
   });
 
   it("stays buffered (no tool-arg streaming) when streamStructured is absent", async () => {
