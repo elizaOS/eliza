@@ -36,6 +36,10 @@ import {
 } from "../coding-agent-schedules.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import {
+  getScheduledTaskChannelDispatcher,
+  listScheduledTaskChannelDispatcherKeys,
+} from "./channel-dispatcher-registry.js";
+import {
   type CompletionCheckRegistry,
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
@@ -369,17 +373,39 @@ function buildRunner(
 
   const consolidation = deps.consolidation ?? createConsolidationRegistry();
 
-  const dispatcher = createCodingAgentScheduleDispatcher(runtime, {
+  const codingAgentDispatcher = createCodingAgentScheduleDispatcher(runtime, {
     delegate: deps.dispatcher,
   });
+  // Contributed-channel routing sits OUTSIDE the coding-agent wrap: a dispatch
+  // whose channelKey was registered via the channel-dispatcher registry is the
+  // contributor's deterministic recipe; everything else falls through to the
+  // built-in coding-agent channel and then the host connector dispatcher.
+  // Lookup is per-dispatch so registrations that land after this (cached)
+  // runner was built are still honored.
+  const dispatcher: ScheduledTaskDispatcher = {
+    dispatch(record) {
+      const contributed = getScheduledTaskChannelDispatcher(
+        runtime,
+        record.channelKey,
+      );
+      if (contributed) return contributed.dispatch(record);
+      return codingAgentDispatcher.dispatch(record);
+    },
+  };
   const hostChannelKeys = deps.channelKeys;
   const channelKeys = hostChannelKeys
-    ? () => new Set([...hostChannelKeys(), PR_SHEPHERD_DISPATCH_CHANNEL])
+    ? () =>
+        new Set([
+          ...hostChannelKeys(),
+          PR_SHEPHERD_DISPATCH_CHANNEL,
+          ...listScheduledTaskChannelDispatcherKeys(runtime),
+        ])
     : undefined;
   const hostChannelAvailable = deps.channelAvailable;
   const channelAvailable = hostChannelAvailable
     ? (channelKey: string) =>
-        channelKey === PR_SHEPHERD_DISPATCH_CHANNEL
+        channelKey === PR_SHEPHERD_DISPATCH_CHANNEL ||
+        getScheduledTaskChannelDispatcher(runtime, channelKey) !== null
           ? true
           : hostChannelAvailable(channelKey)
     : undefined;

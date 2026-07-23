@@ -28,9 +28,7 @@ import {
  * view-interaction-coverage.test.ts): a curated manifest diffed against a
  * discovered inventory, failing CI when something new ships uncovered.
  *
- * Issue #8802 prescribes the gate "start advisory for one cycle (like
- * coverage-gate.yml), then flip to required once the baseline is green."
- * `E2E_COVERAGE_GATE_ENFORCE=1` makes the develop-landscape-sensitive ratchets
+ * `E2E_COVERAGE_GATE_ENFORCE=1` makes the develop-landscape-sensitive checks
  * (route-wiring drift, blocking gaps, zero-test documentation) hard failures;
  * by default they log a warning and pass, so a PR is never red merely because
  * the develop base it merges against churned its own plugin/test landscape

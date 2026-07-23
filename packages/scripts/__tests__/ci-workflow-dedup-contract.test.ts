@@ -30,7 +30,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: ./.github/actions/setup-bun-workspace
-      - run: node packages/scripts/lint-lane-coverage.mjs
 `;
 
 // Post-#14194: test.yml is the develop POST-MERGE orchestrator. Develop `push`
@@ -56,10 +55,6 @@ on:
   pull_request:
     branches: [develop]
 jobs:
-  lane-coverage:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: node packages/scripts/lint-lane-coverage.mjs
   lint:
     runs-on: ubuntu-24.04
     steps:
@@ -186,19 +181,6 @@ describe("ci-workflow-dedup-contract", () => {
     withRepo(workflows, (root) => {
       expect(() => runContract(root)).toThrow(
         /develop-pr\.yml: missing on\.pull_request/,
-      );
-    });
-  });
-
-  test("downgrading lane coverage to dry-run fails the contract", () => {
-    const workflows = baseWorkflows();
-    workflows["ci.yaml"] = CI_YAML.replace(
-      "node packages/scripts/lint-lane-coverage.mjs",
-      "node packages/scripts/lint-lane-coverage.mjs --dry-run",
-    );
-    withRepo(workflows, (root) => {
-      expect(() => runContract(root)).toThrow(
-        /ci\.yaml lane coverage must be enforced/,
       );
     });
   });

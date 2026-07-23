@@ -159,6 +159,10 @@ def _download_via_huggingface(logical_name: str, dest: Path) -> None:
         ) from exc
 
     _file_id, basename = GDRIVE_FILES[logical_name]
+    # hf_hub_download returns the snapshot path, which is a relative symlink
+    # into the hub cache's blobs/ dir. os.link would clone the symlink itself
+    # and leave a dangling ``../../blobs/<sha>`` link under data/, so resolve
+    # to the real blob before hard-linking.
     downloaded = Path(
         hf_hub_download(
             repo_id=HF_MIRROR_REPOSITORY,
@@ -166,7 +170,7 @@ def _download_via_huggingface(logical_name: str, dest: Path) -> None:
             filename=basename,
             revision=HF_MIRROR_REVISION,
         )
-    )
+    ).resolve()
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     tmp.unlink(missing_ok=True)

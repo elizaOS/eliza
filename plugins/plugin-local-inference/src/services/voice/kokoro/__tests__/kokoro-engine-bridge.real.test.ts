@@ -38,14 +38,12 @@ import type {
 	RefCountedResource,
 } from "../../shared-resources";
 import type { Phrase } from "../../types";
-import {
-	KOKORO_MOBILE_TTFA_BUDGET_MS,
-	type KokoroTtsBackend,
-} from "../kokoro-backend";
+import type { KokoroTtsBackend } from "../kokoro-backend";
 import {
 	type KokoroEngineDiscoveryResult,
 	resolveKokoroEngineConfig,
 } from "../kokoro-engine-discovery";
+import { resolveKokoroTtfaBudgetMs } from "../kokoro-ttfa-budget";
 
 const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 const LIB_PATH = resolveFusedLibraryPath(null, process.env);
@@ -189,7 +187,7 @@ describe.skipIf(!isBun || !LIB_PATH || !KOKORO_MODEL)(
 			(ffi as unknown as { close?: () => void }).close?.();
 		});
 
-		it("synthesizes real PCM and reaches first audio within the mobile TTFA budget", async () => {
+		it("synthesizes real PCM and reaches first audio within the TTFA budget", async () => {
 			// Non-null inside the skipIf guard.
 			const kokoro = KOKORO_MODEL as KokoroEngineDiscoveryResult;
 			const backend = createKokoroTtsBackend(kokoro, { ffi });
@@ -226,11 +224,14 @@ describe.skipIf(!isBun || !LIB_PATH || !KOKORO_MODEL)(
 			// Real, non-empty 24 kHz PCM — never a silent stub (acceptance criterion 4).
 			expect(totalSamples).toBeGreaterThan(0);
 			expect(sampleRate).toBe(24_000);
-			// First audible chunk within the mobile-class TTFA budget (criterion 7).
+			// First audible chunk within the TTFA budget (criterion 7) — the mobile
+			// product budget by default, overridable for desktop-CPU CI hosts via
+			// the shared KOKORO_SMOKE_TTFA_BUDGET_MS knob.
+			const budgetMs = resolveKokoroTtfaBudgetMs();
 			expect(firstAudibleAtMs).not.toBeNull();
 			expect(firstAudibleAtMs as unknown as number).toBeLessThanOrEqual(
-				KOKORO_MOBILE_TTFA_BUDGET_MS,
+				budgetMs,
 			);
-		});
+		}, 120_000);
 	},
 );

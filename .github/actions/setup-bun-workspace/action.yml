@@ -72,8 +72,8 @@ runs:
     # Self-hosted (hetzner-robot) runners are not guaranteed to expose `node`
     # on the step PATH, and the very next step (turbo-cache-github ->
     # turbo-cache-key.mjs) invokes `node` directly. Without this, jobs that
-    # rely solely on this composite for their toolchain (coverage-gate,
-    # feed-env-audit and voice-workbench) fail with
+    # rely solely on this composite for their toolchain (feed-env-audit and
+    # voice-workbench) fail with
     # "node: command not found" on runners missing a system Node. setup-node is
     # idempotent, so callers that already ran it (keyless-harness, the audits)
     # just re-select the same version. Toggle off via setup-node: "false".

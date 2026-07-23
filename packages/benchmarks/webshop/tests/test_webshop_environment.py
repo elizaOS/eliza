@@ -203,7 +203,14 @@ def test_reset_uses_task_goal_for_reward() -> None:
     ds = WebShopDataset(split="test", profile="small", human_goals=True)
     ds.load_sync()
     assert ds.paths is not None
-    task = ds.get_tasks()[0]
+    # The scripted walkthrough below buys B09HX5CD2D (the Cleveland University
+    # drawstring shorts goal), so select that task rather than relying on the
+    # human-goal file's ordering.
+    matching = [
+        t for t in ds.get_tasks() if "B09HX5CD2D" in (t.target_product_ids or [])
+    ]
+    assert matching, "small-profile human goals lost the B09HX5CD2D task"
+    task = matching[0]
     env = WebShopEnvironment(
         file_path=ds.paths.items,
         attr_path=ds.paths.attributes,

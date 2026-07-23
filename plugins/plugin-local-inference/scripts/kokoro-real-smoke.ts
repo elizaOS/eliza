@@ -32,7 +32,7 @@ import {
 	createKokoroTtsBackend,
 } from "../src/services/voice/engine-bridge";
 import { loadElizaInferenceFfi } from "../src/services/voice/ffi-bindings";
-import { KOKORO_MOBILE_TTFA_BUDGET_MS } from "../src/services/voice/kokoro/kokoro-backend";
+import { resolveKokoroTtfaBudgetMs } from "../src/services/voice/kokoro/kokoro-ttfa-budget";
 import { resolveKokoroEngineConfig } from "../src/services/voice/kokoro/kokoro-engine-discovery";
 import type { Phrase } from "../src/services/voice/types";
 
@@ -240,11 +240,11 @@ try {
 		}
 	}
 
-	// Perf gate last: mobile-class time-to-first-audio budget.
-	if (firstAudibleMs > KOKORO_MOBILE_TTFA_BUDGET_MS) {
-		fail(
-			`TTFA ${ttfa}ms exceeds the mobile budget ${KOKORO_MOBILE_TTFA_BUDGET_MS}ms`,
-		);
+	// Perf gate last: time-to-first-audio budget — the mobile product budget by
+	// default, overridable for desktop-CPU CI hosts via the shared knob.
+	const ttfaBudgetMs = resolveKokoroTtfaBudgetMs();
+	if (firstAudibleMs > ttfaBudgetMs) {
+		fail(`TTFA ${ttfa}ms exceeds the budget ${ttfaBudgetMs}ms`);
 	}
 	console.log("[kokoro-real-smoke] PASS");
 } finally {

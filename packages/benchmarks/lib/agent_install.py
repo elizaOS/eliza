@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -136,6 +137,9 @@ def write_manifest(installed: InstalledAgent) -> None:
     os.replace(tmp, path)
 
 
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
+
 def _clone_or_update_source(
     *,
     repo_dir: Path,
@@ -144,25 +148,38 @@ def _clone_or_update_source(
     force: bool,
     context: str,
 ) -> str:
+    # `git clone -b` only accepts branch/tag names, so a commit-sha ref must
+    # clone the default branch first and then fetch the sha explicitly
+    # (GitHub serves reachable-sha fetches). This makes installs pinnable to
+    # an exact revision instead of a moving branch.
+    ref_is_sha = bool(_COMMIT_SHA_RE.fullmatch(ref.lower()))
     if repo_dir.exists() and force:
         shutil.rmtree(repo_dir)
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     if not repo_dir.exists():
-        _run(
-            [
-                "git",
-                "clone",
-                "--filter=blob:none",
-                "--single-branch",
-                "--depth",
-                "1",
-                "-b",
-                ref,
-                git_url,
-                str(repo_dir),
-            ],
-            context=f"git clone {context} ref={ref}",
-        )
+        clone_cmd = [
+            "git",
+            "clone",
+            "--filter=blob:none",
+            "--single-branch",
+            "--depth",
+            "1",
+        ]
+        if not ref_is_sha:
+            clone_cmd.extend(["-b", ref])
+        clone_cmd.extend([git_url, str(repo_dir)])
+        _run(clone_cmd, context=f"git clone {context} ref={ref}")
+        if ref_is_sha:
+            _run(
+                ["git", "fetch", "--depth", "1", "origin", ref],
+                cwd=repo_dir,
+                context=f"git fetch {context} ref={ref}",
+            )
+            _run(
+                ["git", "checkout", "FETCH_HEAD"],
+                cwd=repo_dir,
+                context=f"git checkout {context} ref={ref}",
+            )
     else:
         _run(["git", "fetch", "--depth", "1", "origin", ref], cwd=repo_dir, context=f"git fetch {context}")
         _run(["git", "checkout", "FETCH_HEAD"], cwd=repo_dir, context=f"git checkout {context} ref={ref}")

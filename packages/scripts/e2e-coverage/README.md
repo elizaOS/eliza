@@ -72,17 +72,13 @@ without booting the real handler does **not** count — the gate requires a real
 
 ### Advisory → required (issue §5)
 
-The issue prescribes the gate "start advisory for one cycle (like
-`coverage-gate.yml`), then flip to required once the baseline is green." So the
-develop-landscape-sensitive ratchets (route-wiring drift, blocking gaps,
+The develop-landscape-sensitive checks (route-wiring drift, blocking gaps,
 zero-test documentation) are **advisory by default** — they log a warning and
 pass — and become hard failures under `E2E_COVERAGE_GATE_ENFORCE=1`. This keeps
 a PR from going red merely because the develop base it merges against churned
 its own plugin/test landscape (a sibling PR adding/removing a route plugin or a
 plugin's first test). The stable structural checks (larp rejection, exemption
-reasons, view gates, the command contract) stay hard regardless. Flip the gate
-to required by setting `E2E_COVERAGE_GATE_ENFORCE=1` in the CI step once the
-baseline holds steady on develop.
+reasons, view gates, the command contract) stay hard regardless.
 
 ### Run
 

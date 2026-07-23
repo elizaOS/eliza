@@ -309,3 +309,61 @@ def test_cli_empty_agents_returns_one(isolated_agent_root):
     agent_install, _ = isolated_agent_root
     rc = agent_install.cli(["--agents", "  ,  "])
     assert rc == 1
+
+
+def test_clone_source_supports_commit_sha_refs(isolated_agent_root, tmp_path):
+    """A 40-hex ref must clone the default branch, then fetch+checkout the sha
+    (git clone -b only accepts branch/tag names)."""
+    agent_install, _ = isolated_agent_root
+    sha = "d36413211449057c28aaaab52a2be5133bc59ef7"
+    repo_dir = tmp_path / "clone-target"
+    commands: list[list[str]] = []
+
+    def fake_run(cmd, *args, **kwargs):
+        commands.append(list(cmd))
+        if cmd[:2] == ["git", "clone"]:
+            repo_dir.mkdir(parents=True, exist_ok=True)
+        if cmd[-2:] == ["rev-parse", "HEAD"]:
+            return _completed(stdout=f"{sha}\n")
+        return _completed()
+
+    with mock.patch.object(subprocess, "run", side_effect=fake_run):
+        head = agent_install._clone_or_update_source(
+            repo_dir=repo_dir,
+            git_url="https://example.invalid/repo.git",
+            ref=sha,
+            force=False,
+            context="sha-clone-test",
+        )
+
+    assert head == sha
+    clone_cmd = next(c for c in commands if c[:2] == ["git", "clone"])
+    assert "-b" not in clone_cmd
+    assert any(c[:2] == ["git", "fetch"] and sha in c for c in commands)
+    assert any(c[:2] == ["git", "checkout"] and "FETCH_HEAD" in c for c in commands)
+
+
+def test_clone_source_branch_refs_still_use_dash_b(isolated_agent_root, tmp_path):
+    agent_install, _ = isolated_agent_root
+    repo_dir = tmp_path / "clone-branch-target"
+    commands: list[list[str]] = []
+
+    def fake_run(cmd, *args, **kwargs):
+        commands.append(list(cmd))
+        if cmd[:2] == ["git", "clone"]:
+            repo_dir.mkdir(parents=True, exist_ok=True)
+        if cmd[-2:] == ["rev-parse", "HEAD"]:
+            return _completed(stdout="abc123def4567\n")
+        return _completed()
+
+    with mock.patch.object(subprocess, "run", side_effect=fake_run):
+        agent_install._clone_or_update_source(
+            repo_dir=repo_dir,
+            git_url="https://example.invalid/repo.git",
+            ref="main",
+            force=False,
+            context="branch-clone-test",
+        )
+
+    clone_cmd = next(c for c in commands if c[:2] == ["git", "clone"])
+    assert "-b" in clone_cmd and "main" in clone_cmd
