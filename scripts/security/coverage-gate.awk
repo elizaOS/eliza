@@ -138,8 +138,24 @@ END {
   if (fail && ENVIRON["COVERAGE_GATE_ENFORCE"] == "1") {
     if (missing_count > 0) {
       print "coverage gate FAILED (changed source missing from LCOV)"
+      print ""
+      print "How to fix: a MISSING file was changed by this PR but no changed unit"
+      print "test executed a single line of it. Add or update a Bun/Vitest unit test"
+      print "that imports and exercises the file (the gate only runs tests CHANGED in"
+      print "this PR — pre-existing passing tests do not count). If coverage"
+      print "collection genuinely cannot instrument the file, see"
+      print "scripts/security/coverage-lcov-excluded.txt (reviewed manifest)."
     } else {
       print "coverage gate FAILED (enforcement enabled)"
+      print ""
+      printf "How to fix: every BELOW file needs >=%d%% of its lines executed by the\n", threshold
+      print "unit tests CHANGED in this PR. Extend the changed test file(s) to cover"
+      print "the untested branches of each BELOW file; per-file percentage is the"
+      print "BEST single lane, and complementary hits within the Bun lane are"
+      print "union-merged, so splitting cases across changed test files also works."
+      print "Reproduce locally: run the changed test with"
+      print "  bun test <changed-test> --coverage --coverage-reporter=lcov"
+      print "and inspect the LCOV record for the BELOW file."
     }
     exit 1
   }

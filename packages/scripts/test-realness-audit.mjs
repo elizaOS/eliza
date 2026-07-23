@@ -624,7 +624,7 @@ export function collectDiffScopedFailures(regressions) {
 export function collectDiffScopedGateFailures(diffScoped) {
   if (diffScoped.skipped) {
     return [
-      `diff-scoped ratchet could not run: ${diffScoped.reason}. Ensure CI fetches origin/develop before running --check.`,
+      `diff-scoped ratchet could not run: ${diffScoped.reason}. Ensure CI fetches the PR base branch (GITHUB_BASE_REF, falling back to origin/develop) before running --check.`,
     ];
   }
   return diffScoped.failures;
@@ -810,8 +810,22 @@ function git(repoRoot, argv, { allowFailure = false } = {}) {
   }
 }
 
-function resolveBaseRef(repoRoot) {
-  const candidates = ["origin/develop", "develop"];
+export function resolveBaseRef(repoRoot, env = process.env) {
+  // The PR's ACTUAL base branch comes first (#16908): GitHub Actions exports
+  // GITHUB_BASE_REF on pull_request events. Hardcoding origin/develop made a
+  // promotion PR to main diff against develop, "changing" every develop-side
+  // test and producing false regression verdicts no promotion PR could avoid.
+  // Same audit semantics, right comparison base — develop stays the fallback
+  // for local runs and push events where GITHUB_BASE_REF is empty.
+  const baseBranch = String(env.GITHUB_BASE_REF ?? "").trim();
+  // When the event declares a base branch, ONLY that branch is a valid
+  // comparison base — falling back to develop would silently reintroduce the
+  // wrong-base diff. An unresolvable declared base returns null, which the
+  // --check path reports as an explicit fetch problem rather than a bogus
+  // regression list.
+  const candidates = baseBranch
+    ? [`origin/${baseBranch}`, baseBranch]
+    : ["origin/develop", "develop"];
   for (const ref of candidates) {
     if (
       git(repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
@@ -856,7 +870,7 @@ function collectBaseFindingsForChangedFiles(repoRoot, base, files) {
 }
 
 function diffScopedCheck(result, repoRoot) {
-  const baseRef = resolveBaseRef(repoRoot);
+  const baseRef = resolveBaseRef(repoRoot, process.env);
   if (!baseRef) {
     return {
       skipped: true,
