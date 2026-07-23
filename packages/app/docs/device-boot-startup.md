@@ -203,7 +203,7 @@ bun run --cwd packages/app trace:startup --out /tmp/startup-trace.json
 
 # Full boot to a usable agent (needs a reachable backend):
 bun run --cwd packages/app trace:startup --wait-ready --runs 2 \
-  --out .github/issue-evidence/9565-startup-trace.json
+  --out test-results/evidence/9565-startup-trace.json
 ```
 
 `--runs 2` captures cold + warm. The harness
@@ -217,17 +217,17 @@ trace those paths.
 
 | Path | Capturable here | Notes |
 |---|---|---|
-| Web / PWA (remote) | ✅ harness | repeatable in CI behind a dev server; M4 Max Vite-dev baseline captured in `.github/issue-evidence/9565-startup-readiness/desktop-web-renderer-trace-m4max.json` |
+| Web / PWA (remote) | ✅ harness | repeatable in CI behind a dev server; M4 Max Vite-dev baseline captured for #9565 (summarized below) |
 | Desktop Electrobun renderer | ✅ harness (`--url`) | same renderer trace inside the WebView; use `--url` against the Electrobun renderer |
 | Android / iOS local | device-only | renderer trace identical; needs a real device/sim + the `--url` device tunnel |
 | iOS cloud | device-only | remote target; stops at `coordinator:ready` with no local boot |
 
-### Checked-in baseline: M4 Max desktop web renderer
+### Baseline: M4 Max desktop web renderer
 
-Evidence lives in
-`.github/issue-evidence/9565-startup-readiness/desktop-web-renderer-trace-m4max.json`
-with a short index at
-`.github/issue-evidence/9565-startup-readiness/README.md`.
+The raw trace JSON (`desktop-web-renderer-trace-m4max.json`) was captured for
+issue #9565; the committed `.github/issue-evidence/` bundle is retired
+(evidence now attaches inline on the issue/PR), so the numbers that matter are
+summarized in the table below.
 
 Captured on 2026-06-24 local / 2026-06-25 UTC from `bun run --cwd packages/app
 trace:startup -- --runs 2` against Vite dev on `http://localhost:2138`.
