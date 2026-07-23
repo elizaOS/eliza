@@ -64,6 +64,8 @@ export function verifyEvidence(shard, root = repoRoot) {
     path.join(shard.runDir, "matrix.json"),
     path.join(shard.runDir, "viewer/index.html"),
     path.join(shard.runDir, "native.jsonl"),
+    path.join(shard.runDir, "native.manifest.json"),
+    path.join(shard.runDir, "native.privacy-attestation.json"),
     path.join(shard.runDir, "runner.log"),
   ];
   const missing = required.filter(

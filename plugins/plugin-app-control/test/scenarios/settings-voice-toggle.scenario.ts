@@ -165,7 +165,7 @@ export default scenario({
 		{
 			kind: "message",
 			name: "user-turns-on-continuous-voice",
-			text: "Turn on continuous voice chat so it's always on.",
+			text: "In this Eliza app's voice settings, turn continuous chat on in always-on mode.",
 			expectedActions: ["SETTINGS"],
 			assertTurn: expectSettingsSuccess,
 		},

@@ -97,7 +97,13 @@ export function createLiveScenarioPlan(options = {}) {
     args.push("--export-native", exportNativePath);
   }
   args.push(...argv);
-  const filter = (env.SCENARIO_FILTER ?? "").trim();
+  const filterInput = (env.SCENARIO_FILTER ?? "").trim();
+  const shard = (env.SCENARIO_SHARD ?? "").trim();
+  const shardPrefix = shard.length > 0 ? `${shard}:` : "";
+  const filter =
+    shardPrefix.length > 0 && filterInput.startsWith(shardPrefix)
+      ? filterInput.slice(shardPrefix.length).trim()
+      : filterInput;
   if (filter.length > 0) args.push("--scenario", filter);
 
   const judgeThreshold = env.LIFEOPS_JUDGE_THRESHOLD ?? "0.8";

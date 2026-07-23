@@ -93,14 +93,24 @@ test("pins an authoritative, bounded shard catalog", () => {
     "lifeops-connectors",
     "plugin-health",
     "app-control",
+    "scenario-runner-view-chat",
   ]);
   expect(shard.artifactContract).toEqual([
     "report",
     "matrix",
     "viewer",
     "native-jsonl",
+    "native-manifest",
+    "privacy-attestation",
     "logs",
   ]);
+  const viewChatShard = manifest.shards.find(
+    (entry: { id: string }) => entry.id === "scenario-runner-view-chat",
+  );
+  expect(viewChatShard).toMatchObject({
+    root: "packages/scenario-runner/test/scenarios",
+    scenarioIds: ["live-document-delete"],
+  });
 });
 
 test("emits typed prerequisite outcomes without exposing secret values", () => {
@@ -147,6 +157,8 @@ test("fails evidence verification when any contracted artifact is absent", () =>
       `${shard.runDir}/matrix.json`,
       `${shard.runDir}/viewer/index.html`,
       `${shard.runDir}/native.jsonl`,
+      `${shard.runDir}/native.manifest.json`,
+      `${shard.runDir}/native.privacy-attestation.json`,
       `${shard.runDir}/runner.log`,
     ]) {
       const target = path.join(tempRoot, relative);
@@ -157,7 +169,7 @@ test("fails evidence verification when any contracted artifact is absent", () =>
       status: "evidence_complete",
       missing: [],
     });
-    rmSync(path.join(tempRoot, shard.runDir, "native.jsonl"));
+    rmSync(path.join(tempRoot, shard.runDir, "native.manifest.json"));
     expect(verifyEvidence(shard, tempRoot).status).toBe("evidence_incomplete");
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
@@ -166,12 +178,10 @@ test("fails evidence verification when any contracted artifact is absent", () =>
 
 test("keeps shard failures non-short-circuiting and enforces one aggregate result", () => {
   const workflow = readFileSync(workflowPath, "utf8");
-  expect(workflow.match(/continue-on-error: true/g)).toHaveLength(4);
+  expect(workflow.match(/continue-on-error: true/g)).toHaveLength(5);
   expect(workflow).toContain("Enforce aggregate shard result");
   expect(workflow).toContain("if-no-files-found: error");
-  expect(workflow).toContain(
-    "live-scenario-contract.mjs verify lifeops-connectors",
-  );
+  expect(workflow).toContain('live-scenario-contract.mjs verify "$shard"');
 });
 
 test("builds the dist-exported runtime packages before the scenario CLI starts", () => {
@@ -194,12 +204,24 @@ test("runs every live scenario root against workspace source exports", () => {
   const sourceConditionEntries = [
     ...workflow.matchAll(/NODE_OPTIONS: "--conditions=eliza-source"/g),
   ];
-  expect(sourceConditionEntries).toHaveLength(3);
-  expect(
-    workflow.match(
-      /if: \$\{\{ !cancelled\(\) && steps\.build\.outcome == 'success' && !inputs\.scenario_filter \}\}/g,
-    ),
-  ).toHaveLength(2);
+  expect(sourceConditionEntries).toHaveLength(4);
+  for (const shard of [
+    "lifeops-connectors",
+    "plugin-health",
+    "app-control",
+    "scenario-runner-view-chat",
+  ]) {
+    expect(workflow).toContain(`steps.selection.outputs.shard == '${shard}'`);
+    expect(workflow).toContain(`SCENARIO_SHARD: ${shard}`);
+  }
+  expect(workflow).toContain('app-control:*) selected="app-control"');
+  expect(workflow).toContain(
+    "SCENARIO_FILTER: $" +
+      "{{ inputs.scenario_filter || 'live-document-delete' }}",
+  );
+  expect(workflow).toContain(
+    "scenario_filter requires one named scenario_shard; 'all' is ambiguous",
+  );
 });
 
 test("includes the dynamically loaded app manager in the agent build graph", () => {
@@ -305,6 +327,22 @@ test("builds the native trajectory export into the child invocation by default",
     "orchestrator.origin-routing-live",
   ]);
   expect(plan.childEnv.LIFEOPS_LIVE_JUDGE_MIN_SCORE).toBe("0.8");
+});
+
+test("accepts a backward-compatible shard-prefixed manual filter", () => {
+  const plan = createLiveScenarioPlan({
+    repoRoot: "/repo",
+    env: {
+      ELIZA_LIVE_TEST: "1",
+      SCENARIO_SHARD: "app-control",
+      SCENARIO_FILTER: "app-control:settings-voice-toggle",
+    },
+    argv: [],
+    existsSync: () => true,
+    mkdirSync: () => undefined,
+  });
+
+  expect(plan.args.slice(-2)).toEqual(["--scenario", "settings-voice-toggle"]);
 });
 
 test("fails configuration before spawn when an intentional skip has no reason", async () => {
