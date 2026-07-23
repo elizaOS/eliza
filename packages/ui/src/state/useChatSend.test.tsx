@@ -1420,6 +1420,172 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
     mocks.client.renameConversation.mockResolvedValue(undefined);
   });
 
+  it("paints two accepted user turns immediately, then drains each matching assistant placeholder FIFO exactly once", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _conversationId: string,
+        text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        const response = `reply:${text}`;
+        onToken(response, response);
+        return { text: response, completed: true };
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    act(() => dispatchHandoffPhase("migrating"));
+
+    let firstSend!: Promise<void>;
+    let secondSend!: Promise<void>;
+    await act(async () => {
+      firstSend = result.current.sendChatText("first", {
+        conversationId: "conv-1",
+      });
+      secondSend = result.current.sendChatText("second", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+
+    const queuedUsers = deps.conversationMessagesRef.current;
+    expect(queuedUsers.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: "user", text: "first" },
+      { role: "user", text: "second" },
+    ]);
+    expect(new Set(queuedUsers.map(({ id }) => id)).size).toBe(2);
+    expect(deps.setServerTurnStatus).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    const assistantIds = queuedUsers.map(
+      ({ id }) => `temp-resp-${id.slice("temp-".length)}`,
+    );
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    await act(async () => {
+      dispatchHandoffPhase("switched");
+      await Promise.all([firstSend, secondSend]);
+    });
+
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls.map(
+        ([, text]) => text,
+      ),
+    ).toEqual(["first", "second"]);
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(2);
+    expect(
+      assistantIds.map((id) => {
+        const message = deps.conversationMessagesRef.current.find(
+          (candidate) => candidate.id === id,
+        );
+        return { id: message?.id, text: message?.text };
+      }),
+    ).toEqual([
+      { id: assistantIds[0], text: "reply:first" },
+      { id: assistantIds[1], text: "reply:second" },
+    ]);
+  });
+
+  it("keeps prefixed commands drain-painted instead of flashing a user-only queued row", async () => {
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    act(() => dispatchHandoffPhase("migrating"));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("$ unsupported", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+
+    expect(deps.conversationMessagesRef.current).toEqual([]);
+
+    await act(async () => {
+      dispatchHandoffPhase("switched");
+      await sendPromise;
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.map(({ role, text }) => ({
+        role,
+        text,
+      })),
+    ).toEqual([
+      { role: "user", text: "$ unsupported" },
+      {
+        role: "assistant",
+        text: "Use bare `$` only. `$ <text>` is not supported.",
+      },
+    ]);
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("cancels only the queued turn, restores its text and image, and leaves the active user row intact", async () => {
+    const activeStarted = deferred();
+    mockStreamingUntilAbort(activeStarted);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+    const queuedImage: ImageAttachment = {
+      data: "AAAA",
+      mimeType: "image/png",
+      name: "queued.png",
+    };
+
+    let activeSend!: Promise<void>;
+    await act(async () => {
+      activeSend = result.current.sendChatText("active", {
+        conversationId: "conv-1",
+      });
+      await activeStarted.promise;
+    });
+
+    let queuedSend!: Promise<void>;
+    await act(async () => {
+      queuedSend = result.current.sendChatText("queued", {
+        conversationId: "conv-1",
+        images: [queuedImage],
+      });
+      await Promise.resolve();
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.map(({ role, text }) => ({
+        role,
+        text,
+      })),
+    ).toEqual([
+      { role: "user", text: "active" },
+      { role: "assistant", text: "" },
+      { role: "user", text: "queued" },
+    ]);
+
+    await act(async () => {
+      result.current.handleChatStop();
+      await Promise.all([activeSend, queuedSend]);
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.map(({ role, text }) => ({
+        role,
+        text,
+      })),
+    ).toEqual([{ role: "user", text: "active" }]);
+    expect(deps.setChatInput).toHaveBeenCalledWith("queued");
+    expect(deps.setChatPendingImages).toHaveBeenCalledWith([queuedImage]);
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+  });
+
   it("queues a message sent during the handoff window and delivers it to the dedicated agent after switch (not lost, not sent to shared)", async () => {
     // The bug this proves we fixed: while the handoff is migrating the user is
     // still on the SHARED agent, whose transcript was already snapshotted. The
@@ -2896,6 +3062,9 @@ describe("useChatSend E2 auto-retry on reconnect", () => {
       // Let the first attempt fail + arm the reconnect wait.
       await vi.advanceTimersByTimeAsync(0);
     });
+    const optimisticIds = deps.conversationMessagesRef.current.map(
+      ({ id }) => id,
+    );
 
     // During the wait, NO manual resend notice yet — the turn still looks like
     // it's sending.
@@ -2924,6 +3093,9 @@ describe("useChatSend E2 auto-retry on reconnect", () => {
     expect(
       new Set(deps.conversationMessagesRef.current.map(({ id }) => id)).size,
     ).toBe(2);
+    expect(deps.conversationMessagesRef.current.map(({ id }) => id)).toEqual(
+      optimisticIds,
+    );
     // The retry succeeded — no error notice ever surfaced.
     expect(deps.setActionNotice).not.toHaveBeenCalled();
   });

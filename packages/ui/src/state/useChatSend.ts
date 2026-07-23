@@ -617,10 +617,9 @@ export interface QueuedChatSend {
   /**
    * Idempotency key for this logical turn. Minted once on the first attempt and
    * reused verbatim on the single auto-retry so a request that actually landed
-   * server-side during a blip is de-duped instead of double-delivered. Absent
-   * on a fresh enqueue (the drain mints it); present on the retry re-enqueue.
+   * server-side during a blip is de-duped instead of double-delivered.
    */
-  clientMessageId?: string;
+  clientMessageId: string;
   /**
    * True on the re-enqueued turn AFTER its one auto-retry-on-reconnect has been
    * spent — the guard that makes the auto-retry fire exactly once (never a
@@ -629,13 +628,67 @@ export interface QueuedChatSend {
    */
   autoRetried?: boolean;
   /** Stable local row identities reused when a transport retry replays a turn. */
-  optimisticTurn?: {
+  optimisticTurn: {
     userMsgId: string;
     assistantMsgId: string;
     timestamp: number;
   };
   resolve: () => void;
   reject: (error: unknown) => void;
+}
+
+/**
+ * Commands render only after the drain resolves whether they are local,
+ * rewritten, or regular chat. Painting them at enqueue would briefly expose a
+ * user-only row before the command result replaces it.
+ */
+function isDrainPaintedCommand(rawInput: string): boolean {
+  const prefix = rawInput.trimStart().charAt(0);
+  return prefix === "/" || prefix === "#" || prefix === "$";
+}
+
+function createOptimisticTurn(
+  clientMessageId: string,
+): QueuedChatSend["optimisticTurn"] {
+  return {
+    userMsgId: `temp-${clientMessageId}`,
+    assistantMsgId: `temp-resp-${clientMessageId}`,
+    timestamp: Date.now(),
+  };
+}
+
+function createOptimisticUserMessage(
+  turn: Pick<QueuedChatSend, "rawInput" | "images" | "optimisticTurn">,
+): ConversationMessage {
+  const { userMsgId, timestamp } = turn.optimisticTurn;
+  const rawText = turn.rawInput.trim();
+  const attachments = turn.images?.length
+    ? turn.images.map((image, index) => ({
+        id: `${userMsgId}-img-${index}`,
+        url: `data:${image.mimeType};base64,${image.data}`,
+        contentType: optimisticAttachmentKind(image.mimeType),
+        ...(image.name ? { title: image.name } : {}),
+        mimeType: image.mimeType,
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+        ...(image.transcriptId ? { transcriptId: image.transcriptId } : {}),
+        ...(image.thumbnail
+          ? {
+              thumbnailUrl: `data:${image.thumbnail.mimeType};base64,${image.thumbnail.data}`,
+            }
+          : {}),
+      }))
+    : undefined;
+
+  return {
+    id: userMsgId,
+    role: "user",
+    text:
+      turn.images?.length && !rawText
+        ? "Please review the attached image."
+        : rawText,
+    timestamp,
+    ...(attachments ? { attachments } : {}),
+  };
 }
 
 // ── Deps interface ──────────────────────────────────────────────────
@@ -1138,30 +1191,49 @@ export function useChatSend(deps: UseChatSendDeps) {
   const resolveQueuedChatSends = useCallback((): string => {
     const queued = chatSendQueueRef.current.splice(0);
     if (queued.length === 0) return "";
+    const cancelledMessageIds = new Set(
+      queued.flatMap((turn) => [
+        turn.optimisticTurn.userMsgId,
+        turn.optimisticTurn.assistantMsgId,
+      ]),
+    );
+    setConversationMessages((prev) =>
+      prev.filter((message) => !cancelledMessageIds.has(message.id)),
+    );
     for (const turn of queued) {
       turn.resolve();
     }
-    // These turns were accepted ("send another" while a reply streamed), the
-    // composer was cleared at enqueue, and their optimistic bubble only paints
-    // at drain — so an interrupt here (new chat / conversation switch) would
-    // otherwise vanish the user's words with no trace (#10700's "no message is
-    // lost" guarantee). Mirror the cold-open create-failure path: restore the
-    // text to the composer and say why. Returned so a caller that wipes the
-    // draft AFTER interrupting (new chat) can re-apply the restore.
+    // A queued turn already owns a visible user row, but has not reached the
+    // transport. Cancellation removes only those exact local identities, then
+    // restores their composer payload so stopping one pipeline never consumes a
+    // draft or attachment that the server did not receive.
     const restored = queued
       .map((turn) => turn.rawInput.trim())
       .filter((text) => text.length > 0)
       .join("\n");
+    const restoredImages = queued.flatMap((turn) => turn.images ?? []);
     if (restored) {
       setChatInput(restored);
+    }
+    if (restoredImages.length > 0) {
+      setChatPendingImages(restoredImages);
+    }
+    if (restored || restoredImages.length > 0) {
       setActionNotice(
-        "Your unsent message was restored to the input.",
+        restoredImages.length > 0
+          ? "Your unsent message and attachments were restored to the input."
+          : "Your unsent message was restored to the input.",
         "info",
         6_000,
       );
     }
     return restored;
-  }, [setActionNotice, setChatInput]);
+  }, [
+    setActionNotice,
+    setChatInput,
+    setChatPendingImages,
+    setConversationMessages,
+  ]);
 
   const interruptActiveChatPipeline = useCallback((): string => {
     const restoredQueuedText = resolveQueuedChatSends();
@@ -1544,12 +1616,7 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       const channelType = turn.channelType;
       const imagesToSend = turn.images;
-      // Mint the idempotency key ONCE per logical turn and reuse it across the
-      // single auto-retry (the re-enqueued turn carries it back in). A send
-      // that actually landed server-side during a blip is then de-duped by the
-      // server on the retry instead of double-delivered.
-      const clientMessageId =
-        turn.clientMessageId ?? generateChatClientMessageId();
+      const clientMessageId = turn.clientMessageId;
       let controller: AbortController | null = null;
       let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
@@ -1579,43 +1646,14 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
       }
 
-      const optimisticTurn =
-        turn.optimisticTurn ??
-        ({
-          userMsgId: `temp-${clientMessageId}`,
-          assistantMsgId: `temp-resp-${clientMessageId}`,
-          timestamp: Date.now(),
-        } satisfies NonNullable<QueuedChatSend["optimisticTurn"]>);
+      const optimisticTurn = turn.optimisticTurn;
       const { userMsgId, assistantMsgId, timestamp: now } = optimisticTurn;
 
-      // Paint the accepted turn before conversation creation / room discovery.
-      // Those calls can take seconds on a cold cloud agent; clearing the composer
-      // first and waiting to add this row made the user's message look lost.
-      const optimisticAttachments = imagesToSend?.length
-        ? imagesToSend.map((img, i) => ({
-            id: `${userMsgId}-img-${i}`,
-            url: `data:${img.mimeType};base64,${img.data}`,
-            contentType: optimisticAttachmentKind(img.mimeType),
-            ...(img.name ? { title: img.name } : {}),
-            mimeType: img.mimeType,
-            source: MESSAGE_SOURCE_CLIENT_CHAT,
-            ...(img.transcriptId ? { transcriptId: img.transcriptId } : {}),
-            ...(img.thumbnail
-              ? {
-                  thumbnailUrl: `data:${img.thumbnail.mimeType};base64,${img.thumbnail.data}`,
-                }
-              : {}),
-          }))
-        : undefined;
-      const optimisticUserMessage: ConversationMessage = {
-        id: userMsgId,
-        role: "user",
-        text,
-        timestamp: now,
-        ...(optimisticAttachments
-          ? { attachments: optimisticAttachments }
-          : {}),
-      };
+      const optimisticUserMessage = createOptimisticUserMessage({
+        ...turn,
+        rawInput: text,
+      });
+      const optimisticAttachments = optimisticUserMessage.attachments;
       const optimisticAssistantMessage: ConversationMessage = {
         id: assistantMsgId,
         role: "assistant",
@@ -1625,6 +1663,10 @@ export function useChatSend(deps: UseChatSendDeps) {
       const optimisticOwnerConversationId =
         turn.conversationId ?? activeConversationIdRef.current ?? null;
       setCompanionMessageCutoffTs(now);
+      // The user row is painted at enqueue. Drain owns the assistant placeholder
+      // because only now do prefixed commands resolve to local output, rewritten
+      // chat, or a real model turn. The idempotent merge also covers retries and
+      // cold-start sends accepted before this version painted at enqueue.
       setConversationMessagesForConversation(
         optimisticOwnerConversationId,
         (prev: ConversationMessage[]) => {
@@ -2381,24 +2423,45 @@ export function useChatSend(deps: UseChatSendDeps) {
         setChatReplyTarget(null);
       }
 
+      const clientMessageId = generateChatClientMessageId();
+      const optimisticTurn = createOptimisticTurn(clientMessageId);
+      const conversationId =
+        options?.conversationId ?? activeConversationIdRef.current ?? null;
+      const queuedTurn = {
+        rawInput,
+        channelType: options?.channelType ?? "DM",
+        // Pin the target conversation at ENQUEUE, not at drain (#10700). The
+        // shell send() path (voice converse turns + tapped suggestions) omits
+        // conversationId, so without this the queued turn resolved its target
+        // LATE in runQueuedChatSend as `activeConversationIdRef.current` — and
+        // a new-chat between enqueue and drain rerouted it to the wrong (new)
+        // conversation. Snapshot the active conversation now so the turn lands
+        // where it was sent. When there is NO active conversation (cold open),
+        // stay null and let the drain-time create-or-join resolve it, so a
+        // rapid second cold-open turn still joins the one created conversation
+        // rather than spawning its own.
+        conversationId,
+        images: options?.images,
+        metadata: buildChatViewMetadata(tab, metadata),
+        clientMessageId,
+        optimisticTurn,
+      } satisfies Omit<QueuedChatSend, "resolve" | "reject">;
+
+      if (!isDrainPaintedCommand(rawInput)) {
+        const optimisticUserMessage = createOptimisticUserMessage(queuedTurn);
+        setCompanionMessageCutoffTs(optimisticTurn.timestamp);
+        setConversationMessagesForConversation(
+          conversationId,
+          (prev: ConversationMessage[]) =>
+            prev.some((message) => message.id === optimisticTurn.userMsgId)
+              ? prev
+              : [...prev, optimisticUserMessage],
+        );
+      }
+
       await new Promise<void>((resolve, reject) => {
         chatSendQueueRef.current.push({
-          rawInput,
-          channelType: options?.channelType ?? "DM",
-          // Pin the target conversation at ENQUEUE, not at drain (#10700). The
-          // shell send() path (voice converse turns + tapped suggestions) omits
-          // conversationId, so without this the queued turn resolved its target
-          // LATE in runQueuedChatSend as `activeConversationIdRef.current` — and
-          // a new-chat between enqueue and drain rerouted it to the wrong (new)
-          // conversation. Snapshot the active conversation now so the turn lands
-          // where it was sent. When there is NO active conversation (cold open),
-          // stay null and let the drain-time create-or-join resolve it, so a
-          // rapid second cold-open turn still joins the one created conversation
-          // rather than spawning its own.
-          conversationId:
-            options?.conversationId ?? activeConversationIdRef.current ?? null,
-          images: options?.images,
-          metadata: buildChatViewMetadata(tab, metadata),
+          ...queuedTurn,
           resolve,
           reject,
         });
@@ -2406,7 +2469,14 @@ export function useChatSend(deps: UseChatSendDeps) {
         void flushQueuedChatSends();
       });
     },
-    [flushQueuedChatSends, setChatSending, setChatReplyTarget, tab],
+    [
+      flushQueuedChatSends,
+      setChatReplyTarget,
+      setChatSending,
+      setCompanionMessageCutoffTs,
+      setConversationMessagesForConversation,
+      tab,
+    ],
   );
 
   const handleChatSend = useCallback(
