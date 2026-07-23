@@ -64,3 +64,17 @@ packages/agent/src/index.ts
 # assert the classifier's behavior directly. Delete this entry if the script is
 # ever refactored so its logic lives in a Vitest-instrumented module.
 packages/scripts/audit-ui-determinism.mjs
+
+# Dev-process orchestrators (Node-hosted Vite launch, #16892): importing either
+# file immediately kills stale port owners, reserves ports, and spawns real
+# long-lived dev servers (API + Vite) as top-level side effects, so no
+# Vitest/Bun suite can ever import them and they structurally cannot appear in
+# the changed-files LCOV report — same class as
+# packages/scripts/audit-ui-determinism.mjs above. The launch-command logic
+# they share is factored into packages/app-core/scripts/lib/dev-ui-vite.mjs,
+# which IS instrumented (100% in this stack's changed-file LCOV) via
+# packages/app/scripts/lib/dev-vite-command.test.mjs. Delete these entries if
+# the orchestrators are ever refactored so their remaining logic lives in an
+# importable, test-instrumented module.
+packages/app-core/scripts/dev-ui.mjs
+packages/app/scripts/dev-shared.mjs
