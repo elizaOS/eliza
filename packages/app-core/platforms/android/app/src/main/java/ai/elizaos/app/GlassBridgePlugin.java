@@ -14,6 +14,10 @@
  * the page keeps that region transparent so the native material shows
  * through. On first attach the WebView background is set transparent —
  * without that Android paints an opaque backing and the panel is invisible.
+ * {@code setBackdrop} hosts the wallpaper (pre-downsampled bytes piped from
+ * the page — never a URL, never a network fetch, never cookies) at container
+ * index 0 below every panel; {@code clearBackdrop} removes it and restores
+ * WebView opacity. The web side owns WHEN the wallpaper is hosted natively.
  *
  * <p>Android has no system glass material, so the panel is built from the
  * Material dynamic palette: a rounded neutral-surface gradient with a
@@ -28,15 +32,21 @@ package ai.elizaos.app;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.util.Base64;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
+import android.widget.ImageView;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.Logger;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -44,6 +54,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** Native material regions behind the WebView; see the file header. */
 @CapacitorPlugin(name = "GlassBridge")
@@ -60,6 +72,17 @@ public class GlassBridgePlugin extends Plugin {
     private final Map<String, View> regions = new HashMap<>();
     private float groupingSpacing = 0f;
     private boolean webViewMadeTransparent = false;
+    /** WebView background captured before the first transparent flip, so
+     *  restoring opacity restores the shell's real backing, not a guess. */
+    private Drawable originalWebViewBackground;
+    /** Wallpaper layer hosted below the WebView (see setBackdrop). Main-thread
+     *  only, like {@code regions}. */
+    private ImageView backdropView;
+    private View.OnLayoutChangeListener backdropLayoutListener;
+    /** Monotonic guard: a slower decode from an earlier setBackdrop call must
+     *  never install over a newer one. Main-thread only. */
+    private int backdropGeneration = 0;
+    private final ExecutorService backdropDecoder = Executors.newSingleThreadExecutor();
 
     private static boolean glassSupported() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
@@ -70,6 +93,78 @@ public class GlassBridgePlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("available", glassSupported());
         call.resolve(result);
+    }
+
+    /**
+     * Host the wallpaper below the WebView so the glass has real pixels to
+     * sample. The image arrives as base64 bytes piped from the page — the web
+     * side already loaded, downsampled, and flattened it — so this method
+     * never touches the network, cookies, or assets: no credential can leave
+     * the device and every URL-shaped concern stays in the renderer. Resolves
+     * {@code applied:true} only after decode + install; the web keeps its DOM
+     * wallpaper painted until that acknowledgement, so a failure can never
+     * expose the activity window as a black region.
+     */
+    @PluginMethod
+    public void setBackdrop(PluginCall call) {
+        if (!glassSupported()) {
+            resolveApplied(call, false);
+            return;
+        }
+        String imageBase64 = call.getString("imageBase64");
+        Integer parsedColor = parseCssHexColor(call.getString("color"));
+        int color = parsedColor != null ? parsedColor : Color.BLACK;
+        Activity activity = getActivity();
+        if (activity == null) {
+            resolveApplied(call, false);
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            int generation = ++backdropGeneration;
+            if (imageBase64 == null) {
+                installBackdrop(call, generation, null, color);
+                return;
+            }
+            backdropDecoder.execute(() -> {
+                Bitmap bitmap = decodeBackdrop(imageBase64);
+                activity.runOnUiThread(() -> {
+                    if (bitmap == null) {
+                        Logger.warn("GlassBridge", "setBackdrop: base64 image decode failed");
+                        resolveApplied(call, false);
+                        return;
+                    }
+                    installBackdrop(call, generation, bitmap, color);
+                });
+            });
+        });
+    }
+
+    /**
+     * Remove the hosted wallpaper and, when nothing below the WebView needs
+     * transparency anymore, restore the WebView's opaque backing so the
+     * compositor regains its opaque-layer fast path.
+     */
+    @PluginMethod
+    public void clearBackdrop(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.resolve();
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            backdropGeneration++;
+            WebView webView = bridge.getWebView();
+            if (backdropLayoutListener != null && webView != null) {
+                webView.removeOnLayoutChangeListener(backdropLayoutListener);
+            }
+            backdropLayoutListener = null;
+            if (backdropView != null && backdropView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) backdropView.getParent()).removeView(backdropView);
+            }
+            backdropView = null;
+            restoreWebViewOpacityIfUnneeded(webView);
+            call.resolve();
+        });
     }
 
     @PluginMethod
@@ -210,6 +305,7 @@ public class GlassBridgePlugin extends Plugin {
             if (panel != null && panel.getParent() instanceof ViewGroup) {
                 ((ViewGroup) panel.getParent()).removeView(panel);
             }
+            restoreWebViewOpacityIfUnneeded(bridge.getWebView());
             call.resolve();
         });
     }
@@ -317,7 +413,93 @@ public class GlassBridgePlugin extends Plugin {
     private void makeWebViewTransparentOnce(WebView webView) {
         if (webViewMadeTransparent) return;
         webViewMadeTransparent = true;
+        originalWebViewBackground = webView.getBackground();
         webView.setBackgroundColor(Color.TRANSPARENT);
+    }
+
+    /**
+     * Inverse of {@link #makeWebViewTransparentOnce}, taken only when no glass
+     * region and no backdrop remain: a transparent WebView costs the
+     * compositor its opaque-layer optimization on every frame, so the shell
+     * should not keep paying that while the page is fully DOM-painted.
+     */
+    private void restoreWebViewOpacityIfUnneeded(WebView webView) {
+        if (!webViewMadeTransparent || !regions.isEmpty()
+                || backdropView != null || webView == null) {
+            return;
+        }
+        webViewMadeTransparent = false;
+        if (originalWebViewBackground != null) {
+            webView.setBackground(originalWebViewBackground);
+        } else {
+            webView.setBackgroundColor(Color.WHITE);
+        }
+    }
+
+    /** Install/replace the wallpaper layer at container index 0 — below every
+     *  glass region and the WebView. A stale generation resolves
+     *  {@code applied:false} so the web side keeps its DOM paint. */
+    private void installBackdrop(PluginCall call, int generation, Bitmap bitmap, int color) {
+        if (generation != backdropGeneration) {
+            resolveApplied(call, false);
+            return;
+        }
+        WebView webView = bridge.getWebView();
+        ViewGroup container = webView != null ? (ViewGroup) webView.getParent() : null;
+        Activity activity = getActivity();
+        if (webView == null || container == null || activity == null) {
+            resolveApplied(call, false);
+            return;
+        }
+        makeWebViewTransparentOnce(webView);
+        ImageView next = new ImageView(activity);
+        next.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        next.setBackgroundColor(color);
+        next.setImageBitmap(bitmap);
+        next.setLayoutParams(new ViewGroup.LayoutParams(
+                webView.getWidth(), webView.getHeight()));
+        next.setX(webView.getX());
+        next.setY(webView.getY());
+        // Insert-then-remove keeps a wallpaper on screen during a replace.
+        container.addView(next, 0);
+        if (backdropLayoutListener != null) {
+            webView.removeOnLayoutChangeListener(backdropLayoutListener);
+        }
+        if (backdropView != null && backdropView.getParent() instanceof ViewGroup) {
+            ((ViewGroup) backdropView.getParent()).removeView(backdropView);
+        }
+        backdropView = next;
+        // Track WebView layout (rotation, keyboard, multi-window) so the
+        // wallpaper always spans exactly the WebView's box.
+        backdropLayoutListener = (view, left, top, right, bottom,
+                oldLeft, oldTop, oldRight, oldBottom) -> {
+            ViewGroup.LayoutParams layout = next.getLayoutParams();
+            layout.width = right - left;
+            layout.height = bottom - top;
+            next.setLayoutParams(layout);
+            next.setX(view.getX());
+            next.setY(view.getY());
+        };
+        webView.addOnLayoutChangeListener(backdropLayoutListener);
+        resolveApplied(call, true);
+    }
+
+    // error-policy:J3 untrusted Capacitor boundary — malformed base64 or
+    // non-image bytes produce an explicit null → the caller resolves
+    // {@code applied:false}; nothing installs a fake-valid wallpaper.
+    private static Bitmap decodeBackdrop(String imageBase64) {
+        try {
+            byte[] bytes = Base64.decode(imageBase64, Base64.DEFAULT);
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private static void resolveApplied(PluginCall call, boolean applied) {
+        JSObject result = new JSObject();
+        result.put("applied", applied);
+        call.resolve(result);
     }
 
     private static RectF toDevicePixels(RectF cssRect, float density) {
