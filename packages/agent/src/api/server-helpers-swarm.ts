@@ -26,7 +26,6 @@ import {
 import { sanitizeCompletionRelay } from "@elizaos/plugin-agent-orchestrator";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
-import { beginDelivery } from "./delivery-dedupe.ts";
 import type {
   CoordinationLLMResponse,
   PTYService,
@@ -136,8 +135,7 @@ export async function routeAutonomyTextToUser(
   // rephrased into the agent's voice before persist + broadcast so a user never
   // sees a templated proactive string. Ephemeral sources are already
   // model-composed relays of a sub-agent/coordinator's output, so they skip the
-  // gate; the gate fails open and returns the original text on any outage. The
-  // dedupe below keys on the FINAL delivered text so both delivery paths agree.
+  // gate; the gate fails open and returns the original text on any outage.
   let deliveredText = normalizedText;
   if (!isEphemeral) {
     const voiced = await ensureAgentVoice(
@@ -148,23 +146,6 @@ export async function routeAutonomyTextToUser(
     if (typeof voiced.text === "string" && voiced.text.trim().length > 0) {
       deliveredText = voiced.text.trim();
     }
-  }
-
-  // Cross-path delivery dedupe (Bug A): the same reply may also be delivered
-  // by the `client_chat` send handler (client-chat-sender.deliver). If this
-  // exact (roomId + text) was just delivered, suppress this relay copy instead
-  // of writing a second memory + broadcasting a second proactive-message. The
-  // reservation is only committed AFTER a successful persist, and released on
-  // failure, so a failed delivery never suppresses a retry. CRUCIALLY, only
-  // DURABLE (persisted) deliveries engage the guard: an ephemeral broadcast
-  // writes no memory, so it must NOT anchor the dedupe and suppress a later
-  // persistent sink of the same text (which would leave the user with a
-  // transient WS message that vanishes on reconnect/history reload).
-  const delivery = isEphemeral
-    ? undefined
-    : beginDelivery(state.deliveryDedupe, conv.roomId, deliveredText);
-  if (delivery?.kind === "duplicate") {
-    return;
   }
 
   const messageId = crypto.randomUUID() as UUID;
@@ -180,12 +161,7 @@ export async function routeAutonomyTextToUser(
         agentVoiced: true,
       },
     });
-    try {
-      await runtime.createMemory(agentMessage, "messages");
-    } catch (err) {
-      if (delivery?.kind === "deliver") delivery.reservation.release();
-      throw err;
-    }
+    await runtime.createMemory(agentMessage, "messages");
   }
   conv.updatedAt = new Date().toISOString();
 
@@ -201,7 +177,6 @@ export async function routeAutonomyTextToUser(
       source,
     },
   });
-  if (delivery?.kind === "deliver") delivery.reservation.commit();
 }
 
 // ---------------------------------------------------------------------------
@@ -329,16 +304,18 @@ export async function handleSwarmSynthesis(
       groupedPayload,
     );
     logger.info("[swarm-synthesis] Synthesis generated, routing to user");
-    await routeMessage(userText, "swarm_synthesis");
     const { roomId, replyToExternalMessageId } =
       selectConnectorFallback(groupedPayload);
-    await routeSynthesisToConnector(
+    const deliveredToOrigin = await routeSynthesisToConnector(
       runtime,
       userText,
       attachments,
       roomId,
       replyToExternalMessageId,
     );
+    if (!deliveredToOrigin) {
+      await routeMessage(userText, "swarm_synthesis");
+    }
   }
 }
 
@@ -749,39 +726,36 @@ async function routeSynthesisToConnector(
   attachments: Media[] = [],
   fallbackRoomId: string | null = null,
   replyToExternalMessageId: string | null = null,
-): Promise<void> {
+): Promise<boolean> {
   const coordinator = getCoordinatorFromRuntime(runtime);
   const sourceRoomId = coordinator?.sourceRoomId ?? fallbackRoomId;
-  if (!sourceRoomId) return;
-  try {
-    const room = await runtime.getRoom(sourceRoomId as UUID);
-    if (!room?.source) return;
-    await runtime.sendMessageToTarget(
-      {
-        source: room.source,
-        roomId: room.id,
-        channelId: room.channelId ?? room.id,
-        serverId: room.serverId,
-      } as Parameters<typeof runtime.sendMessageToTarget>[0],
-      {
-        text: resultText,
-        source: "swarm_synthesis",
-        // voice-policy:V3 swarm synthesis text is already composed by the model
-        // in the agent's voice; it must not be re-voiced (double-voicing risks
-        // truncating or altering the synthesized result's exact values).
-        agentVoiced: true,
-        ...(attachments.length > 0 ? { attachments } : {}),
-        ...(replyToExternalMessageId
-          ? { inReplyTo: replyToExternalMessageId }
-          : {}),
-      },
-    );
-    logger.info(
-      `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,
-    );
-  } catch (err) {
-    logger.debug(`[swarm-synthesis] Connector routing failed: ${err}`);
-  }
+  if (!sourceRoomId) return false;
+  const room = await runtime.getRoom(sourceRoomId as UUID);
+  if (!room?.source) return false;
+  await runtime.sendMessageToTarget(
+    {
+      source: room.source,
+      roomId: room.id,
+      channelId: room.channelId ?? room.id,
+      serverId: room.serverId,
+    } as Parameters<typeof runtime.sendMessageToTarget>[0],
+    {
+      text: resultText,
+      source: "swarm_synthesis",
+      // voice-policy:V3 swarm synthesis text is already composed by the model
+      // in the agent's voice; it must not be re-voiced (double-voicing risks
+      // truncating or altering the synthesized result's exact values).
+      agentVoiced: true,
+      ...(attachments.length > 0 ? { attachments } : {}),
+      ...(replyToExternalMessageId
+        ? { inReplyTo: replyToExternalMessageId }
+        : {}),
+    },
+  );
+  logger.info(
+    `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,
+  );
+  return true;
 }
 
 // ---------------------------------------------------------------------------
