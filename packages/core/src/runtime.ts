@@ -95,7 +95,10 @@ import {
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
 import { buildProviderAttributionsFromState } from "./runtime/trajectory-provider-attribution";
-import { TurnControllerRegistry } from "./runtime/turn-controller";
+import {
+	TurnAbortedError,
+	TurnControllerRegistry,
+} from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import {
 	CompositeEntityRecognizer,
@@ -4627,6 +4630,26 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 				}
 			}
+		}
+		// A designed turn abort (threadOps abort op, user "stop", client
+		// disconnect) cancels every in-flight provider at once. Those provider
+		// "failures" are a consequence of the abort, not a broken pipeline —
+		// surface the abort itself so the message boundary keeps its ack-and-stop
+		// contract instead of emitting a canned runtime-failure apology (#16939:
+		// a CHOICE "cancel" tap turned into "Something went wrong on my end").
+		if (
+			failedProviderData.length > 0 &&
+			providerSignal?.aborted &&
+			failedProviderData.every(
+				(record) => record.providerOutcome === "aborted",
+			)
+		) {
+			const reason = providerSignal.reason;
+			throw reason instanceof TurnAbortedError
+				? reason
+				: new TurnAbortedError(
+						reason instanceof Error ? reason.message : String(reason),
+					);
 		}
 		if (failedProviderData.length === 1) {
 			const failedProvider = failedProviderData[0];
