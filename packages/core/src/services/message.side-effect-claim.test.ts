@@ -1,24 +1,40 @@
 /**
  * Stage-1 fabricated side-effect guard: `replyClaimsCompletedSideEffect` shape
  * detection plus the `core.simple_completed_side_effect_claim` response-handler
- * evaluator's reroute-to-planner patch. Deterministic — the evaluator is driven
- * directly with fabricated message-handler results and a bare runtime carrying
- * a registered candidate backstop rule; no model, no DB.
+ * evaluator's reroute-to-planner patch. Runs against a REAL AgentRuntime
+ * (PGLite-backed, no mocks) so the backstop-rule registry and evaluator wiring
+ * are exercised on the production architecture; no live model.
  */
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stringToUuid } from "../index";
 import { registerCandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import type {
 	ResponseHandlerEvaluatorContext,
 	ResponseHandlerPatch,
 } from "../runtime/response-handler-evaluators";
+import {
+	createTestRuntime,
+	type TestRuntimeResult,
+} from "../testing/pglite-runtime";
 import type { MessageHandlerResult } from "../types/components";
-import type { IAgentRuntime } from "../types/runtime";
+import type { Memory } from "../types/memory";
+import type { State } from "../types/state";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	replyClaimsCompletedSideEffect,
 } from "./message";
 
 const CLAIM_EVALUATOR_NAME = "core.simple_completed_side_effect_claim";
+
+let testRuntime: TestRuntimeResult;
+
+beforeAll(async () => {
+	testRuntime = await createTestRuntime();
+}, 180_000);
+
+afterAll(async () => {
+	await testRuntime.cleanup();
+});
 
 function getClaimEvaluator() {
 	const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
@@ -40,12 +56,21 @@ function simpleReplyHandler(reply: string): MessageHandlerResult {
 
 function makeContext(
 	messageHandler: MessageHandlerResult,
-	runtime?: IAgentRuntime,
 ): ResponseHandlerEvaluatorContext {
+	const runtime = testRuntime.runtime;
+	const message: Memory = {
+		id: stringToUuid("side-effect-claim-test-message"),
+		entityId: stringToUuid("side-effect-claim-test-entity"),
+		agentId: runtime.agentId,
+		roomId: stringToUuid("side-effect-claim-test-room"),
+		content: { text: "help me not forget the bill", source: "test" },
+		createdAt: Date.now(),
+	};
+	const state: State = { values: {}, data: {}, text: "" };
 	return {
-		runtime: runtime ?? ({} as IAgentRuntime),
-		message: { content: { text: "help me not forget the bill" } } as never,
-		state: {} as never,
+		runtime,
+		message,
+		state,
 		messageHandler,
 		availableContexts: [],
 	};
@@ -112,17 +137,30 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 		expect(await evaluator.shouldRun(makeContext(nonSimple))).toBe(false);
 	});
 
+	// Ordered before the rule-registration case: the backstop registry is
+	// WeakMap-keyed on the shared real runtime, so this must observe the
+	// pre-registration state.
+	it("still reroutes (candidate-less) when no backstop rule matches", async () => {
+		const evaluator = getClaimEvaluator();
+		const patch = (await evaluator.evaluate(
+			makeContext(
+				simpleReplyHandler("Done — I've set two reminders for your bill."),
+			),
+		)) as ResponseHandlerPatch;
+		expect(patch.requiresTool).toBe(true);
+		expect(patch.addCandidateActions).toBeUndefined();
+		expect(patch.reply).toBe("On it.");
+	});
+
 	it("reroutes to the planner with backstop-rule candidates and an honest ack", async () => {
 		const evaluator = getClaimEvaluator();
-		const runtime = {} as IAgentRuntime;
-		registerCandidateActionBackstopRule(runtime, {
+		registerCandidateActionBackstopRule(testRuntime.runtime, {
 			actionNames: ["SCHEDULED_TASKS", "SCHEDULED_TASKS_CREATE"],
 			matches: (text) => /\breminders?\b/i.test(text),
 		});
 		const patch = (await evaluator.evaluate(
 			makeContext(
 				simpleReplyHandler("Done — I've set two reminders for your bill."),
-				runtime,
 			),
 		)) as ResponseHandlerPatch;
 		expect(patch.requiresTool).toBe(true);
@@ -133,18 +171,6 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 		]);
 		// The fabricated confirmation must never ship — replaced by a plain ack
 		// the planner path then supersedes with a tool-grounded reply.
-		expect(patch.reply).toBe("On it.");
-	});
-
-	it("still reroutes (candidate-less) when no backstop rule matches", async () => {
-		const evaluator = getClaimEvaluator();
-		const patch = (await evaluator.evaluate(
-			makeContext(
-				simpleReplyHandler("Done — I've set two reminders for your bill."),
-			),
-		)) as ResponseHandlerPatch;
-		expect(patch.requiresTool).toBe(true);
-		expect(patch.addCandidateActions).toBeUndefined();
 		expect(patch.reply).toBe("On it.");
 	});
 });
