@@ -408,6 +408,14 @@ const PANEL_RADIUS_PX = 32;
 // where the zone begins; the hysteresis gap below keeps the state from flapping.
 const MAXIMIZE_COMMIT_T = 0.3;
 const MAXIMIZE_RELEASE_T = 0.15;
+// Commit fraction for a gesture that entered the over-pull zone from BELOW the
+// FULL detent (a hold from HALF / a free rest / the input). The matrix's "morph
+// at least half complete" rule: a short flick that merely grazes the zone steps
+// to FULL first; only a pull that visibly carried the shape halfway to
+// edge-to-edge commits the maximize. Gestures that START at the FULL detent
+// keep the low MAXIMIZE_COMMIT_T (the panel is pinned at the inset ceiling
+// there, so a high threshold reads as a long dead pull).
+const MAXIMIZE_COMMIT_FROM_BELOW_T = 0.5;
 
 // Finger travel (px) below the restore drag's upward peak at which the panel
 // drops full-bleed and starts tracking the finger down out of maximize. Sized
@@ -705,11 +713,18 @@ function SheetGrabber({
  */
 function PillHandle({
   binding,
+  counterScale,
   onOpen,
   breathing,
   pilled,
 }: {
   binding: PullGestureBinding;
+  // Inverse of the panel's pill-morph scale (see pillHandleCounterScale),
+  // applied to the visible BAR only — the button/hit geometry keeps riding the
+  // panel scale (the touch-compat mousedown after a tap must keep landing where
+  // it always did), while the painted bar stays pixel-identical to the
+  // input-mode grabber bar across the whole morph.
+  counterScale: MotionValue<number>;
   onOpen: () => void;
   breathing: boolean;
   // Interactive ONLY while pilled. The handle's hit zone (`px-16 pt-10`) is tall
@@ -753,21 +768,28 @@ function PillHandle({
         pilled ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
-      <span
+      <motion.span
         aria-hidden="true"
         className={cn(
-          // Identical to the SheetGrabber bar — same white shape + color whether
-          // the chat is open or collapsed to the pill. Its show/hide is driven by
-          // the WRAPPER's `pillOpacity` crossfade (anti-phase with the grabber).
-          // The bar paints at full opacity — a prior regression pinned it to
-          // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
+          // Identical to the SheetGrabber's closed-state bar — same white shape
+          // + color whether the chat is open or collapsed to the pill. Its
+          // show/hide is driven by the WRAPPER's `pillOpacity` crossfade
+          // (anti-phase with the grabber). The bar paints at full opacity — a
+          // prior regression pinned it to `opacity-0`, leaving the pill handle
+          // grabbable but invisible (#9142).
           "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
           // Same compositor-only work-state breath as the SheetGrabber bar.
           breathing && "eliza-chat-handle-breathe",
         )}
         // Same explicit color as the grabber bar so the two are pixel-identical
-        // through the crossfade (HANDLE_BAR_COLOR).
-        style={{ backgroundColor: HANDLE_BAR_COLOR }}
+        // through the crossfade (HANDLE_BAR_COLOR). The counter-scale cancels
+        // the panel's pill-morph shrink for the BAR alone, so the collapsed
+        // handle renders the same size as the input-mode grabber bar.
+        style={{
+          backgroundColor: HANDLE_BAR_COLOR,
+          scale: counterScale,
+          transformOrigin: "bottom center",
+        }}
       />
     </Button>
   );
@@ -1351,11 +1373,21 @@ export function ContinuousChatOverlay({
   const pilled = effectiveMode === "pill";
   const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
   const expanded = effectiveMode === "full";
+  // LIVE mirror of `mode` for release/settle handlers. A mid-drag commit
+  // (pill/maximize) sets React state, but the release often runs in the SAME
+  // event — before React flushes — so closures still see the pre-commit mode
+  // and settle the springs toward the wrong rest. The mid-drag commit branches
+  // update this ref synchronously alongside setMode; render re-mirrors it.
+  const modeRef = React.useRef(effectiveMode);
+  modeRef.current = effectiveMode;
   // Free-drag rest height (px): when set, the sheet rests exactly where the user
   // released a deliberate drag instead of snapping to a detent. Cleared whenever
   // a detent is taken (tap/flick/focus/collapse) so the detents stay the
   // snap-to targets and free-positioning is purely the drag affordance.
   const [freeH, setFreeH] = React.useState<number | null>(null);
+  // Live mirror of `freeH`, same contract as `modeRef` above.
+  const freeHRef = React.useRef<number | null>(null);
+  freeHRef.current = freeH;
   // FULL-SCREEN (maximized): at the FULL detent the user can drop the inset
   // (max-width, side padding, top margin, rounding) so the chat is edge-to-edge.
   // Invariant: only true while at FULL (sheetOpen && expanded && !pilled); every
@@ -1563,6 +1595,29 @@ export function ContinuousChatOverlay({
   // never drift out of sync with the cursor, and mode/maximize state flips
   // mid-gesture never re-base anything.
   const dragContRef = React.useRef(0);
+  // The gesture's RESTING pose at pointerdown (mode + free-rest height +
+  // whether it began at the inset FULL detent). Mid-drag commits mutate
+  // mode/freeH under the held finger; a same-gesture REVERSAL restores this
+  // snapshot so a cancel (rotation, OS takeover) settles at the detent the
+  // gesture actually started from — not one it merely passed through — and so
+  // the maximize thresholds keep reading the gesture's true origin.
+  const dragStartModeRef = React.useRef<ChatMode>("input");
+  const dragStartFreeHRef = React.useRef<number | null>(null);
+  const dragStartedAtFullDetentRef = React.useRef(false);
+  // TRUE while the current gesture is a maximize-restore drag (the top strip).
+  // The restore drag owns its own un-maximize (peak + RESTORE_UNMAX_SLOP); the
+  // integrator's over-pull hysteresis must not also un-maximize on frame 1 —
+  // the two branches racing was the "restore drag snaps back to FULL on
+  // release" bug (the strip's slop branch never saw `maximized` true, so
+  // restoreDragging/restoreDidUnmaximizeRef were never set and the release
+  // discarded the whole downward travel).
+  const restoreGestureRef = React.useRef(false);
+  // TRUE once the current gesture's mid-drag PILL commit fired. The release
+  // handlers run in the SAME event as the last integrator frame, so they can
+  // see the pre-commit `pilled/sheetOpen` closures (React flushes the commit's
+  // setState after the event) — same race `restoreDidUnmaximizeRef` guards for
+  // the restore drag. Reset at every gesture seed.
+  const pillCommittedMidDragRef = React.useRef(false);
   // The last integrated gesture offset (px, up-positive, 0 at pointerdown);
   // per-frame delta = offset - this.
   const dragLastOffsetRef = React.useRef(0);
@@ -1583,7 +1638,6 @@ export function ContinuousChatOverlay({
   const resetPullPeak = React.useCallback(() => {
     maxPullRawRef.current = 0;
   }, []);
-  const dragStartTopRef = React.useRef(0);
   // At rest the collapsed composer should not carry hidden transcript/header
   // DOM. During an upward pull, though, the sheet needs a mounted body so the
   // MotionValue-driven height can follow the finger before the release commits
@@ -1781,14 +1835,19 @@ export function ContinuousChatOverlay({
   // focus, topic jumps, and infinite-history prefetch address the same viewport.
   const threadRef = React.useRef<HTMLDivElement>(null);
   const [scrollToEndRequest, setScrollToEndRequest] = React.useState(0);
-  // Focus the thread for keyboard scrolling when an opener requested it —
-  // consumed on the reveal edge, separate from the scroll engine above.
+  // Focus the thread for keyboard scrolling when an opener requested it.
+  // Deliberately NO dependency array: many requesters (drag settles, flick
+  // landings, maximize) fire while the sheet is ALREADY open, so a
+  // `[sheetOpen]`-keyed effect never re-ran for them — the intent stranded and
+  // then stole composer focus on a LATER open (keyboard flashing closed). Every
+  // request site also sets state, so the next render consumes the intent
+  // immediately; off-request renders are a single ref check.
   React.useLayoutEffect(() => {
     if (sheetOpen && focusThreadRef.current) {
       threadRef.current?.focus();
       focusThreadRef.current = false;
     }
-  }, [sheetOpen]);
+  });
   // biome-ignore lint/correctness/useExhaustiveDependencies: these values are the event keys for transient layout-motion intent.
   React.useEffect(() => {
     markLayoutShiftIntent();
@@ -2938,14 +2997,26 @@ export function ContinuousChatOverlay({
   const settleDrag = React.useCallback(() => {
     draggingRef.current = false;
     setDragPreviewMounted(false);
-    const open = pilled ? 0 : 1;
+    // Settle toward the LIVE resting pose (modeRef/freeHRef), not the render
+    // closure: a mid-drag commit flips mode in the same event as the release,
+    // and the stale closure here sprang the sheet back toward the PRE-commit
+    // rest (e.g. a drag-out-the-bottom re-opening the glass because `pilled`
+    // still read false).
+    const liveMode = modeRef.current;
+    const livePilled = liveMode === "pill";
+    const liveSheetOpen = liveMode === "half" || liveMode === "full";
+    const liveFreeH = freeHRef.current;
+    const liveDetentH = !liveSheetOpen ? 0 : liveMode === "full" ? openH : halfH;
+    const liveBaseH =
+      liveFreeH != null ? Math.min(liveFreeH, panelMaxH) : liveDetentH;
+    const open = livePilled ? 0 : 1;
     if (reduce) {
       stopThreadAnimation();
       stopOpenProgressAnimation();
-      threadHeight.set(baseH);
+      threadHeight.set(liveBaseH);
       openProgress.set(open);
     } else {
-      animateThreadHeight(baseH);
+      animateThreadHeight(liveBaseH);
       animateOpenProgress(open);
     }
     // Return the shape morph to its committed end (inset unless still maximized):
@@ -2957,8 +3028,9 @@ export function ContinuousChatOverlay({
   }, [
     threadHeight,
     openProgress,
-    baseH,
-    pilled,
+    openH,
+    halfH,
+    panelMaxH,
     reduce,
     stopThreadAnimation,
     stopOpenProgressAnimation,
@@ -2969,7 +3041,7 @@ export function ContinuousChatOverlay({
     setDragPreviewMounted,
   ]);
   // Keep the ref the (earlier-declared) viewport-resize effect calls pointing at
-  // the latest settleDrag, so a rotation re-settles with current pilled/baseH.
+  // the latest settleDrag, so a rotation re-settles with current geometry.
   settleDragRef.current = settleDrag;
 
   // Drive openProgress from the pilled flag for NON-drag transitions (tap the
@@ -2998,6 +3070,11 @@ export function ContinuousChatOverlay({
     setFreeH(null);
     setMaximized(false);
     setMode("input");
+    // Every collapse to INPUT drops the keyboard (matrix invariant) — this is
+    // reached without a blur via collapseFromRelease (drag-to-bottom release),
+    // and a detent change fires exactly one haptic.
+    inputRef.current?.blur();
+    detentHaptic();
     if (reduce) {
       stopThreadAnimation();
       stopOpenProgressAnimation();
@@ -3054,6 +3131,15 @@ export function ContinuousChatOverlay({
   // to overshoot below a full-height sheet, so start height carries the
   // intent). Otherwise the INPUT bar (short closes, small free rests).
   const collapseFromRelease = React.useCallback(() => {
+    // A gesture that did NOT start pilled but IS pilled at release already
+    // committed the pill MID-DRAG (the integrator's pill commit fired its
+    // haptic and blur) — the release only settles the springs. Without this,
+    // collapseToPill ran a second time and double-haptic'd every
+    // drag-out-the-bottom.
+    if (pilled && dragStartModeRef.current !== "pill") {
+      settleDrag();
+      return;
+    }
     // The overshoot test only applies to gestures that came DOWN through the
     // bottom (openProgress driven 1 → below the commit line). A drag that
     // started PILLED moves openProgress the other way (0 → up) — a half-open
@@ -3066,7 +3152,7 @@ export function ContinuousChatOverlay({
     } else {
       closeSheet();
     }
-  }, [pilled, openProgress, halfH, collapseToPill, closeSheet]);
+  }, [pilled, openProgress, halfH, collapseToPill, closeSheet, settleDrag]);
 
   // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
   // sheet (closeSheet un-maximizes + springs the thread height down) BEFORE
@@ -3237,15 +3323,22 @@ export function ContinuousChatOverlay({
       // Natural-scroll semantics: swiping UP on the trackpad (content up,
       // deltaY > 0) grows the sheet; swiping down shrinks it.
       const grow = acc > 0;
+      // A FREE rest reports mode "half" whatever its height — step relative to
+      // the real height so an under-half rest grows to HALF (not straight to
+      // FULL) and an above-half rest shrinks to HALF (not straight to INPUT):
+      // one detent per swipe, never skipping.
+      const freeBelowHalf = freeH != null && freeH < halfH;
+      const freeAboveHalf =
+        freeH != null && freeH > halfH + SHEET_DETENT_MAGNET;
       if (grow) {
         if (pilled) goToDetent("collapsed");
         else if (!sheetOpen) goToDetent("half");
-        else if (!expanded) goToDetent("full");
+        else if (!expanded) goToDetent(freeBelowHalf ? "half" : "full");
         else if (!maximized) maximizeFromPull();
       } else {
         if (maximized) restoreFromMaximized();
         else if (expanded) goToDetent("half");
-        else if (sheetOpen) goToDetent("collapsed");
+        else if (sheetOpen) goToDetent(freeAboveHalf ? "half" : "collapsed");
         else if (!pilled) collapseToPill();
       }
     },
@@ -3255,6 +3348,8 @@ export function ContinuousChatOverlay({
       sheetOpen,
       expanded,
       maximized,
+      freeH,
+      halfH,
       goToDetent,
       maximizeFromPull,
       restoreFromMaximized,
@@ -3381,23 +3476,36 @@ export function ContinuousChatOverlay({
   // Remember whether we opened from collapsed so dismissing the keyboard (tap the
   // handle) can return to that prior resting state. Clears any free-rest so the
   // height matches the detent (no stale freeH pinning it below half).
-  const expand = React.useCallback(() => {
-    if (!hasRevealableThread) {
-      // Nothing to reveal YET — don't open an empty sheet, but remember the
-      // intent: on boot the composer can gain focus while the restored
-      // conversation's messages are still in flight, and dropping the expand
-      // here made focus-to-open silently do nothing (#11112). The reveal-edge
-      // effect below completes the open once the thread arrives, if the
-      // composer is still focused.
-      pendingExpandOnRevealRef.current = true;
-      return;
-    }
-    pendingExpandOnRevealRef.current = false;
-    preFocusCollapsedRef.current = !sheetOpen;
-    setFreeH(null);
-    // Open to at least HALF; if already at half/full, keep the taller mode.
-    setMode((m) => (m === "half" || m === "full" ? m : "half"));
-  }, [hasRevealableThread, sheetOpen]);
+  const expandCore = React.useCallback(
+    (snapshotPreFocus: boolean) => {
+      if (!hasRevealableThread) {
+        // Nothing to reveal YET — don't open an empty sheet, but remember the
+        // intent: on boot the composer can gain focus while the restored
+        // conversation's messages are still in flight, and dropping the expand
+        // here made focus-to-open silently do nothing (#11112). The reveal-edge
+        // effect below completes the open once the thread arrives, if the
+        // composer is still focused.
+        pendingExpandOnRevealRef.current = true;
+        return;
+      }
+      pendingExpandOnRevealRef.current = false;
+      if (snapshotPreFocus) preFocusCollapsedRef.current = !sheetOpen;
+      setFreeH(null);
+      // Open to at least HALF; if already at half/full, keep the taller mode.
+      setMode((m) => (m === "half" || m === "full" ? m : "half"));
+    },
+    [hasRevealableThread, sheetOpen],
+  );
+  const expand = React.useCallback(() => expandCore(true), [expandCore]);
+  // Typing re-asserts the open but must NOT re-snapshot the pre-focus state:
+  // the sheet is open by then, so re-snapshotting on every keystroke read
+  // "open-before-focus" and a keyboard dismiss no longer returned a
+  // collapsed-before-focus sheet to the INPUT bar. Only the focus edge (and
+  // deliberate programmatic opens) record the restore point.
+  const expandFromTyping = React.useCallback(
+    () => expandCore(false),
+    [expandCore],
+  );
 
   // Reveal edge: the thread just became showable. If a focus→expand was parked
   // while there was nothing to reveal (see expand above), honor it now — but
@@ -4056,6 +4164,15 @@ export function ContinuousChatOverlay({
     // target is explicitly the composer, so void any queued intent.
     focusThreadRef.current = false;
     inputRef.current?.focus();
+    // If the synchronous focus did NOT land (blocked by the platform), disarm
+    // the suppress flag now — a stranded flag would silently swallow the next
+    // genuine focus→expand.
+    if (
+      typeof document !== "undefined" &&
+      document.activeElement !== inputRef.current
+    ) {
+      suppressExpandOnFocusRef.current = false;
+    }
   }, [
     openProgress,
     reduce,
@@ -4140,15 +4257,26 @@ export function ContinuousChatOverlay({
         // 0 — the first delivered frame's whole travel integrates (an rAF-
         // coalesced first move can already carry real distance).
         dragLastOffsetRef.current = 0;
+        // Snapshot the gesture's resting pose for same-gesture reversal /
+        // cancel settles and for the maximize thresholds (see the refs' docs).
+        dragStartModeRef.current = pilled
+          ? "pill"
+          : !sheetOpen
+            ? "input"
+            : expanded
+              ? "full"
+              : "half";
+        dragStartFreeHRef.current = freeH;
+        dragStartedAtFullDetentRef.current = expanded && freeH == null;
+        pillCommittedMidDragRef.current = false;
         // Reset the measured-top maximize tracking for the fresh gesture. Never
         // seeded pinned: a gesture that starts at the ceiling (a restore grab)
         // is fully described by rawOverpullT — a pinned seed would misread the
         // whole downward track as measuredOverpullT = 1.
         const el0 = getPanelElement();
-        dragStartTopRef.current = el0
+        dragMinTopRef.current = el0
           ? el0.getBoundingClientRect().top
           : Number.POSITIVE_INFINITY;
-        dragMinTopRef.current = dragStartTopRef.current;
         dragPinnedRef.current = false;
         dragOffAtPinRef.current = 0;
         dragPinTopRef.current = 0;
@@ -4186,6 +4314,16 @@ export function ContinuousChatOverlay({
         cont < insetPanelMaxH &&
         maxPullRawRef.current >=
           insetPanelMaxH + maxOverPull * MAXIMIZE_COMMIT_T
+      ) {
+        maxPullRawRef.current = 0;
+      }
+      // The LONG-HAUL peak abandons the same way: a pull that swept ≥80% of the
+      // screen but was then dragged back below HALF has given the maximize up.
+      // Without this, only zone-entered peaks were voided — a reversed long
+      // haul released at the bottom still flew the sheet to edge-to-edge.
+      if (
+        cont < halfH &&
+        maxPullRawRef.current - dragStartContRef.current >= viewportH * 0.8
       ) {
         maxPullRawRef.current = 0;
       }
@@ -4255,8 +4393,13 @@ export function ContinuousChatOverlay({
         }
       }
       const overpullT = Math.max(rawOverpullT, measuredOverpullT);
-      const startedFromFullDetent = expanded && freeH == null;
-      const livePeakTravel = cont - Math.min(0, dragStartContRef.current);
+      const startedFromFullDetent = dragStartedAtFullDetentRef.current;
+      // TRAVEL is measured from the gesture's true start — a pill start (−120)
+      // credits the morph distance, and an OPEN start subtracts its resting
+      // height. Measuring from continuum zero made any open-sheet release above
+      // 0.8·viewport read as a "long haul" (a 290px pull from HALF surprise-
+      // maximized instead of landing FULL).
+      const livePeakTravel = cont - dragStartContRef.current;
       const liveLongHaul = livePeakTravel >= viewportH * 0.8;
       // Feed the finger's over-pull to the height cap so it lifts through the
       // inset-ceiling flex-overshoot dead zone (where `cont < insetPanelMaxH` yet
@@ -4276,25 +4419,66 @@ export function ContinuousChatOverlay({
       // the keyboard-shrunk visual viewport); a pull-to-full with the keyboard up
       // settles at the inset FULL detent instead.
       if (
-        overpullT >= MAXIMIZE_COMMIT_T &&
-        (startedFromFullDetent || liveLongHaul) &&
+        (overpullT >=
+          (startedFromFullDetent
+            ? MAXIMIZE_COMMIT_T
+            : MAXIMIZE_COMMIT_FROM_BELOW_T) ||
+          (liveLongHaul && overpullT >= MAXIMIZE_COMMIT_T)) &&
         !maximized &&
         !keyboardBlocksMaximize
       ) {
         setFreeH(null);
         setMode("full");
         setMaximized(true);
+        // Sync the live mirrors — the release can run before React flushes.
+        modeRef.current = "full";
+        freeHRef.current = null;
         focusThreadRef.current = true;
         if (reduce) fullBleedT.set(1);
         else animateFullBleedTo(1);
         detentHaptic();
-      } else if (overpullT <= MAXIMIZE_RELEASE_T && maximized) {
+      } else if (
+        overpullT <= MAXIMIZE_RELEASE_T &&
+        maximized &&
+        // A RESTORE drag owns its own un-maximize (peak + slop in
+        // onRestoreDrag); this hysteresis is only for the same-gesture
+        // over-pull reversal on the grabber. Letting it also fire here
+        // un-maximized on the restore's very first frame — before the strip's
+        // slop branch could set restoreDragging/restoreDidUnmaximizeRef — so
+        // the release discarded the drag and snapped back to FULL.
+        !restoreGestureRef.current
+      ) {
         setMaximized(false);
+        // Restore the gesture's STARTING pose: the mid-drag commit flipped
+        // mode to "full" (and cleared freeH); leaving that in place made a
+        // cancel settle at FULL instead of the detent the drag began on, and
+        // misread the maximize thresholds for the rest of the gesture.
+        setMode(dragStartModeRef.current);
+        setFreeH(dragStartFreeHRef.current);
         if (reduce) fullBleedT.set(0);
         else animateFullBleedTo(0);
         // Void the peak so the release decision does not re-maximize from an
         // abandoned high-water mark.
         maxPullRawRef.current = 0;
+      }
+      // MID-DRAG PILL COMMIT — the downward mirror of the maximize commit
+      // (matrix "Mid-drag commit" table): an open-sheet drag carried
+      // PILL_COMMIT_OVERSHOOT past the bottom — or an input-start drag whose
+      // input→pill morph crossed halfway — flips the resting state to the PILL
+      // under the held finger; the release then just settles where this
+      // landed. No explicit reversal branch is needed: once `pilled`, the
+      // gesture IS a pill-open drag and every pilled release path (flick, tap,
+      // free settle) already lands it correctly if the finger pulls back up.
+      const pillCommitCont =
+        dragStartHRef.current > 0
+          ? -PILL_COMMIT_OVERSHOOT
+          : -PILL_OPEN_DISTANCE / 2;
+      if (!pilled && cont <= pillCommitCont) {
+        setFreeH(null);
+        setMaximized(false);
+        setMode("pill");
+        inputRef.current?.blur();
+        detentHaptic();
       }
     },
     [
@@ -4306,6 +4490,7 @@ export function ContinuousChatOverlay({
       fullPanelMaxH,
       maxOverPull,
       viewportH,
+      halfH,
       expanded,
       freeH,
       threadHeight,
@@ -4355,16 +4540,24 @@ export function ContinuousChatOverlay({
     // above the screen.
     const screenH = Math.max(viewportH, viewport.innerHeight);
     const peak = maxPullRawRef.current;
-    // "At least half the real morph gap past the inset FULL height" — the
-    // finger visibly carried the panel more than halfway to edge-to-edge.
-    const startedFromFullDetent = expanded && freeH == null;
+    // Over-pull commit: from the FULL detent the low MAXIMIZE_COMMIT_T applies
+    // (the panel is pinned at the inset ceiling there); a pull that entered the
+    // zone from BELOW must carry the shape at least half-way to edge-to-edge
+    // (MAXIMIZE_COMMIT_FROM_BELOW_T) — a short flick that grazes the zone from
+    // a near-full free rest steps to FULL first. Reads the gesture-START pose
+    // (the seed ref), not the live mode a mid-drag commit may have flipped.
     const overPulled =
-      startedFromFullDetent &&
-      peak >= insetPanelMaxH + maxOverPull * MAXIMIZE_COMMIT_T;
-    // Long haul measures TRAVEL, not height: a pull that began on the pill
-    // spends PILL_OPEN_DISTANCE forming the input before any height exists, so
-    // shift the peak by the below-zero start to compare finger distance.
-    const peakTravel = peak - Math.min(0, dragStartContRef.current);
+      peak >=
+      insetPanelMaxH +
+        maxOverPull *
+          (dragStartedAtFullDetentRef.current
+            ? MAXIMIZE_COMMIT_T
+            : MAXIMIZE_COMMIT_FROM_BELOW_T);
+    // Long haul measures TRAVEL from the gesture's true start: a pill start
+    // (−PILL_OPEN_DISTANCE) credits the morph distance, and an OPEN start
+    // subtracts its resting height — measuring from continuum zero made any
+    // release above 0.8·viewport read as a long haul from every start.
+    const peakTravel = peak - dragStartContRef.current;
     const longHaul = peakTravel >= screenH * 0.8;
     if (overPulled || longHaul) {
       focusThreadRef.current = true;
@@ -4380,8 +4573,6 @@ export function ContinuousChatOverlay({
     insetPanelMaxH,
     maxOverPull,
     maximizeFromPull,
-    expanded,
-    freeH,
   ]);
 
   const pullBinding: PullGestureBinding = usePullGesture({
@@ -4609,6 +4800,10 @@ export function ContinuousChatOverlay({
         restoreDidUnmaximizeRef.current = false;
         restorePeakOffsetRef.current = 0;
       }
+      // Claim the gesture BEFORE delegating so the integrator's own over-pull
+      // hysteresis stands down — this strip owns the un-maximize (see
+      // restoreGestureRef).
+      restoreGestureRef.current = true;
       if (offset > restorePeakOffsetRef.current) {
         restorePeakOffsetRef.current = offset;
       }
@@ -4623,10 +4818,25 @@ export function ContinuousChatOverlay({
         setMaximized(false);
         setRestoreDragging(true);
         restoreDidUnmaximizeRef.current = true;
+        // The integrator's hysteresis is gated off for restore gestures, so
+        // drive the shape morph home here — the state effect is drag-gated and
+        // would otherwise leave the edges full-bleed while the panel shrinks.
+        if (reduce) fullBleedT.set(0);
+        else animateFullBleedTo(0);
+        // And void the pull peak so the release can't re-maximize from the
+        // ceiling high-water mark the drag just left.
+        maxPullRawRef.current = 0;
       }
       onDragOffset(offset);
     },
-    [pinnedOpen, maximized, onDragOffset],
+    [
+      pinnedOpen,
+      maximized,
+      onDragOffset,
+      reduce,
+      fullBleedT,
+      animateFullBleedTo,
+    ],
   );
   // Release from a restore drag: if it never un-maximized (an upward/stationary
   // gesture) keep it pinned full-bleed; otherwise settle at the released height —
@@ -4634,6 +4844,7 @@ export function ContinuousChatOverlay({
   // magnetism the grabber uses).
   const settleRestore = React.useCallback(() => {
     draggingRef.current = false;
+    restoreGestureRef.current = false;
     setDragPreviewMounted(false);
     setRestoreDragging(false);
     if (pinnedOpen || !restoreDidUnmaximizeRef.current) return settleDrag();
@@ -4675,6 +4886,7 @@ export function ContinuousChatOverlay({
   // Cancel/tap on the strip: drop the drag flag and spring back to the current
   // detent (a tap keeps it maximized; a rotation-canceled drag re-settles).
   const resetRestore = React.useCallback(() => {
+    restoreGestureRef.current = false;
     setRestoreDragging(false);
     settleDrag();
   }, [settleDrag]);
@@ -4686,10 +4898,12 @@ export function ContinuousChatOverlay({
     // full-bleed frame on the flip). Never nav: the chat is full-screen here.
     swipeEnabled: true,
     onSwipeLeft: () => {
+      restoreGestureRef.current = false;
       setRestoreDragging(false);
       collapseToPill();
     },
     onSwipeRight: () => {
+      restoreGestureRef.current = false;
       setRestoreDragging(false);
       collapseToPill();
     },
@@ -5778,7 +5992,7 @@ export function ContinuousChatOverlay({
                   setDraft(nextDraft);
                   // Mirror the live draft to the active view (Help search etc.).
                   viewChatBinding?.onQuery?.(nextDraft);
-                  if (nextDraft.trim().length > 0) expand();
+                  if (nextDraft.trim().length > 0) expandFromTyping();
                 }}
                 onFocus={() => {
                   // Widen out of the short-landscape compact affordance (#14173)
@@ -5792,7 +6006,13 @@ export function ContinuousChatOverlay({
                     expand();
                   }
                 }}
-                onBlur={() => setComposerFocused(false)}
+                onBlur={() => {
+                  setComposerFocused(false);
+                  // A suppress-expand flag armed for a focus that never landed
+                  // (openFromPill arms it BEFORE focusing) must not survive to
+                  // swallow the next genuine focus→expand.
+                  suppressExpandOnFocusRef.current = false;
+                }}
                 onPaste={handleComposerPaste}
                 onKeyDown={handleComposerKeyDown}
                 // The composer is LOCKED during onboarding: first-run is
@@ -5971,14 +6191,11 @@ export function ContinuousChatOverlay({
             style={{
               opacity: pillOpacity,
               pointerEvents: pilled ? "auto" : "none",
-              // Cancel the panel's pill-morph scale so the handle bar keeps a
-              // constant on-screen size across pill ↔ input (see pillCounterScale).
-              scale: pillCounterScale,
-              transformOrigin: "bottom center",
             }}
           >
             <PillHandle
               binding={pullBinding}
+              counterScale={pillCounterScale}
               onOpen={openFromPill}
               // The pill IS the whole chat while collapsed, so it alone pulses
               // for a live mic capture (`recording`) — the open-sheet grabber
