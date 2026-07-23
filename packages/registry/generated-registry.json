@@ -1069,6 +1069,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "plugin-serpdive": {
+      "git": {
+        "repo": "serpdive/plugin-serpdive",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-serpdive",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Web search for elizaOS agents through SERPdive: every result carries the extracted, answer-ready content of the page instead of a link or snippet, so agents can quote and cite facts straight from the response. Registers a ServiceType.WEB_SEARCH service and the \"web\" search category, with two retrieval depths (fact-carrying sentences or full page text) and an optional synthesized answer.",
+      "homepage": "https://serpdive.com",
+      "topics": [
+        "web-search",
+        "search",
+        "serpdive",
+        "rag",
+        "research",
+        "current-information"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-wallettriage": {
       "git": {
         "repo": "wallettriage/plugin-wallettriage",

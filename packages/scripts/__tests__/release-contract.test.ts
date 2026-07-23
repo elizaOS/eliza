@@ -59,6 +59,13 @@ function publicPackage(name: string, extra: Record<string, unknown> = {}) {
 }
 
 describe("release contract", () => {
+  const identity = {
+    repository: "elizaOS/eliza",
+    sourceRef: "refs/heads/develop",
+    registry: "https://registry.npmjs.org/",
+    publisher: "release-bot",
+  };
+
   test("stable serialization recursively orders keys", () => {
     expect(stableStringify({ z: { b: 1, a: 2 }, a: 3 })).toBe(
       '{\n  "a": 3,\n  "z": {\n    "a": 2,\n    "b": 1\n  }\n}\n',
@@ -73,6 +80,7 @@ describe("release contract", () => {
         channel: "beta",
         sourceSha: sha,
         expectedCommit: sha,
+        ...identity,
       }),
     ).toMatchObject({ version: "1.2.3-beta.4", channel: "beta" });
     expect(() =>
@@ -81,6 +89,7 @@ describe("release contract", () => {
         channel: "beta",
         sourceSha: sha,
         expectedCommit: sha,
+        ...identity,
       }),
     ).toThrow("exact canonical semver");
     for (const version of ["2.0.3-beta.8", "2.0.3-beta.9", "2.0.3-beta.10"]) {
@@ -90,6 +99,7 @@ describe("release contract", () => {
           channel: "beta",
           sourceSha: sha,
           expectedCommit: sha,
+          ...identity,
         }),
       ).toThrow("reserved failed-release residue");
     }
@@ -99,8 +109,21 @@ describe("release contract", () => {
         channel: "latest",
         sourceSha: sha,
         expectedCommit: "b".repeat(40),
+        ...identity,
       }),
     ).toThrow("rebase and create a new candidate");
+    for (const invalid of ["develop", "refs/heads/../main", "refs/tags/v1"]) {
+      expect(() =>
+        validateReleaseIdentity({
+          version: "1.2.3",
+          channel: "latest",
+          sourceSha: sha,
+          expectedCommit: sha,
+          ...identity,
+          sourceRef: invalid,
+        }),
+      ).toThrow("canonical branch ref");
+    }
   });
 
   test("loads a unique explicit allowlist and rejects malformed input", () => {

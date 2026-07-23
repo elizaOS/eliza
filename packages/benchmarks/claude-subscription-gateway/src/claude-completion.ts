@@ -758,7 +758,8 @@ export function normalizeResetTimestampMs(value: unknown): number | null {
     return null;
   }
   const milliseconds = value < 1_000_000_000_000 ? value * 1_000 : value;
-  return Number.isSafeInteger(milliseconds) && milliseconds <= 8_640_000_000_000_000
+  return Number.isSafeInteger(milliseconds) &&
+    milliseconds <= 8_640_000_000_000_000
     ? milliseconds
     : null;
 }

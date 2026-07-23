@@ -519,7 +519,7 @@ export function AccountCommandTable({
                               defaultValue: `Rename ${account.label}`,
                               label: account.label,
                             })}
-                            className="h-6 min-w-0 rounded-sm border border-border/60 bg-bg px-1.5 text-xs font-medium text-txt-strong outline-none focus:border-accent"
+                            className="h-6 min-w-0 rounded-sm border border-border/60 bg-bg px-1.5 text-xs font-medium text-txt-strong outline-none"
                           />
                         ) : (
                           <button
@@ -529,7 +529,7 @@ export function AccountCommandTable({
                             title={t("accounts.table.rename", {
                               defaultValue: "Rename account",
                             })}
-                            className="truncate text-left text-xs font-medium text-txt-strong hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                            className="truncate text-left text-xs font-medium text-txt-strong hover:underline"
                           >
                             {account.label}
                           </button>

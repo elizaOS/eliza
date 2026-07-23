@@ -177,6 +177,8 @@ REDIS_RATE_LIMITING = "false"
 # synchronous-reserve path. The auth+moderation hot-path cache is the default now
 # (no flag); a cache miss falls back to the authoritative slow path.
 INFERENCE_OPTIMISTIC_BILLING = "false"
+# Thin chat-only bootstrap. Keep production off until staging parity/latency soak passes.
+THIN_INFERENCE_ENTRY_ENABLED = "false"
 SAFE_BALANCE_THRESHOLD = ""
 # Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
 # (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
@@ -373,6 +375,8 @@ NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
 GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "staging"
+# Staging canary. Set false for an immediate rollback to the full app router.
+THIN_INFERENCE_ENTRY_ENABLED = "true"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
 X402_NETWORK = "base"
@@ -437,9 +441,11 @@ INFERENCE_PASSTHROUGH_STREAMING = "true"
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 
-# Realtime voice is committed default-off. Staging soaks require an explicit
-# deploy/runtime opt-in; production remains explicitly off.
-VOICE_REALTIME_WS_ENABLED = "false"
+# Realtime voice is enabled on staging (proven live E2E 2026-07-22, EOT->first-audio
+# median ~1446ms). The live staging worker already runs true; this keeps the toml in
+# sync so a redeploy from develop does not silently flip realtime OFF. Production
+# remains explicitly off (flag flip there is a separate, gated decision).
+VOICE_REALTIME_WS_ENABLED = "true"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai"
 VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
@@ -519,6 +525,7 @@ __filename = '"/worker.js"'
 
 [env.production.vars]
 NODE_ENV = "production"
+THIN_INFERENCE_ENTRY_ENABLED = "false"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
 # the no-op stub. Mirrors [env.staging.vars]. CUTOVER GATE — only effective once the prod
@@ -664,3 +671,5 @@ simple = { limit = 600, period = 60 }
 name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615322"
 simple = { limit = 200, period = 60 }
+
+# deploy-kick 2026-07-22T19:02Z: re-trigger push-event Cloud CF Deploy after GH queue wedge (runs 29918527708/29940486657/29946551580 all starved). [sol-orch]

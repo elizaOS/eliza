@@ -92,7 +92,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         onPointerCancel={hold.onPointerCancel}
         onClickCapture={suppression.onClickCapture}
         onClick={() => onLaunch(entry)}
-        className="group relative flex max-w-[5.5rem] flex-col items-center gap-1.5 rounded-2xl select-none focus-visible:outline-none"
+        className="group relative flex max-w-[5.5rem] flex-col items-center gap-1.5 rounded-2xl select-none"
       >
         <div className="relative">
           <div
@@ -105,9 +105,8 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
               // neutral-with-opacity hover).
               "h-16 w-16 overflow-hidden rounded-2xl transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14",
               WALLPAPER_GLASS.iconPlate,
-              // Hovering the label highlights the same icon plate, and keyboard
-              // focus traces the visual tile instead of an invisible outer box.
-              "group-hover:bg-white/20 group-focus-visible:ring-2 group-focus-visible:ring-white/80 group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-transparent",
+              // Hovering the label highlights the same icon plate.
+              "group-hover:bg-white/20",
             )}
           >
             <ViewTileImage

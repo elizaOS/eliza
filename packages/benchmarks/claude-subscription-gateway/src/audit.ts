@@ -4,11 +4,10 @@
  */
 
 import {
-  type HashChainedJsonlCursor,
   HashChainedJsonl,
+  type HashChainedJsonlCursor,
 } from "./hash-chained-jsonl.js";
-import type { GatewayAuditRecord } from "./types.js";
-import type { JsonObject } from "./types.js";
+import type { GatewayAuditRecord, JsonObject } from "./types.js";
 
 export interface AuditSink {
   append(record: GatewayAuditRecord): void | Promise<void>;
@@ -126,7 +125,9 @@ export class DurableAuditStore implements AuditSink {
     }
     if (logicalOrdinal === cursor.lastOrdinal) {
       if (cursor.lastKey !== logicalKeySha256 || cursor.lastResult === null) {
-        throw new Error("Audit logical ordinal was reused with a different key.");
+        throw new Error(
+          "Audit logical ordinal was reused with a different key.",
+        );
       }
       return cursor.lastResult;
     }
@@ -135,7 +136,8 @@ export class DurableAuditStore implements AuditSink {
     while (true) {
       const candidate = cursor.pending;
       if (candidate !== null) cursor.pending = null;
-      const next = candidate === null ? await this.log.readNext(cursor.stream) : null;
+      const next =
+        candidate === null ? await this.log.readNext(cursor.stream) : null;
       if (candidate === null) {
         if (next === null) {
           cursor.lastResult = false;
@@ -166,7 +168,9 @@ export class DurableAuditStore implements AuditSink {
       }
       this.cursors.set(harness, cursor);
       if (record.logical_key_sha256 !== logicalKeySha256) {
-        throw new Error("Audit logical identity conflicts with its request hash.");
+        throw new Error(
+          "Audit logical identity conflicts with its request hash.",
+        );
       }
       cursor.lastResult = true;
       return true;
@@ -180,7 +184,6 @@ export class DurableAuditStore implements AuditSink {
   close(): Promise<void> {
     return this.log.close();
   }
-
 }
 
 export function toAuditArtifact(record: GatewayAuditRecord): JsonObject {
@@ -191,8 +194,7 @@ export function toAuditArtifact(record: GatewayAuditRecord): JsonObject {
     harness: record.harness,
     transport: record.transport,
     credential_source: record.credentialSource,
-    credential_epoch_hmac_sha256:
-      record.credentialEpochHmacSha256 ?? null,
+    credential_epoch_hmac_sha256: record.credentialEpochHmacSha256 ?? null,
     credential_tier_hmac_sha256: record.credentialTierHmacSha256 ?? null,
     credential_capability_hmac_sha256:
       record.credentialCapabilityHmacSha256 ?? null,
