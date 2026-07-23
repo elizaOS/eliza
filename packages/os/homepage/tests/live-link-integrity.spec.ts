@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import { HARDWARE_PRODUCTS } from "@elizaos/shared/hardware-catalog";
 import {
   type APIRequestContext,
@@ -13,8 +14,8 @@ import {
 type ReleaseArtifact = {
   id: string;
   label: string;
-  url: string;
-  checksumUrl?: string;
+  url: string | null;
+  checksumUrl?: string | null;
 };
 
 type ReleaseManifest = {
@@ -74,10 +75,16 @@ test.describe("live elizaOS marketing and hardware link integrity", () => {
         hasText: artifact.label,
       });
       await expect(card).toBeVisible();
-      await expect(
-        card.getByRole("link", { name: "Download" }),
-      ).toHaveAttribute("href", artifact.url);
-      liveTargets.set(artifact.url, `${artifact.label} download`);
+      if (artifact.url) {
+        await expect(
+          card.getByRole("link", { name: "Download" }),
+        ).toHaveAttribute("href", artifact.url);
+        liveTargets.set(artifact.url, `${artifact.label} download`);
+      } else {
+        await expect(
+          card.getByText("Unavailable", { exact: true }),
+        ).toHaveAttribute("aria-disabled", "true");
+      }
 
       if (artifact.checksumUrl) {
         await expect(
@@ -107,13 +114,13 @@ test.describe("live elizaOS marketing and hardware link integrity", () => {
     const footer = page.locator("footer.site-footer");
     await expect(footer.getByRole("link", { name: "App" })).toHaveAttribute(
       "href",
-      "https://elizaos.ai",
+      EXTERNAL_URLS.app,
     );
     await expect(footer.getByRole("link", { name: "Cloud" })).toHaveAttribute(
       "href",
       /https:\/\/(www\.)?elizacloud\.ai\/login\?intent=launch/,
     );
-    liveTargets.set("https://elizaos.ai", "Eliza app");
+    liveTargets.set(EXTERNAL_URLS.app, "Eliza app");
     liveTargets.set("https://elizacloud.ai/login?intent=launch", "Eliza Cloud");
 
     for (const [target, label] of liveTargets) {

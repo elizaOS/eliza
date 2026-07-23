@@ -15,7 +15,8 @@ const installerCopy = [
   "ElizaOS Android beta image bundle",
   "x86_64",
   "arm64",
-  "SHA256",
+  "Downloads are temporarily unavailable.",
+  "Unavailable",
 ];
 
 const hardwareCopy = [
@@ -38,8 +39,8 @@ test("lander renders elizaOS hero and primary copy", async ({ page }) => {
 
   const hero = page.locator(".hero-cloud");
   await expect(hero).toBeVisible();
-  await expect(hero.locator(".cloud-background img")).toHaveCount(1);
-  await expect(hero.locator(".cloud-background video")).toHaveCount(1);
+  await expect(hero).toHaveAttribute("data-hero", "cloud");
+  await expect(hero.locator(".cloud-scrim")).toHaveCount(1);
   await expect(hero.getByRole("link", { name: /^Download/i })).toHaveAttribute(
     "href",
     "#download",
@@ -54,19 +55,30 @@ test("lander renders elizaOS hero and primary copy", async ({ page }) => {
   }
 });
 
-test("download section exposes release artifact links", async ({ page }) => {
+test("download section distinguishes unavailable release artifacts", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.waitForSelector("h1", { timeout: 15000 });
+  await page
+    .getByRole("link", { name: /^Download/i })
+    .first()
+    .click();
 
   const downloads = page.locator("#download");
   await expect(downloads).toBeVisible();
+  await downloads.scrollIntoViewIfNeeded();
+  await expect(downloads).toBeInViewport();
 
   await expect(
-    downloads.getByRole("link", { name: "Download" }).first(),
-  ).toHaveAttribute("href", /eliza-canary-linux-x64\.tar\.zst$/);
-  await expect(
-    downloads.getByRole("link", { name: "SHA256" }).first(),
-  ).toHaveAttribute("href", /SHA256SUMS\.txt$/);
+    downloads.getByText("Downloads are temporarily unavailable."),
+  ).toBeVisible();
+  await expect(downloads.getByRole("link", { name: "Download" })).toHaveCount(
+    0,
+  );
+  await expect(downloads.getByText("Unavailable", { exact: true })).toHaveCount(
+    4,
+  );
 });
 
 test("anchor sections #download and #hardware exist and are reachable", async ({
@@ -104,7 +116,7 @@ test("footer renders wordmark, link nav, and social links", async ({
   await expect(footer.locator("img")).toHaveCount(1);
   await expect(footer.getByRole("link", { name: "App" })).toHaveAttribute(
     "href",
-    "https://elizaos.ai",
+    "https://app.elizacloud.ai",
   );
   await expect(footer.getByRole("link", { name: "Cloud" })).toHaveAttribute(
     "href",
@@ -148,6 +160,13 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
     "/brand/concepts/concept_usbdrive_900.jpg",
   );
 
+  await page.getByRole("button", { name: /ElizaOS mini PC/i }).click();
+  await expect(page).toHaveURL(/\/checkout\?sku=elizaos-mini-pc$/);
+  await expect(
+    page.getByRole("heading", { name: "ElizaOS mini PC" }),
+  ).toBeVisible();
+
+  await page.goto("/checkout?sku=elizaos-usb");
   await Promise.all([
     page.waitForURL(
       /api\.elizacloud\.ai\/steward\/auth\/oauth\/google\/authorize.*code_challenge=/,
@@ -158,12 +177,6 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
   expect(page.url()).toMatch(
     /redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A4455%2Fcheckout%3Fsku%3Delizaos-usb/,
   );
-
-  await page.getByRole("button", { name: /ElizaOS mini PC/i }).click();
-  await expect(page).toHaveURL(/\/checkout\?sku=elizaos-mini-pc$/);
-  await expect(
-    page.getByRole("heading", { name: "ElizaOS mini PC" }),
-  ).toBeVisible();
 });
 
 test("checkout result pages return to hardware", async ({ page }) => {
