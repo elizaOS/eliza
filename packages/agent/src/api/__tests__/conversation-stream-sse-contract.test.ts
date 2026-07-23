@@ -58,8 +58,8 @@ vi.mock("../chat-routes.ts", async () => {
         ? { streamProtocol: requestStreamProtocol }
         : {}),
     })),
-    persistConversationMemory: vi.fn(async () => undefined),
-    persistAssistantConversationMemory: vi.fn(async () => undefined),
+    persistConversationMemory: vi.fn(async (_runtime, memory) => memory),
+    persistAssistantConversationMemory: vi.fn(async () => null),
     hasRecentVisibleAssistantMemorySince: vi.fn(async () => false),
     resolveNoResponseFallback: () => "",
   };
@@ -92,7 +92,10 @@ vi.mock("../server-helpers.ts", async () => {
   };
 });
 
-import { persistConversationMemory } from "../chat-routes.ts";
+import {
+  persistAssistantConversationMemory,
+  persistConversationMemory,
+} from "../chat-routes.ts";
 import type {
   ConversationRouteContext,
   ConversationRouteState,
@@ -470,6 +473,20 @@ describe("conversation stream SSE contract (#10712)", () => {
       agentName: "Streaming Agent",
       thought: THOUGHT,
     });
+    // The terminal `done` frame carries the persisted assistant message id
+    // (pre-minted before the deferred DB insert), and the SAME id is handed to
+    // the persistence layer — the contract the client relies on to swap its
+    // streamed temp-resp-* bubble so the proactive-message WS echo reconciles
+    // by id instead of appending a duplicate bubble.
+    const doneMessageId = payloads[doneIndex].messageId;
+    expect(typeof doneMessageId).toBe("string");
+    const persistedCall = vi
+      .mocked(persistAssistantConversationMemory)
+      .mock.calls.find((call) => call[5] === doneMessageId);
+    expect(persistedCall).toBeDefined();
+    expect(persistedCall?.[1]).toBe(ROOM_ID);
+    expect(persistedCall?.[2]).toMatchObject({ text: FINAL_TEXT });
+    expect(persistedCall?.[3]).toBe(ChannelType.DM);
     // `done` is terminal — no token frames after it.
     expect(
       payloads.slice(doneIndex + 1).some((payload) => payload.type === "token"),

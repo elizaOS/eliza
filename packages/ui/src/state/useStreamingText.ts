@@ -72,6 +72,8 @@ export type StreamingTextModification =
       accountConnect?: AccountConnectRequest;
       /** Optional agent reasoning/thought to stamp on the completed turn. */
       reasoning?: string;
+      /** Persisted server id replacing the optimistic temp-resp-* stream id. */
+      persistedMessageId?: string;
     }
   | {
       messageId: string;
@@ -119,10 +121,23 @@ function computeNextMessage(
       const sameAccountConnect = message.accountConnect === mod.accountConnect;
       const sameReasoning =
         mod.reasoning === undefined || message.reasoning === mod.reasoning;
-      if (sameText && sameFailure && sameAccountConnect && sameReasoning) {
+      const sameId =
+        mod.persistedMessageId === undefined ||
+        message.id === mod.persistedMessageId;
+      if (
+        sameText &&
+        sameFailure &&
+        sameAccountConnect &&
+        sameReasoning &&
+        sameId
+      ) {
         return null;
       }
-      const next: ConversationMessage = { ...message, text: mod.fullText };
+      const next: ConversationMessage = {
+        ...message,
+        ...(mod.persistedMessageId ? { id: mod.persistedMessageId } : {}),
+        text: mod.fullText,
+      };
       if (mod.failureKind) {
         next.failureKind = mod.failureKind;
       } else if (message.failureKind !== undefined) {
@@ -179,13 +194,36 @@ export function applyStreamingTextModification(
     }
 
     let changed = false;
-    const next = prev.map((message) => {
+    let next = prev.map((message) => {
       if (message.id !== mod.messageId) return message;
       const patched = computeNextMessage(message, mod);
       if (patched === null) return message;
       changed = true;
       return patched;
     });
+    // Id-swap dedupe: when `complete` rebinds the streamed temp bubble to the
+    // persisted server id, a proactive-message WS echo carrying that same
+    // persisted id may have ALREADY appended its own bubble (action-callback
+    // turns persist + broadcast mid-turn, before the SSE `done` arrives). Keep
+    // only the FIRST occurrence — the swapped streamed bubble at the thread
+    // position the user watched (echoes append after it) — and drop the copy.
+    if (
+      mod.mode === "complete" &&
+      mod.persistedMessageId &&
+      mod.persistedMessageId !== mod.messageId
+    ) {
+      let seen = false;
+      const deduped = next.filter((message) => {
+        if (message.id !== mod.persistedMessageId) return true;
+        if (seen) return false;
+        seen = true;
+        return true;
+      });
+      if (deduped.length !== next.length) {
+        next = deduped;
+        changed = true;
+      }
+    }
     return changed ? next : prev;
   });
 }

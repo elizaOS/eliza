@@ -64,6 +64,7 @@ import {
   generateConversationTitle,
   getChatFailureReply,
   getChatMessageIdFirstSeenAt,
+  getRecentVisibleAssistantMemorySince,
   getRecentVisibleAssistantMemoryTextSince,
   hasRecentVisibleAssistantMemorySince,
   initSse,
@@ -2544,7 +2545,7 @@ export async function handleConversationRoutes(
       );
       const persistedFirstReply =
         state.runtime && firstSeenAt !== null
-          ? await getRecentVisibleAssistantMemoryTextSince(
+          ? await getRecentVisibleAssistantMemorySince(
               state.runtime,
               conv.roomId,
               firstSeenAt,
@@ -2559,8 +2560,9 @@ export async function handleConversationRoutes(
         persistedFirstReply
           ? {
               type: "done",
-              fullText: persistedFirstReply,
+              fullText: persistedFirstReply.text,
               agentName: state.agentName,
+              messageId: persistedFirstReply.id,
             }
           : {
               type: "done",
@@ -2656,7 +2658,7 @@ export async function handleConversationRoutes(
           await connectionRefresh;
           tokenWriter.writeSnapshot(res, walletModeGuidance);
           try {
-            await persistAssistantConversationMemory(
+            const persisted = await persistAssistantConversationMemory(
               runtime,
               conv.roomId,
               walletModeGuidance,
@@ -2664,6 +2666,12 @@ export async function handleConversationRoutes(
               turnStartedAt,
             );
             conv.updatedAt = new Date().toISOString();
+            writeSseJson(res, {
+              type: "done",
+              fullText: walletModeGuidance,
+              agentName: state.agentName,
+              ...(persisted?.id ? { messageId: persisted.id } : {}),
+            });
           } catch (persistErr) {
             writeSse(res, {
               type: "error",
@@ -2671,11 +2679,6 @@ export async function handleConversationRoutes(
             });
             return true;
           }
-          writeSseJson(res, {
-            type: "done",
-            fullText: walletModeGuidance,
-            agentName: state.agentName,
-          });
         }
       } finally {
         clearInterval(heartbeatInterval);
@@ -2695,9 +2698,11 @@ export async function handleConversationRoutes(
     // the wire carries each phase transition once. Distinct consecutive phases
     // (thinking → running_action → thinking) still pass through.
     let lastStatusSignature = "thinking::";
-    // When the success path emits `done` BEFORE running persistence (latency
-    // optimization), we hand off the persistence work as a detached promise so
-    // the `finally` block can `res.end()` immediately and still observe failures.
+    // The client needs the persisted assistant id in the terminal `done` frame
+    // so it can replace its streamed `temp-resp-*` bubble in place. Create the
+    // memory before `done`, but defer only the DB insert until after the socket
+    // closes so the latency optimization stays intact and the id is still the
+    // same one the later WS proactive-message broadcast carries.
     let deferredPersistence: Promise<void> | null = null;
 
     try {
@@ -2795,13 +2800,44 @@ export async function handleConversationRoutes(
               await new Promise((resolve) => setTimeout(resolve, 60));
             }
           }
-          // Emit `done` BEFORE persistence so user-perceived end-of-turn
-          // latency excludes the ~100-500ms memory write. Persistence runs
-          // after res.end() in the `finally` block as a detached promise.
+          // Resolve the durable assistant-memory id BEFORE emitting `done` so
+          // the client can swap its optimistic temp-resp-* bubble to the
+          // persisted id, and the proactive-message WS echo then reconciles by
+          // id instead of appending a duplicate bubble. Two topologies:
+          //  - action-callback turns may have ALREADY persisted (and WS-echoed)
+          //    the reply via the client_chat send handler — reuse that memory's
+          //    id and skip the route's own persist (same suppression
+          //    shouldPersistFinalAssistantTurn provided, but id-carrying);
+          //  - otherwise pre-mint the id here and defer only the DB insert.
+          let persistedAssistantId: UUID | null = null;
+          let shouldPersistAssistantTurn = false;
+          if (result.usedActionCallbacks) {
+            const existingAssistantTurn =
+              await getRecentVisibleAssistantMemorySince(
+                runtime,
+                conv.roomId,
+                turnStartedAt,
+              );
+            if (existingAssistantTurn) {
+              persistedAssistantId = existingAssistantTurn.id;
+            } else {
+              persistedAssistantId = crypto.randomUUID() as UUID;
+              shouldPersistAssistantTurn = true;
+            }
+          } else {
+            persistedAssistantId = crypto.randomUUID() as UUID;
+            shouldPersistAssistantTurn = true;
+          }
+          // Emit `done` before the DB insert so user-perceived end-of-turn
+          // latency excludes the memory write, but include the pre-minted
+          // persisted id so the client can reconcile its streamed temp bubble.
           writeSseJson(res, {
             type: "done",
             fullText: resolvedText,
             agentName: result.agentName,
+            ...(persistedAssistantId
+              ? { messageId: persistedAssistantId }
+              : {}),
             ...(result.thought ? { thought: result.thought } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
             ...(result.actionResults?.length
@@ -2830,20 +2866,14 @@ export async function handleConversationRoutes(
                 turnStartedAt,
               );
             }
-            if (
-              await shouldPersistFinalAssistantTurn(
-                runtime,
-                conv.roomId,
-                turnStartedAt,
-                result,
-              )
-            ) {
+            if (shouldPersistAssistantTurn && persistedAssistantId) {
               await persistAssistantConversationMemory(
                 runtime,
                 conv.roomId,
                 buildPersistedAssistantContent(resolvedText, result),
                 channelType,
                 turnStartedAt,
+                persistedAssistantId,
               );
             }
           })();
@@ -2885,7 +2915,7 @@ export async function handleConversationRoutes(
             "Post-generation error after text was already streamed — using streamed text",
           );
           try {
-            await persistAssistantConversationMemory(
+            const persisted = await persistAssistantConversationMemory(
               runtime,
               conv.roomId,
               streamedText,
@@ -2897,6 +2927,7 @@ export async function handleConversationRoutes(
               type: "done",
               fullText: streamedText,
               agentName: state.agentName,
+              ...(persisted?.id ? { messageId: persisted.id } : {}),
             });
           } catch (persistErr) {
             writeSse(res, {
@@ -2937,7 +2968,7 @@ export async function handleConversationRoutes(
           const providerIssueReply = getChatFailureReply(err, state.logBuffer);
           const failureKind = classifyChatFailure(err, state.logBuffer);
           try {
-            await persistAssistantConversationMemory(
+            const persisted = await persistAssistantConversationMemory(
               runtime,
               conv.roomId,
               providerIssueReply,
@@ -2948,6 +2979,7 @@ export async function handleConversationRoutes(
               type: "done",
               fullText: providerIssueReply,
               agentName: state.agentName,
+              ...(persisted?.id ? { messageId: persisted.id } : {}),
               // See non-streaming branch — renderer gates chat input on
               // failureKind === "no_provider".
               failureKind,

@@ -1733,7 +1733,8 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         } else if (
           shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
-          data.reasoning
+          data.reasoning ||
+          data.messageId
         ) {
           applyStreamingModificationForConversation(convId, {
             messageId: assistantMsgId,
@@ -1744,6 +1745,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               ? { accountConnect: data.accountConnect }
               : {}),
             ...(data.reasoning ? { reasoning: data.reasoning } : {}),
+            ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
           });
         } else if (data.failureKind) {
           // Streaming text already matched but the server flagged a failure
@@ -1764,6 +1766,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             mode: "complete",
             fullText: data.text,
             accountConnect: data.accountConnect,
+            ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
           });
         }
         if (data.usage) {
@@ -2037,6 +2040,9 @@ export function useChatSend(deps: UseChatSendDeps) {
                   : {}),
                 ...(retryData.reasoning
                   ? { reasoning: retryData.reasoning }
+                  : {}),
+                ...(retryData.messageId
+                  ? { persistedMessageId: retryData.messageId }
                   : {}),
               });
             }
@@ -2621,6 +2627,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               mode: "complete",
               fullText: data.text,
               ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+              ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
             });
           } else if (data.failureKind) {
             applyStreamingModificationForConversation(convId, {
