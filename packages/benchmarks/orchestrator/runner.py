@@ -110,7 +110,6 @@ DEFAULT_STALE_RECOVERY_SECONDS = 6 * 60 * 60
 DEFAULT_FULL_CAMPAIGN_SILENT_TIMEOUT_SECONDS = 60 * 60
 DEFAULT_PROCESS_PROGRESS_POLL_SECONDS = 1.0
 PROCESS_TERMINATION_GRACE_SECONDS = 10.0
-ACCEPTANCE_PARENT_BOUNDARY_ENV = "ELIZA_ACCEPTANCE_GATE_PARENT_BOUNDARY"
 CANONICAL_REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
 LATEST_SNAPSHOT_AGENTS: set[str] = {
     *CANONICAL_REAL_HARNESSES,
@@ -819,38 +818,6 @@ def _terminate_benchmark_process(process: subprocess.Popen[str]) -> None:
     process.wait()
 
 
-def _install_acceptance_parent_interrupt_handler(
-    process: subprocess.Popen[str],
-) -> tuple[int, Any] | None:
-    """Give the acceptance-gate parent a synchronous child-teardown signal."""
-
-    if (
-        os.environ.get(ACCEPTANCE_PARENT_BOUNDARY_ENV) != "1"
-        or threading.current_thread() is not threading.main_thread()
-    ):
-        return None
-    signal_number = (
-        getattr(signal, "SIGBREAK", signal.SIGTERM)
-        if os.name == "nt"
-        else signal.SIGINT
-    )
-    previous = signal.getsignal(signal_number)
-
-    def handle_parent_interrupt(_signum: int, _frame: Any) -> None:
-        _terminate_benchmark_process(process)
-        raise KeyboardInterrupt("acceptance-gate parent interrupted orchestrator")
-
-    signal.signal(signal_number, handle_parent_interrupt)
-    return signal_number, previous
-
-
-def _restore_acceptance_parent_interrupt_handler(
-    registration: tuple[int, Any] | None,
-) -> None:
-    if registration is not None:
-        signal.signal(*registration)
-
-
 def _run_command_with_deadlines(
     command: list[str],
     *,
@@ -885,7 +852,6 @@ def _run_command_with_deadlines(
             text=True,
             start_new_session=os.name == "posix",
         )
-        parent_interrupt_handler = _install_acceptance_parent_interrupt_handler(process)
         signature = _progress_signature(
             stdout_path=stdout_path,
             stderr_path=stderr_path,
@@ -922,7 +888,6 @@ def _run_command_with_deadlines(
 
             returncode = process.poll()
             if returncode is not None:
-                _restore_acceptance_parent_interrupt_handler(parent_interrupt_handler)
                 progress_events += 1
                 _write_process_progress(
                     progress_file,
@@ -938,12 +903,14 @@ def _run_command_with_deadlines(
                     progress_event_count=progress_events,
                 )
 
-            if execution_cancel_event is not None and execution_cancel_event.is_set():
+            if (
+                execution_cancel_event is not None
+                and execution_cancel_event.is_set()
+            ):
                 cancellation_error = (
                     "Command cancelled by the benchmark cohort coordinator"
                 )
                 _terminate_benchmark_process(process)
-                _restore_acceptance_parent_interrupt_handler(parent_interrupt_handler)
                 progress_events += 1
                 _write_process_progress(
                     progress_file,
@@ -980,7 +947,6 @@ def _run_command_with_deadlines(
                 continue
 
             _terminate_benchmark_process(process)
-            _restore_acceptance_parent_interrupt_handler(parent_interrupt_handler)
             progress_events += 1
             _write_process_progress(
                 progress_file,

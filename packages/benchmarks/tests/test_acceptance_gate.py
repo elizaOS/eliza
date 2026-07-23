@@ -1,12 +1,11 @@
 """Tests for ``scripts/acceptance_gate.py``.
 
 The acceptance gate spawns the orchestrator and calls the provider over
-HTTP. These tests mock both so we never spend real quota or launch a
-real benchmark process; the provider-forwarder tests instead run the
-REAL forwarder against a local upstream stub that stands in for the
-remote cloud proxy, so the loopback relay, per-lane bearer swap, and
-teardown are exercised over genuine sockets. The module is loaded by
-path so the tests don't depend on ``scripts/`` being a package.
+HTTP. Provider calls and benchmark work never spend real quota here. The
+timeout test does cross the real OS process boundary, while the provider
+forwarder tests run the real relay against a local upstream stub so socket
+routing, bearer replacement, and teardown are exercised. The module is
+loaded by path so the tests don't depend on ``scripts/`` being a package.
 """
 
 from __future__ import annotations
@@ -14,10 +13,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import signal
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,7 +26,9 @@ from typing import Any
 import pytest
 
 
-_MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "acceptance_gate.py"
+_MODULE_PATH = (
+    Path(__file__).resolve().parent.parent / "scripts" / "acceptance_gate.py"
+)
 
 
 def _load_module():
@@ -64,9 +65,7 @@ def test_precheck_fails_when_key_missing(monkeypatch: pytest.MonkeyPatch) -> Non
     assert result.details["api_key_source"] is None
 
 
-def test_precheck_passes_with_key_and_install_skipped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_precheck_passes_with_key_and_install_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_credential_env(monkeypatch)
     monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test-123")
     result = gate._step_precheck(skip_install_check=True)
@@ -154,9 +153,7 @@ def test_cerebras_smoke_classifies_pong(monkeypatch: pytest.MonkeyPatch) -> None
     assert result.details["response_text"] == "PONG"
 
 
-def test_cerebras_smoke_routes_through_operator_proxy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_cerebras_smoke_routes_through_operator_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pre-set operator env (cloud proxy base URL + OpenAI-style key) must be
     honored by the smoke call instead of the hardcoded Cerebras default."""
     _clear_credential_env(monkeypatch)
@@ -205,139 +202,80 @@ def test_cerebras_smoke_fails_on_non_200(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "non-200" in (result.error or "")
 
 
-def test_cerebras_smoke_does_not_retry_untyped_warming_prose(
+def test_cerebras_smoke_does_not_retry_free_text_503(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test-123")
     calls = 0
 
-    def _fake_chat(**_kwargs: Any) -> tuple[int, None, str]:
+    def _warming_response(**kwargs: Any) -> tuple[int, None, str]:
         nonlocal calls
         calls += 1
-        return 503, None, '{"error":"authorization warming. Retry shortly."}'
+        return 503, None, '{"error":"billing authorization warming"}'
 
-    monkeypatch.setattr(gate, "_cerebras_chat", _fake_chat)
-
+    monkeypatch.setattr(gate, "_cerebras_chat", _warming_response)
     result = gate._step_cerebras_smoke()
 
     assert result.passed is False
     assert calls == 1
-    assert "status=503" in (result.error or "")
+    assert "non-200" in (result.error or "")
 
 
 # ---------------------------------------------------------------------------
-# Orchestrator process ownership
+# Orchestrator process boundary
 # ---------------------------------------------------------------------------
 
 
-def test_orchestrator_timeout_interrupts_before_returning_failure(
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-group regression")
+def test_outer_timeout_terminates_separately_sessioned_grandchild(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    popen_kwargs: dict[str, Any] = {}
-
-    class _FakeProcess:
-        returncode = -2
-
-        def __init__(self) -> None:
-            self.communicate_calls = 0
-            self.signals: list[int] = []
-            self.killed = False
-
-        def communicate(self, timeout: float | None = None) -> tuple[str, str]:
-            self.communicate_calls += 1
-            if self.communicate_calls == 1:
-                raise subprocess.TimeoutExpired(
-                    cmd=["orchestrator"],
-                    timeout=timeout,
-                    output="partial stdout",
-                    stderr="partial stderr",
-                )
-            return "final stdout", "final stderr"
-
-        def send_signal(self, value: int) -> None:
-            self.signals.append(value)
-
-        def kill(self) -> None:
-            self.killed = True
-
-    process = _FakeProcess()
-
-    def _fake_popen(*_args: Any, **kwargs: Any) -> _FakeProcess:
-        popen_kwargs.update(kwargs)
-        return process
-
-    monkeypatch.setattr(gate.subprocess, "Popen", _fake_popen)
-
-    returncode, stdout, stderr = gate._orchestrator_run(
-        benchmark_id="bfcl",
-        agent="eliza",
-        provider="cerebras",
-        model="test-model",
-        extra={},
-        timeout_s=1,
-        verbose=False,
+    grandchild_pid_path = tmp_path / "grandchild.pid"
+    grandchild_script = (
+        "import os, time\n"
+        "from pathlib import Path\n"
+        f"Path({str(grandchild_pid_path)!r}).write_text(str(os.getpid()))\n"
+        "time.sleep(30)\n"
     )
-
-    expected_interrupt = (
-        getattr(signal, "CTRL_BREAK_EVENT", signal.SIGTERM)
-        if os.name == "nt"
-        else signal.SIGINT
+    parent_script = (
+        "import subprocess, sys, time\n"
+        f"subprocess.Popen([sys.executable, '-c', {grandchild_script!r}], "
+        "start_new_session=True)\n"
+        "time.sleep(30)\n"
     )
-    assert returncode == -1
-    assert stdout == "final stdout"
-    assert "owned interrupt" in stderr
-    assert process.signals == [expected_interrupt]
-    assert process.killed is False
-    assert popen_kwargs["env"][gate.ACCEPTANCE_PARENT_BOUNDARY_ENV] == "1"
-
-
-def test_orchestrator_timeout_force_kills_after_interrupt_grace(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class _FakeProcess:
-        returncode = -9
-
-        def __init__(self) -> None:
-            self.communicate_calls = 0
-            self.killed = False
-
-        def communicate(self, timeout: float | None = None) -> tuple[str, str]:
-            self.communicate_calls += 1
-            if self.communicate_calls <= 2:
-                raise subprocess.TimeoutExpired(
-                    cmd=["orchestrator"],
-                    timeout=timeout,
-                    output="partial stdout",
-                    stderr="partial stderr",
-                )
-            return "forced stdout", "forced stderr"
-
-        def send_signal(self, _value: int) -> None:
-            return None
-
-        def kill(self) -> None:
-            self.killed = True
-
-    process = _FakeProcess()
-    monkeypatch.setattr(
-        gate.subprocess,
-        "Popen",
-        lambda *_args, **_kwargs: process,
+    unrelated = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
     )
+    monkeypatch.setattr(gate, "PROCESS_TERMINATION_GRACE_S", 0.1)
+    try:
+        returncode, _stdout, stderr = gate._run_subprocess_with_timeout(
+            [sys.executable, "-c", parent_script],
+            cwd=str(tmp_path),
+            timeout_s=0.5,
+        )
+        assert returncode == -1
+        assert "timed out after 0.5s" in stderr
+        assert grandchild_pid_path.exists()
 
-    returncode, _stdout, stderr = gate._orchestrator_run(
-        benchmark_id="bfcl",
-        agent="eliza",
-        provider="cerebras",
-        model="test-model",
-        extra={},
-        timeout_s=1,
-        verbose=False,
-    )
-
-    assert returncode == -1
-    assert process.killed is True
-    assert "forced kill after interrupt grace" in stderr
+        grandchild_pid = int(grandchild_pid_path.read_text())
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            status = subprocess.run(
+                ["ps", "-o", "stat=", "-p", str(grandchild_pid)],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout.strip()
+            if not status or status.startswith("Z"):
+                break
+            time.sleep(0.02)
+        assert not status or status.startswith("Z")
+        assert unrelated.poll() is None
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
 
 
 # ---------------------------------------------------------------------------
@@ -424,9 +362,7 @@ def test_lift_over_random_uses_floor_for_uninterpretable_benchmark() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_trajectory_normalization_warns_when_missing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_trajectory_normalization_warns_when_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(gate, "PACKAGE_ROOT", tmp_path)
     (tmp_path / "benchmark_results").mkdir(parents=True)
     sanity = _make_sanity_step({"eliza": 0.5, "openclaw": 0.5, "hermes": 0.5})
@@ -440,9 +376,7 @@ def test_trajectory_normalization_warns_when_missing(
     assert len(result.details["warnings"]) == 3
 
 
-def test_trajectory_normalization_fails_strict(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_trajectory_normalization_fails_strict(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(gate, "PACKAGE_ROOT", tmp_path)
     (tmp_path / "benchmark_results").mkdir(parents=True)
     sanity = _make_sanity_step({"eliza": 0.5, "openclaw": 0.5, "hermes": 0.5})
@@ -452,18 +386,14 @@ def test_trajectory_normalization_fails_strict(
         strict=True,
     )
     assert result.passed is False
-    assert (result.error or "").startswith("eliza:") or "missing" in (
-        result.error or ""
-    )
+    assert (result.error or "").startswith("eliza:") or "missing" in (result.error or "")
 
 
-def test_trajectory_normalization_succeeds_when_files_present(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_trajectory_normalization_succeeds_when_files_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(gate, "PACKAGE_ROOT", tmp_path)
     bench_root = tmp_path / "benchmark_results"
     for agent in ("eliza", "openclaw", "hermes"):
-        run_dir = bench_root / "rg_test" / "x__y" / f"rid_{agent}"
+        run_dir = bench_root / "rg_test" / f"x__y" / f"rid_{agent}"
         run_dir.mkdir(parents=True)
         (run_dir / "trajectory.canonical.jsonl").write_text(
             json.dumps({"step": 1}) + "\n", encoding="utf-8"
@@ -526,9 +456,7 @@ def test_sanity_max_tasks_clamped_to_harness_smoke_limit(
     monkeypatch.setenv("CEREBRAS_BASE_URL", "http://127.0.0.1:9/v1")
     monkeypatch.setattr(gate, "_benchmark_registered", lambda b: True)
     monkeypatch.setattr(
-        gate,
-        "_cerebras_chat",
-        lambda **k: (200, {"choices": [{"message": {"content": "PONG"}}]}, ""),
+        gate, "_cerebras_chat", lambda **k: (200, {"choices": [{"message": {"content": "PONG"}}]}, "")
     )
 
     class _FakeClient:
@@ -553,11 +481,7 @@ def test_sanity_max_tasks_clamped_to_harness_smoke_limit(
     monkeypatch.setattr(
         gate,
         "_latest_run_for",
-        lambda **k: {
-            "run_id": f"rid_{k['agent']}",
-            "status": "succeeded",
-            "score": 1.0,
-        },
+        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
     )
     report = gate.run_acceptance_gate(
         benchmark_id="hermes_tblite",
@@ -611,10 +535,7 @@ def test_extract_cerebras_text_handles_malformed_payloads() -> None:
     assert gate._extract_cerebras_text({}) == ""
     assert gate._extract_cerebras_text({"choices": []}) == ""
     assert gate._extract_cerebras_text({"choices": [{"message": {}}]}) == ""
-    assert (
-        gate._extract_cerebras_text({"choices": [{"message": {"content": "hi"}}]})
-        == "hi"
-    )
+    assert gate._extract_cerebras_text({"choices": [{"message": {"content": "hi"}}]}) == "hi"
 
 
 # ---------------------------------------------------------------------------
@@ -665,7 +586,9 @@ class _UpstreamStub:
         self.port = int(self._server.server_address[1])
         self.remote_base_url = f"http://0.0.0.0:{self.port}/v1"
         self.loopback_base_url = f"http://127.0.0.1:{self.port}/v1"
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread = threading.Thread(
+            target=self._server.serve_forever, daemon=True
+        )
         self._thread.start()
 
     def close(self) -> None:
@@ -844,9 +767,7 @@ def test_agent_smoke_routes_every_harness_through_forwarder(
     assert all(entry["token"] != REAL_UPSTREAM_KEY for entry in seen)
     # All three completions really traversed the relay into the upstream stub,
     # which only ever saw the real credential.
-    chat_hits = [
-        r for r in upstream_stub.requests if r["path"] == "/v1/chat/completions"
-    ]
+    chat_hits = [r for r in upstream_stub.requests if r["path"] == "/v1/chat/completions"]
     assert len(chat_hits) == 3
     assert all(r["authorization"] == f"Bearer {REAL_UPSTREAM_KEY}" for r in chat_hits)
     # The gate's own env is restored after each lane -- no leakage.
@@ -874,9 +795,7 @@ def test_agent_smoke_keeps_direct_path_for_loopback_env(
     for agent in gate.AGENTS:
         assert result.details["agents"][agent]["provider_route"] == "direct"
     # Direct path: operator env untouched, harnesses hit the endpoint as-is.
-    assert [entry["base_url"] for entry in seen] == [
-        upstream_stub.loopback_base_url
-    ] * 3
+    assert [entry["base_url"] for entry in seen] == [upstream_stub.loopback_base_url] * 3
     assert [entry["token"] for entry in seen] == [REAL_UPSTREAM_KEY] * 3
 
 
@@ -899,15 +818,9 @@ def test_sanity_benchmark_injects_lane_env_into_orchestrator_runs(
     monkeypatch.setattr(
         gate,
         "_latest_run_for",
-        lambda **k: {
-            "run_id": f"rid_{k['agent']}",
-            "status": "succeeded",
-            "score": 1.0,
-        },
+        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
     )
-    result = gate._step_sanity_benchmark(
-        benchmark_id="bfcl", max_tasks=1, verbose=False
-    )
+    result = gate._step_sanity_benchmark(benchmark_id="bfcl", max_tasks=1, verbose=False)
     assert result.passed is True, result.error
     assert [d["agent"] for d in dispatched] == list(gate.AGENTS)
     for call in dispatched:
@@ -943,11 +856,7 @@ def test_full_gate_passes_through_forwarder_and_closes_it(
     monkeypatch.setattr(
         gate,
         "_latest_run_for",
-        lambda **k: {
-            "run_id": f"rid_{k['agent']}",
-            "status": "succeeded",
-            "score": 1.0,
-        },
+        lambda **k: {"run_id": f"rid_{k['agent']}", "status": "succeeded", "score": 1.0},
     )
     rc = gate.cli(["--skip-install-check", "--skip-random", "--benchmark", "bfcl"])
     assert rc == 0

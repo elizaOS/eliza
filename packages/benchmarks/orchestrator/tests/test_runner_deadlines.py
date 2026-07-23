@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import signal
 import subprocess
 import sys
 import threading
@@ -107,40 +105,6 @@ def test_full_profile_has_no_wall_timeout_but_keeps_silent_watchdog() -> None:
     assert full.silent_timeout_seconds == 901
     assert smoke.wall_timeout_seconds == 73
     assert smoke.silent_timeout_seconds is None
-
-
-def test_acceptance_parent_interrupt_terminates_owned_benchmark(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(runner.ACCEPTANCE_PARENT_BOUNDARY_ENV, "1")
-    process = object()
-    terminated: list[object] = []
-    monkeypatch.setattr(
-        runner,
-        "_terminate_benchmark_process",
-        lambda active: terminated.append(active),
-    )
-
-    registration = runner._install_acceptance_parent_interrupt_handler(process)
-    assert registration is not None
-    signal_number, _previous = registration
-    installed = signal.getsignal(signal_number)
-    assert callable(installed)
-    try:
-        with pytest.raises(
-            KeyboardInterrupt,
-            match="acceptance-gate parent interrupted",
-        ):
-            installed(signal_number, None)
-    finally:
-        runner._restore_acceptance_parent_interrupt_handler(registration)
-
-    assert terminated == [process]
-    assert signal_number == (
-        getattr(signal, "SIGBREAK", signal.SIGTERM)
-        if os.name == "nt"
-        else signal.SIGINT
-    )
 
 
 def test_normalized_harness_timeouts_reach_every_runtime_environment(

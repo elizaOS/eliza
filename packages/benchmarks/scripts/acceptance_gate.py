@@ -79,7 +79,6 @@ def _resolve_api_key() -> tuple[str, str | None]:
             return value, var
     return "", None
 
-
 DEFAULT_BENCHMARK_FALLBACK = "bfcl"
 DEFAULT_BENCHMARK_PRIMARY = "hermes_tblite"
 DEFAULT_SCORE_FLOOR = 0.1
@@ -106,15 +105,13 @@ GATE_PROVIDER = "cerebras"
 TIMEOUT_PRECHECK_S = 30
 TIMEOUT_CEREBRAS_SMOKE_S = 30
 TIMEOUT_AGENT_SMOKE_S = 120
-# The orchestrator owns ordinary wall/silent-progress deadlines. This outer
-# guard covers failure before or around that monitor: 4h is ~16x the slowest
-# observed sanity leg (~890s) and therefore a last-resort process bound, not a
-# rollout budget. On expiry the parent sends an interrupt so the orchestrator
-# can terminate its separately-sessioned benchmark before it exits.
-TIMEOUT_BENCHMARK_RUN_S = 14_400
+# The gate runs a bounded sanity slice, not a full campaign. The orchestrator
+# owns per-benchmark liveness; this outer deadline only contains failures in
+# the orchestrator boundary itself and leaves 2x headroom over the slowest
+# observed sanity leg (~890s).
+TIMEOUT_BENCHMARK_RUN_S = 1800
 TIMEOUT_RANDOM_RUN_S = 120
-ORCHESTRATOR_INTERRUPT_GRACE_S = 15
-ACCEPTANCE_PARENT_BOUNDARY_ENV = "ELIZA_ACCEPTANCE_GATE_PARENT_BOUNDARY"
+PROCESS_TERMINATION_GRACE_S = 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +336,10 @@ def _step_provider_forwarder() -> GateStepResult:
             upstream_base_url=target[0],
             upstream_api_key=target[1],
             evidence_dir=(
-                PACKAGE_ROOT / "benchmark_results" / run_group_id / "provider-forwarder"
+                PACKAGE_ROOT
+                / "benchmark_results"
+                / run_group_id
+                / "provider-forwarder"
             ),
         )
         _PROVIDER_FORWARDER = forwarder
@@ -406,6 +406,129 @@ def _applied_env(overrides: Mapping[str, str]) -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
+def _posix_process_groups(root_pid: int) -> list[int]:
+    """Return descendant process groups deepest-first, with the root last."""
+
+    result = subprocess.run(
+        ["ps", "-Ao", "pid=,ppid=,pgid="],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    children: dict[int, list[tuple[int, int]]] = {}
+    root_pgid = root_pid
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 3:
+            continue
+        pid, parent_pid, process_group = (int(field) for field in fields)
+        children.setdefault(parent_pid, []).append((pid, process_group))
+        if pid == root_pid:
+            root_pgid = process_group
+
+    ordered_groups: list[int] = []
+    stack = [(root_pid, root_pgid, False)]
+    while stack:
+        pid, process_group, visited = stack.pop()
+        if visited:
+            if pid != root_pid and process_group not in ordered_groups:
+                ordered_groups.append(process_group)
+            continue
+        stack.append((pid, process_group, True))
+        stack.extend(
+            (child_pid, child_group, False)
+            for child_pid, child_group in children.get(pid, ())
+        )
+
+    if root_pgid not in ordered_groups:
+        ordered_groups.append(root_pgid)
+    return ordered_groups
+
+
+def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    """Terminate every process owned by a timed-out orchestrator invocation."""
+
+    if os.name != "posix":
+        # error-policy:J6 Windows has no process groups that recursively include
+        # grandchildren; taskkill /T is the platform process-tree boundary.
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            capture_output=True,
+            check=False,
+        )
+        try:
+            process.wait(timeout=PROCESS_TERMINATION_GRACE_S)
+        except subprocess.TimeoutExpired:
+            # error-policy:J6 hard-stop the root if taskkill could not finish it.
+            process.kill()
+            process.wait()
+        return
+
+    try:
+        process_groups = _posix_process_groups(process.pid)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        # error-policy:J6 the isolated root session is still safe to terminate
+        # if process-table inspection fails during timeout teardown.
+        process_groups = [process.pid]
+
+    own_group = os.getpgrp()
+    process_groups = [group for group in process_groups if group != own_group]
+    for process_group in process_groups:
+        try:
+            os.killpg(process_group, signal.SIGTERM)
+        except ProcessLookupError:
+            # error-policy:J6 a descendant may exit during timeout teardown.
+            continue
+
+    try:
+        process.wait(timeout=PROCESS_TERMINATION_GRACE_S)
+    except subprocess.TimeoutExpired:
+        # error-policy:J6 hard-stop only the isolated groups that ignored TERM.
+        pass
+
+    for process_group in process_groups:
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            # error-policy:J6 the process group exited during the grace period.
+            continue
+    process.wait()
+
+
+def _run_subprocess_with_timeout(
+    command: list[str],
+    *,
+    cwd: str,
+    timeout_s: float,
+    env: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
+    """Run an isolated subprocess tree and return a fail-closed timeout result."""
+
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=os.name == "posix",
+        creationflags=(
+            subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        ),
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(process)
+        stdout, stderr = process.communicate()
+        return -1, stdout or "", (
+            f"process timed out after {timeout_s:g}s\n"
+            f"stdout so far:\n{(stdout or '')[-2000:]}\n"
+            f"stderr so far:\n{(stderr or '')[-2000:]}"
+        )
+    return process.returncode, stdout or "", stderr or ""
+
+
 def _orchestrator_run(
     *,
     benchmark_id: str,
@@ -441,66 +564,12 @@ def _orchestrator_run(
     ]
     if verbose:
         print(f"  $ {' '.join(cmd)}", flush=True)
-    child_env = {
-        **os.environ,
-        **(env_overrides or {}),
-        ACCEPTANCE_PARENT_BOUNDARY_ENV: "1",
-    }
-    creation_flags = (
-        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
-    )
-    process = subprocess.Popen(
+    return _run_subprocess_with_timeout(
         cmd,
         cwd=str(PACKAGES_ROOT),  # so ``benchmarks`` is importable as pkg
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=child_env,
-        start_new_session=os.name == "posix",
-        creationflags=creation_flags,
+        timeout_s=timeout_s,
+        env={**os.environ, **env_overrides} if env_overrides else None,
     )
-    try:
-        stdout, stderr = process.communicate(timeout=timeout_s)
-    except subprocess.TimeoutExpired as exc:
-        partial_stdout = _subprocess_text(exc.stdout)
-        partial_stderr = _subprocess_text(exc.stderr)
-        interrupt = (
-            getattr(signal, "CTRL_BREAK_EVENT", signal.SIGTERM)
-            if os.name == "nt"
-            else signal.SIGINT
-        )
-        process.send_signal(interrupt)
-        forced = False
-        try:
-            stdout, stderr = process.communicate(timeout=ORCHESTRATOR_INTERRUPT_GRACE_S)
-        except subprocess.TimeoutExpired:
-            # error-policy:J6 the orchestrator did not honor its bounded
-            # ownership interrupt, so the outermost process boundary hard-stops
-            # it after the grace period.
-            forced = True
-            process.kill()
-            stdout, stderr = process.communicate()
-        stdout = stdout or partial_stdout
-        stderr = stderr or partial_stderr
-        cleanup = "forced kill after interrupt grace" if forced else "owned interrupt"
-        return (
-            -1,
-            stdout,
-            (
-                f"orchestrator timed out after {timeout_s}s ({cleanup})\n"
-                f"stdout so far:\n{stdout[-2000:]}\n"
-                f"stderr so far:\n{stderr[-2000:]}"
-            ),
-        )
-    return process.returncode, stdout or "", stderr or ""
-
-
-def _subprocess_text(value: str | bytes | None) -> str:
-    """Normalize ``TimeoutExpired`` output across Python implementations."""
-
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return value or ""
 
 
 def _latest_run_for(
@@ -599,10 +668,7 @@ def _step_precheck(
         manifests: dict[str, Any] = {}
         for agent_id in ("openclaw", "hermes"):
             mpath = manifest_path(agent_id)
-            manifests[agent_id] = {
-                "manifest_path": str(mpath),
-                "exists": mpath.is_file(),
-            }
+            manifests[agent_id] = {"manifest_path": str(mpath), "exists": mpath.is_file()}
             if not mpath.is_file():
                 failures.append(f"manifest missing for {agent_id} at {mpath}")
                 continue
@@ -613,9 +679,7 @@ def _step_precheck(
             manifests[agent_id]["verify_passed"] = ok
             manifests[agent_id]["verify_detail"] = detail
             if not ok:
-                failures.append(
-                    f"verify_install({agent_id}) failed: {detail.splitlines()[0] if detail else ''}"
-                )
+                failures.append(f"verify_install({agent_id}) failed: {detail.splitlines()[0] if detail else ''}")
         details["manifests"] = manifests
     else:
         details["install_check_skipped"] = True
@@ -697,7 +761,6 @@ def _make_adapter_client(agent: str):
     sys.path.insert(0, str(PACKAGE_ROOT / "hermes-adapter"))
     if agent == "eliza":
         from eliza_adapter.server_manager import ElizaServerManager
-
         global _ELIZA_SERVER_MANAGER
         if _ELIZA_SERVER_MANAGER is None:
             _ELIZA_SERVER_MANAGER = ElizaServerManager()
@@ -705,11 +768,9 @@ def _make_adapter_client(agent: str):
         return _ELIZA_SERVER_MANAGER.client
     if agent == "openclaw":
         from openclaw_adapter.client import OpenClawClient
-
         return OpenClawClient()
     if agent == "hermes":
         from hermes_adapter.client import HermesClient
-
         return HermesClient()
     raise ValueError(f"unknown agent {agent!r}")
 
@@ -837,11 +898,7 @@ def _step_sanity_benchmark(
         step_id="SANITY_BENCHMARK",
         passed=not failures,
         duration_ms=_now_ms() - start,
-        details={
-            "benchmark_id": benchmark_id,
-            "max_tasks": max_tasks,
-            "agents": per_agent,
-        },
+        details={"benchmark_id": benchmark_id, "max_tasks": max_tasks, "agents": per_agent},
         error="; ".join(failures) if failures else None,
     )
 
@@ -927,7 +984,7 @@ def _step_lift_over_random(
 
     strategy = BENCHMARK_STRATEGIES.get(benchmark_id)
     is_meaningful = bool(strategy and strategy.is_meaningful)
-    random_score = random_step.details.get("score") if random_step else None
+    random_score = (random_step.details.get("score") if random_step else None)
     agents_detail = sanity_step.details.get("agents", {}) if sanity_step.details else {}
 
     per_agent: dict[str, Any] = {}
@@ -1003,9 +1060,7 @@ def _step_trajectory_normalization(
         bench_results = PACKAGE_ROOT / "benchmark_results"
         matches = list(bench_results.glob(f"**/{run_id}/**/trajectory.canonical.jsonl"))
         if not matches:
-            matches = list(
-                bench_results.glob(f"**/{run_id}/trajectory.canonical.jsonl")
-            )
+            matches = list(bench_results.glob(f"**/{run_id}/trajectory.canonical.jsonl"))
         entry["candidate_paths"] = [str(p) for p in matches[:5]]
         if not matches:
             entry["passed"] = False
@@ -1046,11 +1101,7 @@ def _step_trajectory_normalization(
         step_id="TRAJECTORY_NORMALIZATION",
         passed=passed,
         duration_ms=_now_ms() - start,
-        details={
-            "benchmark_id": benchmark_id,
-            "agents": per_agent,
-            "warnings": warnings,
-        },
+        details={"benchmark_id": benchmark_id, "agents": per_agent, "warnings": warnings},
         error="; ".join(error_parts) if error_parts else None,
     )
 
@@ -1318,7 +1369,8 @@ def _print_summary(report: GateReport) -> None:
     failed = sum(
         1
         for step in report.steps
-        if not step.passed and not (step.details and step.details.get("skipped"))
+        if not step.passed
+        and not (step.details and step.details.get("skipped"))
     )
     skipped = sum(
         1 for step in report.steps if step.details and step.details.get("skipped")
@@ -1356,11 +1408,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-random", action="store_true")
     parser.add_argument("--skip-install-check", action="store_true")
     parser.add_argument("--verbose", action="store_true")
-    parser.add_argument(
-        "--strict",
-        action="store_true",
-        help="Treat missing trajectory.canonical.jsonl as a hard failure (default: warn-only)",
-    )
+    parser.add_argument("--strict", action="store_true",
+                        help="Treat missing trajectory.canonical.jsonl as a hard failure (default: warn-only)")
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--score-floor", type=float, default=DEFAULT_SCORE_FLOOR)
     return parser
