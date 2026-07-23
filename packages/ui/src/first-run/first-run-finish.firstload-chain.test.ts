@@ -38,7 +38,7 @@ const RUNNING_AGENT = {
   created_at: "2026-07-01T00:00:00Z",
 };
 
-const clientMock = vi.hoisted(() => ({
+const clientStub = vi.hoisted(() => ({
   selectOrProvisionCloudAgent: vi.fn(),
   submitFirstRun: vi.fn(async () => {}),
   setBaseUrl: vi.fn(),
@@ -55,32 +55,32 @@ const clientMock = vi.hoisted(() => ({
     | undefined,
 }));
 
-const runCloudAgentHandoffMock = vi.hoisted(() => vi.fn());
-const resumePendingCloudHandoffMock = vi.hoisted(() => vi.fn(() => true));
-const savePersistedFirstRunCompleteMock = vi.hoisted(() => vi.fn());
-const silentlyRepointToDedicatedMock = vi.hoisted(() => vi.fn());
-const runAgentSessionRecoveryMock = vi.hoisted(() => vi.fn());
-const removeAgentProfileMock = vi.hoisted(() => vi.fn());
-const loadPersistedActiveServerMock = vi.hoisted(() =>
+const runCloudAgentHandoffStub = vi.hoisted(() => vi.fn());
+const resumePendingCloudHandoffStub = vi.hoisted(() => vi.fn(() => true));
+const savePersistedFirstRunCompleteStub = vi.hoisted(() => vi.fn());
+const silentlyRepointToDedicatedStub = vi.hoisted(() => vi.fn());
+const runAgentSessionRecoveryStub = vi.hoisted(() => vi.fn());
+const removeAgentProfileStub = vi.hoisted(() => vi.fn());
+const loadPersistedActiveServerStub = vi.hoisted(() =>
   vi.fn<() => { kind: string; id?: string } | null>(() => null),
 );
 
-vi.mock("../api", () => ({ client: clientMock }));
+vi.mock("../api", () => ({ client: clientStub }));
 
 vi.mock("../cloud/handoff/silent-repoint", () => ({
-  silentlyRepointToDedicated: silentlyRepointToDedicatedMock,
+  silentlyRepointToDedicated: silentlyRepointToDedicatedStub,
 }));
 
 vi.mock("../state/agent-session-recovery-runner", () => ({
-  runAgentSessionRecovery: runAgentSessionRecoveryMock,
+  runAgentSessionRecovery: runAgentSessionRecoveryStub,
 }));
 
 vi.mock("../cloud/handoff/run-cloud-agent-handoff", () => ({
-  runCloudAgentHandoff: runCloudAgentHandoffMock,
+  runCloudAgentHandoff: runCloudAgentHandoffStub,
 }));
 
 vi.mock("../cloud/handoff/resume-pending-handoff", () => ({
-  resumePendingCloudHandoff: resumePendingCloudHandoffMock,
+  resumePendingCloudHandoff: resumePendingCloudHandoffStub,
 }));
 
 vi.mock("../config/boot-config", () => ({
@@ -93,10 +93,10 @@ vi.mock("../config/boot-config", () => ({
 vi.mock("../state", () => ({
   addAgentProfile: vi.fn(() => ({ id: "profile-1" })),
   createPersistedActiveServer: vi.fn((v) => ({ label: "Eliza Cloud", ...v })),
-  loadPersistedActiveServer: loadPersistedActiveServerMock,
-  removeAgentProfile: removeAgentProfileMock,
+  loadPersistedActiveServer: loadPersistedActiveServerStub,
+  removeAgentProfile: removeAgentProfileStub,
   savePersistedActiveServer: vi.fn(),
-  savePersistedFirstRunComplete: savePersistedFirstRunCompleteMock,
+  savePersistedFirstRunComplete: savePersistedFirstRunCompleteStub,
 }));
 
 vi.mock("./mobile-runtime-mode", async (importOriginal) => ({
@@ -138,8 +138,8 @@ function storeStewardToken(token = "steward-jwt"): void {
   window.localStorage.setItem("steward_session_token", token);
 }
 
-function mockSelection(): void {
-  clientMock.selectOrProvisionCloudAgent.mockResolvedValue({
+function stubSelection(): void {
+  clientStub.selectOrProvisionCloudAgent.mockResolvedValue({
     agentId: "cad3c071",
     agentName: "Eliza",
     apiBase: SHARED_AGENT_BASE,
@@ -152,13 +152,13 @@ function mockSelection(): void {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
-  clientMock.listConversations = vi.fn(async () => ({ conversations: [] }));
-  clientMock.getCloudStatus.mockResolvedValue({ connected: false });
-  clientMock.getCloudCompatAgents.mockResolvedValue({
+  clientStub.listConversations = vi.fn(async () => ({ conversations: [] }));
+  clientStub.getCloudStatus.mockResolvedValue({ connected: false });
+  clientStub.getCloudCompatAgents.mockResolvedValue({
     success: true,
     data: [RUNNING_AGENT],
   });
-  mockSelection();
+  stubSelection();
 });
 
 describe("listOrAutoProvisionCloudAgent — no serial status probe before the agents list", () => {
@@ -168,28 +168,28 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
     // The user/status probe is OFF the chain — the agents list is the probe.
-    expect(clientMock.getCloudStatus).not.toHaveBeenCalled();
+    expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
     // Exactly one list fetch, no duplicate in the bind.
-    expect(clientMock.getCloudCompatAgents).toHaveBeenCalledTimes(1);
-    expect(clientMock.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(clientStub.getCloudCompatAgents).toHaveBeenCalledTimes(1);
+    expect(clientStub.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
     expect(
-      clientMock.selectOrProvisionCloudAgent.mock.calls[0][0].knownAgents,
+      clientStub.selectOrProvisionCloudAgent.mock.calls[0][0].knownAgents,
     ).toEqual([RUNNING_AGENT]);
   });
 
   it("stale bearer degrade: a failed list falls back to the status probe and re-enters login instead of stranding", async () => {
     storeStewardToken("stale-jwt");
-    clientMock.getCloudCompatAgents
+    clientStub.getCloudCompatAgents
       .mockResolvedValueOnce({ success: false, data: [], error: "401" })
       .mockResolvedValueOnce({ success: true, data: [RUNNING_AGENT] });
     const { ports: p, handleCloudLogin } = ports();
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
     // The failure path consulted the status probe (legacy semantics kept)…
-    expect(clientMock.getCloudStatus).toHaveBeenCalled();
+    expect(clientStub.getCloudStatus).toHaveBeenCalled();
     // …and re-entered login rather than treating the dead list as connected.
     expect(handleCloudLogin).toHaveBeenCalledTimes(1);
-    expect(clientMock.getCloudCompatAgents).toHaveBeenCalledTimes(2);
+    expect(clientStub.getCloudCompatAgents).toHaveBeenCalledTimes(2);
   });
 
   it("after handleCloudLogin lands a bearer there is NO post-login status re-probe — one probe total on the no-token entry", async () => {
@@ -203,8 +203,8 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
     // Exactly ONE status probe (the pre-login connectivity check). The old
     // code issued a second one after login whose result was overridden by the
     // token check anyway — that serial round trip must not come back.
-    expect(clientMock.getCloudStatus).toHaveBeenCalledTimes(1);
-    expect(clientMock.getCloudCompatAgents).toHaveBeenCalledTimes(1);
+    expect(clientStub.getCloudStatus).toHaveBeenCalledTimes(1);
+    expect(clientStub.getCloudCompatAgents).toHaveBeenCalledTimes(1);
   });
 
   it("returns needs-cloud-login when login lands no token and the probe stays disconnected", async () => {
@@ -214,8 +214,8 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
     expect(handleCloudLogin).toHaveBeenCalledTimes(1);
     // Pre-login probe + post-login probe (no token landed, so the probe is
     // still the only evidence available).
-    expect(clientMock.getCloudStatus).toHaveBeenCalledTimes(2);
-    expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clientStub.getCloudStatus).toHaveBeenCalledTimes(2);
+    expect(clientStub.getCloudCompatAgents).not.toHaveBeenCalled();
   });
 });
 
@@ -228,12 +228,12 @@ describe("bindCloudAgent — agent-base warm-up", () => {
       ports().ports,
     );
     expect(outcome.kind).toBe("done");
-    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(SHARED_AGENT_BASE);
-    expect(clientMock.listConversations).toHaveBeenCalledTimes(1);
+    expect(clientStub.setBaseUrl).toHaveBeenCalledWith(SHARED_AGENT_BASE);
+    expect(clientStub.listConversations).toHaveBeenCalledTimes(1);
   });
 
   it("a hanging or rejecting warm-up never blocks or fails the bind", async () => {
-    clientMock.listConversations = vi.fn(
+    clientStub.listConversations = vi.fn(
       () => Promise.reject(new Error("cold container")) as never,
     );
     const outcome = await bindCloudAgent(
@@ -246,7 +246,7 @@ describe("bindCloudAgent — agent-base warm-up", () => {
   });
 
   it("a client shim without the chat surface is a safe no-op", async () => {
-    clientMock.listConversations = undefined;
+    clientStub.listConversations = undefined;
     const outcome = await bindCloudAgent(
       draft(),
       "steward-token",
