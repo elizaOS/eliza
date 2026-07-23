@@ -48,16 +48,11 @@ describe("WalletProvider local chain and cache behavior", () => {
     const rt = runtime();
 
     expect(() => new WalletProvider("0x1234", rt, { mainnet })).toThrow(
-      "Invalid private key format",
+      "Invalid private key format"
     );
-    expect(() => WalletProvider.genChainFromName("missing-chain")).toThrow(
-      "Invalid chain name",
-    );
+    expect(() => WalletProvider.genChainFromName("missing-chain")).toThrow("Invalid chain name");
 
-    const custom = WalletProvider.genChainFromName(
-      "mainnet",
-      "http://127.0.0.1:8545",
-    );
+    const custom = WalletProvider.genChainFromName("mainnet", "http://127.0.0.1:8545");
     expect(custom.rpcUrls.custom?.http).toEqual(["http://127.0.0.1:8545"]);
   });
 
@@ -135,9 +130,7 @@ describe("WalletProvider local chain and cache behavior", () => {
       chains: { evm: ["not-a-chain"] },
     };
     const key = generatePrivateKey();
-    const deriveEcdsaKeypair = vi
-      .fn()
-      .mockResolvedValue({ keypair: key, attestation: {} });
+    const deriveEcdsaKeypair = vi.fn().mockResolvedValue({ keypair: key, attestation: {} });
     vi.spyOn(rt, "getSetting").mockImplementation((name) => {
       if (name === "TEE_MODE") return "ON";
       if (name === "WALLET_SECRET_SALT") return "wallet-test";
@@ -166,9 +159,7 @@ describe("WalletProvider local chain and cache behavior", () => {
     });
 
     const provider = await initWalletProvider(rt);
-    await expect(provider.getWalletBalances()).rejects.toThrow(
-      "TEE service not found",
-    );
+    await expect(provider.getWalletBalances()).rejects.toThrow("TEE service not found");
   });
 });
 
