@@ -750,7 +750,7 @@ test.describe("assistant home app flow", () => {
     await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
     // The fresh first-run choices render inside the real chat transcript; there
     // is no separate full-screen legacy surface.
-    const firstRunOverlay = page.getByTestId("continuous-chat-overlay");
+    const firstRunOverlay = page.getByTestId("chat-overlay");
     await expect(firstRunOverlay).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
     await expect(
@@ -978,7 +978,7 @@ test.describe("assistant home app flow", () => {
       pointerType: "mouse",
     });
     // Holding past the push-to-talk threshold (200ms) begins capture. The held
-    // voice control is labelled "release to insert" (ContinuousChatOverlay) —
+    // voice control is labelled "release to insert" (ChatOverlay) —
     // push-to-talk dictates into the composer draft and does NOT auto-send, so
     // the label is "insert", not "send".
     const releaseButton = page.getByRole("button", {

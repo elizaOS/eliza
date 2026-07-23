@@ -86,7 +86,7 @@ export const LauncherSurface = React.memo(function LauncherSurface({
       className={cn(
         "flex flex-col px-0",
         layout === "page"
-          ? "absolute inset-0 min-h-0 pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]"
+          ? "absolute inset-0 min-h-0 pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.75rem)]"
           : "relative w-full flex-none",
       )}
     >

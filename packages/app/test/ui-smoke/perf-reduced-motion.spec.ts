@@ -1,7 +1,7 @@
 // prefers-reduced-motion collapse spec for the dashboard shell (#9141, task 7).
 //
 // The shell honors reduced motion two ways: framer-motion components read
-// `useReducedMotion()` (ContinuousChatOverlay.tsx:1068, gating message enter/exit
+// `useReducedMotion()` (ChatOverlay.tsx:1068, gating message enter/exit
 // + the turn-status fade), and CSS animations carry Tailwind's `motion-reduce:`
 // variant (e.g. the typing-dots `animate-pulse motion-reduce:animate-none`). This
 // spec forces `prefers-reduced-motion: reduce` and proves both mechanisms hold:
@@ -31,7 +31,7 @@ test.describe("shell honors prefers-reduced-motion", () => {
     page,
   }, testInfo) => {
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 60_000,
     });
 

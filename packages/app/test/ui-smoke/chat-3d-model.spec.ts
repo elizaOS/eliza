@@ -151,7 +151,7 @@ test("chat: a .glb attachment renders an inline three.js WebGL viewer (not just 
   // open it the way a user would (grabber tap — same pattern as
   // chat-message-actions / chat-thread-gestures).
   await page.getByTestId("chat-sheet-grabber").click();
-  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
     "data-open",
     "true",
     { timeout: 15_000 },

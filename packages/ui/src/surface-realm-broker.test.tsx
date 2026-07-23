@@ -305,11 +305,11 @@ describe("SurfaceRealmScope.resetHostRealm — root/body class + :root var vecto
     const scope = makeScope();
 
     document.documentElement.style.setProperty(
-      "--eliza-continuous-chat-clearance",
+      "--eliza-chat-clearance",
       "92px",
     );
     document.documentElement.style.setProperty(
-      "--eliza-continuous-chat-side-clearance",
+      "--eliza-chat-side-clearance",
       "232px",
     );
     document.documentElement.style.setProperty("--rogue-var", "red");
@@ -317,22 +317,18 @@ describe("SurfaceRealmScope.resetHostRealm — root/body class + :root var vecto
     const removed = scope.resetHostRealm();
 
     expect(
-      document.documentElement.style.getPropertyValue(
-        "--eliza-continuous-chat-clearance",
-      ),
+      document.documentElement.style.getPropertyValue("--eliza-chat-clearance"),
     ).toBe("92px");
     expect(
       document.documentElement.style.getPropertyValue(
-        "--eliza-continuous-chat-side-clearance",
+        "--eliza-chat-side-clearance",
       ),
     ).toBe("232px");
     expect(document.documentElement.style.getPropertyValue("--rogue-var")).toBe(
       "",
     );
-    expect(removed.rootVars).not.toContain("--eliza-continuous-chat-clearance");
-    expect(removed.rootVars).not.toContain(
-      "--eliza-continuous-chat-side-clearance",
-    );
+    expect(removed.rootVars).not.toContain("--eliza-chat-clearance");
+    expect(removed.rootVars).not.toContain("--eliza-chat-side-clearance");
     expect(removed.rootVars).toContain("--rogue-var");
   });
 

@@ -688,7 +688,7 @@ async function sendChatMessage(page: Page, text: string): Promise<void> {
  * the full detent.
  */
 async function pullChatSheetToFull(page: Page): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   const sheet = page.getByTestId("chat-sheet");
   await expect(overlay).toHaveAttribute("data-open", "true", {
     timeout: 15_000,
@@ -726,7 +726,7 @@ async function reachChatReady(ctx: StepContext): Promise<void> {
   ctx.routes.firstRun.setComplete(true);
   await seedFirstRunCompleteBeforeLoad(ctx.page);
   await openAppPath(ctx.page, "/chat");
-  await expect(ctx.page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(ctx.page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 }
@@ -817,7 +817,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     async run({ page, lane }) {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       const startedAt = Date.now();
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       await expect(overlay).toBeVisible({
         timeout: FIRST_RUN_READY_TIMEOUT_MS[lane],
       });
@@ -831,11 +831,11 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       return {
         assertions: [
           "Loaded / with first-run incomplete",
-          `continuous-chat-overlay + transcript runtime choices became visible in ${firstRunVisibleMs}ms`,
+          `chat-overlay + transcript runtime choices became visible in ${firstRunVisibleMs}ms`,
         ],
         dom: {
           ...(await domMarkers(page, {
-            chatOverlay: '[data-testid="continuous-chat-overlay"]',
+            chatOverlay: '[data-testid="chat-overlay"]',
             runtimeChoice: '[data-testid="choice-__first_run__:runtime:cloud"]',
             root: "#root",
           })),
@@ -908,7 +908,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
           "chat overlay + composer reachable (ready agent)",
         ],
         dom: await domMarkers(page, {
-          overlay: '[data-testid="continuous-chat-overlay"]',
+          overlay: '[data-testid="chat-overlay"]',
           composer: '[data-testid="chat-composer-textarea"]',
         }),
       };
@@ -1050,7 +1050,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       page.on("request", onRequest);
 
       await sendChatMessage(page, userText);
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       await expect(overlay).toHaveAttribute("data-open", "true", {
         timeout: 15_000,
       });
@@ -1097,8 +1097,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
             : "Reply came from the keyless mock (mock lane)",
         ],
         dom: await domMarkers(page, {
-          overlayOpen:
-            '[data-testid="continuous-chat-overlay"][data-open="true"]',
+          overlayOpen: '[data-testid="chat-overlay"][data-open="true"]',
         }),
         trajectory,
       };
@@ -1283,7 +1282,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         .getByTestId("widget-host-home")
         .or(page.getByTestId("home-launcher-surface"));
       await expect(home.first()).toBeVisible({ timeout: 30_000 });
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       const open = await overlay.getAttribute("data-open").catch(() => null);
       expect(open === "true").toBeFalsy();
       return {
@@ -1306,7 +1305,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     async run(ctx) {
       const { page } = ctx;
       await openAppPath(page, "/chat");
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       await expect(overlay).toBeVisible({ timeout: 30_000 });
       const grabber = page.getByTestId("chat-sheet-grabber");
       if (await grabber.isVisible().catch(() => false)) {
@@ -1324,7 +1323,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
             : "Chat reopened (thread hydration in progress)",
         ],
         dom: await domMarkers(page, {
-          overlay: '[data-testid="continuous-chat-overlay"]',
+          overlay: '[data-testid="chat-overlay"]',
         }),
       };
     },
@@ -1443,7 +1442,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     expectation:
       "The overlay collapses to its pill/rest state while the composer remains reachable.",
     async run({ page }) {
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       const composerEl = composer(page);
       await composerEl.press("Escape").catch(() => undefined);
       const backdrop = page.getByTestId("chat-sheet-backdrop");
@@ -1471,7 +1470,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       "The overlay expands from rest back to the open/full state with the thread visible.",
     async run({ page }) {
       const grabber = page.getByTestId("chat-sheet-grabber");
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       if (await grabber.isVisible({ timeout: 3_000 }).catch(() => false)) {
         await grabber.focus().catch(() => undefined);
         await page.keyboard.press("ArrowUp").catch(() => undefined);
@@ -1594,7 +1593,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       if (reachable) {
         await input.click({ timeout: 10_000 }).catch(() => undefined);
       }
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       const overlayVisible = await overlay
         .isVisible({ timeout: 10_000 })
         .catch(() => false);
@@ -1615,7 +1614,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
             : "Returned toward dashboard",
         ],
         dom: await domMarkers(page, {
-          overlay: '[data-testid="continuous-chat-overlay"]',
+          overlay: '[data-testid="chat-overlay"]',
         }),
       };
     },

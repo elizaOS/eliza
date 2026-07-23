@@ -216,7 +216,7 @@ test("keyboard-only: Tab reaches the composer, typing opens the chat, Enter send
   browserName,
 }) => {
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   await expect(overlay).not.toHaveAttribute("data-open", "true");
 
@@ -276,7 +276,7 @@ test("keyboard-only: focus traversal is bidirectional and every stop is focus-vi
   browserName,
 }) => {
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
   await page.evaluate(() => {
@@ -343,7 +343,7 @@ test("mouse: hover surfaces the composer control affordance and reverts on unhov
     "hover affordances are @media (hover: hover)-gated off on touch-primary profiles",
   );
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 
@@ -379,7 +379,7 @@ test("mouse: hover surfaces the composer control affordance and reverts on unhov
 test("mouse: wheel scrolls the open transcript", async ({ page }) => {
   await installScrollableConversationRoutes(page);
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
   // Typing is the open contract (focus alone deliberately keeps the sheet
@@ -426,7 +426,7 @@ test.describe("real touch (touchscreen taps + CDP touch-point swipe)", () => {
 
     await installScrollableConversationRoutes(page);
     await openAppPath(page, "/chat");
-    const overlay = page.getByTestId("continuous-chat-overlay");
+    const overlay = page.getByTestId("chat-overlay");
     await expect(overlay).toBeVisible({ timeout: 60_000 });
     await expect(overlay).not.toHaveAttribute("data-open", "true");
 
@@ -467,7 +467,7 @@ test.describe("real touch (touchscreen taps + CDP touch-point swipe)", () => {
 
     // Backdrop taps collapse. The first tap only drops the keyboard when the
     // composer is focused (two-step dismiss by design — see
-    // ContinuousChatOverlay composerFocusedAtPress), so tap until collapsed,
+    // ChatOverlay composerFocusedAtPress), so tap until collapsed,
     // bounded at 3.
     for (let tap = 0; tap < 3; tap += 1) {
       const open = (await overlay.getAttribute("data-open")) === "true";

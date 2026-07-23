@@ -43,10 +43,7 @@ electrobun-wgpu {
   .memory-feed-empty {
     min-height: 6.5rem;
     padding-block: 0.5rem;
-    padding-inline-end: max(
-      1rem,
-      var(--eliza-continuous-chat-side-clearance, 0px)
-    );
+    padding-inline-end: max(1rem, var(--eliza-chat-side-clearance, 0px));
   }
 
   .memory-feed-empty > div {

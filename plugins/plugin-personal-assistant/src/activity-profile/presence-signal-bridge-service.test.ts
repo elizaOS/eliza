@@ -574,7 +574,7 @@ describe("PresenceSignalBridgeService composer activity signals (#14679)", () =>
       runtime: {} as IAgentRuntime,
       source: "composer-interaction",
       activity: "typing_started",
-      surface: "continuous_chat_overlay",
+      surface: "chat_overlay",
       conversationId: "conversation-1",
       draftLength: 12,
       occurredAt: "2026-06-01T12:00:00.000Z",
@@ -601,7 +601,7 @@ describe("PresenceSignalBridgeService composer activity signals (#14679)", () =>
       metadata: expect.objectContaining({
         eventType: "USER_TYPING_STARTED",
         activity: "typing_started",
-        surface: "continuous_chat_overlay",
+        surface: "chat_overlay",
         conversationId: "conversation-1",
         draftLength: 12,
       }),

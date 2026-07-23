@@ -6,7 +6,7 @@
  *      — live mount is `ConversationsSidebar` inside the Electrobun
  *      `DetachedShellRoot`, never the web shell.
  *   2. `TasksEventsPanel` (`data-testid="chat-widgets-resize-handle"`) —
- *      currently barrel-exported with no live mount (the continuous-chat
+ *      currently barrel-exported with no live mount (the chat
  *      redesign orphaned its parent), but the drag/collapse/persist logic is
  *      still the shipped implementation.
  *   3. Cloud `ResizablePanelGroup`/`ResizableHandle`
