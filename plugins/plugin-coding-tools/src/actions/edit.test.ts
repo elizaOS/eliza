@@ -196,6 +196,28 @@ describe("EDIT", () => {
     expect(result.text).toContain("stale_read");
   });
 
+  it("resolves relative paths against the session cwd", async () => {
+    // Seeds inside env.tmpDir only — the edit must resolve there, never
+    // against the repo checkout (process.cwd()).
+    const file = await seedFile("rel-edit.txt", "hello cwd");
+    const cwdRuntime = {
+      ...env.runtime,
+      getService: <T>(serviceType: string): T | null =>
+        serviceType === "CODING_TOOLS_SESSION_CWD"
+          ? ({ getCwd: () => env.tmpDir } as T)
+          : env.runtime.getService<T>(serviceType),
+    } as typeof env.runtime;
+    const result = await editFileHandler(cwdRuntime, env.message, undefined, {
+      parameters: {
+        file_path: "rel-edit.txt",
+        old_string: "hello",
+        new_string: "goodbye",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe("goodbye cwd");
+  });
+
   it("rejects paths under the blocklist", async () => {
     const file = path.join(env.blockedPath, "x.txt");
     await fs.writeFile(file, "hello");

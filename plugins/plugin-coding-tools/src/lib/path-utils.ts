@@ -5,6 +5,9 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { SessionCwdService } from "../services/session-cwd-service.js";
+import { SESSION_CWD_SERVICE } from "../types.js";
 
 const BLOCKED_PATHS = new Set([
   "/dev/zero",
@@ -75,31 +78,25 @@ export function relativeFromRoot(p: string, root: string): string {
 }
 
 /**
- * Resolve a relative tool path against the conversation's working directory.
- * The planner naturally says `file_path: "AGENTS.md"` the way every CLI user
- * would; rejecting relatives outright errored the whole turn (observed live:
- * three identical not_absolute failures, then a silent errored turn). Absolute
- * paths pass through untouched; sandbox validation still runs on the result.
- */
-export function resolveRelativeToCwd(filePath: string, cwd: string): string {
-  return isAbsolutePath(filePath) ? filePath : path.resolve(cwd, filePath);
-}
-
-/**
  * Resolve a handler's `file_path` input to an absolute path using the
- * conversation's working directory. Owns the SessionCwdService lookup so
- * read/write/edit share one definition; `getCwd` itself defaults to
- * `process.cwd()` when the conversation has no recorded cwd.
+ * conversation's working directory. The planner naturally says
+ * `file_path: "AGENTS.md"` the way every CLI user would; rejecting relatives
+ * outright errored the whole turn (observed live: three identical
+ * not_absolute failures, then a silent errored turn). Absolute paths pass
+ * through untouched; sandbox validation still runs on the result. Owns the
+ * SessionCwdService lookup so read/write/edit share one definition, falling
+ * back to `process.cwd()` when the service is absent or the conversation has
+ * no recorded cwd.
  */
 export function resolveInputPath(
-  runtime: {
-    getService(type: string): { getCwd(id: string | undefined): string } | null;
-  },
+  runtime: IAgentRuntime,
   conversationId: string | undefined,
   filePath: string,
 ): string {
   if (isAbsolutePath(filePath)) return filePath;
-  const cwdService = runtime.getService("CODING_TOOLS_SESSION_CWD");
+  const cwdService = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
+    typeof SessionCwdService
+  > | null;
   const cwd = cwdService?.getCwd(conversationId) ?? process.cwd();
   return path.resolve(cwd, filePath);
 }
