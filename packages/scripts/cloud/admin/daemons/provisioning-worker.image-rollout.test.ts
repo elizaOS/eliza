@@ -170,6 +170,18 @@ describe("real one-shot daemon entrypoint", () => {
       unresolved: 0,
       failed: 0,
     }));
+    const reconcileWarmClaimCredentialFences = mock(async () => ({
+      legacyFound: 0,
+      legacyRecovered: 0,
+      cleanupFound: 0,
+      cleanupCompleted: 0,
+      failed: 0,
+    }));
+    const reconcileReplacementCleanupFences = mock(async () => ({
+      total: 0,
+      cleaned: 0,
+      failed: 0,
+    }));
     const enqueueAgentUpgradeOnce = mock(async () => ({
       created: true,
       job: { id: "canary-safe-upgrade" },
@@ -245,6 +257,8 @@ describe("real one-shot daemon entrypoint", () => {
           processDisconnectedRecovery,
           recoverInterruptedJobsOnStartup,
           reconcileStuckProvisioning,
+          reconcileWarmClaimCredentialFences,
+          reconcileReplacementCleanupFences,
           enqueueAgentUpgradeOnce,
         },
       },
@@ -390,6 +404,8 @@ describe("real one-shot daemon entrypoint", () => {
         expect(processDisconnectedRecovery).toHaveBeenCalledTimes(1);
         expect(recoverInterruptedJobsOnStartup).toHaveBeenCalledTimes(1);
         expect(reconcileStuckProvisioning).toHaveBeenCalledTimes(1);
+        expect(reconcileWarmClaimCredentialFences).toHaveBeenCalledTimes(1);
+        expect(reconcileReplacementCleanupFences).toHaveBeenCalledTimes(1);
         expect(countInFlightByTypes).toHaveBeenCalledWith([
           "agent_upgrade",
           "agent_admin_canary_image",
