@@ -375,6 +375,92 @@ describe("streaming chat — provider errors settle by provable outcome", () => 
   });
 });
 
+describe("streaming chat — finished stream without reported usage", () => {
+  test("onFinish with an empty usage record settles the admitted estimate, not $0", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    let onFinishPromise: Promise<unknown> | undefined;
+
+    streamTextImpl = (config) => {
+      const onFinish = config.onFinish as
+        | ((event: { text: string; usage: unknown }) => Promise<unknown>)
+        | undefined;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-delta", id: "text-1", text: "delivered reply" };
+          yield {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+          };
+          // SDK contract: onFinish fires after the stream completes; a provider
+          // that never reported usage hands it an empty record.
+          onFinishPromise = Promise.resolve(
+            onFinish?.({ text: "delivered reply", usage: {} }),
+          );
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      settleUnknown: () => settle(ledger.hold),
+    });
+    const body = await res.text();
+    expect(onFinishPromise).toBeDefined();
+    await onFinishPromise;
+
+    // Delivered output with unreported usage retains the admitted estimate —
+    // "not reported" must never settle as "free".
+    expect(body).toContain("delivered reply");
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(recordUsageAnalytics).not.toHaveBeenCalled();
+  });
+
+  test("an explicit zero-token usage report still bills as reported (settles $0)", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    let onFinishPromise: Promise<unknown> | undefined;
+
+    streamTextImpl = (config) => {
+      const onFinish = config.onFinish as
+        | ((event: { text: string; usage: unknown }) => Promise<unknown>)
+        | undefined;
+      return {
+        fullStream: (async function* () {
+          yield {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+          };
+          onFinishPromise = Promise.resolve(
+            onFinish?.({
+              text: "",
+              usage: { inputTokens: 0, outputTokens: 0 },
+            }),
+          );
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      settleUnknown: () => settle(ledger.hold),
+    });
+    await res.text();
+    expect(onFinishPromise).toBeDefined();
+    await onFinishPromise;
+
+    // Explicit zeros are a provider-reported result, not missing data — the
+    // normal billing path runs and reconciles to the billed $0.
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([0]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+  });
+});
+
 describe("streaming chat — client abort settles delivered usage", () => {
   test("abort after text deltas reconciles to prompt plus delivered-output cost, not 0", async () => {
     const ledger = makeLedgerReservation(100, 0.015);

@@ -120,9 +120,25 @@ type CreatorEarningsLeg = "deduct" | "reconcile_charge" | "purchase";
 type CreatorEarningsReversalLeg = "reconcile_refund" | "compensation_reversal";
 
 interface CreatorEarningsCommitState {
-  redeemable: "absent" | "recorded" | "unknown";
+  /**
+   * `below_ledger_unit` is a designed terminal outcome, not a failure: the
+   * movement floors below the redeemable ledger's 0.0001 unit, so nothing is
+   * recorded anywhere (no $0.0000 ledger row, no shadow projection) and the
+   * consumer charge proceeds. Mirrors the affiliate outbox's below-unit rule.
+   */
+  redeemable: "absent" | "recorded" | "unknown" | "below_ledger_unit";
   shadowBalanceRecorded: boolean;
   shadowTransactionRecorded: boolean;
+}
+
+/**
+ * The redeemable earnings ledger persists amounts at 4 decimal places after a
+ * 6-decimal float-noise normalization (see `redeemableEarningsService`). Any
+ * creator movement must be quantized through the SAME boundary before deciding
+ * whether it is representable at all.
+ */
+function quantizeToRedeemableLedgerUnit(amount: number): Decimal {
+  return new Decimal(amount).toDecimalPlaces(6).toDecimalPlaces(4, Decimal.ROUND_DOWN);
 }
 
 class CreatorEarningsAccountingError extends Error {
@@ -1518,6 +1534,29 @@ export class AppCreditsService {
       );
     }
 
+    // A consumer charge must not fail because the creator's markup floors
+    // below the 0.0001 redeemable ledger unit (e.g. the MIN_RESERVATION hold
+    // on a free model). Mirror the affiliate outbox: the sub-unit remainder is
+    // explicitly NOT recorded — no fabricated $0.0000 ledger row, no shadow
+    // projection — and the decision is auditable through this structured log.
+    const quantizedEarning = quantizeToRedeemableLedgerUnit(amount);
+    if (!quantizedEarning.gt(0)) {
+      logger.info("[AppCredits] Creator markup below ledger unit — not recorded", {
+        reason: "below_ledger_unit",
+        appId,
+        creatorId: app.created_by_user_id,
+        type,
+        leg,
+        amount,
+        quantizedAmount: quantizedEarning.toFixed(4),
+        sourceId: identity.sourceId,
+      });
+      return {
+        deduplicated: false,
+        commitState: { ...commitState, redeemable: "below_ledger_unit" },
+      };
+    }
+
     let result: Awaited<ReturnType<typeof redeemableEarningsService.addEarnings>>;
     try {
       result = await redeemableEarningsService.addEarnings({
@@ -1661,6 +1700,23 @@ export class AppCreditsService {
 
     if (!app?.created_by_user_id) {
       throw new Error(`App ${appId} has no creator for monetized earnings reversal`);
+    }
+
+    // Symmetric with recordCreatorEarnings' below-unit rule: a clawback that
+    // floors below the 0.0001 ledger unit is not representable and matches a
+    // movement that was itself never recorded. Skip explicitly and audibly;
+    // never fail the surrounding settlement over sub-unit dust.
+    const quantizedReversal = quantizeToRedeemableLedgerUnit(amount);
+    if (!quantizedReversal.gt(0)) {
+      logger.info("[AppCredits] Creator reversal below ledger unit — not recorded", {
+        reason: "below_ledger_unit",
+        appId,
+        creatorId: app.created_by_user_id,
+        leg,
+        amount,
+        quantizedAmount: quantizedReversal.toFixed(4),
+      });
+      return { deduplicated: false };
     }
 
     const result = await redeemableEarningsService.reduceEarnings({

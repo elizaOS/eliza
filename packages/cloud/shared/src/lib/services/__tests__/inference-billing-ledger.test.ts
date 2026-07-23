@@ -414,15 +414,23 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
         thresholdUsd: 1,
       });
       const settle = ledger.createLedgerDebitSettler(charge(reqId));
-      await expect(settle(2.5)).resolves.toEqual({
+      const reconciliation = await settle(2.5);
+      expect(reconciliation).toMatchObject({
         reservedAmount: 2.5,
         actualCost: 2.5,
-        settlementTransactionIds: [],
         adjustmentType: "none",
       });
 
       expect(await readBalance()).toBeCloseTo(7.5, 6);
       expect(await debitCount()).toBe(1);
+      // The settlement carries the committed credit_transactions debit row id,
+      // so audit records can reference the exact ledger-lane debit.
+      const debitRows = await dbWrite.execute(
+        `SELECT id FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'debit';`,
+      );
+      expect(reconciliation?.settlementTransactionIds).toEqual([
+        (debitRows.rows[0] as { id: string }).id,
+      ]);
       const row = (await pendingRows())[0];
       expect(row).toMatchObject({ status: "settled", actual: 2.5 });
     },
@@ -546,121 +554,6 @@ describe("createLedgerDebitSettler — exactly-once inline settlement", () => {
       expect(await debitCount()).toBe(0);
       // The charge is recorded uncollected (auditable), not left pending forever.
       expect((await pendingRows())[0]).toMatchObject({ status: "uncollected" });
-    },
-    PGLITE_TIMEOUT,
-  );
-});
-
-describe("recoverInferenceChargeViaLedger — expired admission lease", () => {
-  beforeEach(async () => {
-    if (!pgliteReady) return;
-    await seedOrg("10.000000");
-  });
-
-  test(
-    "materializes a missing charge and collects its estimate exactly once",
-    async () => {
-      if (!pgliteReady) return;
-      const reqId = nextRequestId();
-
-      await expect(ledger.recoverInferenceChargeViaLedger(charge(reqId), 3)).resolves.toBeCloseTo(
-        3,
-        6,
-      );
-      await expect(ledger.recoverInferenceChargeViaLedger(charge(reqId), 3)).resolves.toBeCloseTo(
-        3,
-        6,
-      );
-
-      expect(await readBalance()).toBeCloseTo(7, 6);
-      expect(await debitCount()).toBe(1);
-      expect((await pendingRows())[0]).toMatchObject({
-        request_id: reqId,
-        status: "settled",
-        estimated: 3,
-        actual: 3,
-      });
-    },
-    PGLITE_TIMEOUT,
-  );
-
-  test(
-    "replays an already-settled request without replacing its actual cost",
-    async () => {
-      if (!pgliteReady) return;
-      const reqId = nextRequestId();
-      await ledger.admitInferenceChargeViaLedger({
-        charge: charge(reqId),
-        estimatedCostUsd: 3,
-        thresholdUsd: 1,
-      });
-      await ledger.createLedgerDebitSettler(charge(reqId))(2.25);
-
-      await expect(ledger.recoverInferenceChargeViaLedger(charge(reqId), 3)).resolves.toBeCloseTo(
-        2.25,
-        6,
-      );
-      expect(await readBalance()).toBeCloseTo(7.75, 6);
-      expect(await debitCount()).toBe(1);
-    },
-    PGLITE_TIMEOUT,
-  );
-
-  test(
-    "rejects a request-id replay whose immutable accounting facts differ",
-    async () => {
-      if (!pgliteReady) return;
-      const reqId = nextRequestId();
-      await ledger.admitInferenceChargeViaLedger({
-        charge: charge(reqId),
-        estimatedCostUsd: 3,
-        thresholdUsd: 1,
-      });
-
-      await expect(
-        ledger.recoverInferenceChargeViaLedger({ ...charge(reqId), model: "different-model" }, 3),
-      ).rejects.toThrow("recovery replay mismatch");
-      expect(await readBalance()).toBeCloseTo(10, 6);
-      expect(await debitCount()).toBe(0);
-    },
-    PGLITE_TIMEOUT,
-  );
-
-  test(
-    "retries an uncollected charge after a top-up without double-debiting",
-    async () => {
-      if (!pgliteReady) return;
-      const reqId = nextRequestId();
-      await ledger.admitInferenceChargeViaLedger({
-        charge: charge(reqId),
-        estimatedCostUsd: 5,
-        thresholdUsd: 1,
-      });
-      await dbWrite.execute(
-        `UPDATE organizations SET credit_balance = '1.000000' WHERE id = '${ORG_ID}';`,
-      );
-      await ledger.createLedgerDebitSettler(charge(reqId))(5);
-      expect((await pendingRows())[0]?.status).toBe("uncollected");
-
-      await dbWrite.execute(
-        `UPDATE organizations SET credit_balance = '10.000000' WHERE id = '${ORG_ID}';`,
-      );
-      await expect(ledger.recoverInferenceChargeViaLedger(charge(reqId), 5)).resolves.toBeCloseTo(
-        5,
-        6,
-      );
-      await expect(ledger.recoverInferenceChargeViaLedger(charge(reqId), 5)).resolves.toBeCloseTo(
-        5,
-        6,
-      );
-
-      expect(await readBalance()).toBeCloseTo(5, 6);
-      expect(await debitCount()).toBe(1);
-      expect((await pendingRows())[0]).toMatchObject({
-        request_id: reqId,
-        status: "settled",
-        actual: 5,
-      });
     },
     PGLITE_TIMEOUT,
   );

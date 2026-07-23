@@ -55,7 +55,9 @@ mock.module("../steward-sync", () => ({
 const { __clearInferenceSessionAuthHydrations, resolveInferenceSessionAuthContext } = await import(
   "./inference-session-auth-context"
 );
-const { invalidateInferenceSessionAuthContext } = await import("./inference-auth-cache");
+const { invalidateInferenceSessionAuthContext, readInferenceSessionAuthDecision } = await import(
+  "./inference-auth-cache"
+);
 
 function request(): Request {
   return new Request("https://api.example/api/v1/chat/completions", {
@@ -179,6 +181,38 @@ describe("resolveInferenceSessionAuthContext", () => {
     releaseUser.resolve();
     await Promise.all([...firstWaited, ...secondWaited]);
     expect(moderationReads).toBe(1);
+  });
+
+  test("flag-off origin resolution performs no session-auth cache write", async () => {
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: false,
+      useAuthCache: false,
+    });
+
+    expect(result).toMatchObject({
+      kind: "authorized",
+      source: "origin",
+      ctx: { userId: "user-1", orgId: "org-1", stewardUserId: "steward-1" },
+    });
+    expect(userReads).toBe(1);
+    // The authoritative decision must NOT have been persisted: the real cache
+    // stays cold for the subject, so nothing exists for a later flag flip to
+    // trust and a cache-gated resolution still has to hydrate from origin.
+    await expect(readInferenceSessionAuthDecision("steward-1")).resolves.toBeNull();
+  });
+
+  test("flag-on origin resolution persists the decision (write stays gated, not removed)", async () => {
+    const result = await resolveInferenceSessionAuthContext(request(), {
+      cacheOnly: false,
+      useAuthCache: true,
+    });
+
+    expect(result).toMatchObject({ kind: "authorized", source: "origin" });
+    await expect(readInferenceSessionAuthDecision("steward-1")).resolves.toMatchObject({
+      userId: "user-1",
+      orgId: "org-1",
+      stewardUserId: "steward-1",
+    });
   });
 
   test("invalid session is rejected without authoritative hydration", async () => {

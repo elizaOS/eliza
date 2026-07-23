@@ -2,6 +2,7 @@
 
 import Decimal from "decimal.js";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { logger } from "../../lib/utils/logger";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AppEarnings,
@@ -370,30 +371,62 @@ export class AppEarningsRepository {
           : {};
       const creatorDelta = new Decimal(redeemableLedger?.amount ?? Number.NaN);
       const expectedEntryType = expectedCreatorAmount.isPositive() ? "earning" : "adjustment";
+      const committedPlatformDelta = new Decimal(
+        typeof ledgerMetadata.appPlatformRevenueDelta === "string" &&
+          ledgerMetadata.appPlatformRevenueDelta.trim() !== ""
+          ? ledgerMetadata.appPlatformRevenueDelta
+          : Number.NaN,
+      );
+      // Identity fields (owner app/user, direction, source, type) must match on
+      // EVERY replay — a divergence there is corruption. The amounts are held
+      // to strict equality only when THIS call created the ledger row: a keyed
+      // dedupe onto an existing row is a settlement-slot collision (e.g. stale
+      // sweep vs late route settle computing from different actual costs), and
+      // the design everywhere on this path is first-committed-wins — the
+      // committed ledger row is authoritative and the request's amounts are
+      // advisory (mirrors the org-refund dedupe and debitInferenceCost replay).
       const ledgerMismatch = !redeemableLedger
         ? "redeemable ledger row is missing"
         : !creatorDelta.isFinite()
           ? "redeemable amount is non-finite"
-          : !creatorDelta.equals(expectedCreatorAmountRounded)
-            ? `redeemable amount ${creatorDelta.toFixed()} differs from requested creator movement ${expectedCreatorAmountRounded.toFixed()}`
-            : redeemableLedger.entryType !== expectedEntryType
-              ? "redeemable entry type differs from creator movement direction"
-              : redeemableLedger.earningsSource !== "miniapp"
-                ? "redeemable source is not miniapp"
-                : ledgerMetadata.appPlatformRevenueDelta !== platformRevenueDelta
-                  ? "redeemable platform revenue differs"
-                  : ledgerMetadata.app_id !== params.appId
-                    ? "redeemable app identity differs"
-                    : ledgerMetadata.earnings_type !== params.type
-                      ? "redeemable earnings type differs"
-                      : ledgerMetadata.transaction_user_id !== params.userId
-                        ? "redeemable transaction user differs"
-                        : null;
+          : redeemableLedger.entryType !== expectedEntryType
+            ? "redeemable entry type differs from creator movement direction"
+            : redeemableLedger.earningsSource !== "miniapp"
+              ? "redeemable source is not miniapp"
+              : ledgerMetadata.app_id !== params.appId
+                ? "redeemable app identity differs"
+                : ledgerMetadata.earnings_type !== params.type
+                  ? "redeemable earnings type differs"
+                  : ledgerMetadata.transaction_user_id !== params.userId
+                    ? "redeemable transaction user differs"
+                    : !committedPlatformDelta.isFinite()
+                      ? "redeemable platform revenue is non-finite"
+                      : !params.redeemableDeduplicated &&
+                          !creatorDelta.equals(expectedCreatorAmountRounded)
+                        ? `redeemable amount ${creatorDelta.toFixed()} differs from requested creator movement ${expectedCreatorAmountRounded.toFixed()}`
+                        : !params.redeemableDeduplicated &&
+                            !committedPlatformDelta.equals(platformRevenueDelta)
+                          ? "redeemable platform revenue differs"
+                          : null;
       if (ledgerMismatch) {
         throw new CreatorMovementReplayMismatchError(
           params.redeemableLedgerEntryId,
           ledgerMismatch,
         );
+      }
+      if (
+        params.redeemableDeduplicated &&
+        (!creatorDelta.equals(expectedCreatorAmountRounded) ||
+          !committedPlatformDelta.equals(platformRevenueDelta))
+      ) {
+        logger.warn("[AppEarnings] Creator movement replay retained the first committed amounts", {
+          appId: params.appId,
+          redeemableLedgerEntryId: params.redeemableLedgerEntryId,
+          requestedCreatorAmount: expectedCreatorAmountRounded.toFixed(4),
+          committedCreatorAmount: creatorDelta.toFixed(),
+          requestedPlatformRevenueDelta: platformRevenueDelta,
+          committedPlatformRevenueDelta: committedPlatformDelta.toFixed(6),
+        });
       }
 
       // Ledger rows predating the atomic projection have no version marker.
@@ -404,10 +437,11 @@ export class AppEarningsRepository {
       }
 
       const creatorDeltaValue = creatorDelta.toFixed(6);
+      const projectedPlatformDelta = committedPlatformDelta.toFixed(6);
       const movementMetadata = {
         ...params.metadata,
         redeemableLedgerEntryId: params.redeemableLedgerEntryId,
-        platformRevenueDelta,
+        platformRevenueDelta: projectedPlatformDelta,
         creatorShadowVersion: 1,
       };
       const [inserted] = await tx
@@ -439,7 +473,7 @@ export class AppEarningsRepository {
           existing.user_id !== params.userId ||
           existing.type !== params.type ||
           !new Decimal(existing.amount).equals(creatorDelta) ||
-          existingMetadata.platformRevenueDelta !== platformRevenueDelta
+          existingMetadata.platformRevenueDelta !== projectedPlatformDelta
         ) {
           throw new CreatorMovementReplayMismatchError(params.redeemableLedgerEntryId);
         }
@@ -448,7 +482,7 @@ export class AppEarningsRepository {
 
       await tx.insert(appEarnings).values({ app_id: params.appId }).onConflictDoNothing();
 
-      const appEarningsPredicate = expectedCreatorAmountRounded.isNegative()
+      const appEarningsPredicate = creatorDelta.isNegative()
         ? and(
             eq(appEarnings.app_id, params.appId),
             gte(appEarnings.total_lifetime_earnings, creatorDelta.abs().toFixed(6)),
@@ -482,13 +516,13 @@ export class AppEarningsRepository {
       }
 
       const appPredicate =
-        expectedCreatorAmountRounded.isNegative() || platformRevenueAmount.isNegative()
+        creatorDelta.isNegative() || committedPlatformDelta.isNegative()
           ? and(
               eq(apps.id, params.appId),
               sql`${apps.total_creator_earnings} IS NOT NULL`,
               sql`${apps.total_platform_revenue} IS NOT NULL`,
               gte(apps.total_creator_earnings, creatorDelta.abs().toFixed(6)),
-              gte(apps.total_platform_revenue, platformRevenueAmount.abs().toFixed(6)),
+              gte(apps.total_platform_revenue, committedPlatformDelta.abs().toFixed(6)),
             )
           : and(
               eq(apps.id, params.appId),
@@ -499,7 +533,7 @@ export class AppEarningsRepository {
         .update(apps)
         .set({
           total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorDeltaValue}`,
-          total_platform_revenue: sql`${apps.total_platform_revenue} + ${platformRevenueDelta}`,
+          total_platform_revenue: sql`${apps.total_platform_revenue} + ${projectedPlatformDelta}`,
           updated_at: new Date(),
         })
         .where(appPredicate)

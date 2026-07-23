@@ -188,6 +188,35 @@ async function revalidateCachedScope(
 }
 
 /**
+ * Cache-only USER-state gate for a SESSION scope-cache hit. The JWT re-verify
+ * (`revalidateSessionScope`) proves the credential; this proves the account is
+ * still live without a DB read: it consults the `user:steward:<id>` entry that
+ * the authoritative hydration itself populates (`usersService.getByStewardId`)
+ * and that every user-lifecycle mutation — ban, deactivate, org detach —
+ * deletes via `usersService.invalidateCache`. A hit must show an active user in
+ * the cached org's active organization; a MISS fails closed into re-hydration
+ * (the mutation that evicted the entry is exactly what must be re-checked), so
+ * a banned session stops being served on its next turn instead of riding the
+ * sliding-refresh cap. The rare benign miss (backend eviction / 10-min TTL
+ * expiry mid-conversation) costs one retryable warming turn whose background
+ * hydration re-warms both entries.
+ */
+async function revalidateSessionUserState(
+  cachedOrgId: string,
+  stewardUserId: string,
+): Promise<boolean> {
+  const user = await cache.get<{
+    is_active?: boolean;
+    organization_id?: string;
+    organization?: { is_active?: boolean } | null;
+  }>(CacheKeys.user.byStewardId(stewardUserId));
+  if (!user || typeof user !== "object") return false;
+  if (user.is_active !== true) return false;
+  if (user.organization_id !== cachedOrgId) return false;
+  return user.organization?.is_active === true;
+}
+
+/**
  * Resolve + authorize the SHARED-runtime agent addressed by a request's
  * `:agentId`. The single gate behind every `.../agents/:agentId/api/*` leaf
  * (health, status/catch-all, conversations, messages) so the auth + org-scope +
@@ -257,13 +286,19 @@ export async function resolveSharedAgent(
     // must NOT skip the credential gate. API-key path: re-run the (already-
     // cached, revoke-invalidated) key validation + org match. SESSION path:
     // re-run the warm-cached steward JWT verify + confirm it still maps to the
-    // SAME steward user the entry was written for. Either way a
-    // revoked/expired/re-scoped credential falls back to the authoritative
-    // gate inside the 30s TTL window; we only skip the cold DB waves.
+    // SAME steward user the entry was written for, then confirm the
+    // lifecycle-invalidated user entry still shows an active user in the cached
+    // org (revalidateSessionUserState) — a ban/deactivate/org-detach evicts
+    // that entry, so the hit deauthorizes on the mutation, not at the
+    // sliding-refresh cap. Either way a revoked/expired/re-scoped credential
+    // falls back to the authoritative gate inside the 30s TTL window; we only
+    // skip the cold DB waves.
     let stillAuthorized: boolean;
     try {
       stillAuthorized = isSessionScope
-        ? cached.stewardUserId != null && (await revalidateSessionScope(c, cached.stewardUserId))
+        ? cached.stewardUserId != null &&
+          (await revalidateSessionScope(c, cached.stewardUserId)) &&
+          (await revalidateSessionUserState(cached.orgId, cached.stewardUserId))
         : await revalidateCachedScope(c, cached.orgId, options.cacheOnly === true);
     } catch (error) {
       // error-policy:J4 a cache credential dependency failure cannot authorize

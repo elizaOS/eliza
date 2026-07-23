@@ -224,6 +224,7 @@ beforeEach(() => {
   streamText.mockClear();
   billUsage.mockClear();
   settle.mockClear();
+  settleUnknown.mockClear();
   admitOrganizationInference.mockClear();
   getCurrentUser.mockClear();
   getAnonymousUser.mockClear();
@@ -456,6 +457,67 @@ describe("/v1/chat Worker cache hot path", () => {
     expect(streamText).not.toHaveBeenCalled();
     expect(refundAnonymousChatSlot).toHaveBeenCalledTimes(1);
     expect(commitAnonymousChatSlot).not.toHaveBeenCalled();
+  });
+
+  test("settles the admission when the UI-message stream tears down without callbacks", async () => {
+    const waitUntilTasks: Promise<unknown>[] = [];
+    const executionCtx = {
+      waitUntil(promise: Promise<unknown>) {
+        waitUntilTasks.push(promise);
+      },
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+
+    // The SDK's UI-message encoding path dies mid-stream WITHOUT firing
+    // onFinish/onAbort/onError — the gap the route's body-wrap backstop closes.
+    streamText.mockImplementationOnce((config: Record<string, unknown>) => {
+      callOrder.push("provider");
+      capturedStreamConfig = config;
+      const encoder = new TextEncoder();
+      return {
+        toUIMessageStreamResponse: () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode('data: {"type":"start"}\n\n'),
+                );
+              },
+              pull() {
+                throw new Error("UI-message stream encoding failed");
+              },
+            }),
+          ),
+      };
+    });
+
+    const response = await chatRoute.fetch(
+      new Request("https://api.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer eliza_cached",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+      {} as never,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(200);
+    // Reading the body surfaces the encoding failure to the client…
+    await expect(response.text()).rejects.toThrow(
+      "UI-message stream encoding failed",
+    );
+    await Promise.all(waitUntilTasks);
+    // …while the backstop still settles the admission conservatively (the
+    // ambiguous-outcome terminal), never leaving the hold to the lease alarm.
+    expect(settleUnknown).toHaveBeenCalledTimes(1);
+    expect(settle).not.toHaveBeenCalled();
+    expect(billUsage).not.toHaveBeenCalled();
   });
 
   test("returns protocol-native 429/503 before billing or provider dispatch", async () => {

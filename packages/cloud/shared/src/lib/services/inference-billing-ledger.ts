@@ -181,6 +181,8 @@ interface SettleOutcome {
   debited: boolean;
   uncollected: boolean;
   newBalance?: number;
+  /** `credit_transactions.id` of the committed debit row, when one was inserted. */
+  transactionId?: string;
 }
 
 interface ClaimRow {
@@ -189,6 +191,7 @@ interface ClaimRow {
 interface DebitRow {
   debited: boolean | "t" | "f" | null;
   new_balance: string | number | null;
+  transaction_id: string | null;
 }
 
 /**
@@ -220,7 +223,7 @@ function reportInvalidationFailure(organizationId: string, target: string): (err
 async function settleLedgerCharge(
   ctx: LedgerChargeContext,
   amountUsd: number,
-  source: "inline" | "sweep" | "recovery",
+  source: "inline" | "sweep",
 ): Promise<SettleOutcome> {
   let outcome: SettleOutcome = { claimed: false, debited: false, uncollected: false };
   try {
@@ -269,7 +272,10 @@ async function settleLedgerCharge(
             WHERE EXISTS (SELECT 1 FROM upd)
             RETURNING id
           )
-          SELECT EXISTS(SELECT 1 FROM upd) AS debited, (SELECT new_balance FROM upd) AS new_balance
+          SELECT
+            EXISTS(SELECT 1 FROM upd) AS debited,
+            (SELECT new_balance FROM upd) AS new_balance,
+            (SELECT id FROM ins) AS transaction_id
         `,
       );
       const debited = isPgTrue(debit[0]?.debited);
@@ -285,6 +291,7 @@ async function settleLedgerCharge(
         debited: true,
         uncollected: false,
         newBalance: nb === null || nb === undefined ? undefined : Number(nb),
+        ...(debit[0]?.transaction_id && { transactionId: debit[0].transaction_id }),
       };
     });
   } catch (error) {
@@ -365,153 +372,10 @@ export function createLedgerDebitSettler(
     return {
       reservedAmount: amount,
       actualCost: amount,
-      settlementTransactionIds: [],
+      settlementTransactionIds: outcome.transactionId ? [outcome.transactionId] : [],
       adjustmentType: "none",
     };
   };
-}
-
-interface RecoveryChargeRow {
-  request_id: string;
-  organization_id: string;
-  user_id: string | null;
-  api_key_id: string | null;
-  model: string;
-  provider: string;
-  billing_source: string;
-  estimated_cost_usd: string | number;
-  actual_cost_usd: string | number | null;
-  status: string;
-}
-
-function assertRecoveryChargeMatches(
-  row: RecoveryChargeRow,
-  ctx: LedgerChargeContext,
-  estimatedCostUsd: number,
-): void {
-  const persistedEstimate = Number(row.estimated_cost_usd);
-  if (
-    row.request_id !== ctx.requestId ||
-    row.organization_id !== ctx.organizationId ||
-    row.user_id !== ctx.userId ||
-    row.api_key_id !== ctx.apiKeyId ||
-    row.model !== ctx.model ||
-    row.provider !== ctx.provider ||
-    row.billing_source !== ctx.billingSource ||
-    !Number.isFinite(persistedEstimate) ||
-    Math.abs(persistedEstimate - estimatedCostUsd) > 0.000001
-  ) {
-    throw new Error(`[InferenceLedger] recovery replay mismatch for ${ctx.requestId}`);
-  }
-}
-
-/**
- * Recreate and conservatively settle a lease whose response-side accounting
- * task disappeared. The per-org advisory lock makes materialization race-safe
- * with normal deferred admission, while the request primary key and terminal
- * claim keep repeated alarms exactly once.
- */
-export async function recoverInferenceChargeViaLedger(
-  ctx: LedgerChargeContext,
-  estimatedCostUsd: number,
-): Promise<number> {
-  if (!Number.isFinite(estimatedCostUsd) || estimatedCostUsd <= 0) {
-    throw new Error("[InferenceLedger] recovery estimate must be positive");
-  }
-
-  const row = await writeTransaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`inference_admit:${ctx.organizationId}`}))`,
-    );
-    const existing = await sqlRows<RecoveryChargeRow>(
-      tx,
-      sql`
-        SELECT request_id, organization_id, user_id, api_key_id, model,
-               provider, billing_source, estimated_cost_usd,
-               actual_cost_usd, status
-        FROM inference_pending_charges
-        WHERE request_id = ${ctx.requestId}
-        LIMIT 1
-      `,
-    );
-    if (existing[0]) return existing[0];
-
-    const inserted = await sqlRows<RecoveryChargeRow>(
-      tx,
-      sql`
-        INSERT INTO inference_pending_charges (
-          request_id, organization_id, user_id, api_key_id,
-          model, provider, billing_source, estimated_cost_usd,
-          status, enqueued_at
-        )
-        SELECT
-          ${ctx.requestId}, id, ${ctx.userId}, ${ctx.apiKeyId},
-          ${ctx.model}, ${ctx.provider}, ${ctx.billingSource},
-          ${String(estimatedCostUsd)}::numeric, 'pending', NOW()
-        FROM organizations
-        WHERE id = ${ctx.organizationId}
-        ON CONFLICT (request_id) DO NOTHING
-        RETURNING request_id, organization_id, user_id, api_key_id, model,
-                  provider, billing_source, estimated_cost_usd,
-                  actual_cost_usd, status
-      `,
-    );
-    if (inserted[0]) return inserted[0];
-
-    const raced = await sqlRows<RecoveryChargeRow>(
-      tx,
-      sql`
-        SELECT request_id, organization_id, user_id, api_key_id, model,
-               provider, billing_source, estimated_cost_usd,
-               actual_cost_usd, status
-        FROM inference_pending_charges
-        WHERE request_id = ${ctx.requestId}
-        LIMIT 1
-      `,
-    );
-    if (!raced[0]) {
-      throw new Error(
-        `[InferenceLedger] cannot recover charge for missing organization ${ctx.organizationId}`,
-      );
-    }
-    return raced[0];
-  });
-  assertRecoveryChargeMatches(row, ctx, estimatedCostUsd);
-
-  if (row.status === "uncollected") {
-    await dbWrite.execute(
-      sql`
-        UPDATE inference_pending_charges
-        SET status = 'pending', actual_cost_usd = NULL, settled_at = NULL
-        WHERE request_id = ${ctx.requestId}
-          AND status = 'uncollected'
-      `,
-    );
-  }
-  if (row.status === "pending" || row.status === "uncollected") {
-    await settleLedgerCharge(ctx, estimatedCostUsd, "recovery");
-  }
-  const terminal = await sqlRows<RecoveryChargeRow>(
-    dbWrite,
-    sql`
-      SELECT request_id, organization_id, user_id, api_key_id, model,
-             provider, billing_source, estimated_cost_usd,
-             actual_cost_usd, status
-      FROM inference_pending_charges
-      WHERE request_id = ${ctx.requestId}
-        AND status = 'settled'
-      LIMIT 1
-    `,
-  );
-  if (!terminal[0]) {
-    throw new Error(`[InferenceLedger] recovered charge ${ctx.requestId} is not terminal`);
-  }
-  assertRecoveryChargeMatches(terminal[0], ctx, estimatedCostUsd);
-  const collectedUsd = Number(terminal[0].actual_cost_usd);
-  if (!Number.isFinite(collectedUsd) || collectedUsd < 0) {
-    throw new Error(`[InferenceLedger] recovered charge ${ctx.requestId} has invalid actual cost`);
-  }
-  return collectedUsd;
 }
 
 export interface LedgerSweepStats {

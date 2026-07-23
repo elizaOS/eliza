@@ -2857,6 +2857,26 @@ async function handleStreamingRequest(
     // non-Worker callers) the chain is awaited inline exactly as before.
     onFinish: async ({ text, usage }) => {
       const settlement = settleStreamingOnce(async () => {
+        // A finished stream whose provider reported NO usage cannot prove its
+        // cost — billing the empty record would settle delivered output at $0,
+        // reading "not reported" as "free". Retain the admitted estimate
+        // instead (the same guard /v1/chat applies to a falsy onFinish usage).
+        // An explicit all-zero usage report still bills normally below, and
+        // provably-rejected work still reaches zero through onError/the stream
+        // backstop, which win this first-call-wins settler.
+        if (!hasReportedUsageTokens(usage)) {
+          const reconciliation = await settleUnknown();
+          await recordPooledInferenceSuccess(
+            pooledCredential,
+            user.id,
+            executionCtx,
+          );
+          logger.error(
+            "[Chat Completions] Stream finished without reported usage; settled admitted estimate",
+            { model },
+          );
+          return reconciliation;
+        }
         try {
           const billingContext = buildChatBillingContext({
             user,

@@ -598,9 +598,23 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
   // cold user/org+agent Hyperdrive waves on EVERY turn (the felt 3-4s warm AND
   // cold). These pin the session-keyed cache that closes that gap.
 
+  // A session HIT additionally consults the lifecycle-invalidated
+  // `user:steward:<id>` entry (revalidateSessionUserState). In production the
+  // authoritative hydration warms it via usersService.getByStewardId; the mock
+  // gate does not, so tests seed it the same way the real chain would.
+  function seedSessionUserState(overrides: Record<string, unknown> = {}) {
+    cacheStore.set(CacheKeys.user.byStewardId("steward-user-1"), {
+      is_active: true,
+      organization_id: "org-1",
+      organization: { is_active: true },
+      ...overrides,
+    });
+  }
+
   test("first cold session hit runs the full gate and caches with the steward user id", async () => {
     scopeHashPrefixBehavior = async () => null;
     sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    seedSessionUserState();
     findByIdAndOrg.mockResolvedValue(agent());
 
     await resolveSharedAgent(contextWithAgentId("agent-1") as never);
@@ -619,6 +633,7 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
   test("second session hit skips the cold DB waves after re-verifying the JWT", async () => {
     scopeHashPrefixBehavior = async () => null;
     sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    seedSessionUserState();
     findByIdAndOrg.mockResolvedValue(agent());
 
     // Populate.
@@ -643,6 +658,7 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
   test("a session hit whose token no longer verifies falls back to the full gate", async () => {
     scopeHashPrefixBehavior = async () => null;
     sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    seedSessionUserState();
     findByIdAndOrg.mockResolvedValue(agent());
 
     await resolveSharedAgent(contextWithAgentId("agent-1") as never);
@@ -652,6 +668,65 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
     sessionRevalidateBehavior = async () => false;
     await resolveSharedAgent(contextWithAgentId("agent-1") as never);
     // Not served from cache -> authoritative gate re-ran.
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+
+  test("a session hit after the user's lifecycle entry is evicted (ban/deactivate) is NOT served from cache", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    seedSessionUserState();
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    // Ban/deactivate: usersService.invalidateCache deletes user:steward:<id>.
+    // The scope entry is still warm, but the hit must fail closed into the
+    // authoritative gate instead of riding the sliding-refresh cap.
+    cacheStore.delete(CacheKeys.user.byStewardId("steward-user-1"));
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+
+  test("a session hit for a deactivated user is NOT served from cache", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    seedSessionUserState();
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    seedSessionUserState({ is_active: false });
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+
+  test("a session hit whose user moved to a different org is NOT served the cached agent", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    seedSessionUserState();
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    seedSessionUserState({ organization_id: "org-2" });
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+
+  test("a session hit whose user's organization is deactivated is NOT served from cache", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    seedSessionUserState();
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    seedSessionUserState({ organization: { is_active: false } });
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
     expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
   });
 

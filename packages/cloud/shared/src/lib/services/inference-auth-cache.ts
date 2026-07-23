@@ -116,12 +116,16 @@ export function hashStewardUserId(stewardUserId: string): string {
 
 /**
  * Runtime shape guard. Rejects legacy / wrong-version / partial entries so a
- * malformed value can never be trusted as an authorization decision.
+ * malformed value can never be trusted as an authorization decision. Positive
+ * and rejection validators are mutually exclusive: an entry carrying BOTH a
+ * rejection `decision` and positive identity fields validates as neither, so a
+ * hybrid value is dropped as malformed instead of resolving by field order.
  */
 export function isInferenceAuthContext(value: unknown): value is InferenceAuthContext {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
+    !("decision" in v) &&
     v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
     typeof v.cachedAt === "number" &&
     Number.isFinite(v.cachedAt) &&
@@ -141,6 +145,7 @@ function isInferenceApiKeyAuthRejection(value: unknown): value is InferenceApiKe
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
+    !("apiKeyId" in v) &&
     v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
     typeof v.cachedAt === "number" &&
     Number.isFinite(v.cachedAt) &&
@@ -159,6 +164,7 @@ export function isInferenceSessionAuthContext(
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
+    !("decision" in v) &&
     v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
     typeof v.cachedAt === "number" &&
     Number.isFinite(v.cachedAt) &&
@@ -177,6 +183,7 @@ function isInferenceSessionAuthRejection(value: unknown): value is InferenceSess
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
+    !("apiKeyId" in v) &&
     v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
     typeof v.cachedAt === "number" &&
     Number.isFinite(v.cachedAt) &&
@@ -295,7 +302,8 @@ export async function readInferenceSessionAuthDecision(
   stewardUserId: string,
 ): Promise<InferenceSessionAuthDecision | null> {
   const key = CacheKeys.inference.sessionAuthContext(hashStewardUserId(stewardUserId));
-  const cached = await cache.get<unknown>(key);
+  const outcome = await cache.getWithOutcome<unknown>(key, { keyClass: "inference_auth" });
+  const cached = outcome.kind === "hit" ? outcome.value : null;
   if (cached === null) return null;
   if (
     (!isInferenceSessionAuthContext(cached) && !isInferenceSessionAuthRejection(cached)) ||

@@ -107,6 +107,10 @@ const MAX_ACTIVE_LEASES = 2_048;
 const MAX_SETTLED_REQUEST_IDS = 2_048;
 const MAX_ALARM_LEASE_MUTATIONS = 32;
 const MAX_RECOVERY_CONTEXT_BYTES = 32_768;
+// 512 KiB fits only because this class is SQLite-backed (wrangler migration
+// `new_sqlite_classes`, 2 MB per-value limit). The legacy KV backend caps
+// values at 128 KiB, which a full 2,048-lease ledger can exceed — revisit
+// this bound if the DO migration type ever changes.
 const MAX_LEDGER_VALUE_BYTES = 512 * 1_024;
 const MAX_LEASE_VALUE_BYTES = 64 * 1_024;
 const RATE_LIMIT_ENDPOINTS = new Set([

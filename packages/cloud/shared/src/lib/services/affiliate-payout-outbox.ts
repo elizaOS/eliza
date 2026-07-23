@@ -78,24 +78,26 @@ function parseSettlementContract(value: unknown): AffiliatePayoutSettlementContr
     throw new AffiliatePayoutContractError("affiliatePayout is not an object");
   }
   const contract = value as Record<string, unknown>;
-  const attribution = contract.attribution;
+  const { sourceId, model, attribution } = contract;
   if (
     contract.version !== AFFILIATE_PAYOUT_CONTRACT_VERSION ||
-    typeof contract.sourceId !== "string" ||
-    contract.sourceId.trim() === "" ||
-    contract.sourceId !== contract.sourceId.trim() ||
-    typeof contract.model !== "string" ||
-    contract.model.trim() === "" ||
-    typeof attribution !== "object" ||
-    attribution === null ||
-    Array.isArray(attribution)
+    typeof sourceId !== "string" ||
+    sourceId.trim() === "" ||
+    sourceId !== sourceId.trim() ||
+    typeof model !== "string" ||
+    model.trim() === ""
   ) {
     throw new AffiliatePayoutContractError("required settlement fields are missing");
   }
   if (!isAffiliateBillingAttribution(attribution)) {
     throw new AffiliatePayoutContractError("affiliate attribution is malformed");
   }
-  return contract as unknown as AffiliatePayoutSettlementContract;
+  return {
+    version: AFFILIATE_PAYOUT_CONTRACT_VERSION,
+    sourceId,
+    attribution,
+    model,
+  };
 }
 
 function canonicalJson(value: unknown): unknown {

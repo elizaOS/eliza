@@ -802,7 +802,64 @@ app.post("/", async (c) => {
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    const streamResponse = result.toUIMessageStreamResponse();
+    if (!streamResponse.body) return streamResponse;
+
+    // Backstop: the SDK can tear down its UI-message stream without ever
+    // invoking onFinish/onAbort/onError (an encoding-path throw, or a client
+    // cancel racing ahead of the abort callback) — the exact gap the
+    // /v1/chat/completions and /v1/messages stream-catch backstops close. Wrap
+    // the response body so a read failure or cancellation still settles the
+    // admission instead of leaking the hold to the 20-minute lease alarm.
+    // Every settler here is first-call-wins idempotent and the anonymous
+    // commit/refund is single-flighted, so a callback that already settled
+    // makes this a no-op.
+    const settleStreamTeardown = (error?: unknown) =>
+      settleOffResponsePath(executionCtx, async () => {
+        if (error !== undefined && isKnownUnacceptedProviderError(error)) {
+          await refundAnonymousMessageSlot?.();
+          await settleReservation?.(0);
+        } else {
+          // Same terminal decision as onAbort/ambiguous onError: delivered
+          // provider work with unknown cost retains the admitted estimate.
+          await commitAnonymousMessageSlot?.();
+          await settleUnknownReservation?.();
+        }
+      });
+    const upstreamReader = streamResponse.body.getReader();
+    const guardedBody = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const next = await upstreamReader.read();
+          if (next.done) {
+            controller.close();
+          } else {
+            controller.enqueue(next.value);
+          }
+        } catch (error) {
+          await settleStreamTeardown(error);
+          logger.error("chat-api", "UI-message stream failed mid-flight", {
+            requestId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // error-policy:J1 surface the SDK stream failure to the client after
+          // the settlement backstop has run.
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        try {
+          await upstreamReader.cancel(reason);
+        } finally {
+          await settleStreamTeardown();
+        }
+      },
+    });
+    return new Response(guardedBody, {
+      status: streamResponse.status,
+      statusText: streamResponse.statusText,
+      headers: streamResponse.headers,
+    });
   } catch (error) {
     await settleOffResponsePath(executionCtx, async () => {
       if (

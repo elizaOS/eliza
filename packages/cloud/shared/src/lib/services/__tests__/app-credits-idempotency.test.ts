@@ -12,6 +12,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // This proof owns its DB: force an isolated in-memory PGlite regardless of the
 // ambient DATABASE_URL / TEST_DATABASE_URL the CI lane exports. resolveDatabaseUrl
@@ -125,6 +127,14 @@ async function payerBalance(organizationId: string): Promise<number> {
     .from(organizations)
     .where(eq(organizations.id, organizationId));
   return Number(row.balance);
+}
+
+async function payerBalanceRevision(organizationId: string): Promise<number> {
+  const [row] = await dbWrite
+    .select({ revision: organizations.balance_revision })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId));
+  return Number(row.revision);
 }
 
 async function creatorProjection(appId: string): Promise<{
@@ -277,6 +287,19 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    // pushSchema derives DDL from the drizzle schema, which cannot express the
+    // 0177 balance-revision trigger. Apply the real migration file (its
+    // statements are IF NOT EXISTS / OR REPLACE safe on top of pushSchema) so
+    // these money tests run the same trigger production deploys, and a real
+    // debit is proven to advance the service-visible balance revision.
+    const migration0177 = readFileSync(
+      join(import.meta.dir, "../../../db/migrations/0177_organization_balance_revision.sql"),
+      "utf8",
+    );
+    for (const statement of migration0177.split("--> statement-breakpoint")) {
+      const trimmed = statement.trim();
+      if (trimmed) await dbWrite.execute(trimmed);
+    }
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -293,6 +316,29 @@ afterAll(async () => {
 describe("deductCredits creator-earnings idempotency (#10423)", () => {
   test("pglite applied (loud, never silent no-op)", () => {
     expect(pgliteReady).toBe(true);
+  });
+
+  test("a real debit advances organizations.balance_revision through the 0177 trigger", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerOrganizationId, payerUserId } = await seed();
+    const before = await payerBalanceRevision(payerOrganizationId);
+
+    const result = await runWithRequestContext({ idempotencyKey: uniq("revision") }, async () =>
+      appCreditsService.deductCredits({
+        appId,
+        userId: payerUserId,
+        baseCost: 0.01,
+        description: "revision proof",
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    // The trigger (migration 0177) must fire on the credit_balance UPDATE the
+    // real deduct SQL performs — this is the revision the admission gate's
+    // stale-hint protection consumes, so a frozen revision here would mean
+    // spent balance could be resurrected from a stale cache snapshot.
+    const after = await payerBalanceRevision(payerOrganizationId);
+    expect(after).toBeGreaterThan(before);
   });
 
   test("two distinct debit rows under one ALS key each pay their backed creator movement", async () => {
@@ -926,21 +972,26 @@ describe("creator movement retry healing", () => {
     });
   });
 
-  test("sub-ledger-unit creator movements fail closed without zero-value ledger shadows", async () => {
+  test("sub-ledger-unit creator markup is explicitly not recorded and never fails the consumer charge", async () => {
     if (!pgliteReady) return;
     const { appId, payerOrganizationId, payerUserId, creatorUserId } = await seed();
-    await expect(
-      appCreditsService.reserveInferenceCredits({
-        appId,
-        userId: payerUserId,
-        organizationId: payerOrganizationId,
-        estimatedBaseCost: 0.000001,
-        description: "tiny movement",
-        idempotencyKey: uniq("tiny-movement"),
-      }),
-    ).rejects.toThrow("Amount is below the minimum ledger precision of 0.0001");
+    // 100% markup on the MIN_RESERVATION floor: the creator's 0.000001 markup
+    // floors below the 0.0001 redeemable ledger unit. The designed outcome
+    // (mirroring the affiliate outbox's below-unit rule) is that the consumer
+    // hold COMMITS while the sub-unit markup is explicitly not recorded — no
+    // fabricated $0.0000 ledger row and no shadow projection.
+    const reservation = await appCreditsService.reserveInferenceCredits({
+      appId,
+      userId: payerUserId,
+      organizationId: payerOrganizationId,
+      estimatedBaseCost: 0.000001,
+      description: "tiny movement",
+      idempotencyKey: uniq("tiny-movement"),
+    });
+    expect(reservation.reservationTransactionId).toBeTruthy();
 
-    expect(await payerBalance(payerOrganizationId)).toBeCloseTo(100, 9);
+    // Base 0.000001 + 100% markup = 0.000002 debited from the consumer.
+    expect(await payerBalance(payerOrganizationId)).toBeCloseTo(100 - 0.000002, 9);
     expect(await creatorBalance(creatorUserId)).toBe(0);
     expect(await creatorLedgerMovementCount(creatorUserId)).toBe(0);
     expect(

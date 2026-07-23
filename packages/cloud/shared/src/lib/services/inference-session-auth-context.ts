@@ -6,6 +6,12 @@
  * moderation state are consumed only from a combined cache decision. A cold
  * Worker request returns a retryable warming result while authoritative
  * hydration runs under `waitUntil`, so Postgres never joins model dispatch.
+ *
+ * Cache READS and WRITES are both gated on `useAuthCache`
+ * (`INFERENCE_AUTH_CACHE_ENABLED`): while the flag is off, the origin path
+ * neither consults nor populates the session decision cache, mirroring the
+ * API-key path in `inference-auth-context.ts`. A disabled authorization cache
+ * must leave no positive identities behind in KV.
  */
 
 import { AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
@@ -127,27 +133,35 @@ function toResolution(
   return { kind: "rejected", status: decision.status };
 }
 
-async function hydrateAndCache(params: {
-  stewardUserId: string;
-  email?: string;
-  walletAddress?: string;
-  walletChain?: "ethereum" | "solana";
-}): Promise<InferenceSessionAuthDecision> {
+async function hydrateAndCache(
+  params: {
+    stewardUserId: string;
+    email?: string;
+    walletAddress?: string;
+    walletChain?: "ethereum" | "solana";
+  },
+  persistDecision: boolean,
+): Promise<InferenceSessionAuthDecision> {
   const decision = await hydrateAuthoritativeDecision(params);
-  await writeInferenceSessionAuthDecision(decision);
+  if (persistDecision) await writeInferenceSessionAuthDecision(decision);
   return decision;
 }
 
-function getOrCreateHydration(params: {
-  stewardUserId: string;
-  email?: string;
-  walletAddress?: string;
-  walletChain?: "ethereum" | "solana";
-}): Promise<InferenceSessionAuthDecision> {
+// Coalesced by subject only: `persistDecision` derives from the env flag, which
+// is constant within an isolate, so concurrent hydrations always agree on it.
+function getOrCreateHydration(
+  params: {
+    stewardUserId: string;
+    email?: string;
+    walletAddress?: string;
+    walletChain?: "ethereum" | "solana";
+  },
+  persistDecision: boolean,
+): Promise<InferenceSessionAuthDecision> {
   const existing = sessionHydrations.get(params.stewardUserId);
   if (existing) return existing;
 
-  const hydration = hydrateAndCache(params);
+  const hydration = hydrateAndCache(params, persistDecision);
   sessionHydrations.set(params.stewardUserId, hydration);
   const clear = () => {
     if (sessionHydrations.get(params.stewardUserId) === hydration) {
@@ -201,12 +215,15 @@ export async function resolveInferenceSessionAuthContext(
 
   if (options.useAuthCache && options.cacheOnly) {
     if (cache.isAvailable() && options.executionCtx) {
-      const hydration = getOrCreateHydration({
-        stewardUserId: claims.userId,
-        email: claims.email,
-        walletAddress: claims.walletAddress,
-        walletChain: claims.walletChain,
-      })
+      const hydration = getOrCreateHydration(
+        {
+          stewardUserId: claims.userId,
+          email: claims.email,
+          walletAddress: claims.walletAddress,
+          walletChain: claims.walletChain,
+        },
+        true,
+      )
         .then(() => undefined)
         .catch((error) => {
           // error-policy:J7 authoritative hydration is observed by waitUntil;
@@ -220,12 +237,18 @@ export async function resolveInferenceSessionAuthContext(
     return { kind: "warming" };
   }
 
-  const decision = await getOrCreateHydration({
-    stewardUserId: claims.userId,
-    email: claims.email,
-    walletAddress: claims.walletAddress,
-    walletChain: claims.walletChain,
-  });
+  // Origin path: persist the decision only when the auth cache is enabled —
+  // a disabled cache must not be pre-populated with positive identities
+  // (mirrors the API-key path's flag-gated positive write).
+  const decision = await getOrCreateHydration(
+    {
+      stewardUserId: claims.userId,
+      email: claims.email,
+      walletAddress: claims.walletAddress,
+      walletChain: claims.walletChain,
+    },
+    options.useAuthCache === true,
+  );
   const resolved = toResolution(decision, "origin");
   if (resolved.kind === "rejected") {
     if (resolved.status === 401) throw AuthenticationError();

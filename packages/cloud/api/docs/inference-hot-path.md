@@ -117,6 +117,35 @@ Pricing, affiliate attribution, app policy, balance, and uninitialized Durable
 Objects follow the same fail-closed warming pattern. The first request may warm
 state; it does not purchase lower latency by bypassing a correctness check.
 
+### Flag scope: the IAC vs. the shared-agent scope cache
+
+`INFERENCE_AUTH_CACHE_ENABLED` governs ONLY the inference auth-context (IAC)
+entries above (`iac:auth:*`, `iac:session-auth:*`). "Positive KV entries are
+ignored while the flag is off" is an IAC statement; it does not describe the
+shared-agent chat surface.
+
+The shared-agent model routes (`POST .../agents/:id/stream|bridge` and
+`.../api/conversations/:id/messages[/stream]`) are authorized by a distinct,
+flag-independent positive cache: the shared-agent SCOPE entry
+(`shared-agent-scope:*`, 30s base TTL, credential-revalidated sliding refresh
+capped at 5 minutes). It is bounded rather than gated because every hit re-runs
+a per-request credential gate before the cached scope is served:
+
+- API-key hits re-check the revoke-invalidated key-validation entry and the
+  org match; key revocation fails closed (unconfirmed invalidation throws).
+- Session hits re-verify the steward JWT, require subject equality with the
+  entry, and consult the lifecycle-invalidated `user:steward:<id>` entry for
+  an active user in the cached org's active organization. Ban, deactivate,
+  and org-detach evict that entry, so a session hit deauthorizes on the next
+  turn after the mutation; a miss fails closed into re-hydration.
+
+Residual exposure bound: an authorization-relevant mutation that evicts no
+cache entry (none is currently known for the session path; for the API-key
+path a user-level ban does not revoke the key or its validation entry) is
+bounded by the 30s idle TTL and the 5-minute sliding-refresh cap, after which
+the entry must re-hydrate through the authoritative gate. Cache-only misses
+never authorize — they warm under `waitUntil` and return a retryable 503.
+
 ## Organization admission protocol
 
 `InferenceAdmissionGate` is addressed by organization ID. A lease request
@@ -227,13 +256,16 @@ The production contract is protected at three layers:
 1. Route tripwire tests install database seams that throw if chat,
    completions, messages, responses, embeddings, shared-agent, or the
    voice-session internal Eliza turn touches them before provider dispatch.
+   These tripwires are what enforce the zero pre-provider Postgres, Redis,
+   ledger, reservation, and payout guarantee.
 2. Admission tests assert the only warm pre-dispatch write is the Durable
    Object lease, including organization, affiliate, app, anonymous, cold-cache,
    concurrency, and crash-recovery cases.
 3. An in-process benchmark measures the serial rate, lease, and dispatch
-   transitions and asserts zero pre-provider Postgres, Redis, ledger,
-   reservation, or payout operations. Deployed Worker-to-Durable-Object latency
-   must be measured separately in the target Cloudflare topology.
+   transitions against the admission object in isolation. It is a latency
+   regression tripwire only; the zero-operation guarantee lives in the route
+   tripwires above, and deployed Worker-to-Durable-Object latency must be
+   measured separately in the target Cloudflare topology.
 
 Migration tests apply the accounting schema to PGlite. Money tests exercise
 idempotent direct debits, app reconciliation, affiliate payout outbox replay,

@@ -324,6 +324,52 @@ describe("streaming messages — client abort settles delivered usage (#11513)",
   });
 });
 
+describe("streaming messages — finished stream without reported usage", () => {
+  test("onFinish with an empty usage record settles the admitted estimate, not $0", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    let onFinishPromise: Promise<unknown> | undefined;
+
+    streamTextImpl = (config) => {
+      const onFinish = config.onFinish as
+        | ((event: { text: string; totalUsage: unknown }) => Promise<unknown>)
+        | undefined;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-start", id: "text-1" };
+          yield { type: "text-delta", id: "text-1", text: "delivered reply" };
+          yield {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+          };
+          // SDK contract: onFinish fires after the stream completes; a provider
+          // that never reported usage hands it an empty record.
+          onFinishPromise = Promise.resolve(
+            onFinish?.({ text: "delivered reply", totalUsage: {} }),
+          );
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      settleUnknownReservation: () => settle(ledger.hold),
+    });
+    const body = await res.text();
+    expect(onFinishPromise).toBeDefined();
+    await onFinishPromise;
+
+    // Delivered output with unreported usage retains the admitted estimate —
+    // "not reported" must never settle as "free".
+    expect(body).toContain("delivered reply");
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(recordUsageAnalytics).not.toHaveBeenCalled();
+  });
+});
+
 describe("streaming messages — provider failure terminal settlement", () => {
   test("ambiguous fullStream failure without output settles the admitted estimate", async () => {
     const ledger = makeLedgerReservation(100, 0.015);

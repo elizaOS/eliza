@@ -1358,6 +1358,32 @@ function firstNumber(...values: unknown[]): number | undefined {
   return undefined;
 }
 
+/**
+ * True when the SDK's finish usage carries at least one provider-reported
+ * token count (an explicit zero counts as reported). Mirrors the
+ * chat-completions `hasReportedUsageTokens` guard so a stream that finished
+ * WITHOUT reporting usage is distinguishable from a legitimate zero-token
+ * report and never settles delivered output at $0.
+ */
+function hasReportedFinishUsage(usage: unknown): boolean {
+  const record = (usage ?? {}) as {
+    inputTokens?: number;
+    promptTokens?: number;
+    outputTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+  return (
+    firstNumber(
+      record.inputTokens,
+      record.promptTokens,
+      record.outputTokens,
+      record.completionTokens,
+      record.totalTokens,
+    ) !== undefined
+  );
+}
+
 function summarizeFinishedStepUsage(
   steps: readonly FinishedStepUsageSource[],
 ): AIUsage | null {
@@ -1657,6 +1683,21 @@ async function handleStream(
     // non-Worker callers) the chain is awaited inline exactly as before.
     onFinish: async ({ text, totalUsage }) => {
       const settlement = settleStreamingOnce(async () => {
+        // A finished stream whose provider reported NO usage cannot prove its
+        // cost — billing the empty record would settle delivered output at $0,
+        // reading "not reported" as "free". Retain the admitted estimate
+        // instead (mirrors /v1/chat's falsy-usage guard). An explicit all-zero
+        // usage report still bills normally below, and provably-rejected work
+        // still reaches zero through onError/the stream backstop, which win
+        // this first-call-wins settler.
+        if (!hasReportedFinishUsage(totalUsage)) {
+          const reconciliation = await settleUnknownReservation();
+          logger.error(
+            "[Messages API] Stream finished without reported usage; settled admitted estimate",
+            { model },
+          );
+          return reconciliation;
+        }
         try {
           const billing = await billUsage(
             {
@@ -1992,30 +2033,50 @@ async function handleStream(
         // Same provider-configuration redaction as the non-streaming path: a
         // GatewayError's internal setup guidance must not reach the caller in
         // the terminal SSE error event (#13913).
+        let terminalEvent: Record<string, unknown>;
         if (isProviderConfigurationError(error)) {
           logger.error("[Messages API] Stream provider configuration error", {
             error: message,
           });
-          controller.enqueue(
-            sse("error", {
-              type: "error",
-              error: {
-                type: "invalid_request_error",
-                message: modelNotAvailableMessage(model),
-              },
-            }),
-          );
+          terminalEvent = {
+            type: "error",
+            error: {
+              type: "invalid_request_error",
+              message: modelNotAvailableMessage(model),
+            },
+          };
         } else {
           logger.error("[Messages API] Stream error", { error: message });
-          controller.enqueue(
-            sse("error", {
-              type: "error",
-              error: { type: "api_error", message },
-            }),
+          terminalEvent = {
+            type: "error",
+            error: { type: "api_error", message },
+          };
+        }
+        try {
+          controller.enqueue(sse("error", terminalEvent));
+        } catch (enqueueError) {
+          // The stream was already torn down (client disconnected / controller
+          // closed) — fall back to erroring it so the runtime cleans up.
+          // Mirrors the /v1/chat/completions terminal-chunk guard; settlement
+          // above has already run either way.
+          logger.error(
+            "[Messages API] Failed to emit terminal stream error event",
+            {
+              error:
+                enqueueError instanceof Error
+                  ? enqueueError.message
+                  : String(enqueueError),
+            },
           );
+          controller.error(error);
         }
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // error-policy:J6 best-effort teardown — the controller is already
+          // closed or errored when the terminal-chunk guard above fired.
+        }
       }
     },
   });
