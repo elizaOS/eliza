@@ -82,29 +82,15 @@ on:
         type: boolean
 
 concurrency:
-  # Canonical deploys serialize as a complete release per environment. Grouping
-  # by ref allowed a feature-branch dispatch and a develop push to interleave
-  # their API, console, and app jobs against the same staging resources. PR
-  # previews remain isolated per PR and cancel superseded preview runs.
+  # Production releases remain a FIFO, queue-never-cancel stream. Staging
+  # approval happens in a separate, non-secret environment before any shared
+  # mutation lock is acquired, so each staging SHA gets an independent workflow
+  # group and cannot head-of-line block a newer approval.
   # The v4 suffix retires the wedged v3 groups: a stale 2026-05-15 queued run
   # (25907128646) wedged v3-staging admission, so dispatched staging deploys sat
   # pending with zero jobs while cancel and force-cancel both returned HTTP 500.
   # Same retirement pattern as v2 -> v3; cancel stale deploys instead of
   # rejecting environment gates.
-  #
-  # Per-SHA staging groups (Jul 22 R10/R11 + 2026-07-23 recurrence): since the
-  # 2026-07-16 required-reviewers rule on the `staging` environment, every push
-  # run parks at the env gate in status=waiting, and a waiting run HOLDS a
-  # shared workflow-level group. One unapproved run therefore wedged every
-  # newer develop push into pending/zero-jobs (looked exactly like runner
-  # starvation, wasn't). Staging runs now group per head SHA: a waiting run can
-  # no longer squat the group, and no in-flight deploy is ever cancelled
-  # mid-job (cancel-in-progress stays PR-only). Cross-run serialization of the
-  # actual deploy work is unchanged, still enforced by the job-level groups
-  # (cloud-db-migrate-v2-staging, cloud-cf-deploy-api-staging,
-  # cloud-cf-deploy-console-staging, cloud-cf-deploy-app-staging; all
-  # cancel-in-progress:false for push), and the #14083 freshness guard skips
-  # stale-SHA clobbers. Production keeps the shared queue-never-cancel group.
   group: cloud-cf-deploy-v4-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || format('staging-{0}', github.sha)) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -139,6 +125,67 @@ jobs:
             exit 1
           fi
 
+  authorize-staging:
+    name: Authorize staging release
+    needs: validate-deploy-source
+    if: ${{ github.event_name != 'pull_request' && !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    # This environment contains only deployment policy. Runtime secrets remain
+    # in `staging`, whose jobs are reached only after this gate and admission
+    # check. Keeping approval outside every shared concurrency group prevents a
+    # reviewer wait from owning a deployment lock.
+    environment: staging-approval
+    steps:
+      - name: Record approval
+        run: echo "Staging release $GITHUB_SHA approved."
+
+  admit-release:
+    name: Admit current release
+    needs: [validate-deploy-source, authorize-staging]
+    if: ${{ always() && needs.validate-deploy-source.result == 'success' && (needs.authorize-staging.result == 'success' || needs.authorize-staging.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    outputs:
+      should_deploy: ${{ steps.admission.outputs.should_deploy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Reject superseded staging SHA before work starts
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
+        run: |
+          set -euo pipefail
+
+          current_sha=""
+          if [ "$EVENT_NAME" != "pull_request" ] \
+            && [ "$TARGET_ENVIRONMENT" != "production" ] \
+            && [ "$GITHUB_REF" != "refs/heads/main" ] \
+            && [ "$FORCE" != "true" ]; then
+            current_sha="$(
+              gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" \
+                --jq '.object.sha'
+            )"
+          fi
+
+          node packages/scripts/cloud/release-admission-cli.mjs \
+            "--event=$EVENT_NAME" \
+            "--environment=$TARGET_ENVIRONMENT" \
+            "--ref=$GITHUB_REF" \
+            "--force=$FORCE" \
+            "--run-sha=$GITHUB_SHA" \
+            "--current-develop-sha=$current_sha"
+
+          if [ "$GITHUB_SHA" != "$current_sha" ] && [ -n "$current_sha" ]; then
+            echo "Superseded staging release: run=$GITHUB_SHA current=$current_sha" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   # ---------------------------------------------------------------------------
   # Database migrations — the schema gate for every deploy job below (#11208).
   #
@@ -157,8 +204,8 @@ jobs:
   # ---------------------------------------------------------------------------
   migrate-db:
     name: Run Database Migrations
-    needs: validate-deploy-source
-    if: github.event_name != 'pull_request'
+    needs: admit-release
+    if: ${{ github.event_name != 'pull_request' && needs.admit-release.outputs.should_deploy == 'true' }}
     # GitHub-hosted by DEFAULT so migrations don't inherit the shared
     # self-hosted deploy fleet's heavy-checkout failure modes (mirrors
     # cloud-deploy-backend). But the hosted ubuntu-latest pool periodically
@@ -377,7 +424,7 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
-      - name: Install dependencies
+      - name: Install API dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
         # The shared self-hosted deploy box can stall or kill a single bun
         # install mid-flight (contended cache/IO), which surfaced as a
@@ -808,6 +855,90 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
+  # Pages build — one prepared workspace emits both canonical-origin variants.
+  # ---------------------------------------------------------------------------
+  build-pages:
+    name: Build Pages artifacts
+    needs: migrate-db
+    if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies once for both Pages variants
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Build linked elizaOS core workspace once
+        run: bun run build:core
+
+      - name: Build console artifact
+        run: bun run --cwd packages/app build:web
+        env:
+          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
+          VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
+          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
+          VITE_ELIZA_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
+          VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
+          NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
+          VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_FORCE: "0"
+          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+
+      - name: Verify console chunk safety
+        run: bun run --cwd packages/app verify:chunks
+
+      - name: Upload console artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pages-console-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            packages/app/dist
+            packages/app/functions
+            packages/app/wrangler.toml
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Build app artifact
+        run: bun run --cwd packages/app build:web
+        env:
+          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
+          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
+          VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
+          NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
+          VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_FORCE: "0"
+          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+
+      - name: Verify app chunk safety
+        run: bun run --cwd packages/app verify:chunks
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pages-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            packages/app/dist
+            packages/app/functions
+            packages/app/wrangler.toml
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
   # Console frontend (Cloudflare Pages) — packages/app at the elizacloud.ai apex.
   # The cloud console (lander + dashboard) origin, built from packages/app (which
   # mounts the cloud UI via @elizaos/ui/cloud). Deploys to the `eliza-cloud`
@@ -837,8 +968,8 @@ jobs:
     # without repo secrets. `!cancelled()` overrides the implicit success()
     # so the skipped-dependency preview case can run; everything else is
     # fail-closed (failed/cancelled migrate-db -> this job is skipped).
-    needs: migrate-db
-    if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
+    needs: [migrate-db, build-pages]
+    if: ${{ !cancelled() && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -953,7 +1084,14 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
-      - name: Install dependencies
+      - name: Download immutable console artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pages-console-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CHECKOUT_DIR }}/packages/app
+
+      - name: Legacy inline fallback - install dependencies
+        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
         working-directory: ${{ env.CHECKOUT_DIR }}
         # The shared self-hosted deploy box can stall or kill a single bun
         # install mid-flight (contended cache/IO), which surfaced as a
@@ -998,7 +1136,8 @@ jobs:
           done
           git diff --exit-code -- bun.lock
 
-      - name: Build linked elizaOS core workspace
+      - name: Legacy inline fallback - build linked core
+        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run build:core
 
@@ -1006,7 +1145,8 @@ jobs:
       # gate (it resolves @elizaos/* to source); typecheck is enforced by the
       # separate verify workflow, not here. Identical build to deploy-app — only
       # the canonical-origin env below differs (apex vs app.* subdomain).
-      - name: Build console (packages/app)
+      - name: Legacy inline fallback - build console
+        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/app build:web
         env:
@@ -1043,7 +1183,8 @@ jobs:
       # now lives under `rollupOptions.output` (the key Vite reads) and folds
       # the crypto/wallet/solana graph into one lazy `vendor-crypto` chunk, so a
       # clean build passes and any future eager-chunk regression fails the deploy.
-      - name: Verify bundle chunk safety
+      - name: Legacy inline fallback - verify console chunks
+        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
         run: bun run verify:chunks
 
@@ -1123,7 +1264,7 @@ jobs:
         # SPA's index.html instead of being proxied to the API Worker).
         run: |
           for attempt in 1 2 3; do
-            if bunx wrangler pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
+            if bunx wrangler@4.100.0 pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
               exit 0
             fi
             if [ "$attempt" = "3" ]; then
@@ -1232,8 +1373,8 @@ jobs:
     # Schema gate (#11208): same contract as deploy-console — non-PR deploys
     # require a successful migrate-db; PR previews (migrate-db skipped) still
     # run; failed/cancelled migrate-db skips this job (fail-closed).
-    needs: migrate-db
-    if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
+    needs: [migrate-db, build-pages]
+    if: ${{ !cancelled() && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -1348,7 +1489,14 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
-      - name: Install dependencies
+      - name: Download immutable app artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pages-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CHECKOUT_DIR }}/packages/app
+
+      - name: Legacy inline fallback - install dependencies
+        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
         working-directory: ${{ env.CHECKOUT_DIR }}
         # The shared self-hosted deploy box can stall or kill a single bun
         # install mid-flight (contended cache/IO), which surfaced as a
@@ -1393,13 +1541,15 @@ jobs:
           done
           git diff --exit-code -- bun.lock
 
-      - name: Build linked elizaOS core workspace
+      - name: Legacy inline fallback - build linked core
+        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run build:core
 
       # The Eliza agent app. The vite build is the gate (it resolves @elizaos/*
       # to source); typecheck is enforced by the separate verify workflow.
-      - name: Build app
+      - name: Legacy inline fallback - build app
+        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/app build:web
         env:
@@ -1427,7 +1577,8 @@ jobs:
       # now lives under `rollupOptions.output` (the key Vite reads) and folds
       # the crypto/wallet/solana graph into one lazy `vendor-crypto` chunk, so a
       # clean build passes and any future eager-chunk regression fails the deploy.
-      - name: Verify bundle chunk safety
+      - name: Legacy inline fallback - verify app chunks
+        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
         run: bun run verify:chunks
 
@@ -1481,7 +1632,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler pages project create eliza-app --production-branch=main 2>/dev/null || true
+        run: bunx wrangler@4.100.0 pages project create eliza-app --production-branch=main 2>/dev/null || true
 
       # Freshness guard (#14083): skip a stale zombie run about to clobber a
       # newer served build. Fail-open on any ambiguous signal; force=true
@@ -1513,7 +1664,7 @@ jobs:
         # ignore wrangler.toml — which silently drops the `functions/` upload.
         run: |
           for attempt in 1 2 3; do
-            if bunx wrangler pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
+            if bunx wrangler@4.100.0 pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
               exit 0
             fi
             if [ "$attempt" = "3" ]; then
