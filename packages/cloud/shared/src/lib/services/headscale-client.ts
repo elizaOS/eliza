@@ -168,9 +168,7 @@ export class HeadscaleClient {
   ): Promise<HeadscaleNode | null> {
     const nodes = await this.listNodes();
     const candidates = nodes.filter(
-      (n) =>
-        (n.name === name || n.name.startsWith(`${name}-`)) &&
-        n.id !== options?.excludeNodeId,
+      (n) => (n.name === name || n.name.startsWith(`${name}-`)) && n.id !== options?.excludeNodeId,
     );
     if (candidates.length === 0) return null;
     // Exact match wins; otherwise take the newest suffixed registration.

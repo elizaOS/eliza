@@ -199,7 +199,9 @@ export class HeadscaleIntegration {
 
         if (node && node.ipAddresses.length > 0 && node.id !== options?.excludeNodeId) {
           const ip = node.ipAddresses[0];
-          logger.info(`[headscale-integration] VPN registered for ${nodeName}: ${ip} (node name ${node.name})`);
+          logger.info(
+            `[headscale-integration] VPN registered for ${nodeName}: ${ip} (node name ${node.name})`,
+          );
           return { ip, nodeId: node.id };
         }
       } catch (err) {
