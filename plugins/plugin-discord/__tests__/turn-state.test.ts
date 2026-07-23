@@ -355,7 +355,11 @@ describe("durable turn persistence is FK-safe for post-connect channels", () => 
 			content: {
 				text: `discord-turn pre-fix-1 RECEIVED`,
 				source: "discord-turn",
-				data: { platformMessageId: "pre-fix-1", state: "RECEIVED", attempts: 0 },
+				data: {
+					platformMessageId: "pre-fix-1",
+					state: "RECEIVED",
+					attempts: 0,
+				},
 			},
 			createdAt: Date.now(),
 		} as Memory;

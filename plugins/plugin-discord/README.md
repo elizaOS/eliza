@@ -46,12 +46,6 @@ The config key `connectors.discord` is what maps the agent to
 empty `plugins: []` and no `connectors.discord` entry will boot with
 `connectors: {}` and emit zero Discord log lines even with valid credentials.
 
-> **Note:** `ELIZA_DISABLE_DISCORD=0` is **necessary but not sufficient**. It
-> only clears the kill-switch; it does not add the plugin to the load set. You
-> still need `connectors.discord.enabled` (or the plugin explicitly in the
-> character's `plugins`). Setting `ELIZA_DISABLE_DISCORD=0` alone leaves the
-> connector unloaded.
-
 The plugin requires the following environment variables:
 
 ```bash
