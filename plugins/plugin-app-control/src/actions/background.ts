@@ -596,7 +596,7 @@ async function defaultGenerateImage(prompt: string): Promise<string> {
 		`http://127.0.0.1:${port}/api/background/generate-image`,
 		{
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: createViewsRequestHeaders(),
 			body: JSON.stringify({ prompt }),
 			signal: AbortSignal.timeout(120_000),
 		},

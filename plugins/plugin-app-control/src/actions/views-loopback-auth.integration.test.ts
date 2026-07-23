@@ -6,6 +6,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createAppControlClient } from "../client/api.js";
 import { createAgentSwitchAction } from "./agent-switch.js";
 import { createBackgroundAction } from "./background.js";
 import { createModelSwitchAction } from "./model-switch.js";
@@ -171,6 +172,27 @@ async function startAuthenticatedViewsServer(
 					displayName: "Eliza Cloud",
 					status: "ready",
 				});
+				return;
+			}
+			if (
+				request.method === "PUT" &&
+				request.pathname === "/api/permissions/shell"
+			) {
+				sendJson(res, 200, { ok: true, enabled: false });
+				return;
+			}
+			if (
+				request.method === "POST" &&
+				request.pathname === "/api/background/generate-image"
+			) {
+				sendJson(res, 200, { url: "/api/media/generated-test.png" });
+				return;
+			}
+			if (
+				request.method === "GET" &&
+				request.pathname === "/api/apps/installed"
+			) {
+				sendJson(res, 200, []);
 				return;
 			}
 			sendJson(res, 404, { error: "Not found" });
@@ -415,6 +437,33 @@ describe("authenticated view loopback requests", () => {
 		);
 		expect(settingsResult.success).toBe(true);
 
+		// A settings route OUTSIDE /api/views/* must carry the same bearer: the
+		// whole local API boundary is token-protected, not just the views prefix.
+		const shellPermissionResult = await settingsAction.handler(
+			runtime,
+			message("turn off shell access"),
+			undefined,
+			{
+				action: "set",
+				section: "permissions",
+				key: "shell",
+				value: "off",
+			},
+		);
+		expect(shellPermissionResult.success).toBe(true);
+
+		// The background image generator crosses the same boundary.
+		const backgroundGenerateResult = await backgroundAction.handler(
+			runtime,
+			message("generate a background of a misty mountain sunrise"),
+		);
+		expect(backgroundGenerateResult.success).toBe(true);
+
+		// The app-control loopback client (installed apps, runs, launch, stop).
+		await expect(createAppControlClient().listInstalledApps()).resolves.toEqual(
+			[],
+		);
+
 		const paths = server.requests.map((request) => request.pathname);
 		expect(paths).toEqual(
 			expect.arrayContaining([
@@ -426,6 +475,9 @@ describe("authenticated view loopback requests", () => {
 				"/api/views/background/navigate",
 				"/api/runtime/agent-switch",
 				"/api/runtime/model-switch",
+				"/api/permissions/shell",
+				"/api/background/generate-image",
+				"/api/apps/installed",
 			]),
 		);
 		expect(
