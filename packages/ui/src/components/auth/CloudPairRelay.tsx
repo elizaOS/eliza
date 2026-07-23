@@ -11,6 +11,7 @@ export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
 
 interface PairExchangeResponse {
   apiKey?: unknown;
+  code?: unknown;
   error?: unknown;
 }
 
@@ -18,6 +19,7 @@ export class CloudPairExchangeError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
     this.name = "CloudPairExchangeError";
@@ -82,13 +84,18 @@ async function readCloudPairResponse(response: Response): Promise<string> {
       typeof body?.error === "string" && body.error.trim()
         ? body.error.trim()
         : "Cloud pairing failed.";
-    throw new CloudPairExchangeError(message, response.status);
+    const code =
+      typeof body?.code === "string" && body.code.trim()
+        ? body.code.trim()
+        : undefined;
+    throw new CloudPairExchangeError(message, response.status, code);
   }
 
   if (typeof body?.apiKey !== "string" || !body.apiKey.trim()) {
     throw new CloudPairExchangeError(
       "Cloud did not return an agent session.",
       502,
+      "invalid_pairing_response",
     );
   }
 

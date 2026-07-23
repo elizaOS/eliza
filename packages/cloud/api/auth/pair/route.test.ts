@@ -191,6 +191,10 @@ describe("Cloud pairing route", () => {
     });
 
     expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "cloud_auth_required",
+    });
     expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
     expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
   });
@@ -201,6 +205,10 @@ describe("Cloud pairing route", () => {
     const response = await postNative();
 
     expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "cloud_auth_required",
+    });
     expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
   });
 
@@ -259,9 +267,11 @@ describe("Cloud pairing route", () => {
 
     const response = await postNative();
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
+      success: false,
       error: "Pairing failed",
+      code: "sandbox_credential_unavailable",
     });
     expect(loggerError).toHaveBeenCalledWith(
       "[auth/pair/native] sandbox API token unavailable",
@@ -279,7 +289,7 @@ describe("Cloud pairing route", () => {
 
     const response = await postNative();
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
   });
 
   test("ignores a Capacitor Origin header and still enforces the minted origin", async () => {
@@ -316,6 +326,10 @@ describe("Cloud pairing route", () => {
     for (const body of invalidBodies) {
       const response = await postNative(body);
       expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        success: false,
+        code: "invalid_native_pairing_request",
+      });
     }
 
     expect(claimAuthenticatedNativeToken).not.toHaveBeenCalled();
@@ -332,7 +346,7 @@ describe("Cloud pairing route", () => {
 
     const response = await postNative();
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(410);
     expect(claimAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
       userId: USER_ID,
       orgId: OTHER_ORG_ID,
@@ -356,9 +370,11 @@ describe("Cloud pairing route", () => {
       expectedOrigin: "https://wrong-agent.elizacloud.ai",
     });
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(410);
     await expect(response.json()).resolves.toEqual({
+      success: false,
       error: "Invalid or expired pairing code",
+      code: "pairing_token_invalid",
     });
     expect(claimAuthenticatedNativeToken).toHaveBeenCalledWith(TOKEN, {
       userId: OTHER_USER_ID,

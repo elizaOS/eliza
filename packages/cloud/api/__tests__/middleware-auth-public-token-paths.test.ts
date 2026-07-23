@@ -13,6 +13,15 @@ import { describe, expect, test } from "bun:test";
 
 import { isPublicPath } from "../src/middleware/auth";
 
+describe("isPublicPath — pairing boundary", () => {
+  test("keeps only the browser relay public", () => {
+    expect(isPublicPath("/api/auth/pair")).toBe(true);
+    expect(isPublicPath("/api/auth/pair/")).toBe(true);
+    expect(isPublicPath("/api/auth/pair/native")).toBe(false);
+    expect(isPublicPath("/api/auth/pair/native/extra")).toBe(false);
+  });
+});
+
 describe("isPublicPath — out-of-band token pages", () => {
   test("sensitive-request detail + submit are public (token-gated by handler)", () => {
     expect(isPublicPath("/api/v1/sensitive-requests/req-123")).toBe(true);

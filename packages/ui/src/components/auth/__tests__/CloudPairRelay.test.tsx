@@ -166,6 +166,36 @@ describe("CloudPairRelay", () => {
     );
   });
 
+  it("preserves the native recovery code on exchange failures", async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse(
+        {
+          success: false,
+          error: "Cloud authentication required",
+          code: "cloud_auth_required",
+        },
+        401,
+      ),
+    );
+
+    const error = await exchangeAuthenticatedNativeCloudPairToken(
+      "pair-token",
+      {
+        cloudToken: "expired.steward.token",
+        agentId: "23766030-c096-4a14-932a-a4e43c562432",
+        expectedOrigin:
+          "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+        fetchFn: fetchFn as unknown as typeof fetch,
+      },
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(CloudPairExchangeError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "cloud_auth_required",
+    });
+  });
+
   it("persists the paired API key into the app token channels", () => {
     persistCloudPairApiToken(" agent-key ");
 

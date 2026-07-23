@@ -8,7 +8,7 @@
 
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { errorToResponse } from "@/lib/api/errors";
+import { AuthenticationError, errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
   RateLimitPresets,
@@ -21,6 +21,20 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
+
+const NATIVE_PAIRING_ERROR_CODE = {
+  cloudAuthRequired: "cloud_auth_required",
+  invalidRequest: "invalid_native_pairing_request",
+  pairingTokenInvalid: "pairing_token_invalid",
+  sandboxCredentialUnavailable: "sandbox_credential_unavailable",
+} as const;
+
+function nativePairingError(
+  error: string,
+  code: (typeof NATIVE_PAIRING_ERROR_CODE)[keyof typeof NATIVE_PAIRING_ERROR_CODE],
+) {
+  return { success: false as const, error, code };
+}
 
 function isPlausiblePairingToken(token: string): boolean {
   return /^[A-Za-z0-9_-]{43}$/.test(token);
@@ -126,12 +140,24 @@ app.post("/native", async (c) => {
       !authorization.slice("Bearer ".length).trim() ||
       hasCompetingCredential
     ) {
-      return c.json({ error: "Cloud authentication required" }, 401);
+      return c.json(
+        nativePairingError(
+          "Cloud authentication required",
+          NATIVE_PAIRING_ERROR_CODE.cloudAuthRequired,
+        ),
+        401,
+      );
     }
 
     const auth = await requireAuthOrApiKeyWithOrg(c.req.raw);
     if (auth.authMethod !== "session" && auth.authMethod !== "api_key") {
-      return c.json({ error: "Cloud authentication required" }, 401);
+      return c.json(
+        nativePairingError(
+          "Cloud authentication required",
+          NATIVE_PAIRING_ERROR_CODE.cloudAuthRequired,
+        ),
+        401,
+      );
     }
     c.set("user", auth.user);
     c.set("authMethod", auth.authMethod);
@@ -140,7 +166,13 @@ app.post("/native", async (c) => {
     // sentinel maps it to the explicit 400 native-request response below.
     const body: unknown = await c.req.json().catch(() => null);
     if (!isRecord(body)) {
-      return c.json({ error: "Invalid native pairing request" }, 400);
+      return c.json(
+        nativePairingError(
+          "Invalid native pairing request",
+          NATIVE_PAIRING_ERROR_CODE.invalidRequest,
+        ),
+        400,
+      );
     }
 
     const token = typeof body.token === "string" ? body.token.trim() : "";
@@ -155,7 +187,13 @@ app.post("/native", async (c) => {
       !isPlausibleAgentId(agentId) ||
       !expectedOrigin
     ) {
-      return c.json({ error: "Invalid native pairing request" }, 400);
+      return c.json(
+        nativePairingError(
+          "Invalid native pairing request",
+          NATIVE_PAIRING_ERROR_CODE.invalidRequest,
+        ),
+        400,
+      );
     }
 
     const tokenService = getPairingTokenService();
@@ -170,10 +208,22 @@ app.post("/native", async (c) => {
         agentId,
         organizationId: auth.user.organization_id,
       });
-      return c.json({ error: "Pairing failed" }, 500);
+      return c.json(
+        nativePairingError(
+          "Pairing failed",
+          NATIVE_PAIRING_ERROR_CODE.sandboxCredentialUnavailable,
+        ),
+        503,
+      );
     }
     if (claim.status === "invalid") {
-      return c.json({ error: "Invalid or expired pairing code" }, 401);
+      return c.json(
+        nativePairingError(
+          "Invalid or expired pairing code",
+          NATIVE_PAIRING_ERROR_CODE.pairingTokenInvalid,
+        ),
+        410,
+      );
     }
 
     return c.json(
@@ -189,6 +239,15 @@ app.post("/native", async (c) => {
     // error-policy:J1 route boundary — translate authentication and dependency
     // failures into structured HTTP errors without exposing token context.
     logger.error("[auth/pair/native] error", { error: err });
+    if (err instanceof AuthenticationError) {
+      return c.json(
+        nativePairingError(
+          "Cloud authentication required",
+          NATIVE_PAIRING_ERROR_CODE.cloudAuthRequired,
+        ),
+        401,
+      );
+    }
     return errorToResponse(err);
   }
 });

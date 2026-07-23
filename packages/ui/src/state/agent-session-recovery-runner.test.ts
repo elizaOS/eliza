@@ -10,6 +10,7 @@
  * purge cases can assert real persisted credentials survive a mint refusal.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CloudPairExchangeError } from "../components/auth/CloudPairRelay";
 import { runAgentSessionRecovery } from "./agent-session-recovery-runner";
 
 function jsonResponse(
@@ -139,6 +140,63 @@ describe("runAgentSessionRecovery", () => {
     });
     expect(clearStalePairCredentials).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    [
+      new CloudPairExchangeError(
+        "Cloud authentication required",
+        401,
+        "cloud_auth_required",
+      ),
+      "unauthorized",
+      true,
+    ],
+    [
+      new CloudPairExchangeError(
+        "Invalid or expired pairing code",
+        410,
+        "pairing_token_invalid",
+      ),
+      "error",
+      false,
+    ],
+    [
+      new CloudPairExchangeError(
+        "Pairing failed",
+        503,
+        "sandbox_credential_unavailable",
+      ),
+      "manage-required",
+      true,
+    ],
+  ] as const)(
+    "classifies typed native exchange failures without guessing from one status",
+    async (exchangeError, expectedReason, shouldPurge) => {
+      const redirectUrl = "https://agent.elizacloud.ai/pair?token=one-time";
+      const clearStalePairCredentials = vi.fn();
+
+      const result = await runAgentSessionRecovery({
+        ...baseDeps,
+        fetchFn: vi
+          .fn()
+          .mockResolvedValue(
+            jsonResponse(200, { data: { redirectUrl } }),
+          ) as unknown as typeof fetch,
+        navigate: vi.fn(),
+        consumeRedirectInProcess: true,
+        exchangePairToken: vi.fn().mockRejectedValue(exchangeError),
+        clearStalePairCredentials,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe(expectedReason);
+      if (shouldPurge) {
+        expect(clearStalePairCredentials).toHaveBeenCalledOnce();
+      } else {
+        expect(clearStalePairCredentials).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("does not navigate on 401 and reports Cloud reauthentication", async () => {
     const fetchFn = vi

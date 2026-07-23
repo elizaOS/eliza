@@ -20,6 +20,7 @@
  */
 
 import {
+  CloudPairExchangeError,
   exchangeAuthenticatedNativeCloudPairToken,
   persistCloudPairApiToken,
 } from "../components/auth/CloudPairRelay";
@@ -124,6 +125,33 @@ function pairTokenFromRedirectUrl(redirectUrl: string): string | null {
     // error-policy:J3 malformed dependency URLs cannot yield a pairing token.
     return null;
   }
+}
+
+function classifyNativePairExchangeError(
+  error: unknown,
+): Extract<AgentSessionRecoveryResult, { ok: false }> {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!(error instanceof CloudPairExchangeError)) {
+    return { ok: false, reason: "error", message };
+  }
+
+  if (
+    error.code === "cloud_auth_required" ||
+    error.code === "authentication_required" ||
+    (!error.code && error.status === 401)
+  ) {
+    return { ok: false, reason: "unauthorized", message };
+  }
+
+  if (
+    error.code === "sandbox_credential_unavailable" ||
+    error.code === "access_denied" ||
+    (!error.code && error.status === 403)
+  ) {
+    return { ok: false, reason: "manage-required", message };
+  }
+
+  return { ok: false, reason: "error", message };
 }
 
 /**
@@ -269,13 +297,17 @@ export async function runAgentSessionRecovery(
           await onPairedInProcess?.(apiToken);
           return { ok: true, redirectUrl, mode: "in-process" };
         } catch (err) {
-          // error-policy:J4 exchange/persistence failures become a
-          // non-destructive retry result; they do not prove Cloud auth invalid.
-          return {
-            ok: false,
-            reason: "error",
-            message: err instanceof Error ? err.message : String(err),
-          };
+          // error-policy:J4 native exchange failures retain the server's typed
+          // recovery category. Unknown/network/storage failures stay retryable
+          // and cannot invalidate the Cloud credential.
+          const failure = classifyNativePairExchangeError(err);
+          if (
+            failure.reason === "unauthorized" ||
+            failure.reason === "manage-required"
+          ) {
+            clearStalePairCredentials?.();
+          }
+          return failure;
         }
       }
 
