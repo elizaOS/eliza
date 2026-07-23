@@ -31,6 +31,21 @@ afterEach(() => {
 });
 
 describe("getRelatedEntityIds memo", () => {
+	it("preserves the relationship service receiver while memoizing", async () => {
+		const service = {
+			member: ALIAS,
+			async getMemberEntityIds() {
+				return [this.member];
+			},
+		};
+		const runtime = {
+			agentId: AGENT,
+			getService: (name: string) => (name === "relationships" ? service : null),
+		} as unknown as IAgentRuntime;
+
+		expect(await getRelatedEntityIds(runtime, SENDER)).toEqual([SENDER, ALIAS]);
+	});
+
 	it("shares one in-flight resolver call across concurrent callers", async () => {
 		let calls = 0;
 		const runtime = runtimeWith(async () => {

@@ -60,9 +60,8 @@ export async function getRelatedEntityIds(
 		return cached.promise;
 	}
 
-	const getMemberEntityIds = resolver.getMemberEntityIds;
 	const promise = (async () => {
-		const relatedEntityIds = await getMemberEntityIds(entityId);
+		const relatedEntityIds = await resolver.getMemberEntityIds(entityId);
 		const deduped = Array.from(new Set([entityId, ...relatedEntityIds]));
 		return deduped.length > 0 ? deduped : [entityId];
 	})();
