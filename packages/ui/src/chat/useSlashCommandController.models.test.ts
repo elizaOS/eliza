@@ -13,7 +13,11 @@ import type { CustomActionDef } from "@elizaos/shared";
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SlashCommandCatalogItem } from "../api/client-types-commands";
-import { ApiError, type ModelCatalogResponse } from "../api/client-types-core";
+import {
+  ApiError,
+  type ModelCatalogProviders,
+  type ModelCatalogResponse,
+} from "../api/client-types-core";
 
 const { listCommands, listCustomActions, getModelsCatalog } = vi.hoisted(
   () => ({
@@ -84,26 +88,28 @@ const MODEL_COMMAND = cmd({
   ],
 });
 
+const CATALOG_PROVIDERS: ModelCatalogProviders = {
+  codex: [
+    {
+      id: "gpt-5.5",
+      display: "GPT-5.5",
+      efforts: ["low", "medium", "high", "xhigh"],
+      roles: ["coding"],
+    },
+  ],
+  cerebras: [
+    {
+      id: "zai-glm-4.7",
+      display: "GLM-4.7",
+      efforts: ["low", "medium", "high"],
+      roles: ["small", "large"],
+    },
+  ],
+};
+
 const CATALOG_RESPONSE: ModelCatalogResponse = {
   catalog: {
-    providers: {
-      codex: [
-        {
-          id: "gpt-5.5",
-          display: "GPT-5.5",
-          efforts: ["low", "medium", "high", "xhigh"],
-          roles: ["coding"],
-        },
-      ],
-      cerebras: [
-        {
-          id: "zai-glm-4.7",
-          display: "GLM-4.7",
-          efforts: ["low", "medium", "high"],
-          roles: ["small", "large"],
-        },
-      ],
-    },
+    providers: CATALOG_PROVIDERS,
   },
 };
 
@@ -156,6 +162,51 @@ describe("useSlashCommandController — models choice source", () => {
         precedingTokens: ["coding", "codex"],
       }),
     ).toEqual(["gpt-5.5"]);
+  });
+
+  it("accepts the live cloud catalogOnly response shape", async () => {
+    listCommands.mockResolvedValue([MODEL_COMMAND]);
+    getModelsCatalog.mockResolvedValue({
+      providers: CATALOG_PROVIDERS,
+    });
+
+    const { result } = renderHook(() => useSlashCommandController());
+
+    await waitFor(() =>
+      expect(
+        result.current.resolveChoices("models", {
+          commandKey: "model",
+          argIndex: 1,
+          precedingTokens: ["large"],
+        }),
+      ).toEqual(["zai-glm-4.7"]),
+    );
+  });
+
+  it("does not treat legacy provider model lists as the curated catalog", async () => {
+    listCommands.mockResolvedValue([MODEL_COMMAND]);
+    getModelsCatalog.mockResolvedValue({
+      providers: {
+        openrouter: [
+          {
+            id: "openai/gpt-4o-mini",
+            name: "GPT-4o mini",
+            category: "chat",
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useSlashCommandController());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(
+      result.current.resolveChoices("models", {
+        commandKey: "model",
+        argIndex: 1,
+        precedingTokens: ["large"],
+      }),
+    ).toEqual([]);
   });
 
   it("labels model values and /model target tokens via describeChoice", async () => {

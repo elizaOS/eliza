@@ -269,6 +269,12 @@ export const GUARDED_REAL_LIVE_SUITES = [
     requires: ["OPENAI_API_KEY_REAL"],
   },
   {
+    file: "plugins/plugin-openrouter/__tests__/anthropic-cache.live.test.ts",
+    requires: ["OPENROUTER_API_KEY"],
+    notes:
+      "exact OpenRouter-to-Anthropic 1h cache-write/cache-read usage and typed invalid-TTL receipt",
+  },
+  {
     file: "plugins/plugin-openrouter/__tests__/models.live.test.ts",
     requires: ["OPENROUTER_API_KEY"],
   },

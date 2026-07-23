@@ -439,6 +439,11 @@ describe("executeTriggerTask", () => {
     expect(handle.promptMessages[0]?.text).toBe(
       'Scheduled trigger "Test Trigger" fired. Do this now: Summarize today\'s calendar',
     );
+    expect(handle.runtime.ensureConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        worldId: stringToUuid(`trigger-world:${AGENT_ID}`),
+      }),
+    );
 
     // A TriggerRunRecord is appended and runCount incremented, same as workflow.
     const persisted = readTriggerConfig({

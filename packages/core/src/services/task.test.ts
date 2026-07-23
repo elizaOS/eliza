@@ -359,6 +359,10 @@ describe("TaskService tick re-arm", () => {
 		(runtime as { serverless: boolean }).serverless = true;
 		service = (await TaskService.start(runtime)) as TaskService;
 
+		// Step past the boot grace window: inside it a missing worker is treated
+		// as "not registered yet" and skipped silently, not healed.
+		vi.setSystemTime(T0 + 61_000);
+
 		// A genuinely invalid row (bad preflight) still rejects the tick; the
 		// orphaned missing-worker row is healed away and absent from the failures.
 		await expect(service.runDueTasks()).rejects.toMatchObject({
@@ -574,10 +578,17 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 
 		service = (await TaskService.start(runtime)) as TaskService;
 
-		// First tick heals it: paused=true, ONE diagnostic (the tick's
-		// TASK_TICK_FAILED does NOT fire because failures[] is empty after heal).
-		await vi.advanceTimersByTimeAsync(1_000);
+		// Inside the 60s boot grace the missing worker is "not registered yet":
+		// no pause, no delete, no diagnostic.
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(tasks.get("orphan-r")?.metadata?.paused).toBeUndefined();
+
+		// First tick past the grace heals it: paused=true, ONE diagnostic (the
+		// tick's TASK_TICK_FAILED does NOT fire because failures[] is empty after
+		// heal).
+		await vi.advanceTimersByTimeAsync(60_000);
 		expect(tasks.get("orphan-r")?.metadata?.paused).toBe(true);
+		expect(tasks.get("orphan-r")?.metadata?.orphanedNoWorker).toBe(true);
 		const reportError = runtime.reportError as ReturnType<typeof vi.fn>;
 		const callsAfterFirst = reportError.mock.calls.length;
 		expect(callsAfterFirst).toBe(0);
@@ -602,7 +613,12 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 
 		service = (await TaskService.start(runtime)) as TaskService;
 
-		await vi.advanceTimersByTimeAsync(1_000);
+		// Inside the boot grace the one-shot is left alone (its plugin may just
+		// not have registered yet — deleting here would destroy a healthy task).
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(tasks.has("orphan-1")).toBe(true);
+
+		await vi.advanceTimersByTimeAsync(60_000);
 		// One-shot with no worker is deleted (keeping it = re-fail every tick).
 		expect(tasks.has("orphan-1")).toBe(false);
 		const reportError = runtime.reportError as ReturnType<typeof vi.fn>;
@@ -630,7 +646,7 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 
 		service = (await TaskService.start(runtime)) as TaskService;
 
-		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.advanceTimersByTimeAsync(61_000);
 		const reportError = runtime.reportError as ReturnType<typeof vi.fn>;
 		const afterFirst = reportError.mock.calls.length;
 		// The heal failure surfaces (once) via the tick's TASK_TICK_FAILED.
@@ -639,5 +655,88 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 		// It must NOT keep re-narrating on every subsequent 1s tick.
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(reportError.mock.calls.length).toBe(afterFirst);
+	});
+
+	it("never quarantines during the boot grace window when the worker registers late", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		// Repeat task exists at boot; its plugin registers the worker 10s later
+		// (real boot ordering: TaskService's 1s tick starts before every plugin
+		// has registered its workers).
+		tasks.set("late-worker", {
+			id: "late-worker" as UUID,
+			name: "LATE_WORKER",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 30_000, updatedAt: T0 },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// 10 ticks with no worker: silently skipped, never paused, never errored.
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(tasks.get("late-worker")?.metadata?.paused).toBeUndefined();
+		expect(
+			(runtime.reportError as ReturnType<typeof vi.fn>).mock.calls.length,
+		).toBe(0);
+
+		// Worker registers late; the task then runs normally on its interval.
+		workers.set("LATE_WORKER", { name: "LATE_WORKER", execute });
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(execute).toHaveBeenCalled();
+		expect(tasks.get("late-worker")?.metadata?.paused).not.toBe(true);
+	});
+
+	it("auto-resumes an orphan-paused repeat task when its worker re-registers", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		// A row a PREVIOUS boot orphan-paused (orphanedNoWorker marker). This
+		// build registers the worker again (redeploy restored the plugin).
+		tasks.set("healed", {
+			id: "healed" as UUID,
+			name: "HEALED_WORKER",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: {
+				updateInterval: 10_000,
+				updatedAt: T0,
+				paused: true,
+				orphanedNoWorker: true,
+				lastError:
+					"No worker registered for task HEALED_WORKER (orphan auto-paused)",
+			},
+		});
+		workers.set("HEALED_WORKER", { name: "HEALED_WORKER", execute });
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// First tick resumes it (clears paused + marker); it then runs when due.
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(tasks.get("healed")?.metadata?.paused).toBe(false);
+		expect(tasks.get("healed")?.metadata?.orphanedNoWorker).toBe(false);
+
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(execute).toHaveBeenCalled();
+	});
+
+	it("never auto-resumes an operator-paused task (no orphanedNoWorker marker)", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		tasks.set("op-paused", {
+			id: "op-paused" as UUID,
+			name: "OP_PAUSED",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			// Operator paused via API — no orphan marker. Must stay paused even
+			// though the worker is registered.
+			metadata: { updateInterval: 5_000, updatedAt: T0, paused: true },
+		});
+		workers.set("OP_PAUSED", { name: "OP_PAUSED", execute });
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(tasks.get("op-paused")?.metadata?.paused).toBe(true);
+		expect(execute).not.toHaveBeenCalled();
 	});
 });

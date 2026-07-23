@@ -50,7 +50,7 @@ describe("assertRequiredKernelsPresent (native/CLAUDE.md §3#5)", () => {
 	});
 
 	it("throws MissingRequiredKernelsError when a required kernel is absent", () => {
-		// The 2B tier requires `turboquant_q4` + `mtp`; a manifest that only
+		// The 2B tier requires `turboquant_q4` + `turbo3_tcq`; a manifest that only
 		// declares an optional KV kernel is missing both.
 		const broken: ManifestLoader = () => manifestWithKernels(["qjl"]);
 		let thrown: unknown;
@@ -63,19 +63,19 @@ describe("assertRequiredKernelsPresent (native/CLAUDE.md §3#5)", () => {
 		const err = thrown as MissingRequiredKernelsError;
 		expect(err.tier).toBe("2b");
 		expect(err.missing).toContain("turboquant_q4");
-		expect(err.missing).toContain("mtp");
+		expect(err.missing).toContain("turbo3_tcq");
 		expect(err.modelId).toBe("eliza-1-2b");
 	});
 
 	// AGENTS.md §3 "Gemma 4 exception": the head_dim=128 QJL/PolarQuant KV
 	// kernels are OPTIONAL on Gemma (its MQA/SWA/shared-KV geometry never routes
-	// through them). TurboQuant weight-quant and MTP are required; the legacy KV
-	// kernels remain optional. Enforce that contract at the manifest-gate level.
+	// through them). TurboQuant weight-quant and the long-context trellis kernel
+	// are required; MTP is enforced by its drafter/eval contract.
 	it("does NOT throw for a Gemma-tier manifest that omits QJL/PolarQuant (Gemma exception)", () => {
-		// A real Gemma bundle declares `turboquant_q4` + `mtp` and ships stock KV
-		// — no qjl / polarquant / turbo3_tcq. The gate must accept it.
+		// A real published bundle declares the canonical required pair while QJL
+		// and PolarQuant remain additional, non-mandatory capabilities.
 		const gemma: ManifestLoader = () =>
-			manifestWithKernels(["turboquant_q4", "mtp"]);
+			manifestWithKernels(["turboquant_q4", "turbo3_tcq"]);
 		expect(() =>
 			assertRequiredKernelsPresent(installed2b(), gemma),
 		).not.toThrow();
@@ -101,10 +101,15 @@ describe("assertRequiredKernelsPresent (native/CLAUDE.md §3#5)", () => {
 });
 
 describe("assertGemmaRuntimeDispatchContract", () => {
-	const manifest = manifestWithKernels(REQUIRED_KERNELS_BY_TIER["2b"]);
+	const manifest = {
+		...manifestWithKernels(REQUIRED_KERNELS_BY_TIER["2b"]),
+		files: {
+			mtp: [{ path: "mtp/drafter-e2b.gguf" }],
+		},
+	} as Eliza1Manifest;
 	const catalog = findCatalogModel("eliza-1-2b");
 
-	it("accepts the shipped Gemma dispatch shape", () => {
+	it("accepts drafter-backed MTP without misclassifying it as a required native kernel", () => {
 		expect(() =>
 			assertGemmaRuntimeDispatchContract(
 				installed2b(),

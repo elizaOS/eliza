@@ -124,6 +124,21 @@ describe('setByDotPath', () => {
 });
 
 describe('applyResolutions', () => {
+  test('accepts a typed workflow object without a string index signature', () => {
+    const draft = {
+      name: 'Typed workflow',
+      nodes: [{ name: 'Notify', parameters: {} }],
+      connections: {},
+    };
+
+    const result = applyResolutions(draft, [
+      { paramPath: 'nodes["Notify"].parameters.channelId', value: 'C-typed' },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(draft.nodes[0].parameters).toEqual({ channelId: 'C-typed' });
+  });
+
   test('applies a name-keyed paramPath to the matching node', () => {
     const draft: DraftTest = {
       nodes: [

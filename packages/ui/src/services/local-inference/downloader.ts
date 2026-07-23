@@ -27,6 +27,9 @@ import {
   buildHuggingFaceResolveUrlForPath,
   findCatalogModel,
   isDefaultEligibleId,
+  isEliza1TierId,
+  isEliza1TierPublished,
+  tierBundleSlug,
 } from "./catalog";
 import { deviceCapsFromProbe, probeHardware } from "./hardware";
 import {
@@ -214,9 +217,15 @@ function parseBundleManifestOrThrow(
   catalogEntry: CatalogModel,
 ): Eliza1Manifest {
   const manifest = parseManifestOrThrow(input);
-  if (manifest.id !== catalogEntry.id) {
+  if (!isEliza1TierId(catalogEntry.id)) {
     throw new Error(
-      `Invalid Eliza-1 manifest: id ${manifest.id} does not match ${catalogEntry.id}`,
+      `Invalid Eliza-1 catalog entry: unknown tier ${catalogEntry.id}`,
+    );
+  }
+  const publishedId = `eliza-1-${tierBundleSlug(catalogEntry.id)}`;
+  if (manifest.id !== catalogEntry.id && manifest.id !== publishedId) {
+    throw new Error(
+      `Invalid Eliza-1 manifest: id ${manifest.id} does not match ${catalogEntry.id} (or published ${publishedId})`,
     );
   }
   if (
@@ -339,6 +348,11 @@ export class Downloader {
     if (!curated || !isDefaultEligibleId(curated.id)) {
       throw new Error(
         "Custom model downloads are disabled; choose an Eliza-1 tier from the curated catalog.",
+      );
+    }
+    if (!isEliza1TierPublished(curated.id)) {
+      throw new Error(
+        `Eliza-1 tier ${curated.id} is not published and cannot be downloaded.`,
       );
     }
     const modelId = catalogEntry.id;
