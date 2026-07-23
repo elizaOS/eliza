@@ -291,6 +291,14 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "read-only launcher grid; tile taps navigate to views (VIEWS action drives the same navigation) and mutate no domain state",
   },
   {
+    viewId: "app-route-not-found",
+    sourceFiles: ["packages/ui/src/components/pages/AppRouteNotFound.tsx"],
+    semanticActions: [],
+    maxMutationSites: 2,
+    exemptReason:
+      "designed not-found state for unclaimed /apps/<slug> routes (#17033); both controls are pure navigation (history push to the view's canonical path or /apps) and mutate no domain state",
+  },
+  {
     viewId: "native-os-apps",
     sourceFiles: ["packages/ui/src/components/pages/ElizaOsAppsView.tsx"],
     semanticActions: [],
