@@ -122,25 +122,21 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   // Hyperliquid/Polymarket wallet sub-views consolidated onto single adaptive
-  // spatial views — the rich-DOM app shells that carried
-  // `data-testid="<id>-shell"` and literal title text were deleted
-  // (PolymarketAppView). The one element each view wrapper still renders
-  // unconditionally on mount is its agent toolbar
-  // (`aria-label="<Name> controls"`), so that is the readiness anchor proving
-  // the real view bundle mounted (and not the Launcher fallback).
+  // spatial views — the rich-DOM app shells (and later the visible
+  // "<Name> controls" toolbars, #14596) are gone; the wrapper's remaining
+  // agent controls are aria-hidden and invisible. Each spatial view now stamps
+  // its root Card with a stable data-agent-id, which is the readiness anchor
+  // proving the real view bundle mounted (and not the Launcher fallback).
   {
     name: "hyperliquid",
     path: "/hyperliquid",
-    readyChecks: [
-      { selector: '[aria-label="Hyperliquid controls"]' },
-      { text: "Hyperliquid" },
-    ],
+    readyChecks: [{ selector: '[data-agent-id="hyperliquid-root"]' }],
     timeoutMs: 90_000,
   },
   {
     name: "polymarket",
     path: "/polymarket",
-    readyChecks: [{ selector: '[aria-label="Polymarket controls"]' }],
+    readyChecks: [{ selector: '[data-agent-id="polymarket-root"]' }],
     timeoutMs: 90_000,
   },
   {

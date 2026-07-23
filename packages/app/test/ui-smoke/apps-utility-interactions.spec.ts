@@ -287,18 +287,25 @@ test("market utility controls show fixture data on load", async ({ page }) => {
 
   const hyperliquid = routeCaseByName("hyperliquid");
   await openAppWindow(page, hyperliquid);
-  await expect(page.getByRole("heading", { name: "Markets" })).toBeVisible();
-  // BTC/ETH appear in both the markets table and the positions list — assert
-  // the symbol is present (first match) rather than requiring a single node.
-  await expect(page.getByText("BTC", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("ETH", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Positions" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
+  // The compact spatial view stamps each fixture market/position row with a
+  // data-agent-id (market-<name> / position-<coin>) — assert those rather than
+  // the deleted rich-shell headings.
+  await expect(
+    page.locator('[data-agent-id="market-BTC"]').first(),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-agent-id="market-ETH"]').first(),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-agent-id="position-BTC"]').first(),
+  ).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "hyperliquid load");
 
   const polymarket = routeCaseByName("polymarket");
   await openAppWindow(page, polymarket);
-  await expect(page.getByRole("heading", { name: "Polymarket" })).toBeVisible();
+  await expect(
+    page.locator('[data-agent-id="polymarket-root"]').first(),
+  ).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "polymarket load");
 });
 
