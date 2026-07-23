@@ -1,9 +1,10 @@
 name: Develop PR
 
-# Pull-request gate for `develop`: lint, affected tests, typecheck, and build.
-# Policy-only coverage floors are intentionally absent; the test job executes
-# ordinary package suites from the proposed head so behavioral regressions are
-# still caught before merge.
+# Pull-request gate for `develop`: lint, owning-package tests, typecheck, and
+# build. Policy-only coverage floors are intentionally absent; the test job
+# executes the ordinary suites of the packages that own the changed files, so
+# behavioral regressions are still caught before merge while the exhaustive
+# matrix stays post-merge.
 
 on:
   pull_request:
@@ -20,13 +21,16 @@ permissions:
 
 jobs:
   test:
+    # Explicit name: the aggregate workflow contract resolves this required
+    # context by its `name: test` marker.
+    name: test
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          # Turbo needs the merge base to select affected packages. This also
-          # makes test-only changes select the package that owns the test.
+          # The owning-package selector diffs against the merge base, so the
+          # full history must be available.
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -48,10 +52,38 @@ jobs:
       - name: Build core
         run: bun run build:core
 
+      # Tests run through the canonical orchestrator (run-all-tests.mjs — there
+      # is deliberately no Turbo `test` task), scoped to the workspace packages
+      # that own the changed files. Owning-package scope keeps this job bounded:
+      # root-level or global-input changes select no package here and rely on
+      # the post-merge exhaustive lane, instead of degenerating into the whole
+      # 250-package suite on one hosted runner.
       - name: Run affected package tests
-        run: node packages/scripts/run-turbo.mjs run test --concurrency=4 --affected
         env:
-          TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/run-turbo.mjs ls --output=json > "$RUNNER_TEMP/workspace-packages.json"
+          git diff --name-only "$BASE_SHA...HEAD" > "$RUNNER_TEMP/changed-files.txt"
+          dirs="$(jq -r --rawfile changed "$RUNNER_TEMP/changed-files.txt" '
+            [.packages.items[].path] as $pkgs
+            | ($changed | split("\n") | map(select(length > 0))) as $files
+            | [ $files[]
+                | . as $f
+                | ($pkgs | map(select(. as $p | $f | startswith($p + "/"))) | max_by(length))
+                | select(. != null) ]
+            | unique
+            | map(gsub("\\."; "\\\\."))
+            | join("|")
+          ' "$RUNNER_TEMP/workspace-packages.json")"
+          if [ -z "$dirs" ]; then
+            echo "No changed files belong to a workspace package; package suites are covered by the post-merge exhaustive lane."
+            exit 0
+          fi
+          echo "Owning packages under test: ${dirs//|/, }"
+          TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs \
+            --only=test --no-cloud --concurrency=4 \
+            --filter="\\((${dirs})\\)#"
 
       # packages/scripts is not a workspace package, so Turbo cannot discover
       # its tests. Keep the ordinary script suite explicit without deriving a

@@ -82,6 +82,7 @@ locking and linear probing so active lanes do not collide. See
 | `bun run test:ui:playwright` | `bun run --cwd packages/app test:e2e` |
 | `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
 | `bun run trajectory:inspect:test` | `bun test packages/scripts/__tests__/trajectory-validate.test.ts` |
+| `bun run audit:e2e-coverage` | `bun run report:e2e-coverage` |
 | `bun run audit:e2e-coverage:test` | `bun test packages/scripts/__tests__/e2e-coverage-report.test.ts` |
 | `bun run test:browser-bridge` | `bun run --cwd packages/browser-extension test` |
 | `bun run test:browser-bridge:safari` | `bun run --cwd packages/browser-extension test:smoke:safari` |
