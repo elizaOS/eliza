@@ -1,5 +1,5 @@
 /**
- * Real-browser e2e for the iOS-style three-detent continuous-chat sheet — no app
+ * Real-browser e2e for the iOS-style three-detent chat sheet — no app
  * server. Bundles chat-sheet-fixture.tsx with esbuild, loads it in headless
  * chromium/webkit via Playwright, and drives the sheet with REAL pointer
  * gestures.
@@ -15,7 +15,8 @@
  *       the PILL, with per-step geometry sampling (monotonic height, pill
  *       crossfade, edge-to-edge box, fixed-width text column). Detent rules:
  *       pill nudge springs back · pill drag past half-morph rests at INPUT ·
- *       short input pull springs back · pill tap → HALF · grabber tap → INPUT.
+ *       short input pull springs back · pill tap → INPUT (no keyboard) ·
+ *       grabber tap steps INPUT → HALF → INPUT.
  *       Full matrix: CHAT_SHEET_STATE_MATRIX.md.
  *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
  *       streamed growth remains pinned, reading-scrollback is not yanked, and
@@ -233,7 +234,7 @@ async function assertDarkChatSurface(p, label) {
   const rgb = tone.parsed;
   // The INSET sheet is deliberately frosted glass — a translucent (~68%) dark
   // warm fill over a backdrop blur (product direction; see the surface layer's
-  // backgroundColor note in ContinuousChatOverlay). Full-bleed is opaque. Both
+  // backgroundColor note in ChatOverlay). Full-bleed is opaque. Both
   // must stay DARK and locally themed, never the orange app theme.
   assert(
     Boolean(
@@ -963,7 +964,7 @@ async function runContinuumSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-continuum-back-to-pill`);
 
-  // -- Detent rules: pill tap → HALF; open + grabber tap → INPUT -------------
+  // -- Detent rules: pill tap → INPUT (no keyboard); grabber taps step -------
   if (pointer === "mouse") {
     await p.getByTestId("chat-pill").click();
   } else {
@@ -971,12 +972,19 @@ async function runContinuumSuite(p, pointer, tag) {
   }
   await p.waitForTimeout(SETTLE);
   assert(
-    (await detent(p)) === "half",
-    `[${tag}-continuum] pill tap opens straight to HALF`,
+    (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
+    `[${tag}-continuum] pill tap steps ONE state to the INPUT bar (never the thread detent)`,
   );
-  // The pill tap also focused the composer (keyboard up), so the FIRST grabber
-  // tap dismisses the keyboard and keeps the sheet at its detent; the SECOND
-  // collapses to the input bar — the designed two-step.
+  // The pill tap must NOT raise the keyboard: the composer stays unfocused
+  // until the user taps it deliberately.
+  assert(
+    (await p.evaluate(
+      () => document.activeElement?.getAttribute("data-testid"),
+    )) !== "chat-composer-textarea",
+    `[${tag}-continuum] pill tap leaves the keyboard down (composer unfocused)`,
+  );
+  // Grabber taps then step the disclosure: INPUT → HALF reveals the thread; a
+  // tap on the open sheet (no keyboard up) collapses back to INPUT.
   const grabberTap = async () => {
     if (pointer === "mouse") await p.getByTestId("chat-sheet-grabber").click();
     else await touchTap(p, testIdSelector("chat-sheet-grabber"));
@@ -985,12 +993,12 @@ async function runContinuumSuite(p, pointer, tag) {
   await grabberTap();
   assert(
     (await detent(p)) === "half",
-    `[${tag}-continuum] first grabber tap (keyboard up) dismisses the keyboard, stays HALF`,
+    `[${tag}-continuum] grabber tap from INPUT reveals the thread at HALF`,
   );
   await grabberTap();
   assert(
     (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
-    `[${tag}-continuum] second grabber tap collapses the open sheet to INPUT`,
+    `[${tag}-continuum] grabber tap on the open sheet collapses to INPUT`,
   );
   await snap(p, `${tag}-continuum-final-input`);
 }
@@ -1964,13 +1972,15 @@ try {
   }
 
   if (!ONLY_AUTOSCROLL) {
-  // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
-  // The collapsed grabber's horizontal swipe pages home → launcher through the
-  // shell-surface store (goLauncher). Android's on-device spec drives this with
-  // a real finger; drive it here through Chromium's REAL touch pipeline
-  // (Input.dispatchTouchEvent, hit-test + touch-action + implicit capture), and
-  // ALSO under a janked main thread (fire-and-forget dispatch → the renderer
-  // coalesces the moves), the failure shape of the Davey!-janked WebView.
+  // ===== GRABBER horizontal flick is a consumed NO-OP, REAL touch (#9943) =====
+  // The unified home/apps surface owns horizontal paging (the launcher rail);
+  // the collapsed grabber's horizontal swipe navigates NOWHERE and must not
+  // open/close the sheet — but it must still be classified + consumed so a
+  // coalesced release can't masquerade as a tap (which WOULD open the chat).
+  // Drive it through Chromium's REAL touch pipeline (Input.dispatchTouchEvent,
+  // hit-test + touch-action + implicit capture), ALSO under a janked main
+  // thread (fire-and-forget dispatch → the renderer coalesces the moves), the
+  // failure shape of the Davey!-janked WebView.
   {
     const surfacePage = (p) =>
       p.evaluate(
@@ -2007,10 +2017,15 @@ try {
     await touchSwipe(p, grabberSel, -150, -6, { steps: 14, stepDelayMs: 20 });
     await p.waitForTimeout(400);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] REAL-touch left flick on the grabber commits goLauncher (#9943)",
+      (await surfacePage(p)) === "home",
+      "[grabber-swipe] REAL-touch left flick on the collapsed grabber does NOT navigate (rail owns paging)",
     );
-    await snap(p, "grabber-real-touch-launcher");
+    assert(
+      (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+        "closed",
+      "[grabber-swipe] REAL-touch left flick is consumed — the sheet stays closed (no tap-open)",
+    );
+    await snap(p, "grabber-real-touch-noop");
 
     // 2. Real-touch flick with the main thread JANKED: dispatch the whole
     // sequence fire-and-forget so the renderer coalesces the moves (this is
@@ -2057,8 +2072,10 @@ try {
     await busy;
     await p.waitForTimeout(600);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] real-touch flick still commits with the main thread janked / moves coalesced (#9943)",
+      (await surfacePage(p)) === "home" &&
+        (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+          "closed",
+      "[grabber-swipe] janked/coalesced real-touch flick is still a consumed no-op (no nav, sheet closed) (#9943)",
     );
     await cdp.detach().catch(() => {});
 
@@ -2088,8 +2105,10 @@ try {
     }, grabberSel);
     await p.waitForTimeout(400);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] synthetic PointerEvent flick still commits (parity)",
+      (await surfacePage(p)) === "home" &&
+        (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+          "closed",
+      "[grabber-swipe] synthetic PointerEvent flick is a consumed no-op too (parity)",
     );
     await p.close();
   }
@@ -2648,7 +2667,7 @@ try {
     const metrics = () =>
       p.evaluate(() => {
         const overlay = document.querySelector(
-          '[data-testid="continuous-chat-overlay"]',
+          '[data-testid="chat-overlay"]',
         );
         const panel = document.querySelector('[data-testid="chat-sheet"]');
         const r = panel.getBoundingClientRect();
@@ -2752,7 +2771,7 @@ try {
 
   // PILL: pull DOWN from the input collapses the whole chat into a small pill at
   // the bottom (input hidden). Slow-drag and flick both pill it; the composer
-  // stays mounted but hidden + inert. (A pill TAP opens the chat — see PILL-TAP.)
+  // stays mounted but hidden + inert. (A pill TAP re-forms the input — see PILL-TAP.)
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2800,12 +2819,12 @@ try {
     await p.close();
   }
 
-  // ── PILL TAP opens the chat to HALF (regression for the reported bug): a real
-  // TAP (pointerdown+up, no move) routes through the gesture's onDrag(0) → onTap
-  // path. It must open the chat in ONE tap straight to the HALF detent (the
-  // conversation is visible) — NOT blink to a bare input bar that needs a second
-  // tap. Assert the detent is half/open AND the content actually formed (opacity
-  // ~1), not just a detent label with a stuck-at-0 morph.
+  // ── PILL TAP steps ONE state to the INPUT bar: a real TAP (pointerdown+up,
+  // no move) routes through the gesture's onDrag(0) → onTap path. It must form
+  // the bare input bar — never jump to a thread detent, never raise the
+  // keyboard (thread reveal is the grabber tap; keyboard is the composer tap).
+  // Assert the detent is collapsed AND the input actually formed (opacity ~1),
+  // not just a detent label with a stuck-at-0 morph (the old "bad state").
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2823,14 +2842,19 @@ try {
       .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
     assert(
       openedOpacity > 0.9,
-      `PILL-TAP: tap animates pill → chat, content fully formed (opacity ${openedOpacity})`,
+      `PILL-TAP: tap animates pill → input, content fully formed (opacity ${openedOpacity})`,
     );
     assert(
-      (await detent(p)) === "half",
-      `PILL-TAP: a SINGLE tap opens the chat to half (got ${await detent(p)})`,
+      (await detent(p)) === "collapsed",
+      `PILL-TAP: a tap steps to the INPUT bar, not a thread detent (got ${await detent(p)})`,
     );
-    assert((await variant(p)) === "open", "PILL-TAP: the chat is open after one tap");
-    await snap(p, "state-pill-tap-opened");
+    assert(
+      (await p.evaluate(
+        () => document.activeElement?.getAttribute("data-testid"),
+      )) !== "chat-composer-textarea",
+      "PILL-TAP: the tap does not raise the keyboard (composer unfocused)",
+    );
+    await snap(p, "state-pill-tap-input");
     await p.close();
   }
 
@@ -3543,7 +3567,7 @@ try {
     );
     // Sign-in-first onboarding (#15339 supersedes the #12178 unlocked design):
     // the composer is locked until the user signs in, matching the sign-in
-    // placeholder above and ContinuousChatOverlay.firstrun.test.tsx.
+    // placeholder above and ChatOverlay.firstrun.test.tsx.
     assert(
       (await p
         .getByTestId("chat-composer-textarea")

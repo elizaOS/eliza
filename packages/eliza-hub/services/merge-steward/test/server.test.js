@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import { loadConfig } from "../src/config.js";
-import { checkReadiness, createServer, listen } from "../src/server.js";
+import {
+  checkReadiness,
+  createServer,
+  listen,
+  readRawBody,
+} from "../src/server.js";
 import { MergeSteward } from "../src/steward.js";
 import { InMemoryQueueStore } from "../src/store.js";
 
@@ -1506,6 +1511,43 @@ describe("merge steward server", () => {
       assert.equal(body.error, "bad_request");
       assert.equal(body.message, "request_body_too_large");
     });
+  });
+
+  it("rejects oversized undeclared request bodies while streaming", async () => {
+    let resumed = false;
+    const request = {
+      headers: {},
+      resume() {
+        resumed = true;
+      },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from("12345678");
+        yield Buffer.from("901234567");
+      },
+    };
+
+    await assert.rejects(
+      readRawBody(request, { http: { maxBodyBytes: 16 } }),
+      (error) =>
+        error.message === "request_body_too_large" && error.statusCode === 413,
+    );
+    assert.equal(resumed, true);
+  });
+
+  it("rejects malformed declared content lengths", async () => {
+    const request = {
+      headers: { "content-length": "-1" },
+      resume() {},
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from("{}");
+      },
+    };
+
+    await assert.rejects(
+      readRawBody(request, { http: { maxBodyBytes: 16 } }),
+      (error) =>
+        error.message === "invalid_content_length" && error.statusCode === 400,
+    );
   });
 
   it("evaluates a queue item", async () => {

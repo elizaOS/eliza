@@ -60,6 +60,30 @@ function LanguageTileButton({
   );
 }
 
+function HomeTimeWidgetSwitch({
+  hidden,
+  onHiddenChange,
+}: {
+  hidden: boolean;
+  onHiddenChange: (hidden: boolean) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "appearance-show-time-widget",
+    role: "toggle",
+    label: "Show time & date",
+    status: hidden ? "off" : "on",
+    onActivate: () => onHiddenChange(!hidden),
+  });
+  return (
+    <Switch
+      ref={ref}
+      checked={!hidden}
+      onCheckedChange={(checked) => onHiddenChange(!checked)}
+      {...agentProps}
+    />
+  );
+}
+
 function AccentTileButton({
   preset,
   isActive,
@@ -159,9 +183,9 @@ export function AppearanceSettingsSection() {
             defaultValue: "Show time & date",
           })}
           control={
-            <Switch
-              checked={!homeTimeWidgetHidden}
-              onCheckedChange={(checked) => setHomeTimeWidgetHidden(!checked)}
+            <HomeTimeWidgetSwitch
+              hidden={homeTimeWidgetHidden}
+              onHiddenChange={setHomeTimeWidgetHidden}
             />
           }
         />

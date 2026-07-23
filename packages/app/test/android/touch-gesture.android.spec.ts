@@ -382,7 +382,7 @@ function imeShown(adb: string, serial: string): boolean {
 }
 
 async function ensureCollapsedHome(page: Page, adb: string, serial: string) {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   const surface = page.getByTestId("home-launcher-surface");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   await expect(surface).toBeVisible({ timeout: 30_000 });
@@ -521,7 +521,7 @@ test.describe
       test.setTimeout(180_000);
       const adb = resolveAdb();
       const serial = device.serial();
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
 
       await installTouchRecorder(page);
       await androidTouchDrag(

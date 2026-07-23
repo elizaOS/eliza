@@ -16,7 +16,7 @@ to the notes below:
 
 | Surface | File | Role |
 | --- | --- | --- |
-| **ContinuousChatOverlay** | `components/shell/ContinuousChatOverlay.tsx` | The ambient, always-mounted `/chat` overlay. Glassmorphic floating composer + collapsible "whisper" transcript. Non-blocking (`pointer-events-none` root). This is the primary chat the user sees on top of every view. |
+| **ChatOverlay** | `components/shell/ChatOverlay.tsx` | The ambient, always-mounted `/chat` overlay. Glassmorphic floating composer + collapsible "whisper" transcript. Non-blocking (`pointer-events-none` root). This is the primary chat the user sees on top of every view. |
 | **ChatView** | `components/pages/ChatView.tsx` (~862 lines) | The full-page chat workspace: sidebar, multi-channel (inbox/terminal), image attachments, task creation, voice, typing indicators. Routed destination. |
 | **PageScopedChatPane** | `components/pages/PageScopedChatPane.tsx` | Chat embedded inside another page (e.g. Browser view). |
 | **ChatSurface** | `components/shell/ChatSurface.tsx` | Legacy/simpler fallback surface. Candidate for deletion (see Slop note). |
@@ -41,8 +41,8 @@ few *unwired seams*, not broken foundations.
 
 **Current state.** Confirmed slick. Strengths:
 - Ambient overlay that never traps focus; whispers recent lines and dissolves
-  them on collapse (`ContinuousChatOverlay.tsx:475–492`).
-- Listening/responding breath aura (`ContinuousChatOverlay.tsx:555–566`).
+  them on collapse (`ChatOverlay.tsx:475–492`).
+- Listening/responding breath aura (`ChatOverlay.tsx:555–566`).
 - Memoized `ChatMessage`/`ChatTranscript` with custom comparators to avoid
   per-token re-renders.
 - Smart trailing action button that swaps send/stop/mic by state
@@ -68,10 +68,10 @@ switch. These are polish, not blockers.
 ## 2. Upload button in chat
 
 **Current state. Already implemented and wired.**
-- Overlay: attach button at `ContinuousChatOverlay.tsx:639+`
+- Overlay: attach button at `ChatOverlay.tsx:639+`
   (`SoftButton` "attach image" → `fileInputRef.current?.click()`), hidden
   `<input type="file" accept="image/*" multiple>` at
-  `ContinuousChatOverlay.tsx:604–614`, pending-image strip + inline error above
+  `ChatOverlay.tsx:604–614`, pending-image strip + inline error above
   the composer (`568–603`).
 - ChatView: `<Paperclip>` button `chat-composer.tsx:568–595` (inline variant
   uses `<Plus>` at `377–392`); hidden input `ChatView.tsx:676–683`;
@@ -93,7 +93,7 @@ mark this note complete.
 ## 3. Button to go to chat view from chat (make chat full screen?)
 
 **Current state. Missing as described.** The overlay's chevron
-(`ContinuousChatOverlay.tsx:618–634`) only **expands/collapses the overlay's own
+(`ChatOverlay.tsx:618–634`) only **expands/collapses the overlay's own
 transcript** (`max-h-[58vh]`); it does **not** navigate to the full-page
 `ChatView`. `ChatView` itself has no "expand" button because it *is* the routed
 full surface. There is no affordance bridging overlay → full page.

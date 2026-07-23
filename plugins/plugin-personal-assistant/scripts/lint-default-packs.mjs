@@ -191,14 +191,16 @@ function extractPrompts(source) {
   // or backtick-quoted). Support `+`-concatenated string literals on subsequent
   // lines.
   const re = /promptInstructions:\s*([\s\S]+?)(?=,\s*\n\s*(?:[a-zA-Z_]+:|\}))/g;
-  let match;
-  while ((match = re.exec(source)) !== null) {
+  for (;;) {
+    const match = re.exec(source);
+    if (match === null) break;
     const slice = match[1];
     // Pull every quoted literal in `slice` and concatenate.
     const literalRe = /(["'`])((?:\\.|(?!\1).)*)\1/g;
-    let literalMatch;
     let combined = "";
-    while ((literalMatch = literalRe.exec(slice)) !== null) {
+    for (;;) {
+      const literalMatch = literalRe.exec(slice);
+      if (literalMatch === null) break;
       combined += literalMatch[2].replace(/\\"/g, '"').replace(/\\'/g, "'");
     }
     if (combined.length > 0) {

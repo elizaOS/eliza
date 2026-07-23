@@ -32,11 +32,14 @@ import { embedRecallQuery } from "../features/documents/recall-embed";
 import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
+	getInferenceTimer,
 	INFERENCE_MARKS,
+	type InferenceTurnSummary,
 	InferenceTurnTimer,
 	markInference,
 	nextInferenceTurnId,
 	runWithInferenceTiming,
+	timeInferenceSpan,
 } from "../inference-timing";
 import { logger } from "../logger";
 import { describeImageCached } from "../media";
@@ -6579,10 +6582,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1 model
 		// call. Used to inject providers / facts / relationships into the
 		// stable prefix.
-		await args.runtime.runActionsByMode(
-			"RESPONSE_HANDLER_BEFORE",
-			args.message,
-			args.state,
+		await timeInferenceSpan(
+			"actions:response-handler-before",
+			() =>
+				args.runtime.runActionsByMode(
+					"RESPONSE_HANDLER_BEFORE",
+					args.message,
+					args.state,
+				),
+			{ mode: "RESPONSE_HANDLER_BEFORE" },
 		);
 
 		// RESPONSE_HANDLER_DURING (non-blocking): fire-and-forget alongside the model
@@ -6726,15 +6734,17 @@ export async function runV5MessageRuntimeStage1(args: {
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
 		if (rawFieldParsed) {
-			fieldRunResult = await args.runtime.responseHandlerFieldRegistry.dispatch(
-				{
-					rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					senderRole: senderRole as ResponseHandlerSenderRole,
-					turnSignal: stage1TurnSignal,
-				},
+			fieldRunResult = await timeInferenceSpan(
+				"evaluators:response-handler-fields",
+				() =>
+					args.runtime.responseHandlerFieldRegistry.dispatch({
+						rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
+						runtime: args.runtime,
+						message: args.message,
+						state: args.state,
+						senderRole: senderRole as ResponseHandlerSenderRole,
+						turnSignal: stage1TurnSignal,
+					}),
 			);
 			messageHandler = messageHandlerFromFieldResult(
 				fieldRunResult.parsed,
@@ -6806,10 +6816,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		// RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
 		// routing decision is parsed, but before the runtime acts on it.
 		// Lets a hook inspect / mutate the parsed plan.
-		await args.runtime.runActionsByMode(
-			"RESPONSE_HANDLER_AFTER",
-			args.message,
-			args.state,
+		await timeInferenceSpan(
+			"actions:response-handler-after",
+			() =>
+				args.runtime.runActionsByMode(
+					"RESPONSE_HANDLER_AFTER",
+					args.message,
+					args.state,
+				),
+			{ mode: "RESPONSE_HANDLER_AFTER" },
 		);
 
 		if (!messageHandler) {
@@ -6986,14 +7001,16 @@ export async function runV5MessageRuntimeStage1(args: {
 					appliedPatches: [],
 					errors: [],
 				}
-			: await runResponseHandlerEvaluators({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					messageHandler,
-					availableContexts,
-					evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
-				});
+			: await timeInferenceSpan("evaluators:response-handler", () =>
+					runResponseHandlerEvaluators({
+						runtime: args.runtime,
+						message: args.message,
+						state: args.state,
+						messageHandler,
+						availableContexts,
+						evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+					}),
+				);
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -7131,15 +7148,16 @@ export async function runV5MessageRuntimeStage1(args: {
 		const recomposedPlannerState =
 			typeof args.runtime.composeState === "function"
 				? // Reuse what the Stage-1 compose already ran for this message;
-					// refresh ONLY RECENT_MESSAGES, which changes after an early reply
-					// (the planner must see the just-sent reply). Any planner-only
-					// context-gated providers not yet cached are composed too.
+					// refresh RECENT_MESSAGES only when an early reply actually
+					// changed history. An empty refresh set means maximum reuse;
+					// planner-only context-gated providers still run because they
+					// are not cached yet.
 					await args.runtime.composeState(
 						args.message,
 						plannerProviderNames,
 						true,
 						false,
-						["RECENT_MESSAGES"],
+						earlyReplySent ? ["RECENT_MESSAGES"] : [],
 					)
 				: args.state;
 		const selectedContextRoutingState =
@@ -7402,11 +7420,16 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		// CONTEXT_BEFORE (blocking): hooks tagged with one of the selected
 		// contexts run after Stage 1 routes, before the planner loop begins.
-		await args.runtime.runActionsByMode(
-			"CONTEXT_BEFORE",
-			args.message,
-			plannerState,
-			{ selectedContexts },
+		await timeInferenceSpan(
+			"actions:context-before",
+			() =>
+				args.runtime.runActionsByMode(
+					"CONTEXT_BEFORE",
+					args.message,
+					plannerState,
+					{ selectedContexts },
+				),
+			{ mode: "CONTEXT_BEFORE" },
 		);
 		// CONTEXT_DURING (non-blocking): runs in parallel with the planner.
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
@@ -7433,85 +7456,96 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		let plannerResult: PlannerLoopResult;
 		try {
-			plannerResult = await runPlannerLoop({
-				runtime: plannerRuntime,
-				context: plannerContextAfterEarlyReply,
-				config: args.plannerLoopConfig,
-				tools: plannerTools.length > 0 ? plannerTools : undefined,
-				requireNonTerminalToolCall,
-				// Fallback honesty for required-tool exhaustion: Stage 1's own
-				// replyText (when answer-shaped) is surfaced instead of the
-				// generic transient-failure apology. Duplicate delivery is safe —
-				// early-reply turns dedup via plannedTextRepeatsEarlyReply.
-				stageOneReplyText: (() => {
-					const postPatch =
-						typeof messageHandler.plan.reply === "string"
-							? messageHandler.plan.reply
-							: undefined;
-					// A promotion patch that replaced a substantive stage-0 answer
-					// with a bare progress ack must not also disarm the loop's
-					// answer rescue — feed the preserved pre-patch answer instead.
-					if (
-						prePatchStageOneReply &&
-						postPatch &&
-						postPatch !== prePatchStageOneReply &&
-						PROGRESS_ONLY_ANSWER_REJECT.test(postPatch.trim())
-					) {
-						return prePatchStageOneReply;
-					}
-					return postPatch;
-				})(),
-				// Per-turn miss-budget cap for answered turns escalated only by a
-				// view-surface token overlap (see viewOverlapRequiredToolMissBudget);
-				// the loop honors it only when stageOneReplyText is answer-shaped.
-				...(typeof messageHandler.plan.requiredToolMissBudget === "number"
-					? {
-							requiredToolMissBudgetOverride:
-								messageHandler.plan.requiredToolMissBudget,
+			plannerResult = await timeInferenceSpan("message:planner", () =>
+				runPlannerLoop({
+					runtime: plannerRuntime,
+					context: plannerContextAfterEarlyReply,
+					config: args.plannerLoopConfig,
+					tools: plannerTools.length > 0 ? plannerTools : undefined,
+					requireNonTerminalToolCall,
+					// Fallback honesty for required-tool exhaustion: Stage 1's own
+					// replyText (when answer-shaped) is surfaced instead of the
+					// generic transient-failure apology. Duplicate delivery is safe —
+					// early-reply turns dedup via plannedTextRepeatsEarlyReply.
+					stageOneReplyText: (() => {
+						const postPatch =
+							typeof messageHandler.plan.reply === "string"
+								? messageHandler.plan.reply
+								: undefined;
+						// A promotion patch that replaced a substantive stage-0 answer
+						// with a bare progress ack must not also disarm the loop's
+						// answer rescue — feed the preserved pre-patch answer instead.
+						if (
+							prePatchStageOneReply &&
+							postPatch &&
+							postPatch !== prePatchStageOneReply &&
+							PROGRESS_ONLY_ANSWER_REJECT.test(postPatch.trim())
+						) {
+							return prePatchStageOneReply;
 						}
-					: {}),
-				// Provenance of the tool requirement: heuristic-inferred candidates
-				// let the loop accept a firmly repeated terminal answer early.
-				...(messageHandler.plan.requiredToolEvidence === "inferred"
-					? { requiredToolEvidence: "inferred" as const }
-					: {}),
-				evaluatorEffects,
-				recorder,
-				trajectoryId,
-				providerAttributionState: plannerState,
-				executeToolCall: (toolCall, ctx) =>
-					executeV5PlannedToolCall({
-						runtime: args.runtime,
-						toolCall,
-						plannerContext: plannerContextAfterEarlyReply,
-						executorCtx: buildV5ExecutorContext({
-							message: args.message,
-							state: plannerState,
-							selectedContexts,
-							senderRole,
-							previousResults: collectPreviousActionResults(
-								ctx.trajectory,
-								exposedPlannerActions,
-							),
-							...(recordingCallback ? { callback: recordingCallback } : {}),
-						}),
-						plannerRuntime,
-						executorOptions: { actions: exposedPlannerActions },
-						evaluatorEffects,
-						recorder,
-						trajectoryId,
-						plannerLoopConfig: args.plannerLoopConfig,
-					}),
-				evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
-					runEvaluator({
-						runtime: plannerRuntimeForEval,
-						context,
-						trajectory,
-						effects: evaluatorEffects,
-						recorder,
-						trajectoryId,
-					}),
-			});
+						return postPatch;
+					})(),
+					// Per-turn miss-budget cap for answered turns escalated only by a
+					// view-surface token overlap (see viewOverlapRequiredToolMissBudget);
+					// the loop honors it only when stageOneReplyText is answer-shaped.
+					...(typeof messageHandler.plan.requiredToolMissBudget === "number"
+						? {
+								requiredToolMissBudgetOverride:
+									messageHandler.plan.requiredToolMissBudget,
+							}
+						: {}),
+					// Provenance of the tool requirement: heuristic-inferred candidates
+					// let the loop accept a firmly repeated terminal answer early.
+					...(messageHandler.plan.requiredToolEvidence === "inferred"
+						? { requiredToolEvidence: "inferred" as const }
+						: {}),
+					evaluatorEffects,
+					recorder,
+					trajectoryId,
+					providerAttributionState: plannerState,
+					executeToolCall: (toolCall, ctx) =>
+						timeInferenceSpan(
+							"actions:planner-tool",
+							() =>
+								executeV5PlannedToolCall({
+									runtime: args.runtime,
+									toolCall,
+									plannerContext: plannerContextAfterEarlyReply,
+									executorCtx: buildV5ExecutorContext({
+										message: args.message,
+										state: plannerState,
+										selectedContexts,
+										senderRole,
+										previousResults: collectPreviousActionResults(
+											ctx.trajectory,
+											exposedPlannerActions,
+										),
+										...(recordingCallback
+											? { callback: recordingCallback }
+											: {}),
+									}),
+									plannerRuntime,
+									executorOptions: { actions: exposedPlannerActions },
+									evaluatorEffects,
+									recorder,
+									trajectoryId,
+									plannerLoopConfig: args.plannerLoopConfig,
+								}),
+							{ tool: toolCall.name },
+						),
+					evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
+						timeInferenceSpan("evaluators:planner", () =>
+							runEvaluator({
+								runtime: plannerRuntimeForEval,
+								context,
+								trajectory,
+								effects: evaluatorEffects,
+								recorder,
+								trajectoryId,
+							}),
+						),
+				}),
+			);
 		} catch (error) {
 			const fallbackResult = await runDeterministicPlannerFallback({
 				runtime: args.runtime,
@@ -7569,11 +7603,16 @@ export async function runV5MessageRuntimeStage1(args: {
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
 		// the response is delivered. Lets a context post-process planner
 		// output (e.g. enrich the reply with context-specific data).
-		await args.runtime.runActionsByMode(
-			"CONTEXT_AFTER",
-			args.message,
-			plannerState,
-			{ selectedContexts },
+		await timeInferenceSpan(
+			"actions:context-after",
+			() =>
+				args.runtime.runActionsByMode(
+					"CONTEXT_AFTER",
+					args.message,
+					plannerState,
+					{ selectedContexts },
+				),
+			{ mode: "CONTEXT_AFTER" },
 		);
 
 		const actionResults = collectPreviousActionResults(
@@ -8097,6 +8136,75 @@ const latestResponseIds = new Map<string, Map<string, string>>();
 // routing, transcript stripping) that legitimately take >5s; 30s gives them
 // room without indefinitely blocking response finalization.
 const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 30_000;
+const INFERENCE_TIMING_LOG_TYPE = "inference_timing";
+const INFERENCE_TIMING_LOG_RETENTION = 4_096;
+const INFERENCE_TIMING_LOG_SWEEP_INTERVAL = 64;
+const inferenceTimingWritesSinceSweep = new WeakMap<IAgentRuntime, number>();
+
+export async function persistInferenceTimingSummary(
+	runtime: IAgentRuntime,
+	message: Memory,
+	summary: InferenceTurnSummary,
+): Promise<void> {
+	await runtime.createLogs([
+		{
+			body: {
+				runId: summary.turnId,
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: runtime.agentId,
+				source: INFERENCE_TIMING_LOG_TYPE,
+				startTime: summary.t0EpochMs,
+				endTime: summary.closedAtEpochMs ?? undefined,
+				duration: summary.totalMs ?? undefined,
+				metadata: {
+					label: summary.label,
+					modelProvider: summary.modelProvider,
+					timeToFirstTokenMs: summary.timeToFirstTokenMs,
+					timeToFirstVisibleMs: summary.timeToFirstVisibleMs,
+					timeToReplyMs: summary.timeToReplyMs,
+					timeToResponseFinalizedMs: summary.timeToResponseFinalizedMs,
+					spans: summary.spans.map((span) => ({
+						name: span.name,
+						startMs: span.startMs,
+						endMs: span.endMs,
+						durationMs: span.durationMs,
+						...(span.meta ? { meta: span.meta } : {}),
+					})),
+					marks: summary.marks.map((mark) => ({
+						name: mark.name,
+						tMs: mark.tMs,
+					})),
+					byName: summary.byName,
+					anomalies: summary.anomalies,
+				},
+			},
+			entityId: runtime.agentId,
+			roomId: message.roomId,
+			type: INFERENCE_TIMING_LOG_TYPE,
+		},
+	]);
+
+	const priorWritesSinceSweep = inferenceTimingWritesSinceSweep.get(runtime);
+	const writesSinceSweep =
+		(priorWritesSinceSweep === undefined ? 0 : priorWritesSinceSweep) + 1;
+	if (writesSinceSweep < INFERENCE_TIMING_LOG_SWEEP_INTERVAL) {
+		inferenceTimingWritesSinceSweep.set(runtime, writesSinceSweep);
+		return;
+	}
+	inferenceTimingWritesSinceSweep.set(runtime, 0);
+	const rows = await runtime.getLogs({
+		type: INFERENCE_TIMING_LOG_TYPE,
+		limit: INFERENCE_TIMING_LOG_RETENTION + 1_024,
+	});
+	const expiredIds = rows
+		.slice(INFERENCE_TIMING_LOG_RETENTION)
+		.map((row) => row.id)
+		.filter((id): id is UUID => typeof id === "string");
+	if (expiredIds.length > 0) {
+		await runtime.deleteLogs(expiredIds);
+	}
+}
 
 function clearLatestResponseId(
 	agentId: UUID,
@@ -9492,7 +9600,11 @@ export class DefaultMessageService implements IMessageService {
 
 				// Set up timeout monitoring
 				let timeoutId: NodeJS.Timeout | undefined;
-				// Declared outside the try so the `finally` can emit the breakdown.
+				// A host route may open the timer before calling the message service so
+				// augmentation and response normalization share this same timeline.
+				// Only the layer that creates the timer closes and persists it.
+				const inheritedInferenceTimer = getInferenceTimer();
+				const ownsInferenceTimer = inheritedInferenceTimer === undefined;
 				let inferenceTimer: InferenceTurnTimer | undefined;
 
 				try {
@@ -9546,12 +9658,14 @@ export class DefaultMessageService implements IMessageService {
 					// spans/marks onto this via the inference-timing ALS context; the
 					// breakdown is emitted in the `finally` below. Off the hot path
 					// when no one reads it (records are bounded + cheap).
-					inferenceTimer = new InferenceTurnTimer({
-						turnId: nextInferenceTurnId(),
-						label: "message-turn",
-						roomId: message.roomId,
-						t0EpochMs: startTime,
-					});
+					inferenceTimer =
+						inheritedInferenceTimer ??
+						new InferenceTurnTimer({
+							turnId: nextInferenceTurnId(),
+							label: "message-turn",
+							roomId: message.roomId,
+							t0EpochMs: startTime,
+						});
 
 					// Emit run started event
 					await runtime.emitEvent(EventType.RUN_STARTED, {
@@ -9763,7 +9877,21 @@ export class DefaultMessageService implements IMessageService {
 					// effects (post-turn evaluators) intentionally run after this and
 					// are NOT counted in turn latency — that is the proof they don't
 					// stall the user-visible reply.
-					emitInferenceTiming(inferenceTimer);
+					const inferenceSummary = ownsInferenceTimer
+						? emitInferenceTiming(inferenceTimer)
+						: null;
+					if (inferenceSummary) {
+						detachPostDeliverySideEffect(
+							runtime,
+							"persist_inference_timing",
+							() =>
+								persistInferenceTimingSummary(
+									runtime,
+									message,
+									inferenceSummary,
+								),
+						);
+					}
 
 					// Ensure latestResponseIds is cleaned up even if processMessage
 					// threw before reaching its own cleanup at the end of the method.
@@ -10039,12 +10167,18 @@ export class DefaultMessageService implements IMessageService {
 				typeof message.id === "string" ? message.id : undefined;
 			void embedRecallQuery(runtime, recallWarmText, {
 				messageId: recallWarmMessageId,
-			}).catch((error) =>
+				...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
+			}).catch((error) => {
+				if (opts.abortSignal?.aborted) {
+					// error-policy:J5 the request boundary observes cancellation;
+					// suppress only this detached speculative warm's rejection.
+					return;
+				}
 				runtime.reportError("MessageService.recallEmbedPrefetch", error, {
 					roomId: message.roomId,
 					runId,
-				}),
-			);
+				});
+			});
 		}
 
 		// Room context for shouldRespond (fetch before compose so providers see
@@ -10495,7 +10629,6 @@ export class DefaultMessageService implements IMessageService {
 		let responseMessages: Memory[] = [];
 		let actionResults: ActionResult[] | undefined;
 		let mode: StrategyMode = "none";
-		let simpleReplyDelivered = false;
 
 		if (shouldRespondToMessage) {
 			let result: StrategyResult;
@@ -10663,7 +10796,6 @@ export class DefaultMessageService implements IMessageService {
 					if (callback) {
 						if (responseContent) {
 							await callback(responseContent);
-							simpleReplyDelivered = true;
 							markInference(INFERENCE_MARKS.replyDelivered);
 						}
 					}
@@ -10774,22 +10906,12 @@ export class DefaultMessageService implements IMessageService {
 		// that are not part of the unified evaluator service.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
-		if (simpleReplyDelivered) {
-			void (async () => {
-				await runPostDeliverySideEffect(runtime, "post_turn_evaluators", () =>
-					runPostTurnEvaluators(runtime, message, state, {
-						didRespond: didRespondGate,
-						responses: responseMessages,
-					}),
-				);
-				await runPostDeliverySideEffect(runtime, "ALWAYS_AFTER", () =>
-					runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-						didRespond: didRespondGate,
-						responses: responseMessages,
-					}),
-				);
-			})();
-		} else {
+		// Post-turn work is never part of connector completion. Connectors await
+		// handleMessage for generation/delivery bookkeeping, so awaiting an
+		// evaluator here makes every connector wait even though the reply has
+		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
+		// one detached task while keeping both failures observable at the boundary.
+		detachPostDeliverySideEffect(runtime, "post_turn", async () => {
 			await runPostTurnEvaluators(runtime, message, state, {
 				didRespond: didRespondGate,
 				responses: responseMessages,
@@ -10798,7 +10920,7 @@ export class DefaultMessageService implements IMessageService {
 				didRespond: didRespondGate,
 				responses: responseMessages,
 			});
-		}
+		});
 
 		const didRespond =
 			responseMessages.length > 0 && !isStopResponse(responseContent);

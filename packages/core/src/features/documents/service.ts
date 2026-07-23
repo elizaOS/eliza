@@ -935,7 +935,7 @@ export class DocumentService extends Service {
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
 		accessContext?: AccessContext,
-		options?: { turnMessageId?: UUID },
+		options?: { turnMessageId?: UUID; signal?: AbortSignal },
 	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
@@ -976,6 +976,7 @@ export class DocumentService extends Service {
 				message,
 				accessContext,
 				options?.turnMessageId,
+				options?.signal,
 			);
 		}
 
@@ -986,6 +987,7 @@ export class DocumentService extends Service {
 			message,
 			accessContext,
 			options?.turnMessageId,
+			options?.signal,
 		);
 	}
 
@@ -996,6 +998,7 @@ export class DocumentService extends Service {
 		message?: Memory,
 		accessContext?: AccessContext,
 		turnMessageId?: UUID,
+		signal?: AbortSignal,
 	): Promise<StoredDocument[]> {
 		// Bound the recall embed and fail open to keyword/BM25 recall on a
 		// slow/unavailable embed (issue #47): a slow embed costs recall richness,
@@ -1004,6 +1007,7 @@ export class DocumentService extends Service {
 		// prefetch adopts this vector instead of re-embedding (#15253).
 		const embedding = await embedRecallQuery(this.runtime, queryText, {
 			messageId: turnMessageId,
+			signal,
 		});
 		if (!embedding) {
 			return this._keywordSearch(
@@ -1107,6 +1111,7 @@ export class DocumentService extends Service {
 		message?: Memory,
 		accessContext?: AccessContext,
 		turnMessageId?: UUID,
+		signal?: AbortSignal,
 	): Promise<StoredDocument[]> {
 		// Bound the recall embed and fail open to keyword/BM25 recall on a
 		// slow/unavailable embed (issue #47). `_keywordSearch` is the same BM25
@@ -1116,6 +1121,7 @@ export class DocumentService extends Service {
 		// cache the in-run prefetch adopts (#15253).
 		const embedding = await embedRecallQuery(this.runtime, queryText, {
 			messageId: turnMessageId,
+			signal,
 		});
 		if (!embedding) {
 			return this._keywordSearch(

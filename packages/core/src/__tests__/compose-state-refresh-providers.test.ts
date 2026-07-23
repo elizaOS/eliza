@@ -78,6 +78,31 @@ describe("composeState refreshProviders", () => {
 		expect(second.text).not.toContain("BBB#1");
 	});
 
+	it("uses an empty refresh list as maximum reuse", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "refresh-max-reuse" } as Character,
+		});
+		const a = countingProvider("AAA");
+		const b = countingProvider("BBB");
+		runtime.registerProvider(a.provider);
+		runtime.registerProvider(b.provider);
+
+		const message = makeMessage("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+		await runtime.composeState(message, ["AAA", "BBB"], true, false);
+		const reused = await runtime.composeState(
+			message,
+			["AAA", "BBB"],
+			true,
+			false,
+			[],
+		);
+
+		expect(a.calls()).toBe(1);
+		expect(b.calls()).toBe(1);
+		expect(reused.text).toContain("AAA#1");
+		expect(reused.text).toContain("BBB#1");
+	});
+
 	it("without refreshProviders re-runs every requested provider (default unchanged)", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "refresh-default" } as Character,

@@ -54,9 +54,15 @@ import { fileURLToPath } from "node:url";
 
 const args = new Set(process.argv.slice(2));
 
-const ROOT = process.env.HOT_PATH_LATENCY_ROOT
-  ? path.resolve(process.env.HOT_PATH_LATENCY_ROOT)
-  : path.resolve(import.meta.dirname, "../..");
+/**
+ * Repo root, resolved lazily (per call) so the bun:test harness can retarget
+ * the git plumbing at a throwaway repo via HOT_PATH_LATENCY_ROOT after import.
+ */
+function repoRoot() {
+  return process.env.HOT_PATH_LATENCY_ROOT
+    ? path.resolve(process.env.HOT_PATH_LATENCY_ROOT)
+    : path.resolve(import.meta.dirname, "../..");
+}
 
 const KIND_LABELS = {
   providerHotAwait: "awaited hot-path call inside a Provider get() body",
@@ -425,7 +431,7 @@ export function countText(sourceText, relPath) {
 function git(argv, { allowFailure = false } = {}) {
   try {
     return execFileSync("git", argv, {
-      cwd: ROOT,
+      cwd: repoRoot(),
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", allowFailure ? "ignore" : "inherit"],
@@ -437,7 +443,7 @@ function git(argv, { allowFailure = false } = {}) {
 }
 
 /** First resolvable ref among the env override, origin/develop, develop. */
-function resolveBaseRef() {
+export function resolveBaseRef() {
   const candidates = [
     process.env.HOT_PATH_LATENCY_BASE_REF,
     "origin/develop",
@@ -456,13 +462,13 @@ function resolveBaseRef() {
 }
 
 /** Merge-base of the base ref and HEAD; null if it cannot be computed. */
-function mergeBaseWith(ref) {
+export function mergeBaseWith(ref) {
   const out = git(["merge-base", ref, "HEAD"], { allowFailure: true });
   return out ? out.trim() : null;
 }
 
 /** Production source files the branch touches relative to the merge-base. */
-function changedProductionFiles(base) {
+export function changedProductionFiles(base) {
   const out = git(["diff", "--name-only", "-z", `${base}`, "HEAD"], {
     allowFailure: true,
   });
@@ -480,7 +486,7 @@ function baseContent(base, relPath) {
 /** Working-tree content, or null if the file was deleted on the branch. */
 function workingTreeContent(relPath) {
   try {
-    return readFileSync(path.join(ROOT, relPath), "utf8");
+    return readFileSync(path.join(repoRoot(), relPath), "utf8");
   } catch {
     return null;
   }
@@ -508,7 +514,7 @@ export function compareFileCounts(current, baseCounts) {
  * For each changed production file, compare its working-tree count to its
  * count at the merge-base. New files compare against zero.
  */
-function diffScopedRegressions(base, files) {
+export function diffScopedRegressions(base, files) {
   const perFile = [];
   const regressions = [];
   for (const relPath of files) {
@@ -529,7 +535,7 @@ function diffScopedRegressions(base, files) {
 }
 
 /** Repo-wide informational totals (never gates). */
-function repoWideTotals() {
+export function repoWideTotals() {
   const output = git(["ls-files"]);
   const files = [...new Set(output.split("\n").filter(Boolean))].filter(
     isProductionSourceFile,
@@ -538,7 +544,7 @@ function repoWideTotals() {
   for (const relPath of files) {
     findings.push(
       ...collectFindings(
-        readFileSync(path.join(ROOT, relPath), "utf8"),
+        readFileSync(path.join(repoRoot(), relPath), "utf8"),
         relPath,
       ),
     );
@@ -577,15 +583,15 @@ function printHumanSummary({ baseRef, base, files, perFile, regressions }) {
   );
 }
 
+/** Throws (rather than exiting) so the fixtures also run under bun:test. */
 function assertSelfTest(condition, label, detail) {
   if (condition) return;
-  console.error(
-    `[hot-path-latency-ratchet] self-test failed: ${label}${detail ? ` — ${JSON.stringify(detail)}` : ""}`,
+  throw new Error(
+    `self-test failed: ${label}${detail ? ` — ${JSON.stringify(detail)}` : ""}`,
   );
-  process.exit(1);
 }
 
-function runSelfTest() {
+export function runSelfTest() {
   const providerPath = "packages/foo/src/providers/facts.ts";
 
   const bareFetchProvider = `
@@ -824,7 +830,14 @@ function runSelfTest() {
 
 function main() {
   if (SELF_TEST) {
-    runSelfTest();
+    try {
+      runSelfTest();
+    } catch (err) {
+      console.error(
+        `[hot-path-latency-ratchet] ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(1);
+    }
     process.exit(0);
   }
 

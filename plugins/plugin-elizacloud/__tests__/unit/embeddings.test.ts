@@ -73,9 +73,18 @@ describe("handleTextEmbedding init + validation", () => {
   });
 
   it("returns the real embedding for valid text", async () => {
+    const controller = new AbortController();
     requestRaw.mockResolvedValueOnce(embeddingResponse([vec(0.7)]));
-    const result = await handleTextEmbedding(makeRuntime(), "hello world");
+    const result = await handleTextEmbedding(makeRuntime(), {
+      text: "hello world",
+      signal: controller.signal,
+    });
     expect(result).toEqual(vec(0.7));
+    expect(requestRaw).toHaveBeenCalledWith(
+      "POST",
+      "/embeddings",
+      expect.objectContaining({ signal: controller.signal })
+    );
   });
 });
 

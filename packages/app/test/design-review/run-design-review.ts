@@ -198,7 +198,7 @@ const views: ViewSpec[] = [
     lastNativeTab: "chat",
     firstRunIncomplete: true,
     readyChecks: [
-      { selector: '[data-testid="continuous-chat-overlay"]' },
+      { selector: '[data-testid="chat-overlay"]' },
       { selector: '[data-testid="choice-__first_run__:runtime:cloud"]' },
       { selector: '[data-testid="choice-__first_run__:runtime:local"]' },
     ],

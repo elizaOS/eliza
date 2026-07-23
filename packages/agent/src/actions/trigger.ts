@@ -679,56 +679,38 @@ export const triggerAction: Action = {
     message: Memory,
     _state?: State,
     options?: HandlerOptions,
-    callback?: HandlerCallback,
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = readParams(options);
     const opRaw = readString(
       params.action ?? params.subaction ?? params.op,
     )?.toLowerCase();
     if (!opRaw || !isTriggerOp(opRaw)) {
-      const result = failed(
+      return failed(
         "invalid",
         `Invalid action. Expected one of: ${TRIGGER_OPS.join(", ")}.`,
         "TRIGGER_INVALID",
       );
-      if (callback) {
-        await callback({ text: result.text ?? "", action: TRIGGER_ACTION });
-      }
-      return result;
     }
     const op: TriggerOp = opRaw;
 
-    let result: ActionResult;
+    // The handler never emits user-visible text itself: every outcome reaches
+    // the planner through the ActionResult, and the planner's final message is
+    // the single user-facing ack. A mid-turn callback here double-posts — the
+    // mechanical `Created trigger "…" (once at …)` line landed seconds before
+    // the planner's own confirmation of the same fact.
     switch (op) {
       case "create":
-        result = await opCreate(runtime, message, params);
-        break;
+        return opCreate(runtime, message, params);
       case "update":
-        result = await opUpdate(runtime, params);
-        break;
+        return opUpdate(runtime, params);
       case "delete":
-        result = await opDelete(runtime, params);
-        break;
+        return opDelete(runtime, params);
       case "run":
-        result = await opRun(runtime, params);
-        break;
+        return opRun(runtime, params);
       case "toggle":
-        result = await opToggle(runtime, params);
-        break;
+        return opToggle(runtime, params);
     }
-
-    // Only surface SUCCESS text to the user. A failed op's error already
-    // reaches the planner through the ActionResult — posting the raw error
-    // ("Cron trigger requires a valid 5-field cron expression.") mid-turn is
-    // noise, and the planner usually corrects and succeeds a moment later.
-    if (callback && result.success) {
-      await callback({
-        text: result.text ?? "",
-        action: TRIGGER_ACTION,
-        metadata: { op, ...(result.values ?? {}) },
-      });
-    }
-    return result;
   },
 
   parameters: [

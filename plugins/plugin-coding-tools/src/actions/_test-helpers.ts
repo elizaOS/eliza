@@ -10,12 +10,18 @@ import type { IAgentRuntime, Memory, Service } from "@elizaos/core";
 
 import { FileStateService } from "../services/file-state-service.js";
 import { SandboxService } from "../services/sandbox-service.js";
-import { FILE_STATE_SERVICE, SANDBOX_SERVICE } from "../types.js";
+import { SessionCwdService } from "../services/session-cwd-service.js";
+import {
+  FILE_STATE_SERVICE,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+} from "../types.js";
 
 export interface TestEnv {
   runtime: IAgentRuntime;
   fileState: FileStateService;
   sandbox: SandboxService;
+  sessionCwd: SessionCwdService;
   message: Memory;
   tmpDir: string;
   /**
@@ -63,8 +69,10 @@ export async function setupEnv(
 
   const sandbox = await SandboxService.start(runtime);
   const fileState = await FileStateService.start(runtime);
+  const sessionCwd = await SessionCwdService.start(runtime);
   services.set(SANDBOX_SERVICE, sandbox);
   services.set(FILE_STATE_SERVICE, fileState);
+  services.set(SESSION_CWD_SERVICE, sessionCwd);
 
   const message = {
     roomId: "test-room",
@@ -75,12 +83,14 @@ export async function setupEnv(
     runtime,
     fileState,
     sandbox,
+    sessionCwd,
     message,
     tmpDir,
     blockedPath,
     cleanup: async () => {
       await sandbox.stop();
       await fileState.stop();
+      await sessionCwd.stop();
       await fs.rm(tmpDir, { recursive: true, force: true });
     },
   };

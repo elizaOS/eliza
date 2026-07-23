@@ -92,12 +92,16 @@ describe("shared agent messages route", () => {
       text: "hello",
       agentName: "Eliza",
     });
+    // 6th arg: the Workers executionCtx that defers the billing tail — the
+    // Hono test harness has none, so the route degrades to undefined (inline
+    // settlement).
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       AGENT,
       ORG,
       AGENT,
       "say hi",
       "Eliza",
+      undefined,
     );
   });
 

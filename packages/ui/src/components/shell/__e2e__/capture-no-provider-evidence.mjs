@@ -1,7 +1,7 @@
 /**
  * Evidence capture for the "no LLM/model provider configured" chat fix.
  *
- * Bundles the REAL ContinuousChatOverlay (via chat-sheet-fixture.tsx) with the
+ * Bundles the REAL ChatOverlay (via chat-sheet-fixture.tsx) with the
  * same esbuild pipeline as run-chat-sheet-e2e.mjs, loads it in headless
  * chromium, and screenshots the BEFORE (buggy: composer keeps promising
  * "waking up" over a no_provider turn) and AFTER (fixed: Settings-hint

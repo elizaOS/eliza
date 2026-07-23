@@ -183,10 +183,10 @@ describe("DynamicViewLoader", () => {
     ) as HTMLElement | null;
     expect(surface?.style.overflowY).toBe("auto");
     expect(surface?.style.paddingBottom).toBe(
-      "var(--eliza-continuous-chat-clearance, 5.25rem)",
+      "var(--eliza-chat-clearance, 5.25rem)",
     );
     expect(surface?.style.paddingInlineEnd).toBe(
-      "var(--eliza-continuous-chat-side-clearance, 0px)",
+      "var(--eliza-chat-side-clearance, 0px)",
     );
   });
 

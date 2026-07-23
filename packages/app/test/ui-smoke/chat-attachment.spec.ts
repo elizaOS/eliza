@@ -1,11 +1,11 @@
-// Image-attachment coverage for the REAL web chat surface (the continuous-chat
+// Image-attachment coverage for the REAL web chat surface (the chat
 // overlay on /chat). Drives the overlay's attach control with a real PNG file,
 // asserts the pending thumbnail renders in the composer, sends, and asserts the
 // outbound stream POST body carries the base64 attachment. Keyless against the
 // stub.
 //
 // Surface notes (verified against source, load-bearing for the asserts):
-//   * The overlay (ContinuousChatOverlay.tsx) renders pending attachments as
+//   * The overlay (ChatOverlay.tsx) renders pending attachments as
 //     `<img alt={img.name}>` in the composer BEFORE send, then clears them on
 //     submit (setPendingImages([])) — so the thumbnail is a pre-send assertion.
 //   * `send(text, { images })` -> useShellController.send -> sendChatText(text,
@@ -175,7 +175,7 @@ test("chat overlay: attaching an image renders a pending thumbnail and sends the
   const conversations = await installAttachmentStreamMock(page);
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 
@@ -231,6 +231,11 @@ test("chat overlay: attaching an image renders a pending thumbnail and sends the
     }),
   );
 
-  // 6) Sending clears the pending strip — the thumbnail is gone post-send.
-  await expect(pendingThumb).toHaveCount(0, { timeout: 10_000 });
+  // 6) Sending clears the pending strip. The transcript legitimately renders
+  //    the sent image again (the optimistic user turn echoes its attachments —
+  //    useChatSend #15186), so assert on the pending tile's remove button,
+  //    which only exists in the composer strip, not the bare img alt.
+  await expect(
+    page.getByRole("button", { name: "remove smoke.png" }),
+  ).toHaveCount(0, { timeout: 10_000 });
 });

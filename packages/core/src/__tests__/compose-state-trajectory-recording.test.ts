@@ -1,12 +1,8 @@
 /**
- * composeState under trajectory recording (`metadata.trajectoryStepId` set on
- * every inbound message when the trajectories feature is active): recording
- * forces provider re-execution so accesses are logged, but must not change
- * what providers observe — the turn's cached state still reaches them.
- * Regression: blanking it made RECENT_MESSAGES' turn-recompose gate read
- * stage-1 on every pass, so cross-room interactions never composed on
- * trajectory-recording runtimes. Real AgentRuntime + the real provider over
- * a minimal in-memory adapter; no model, no database server.
+ * composeState cache behavior while trajectory recording is active. Recording
+ * is observational: providers see the same cached state and reuse decisions as
+ * an ordinary turn. Real AgentRuntime plus the real RECENT_MESSAGES provider
+ * over a minimal in-memory adapter; no model or database server.
  */
 import { describe, expect, it, vi } from "vitest";
 import { recentMessagesProvider } from "../features/basic-capabilities/providers/recentMessages";
@@ -126,7 +122,7 @@ describe("composeState under trajectory recording", () => {
 		);
 	});
 
-	it("re-executes cached providers outside the refresh list so their accesses are logged", async () => {
+	it("reuses cached providers outside the refresh list without changing behavior", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "Agent" } as Character,
 		});
@@ -166,14 +162,11 @@ describe("composeState under trajectory recording", () => {
 			["RECENT_MESSAGES"],
 		);
 
-		// Recording keeps the refresh-reuse shortcut off: FACTS ran twice (its
-		// access is in the step's log) and its second run observed the turn's
-		// cached state from the first pass.
-		expect(factsRuns).toBe(2);
+		// Trajectory recording must not force FACTS to run again. The runtime
+		// records the planner access as a cache hit instead.
+		expect(factsRuns).toBe(1);
 		expect(seenCachedProviders[0]).toEqual([]);
-		expect(seenCachedProviders[1]).toEqual(
-			expect.arrayContaining(["FACTS", "RECENT_MESSAGES"]),
-		);
-		expect(plannerState.text).toContain("FACTS#2");
+		expect(seenCachedProviders).toHaveLength(1);
+		expect(plannerState.text).toContain("FACTS#1");
 	});
 });

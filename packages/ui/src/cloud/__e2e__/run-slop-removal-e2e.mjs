@@ -38,6 +38,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
+import { optionalWalletPeerStubPlugin } from "./optional-wallet-peer-stub.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../..");
@@ -274,26 +275,6 @@ const elizaSourceAliasPlugin = {
   },
 };
 
-// Optional wallet-connector deps that wagmi lazily requires but which are not
-// installed (and never execute in this harness) — stub them inert.
-const optionalDepStubPlugin = {
-  name: "optional-dep-stub",
-  setup(pluginBuild) {
-    const filter = /^(@metamask\/connect-evm|@base-org\/account|@safe-global\/safe-apps-sdk|@safe-global\/safe-apps-provider|cbw-sdk|porto(\/.*)?)$/;
-    pluginBuild.onResolve({ filter }, (args) => ({
-      path: args.path,
-      namespace: "optional-dep-stub",
-    }));
-    pluginBuild.onLoad(
-      { filter: /.*/, namespace: "optional-dep-stub" },
-      () => ({
-        contents: "export default {};",
-        loader: "js",
-      }),
-    );
-  },
-};
-
 const bundle = await build({
   entryPoints: [join(here, "slop-removal-fixture.tsx")],
   bundle: true,
@@ -311,7 +292,11 @@ const bundle = await build({
     "import.meta.env": "globalThis.__VITE_ENV__",
   },
   tsconfig: bareTsconfig,
-  plugins: [elizaSourceAliasPlugin, nodeStubPlugin, optionalDepStubPlugin],
+  plugins: [
+    elizaSourceAliasPlugin,
+    nodeStubPlugin,
+    optionalWalletPeerStubPlugin,
+  ],
   write: false,
 });
 const js = bundle.outputFiles[0].text;

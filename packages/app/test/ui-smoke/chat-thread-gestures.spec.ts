@@ -1,5 +1,5 @@
 // Full-stack e2e for the single-infinite-thread chat gestures (#13531) on the
-// REAL web app — the genuinely-real ContinuousChatOverlay over the shell,
+// REAL web app — the genuinely-real ChatOverlay over the shell,
 // driven with genuine pointer/touch input. Covers the gestures that REPLACED
 // the removed maximize/minimize/clear header buttons and the removed
 // conversation edge-swipe:
@@ -244,7 +244,7 @@ async function cdpTouchDragFromGrabber(
  * a couple of times in case the first release only lands at FULL.
  */
 async function overPullToMaximize(page: Page): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   const sheet = page.locator(SHEET);
   const viewport = page.viewportSize();
@@ -275,7 +275,7 @@ async function overPullToMaximize(page: Page): Promise<void> {
 }
 
 async function openSheetToFull(page: Page): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   // Focus the composer to open, then flick the grabber up to FULL.
   await page.getByTestId("chat-sheet-grabber").click();
@@ -302,7 +302,7 @@ test("over-pull past FULL maximizes to full-bleed and the transcript content sur
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   const sheet = page.locator(SHEET);
 
@@ -342,7 +342,7 @@ test("a downward pull in the top restore zone exits full-bleed back to the inset
   await expect(sheet).not.toHaveAttribute("data-maximized", "true", {
     timeout: 10_000,
   });
-  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
     "data-open",
     "true",
   );
@@ -370,7 +370,7 @@ test("a downward pull that STARTS over the top bar exits full-bleed (top-bar pas
   await expect(sheet).not.toHaveAttribute("data-maximized", "true", {
     timeout: 10_000,
   });
-  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
     "data-open",
     "true",
   );
@@ -395,7 +395,7 @@ test("ArrowDown on the restore zone exits full-bleed (keyboard-operable restore)
   await expect(sheet).not.toHaveAttribute("data-maximized", "true", {
     timeout: 10_000,
   });
-  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
     "data-open",
     "true",
   );
@@ -407,7 +407,7 @@ test("Escape from maximized collapses the whole sheet (not just restore)", async
 }, testInfo) => {
   await openAppPath(page, "/chat");
   const sheet = page.locator(SHEET);
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
 
   await overPullToMaximize(page);
   await expect(sheet).toHaveAttribute("data-maximized", "true", {
@@ -448,7 +448,7 @@ test("header controls: no header nav (search in composer + menu), maximize remov
   await page.waitForTimeout(500);
   await expect(sheet).toHaveAttribute("data-conversation-id", convBefore ?? "");
   await expect(page.getByText(LAST_TEXT)).toBeVisible();
-  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
     "data-open",
     "true",
   );

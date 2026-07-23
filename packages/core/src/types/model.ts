@@ -915,6 +915,8 @@ export interface DetokenizeTextParams {
  */
 export interface TextEmbeddingParams {
 	text: string;
+	/** Cancels the underlying embedding request with its owning turn. */
+	signal?: AbortSignal;
 }
 
 /**

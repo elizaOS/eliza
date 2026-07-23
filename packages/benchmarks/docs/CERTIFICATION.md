@@ -93,7 +93,7 @@ smithers harness result in this environment.** Verified by reading every
 benchmark's dispatch. The remaining ~38 fall into:
 
 - **eliza-native / bridge-runner-centric** (adhdbench, experience, trust,
-  personality_bench, social_alpha, mind2web, rlm_bench): the benchmark loop runs
+  personality_bench, mind2web, rlm_bench): the benchmark loop runs
   inside the elizaOS TS bench server via `ElizaServerManager` and/or measures
   elizaOS-runtime-specific behavior (context-provider selection). Unlike
   mint/realm/lifeops (whose agents accept an injectable client), these construct

@@ -200,6 +200,18 @@ describe("CSS lockdown contract — base.css / styles.css cover body.pwa-standal
     expect(panYBlock?.[0]).toContain("body.pwa-standalone");
   });
 
+  it("pins touch-pan-y to a literal value inside installed shells", () => {
+    // Some bundled WebViews parse Tailwind's custom-property declaration but
+    // resolve its empty slots to `auto`; a literal installed-shell rule keeps
+    // nested notification and launcher scroll regions on the pager contract.
+    const utilityBlock = stylesCss.match(
+      /body\.native \.touch-pan-y,[\s\S]*?touch-action: pan-y;/,
+    );
+    expect(utilityBlock).not.toBeNull();
+    expect(utilityBlock?.[0]).toContain("body.platform-android .touch-pan-y");
+    expect(utilityBlock?.[0]).toContain("body.pwa-standalone .touch-pan-y");
+  });
+
   it("fills #root to the viewport (100dvh) for the installed PWA — full-bleed to the bottom", () => {
     // With the non-fixed body there is no ICB collapse, so `#root` simply fills
     // the viewport (`100dvh`, `100vh` fallback) and the app paints to the true
@@ -514,7 +526,7 @@ describe("JS-measured bottom reclaim is present and install-guarded", () => {
 
   it("the composer overlay applies the measured reclaim offset at rest", () => {
     const overlaySrc = readFileSync(
-      resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),
+      resolve(uiSrc, "components/shell/ChatOverlay.tsx"),
       "utf8",
     );
     // The resting `bottom` uses the measured offset (keyboard-lift wins when up).
@@ -527,7 +539,7 @@ describe("Composer bottom geometry — full-bleed, keyboard-lift preserved", () 
   // physical screen bottom; when the keyboard is visible, visual-viewport lift
   // owns the offset instead. Safe-area padding keeps controls tappable.
   const overlaySrc = readFileSync(
-    resolve(process.cwd(), "src/components/shell/ContinuousChatOverlay.tsx"),
+    resolve(process.cwd(), "src/components/shell/ChatOverlay.tsx"),
     "utf8",
   );
   const layoutSrc = readFileSync(
@@ -657,7 +669,7 @@ describe("Bottom-reclaim CONSUMPTION contract — the measured var actually pain
     // Mirror of the real-chain composer assertion, grouped here so the visual
     // bottom paints and the interactive bottom stay in the same contract.
     const overlaySrc = readFileSync(
-      resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),
+      resolve(uiSrc, "components/shell/ChatOverlay.tsx"),
       "utf8",
     );
     expect(

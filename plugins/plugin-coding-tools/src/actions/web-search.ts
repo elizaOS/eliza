@@ -105,8 +105,10 @@ export const webSearchAction: Action = {
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
   roleGate: { minRole: "ADMIN" },
   similes: ["SEARCH_WEB", "WEB_QUERY", "FIND_ONLINE", "SEARCH_INTERNET"],
+  routingHint:
+    "open-ended external info (news, public facts, 'latest on...', recommendations, pages to discover) -> WEB_SEARCH; a live NOW-value with a constructable endpoint (spot crypto/stock price, exchange rate, current weather) -> WEB_FETCH to that live API (api.coingecko.com/api/v3/simple/price, wttr.in/<city>?format=j1) — search-index snippets lag live values by minutes-to-hours, the endpoint is exact and fresh",
   description:
-    "Search the open web for current or external information using keyless MCP search. Uses Parallel first and Exa fallback, returning bounded ranked result text.",
+    "Search the open web for current or external information using keyless MCP search. Uses Parallel first and Exa fallback, returning bounded ranked result text. For a live NOW-value (spot price, exchange rate, current weather) prefer WEB_FETCH to a live JSON endpoint — search snippets lag live values.",
   parameters: [
     {
       name: "query",

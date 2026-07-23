@@ -192,7 +192,7 @@ const stubElizaCore = {
 // fixture loads no app CSS, so the handful of brand vars the home widgets read
 // must be declared inline.
 const headHtml = `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#000000;--brand-orange:#ff6a1f}</style>`;
+<style>:root{--eliza-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#000000;--brand-orange:#ff6a1f}</style>`;
 const url = await writeFixturePage({
   entry: join(here, "home-screen-fixture.tsx"),
   outDir,
@@ -233,17 +233,28 @@ async function touchSwipeLeft(page, testId) {
     stepDelayMs: 16,
   });
 }
+async function touchSlowDragLeft(page, testId) {
+  const viewportWidth = page.viewportSize()?.width;
+  if (!viewportWidth) throw new Error("missing viewport width for slow drag");
+  await touchSwipe(
+    page,
+    `[data-testid="${testId}"]`,
+    -viewportWidth * 0.35,
+    0,
+    {
+      steps: 10,
+      // The complete gesture lasts over a second, keeping release velocity below
+      // the flick path. Thirty-five percent is above the production 30% commit
+      // threshold but below the old 50% threshold, so this fails on regression.
+      stepDelayMs: 120,
+    },
+  );
+}
 async function touchSwipeRight(page, testId) {
   await touchSwipe(page, `[data-testid="${testId}"]`, 280, 0, {
     steps: 10,
     stepDelayMs: 16,
   });
-}
-
-// A STATIONARY hold past the long-press window. On the curated launcher this
-// must NOT enter edit mode (the launcher is read-only, fixed placement).
-async function longPressHold(page, tileTestId) {
-  await touchLongPress(page, `[data-testid="${tileTestId}"] button`, 600);
 }
 
 async function installCoarsePointerMedia(page) {
@@ -744,13 +755,12 @@ try {
       "collapse returns the notification center to its rested controls",
     );
   }
-  // No general quick-access tiles anymore - Launcher is the adjacent
-  // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
-  // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
+  // Home no longer renders a second tile list beside the embedded curated
+  // launcher. Native surfaces, when available, belong to launcher curation.
   for (const id of ["messages", "phone", "contacts", "camera"]) {
     assert(
-      await mobile.getByTestId(`home-tile-${id}`).isVisible(),
-      `native-OS tile ${id} renders (native enabled)`,
+      (await mobile.getByTestId(`home-tile-${id}`).count()) === 0,
+      `legacy native-OS home tile ${id} is absent`,
     );
   }
   // The removed defaults must NOT appear, even with native enabled.
@@ -849,11 +859,26 @@ try {
 
   await waitForSurfacePageSettled(mobile, "home");
 
+  // A real finger often performs a deliberate drag rather than a sharp flick.
+  // This ~35%-wide, low-velocity touch path used to reveal Apps and then snap
+  // back because the pager required half the screen; it must now commit.
+  await touchSlowDragLeft(mobile, "home-launcher-home-page");
+  await waitForSurfacePageSettled(mobile, "launcher");
+  assert(
+    (await mobile.getByTestId("home-launcher-surface").getAttribute(
+      "data-page",
+    )) === "launcher",
+    "deliberate one-second thumb drag opens the launcher before half-screen travel",
+  );
+  await touchSwipeRight(mobile, "home-launcher-launcher-page");
+  await waitForSurfacePageSettled(mobile, "home");
+
   // Real touch left-swipe on the home half pages the outer rail to the
   // launcher (the halves are `touch-pan-y`, so a horizontal touch gesture is
   // the rail's - exactly the phone input this profile emulates).
   await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
+  const launcherPage = mobile.getByTestId("home-launcher-launcher-page");
   assert(
     (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
       (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
@@ -865,7 +890,7 @@ try {
   // ── Curated apps page - the everyday apps render as tiles, in curated order.
   for (const id of ["wallet", "automations", "browser", "settings"]) {
     assert(
-      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
+      await launcherPage.getByTestId(`launcher-tile-${id}`).isVisible(),
       `curated app "${id}" renders on the launcher apps page`,
     );
   }
@@ -889,8 +914,8 @@ try {
   }
   // A single Wallet tile survives the duplicate wallet + inventory registrations.
   assert(
-    (await mobile.getByTestId("launcher-tile-wallet").count()) === 1,
-    "duplicate wallet registrations collapse to one tile",
+    (await launcherPage.getByTestId("launcher-tile-wallet").count()) === 1,
+    "duplicate wallet registrations collapse to one tile on the visible launcher",
   );
 
   // ── Glyph-only app icons (#13453 "deslop the launcher grid"): a launcher tile
@@ -899,7 +924,7 @@ try {
   // (a virus for Settings, a ladybug for Memories: the "icons are slop" report).
   // Each curated tile exposes its `data-view-visual` plate and NO hero image.
   for (const id of ["wallet", "automations", "browser", "character"]) {
-    const visual = mobile.locator(`[data-view-visual="${id}"]`);
+    const visual = launcherPage.locator(`[data-view-visual="${id}"]`);
     assert(
       (await visual.count()) === 1 && (await visual.isVisible()),
       `curated app "${id}" renders its glyph icon plate`,
@@ -931,24 +956,27 @@ try {
   // gradients are deterministic per id (id-hashed palette), so distinct tiles
   // get distinct gradients — a launcher of one flat placeholder would be the
   // regression this guards against.
-  const visualCount = await mobile.locator("[data-view-visual]").count();
+  const visualCount = await launcherPage.locator("[data-view-visual]").count();
   assert(
     visualCount >= 5,
     `launcher renders multiple glyph tiles (${visualCount})`,
   );
   assert(
-    (await mobile.locator('[data-testid^="launcher-image-"]').count()) === 0,
+    (await launcherPage.locator('[data-testid^="launcher-image-"]').count()) ===
+      0,
     "no launcher tile renders a hero <img> (glyph-only launcher)",
   );
-  const tileGradients = await mobile.$$eval("[data-view-visual]", (els) =>
-    Array.from(
-      new Set(
-        els
-          .map((el) => getComputedStyle(el).backgroundImage)
-          .filter((v) => Boolean(v) && v !== "none"),
+  const tileGradients = await launcherPage
+    .locator("[data-view-visual]")
+    .evaluateAll((els) =>
+      Array.from(
+        new Set(
+          els
+            .map((el) => getComputedStyle(el).backgroundImage)
+            .filter((v) => Boolean(v) && v !== "none"),
+        ),
       ),
-    ),
-  );
+    );
   assert(
     tileGradients.length >= 3,
     `launcher glyph plates use varied gradients, not one placeholder (${tileGradients.length} distinct)`,
@@ -957,10 +985,15 @@ try {
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
   // (fixed placement, no reorder). Edit mode animates tiles with `animate-pulse`,
   // so its absence after a stationary hold is the real read-only signal. #3
-  await longPressHold(mobile, "launcher-tile-wallet");
+  await touchLongPress(
+    mobile,
+    '[data-testid="home-launcher-launcher-page"] [data-testid="launcher-tile-wallet"] button',
+    600,
+  );
   await mobile.waitForTimeout(150);
   assert(
     (await mobile
+      .getByTestId("home-launcher-launcher-page")
       .getByTestId("launcher-tile-wallet")
       .locator("button.animate-pulse")
       .count()) === 0,
@@ -992,7 +1025,7 @@ try {
     "plugins",
   ]) {
     assert(
-      (await mobile
+      (await launcherPage
         .getByTestId("launcher-page-window")
         .getByTestId(`launcher-tile-${id}`)
         .count()) === 1,

@@ -304,7 +304,8 @@ export const CacheTTL = {
    */
   inference: {
     authContext: 300, // 5 min - backstop only; revoke paths invalidate explicitly (fail-closed)
-    orgBalance: 15, // 15 seconds - optimistic-billing gate hint, kept tight to bound drift
+    orgBalance: 15, // 15 seconds - FRESHNESS window: getGateBalanceUsd serves a hint older than this stale-while-revalidate (background refresh) instead of blocking on an authoritative read
+    orgBalanceStale: 300, // 5 min - PHYSICAL KV lifetime so a stale hint can be served + background-refreshed; over-admit stays bounded by the debit settler's lowerOrgBalanceHint + top-up invalidate, exactly as before
     pendingCharge: 3600, // 60 min - sweep window = TTL - grace(20m) = 40m, survives cron hiccups
   },
   /**

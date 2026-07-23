@@ -17,21 +17,25 @@
  * Two shade modes:
  *
  *  - RESTED is triage: interrupt-tier (`high`/`urgent`) producer stacks remain
- *    visible above the passive total while quieter notifications stay folded
- *    behind the same producer's visible stack depth.
- *  - EXPANDED shows every priority and preserves each producer stack until the
- *    user fans that group out in place; the list is height-capped and scrolls
- *    internally.
+ *    visible above the total while quieter notifications stay folded behind
+ *    the same producer's visible stack depth.
+ *  - EXPANDED shows every priority inline, content-height, and preserves each
+ *    producer stack until the user fans that group out in place. The list is
+ *    NOT internally scrolled: the home column (the `pageSurfaceRef` scroller)
+ *    scrolls the whole surface, so expansion pushes the app region down while
+ *    apps stay mounted and interactive. A sticky pill at the shade's top keeps
+ *    the collapse command reachable while the inbox is in view.
  *
  * The transition is DIRECTIONAL, never a toggle: pulling DOWN (touch drag /
- * mouse drag / trackpad fingers-down wheel) while the list sits at its top only
- * EXPANDS the rested shade; pushing UP only COLLAPSES the expanded one. A
- * same-direction gesture in the state it already produced is a no-op — this is
- * what makes trackpad momentum safe (the old toggle re-fired on trailing
- * momentum deltas and snapped the shade shut moments after opening it). The
- * footer is a passive total (for example, "3 Notifications"), never a control;
- * it belongs only to the closed shade, fading away during expansion and back
- * in during collapse. Pull/push gestures exclusively own the transition.
+ * mouse drag / trackpad fingers-down wheel) while the page sits at its top only
+ * EXPANDS the rested shade; pushing UP only COLLAPSES the expanded one, and
+ * only where the push cannot mean "scroll the page" (page unscrollable or
+ * already at its bottom — the overscroll-to-close). A same-direction gesture in
+ * the state it already produced is a no-op — this is what makes trackpad
+ * momentum safe (the old toggle re-fired on trailing momentum deltas and
+ * snapped the shade shut moments after opening it). The rested total row
+ * doubles as a click affordance for pointer users; the sticky pill and an
+ * outside tap collapse the expanded shade.
  *
  * The pull/wheel gesture NEVER fans a stack, and a drag that starts on a stack
  * still belongs to the shade. Tapping a peek fans that producer group and
@@ -133,12 +137,6 @@ const MAX_PULL_PREVIEW_GROUPS = 6;
 
 /** Empty feedback should latch after a normal short pull, not require a full shade drag. */
 const EMPTY_PULL_COMMIT_PX = PULL_COMMIT_PX / 2;
-
-/**
- * Bottom-edge capture for the iOS-style upward close gesture. Keeping this
- * narrow lets the rest of an overflowing list retain native vertical scroll.
- */
-const SHADE_CLOSE_EDGE_PX = 40;
 
 const INTERACTIVE_GESTURE_TARGET_SELECTOR =
   "button, a, input, textarea, select, [role='button'], [contenteditable='true']";
@@ -388,16 +386,20 @@ export function __setNotificationsHomeCenterRenderObserverForTests(
  */
 export interface NotificationsHomeCenterProps {
   /**
-   * Larger background surface that may start the pull only while the inbox is
-   * empty. Populated shades continue to own their list gestures directly.
+   * The home column scroller that hosts this inbox. It plays two roles: its
+   * scroll position gates the directional pull gestures (expand only from the
+   * page top, push-to-close only where the push cannot scroll), and its
+   * non-interactive background doubles as a pull surface — for the quiet empty
+   * band and for pulling a populated shade open from home space. Without it
+   * (isolated fixtures/stories) the list gates on its own geometry.
    */
-  emptyGestureTargetRef?: RefObject<HTMLElement | null>;
+  pageSurfaceRef?: RefObject<HTMLElement | null>;
   /** Reports shade allocation changes to the inline home layout. */
   onShadeExpandedChange?: (expanded: boolean) => void;
 }
 
 export function NotificationsHomeCenter({
-  emptyGestureTargetRef,
+  pageSurfaceRef,
   onShadeExpandedChange,
 }: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
@@ -493,6 +495,15 @@ export function NotificationsHomeCenter({
   // shared visibility-gated ticker. The minute roll re-renders those text nodes
   // only - not this list, not the rows, not the glass surface.
   const scrollRef = useRef<HTMLUListElement | null>(null);
+  // The scroll container whose position gates every directional gesture. The
+  // list itself never scrolls (the page owns vertical scroll); isolated
+  // fixtures without a page surface fall back to the list, whose scrollTop is
+  // then permanently 0 — every gesture reads as at-top, which is correct for a
+  // content-sized list.
+  const pageScroller = useCallback(
+    (): HTMLElement | null => pageSurfaceRef?.current ?? scrollRef.current,
+    [pageSurfaceRef],
+  );
   const pullVisibleGroupsRef = useRef<HTMLElement[] | undefined>(undefined);
   const pointerPull = useRef<{
     id: number;
@@ -631,42 +642,45 @@ export function NotificationsHomeCenter({
     }, 500);
   }, []);
 
-  const setPullPx = useCallback((px: number) => {
-    pullPxRef.current = px;
-    const nextDirection = px > 0 ? "expand" : px < 0 ? "collapse" : null;
-    const directionChanged = pullDirectionRef.current !== nextDirection;
-    if (directionChanged) {
-      pullDirectionRef.current = nextDirection;
-      pullVisibleGroupsRef.current = nextDirection
-        ? visibleNotificationGroups(centerRef.current, scrollRef.current)
-        : undefined;
-      setPullDirection(nextDirection);
-    }
-    // The zero state is rendered declaratively after the dragging marker is
-    // removed, allowing the release transition to run. Non-zero movement is
-    // direct manipulation and must update in the current input event.
-    const applyCurrentPull = () => {
-      pullPresentationFrame.current = null;
-      applyNotificationPullPresentation(
-        centerRef.current,
-        pullPxRef.current,
-        shadePresentationRef.current.expanded,
-        shadePresentationRef.current.closing,
-        pullVisibleGroupsRef.current,
-      );
-    };
-    if (!nextDirection) {
-      if (pullPresentationFrame.current !== null) {
-        window.cancelAnimationFrame(pullPresentationFrame.current);
-        pullPresentationFrame.current = null;
+  const setPullPx = useCallback(
+    (px: number) => {
+      pullPxRef.current = px;
+      const nextDirection = px > 0 ? "expand" : px < 0 ? "collapse" : null;
+      const directionChanged = pullDirectionRef.current !== nextDirection;
+      if (directionChanged) {
+        pullDirectionRef.current = nextDirection;
+        pullVisibleGroupsRef.current = nextDirection
+          ? visibleNotificationGroups(centerRef.current, pageScroller())
+          : undefined;
+        setPullDirection(nextDirection);
       }
-    } else if (directionChanged) {
-      applyCurrentPull();
-    } else if (pullPresentationFrame.current === null) {
-      pullPresentationFrame.current =
-        window.requestAnimationFrame(applyCurrentPull);
-    }
-  }, []);
+      // The zero state is rendered declaratively after the dragging marker is
+      // removed, allowing the release transition to run. Non-zero movement is
+      // direct manipulation and must update in the current input event.
+      const applyCurrentPull = () => {
+        pullPresentationFrame.current = null;
+        applyNotificationPullPresentation(
+          centerRef.current,
+          pullPxRef.current,
+          shadePresentationRef.current.expanded,
+          shadePresentationRef.current.closing,
+          pullVisibleGroupsRef.current,
+        );
+      };
+      if (!nextDirection) {
+        if (pullPresentationFrame.current !== null) {
+          window.cancelAnimationFrame(pullPresentationFrame.current);
+          pullPresentationFrame.current = null;
+        }
+      } else if (directionChanged) {
+        applyCurrentPull();
+      } else if (pullPresentationFrame.current === null) {
+        pullPresentationFrame.current =
+          window.requestAnimationFrame(applyCurrentPull);
+      }
+    },
+    [pageScroller],
+  );
 
   const cancelClearConfirmation = useCallback(() => {
     setConfirmingClearAll(false);
@@ -691,10 +705,14 @@ export function NotificationsHomeCenter({
         setExpandedStacks(new Set());
       }
       // Collapse completion is deterministic even when a smooth scroll was
-      // interrupted. Expansion resets after the expanded rows mount below.
-      if (!expanded && scrollRef.current) scrollRef.current.scrollTop = 0;
+      // interrupted: the page returns to its top so the rested shade is in
+      // view. Expansion resets after the expanded rows mount below.
+      if (!expanded) {
+        const page = pageScroller();
+        if (page) page.scrollTop = 0;
+      }
     },
-    [captureShadeFocusBeforeExpand],
+    [captureShadeFocusBeforeExpand, pageScroller],
   );
 
   // Every expansion path must reveal the shade's first row and clear control.
@@ -702,16 +720,16 @@ export function NotificationsHomeCenter({
   // hidden siblings can trigger browser scroll anchoring; reset after that DOM
   // commit, before paint, so the expanded shade always starts at its real top.
   useLayoutEffect(() => {
-    if (shadeExpanded && scrollRef.current) {
-      scrollRef.current.scrollTop = 0;
-    }
-  }, [shadeExpanded]);
+    if (!shadeExpanded) return;
+    const page = pageScroller();
+    if (page) page.scrollTop = 0;
+  }, [pageScroller, shadeExpanded]);
 
   useLayoutEffect(() => {
     if (pullDirection) {
       pullVisibleGroupsRef.current = visibleNotificationGroups(
         centerRef.current,
-        scrollRef.current,
+        pageScroller(),
       );
     }
     applyNotificationPullPresentation(
@@ -727,9 +745,12 @@ export function NotificationsHomeCenter({
     if (!shadeExpanded || shadeClosing) return;
     const draggedFullyClosed = pullPxRef.current <= -PULL_COMMIT_PX;
     cancelClearConfirmation();
-    const list = scrollRef.current;
-    if (list && list.scrollTop > 0) {
-      list.scrollTo?.({ top: 0, behavior: "smooth" });
+    // Fold back to the rested shade at the page top: the shade shrinks to its
+    // compact home, so leaving the page scrolled would strand the viewport in
+    // suddenly-shorter content anyway.
+    const page = pageScroller();
+    if (page && page.scrollTop > 0) {
+      page.scrollTo?.({ top: 0, behavior: "smooth" });
     }
     wheelCommitLockUntil.current = Date.now() + WHEEL_COMMIT_LOCK_MS;
     // End direct manipulation before starting the close settle. Leaving a
@@ -750,6 +771,7 @@ export function NotificationsHomeCenter({
     }, SHADE_CLOSE_FADE_MS);
   }, [
     cancelClearConfirmation,
+    pageScroller,
     setPullPx,
     setShade,
     shadeClosing,
@@ -830,20 +852,36 @@ export function NotificationsHomeCenter({
     setPullPx(0);
   }, [notifications.length, requestShadeCollapse, setPullPx, setShade]);
 
-  // Shared wheel accumulator for both the list and, while empty, the wider
-  // home background. Returns whether the shade consumed this delta so the
-  // native background listener can suppress browser overscroll.
+  // Shared wheel accumulator for the list and the wider home background.
+  // Returns whether the shade consumed this delta so the native background
+  // listener can suppress browser overscroll. Direction gating is positional:
+  // expansion only accumulates at the page top; collapse only where a downward
+  // scroll cannot mean "scroll the page" — an unscrollable page or its bottom
+  // (the overscroll-to-close). Everywhere else the page scroller owns the
+  // wheel.
   const handleWheelDelta = useCallback(
-    (deltaY: number, scrollTop: number): boolean => {
+    (deltaY: number): boolean => {
       const empty = notifications.length === 0;
       if (Date.now() < wheelCommitLockUntil.current) return true;
-      // Away from the top the scroller owns every wheel event.
-      if (scrollTop > 0) {
+      const page = pageScroller();
+      const scrollTop = page?.scrollTop ?? 0;
+      const maxScrollTop = page
+        ? Math.max(0, page.scrollHeight - page.clientHeight)
+        : 0;
+      const { canExpand, canCollapse } = shadeGestureRef.current;
+      const dir: 1 | -1 = deltaY < 0 ? 1 : -1;
+      if (dir === 1 && scrollTop > 0) {
+        // Away from the top an upward wheel is ordinary scrolling.
         wheelPull.current.px = 0;
         return false;
       }
-      const { canExpand, canCollapse } = shadeGestureRef.current;
-      const dir: 1 | -1 = deltaY < 0 ? 1 : -1;
+      const atBottom = scrollTop >= maxScrollTop - 1;
+      if (dir === -1 && maxScrollTop > 1 && !atBottom) {
+        // The page still has scroll range below: the wheel scrolls, never
+        // closes.
+        wheelPull.current.px = 0;
+        return false;
+      }
       if (dir === 1 ? !canExpand : !canCollapse) {
         wheelPull.current.px = 0;
         return false;
@@ -875,42 +913,56 @@ export function NotificationsHomeCenter({
       }
       return true;
     },
-    [notifications.length, requestShadeCollapse, setShade],
+    [notifications.length, pageScroller, requestShadeCollapse, setShade],
   );
 
   const onListWheel = useCallback(
     (e: React.WheelEvent) => {
-      const el = scrollRef.current;
-      if (el) handleWheelDelta(e.deltaY, el.scrollTop);
+      handleWheelDelta(e.deltaY);
     },
     [handleWheelDelta],
   );
 
-  // The pull gesture's TOUCH path binds native listeners: the list is a real
-  // `touch-action: pan-y` scroller, so the browser claims a downward pan for
-  // scrolling the moment it starts — a React (passive) touchmove can't take it
-  // back. A non-passive touchmove that preventDefault()s only the at-top
-  // downward overscroll is the one way to own the pull without breaking
+  // The pull gesture's TOUCH path binds native listeners: the home column is a
+  // real `touch-action: pan-y` scroller, so the browser claims a downward pan
+  // for scrolling the moment it starts — a React (passive) touchmove can't
+  // take it back. A non-passive touchmove that preventDefault()s only the
+  // at-top downward overscroll is the one way to own the pull without breaking
   // ordinary scrolling (see reference: pan-y pull gestures are dead on arrival
-  // without this). `surfaceReady` re-runs the bind when hydration establishes a
-  // genuinely empty inbox or when a notification arrives before hydration.
+  // without this). All positional gating reads the PAGE scroller: the list is
+  // content-sized and never scrolls itself. `surfaceReady` re-runs the bind
+  // when hydration establishes a genuinely empty inbox or when a notification
+  // arrives before hydration.
   const hasNotifications = notifications.length > 0;
   const surfaceReady = hydrated || hasNotifications;
   useEffect(() => {
     const list = scrollRef.current;
     if (!list || !surfaceReady) return;
     const gestureTarget =
-      !hasNotifications && emptyGestureTargetRef?.current
-        ? emptyGestureTargetRef.current
+      !hasNotifications && pageSurfaceRef?.current
+        ? pageSurfaceRef.current
         : list;
     const usesEmptyBackground = gestureTarget !== list;
+    const page = () => pageScroller() ?? gestureTarget;
+    const pageMaxScrollTop = () => {
+      const el = page();
+      return Math.max(0, el.scrollHeight - el.clientHeight);
+    };
+    // Push-to-close is legal only where upward travel cannot mean "scroll the
+    // page": an unscrollable page, or the page bottom (overscroll-to-close).
+    const canPushClose = () => {
+      const max = pageMaxScrollTop();
+      return (
+        shadeGestureRef.current.canCollapse &&
+        (usesEmptyBackground || max <= 1 || page().scrollTop >= max - 1)
+      );
+    };
     let start: { x: number; y: number } | null = null;
     // clientY where the drag first reached the top; the pull is measured from
-    // here so a continuous drag that scrolled the list up to its top doesn't
+    // here so a continuous drag that scrolled the page up to its top doesn't
     // jump the shade by the pre-top travel and instantly commit.
     let expandAnchorY: number | null = null;
     let collapseAnchorY: number | null = null;
-    let closeFromBottomEdge = false;
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
       const target = e.target;
@@ -918,7 +970,6 @@ export function NotificationsHomeCenter({
         start = null;
         expandAnchorY = null;
         collapseAnchorY = null;
-        closeFromBottomEdge = false;
         return;
       }
       start =
@@ -926,33 +977,8 @@ export function NotificationsHomeCenter({
       // Already at the top → anchor at the touch start so the whole drag counts
       // as pull. Started scrolled down → leave null; the move handler anchors at
       // the instant scrollTop first reaches 0 (the top crossing).
-      expandAnchorY = start && gestureTarget.scrollTop <= 0 ? start.y : null;
-
-      const maxScrollTop = Math.max(
-        0,
-        gestureTarget.scrollHeight - gestureTarget.clientHeight,
-      );
-      const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
-      const viewportBottom =
-        window.visualViewport?.height ?? window.innerHeight;
-      const visibleBottom = Math.min(
-        gestureTarget.getBoundingClientRect().bottom,
-        viewportBottom,
-      );
-      closeFromBottomEdge = Boolean(
-        start &&
-          shadeGestureRef.current.canCollapse &&
-          start.y >= visibleBottom - SHADE_CLOSE_EDGE_PX,
-      );
-      collapseAnchorY =
-        start &&
-        shadeGestureRef.current.canCollapse &&
-        (usesEmptyBackground ||
-          closeFromBottomEdge ||
-          maxScrollTop <= 1 ||
-          atBottom)
-          ? start.y
-          : null;
+      expandAnchorY = start && page().scrollTop <= 0 ? start.y : null;
+      collapseAnchorY = start && canPushClose() ? start.y : null;
     };
     const onTouchMove = (e: TouchEvent) => {
       const t = e.touches[0];
@@ -964,37 +990,18 @@ export function NotificationsHomeCenter({
         start = null;
         expandAnchorY = null;
         collapseAnchorY = null;
-        closeFromBottomEdge = false;
         return;
       }
       if (Math.abs(dy) > PULL_SLOP_PX && Math.abs(dy) >= Math.abs(dx)) {
         armNotificationClickSuppression();
       }
-      if (closeFromBottomEdge && dy < 0 && Math.abs(dy) >= Math.abs(dx)) {
-        // Claim the bottom-edge close from its first vertical pixel so the
-        // native scroller never moves underneath the gesture before the slop
-        // threshold is crossed.
-        e.preventDefault();
-      }
-      const { canExpand, canCollapse } = shadeGestureRef.current;
+      const { canExpand } = shadeGestureRef.current;
       if (dy < -PULL_SLOP_PX) {
-        // A narrow bottom-edge push closes directly. Everywhere else, the
-        // pan-y scroller owns upward travel while content remains below; once
-        // it reaches the list end, additional travel becomes an
+        // Upward push. The pan-y page owns upward travel while content remains
+        // below; at the page end additional travel becomes an
         // overscroll-to-close. Rebase there so scroll travel never counts
         // toward the close threshold.
-        const maxScrollTop = Math.max(
-          0,
-          gestureTarget.scrollHeight - gestureTarget.clientHeight,
-        );
-        const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
-        if (
-          canCollapse &&
-          (usesEmptyBackground ||
-            closeFromBottomEdge ||
-            maxScrollTop <= 1 ||
-            atBottom)
-        ) {
+        if (canPushClose()) {
           if (collapseAnchorY === null) collapseAnchorY = t.clientY;
           const push = collapseAnchorY - t.clientY;
           if (push > PULL_SLOP_PX) {
@@ -1009,7 +1016,7 @@ export function NotificationsHomeCenter({
         }
         return;
       }
-      if (gestureTarget.scrollTop <= 0 && canExpand) {
+      if (page().scrollTop <= 0 && canExpand) {
         if (expandAnchorY === null) expandAnchorY = t.clientY;
         const pull = t.clientY - expandAnchorY;
         if (pull > PULL_SLOP_PX) {
@@ -1031,7 +1038,6 @@ export function NotificationsHomeCenter({
       start = null;
       expandAnchorY = null;
       collapseAnchorY = null;
-      closeFromBottomEdge = false;
       commitPull();
     };
     const onTouchCancel = () => {
@@ -1041,7 +1047,6 @@ export function NotificationsHomeCenter({
       start = null;
       expandAnchorY = null;
       collapseAnchorY = null;
-      closeFromBottomEdge = false;
       setPullPx(0);
     };
     const onEmptyBackgroundWheel = (e: WheelEvent) => {
@@ -1055,7 +1060,7 @@ export function NotificationsHomeCenter({
       ) {
         return;
       }
-      if (handleWheelDelta(e.deltaY, gestureTarget.scrollTop)) {
+      if (handleWheelDelta(e.deltaY)) {
         e.preventDefault();
       }
     };
@@ -1082,25 +1087,36 @@ export function NotificationsHomeCenter({
   }, [
     armNotificationClickSuppression,
     commitPull,
-    emptyGestureTargetRef,
     handleWheelDelta,
     hasNotifications,
+    pageScroller,
+    pageSurfaceRef,
     setPullPx,
     surfaceReady,
   ]);
 
-  // A populated shade can also be pulled open from non-interactive home space
-  // (clock/weather chrome or an empty widget-grid lane). Events originating in
-  // the notification list stay with its scroll/gesture handler above, and taps
-  // never touch notification state.
+  // A populated shade can also be driven from non-interactive home space
+  // (clock/weather chrome, the band beneath a short inbox, an empty
+  // widget-grid lane): a downward pull at the page top expands, and an upward
+  // push collapses where the push cannot mean "scroll the page" (unscrollable
+  // page or its bottom — the same overscroll-to-close rule as the list).
+  // Events originating in the notification list stay with its scroll/gesture
+  // handler above, and taps never touch notification state.
   useEffect(() => {
-    const surface = emptyGestureTargetRef?.current;
+    const surface = pageSurfaceRef?.current;
     const list = scrollRef.current;
     if (!hasNotifications || !surface || !list || surface === list) return;
     let start: { x: number; y: number } | null = null;
     let axis: "none" | "x" | "y" = "none";
     let ownsPull = false;
 
+    const canPushClose = () => {
+      const max = Math.max(0, surface.scrollHeight - surface.clientHeight);
+      return (
+        shadeGestureRef.current.canCollapse &&
+        (max <= 1 || surface.scrollTop >= max - 1)
+      );
+    };
     const reset = () => {
       start = null;
       axis = "none";
@@ -1144,6 +1160,10 @@ export function NotificationsHomeCenter({
         ownsPull = true;
         event.preventDefault();
         setPullPx(dampenPull(dy));
+      } else if (axis === "y" && dy < -PULL_SLOP_PX && canPushClose()) {
+        ownsPull = true;
+        event.preventDefault();
+        setPullPx(-dampenPull(-dy));
       } else if (ownsPull && pullPxRef.current !== 0) {
         setPullPx(0);
       }
@@ -1160,14 +1180,16 @@ export function NotificationsHomeCenter({
     };
     const onWheel = (event: WheelEvent) => {
       const target = event.target;
+      // handleWheelDelta gates direction positionally (expand at page top,
+      // collapse only when the page cannot scroll further), so both wheel
+      // directions route through it here.
       if (
-        event.deltaY >= 0 ||
         isInteractiveGestureTarget(target) ||
         (target instanceof Node && list.contains(target))
       ) {
         return;
       }
-      if (handleWheelDelta(event.deltaY, surface.scrollTop)) {
+      if (handleWheelDelta(event.deltaY)) {
         event.preventDefault();
       }
     };
@@ -1186,73 +1208,11 @@ export function NotificationsHomeCenter({
     };
   }, [
     commitPull,
-    emptyGestureTargetRef,
     handleWheelDelta,
     hasNotifications,
+    pageSurfaceRef,
     setPullPx,
   ]);
-
-  // The unused center space beneath a short inbox and the clear band around it
-  // are also close gesture lanes. They live outside the scrollport, so an
-  // upward swipe can fold an expanded shade without first finding the final
-  // notification row.
-  useEffect(() => {
-    const surface = emptyGestureTargetRef?.current;
-    const center = centerRef.current;
-    const list = scrollRef.current;
-    if (!shadeExpanded || !surface || !center || !list) return;
-    let start: { x: number; y: number } | null = null;
-
-    const onTouchStart = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      const target = event.target;
-      start =
-        event.touches.length === 1 &&
-        touch &&
-        target instanceof Node &&
-        !list.contains(target) &&
-        !isInteractiveGestureTarget(target)
-          ? { x: touch.clientX, y: touch.clientY }
-          : null;
-    };
-    const onTouchMove = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      if (!start || !touch) return;
-      const dx = touch.clientX - start.x;
-      const dy = touch.clientY - start.y;
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > PULL_SLOP_PX) {
-        start = null;
-        setPullPx(0);
-        return;
-      }
-      if (dy < 0 && Math.abs(dy) >= Math.abs(dx)) event.preventDefault();
-      if (dy < -PULL_SLOP_PX) {
-        setPullPx(-dampenPull(-dy));
-      } else if (pullPxRef.current !== 0) {
-        setPullPx(0);
-      }
-    };
-    const onTouchEnd = () => {
-      if (!start) return;
-      start = null;
-      commitPull();
-    };
-    const onTouchCancel = () => {
-      start = null;
-      setPullPx(0);
-    };
-
-    surface.addEventListener("touchstart", onTouchStart, { passive: true });
-    surface.addEventListener("touchmove", onTouchMove, { passive: false });
-    surface.addEventListener("touchend", onTouchEnd);
-    surface.addEventListener("touchcancel", onTouchCancel);
-    return () => {
-      surface.removeEventListener("touchstart", onTouchStart);
-      surface.removeEventListener("touchmove", onTouchMove);
-      surface.removeEventListener("touchend", onTouchEnd);
-      surface.removeEventListener("touchcancel", onTouchCancel);
-    };
-  }, [commitPull, emptyGestureTargetRef, setPullPx, shadeExpanded]);
 
   // Clear timers that may outlive a single gesture.
   useEffect(
@@ -1431,27 +1391,22 @@ export function NotificationsHomeCenter({
     clearControlLayoutVisibility,
   } = notificationPullPresentation(pullPx, shadeExpanded, shadeClosing);
   const disposableLayoutVisibility = 1 - committedCloseProgress;
-  const showCollapseControl =
-    (shadeExpanded || previewingExpansion) &&
-    hasNotifications &&
-    expandedStacks.size === 0 &&
-    !shadeOpenedByStack;
   const onListPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse" || !e.isPrimary) return;
-    const el = scrollRef.current;
+    const el = pageScroller();
     pointerPull.current = {
       id: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       axis: "none",
-      // At-top → anchor at the press (whole drag is pull); scrolled down →
-      // anchor at the top crossing in the move handler.
+      // Page at top → anchor at the press (whole drag is pull); scrolled down
+      // → anchor at the top crossing in the move handler.
       anchorY: el && el.scrollTop <= 0 ? e.clientY : null,
     };
   };
   const onListPointerMove = (e: React.PointerEvent) => {
     const g = pointerPull.current;
-    const el = scrollRef.current;
+    const el = pageScroller();
     if (!g || g.id !== e.pointerId || !el) return;
     const dx = e.clientX - g.startX;
     const dy = e.clientY - g.startY;
@@ -1548,20 +1503,58 @@ export function NotificationsHomeCenter({
       // the home field directly under the time/weather header.
       // `eliza-notif-center-in` is added only when real rows exist, so a quiet
       // hydrated gesture band cannot consume the first-arrival animation.
-      // `min-h-0 flex-1` lets a populated inbox fill the home column down to the
-      // chat when the parent grows it.
+      // Content-sized in both modes — the home column scrolls the whole
+      // surface, so expansion pushes the app region down instead of taking a
+      // flex allocation. No overflow clipping here: the sticky collapse pill
+      // must stick against the PAGE scrollport, and any overflow ancestor
+      // between them would capture it.
       className={cn(
-        "relative flex min-h-0 flex-1 flex-col overflow-hidden text-white",
+        "relative flex flex-none flex-col text-white",
         hasNotifications && "eliza-notif-center-in",
-        !hasNotifications && "min-h-14 flex-none",
+        !hasNotifications && "min-h-14",
       )}
     >
       <style>{NOTIF_SCROLL_CSS}</style>
       <LiquidGlassRefractionDefs />
+      {/* The expanded shade's collapse command: a liquid-glass pill that
+          sticks to the top of the page scrollport while the inbox is in view,
+          so folding the shade never requires scrolling back past 100 rows. It
+          occupies normal flow (the rested count row it replaces fades out at
+          the same time), and the shared pull presentation drives its
+          opacity/translate during direct manipulation via
+          data-notification-collapse-footer. */}
+      {hasNotifications && shadeExpanded ? (
+        <div
+          data-testid="notifications-collapse-slot"
+          data-notification-collapse-footer=""
+          aria-hidden={collapseControlVisibility === 0 ? true : undefined}
+          inert={collapseControlVisibility < 1 ? true : undefined}
+          style={{
+            opacity: collapseControlVisibility,
+            transform: `translateY(${(1 - collapseControlVisibility) * 4}px)`,
+            transition: isPulling ? "none" : undefined,
+          }}
+          className="eliza-notif-shade-transition pointer-events-none sticky top-1 z-30 mb-2 flex justify-center"
+        >
+          <button
+            type="button"
+            data-testid="notifications-collapse"
+            data-notif-control=""
+            aria-label="Collapse notifications"
+            onClick={requestShadeCollapse}
+            className="eliza-notif-glass pointer-events-auto flex h-9 items-center justify-center gap-1 rounded-full px-4 text-2xs font-medium text-white/70 transition-colors hover:text-white"
+          >
+            {notifications.length === 1
+              ? "1 Notification"
+              : `${notifications.length} Notifications`}
+            <ChevronUp aria-hidden className="h-3 w-3 shrink-0" />
+          </button>
+        </div>
+      ) : null}
       {/* No "Notifications" header, no group eyebrows, no dividers: the
           physical gaps between card clusters ARE the grouping. Directional
-          pull gestures own the shade transition; the collapse command stays
-          pinned to the viewport while notification rows scroll beneath it. */}
+          pull gestures own the shade transition; the list is content-sized —
+          the home column scrolls it as part of the one home surface. */}
       <ul
         ref={scrollRef}
         onPointerDown={onListPointerDown}
@@ -1577,11 +1570,12 @@ export function NotificationsHomeCenter({
         data-shade-settling={shadeClosing ? "" : undefined}
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
-          // selection sweep across the cards (platform-shade idiom).
-          "eliza-notif-scroll relative flex min-h-0 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pt-1",
-          showCollapseControl ? "flex-[0_1_auto] pb-2" : "flex-1 pb-10",
-          hasNotifications &&
-            "scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem]",
+          // selection sweep across the cards (platform-shade idiom). NO
+          // overflow classes: even overflow-x-hidden would make this a scroll
+          // container (computing overflow-y to auto) and re-introduce the
+          // nested-scroller mode this surface deliberately removed — the home
+          // column owns vertical scroll and clips horizontal swipe travel.
+          "eliza-notif-scroll relative flex touch-pan-y select-none flex-col gap-2 px-1.5 pt-1 pb-2",
           shadeClosing && "pointer-events-none",
         )}
       >
@@ -1909,29 +1903,6 @@ export function NotificationsHomeCenter({
             : [groupElement];
         })}
       </ul>
-      {showCollapseControl ? (
-        <div
-          data-testid="notifications-collapse-footer"
-          data-notification-collapse-footer=""
-          aria-hidden={collapseControlVisibility === 0 ? true : undefined}
-          inert={collapseControlVisibility < 1 ? true : undefined}
-          style={{
-            opacity: collapseControlVisibility,
-            transform: `translateY(${(1 - collapseControlVisibility) * 4}px)`,
-          }}
-          className="eliza-notif-shade-transition pointer-events-none flex shrink-0 justify-center px-3"
-        >
-          <button
-            type="button"
-            data-testid="notifications-collapse"
-            onClick={requestShadeCollapse}
-            className="pointer-events-auto flex min-h-touch items-center justify-center gap-1 px-2 text-2xs font-medium text-white/55 transition-colors hover:text-white/90"
-          >
-            Collapse
-            <ChevronUp aria-hidden className="h-3 w-3 shrink-0" />
-          </button>
-        </div>
-      ) : null}
     </section>
   );
 }

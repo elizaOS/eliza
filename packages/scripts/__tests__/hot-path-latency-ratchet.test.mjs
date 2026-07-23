@@ -12,13 +12,24 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
+  changedProductionFiles,
   collectFindings,
   compareFileCounts,
   countText,
+  diffScopedRegressions,
+  mergeBaseWith,
+  repoWideTotals,
+  resolveBaseRef,
+  runSelfTest,
 } from "../hot-path-latency-ratchet.mjs";
 
 const SCRIPT = resolve(import.meta.dirname, "../hot-path-latency-ratchet.mjs");
 const PROVIDER_PATH = "packages/foo/src/providers/facts.ts";
+
+// Generous timeout for cases that shell out to real git / spawn node: fast on
+// CI, but cold process spawns can exceed bun's 5s default on AV-scanned dev
+// boxes (notably Windows).
+const GIT_TEST_TIMEOUT_MS = 60000;
 
 const repos = [];
 afterAll(() => {
@@ -165,13 +176,21 @@ describe("diff-scoped comparison", () => {
 });
 
 describe("script modes", () => {
-  it("--self-test passes", () => {
-    const result = spawnSync("node", [SCRIPT, "--self-test"], {
-      encoding: "utf8",
-    });
-    expect(result.stderr).toBe("");
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("self-test passed");
+  it(
+    "--self-test passes",
+    () => {
+      const result = spawnSync("node", [SCRIPT, "--self-test"], {
+        encoding: "utf8",
+      });
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("self-test passed");
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
+
+  it("runs the self-test fixtures in-process (instrumented for coverage)", () => {
+    expect(() => runSelfTest()).not.toThrow();
   });
 });
 
@@ -201,71 +220,181 @@ function runRatchet(repo, extraArgs = []) {
 }
 
 describe("end-to-end against real git history", () => {
-  it("fails when a touched provider adds a bare awaited fetch", () => {
-    const repo = makeRepo(CLEAN_BODY);
-    write(repo, PROVIDER_PATH, provider(BARE_FETCH_BODY));
-    git(repo, "commit", "-aqm", "add bare fetch");
-    const result = runRatchet(repo);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Provider get() body");
-  });
-
-  it("passes when the added fetch is waitUntil-wrapped or annotated", () => {
-    for (const body of [WAIT_UNTIL_BODY, ANNOTATED_BODY]) {
+  it(
+    "fails when a touched provider adds a bare awaited fetch",
+    () => {
       const repo = makeRepo(CLEAN_BODY);
-      write(repo, PROVIDER_PATH, provider(body));
-      git(repo, "commit", "-aqm", "sanctioned change");
+      write(repo, PROVIDER_PATH, provider(BARE_FETCH_BODY));
+      git(repo, "commit", "-aqm", "add bare fetch");
       const result = runRatchet(repo);
-      expect(result.stderr).toBe("");
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Provider get() body");
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "passes when the added fetch is waitUntil-wrapped or annotated",
+    () => {
+      for (const body of [WAIT_UNTIL_BODY, ANNOTATED_BODY]) {
+        const repo = makeRepo(CLEAN_BODY);
+        write(repo, PROVIDER_PATH, provider(body));
+        git(repo, "commit", "-aqm", "sanctioned change");
+        const result = runRatchet(repo);
+        expect(result.stderr).toBe("");
+        expect(result.status).toBe(0);
+      }
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "passes a touched file whose pre-existing hot await is unchanged",
+    () => {
+      const repo = makeRepo(BARE_FETCH_BODY);
+      write(
+        repo,
+        PROVIDER_PATH,
+        provider(BARE_FETCH_BODY).replace('name: "FACTS"', 'name: "FACTS2"'),
+      );
+      git(repo, "commit", "-aqm", "unrelated edit");
+      const result = runRatchet(repo);
       expect(result.status).toBe(0);
-    }
-  });
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
 
-  it("passes a touched file whose pre-existing hot await is unchanged", () => {
-    const repo = makeRepo(BARE_FETCH_BODY);
-    write(
-      repo,
-      PROVIDER_PATH,
-      provider(BARE_FETCH_BODY).replace('name: "FACTS"', 'name: "FACTS2"'),
-    );
-    git(repo, "commit", "-aqm", "unrelated edit");
-    const result = runRatchet(repo);
-    expect(result.status).toBe(0);
-  });
+  it(
+    "passes (skips) when no base ref resolves",
+    () => {
+      // Repo with only a `main` branch: origin/develop and develop are both
+      // unresolvable, so the guard must skip and pass.
+      const repo = mkdtempSync(join(tmpdir(), "hot-path-ratchet-nobase-"));
+      repos.push(repo);
+      git(repo, "init", "-q", "-b", "main");
+      git(repo, "config", "user.email", "test@example.com");
+      git(repo, "config", "user.name", "test");
+      write(repo, PROVIDER_PATH, provider(BARE_FETCH_BODY));
+      git(repo, "add", ".");
+      git(repo, "commit", "-q", "-m", "base");
+      const env = { ...process.env, HOT_PATH_LATENCY_ROOT: repo };
+      delete env.HOT_PATH_LATENCY_BASE_REF;
+      const result = spawnSync("node", [SCRIPT], { encoding: "utf8", env });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("skipped (pass)");
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
 
-  it("passes (skips) when no base ref resolves", () => {
-    // Repo with only a `main` branch: origin/develop and develop are both
-    // unresolvable, so the guard must skip and pass.
-    const repo = mkdtempSync(join(tmpdir(), "hot-path-ratchet-nobase-"));
-    repos.push(repo);
-    git(repo, "init", "-q", "-b", "main");
-    git(repo, "config", "user.email", "test@example.com");
-    git(repo, "config", "user.name", "test");
-    write(repo, PROVIDER_PATH, provider(BARE_FETCH_BODY));
-    git(repo, "add", ".");
-    git(repo, "commit", "-q", "-m", "base");
-    const env = { ...process.env, HOT_PATH_LATENCY_ROOT: repo };
-    delete env.HOT_PATH_LATENCY_BASE_REF;
-    const result = spawnSync("node", [SCRIPT], { encoding: "utf8", env });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("skipped (pass)");
-  });
+  it(
+    "reports counts with --json",
+    () => {
+      const repo = makeRepo(CLEAN_BODY);
+      write(repo, PROVIDER_PATH, provider(BARE_FETCH_BODY));
+      git(repo, "commit", "-aqm", "add bare fetch");
+      const result = runRatchet(repo, ["--json"]);
+      expect(result.status).toBe(1);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.regressions).toEqual([
+        {
+          file: PROVIDER_PATH,
+          kind: "providerHotAwait",
+          current: 1,
+          base: 0,
+        },
+      ]);
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
+});
 
-  it("reports counts with --json", () => {
-    const repo = makeRepo(CLEAN_BODY);
-    write(repo, PROVIDER_PATH, provider(BARE_FETCH_BODY));
-    git(repo, "commit", "-aqm", "add bare fetch");
-    const result = runRatchet(repo, ["--json"]);
-    expect(result.status).toBe(1);
-    const parsed = JSON.parse(result.stdout);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.regressions).toEqual([
-      {
-        file: PROVIDER_PATH,
-        kind: "providerHotAwait",
-        current: 1,
-        base: 0,
-      },
-    ]);
-  });
+/**
+ * Run `fn` with the script's env knobs pointed at `repo`, restoring the
+ * previous values afterwards. The git plumbing resolves its root lazily, so
+ * direct imported calls (instrumented for coverage) hit the throwaway repo.
+ */
+function withRepoEnv(repo, fn) {
+  const prevRoot = process.env.HOT_PATH_LATENCY_ROOT;
+  const prevBase = process.env.HOT_PATH_LATENCY_BASE_REF;
+  process.env.HOT_PATH_LATENCY_ROOT = repo;
+  process.env.HOT_PATH_LATENCY_BASE_REF = "develop";
+  try {
+    return fn();
+  } finally {
+    if (prevRoot === undefined) delete process.env.HOT_PATH_LATENCY_ROOT;
+    else process.env.HOT_PATH_LATENCY_ROOT = prevRoot;
+    if (prevBase === undefined) delete process.env.HOT_PATH_LATENCY_BASE_REF;
+    else process.env.HOT_PATH_LATENCY_BASE_REF = prevBase;
+  }
+}
+
+describe("git plumbing via direct import (instrumented)", () => {
+  it(
+    "resolves base ref, merge-base, changed files, and regressions against a real repo",
+    () => {
+      const repo = makeRepo(CLEAN_BODY);
+      write(repo, PROVIDER_PATH, provider(BARE_FETCH_BODY));
+      git(repo, "commit", "-aqm", "add bare fetch");
+      withRepoEnv(repo, () => {
+        const baseRef = resolveBaseRef();
+        expect(baseRef).toBe("develop");
+        const base = mergeBaseWith(baseRef);
+        expect(base).toMatch(/^[0-9a-f]{40}$/);
+        const files = changedProductionFiles(base);
+        expect(files).toEqual([PROVIDER_PATH]);
+        const { perFile, regressions } = diffScopedRegressions(base, files);
+        expect(perFile).toEqual([
+          {
+            file: PROVIDER_PATH,
+            current: { providerHotAwait: 1, manifestHotAwait: 0 },
+            base: { providerHotAwait: 0, manifestHotAwait: 0 },
+          },
+        ]);
+        expect(regressions).toEqual([
+          {
+            file: PROVIDER_PATH,
+            kind: "providerHotAwait",
+            current: 1,
+            base: 0,
+          },
+        ]);
+      });
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "reports no regressions for a sanctioned (annotated) change",
+    () => {
+      const repo = makeRepo(CLEAN_BODY);
+      write(repo, PROVIDER_PATH, provider(ANNOTATED_BODY));
+      git(repo, "commit", "-aqm", "annotated change");
+      withRepoEnv(repo, () => {
+        const base = mergeBaseWith(resolveBaseRef());
+        const { regressions } = diffScopedRegressions(
+          base,
+          changedProductionFiles(base),
+        );
+        expect(regressions).toEqual([]);
+      });
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "computes repo-wide informational totals over tracked production files",
+    () => {
+      const repo = makeRepo(BARE_FETCH_BODY);
+      withRepoEnv(repo, () => {
+        const totals = repoWideTotals();
+        expect(totals.filesScanned).toBe(1);
+        expect(totals.counts).toEqual({
+          providerHotAwait: 1,
+          manifestHotAwait: 0,
+        });
+      });
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
 });

@@ -72,15 +72,20 @@ describe("plugin-embeddings handleTextEmbedding", () => {
 
   it("returns the parsed vector from a wire-mocked /embeddings response", async () => {
     const expected = vectorOf(1536);
+    const controller = new AbortController();
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([expected]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
-    const result = await handleTextEmbedding(createRuntime(), { text: "hello world" });
+    const result = await handleTextEmbedding(createRuntime(), {
+      text: "hello world",
+      signal: controller.signal,
+    });
 
     expect(result).toEqual(expected);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://embeddings.example/v1/embeddings");
+    expect(init.signal).toBe(controller.signal);
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
     const body = JSON.parse(init.body as string);
     expect(body.input).toBe("hello world");

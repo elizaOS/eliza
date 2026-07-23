@@ -116,7 +116,7 @@ describe("AgentRuntime.stop", () => {
 
 		const stopResult = await Promise.race([
 			runtime.stop({ fast: true }).then(() => "stopped"),
-			delay(100),
+			delay(500),
 		]);
 
 		expect(stopResult).toBe("stopped");

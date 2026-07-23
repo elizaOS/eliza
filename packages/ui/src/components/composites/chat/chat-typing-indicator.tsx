@@ -2,7 +2,7 @@
  * The one typing/working indicator for every chat surface (#12188 Phase 3).
  * `TypingIndicator` is the pending-reply bubble (panel `default` and
  * `game-modal` skins, used by ChatView and the homescreen ChatSurface);
- * `TurnStatus` is the phase-aware variant the continuous-chat overlay shows
+ * `TurnStatus` is the phase-aware variant the chat overlay shows
  * while the agent works — a spinner glyph plus a debounced phase label and a
  * live elapsed-seconds clock ("Thinking · 4s", "Running WEB_SEARCH · 12s"), the
  * Codex-style working indicator (#13535). All three render paths share the

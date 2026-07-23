@@ -5,7 +5,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openSettingsSection,
   seedAppStorage,
@@ -1124,7 +1124,7 @@ test.describe("Android communications app interactions", () => {
     page,
   }) => {
     const issues = installIssueGuards(page);
-    await hideContinuousChatOverlay(page);
+    await hideChatOverlay(page);
     await installDefaultAppRoutes(page);
 
     await openAppWindow(page, "phone", "/phone", [
@@ -1309,16 +1309,24 @@ test.describe("Smartglasses GUI interactions", () => {
     page,
   }) => {
     const issues = installIssueGuards(page);
-    await hideContinuousChatOverlay(page);
+    await hideChatOverlay(page);
 
     await installDefaultAppRoutes(page);
     await openSettingsSection(page, "Wearables");
+    // Scope to the settings work area: the persistent desktop settings rail
+    // (#16354) stays visible beside the pane, and its "Connectors" item
+    // substring-matches an unscoped getByRole("button", { name: "Connect" }).
+    const workArea = page.getByTestId("desktop-settings-work-area");
     await expect(
-      page.getByRole("heading", { name: "Smartglasses" }),
+      workArea.getByRole("heading", { name: "Smartglasses" }),
     ).toBeVisible({ timeout: 90_000 });
-    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
-    await expect(page.getByText("Bridge", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Connect" }).click();
+    await expect(
+      workArea.getByRole("button", { name: "Connect", exact: true }),
+    ).toBeVisible();
+    await expect(workArea.getByText("Bridge", { exact: true })).toBeVisible();
+    await workArea
+      .getByRole("button", { name: "Connect", exact: true })
+      .click();
     await expect(
       page.getByText("Whole headset connected", { exact: true }),
     ).toBeVisible();

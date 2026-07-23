@@ -164,3 +164,48 @@ export function resolveAgentSessionRecovery(
 
   return { action: "re-pair", agentId, cloudApiBase: base };
 }
+
+/**
+ * True when the unauthenticated state is re-pair-shaped in EVERY dimension
+ * except the presence of an app-origin cloud token: a `remote_auth_required`
+ * 401 on a cloud-managed dedicated agent with a resolvable agent id and cloud
+ * base, but no cloud session token in this origin's mirror.
+ *
+ * This is the exact state a returning PWA user hits on a cold agent-subdomain
+ * relaunch: they ARE signed in to Eliza Cloud (shared HttpOnly cookie) but the
+ * app-origin localStorage mirror is empty, so `resolveAgentSessionRecovery`
+ * reads `show-wall` and the user dead-ends at the "Re-open from Eliza Cloud"
+ * notice. When this predicate holds, the caller should attempt a silent
+ * cookie→session refresh and, if it yields a token, re-run the resolver, which
+ * will then return `re-pair`. When it does NOT hold, no refresh can help and
+ * the wall/notice is honest.
+ *
+ * SECURITY (auth-adjacent): a positive answer authorizes only a cookie-backed
+ * session REFRESH (an existing server-validated session), never a bypass. The
+ * refresh still fails closed when no cookie/valid session exists.
+ */
+export function agentSessionRepairNeedsCloudToken(
+  input: AgentSessionRecoveryInput,
+): boolean {
+  const { reason, activeServer, cloudToken, cloudApiBase, alreadyAttempted } =
+    input;
+
+  if (alreadyAttempted) return false;
+  if (reason !== "remote_auth_required") return false;
+  if (!activeServer) return false;
+
+  const isCloudManaged =
+    activeServer.kind === "cloud" ||
+    isDirectCloudSharedAgentBase(activeServer.apiBase);
+  if (!isCloudManaged) return false;
+
+  // The token is the ONLY missing piece — a present token is already handled by
+  // `resolveAgentSessionRecovery` returning `re-pair`, so this predicate is for
+  // the missing-token case specifically.
+  if (cloudToken?.trim()) return false;
+
+  if (!resolveDedicatedAgentId(activeServer)) return false;
+  if (!cloudApiBase.trim()) return false;
+
+  return true;
+}

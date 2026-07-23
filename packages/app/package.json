@@ -3,8 +3,8 @@
   "version": "2.0.0-beta.2",
   "type": "module",
   "scripts": {
-    "dev": "bun --bun vite",
-    "dev:chat-harness": "ELIZA_CHAT_UI_HARNESS=1 bun --bun vite",
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "dev:chat-harness": "ELIZA_CHAT_UI_HARNESS=1 node ./node_modules/vite/bin/vite.js",
     "preview": "bun --bun vite preview",
     "design-review": "node --import tsx test/design-review/run-design-review.ts",
     "lint": "bunx @biomejs/biome check --write src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-smoke.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
@@ -114,6 +114,7 @@
     "build:android:chat-harness": "ELIZA_CHAT_UI_HARNESS=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android",
     "build:android:cloud": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:cloud:debug": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
+    "build:android:lp3-cloud:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:system": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-system",
     "preflight:android:sideload": "node scripts/mobile-release-preflight.mjs --platform=android --sideload",
     "preflight:android:store": "node scripts/mobile-release-preflight.mjs --platform=android --store",

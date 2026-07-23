@@ -3,7 +3,9 @@
 // from the schema/types/validator files individually.
 
 export {
+	bundleTierSlug,
 	ELIZA_1_BACKENDS,
+	ELIZA_1_BUNDLE_TIER_SLUGS,
 	ELIZA_1_KERNELS,
 	ELIZA_1_MANIFEST_SCHEMA_URL,
 	ELIZA_1_MANIFEST_SCHEMA_VERSION,

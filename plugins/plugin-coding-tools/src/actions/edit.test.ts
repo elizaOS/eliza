@@ -52,6 +52,22 @@ describe("EDIT", () => {
     expect(result.userFacingText).toContain("Replaced 1 occurrence in ");
   });
 
+  it("resolves relative paths against the session cwd", async () => {
+    env.sessionCwd.setCwd("test-room", env.tmpDir);
+    const file = await seedFile("relative-edit.txt", "before value");
+
+    const result = await editFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: "relative-edit.txt",
+        old_string: "before",
+        new_string: "after",
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe("after value");
+  });
+
   it("keeps edit plugin-owned until fs.patch parity exists", async () => {
     const file = await seedFile("routed.txt", "alpha\nbeta\ngamma");
     const guardedRuntime = {

@@ -1,11 +1,12 @@
 /**
  * Covers InferenceTurnTimer and the inference-timing AsyncLocalStorage helpers:
- * span roll-up by name, mark-derived timeToReply / timeToFirstToken,
- * duplicate-mark anomaly detection, ALS attribution across async boundaries,
- * and the emit / format / dev-payload registry. Deterministic — no live model.
+ * span roll-up by name, request-boundary milestone derivation, duplicate-mark
+ * anomaly detection, ALS attribution across async boundaries, and the emit /
+ * format / dev-payload registry. Deterministic — no live model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	buildInferenceFlowBreakdown,
 	buildInferenceTimingDevPayload,
 	emitInferenceTiming,
 	formatInferenceTimingSummary,
@@ -38,14 +39,18 @@ describe("InferenceTurnTimer", () => {
 		});
 	});
 
-	it("derives timeToReply / timeToFirstToken from marks, null when missing", () => {
+	it("derives request-boundary latency milestones from marks, null when missing", () => {
 		const timer = new InferenceTurnTimer({ turnId: "t2", label: "test" });
 		const start = timer.t0EpochMs;
 		timer.mark(INFERENCE_MARKS.firstToken, start + 10);
+		timer.mark(INFERENCE_MARKS.firstVisibleReply, start + 15);
 		timer.mark(INFERENCE_MARKS.replyDelivered, start + 25);
+		timer.mark(INFERENCE_MARKS.responseFinalized, start + 30);
 		const s = timer.summary();
 		expect(s.timeToFirstTokenMs).toBe(10);
+		expect(s.timeToFirstVisibleMs).toBe(15);
 		expect(s.timeToReplyMs).toBe(25);
+		expect(s.timeToResponseFinalizedMs).toBe(30);
 
 		const noMarks = new InferenceTurnTimer({
 			turnId: "t3",
@@ -53,6 +58,8 @@ describe("InferenceTurnTimer", () => {
 		}).summary();
 		expect(noMarks.timeToReplyMs).toBeNull();
 		expect(noMarks.timeToFirstTokenMs).toBeNull();
+		expect(noMarks.timeToFirstVisibleMs).toBeNull();
+		expect(noMarks.timeToResponseFinalizedMs).toBeNull();
 	});
 
 	it("totalMs is null until close()", () => {
@@ -88,6 +95,120 @@ describe("InferenceTurnTimer", () => {
 		timer.setModelProvider("elizaOSCloud");
 		timer.setModelProvider("other");
 		expect(timer.summary().modelProvider).toBe("elizaOSCloud");
+	});
+});
+
+describe("exclusive inference flow breakdown", () => {
+	it("partitions nested and parallel spans without double-counting", () => {
+		const summary = {
+			turnId: "flow",
+			label: "chat-request",
+			roomId: null,
+			modelProvider: "test",
+			t0EpochMs: 0,
+			closedAtEpochMs: 100,
+			totalMs: 100,
+			timeToFirstTokenMs: 65,
+			timeToFirstVisibleMs: 80,
+			timeToReplyMs: 85,
+			timeToResponseFinalizedMs: 95,
+			spans: [
+				{
+					name: "chat:message-service",
+					startMs: 10,
+					endMs: 90,
+					durationMs: 80,
+				},
+				{
+					name: "composeState",
+					startMs: 20,
+					endMs: 50,
+					durationMs: 30,
+				},
+				{
+					name: "provider:A",
+					startMs: 20,
+					endMs: 45,
+					durationMs: 25,
+				},
+				{
+					name: "provider:B",
+					startMs: 25,
+					endMs: 50,
+					durationMs: 25,
+				},
+				{
+					name: "model:RESPONSE_HANDLER",
+					startMs: 50,
+					endMs: 75,
+					durationMs: 25,
+				},
+				{
+					name: "model-postprocess:RESPONSE_HANDLER",
+					startMs: 75,
+					endMs: 80,
+					durationMs: 5,
+				},
+				{
+					name: "message:planner",
+					startMs: 80,
+					endMs: 90,
+					durationMs: 10,
+				},
+				{
+					name: "actions:planner-tool",
+					startMs: 80,
+					endMs: 83,
+					durationMs: 3,
+				},
+				{
+					name: "evaluators:planner",
+					startMs: 83,
+					endMs: 85,
+					durationMs: 2,
+				},
+				{
+					name: "chat:response-finalization",
+					startMs: 90,
+					endMs: 95,
+					durationMs: 5,
+				},
+			],
+			marks: [],
+			byName: {},
+			anomalies: [],
+		} satisfies InferenceTurnSummary;
+
+		const flow = buildInferenceFlowBreakdown(summary);
+		expect(flow.stages.reduce((total, stage) => total + stage.totalMs, 0)).toBe(
+			100,
+		);
+		expect(
+			flow.stages.find((stage) => stage.stage === "providers")?.totalMs,
+		).toBe(30);
+		expect(
+			flow.stages.find((stage) => stage.stage === "llm-inference")?.totalMs,
+		).toBe(25);
+		expect(
+			flow.stages.find((stage) => stage.stage === "actions")?.totalMs,
+		).toBe(3);
+		expect(
+			flow.stages.find((stage) => stage.stage === "evaluators")?.totalMs,
+		).toBe(2);
+		expect(
+			flow.stages.find((stage) => stage.stage === "planner-overhead")?.totalMs,
+		).toBe(5);
+		expect(
+			flow.stages.find((stage) => stage.stage === "unattributed")?.totalMs,
+		).toBe(15);
+		expect(
+			flow.stages.reduce(
+				(total, stage) =>
+					total +
+					(stage.toFirstVisibleMs === null ? 0 : stage.toFirstVisibleMs),
+				0,
+			),
+		).toBe(80);
 	});
 });
 
@@ -143,10 +264,14 @@ describe("emit + format + registry", () => {
 		timer.setModelProvider("elizaOSCloud");
 		timer.recordSpan("composeState", 20);
 		timer.recordSpan("model:RESPONSE_HANDLER", 200);
+		timer.mark(INFERENCE_MARKS.firstVisibleReply, timer.t0EpochMs + 215);
 		timer.mark(INFERENCE_MARKS.replyDelivered, timer.t0EpochMs + 230);
+		timer.mark(INFERENCE_MARKS.responseFinalized, timer.t0EpochMs + 240);
 		const line = formatInferenceTimingSummary(timer.close());
 		expect(line).toContain("[InferenceTiming] message-turn");
 		expect(line).toContain("provider=elizaOSCloud");
+		expect(line).toContain("ttvisible=215ms");
+		expect(line).toContain("finalized=240ms");
 		expect(line).toContain("model:RESPONSE_HANDLER=200ms");
 		// Biggest contributor is ordered before the smaller one.
 		expect(line.indexOf("model:RESPONSE_HANDLER")).toBeLessThan(
@@ -161,6 +286,7 @@ describe("emit + format + registry", () => {
 		emitInferenceTiming(timer);
 		const payload = buildInferenceTimingDevPayload();
 		expect(payload.turns.some((t) => t.turnId === turnId)).toBe(true);
+		expect(payload.flows.some((flow) => flow.turnId === turnId)).toBe(true);
 		expect(
 			payload.spanHistograms["model:RESPONSE_HANDLER"]?.count,
 		).toBeGreaterThan(0);
@@ -168,6 +294,73 @@ describe("emit + format + registry", () => {
 
 	it("emitInferenceTiming is no-op-safe for an undefined timer", () => {
 		expect(emitInferenceTiming(undefined)).toBeNull();
+	});
+
+	it("serves durable summaries beyond the 64-turn process cache", () => {
+		const persisted = Array.from({ length: 100 }, (_, index) => {
+			const timer = new InferenceTurnTimer({
+				turnId: `persisted-${index}`,
+				label: "message-turn",
+				t0EpochMs: Date.now() + 100_000 + index,
+			});
+			timer.recordSpan("provider:FACTS", index + 1);
+			return timer.close();
+		});
+
+		const payload = buildInferenceTimingDevPayload(80, persisted);
+
+		expect(payload.turns).toHaveLength(80);
+		expect(payload.turns.at(-1)?.turnId).toBe("persisted-99");
+		expect(payload.spanHistograms["provider:FACTS"]?.count).toBe(100);
+		expect(payload.spanHistograms["provider:FACTS"]?.p95).toBe(95);
+		expect(
+			payload.providers.find((entry) => entry.providerName === "FACTS"),
+		).toEqual(
+			expect.objectContaining({
+				unknown: 100,
+				cacheHits: 0,
+				execution: expect.objectContaining({ count: 100, p95: 95 }),
+			}),
+		);
+	});
+
+	it("ranks providers by p95 and aggregates outcomes, cache hits, and coalescing", () => {
+		const timer = new InferenceTurnTimer({
+			turnId: "provider-telemetry",
+			label: "message-turn",
+			t0EpochMs: Date.now() + 200_000,
+		});
+		timer.recordSpan("provider:FAST", 5, {
+			outcome: "success",
+			coalesced: false,
+		});
+		timer.recordSpan("provider:SLOW", 120, {
+			outcome: "deadline_exceeded",
+			coalesced: true,
+		});
+		timer.recordSpan("provider-cache:FAST", 0, { cacheHit: true });
+
+		const payload = buildInferenceTimingDevPayload(50, [timer.close()]);
+		expect(payload.providers.map((entry) => entry.providerName)).toEqual([
+			"SLOW",
+			"FAST",
+		]);
+		expect(payload.providers[0]).toEqual(
+			expect.objectContaining({
+				providerName: "SLOW",
+				deadlineExceeded: 1,
+				coalesced: 1,
+				execution: expect.objectContaining({ p95: 120 }),
+			}),
+		);
+		expect(payload.providers[1]).toEqual(
+			expect.objectContaining({
+				providerName: "FAST",
+				successes: 1,
+				cacheHits: 1,
+				execution: expect.objectContaining({ p95: 5 }),
+			}),
+		);
 	});
 });
 

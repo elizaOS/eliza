@@ -48,7 +48,7 @@ import XCTest
 ///
 /// Assertion channel: the web app mirrors its gesture state into sr-only
 /// static texts — `chat-detent:<pill|collapsed|half|full>` +
-/// `chat-maximized:<true|false>` (ContinuousChatOverlay) and
+/// `chat-maximized:<true|false>` (ChatOverlay) and
 /// `home-launcher-page:<home|launcher>` (HomeLauncherSurface) — because `data-*`
 /// attributes never surface in the native accessibility tree. `chat-detent`
 /// folds full-bleed into "full", so the maximize/restore leg reads the separate

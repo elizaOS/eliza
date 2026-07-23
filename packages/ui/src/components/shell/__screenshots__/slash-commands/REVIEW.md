@@ -1,8 +1,8 @@
 # Slash commands — aesthetic review
 
-Surface: `ContinuousChatOverlay` (the `/chat` overlay) — agent dashboard, not
+Surface: `ChatOverlay` (the `/chat` overlay) — agent dashboard, not
 cloud-frontend. Captured via `capture-slash-commands.mjs` against the
-`Shell/ContinuousChatOverlay → SlashCommands` story at desktop (1280×800) and
+`Shell/ChatOverlay → SlashCommands` story at desktop (1280×800) and
 mobile (390×844), rest states.
 
 ## States captured

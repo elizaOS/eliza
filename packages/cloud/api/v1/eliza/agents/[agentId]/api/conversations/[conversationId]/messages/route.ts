@@ -1,6 +1,7 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations conversationid messages route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { InsufficientCreditsError } from "@/lib/api/errors";
+import type { BridgeExecutionContext } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
@@ -69,6 +70,16 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  // Workers only: pass an executionCtx so the shared turn defers its billing
+  // tail off the response path via waitUntil. Hono's executionCtx getter
+  // THROWS outside a Worker (tests, Node) — degrade to undefined there so the
+  // turn settles inline, preserving fully-synchronous behavior.
+  let executionCtx: BridgeExecutionContext | undefined;
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    executionCtx = undefined;
+  }
   let result: { text: string; agentName: string };
   try {
     result = await sharedRestMessageSend(
@@ -77,6 +88,7 @@ app.post("/", async (c) => {
       conversationId,
       text,
       r.agentName,
+      executionCtx,
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.
