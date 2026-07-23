@@ -234,6 +234,9 @@ async function __hono_POST(
                 agentId,
                 orgId: user.organization_id,
                 keyPrefix: keyPush.keyPrefix,
+                // false = the container image predates the fingerprint echo;
+                // the push stands but the swap was not process-verified.
+                verified: keyPush.verified === true,
               });
             }
           } catch (keyErr) {

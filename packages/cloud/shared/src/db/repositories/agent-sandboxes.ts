@@ -47,6 +47,15 @@ export type {
 
 export type AgentSandboxBackupMetadata = Omit<StoredAgentSandboxBackup, "state_data">;
 
+/**
+ * A user sandbox row freshly claimed from the warm pool. `warm_pool_row_id`
+ * is the id of the pool row the claim transaction deleted — the container's
+ * boot-time inference key is named `agent-sandbox:<that id>`, so the
+ * post-claim re-key needs it to revoke the pool-org credential; it exists
+ * nowhere else once the pool row is gone (#17066 review).
+ */
+export type WarmClaimedAgentSandbox = AgentSandbox & { warm_pool_row_id: string };
+
 const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   memories: [],
   config: {},
@@ -1075,7 +1084,12 @@ export class AgentSandboxesRepository {
    * from the pool row, status flips to 'running', and the pool row is
    * deleted in the same transaction.
    *
-   * Returns the updated user row, or null when the pool is empty.
+   * Returns the updated user row — augmented with `warm_pool_row_id`, the id
+   * of the pool row deleted by this claim — or null when the pool is empty.
+   * The pool row id is otherwise lost with the deletion, but the container's
+   * BOOT credentials are named for it (`agent-sandbox:<poolRowId>` inference
+   * key), so the post-claim re-key needs it to revoke the pool-org key
+   * (#17066 review): the claimed row's own id can never reach that key name.
    */
   async claimWarmContainer(params: {
     userAgentId: string;
@@ -1085,7 +1099,7 @@ export class AgentSandboxesRepository {
     agentConfig?: Record<string, unknown>;
     characterId?: string | null;
     expectedUpdatedAt?: Date | string | null;
-  }): Promise<AgentSandbox | null> {
+  }): Promise<WarmClaimedAgentSandbox | null> {
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
       // Attribution guard (audit §C1c): NEVER claim a pool row whose node_id is
@@ -1233,7 +1247,11 @@ export class AgentSandboxesRepository {
 
       await tx.delete(agentSandboxes).where(eq(agentSandboxes.id, pool.id));
 
-      return updated ?? null;
+      // Carry the deleted pool row's id out of the transaction: the container's
+      // boot-time inference key is named `agent-sandbox:<pool.id>`, and this is
+      // the last moment that id exists anywhere — the post-claim re-key uses it
+      // to revoke the pool-org credential (#17066 review).
+      return updated ? { ...updated, warm_pool_row_id: pool.id } : null;
     });
   }
 

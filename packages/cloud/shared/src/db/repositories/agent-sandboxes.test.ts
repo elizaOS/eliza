@@ -711,6 +711,12 @@ describe("AgentSandboxesRepository", () => {
       expect(setArg.node_id).toBe("node-1");
       // Pool row deleted on claim (single record now the user's).
       expect(warmClaimDeleteWhere).toHaveBeenCalledTimes(1);
+      // The DELETED pool row's id rides out on the claimed row: the container's
+      // boot inference key is named `agent-sandbox:<pool row id>`, and the
+      // post-claim re-key can only revoke that pool-org credential if the claim
+      // carries the id out of the transaction (#17066 review — the claimed
+      // row's own id can never reach that key name).
+      expect(result?.warm_pool_row_id).toBe("pool-1");
     });
 
     test("countUnclaimedPool excludes null/empty node_id rows (ready == claimable)", async () => {
