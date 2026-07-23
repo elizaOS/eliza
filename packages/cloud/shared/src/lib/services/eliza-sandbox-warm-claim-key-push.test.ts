@@ -5,11 +5,15 @@
  * inference key scoped to THAT org. After a claim the running container must be
  * re-credentialed to the CLAIMING user's org or it replies "My Eliza Cloud key
  * isn't authorized for inference right now". This service method:
- *   1. mints a NEW inference key for the CLAIMING user's org (createForAgent,
- *      whose org-agnostic revoke-by-name also deletes the booted pool-org key);
+ *   1. mints a NEW inference key for the CLAIMING user's org (createForAgent
+ *      revokes only the claimed row's OWN prior key name — the pool boot key
+ *      lives under the deleted pool row's name and is untouchable here);
  *   2. persists it onto the row env (ELIZAOS_CLOUD_API_KEY) for restart safety;
  *   3. pushes it onto the LIVE container via its authenticated
- *      POST /api/cloud/login/persist route with forceInferenceEnabled.
+ *      POST /api/cloud/login/persist route with forceInferenceEnabled, and
+ *      verifies the echoed appliedKeyFingerprint when present;
+ *   4. after a successful push, revokes the pool-org BOOT key by the
+ *      warm_pool_row_id the claim carried out of its transaction.
  *
  * These pins:
  *   - the mint is scoped to the CLAIMED row's user org (never the pool org);
@@ -17,6 +21,11 @@
  *   - the persist request carries the NEW key + org + forceInferenceEnabled,
  *     over the authed transport, and the SECRET NEVER appears in a log;
  *   - the row env is updated so a restart boots re-credentialed;
+ *   - a matching fingerprint echo yields verified:true; a MISMATCH throws
+ *     (stale key shadowing the swap) and skips the pool revoke; a legacy
+ *     response without the field is pushed-but-unverified;
+ *   - the pool boot key is revoked ONLY after a successful push (never on the
+ *     failure branch), by pool row id, best-effort with a stable event;
  *   - a non-2xx persist response throws (bounded) so the caller can log the
  *     stable failure event; the claim itself survives (caller contract).
  * [sol-warmpool-keypush]
@@ -37,13 +46,14 @@ const createForAgent = mock(
     plainKey: MINTED_KEY,
   }),
 );
+const revokeForAgent = mock(async (_agentSandboxId: string) => undefined);
 const update = mock(async (_id: string, _data: Record<string, unknown>) => undefined);
 
-// Mock ONLY the api-keys service (mint boundary). The agent-sandboxes
+// Mock ONLY the api-keys service (mint + revoke boundary). The agent-sandboxes
 // repository is imported for many named exports by eliza-sandbox, so instead
 // of mocking the whole module we override `update` on the real singleton below.
 mock.module("./api-keys", () => ({
-  apiKeysService: { createForAgent },
+  apiKeysService: { createForAgent, revokeForAgent },
 }));
 
 const { agentSandboxesRepository } = await import("../../db/repositories/agent-sandboxes");
@@ -63,10 +73,15 @@ mock.module("../utils/logger", () => ({
 }));
 
 const { ElizaSandboxService } = await import("./eliza-sandbox.ts?warmkeypush");
+const { warmClaimKeyFingerprint } = await import("./warm-claim-key-push");
+
+// The fingerprint an up-to-date container echoes after applying MINTED_KEY.
+const MINTED_KEY_FINGERPRINT = await warmClaimKeyFingerprint(MINTED_KEY);
 
 type KeyPusher = {
   pushClaimedWarmContainerInferenceKey(rec: Record<string, unknown>): Promise<{
     pushed: boolean;
+    verified?: boolean;
     keyPrefix?: string;
   }>;
 };
@@ -78,6 +93,8 @@ let capturedRequests: Array<{ url: string; body: string; headers: Headers }> = [
 
 beforeEach(() => {
   createForAgent.mockClear();
+  revokeForAgent.mockReset();
+  revokeForAgent.mockResolvedValue(undefined);
   update.mockClear();
   loggerWarn.mockClear();
   loggerInfo.mockClear();
@@ -96,7 +113,12 @@ beforeEach(() => {
       body: typeof init?.body === "string" ? init.body : "",
       headers: new Headers(init?.headers),
     });
-    return Response.json({ ok: true });
+    // Default: an up-to-date container that applied the pushed key and echoes
+    // its fingerprint. Legacy/mismatch shapes are overridden per test.
+    return Response.json({
+      ok: true,
+      appliedKeyFingerprint: MINTED_KEY_FINGERPRINT,
+    });
   }) as unknown as typeof fetch;
 });
 
@@ -108,6 +130,8 @@ afterEach(() => {
     Reflect.deleteProperty(globalThis, "WebSocketPair");
   }
 });
+
+const POOL_ROW_ID = "44444444-4444-4444-8444-444444444444";
 
 function claimedRow() {
   return {
@@ -123,6 +147,9 @@ function claimedRow() {
     web_ui_port: 3000,
     headscale_ip: "100.64.0.11",
     sandbox_id: `agent-${AGENT_ID}`,
+    // Carried out of the claim tx: the id of the DELETED pool row, whose name
+    // the container's boot inference key was minted under.
+    warm_pool_row_id: POOL_ROW_ID,
     environment_vars: {
       ELIZA_API_TOKEN: "agent_transport_token",
       ELIZAOS_CLOUD_API_KEY: POOL_BOOT_KEY,
@@ -139,6 +166,8 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     const result = await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
 
     expect(result.pushed).toBe(true);
+    // The container echoed the fingerprint of the minted key — process-verified.
+    expect(result.verified).toBe(true);
     expect(result.keyPrefix).toBe(`${MINTED_KEY.slice(0, 12)}…`);
 
     // 1. Mint scoped to the CLAIMED row's user org — NEVER the pool org.
@@ -174,6 +203,12 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     expect(body.forceInferenceEnabled).toBe(true);
     expect(req.headers.get("authorization")).toBe("Bearer agent_transport_token");
 
+    // 4. The pool BOOT key (named for the DELETED pool row, which the step-1
+    //    mint can never reach) is revoked after the successful push — no
+    //    sentinel-org credential survives a completed re-key (#17066 review).
+    expect(revokeForAgent).toHaveBeenCalledTimes(1);
+    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
+
     // SECRET DISCIPLINE: neither the minted key nor the pool-boot key ever
     // appears in any log line.
     const logged = [...loggerInfo.mock.calls, ...loggerWarn.mock.calls, ...loggerError.mock.calls]
@@ -208,5 +243,60 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     // The key was still minted + env persisted (idempotent on retry / restart).
     expect(createForAgent).toHaveBeenCalledTimes(1);
     expect(update).toHaveBeenCalledTimes(1);
+    // The pool boot key is deliberately NOT revoked on the push-failure
+    // branch — the container may still be signing with it (e.g. the gateway
+    // relay); it dies with the next restart's re-credential instead.
+    expect(revokeForAgent).not.toHaveBeenCalled();
+  });
+
+  test("a fingerprint MISMATCH throws (stale key shadowing the swap) and skips the pool revoke", async () => {
+    globalThis.fetch = mock(async () =>
+      Response.json({ ok: true, appliedKeyFingerprint: "deadbeefdeadbeef" }),
+    ) as unknown as typeof fetch;
+
+    await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
+      /fingerprint mismatch/i,
+    );
+
+    // The swap did not verifiably take: leave the pool boot key alone so the
+    // container is never stripped of the only credential it may still hold.
+    expect(revokeForAgent).not.toHaveBeenCalled();
+  });
+
+  test("a legacy container response without a fingerprint is pushed-but-unverified; revoke still runs", async () => {
+    globalThis.fetch = mock(async () => Response.json({ ok: true })) as unknown as typeof fetch;
+
+    const result = await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
+
+    expect(result.pushed).toBe(true);
+    expect(result.verified).toBe(false);
+    // Transport accepted the push (HTTP 200): the boot key revoke proceeds.
+    expect(revokeForAgent).toHaveBeenCalledTimes(1);
+    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
+  });
+
+  test("a pool-key revoke failure is best-effort: push still reports success with the stable event", async () => {
+    revokeForAgent.mockRejectedValueOnce(new Error("db down"));
+
+    const result = await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
+
+    expect(result.pushed).toBe(true);
+    expect(result.verified).toBe(true);
+    const revokeEvents = loggerWarn.mock.calls.filter(
+      (c) =>
+        (c[1] as Record<string, unknown> | undefined)?.event === "warm_pool.pool_key_revoke_failed",
+    );
+    expect(revokeEvents).toHaveLength(1);
+    expect((revokeEvents[0]?.[1] as Record<string, unknown>)?.poolRowId).toBe(POOL_ROW_ID);
+  });
+
+  test("a claimed row without warm_pool_row_id skips the revoke (nothing to revoke by)", async () => {
+    const rec = claimedRow() as Record<string, unknown>;
+    delete rec.warm_pool_row_id;
+
+    const result = await svc().pushClaimedWarmContainerInferenceKey(rec);
+
+    expect(result.pushed).toBe(true);
+    expect(revokeForAgent).not.toHaveBeenCalled();
   });
 });

@@ -28,9 +28,15 @@
  *   - it is NEVER logged and NEVER placed on an event — this module returns
  *     only a boolean `pushed` + the key PREFIX (first 12 chars, safe to log
  *     for correlation) and callers must log only that prefix;
- *   - the pool-org key that the container booted with is REVOKED on claim (the
- *     caller drives `apiKeysService.revokeForAgent` against the pool org) so no
- *     usable credential for the pool org survives the claim.
+ *   - the container echoes back a sha-256 FINGERPRINT prefix of the key its
+ *     runtime resolves post-swap (`appliedKeyFingerprint`), never key
+ *     material — `warmClaimKeyFingerprint` is the shared derivation both
+ *     sides compare;
+ *   - the pool-org key the container BOOTED with is named for the DELETED
+ *     pool row (`agent-sandbox:<poolRowId>`), so the claim-time mint cannot
+ *     touch it; `pushClaimedWarmContainerInferenceKey` revokes it by
+ *     `warm_pool_row_id` after a successful push, so no usable sentinel-org
+ *     credential survives a completed re-key.
  */
 
 export const WARM_CLAIM_KEY_PUSH_TIMEOUT_MS = 10_000;
@@ -76,4 +82,28 @@ export function buildWarmClaimKeyPushBody(params: {
 /** A key prefix safe to place in logs/events. Never log the full key. */
 export function safeKeyPrefix(apiKey: string): string {
   return `${apiKey.slice(0, WARM_CLAIM_KEY_LOG_PREFIX_LEN)}…`;
+}
+
+/**
+ * Hex length of the sha-256 prefix the container echoes as
+ * `appliedKeyFingerprint` and the control plane compares. 16 hex chars
+ * (64 bits) is ample for an equality check between two values derived from
+ * the same secret, and reveals nothing recoverable about the key.
+ */
+export const WARM_CLAIM_KEY_FINGERPRINT_HEX_LEN = 16;
+
+/**
+ * Shared fingerprint derivation for the push-verification round trip: the
+ * container computes this over the cloud key its runtime RESOLVES after the
+ * swap, the control plane computes it over the key it MINTED, and equality
+ * proves the running process applied the pushed credential (transport 200
+ * alone cannot — the F0 lineage is "control plane believed, process didn't").
+ * Uses Web Crypto so the same function runs on Workers, Node, and Bun.
+ */
+export async function warmClaimKeyFingerprint(apiKey: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, WARM_CLAIM_KEY_FINGERPRINT_HEX_LEN);
 }

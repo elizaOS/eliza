@@ -167,6 +167,52 @@ async function fetchCloudLoginStatus(
 }
 
 /**
+ * Sha-256 hex prefix (16 chars) of the cloud API key the RUNNING runtime
+ * resolves right now, echoed to `POST /api/cloud/login/persist` callers as
+ * `appliedKeyFingerprint`. The warm-claim re-credential control plane
+ * (`pushClaimedWarmContainerInferenceKey`) compares it against the key it
+ * minted: equality proves the process applied the pushed credential, while a
+ * transport 200 alone only proves the route ran (the F0 bug lineage is
+ * "control plane believed, process didn't"). Resolution goes through
+ * `runtime.getSetting` first — the same precedence chain inference uses, so a
+ * stale key shadowing via character secrets is DETECTED, not papered over —
+ * with `process.env` as the pre-boot fallback. Derivation mirrors
+ * `warmClaimKeyFingerprint` in cloud/shared `warm-claim-key-push.ts` (kept
+ * duplicated so the agent bundle never imports the cloud DB layer); only a
+ * digest prefix crosses the wire, never key material.
+ */
+export async function resolveAppliedCloudKeyFingerprint(state: {
+  runtime: unknown;
+}): Promise<string | undefined> {
+  const runtime = state.runtime as RuntimeCloudLike | null;
+  let resolved: unknown;
+  try {
+    resolved =
+      typeof runtime?.getSetting === "function"
+        ? runtime.getSetting("ELIZAOS_CLOUD_API_KEY")
+        : undefined;
+  } catch {
+    // error-policy:J6 best-effort — the persist itself succeeded; a probe
+    // failure downgrades the response to "unverified" (field omitted), it
+    // must not turn a completed persist into a 500.
+    resolved = undefined;
+  }
+  const key =
+    typeof resolved === "string" && resolved.trim()
+      ? resolved.trim()
+      : process.env.ELIZAOS_CLOUD_API_KEY;
+  if (!key) return undefined;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(key),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+}
+
+/**
  * Pin the ElizaCloud cloud-proxy text route into a config object so
  * `isCloudInferenceSelectedInConfig` returns true on the next boot. Additive
  * and minimal: preserves any existing serviceRouting fields, only (re)writes
@@ -540,7 +586,16 @@ export async function handleCloudRoute(
         // path omits it and keeps config-derived behavior.
         forceInferenceEnabled: body.forceInferenceEnabled === true,
       });
-      sendJson(res, { ok: true });
+      // Echo what the runtime NOW resolves so the pusher can verify the swap
+      // took (fingerprint prefix only — never key material). Omitted when no
+      // key resolves; callers treat absence as pushed-but-unverified.
+      const appliedKeyFingerprint = await resolveAppliedCloudKeyFingerprint({
+        runtime: state.runtime,
+      });
+      sendJson(
+        res,
+        appliedKeyFingerprint ? { ok: true, appliedKeyFingerprint } : { ok: true },
+      );
     } catch (err) {
       // error-policy:J1 boundary translation — a persistence failure surfaces as
       // a 500 with the message; the route never reports success it did not do.
