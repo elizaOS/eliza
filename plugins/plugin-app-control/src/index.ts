@@ -1,10 +1,9 @@
 /**
- * @module plugin-app-control
- * @description elizaOS plugin that lets the Eliza agent launch, close, list,
- * relaunch, load-from-directory, and create Eliza apps.
+ * Registers the app lifecycle, shell-view, settings, and background controls
+ * exposed to Eliza agents.
  *
  * Surface:
- * - One unified `APP` action (sub-modes: launch / relaunch / list /
+ * - One unified `APP` action (sub-modes: launch / relaunch / stop / list /
  *   load_from_directory / create).
  * - `available_apps` provider — installed + running apps for the planner.
  * - `AppRegistryService` — persists load_from_directory registrations and
