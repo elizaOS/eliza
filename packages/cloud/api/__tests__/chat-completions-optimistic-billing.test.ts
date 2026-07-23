@@ -1,38 +1,11 @@
 /**
- * Route-level regression tests for the Tier-2 optimistic-billing DECISION in
- * POST /api/v1/chat/completions (#9899 / #10026, activated in prod by #10066).
- *
- * The optimistic-billing SERVICE layer (eligibility math, exactly-once settle,
- * sweep) is covered by `inference-billing-fast-path.test.ts`. What was NOT
- * covered is the ROUTE's orchestration of those functions — the part the prod
- * flag flip actually turns on:
- *
- *   gate (hot-path && flag && backstop-writable) → eligibility → write the
- *   durable backstop → only on a durable write take the optimistic path;
- *   otherwise fall back to the synchronous credit reserve.
- *
- * These tests drive the REAL `handleChatCompletionsPOST` through that decision
- * with the REAL `isOptimisticEligible` (the load-bearing predicate). Only the
- * env-gates, the gate-balance read, the backstop write, and the synchronous
- * reserve are mocked at the module boundary so we can (a) control the inputs and
- * (b) prove which billing path the route chose. The model call (`generateText`)
- * is stubbed to throw immediately AFTER the decision, so the route returns an
- * error response while the billing path has already been chosen — the spies are
- * the observation point, not the response.
- *
- * Invariants pinned (each has a POSITIVE assertion so an early bail before the
- * decision can't make a negative-only test pass):
- *   1. Eligible org → optimistic path: backstop written, synchronous reserve
- *      SKIPPED, optimistic settler wired.
- *   2. Balance below SAFE_BALANCE_THRESHOLD → synchronous reserve (no backstop).
- *   3. Backstop not writable (cache down) → synchronous reserve, never forwards
- *      on an un-recorded charge (#9899 free-inference hole).
- *   4. Flag OFF → synchronous reserve (default-safe).
- *   5. Non-durable backstop write → fall back to synchronous reserve (backstop
- *      attempted, optimistic settler NOT wired).
+ * Route-level regression coverage for cache-only organization admission in
+ * POST /api/v1/chat/completions. It proves Worker lifetime reaches the central
+ * service while route code never invokes legacy storage; service tests own policy.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as rateLimitActual from "@/lib/middleware/rate-limit";
 import * as pricingActual from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
@@ -45,6 +18,7 @@ import * as billingDeferredActual from "@/lib/services/inference-billing-deferre
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
 import * as billingLedgerActual from "@/lib/services/inference-billing-ledger";
 import * as modelCatalogActual from "@/lib/services/model-catalog";
+import * as organizationAdmissionActual from "@/lib/services/organization-inference-admission";
 import * as teamPoolActual from "@/lib/services/team-credential-pool";
 import * as creditReservationActual from "@/lib/utils/credit-reservation";
 
@@ -57,7 +31,8 @@ const CLIENT_REQUEST_ID = "req-optimistic-test";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// --- per-test knobs the mocks read by reference -----------------------------
+// Legacy billing doubles remain configurable so they can act as tripwires:
+// central admission is the only supported route-level entry point.
 let billingEnabled = true;
 let backstopAvailable = true;
 let gateBalanceUsd = 100;
@@ -67,8 +42,9 @@ let billingLedger: "kv" | "db" = "kv";
 let deferredEnabled = false;
 let ledgerAdmits = true;
 let reserveCreditsThrows: Error | null = null;
+let organizationAdmissionError: Error | null = null;
 
-// --- spies on the two terminal billing paths --------------------------------
+// Direct storage operations are deliberately observable but must remain unused.
 const writePendingInferenceCharge = mock(async () => backstopPersists);
 const reserveCredits = mock(async () => {
   if (reserveCreditsThrows) throw reserveCreditsThrows;
@@ -88,6 +64,24 @@ const admitInferenceChargeViaLedger = mock(async () => ({
 }));
 const createLedgerDebitSettler = mock(() => ledgerInnerSettler);
 const createCreditReservationSettler = mock(() => async () => null);
+const organizationSettler = mock(async (_actualCostUsd: number) => null);
+const organizationUnknownSettler = mock(async () => null);
+type OrganizationAdmissionParams = Parameters<
+  typeof organizationAdmissionActual.admitOrganizationInference
+>[0];
+const admitOrganizationInference = mock(
+  async (params: OrganizationAdmissionParams) => {
+    if (organizationAdmissionError) throw organizationAdmissionError;
+    return {
+      mode: params.executionCtx
+        ? ("deferred_kv_ledger" as const)
+        : ("synchronous_reservation" as const),
+      settle: organizationSettler,
+      settleUnknown: organizationUnknownSettler,
+    };
+  },
+);
+const enforceOrgRateLimit = mock(async () => null);
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver so
 // the org-credits branch (not app-credits) is taken and moderation is skipped.
@@ -163,6 +157,11 @@ mock.module("@/lib/pricing", () => ({
 mock.module("@/lib/services/model-catalog", () => ({
   ...modelCatalogActual,
   getCachedGatewayModelById: async () => null,
+  getGatewayModelByIdCacheOnly: async () => ({
+    kind: "ready",
+    model: null,
+    stale: false,
+  }),
 }));
 
 // Pooled-credential selection is not under test. Keep this route harness away
@@ -172,6 +171,10 @@ mock.module("@/lib/services/team-credential-pool", () => ({
   ...teamPoolActual,
   getTeamPoolRegistry: () => ({
     selectCredential: async () => null,
+    selectCredentialCacheOnly: async () => ({
+      kind: "ready",
+      credential: null,
+    }),
     recordUse: async () => undefined,
     recordProviderFailure: async () => undefined,
   }),
@@ -187,10 +190,8 @@ mock.module("@/lib/services/content-moderation", () => ({
   },
 }));
 
-// The component under test is the ROUTE's orchestration + the REAL
-// isOptimisticEligible. Env-gates, the balance read, the backstop write and the
-// optimistic settler factory are controlled/spied; isOptimisticEligible is left
-// REAL (spread).
+// These legacy service doubles are tripwires for accidental route-level
+// storage calls. Admission policy itself is covered by its service suite.
 mock.module("@/lib/services/inference-billing-fast-path", () => ({
   ...fastPathActual,
   isOptimisticBillingEnabled: () => billingEnabled,
@@ -208,14 +209,23 @@ mock.module("@/lib/services/inference-billing-ledger", () => ({
   createLedgerDebitSettler,
 }));
 
-// Tier-3 deferred admission: only the env flag is a knob — the settler and the
-// refusal blocklist stay REAL (they are part of what is under test).
+// Preserve the real deferred-state helpers used by other imported modules.
 mock.module("@/lib/services/inference-billing-deferred", () => ({
   ...billingDeferredActual,
   isDeferredAdmissionEnabled: () => deferredEnabled,
 }));
 
-// Synchronous reserve path — spied so we can prove it is the fallback.
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...organizationAdmissionActual,
+  admitOrganizationInference,
+}));
+
+mock.module("@/lib/middleware/rate-limit", () => ({
+  ...rateLimitActual,
+  enforceOrgRateLimit,
+}));
+
+// A direct synchronous reserve from this route is forbidden on the Worker path.
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   reserveCredits,
@@ -276,6 +286,11 @@ afterAll(() => {
     "@/lib/services/inference-billing-deferred",
     () => billingDeferredActual,
   );
+  mock.module(
+    "@/lib/services/organization-inference-admission",
+    () => organizationAdmissionActual,
+  );
+  mock.module("@/lib/middleware/rate-limit", () => rateLimitActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/utils/credit-reservation", () => creditReservationActual);
 });
@@ -322,7 +337,7 @@ async function driveWithCtx(captured: Promise<unknown>[]): Promise<Response> {
   });
 }
 
-describe("chat/completions optimistic-billing route decision (#9899/#10066)", () => {
+describe("chat/completions cache-only organization admission", () => {
   beforeEach(() => {
     billingEnabled = true;
     backstopAvailable = true;
@@ -333,6 +348,7 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     deferredEnabled = false;
     ledgerAdmits = true;
     reserveCreditsThrows = null;
+    organizationAdmissionError = null;
     billingDeferredActual.__clearDeferredAdmissionState();
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
@@ -344,6 +360,10 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     createCreditReservationSettler.mockClear();
     authResolveOptions.length = 0;
     resolveInferenceAuthContext.mockClear();
+    admitOrganizationInference.mockClear();
+    organizationSettler.mockClear();
+    organizationUnknownSettler.mockClear();
+    enforceOrgRateLimit.mockClear();
     generateText.mockClear();
     streamText.mockClear();
   });
@@ -363,6 +383,8 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
         openai: { promptCacheKey: "v5:optimistic-route" },
       },
     });
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    expect(reserveCredits).not.toHaveBeenCalled();
   });
 
   test("provider errors preserve the exact frozen preforward boundary", async () => {
@@ -379,15 +401,31 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     expect(response.headers.get("Server-Timing")).toContain(
       "gateway_preforward;dur=",
     );
+    expect(organizationUnknownSettler).toHaveBeenCalled();
   });
 
-  test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
+  test("delegates organization billing once without calling legacy storage primitives", async () => {
     await drive();
-    // POSITIVE: the decision was reached and chose optimistic.
-    expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
-    expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
-    // The synchronous reserve write (the latency we are removing) is skipped.
+
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    const admission = (
+      admitOrganizationInference.mock.calls as unknown as Array<
+        [OrganizationAdmissionParams]
+      >
+    )[0]?.[0];
+    expect(admission).toMatchObject({
+      context: {
+        organizationId: ORG,
+        userId: USER,
+        apiKeyId: API_KEY_ID,
+        model: "gpt-4o-mini",
+      },
+      apiKeyId: API_KEY_ID,
+    });
     expect(reserveCredits).not.toHaveBeenCalled();
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+    expect(generateText).toHaveBeenCalledTimes(1);
   });
 
   test("an allowed native route decision reaches the handler and preserves limiter headers", async () => {
@@ -423,6 +461,14 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     expect(authResolveOptions).toHaveLength(1);
     expect(authResolveOptions[0]?.executionCtx).toBeDefined();
     expect(authResolveOptions[0]?.cacheOnly).toBe(true);
+    expect(enforceOrgRateLimit).toHaveBeenCalledWith(
+      ORG,
+      "completions",
+      expect.objectContaining({
+        cacheOnly: true,
+        executionCtx: expect.any(Object),
+      }),
+    );
     expect(response.headers.get("X-Eliza-Auth-Trace")).toContain(
       "result=authorized_cache",
     );
@@ -430,26 +476,32 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
       "auth_resolve;dur=1.2",
     );
     expect(generateText).toHaveBeenCalledTimes(1);
-    expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
     await Promise.all(waitUntilPromises);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    const admission = (
+      admitOrganizationInference.mock.calls as unknown as Array<
+        [OrganizationAdmissionParams]
+      >
+    )[0]?.[0];
+    expect(admission?.executionCtx).toBeDefined();
+    expect(organizationUnknownSettler).toHaveBeenCalled();
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
   });
 
   test("billing requestId is server-generated, not copied from x-request-id", async () => {
     await drive();
 
-    const pendingCalls = writePendingInferenceCharge.mock
-      .calls as unknown as Array<[{ requestId: string }, number]>;
-    const settlerCalls = createOptimisticDebitSettler.mock
-      .calls as unknown as Array<[{ requestId: string }]>;
-    const pending = pendingCalls[0]?.[0];
-    const settler = settlerCalls[0]?.[0];
-    expect(pending).toBeDefined();
-    expect(settler).toBeDefined();
-    if (!pending || !settler) throw new Error("billing path was not reached");
+    const admission = (
+      admitOrganizationInference.mock.calls as unknown as Array<
+        [OrganizationAdmissionParams]
+      >
+    )[0]?.[0];
+    expect(admission).toBeDefined();
+    if (!admission) throw new Error("billing path was not reached");
 
-    expect(pending.requestId).toMatch(UUID_RE);
-    expect(pending.requestId).not.toBe(CLIENT_REQUEST_ID);
-    expect(settler.requestId).toBe(pending.requestId);
+    expect(admission.context.requestId).toMatch(UUID_RE);
+    expect(admission.context.requestId).not.toBe(CLIENT_REQUEST_ID);
   });
 
   test("invalid Cerebras reasoning_effort is rejected before billing or provider dispatch", async () => {
@@ -471,7 +523,7 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
         code: "invalid_reasoning_effort",
       },
     });
-    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();
     expect(generateText).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
@@ -490,7 +542,7 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     // The model stub throws after dispatch; reaching it proves the request
     // passed route validation and billing without silently changing the cap.
     expect(res.status).toBe(500);
-    expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(generateText.mock.calls[0]?.[0]).toMatchObject({
       maxOutputTokens: 512,
@@ -498,175 +550,96 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     });
   });
 
-  test("balance below SAFE_BALANCE_THRESHOLD falls back to the synchronous reserve", async () => {
-    gateBalanceUsd = 2; // < threshold 5 → not eligible
-    await drive();
-    expect(reserveCredits).toHaveBeenCalledTimes(1);
-    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
-    expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
-  });
+  test("non-Worker compatibility delegates storage policy to the admission service", async () => {
+    const response = await drive();
 
-  test("backstop not writable (cache down) falls back to the synchronous reserve", async () => {
-    backstopAvailable = false; // gate fails before eligibility
-    await drive();
-    expect(reserveCredits).toHaveBeenCalledTimes(1);
-    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
-  });
-
-  test("optimistic billing flag OFF takes the synchronous reserve (default-safe)", async () => {
-    billingEnabled = false;
-    await drive();
-    expect(reserveCredits).toHaveBeenCalledTimes(1);
-    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
-  });
-
-  test("non-durable backstop write falls back to the synchronous reserve (never forwards un-recorded)", async () => {
-    backstopPersists = false; // eligible + write attempted, but not durable
-    await drive();
-    // POSITIVE: the backstop write was attempted (decision chose optimistic)...
-    expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
-    // ...but a non-durable write must fall through to the synchronous reserve.
-    expect(reserveCredits).toHaveBeenCalledTimes(1);
-    expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
-  });
-
-  test("X-Affiliate-Code forces the synchronous reserve even when the KV optimistic path is eligible (#12749)", async () => {
-    await drive("PARTNER1000");
-
-    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
-    expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
-    expect(reserveCredits).toHaveBeenCalledTimes(1);
-    const reserveCalls = reserveCredits.mock.calls as unknown as Array<
-      [{ affiliateCode?: string | null }]
-    >;
-    expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
-  });
-
-  test("X-Affiliate-Code also bypasses the DB-ledger optimistic branch (#12749)", async () => {
-    billingLedger = "db";
-
-    await drive();
-    expect(admitInferenceChargeViaLedger).toHaveBeenCalledTimes(1);
-    expect(createLedgerDebitSettler).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(500);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    const admission = (
+      admitOrganizationInference.mock.calls as unknown as Array<
+        [OrganizationAdmissionParams]
+      >
+    )[0]?.[0];
+    expect(admission?.executionCtx).toBeUndefined();
     expect(reserveCredits).not.toHaveBeenCalled();
-
-    admitInferenceChargeViaLedger.mockClear();
-    createLedgerDebitSettler.mockClear();
-    reserveCredits.mockClear();
-
-    await drive("PARTNER1000");
-
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
     expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
-    expect(createLedgerDebitSettler).not.toHaveBeenCalled();
-    expect(reserveCredits).toHaveBeenCalledTimes(1);
-    const reserveCalls = reserveCredits.mock.calls as unknown as Array<
-      [{ affiliateCode?: string | null }]
-    >;
-    expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
   });
 
-  describe("Tier-3 deferred admission (#9899)", () => {
-    test("KV backend: admission moves to waitUntil, warm path does no synchronous reserve, settle chain still reaches the exactly-once settler", async () => {
-      deferredEnabled = true;
-      const captured: Promise<unknown>[] = [];
+  test("Worker requests pass their lifetime into cache-only admission and never call legacy DB fallbacks", async () => {
+    const captured: Promise<unknown>[] = [];
+    const response = await driveWithCtx(captured);
 
-      await driveWithCtx(captured);
+    expect(response.status).toBe(500);
+    const admission = (
+      admitOrganizationInference.mock.calls as unknown as Array<
+        [OrganizationAdmissionParams]
+      >
+    )[0]?.[0];
+    expect(admission?.executionCtx).toBeDefined();
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+    await Promise.all(captured);
+    expect(organizationUnknownSettler).toHaveBeenCalled();
+  });
 
-      // The durable write was started and handed to waitUntil — not awaited on
-      // the critical path (the critical path only read the cached gate).
-      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
-      expect(captured).toHaveLength(1);
-      await expect(captured[0]).resolves.toEqual({ admitted: true });
-      // No synchronous reserve.
-      expect(reserveCredits).not.toHaveBeenCalled();
-      // The route's error path settled with 0 THROUGH the deferred settler,
-      // which awaited the admission then delegated to the exactly-once KV
-      // settler — reconciliation semantics preserved.
-      expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
-      expect(optimisticInnerSettler).toHaveBeenCalledTimes(1);
-      expect(optimisticInnerSettler).toHaveBeenCalledWith(0);
+  test("a cold billing cache returns retryable 503 before provider dispatch or DB fallback", async () => {
+    organizationAdmissionError =
+      new fastPathActual.InferenceBalanceCacheWarmingError();
+    const captured: Promise<unknown>[] = [];
+
+    const response = await driveWithCtx(captured);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "billing_cache_warming" },
+    });
+    expect(generateText).not.toHaveBeenCalled();
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+  });
+
+  test("a cached insufficient-balance decision returns 402 without provider dispatch or DB fallback", async () => {
+    organizationAdmissionError = new aiBillingActual.InsufficientCreditsError(
+      0.05,
+      0.01,
+    );
+    const captured: Promise<unknown>[] = [];
+
+    const response = await driveWithCtx(captured);
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "insufficient_credits" },
+    });
+    expect(generateText).not.toHaveBeenCalled();
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+  });
+
+  test("affiliate attribution remains part of the same Worker cache-only admission call", async () => {
+    const captured: Promise<unknown>[] = [];
+    await handleChatCompletionsPOST(makeRequest("PARTNER1000"), {
+      skipOrgRateLimit: true,
+      executionCtx: { waitUntil: (promise) => captured.push(promise) },
     });
 
-    test("DB ledger backend: ledger admission is the deferred producer; ledger settler still settles", async () => {
-      deferredEnabled = true;
-      billingLedger = "db";
-      const captured: Promise<unknown>[] = [];
-
-      await driveWithCtx(captured);
-
-      expect(admitInferenceChargeViaLedger).toHaveBeenCalledTimes(1);
-      expect(captured).toHaveLength(1);
-      await expect(captured[0]).resolves.toEqual({ admitted: true });
-      expect(reserveCredits).not.toHaveBeenCalled();
-      expect(createLedgerDebitSettler).toHaveBeenCalledTimes(1);
-      expect(ledgerInnerSettler).toHaveBeenCalledTimes(1);
-      expect(ledgerInnerSettler).toHaveBeenCalledWith(0);
-      // The KV backstop was never touched on the db backend.
-      expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    const admission = (
+      admitOrganizationInference.mock.calls as unknown as Array<
+        [OrganizationAdmissionParams]
+      >
+    )[0]?.[0];
+    expect(admission).toMatchObject({
+      affiliateCode: "PARTNER1000",
+      context: { affiliateCode: "PARTNER1000" },
+      executionCtx: expect.any(Object),
     });
-
-    test("no executionCtx → deferred path is inert; Tier-2 synchronous admission behavior is unchanged", async () => {
-      deferredEnabled = true;
-      await drive(); // no executionCtx
-      // Tier-2 KV branch ran (backstop written, optimistic settler wired) but
-      // nothing was handed to waitUntil — the admission was awaited inline.
-      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
-      expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
-      expect(reserveCredits).not.toHaveBeenCalled();
-    });
-
-    test("402 still fires: a cached balance below threshold falls to the synchronous reserve and surfaces insufficient_credits", async () => {
-      deferredEnabled = true;
-      gateBalanceUsd = 2; // < threshold 5 → cached gate refuses the deferred path
-      const { InsufficientCreditsError } = await import(
-        "@/lib/services/ai-billing"
-      );
-      reserveCreditsThrows = new InsufficientCreditsError(0.05, 0.01);
-      const captured: Promise<unknown>[] = [];
-
-      const res = await driveWithCtx(captured);
-
-      expect(captured).toHaveLength(0); // nothing deferred for a broke org
-      expect(reserveCredits).toHaveBeenCalledTimes(1);
-      expect(res.status).toBe(402);
-      const body = (await res.json()) as {
-        error?: { code?: string; type?: string };
-      };
-      expect(body.error?.code).toBe("insufficient_credits");
-    });
-
-    test("a refused deferred admission blocklists the org: the NEXT request takes the synchronous reserve", async () => {
-      deferredEnabled = true;
-      backstopPersists = false; // deferred KV admission resolves { admitted: false }
-      const captured: Promise<unknown>[] = [];
-
-      await driveWithCtx(captured);
-      // First request took the deferred path (write attempted via waitUntil)…
-      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
-      expect(captured).toHaveLength(1);
-      await expect(captured[0]).resolves.toEqual({ admitted: false });
-      // …and its settle(0) ran the refusal fallback (no exactly-once settler).
-      expect(optimisticInnerSettler).not.toHaveBeenCalled();
-      expect(reserveCredits).not.toHaveBeenCalled();
-
-      writePendingInferenceCharge.mockClear();
-      await driveWithCtx(captured);
-      // Blocklisted org skips the deferred path; the Tier-2 branch attempts the
-      // backstop synchronously, and (still non-durable) falls back to the
-      // synchronous reserve — never forwards on an un-recorded charge.
-      expect(captured).toHaveLength(1);
-      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
-      expect(reserveCredits).toHaveBeenCalledTimes(1);
-    });
-
-    test("flag OFF leaves the executionCtx-carrying request on the Tier-2 synchronous admission", async () => {
-      deferredEnabled = false;
-      const captured: Promise<unknown>[] = [];
-      await driveWithCtx(captured);
-      expect(captured).toHaveLength(0);
-      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
-      expect(reserveCredits).not.toHaveBeenCalled();
-    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    await Promise.all(captured);
   });
 });
 

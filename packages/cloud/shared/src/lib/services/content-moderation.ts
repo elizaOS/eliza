@@ -31,10 +31,20 @@ import { isHotPathCachesEnabled } from "./inference-hot-path-caches";
  */
 const SHOULD_BLOCK_CACHE_TTL_MS = 60_000;
 const shouldBlockCache = new InMemoryLRUCache<boolean>(4096, SHOULD_BLOCK_CACHE_TTL_MS);
+const shouldBlockHydrations = new Map<string, Promise<void>>();
+
+export interface ModerationCacheExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+export type ModerationBlockCacheResolution =
+  | { kind: "ready"; blocked: boolean }
+  | { kind: "warming" };
 
 /** Test hook: reset the block-decision memo between tests. */
 export function __clearShouldBlockUserCache(): void {
   shouldBlockCache.deleteByPrefix("");
+  shouldBlockHydrations.clear();
 }
 
 // OpenAI Moderation API types
@@ -349,15 +359,15 @@ class ContentModerationService {
         action: "refused" | "warned" | "flagged_for_ban";
       },
     ) => void,
-  ): void {
+  ): Promise<void> {
     // Only run async moderation if keywords suggest it's needed
     if (!this.needsAsyncModeration(text)) {
-      return;
+      return Promise.resolve();
     }
 
     // Fire and forget - errors are logged but don't propagate
     // This is intentional: moderation should not block user experience
-    this.moderateAsync(text, userId, roomId)
+    return this.moderateAsync(text, userId, roomId)
       .then((result) => {
         if (result.flagged && result.action && onViolation) {
           onViolation(
@@ -368,7 +378,8 @@ class ContentModerationService {
         }
       })
       .catch((error) => {
-        // Log error but don't propagate - moderation failures should not block users
+        // error-policy:J7 the inference request has already passed its cached
+        // policy gate; this retained task reports asynchronous policy failures.
         logger.error("[ContentModeration] Background moderation failed", {
           error: error instanceof Error ? error.message : String(error),
           userId,
@@ -581,6 +592,45 @@ class ContentModerationService {
     const blocked = await adminService.shouldBlockUser(userId);
     shouldBlockCache.set(userId, blocked);
     return blocked;
+  }
+
+  /**
+   * Resolve the suspension decision without joining its Postgres read to an
+   * inference request. A cold isolate fails closed with `warming` and retains
+   * one authoritative fill under the Worker execution context.
+   */
+  async shouldBlockUserCacheOnly(
+    userId: string,
+    options: { executionCtx?: ModerationCacheExecutionContext } = {},
+  ): Promise<ModerationBlockCacheResolution> {
+    const cached = shouldBlockCache.get(userId);
+    if (cached !== null) return { kind: "ready", blocked: cached };
+
+    if (options.executionCtx) {
+      let hydration = shouldBlockHydrations.get(userId);
+      if (!hydration) {
+        hydration = adminService
+          .shouldBlockUser(userId)
+          .then((blocked) => {
+            shouldBlockCache.set(userId, blocked);
+          })
+          .catch((error) => {
+            // error-policy:J7 a cold inference remains in the explicit warming
+            // state; the authoritative moderation read failure is observable.
+            logger.warn("[ContentModeration] Block-cache hydration failed", {
+              userId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          })
+          .finally(() => {
+            shouldBlockHydrations.delete(userId);
+          });
+        shouldBlockHydrations.set(userId, hydration);
+      }
+      options.executionCtx.waitUntil(hydration);
+    }
+
+    return { kind: "warming" };
   }
 
   /**

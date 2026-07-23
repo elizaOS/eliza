@@ -37,6 +37,7 @@ import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
 import { settleOffResponsePath } from "../utils/settle-off-response-path";
 import { withTimeout } from "../utils/with-timeout";
@@ -2721,17 +2722,14 @@ export class ElizaSandboxService {
         }
       : null;
     let reservation: CreditReservation | null = null;
-    let reservationSettled = false;
+    let settleReservedCredits = createCreditReservationSettler(undefined);
     const settleReservation = async (
       actualCost: number,
-    ): Promise<CreditReconciliationResult | null> => {
-      if (!reservation || reservationSettled) return null;
-      reservationSettled = true;
-      return (await reservation.reconcile(actualCost)) ?? null;
-    };
+    ): Promise<CreditReconciliationResult | null> => settleReservedCredits(actualCost);
     if (billingContext) {
       try {
         reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+        settleReservedCredits = createCreditReservationSettler(reservation);
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return {
@@ -2789,6 +2787,13 @@ export class ElizaSandboxService {
               const billing = await billUsage(
                 billingContext,
                 this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
+                reservation
+                  ? {
+                      ...reservation,
+                      reconcile: async (actualCost) =>
+                        (await settleReservation(actualCost)) ?? undefined,
+                    }
+                  : undefined,
               );
               const settlement = await settleReservation(billing.totalCost);
               const usageRecord = await recordUsageAnalytics(billingContext, billing, {
@@ -2900,17 +2905,14 @@ export class ElizaSandboxService {
         }
       : null;
     let reservation: CreditReservation | null = null;
-    let reservationSettled = false;
+    let settleReservedCredits = createCreditReservationSettler(undefined);
     const settleReservation = async (
       actualCost: number,
-    ): Promise<CreditReconciliationResult | null> => {
-      if (!reservation || reservationSettled) return null;
-      reservationSettled = true;
-      return (await reservation.reconcile(actualCost)) ?? null;
-    };
+    ): Promise<CreditReconciliationResult | null> => settleReservedCredits(actualCost);
     if (billingContext) {
       try {
         reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+        settleReservedCredits = createCreditReservationSettler(reservation);
       } catch (error) {
         // error-policy:J1 boundary translation — no SSE bytes exist before credit
         // reservation, so the HTTP route can still return the canonical 402.
@@ -3010,6 +3012,13 @@ export class ElizaSandboxService {
                         part.usage,
                         estimatedInputTokens,
                       ),
+                      reservation
+                        ? {
+                            ...reservation,
+                            reconcile: async (actualCost) =>
+                              (await settleReservation(actualCost)) ?? undefined,
+                          }
+                        : undefined,
                     );
                     const settlement = await settleReservation(billing.totalCost);
                     const usageRecord = await recordUsageAnalytics(billingContext, billing, {

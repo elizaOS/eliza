@@ -46,15 +46,21 @@
  *     single-request under-bill — the same residual class Tier-2 documents for
  *     its claim/debit gap, and why this stays flag-gated to
  *     `SAFE_BALANCE_THRESHOLD`-cleared orgs.
- *   - Monetized-app billing (`reserveInferenceCredits`, #11976 contract) and
- *     the affiliate-marked synchronous reserve (#12749) are NOT eligible; the
- *     route only reaches this module on the org-credits optimistic branch.
+ *   - Monetized-app billing (`reserveInferenceCredits`, #11976 contract) uses
+ *     its route-specific admission. Affiliate organization billing may reuse
+ *     this settler after its reservation-coupled hold is deferred: a refused
+ *     hold takes the same actual-cost fallback without joining model dispatch.
  */
 
-import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import type { CreditReconciliationResult } from "./credits";
+import {
+  clearAllOrgAdmissionRefusals,
+  clearOrgAdmissionRefused,
+  isOrgAdmissionRefused,
+  markOrgAdmissionRefused,
+} from "./inference-admission-refusal";
 import { invalidateOrgBalanceHint } from "./inference-auth-cache";
 import { type DebitContext, debitInferenceCost } from "./inference-billing-fast-path";
 
@@ -81,20 +87,11 @@ export interface DeferredAdmissionOutcome {
  * window. Per-isolate by design — the cross-isolate bound is the 15s org
  * balance hint, which is invalidated on the same events.
  */
-const REFUSAL_TTL_MS = 60_000;
-const refusedOrgs = new InMemoryLRUCache<true>(4096, REFUSAL_TTL_MS);
-
-export function markOrgAdmissionRefused(organizationId: string): void {
-  refusedOrgs.set(organizationId, true);
-}
-
-export function isOrgAdmissionRefused(organizationId: string): boolean {
-  return refusedOrgs.get(organizationId) === true;
-}
+export { clearOrgAdmissionRefused, isOrgAdmissionRefused, markOrgAdmissionRefused };
 
 /** Test hook: reset the refusal blocklist between tests. */
 export function __clearDeferredAdmissionState(): void {
-  refusedOrgs.deleteByPrefix("");
+  clearAllOrgAdmissionRefusals();
 }
 
 /**
@@ -108,9 +105,10 @@ export function __clearDeferredAdmissionState(): void {
  *     KV getAndDelete), preserving all Tier-2/ledger reconciliation semantics;
  *   - refused / not durable → there is no pending record for the sweep to
  *     recover, so charge the actual cost directly (fail-closed
- *     `debitInferenceCost`: uncollected → logged + hint/IAC invalidation) and
- *     push the org onto the refusal blocklist + drop its balance hint so the
- *     next request takes the synchronous reserve.
+ *     `debitInferenceCost`: collected versus uncollected is returned
+ *     explicitly; infrastructure failure rejects) and push the org onto the
+ *     refusal blocklist + drop its balance hint so the next request takes the
+ *     synchronous reserve.
  *
  * First-call-wins, even on throw (#11512 pattern): the route's error path can
  * invoke the settler twice (handler catch + outer catch). The admitted
@@ -122,31 +120,65 @@ export function createDeferredAdmissionSettler(params: {
   admission: Promise<DeferredAdmissionOutcome>;
   onAdmitted: (actualCostUsd: number) => Promise<CreditReconciliationResult | null>;
   fallback: DebitContext;
+  /**
+   * Reservation-coupled money paths can replace the generic debit while
+   * retaining this wrapper's refusal marking and first-call idempotency.
+   */
+  onRefused?: (actualCostUsd: number) => Promise<CreditReconciliationResult | null>;
 }): (actualCostUsd: number) => Promise<CreditReconciliationResult | null> {
   let settlement: Promise<CreditReconciliationResult | null> | null = null;
+  let firstActualCostUsd: number | null = null;
 
-  const settle = async (actualCostUsd: number) => {
+  const settle = async (actualCostUsd: number): Promise<CreditReconciliationResult | null> => {
     const { admitted } = await params.admission;
     if (admitted) return params.onAdmitted(actualCostUsd);
 
     markOrgAdmissionRefused(params.fallback.organizationId);
     await invalidateOrgBalanceHint(params.fallback.organizationId);
-    if (actualCostUsd > 0) {
-      logger.warn(
-        "[InferenceBilling] deferred admission refused after forward; charging actual cost directly",
-        {
-          requestId: params.fallback.requestId,
-          organizationId: params.fallback.organizationId,
-          actualCostUsd,
-        },
-      );
-      await debitInferenceCost(params.fallback, actualCostUsd, "deferred");
+    if (actualCostUsd <= 0) {
+      return {
+        reservedAmount: 0,
+        actualCost: 0,
+        settlementTransactionIds: [],
+        adjustmentType: "none",
+      };
     }
-    return null;
+    logger.warn(
+      "[InferenceBilling] deferred admission refused after forward; charging actual cost directly",
+      {
+        requestId: params.fallback.requestId,
+        organizationId: params.fallback.organizationId,
+        actualCostUsd,
+      },
+    );
+    if (params.onRefused) {
+      return params.onRefused(actualCostUsd);
+    }
+    const outcome = await debitInferenceCost(params.fallback, actualCostUsd, "deferred");
+    return {
+      reservedAmount: outcome.collectedAmountUsd,
+      actualCost: actualCostUsd,
+      settlementTransactionIds: outcome.transactionId ? [outcome.transactionId] : [],
+      adjustmentType:
+        outcome.status === "collected" && outcome.collectedAmountUsd + 0.000001 >= actualCostUsd
+          ? "none"
+          : "uncollected_overage",
+    };
   };
 
   return (actualCostUsd: number) => {
-    if (!settlement) settlement = settle(actualCostUsd);
-    return settlement;
+    if (firstActualCostUsd === null) firstActualCostUsd = actualCostUsd;
+    if (settlement) return settlement;
+    const current = settle(firstActualCostUsd);
+    settlement = current;
+    current.then(
+      () => undefined,
+      () => {
+        // error-policy:J5 the caller observes the original rejection. Reset
+        // the wrapper so the same deterministic debit/reservation can heal.
+        if (settlement === current) settlement = null;
+      },
+    );
+    return current;
   };
 }

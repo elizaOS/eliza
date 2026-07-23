@@ -69,7 +69,7 @@ function staleControlPlaneContext() {
       CONTAINER_CONTROL_PLANE_TOKEN: "stale-token",
       DATABASE_URL: "postgres://stale-db",
     },
-  } as never;
+  };
 }
 
 const sharedAgent = {
@@ -78,18 +78,13 @@ const sharedAgent = {
   user_id: "user-1",
   execution_tier: "shared",
 } as never;
+const executionCtx = {
+  waitUntil() {},
+};
 
 describe("agent bridge runtime routing", () => {
-  test("bridge ignores stale control-plane env and uses sandbox service", async () => {
+  test("bridge fails closed without the conversation coordinator", async () => {
     globalThis.fetch = deadControlPlaneFetch as unknown as typeof fetch;
-    requireAuthOrApiKeyWithOrg.mockResolvedValue({
-      user: { id: "user-1", organization_id: "org-1" },
-    });
-    bridge.mockResolvedValue({
-      jsonrpc: "2.0",
-      id: "rpc-1",
-      result: { text: "pong" },
-    });
 
     const rpcRequest = {
       jsonrpc: "2.0",
@@ -97,38 +92,29 @@ describe("agent bridge runtime routing", () => {
       method: "heartbeat",
       params: {},
     };
-    const response = await bridgeRoute.__agentBridgeTestHooks.handlePost(
-      makeJsonRequest("/api/v1/eliza/agents/agent-1/bridge", rpcRequest),
-      { params: Promise.resolve({ agentId: "agent-1" }) },
-      staleControlPlaneContext(),
+    const response = await bridgeRoute.default.request(
+      "/",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rpcRequest),
+      },
+      staleControlPlaneContext().env,
+      executionCtx as never,
     );
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      jsonrpc: "2.0",
-      id: "rpc-1",
-      result: { text: "pong" },
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "shared_runtime_context_unavailable",
+      retryable: true,
     });
     expect(deadControlPlaneFetch).not.toHaveBeenCalled();
-    expect(bridge).toHaveBeenCalledWith(
-      "agent-1",
-      "org-1",
-      rpcRequest,
-      undefined,
-    );
+    expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
   });
 
-  test("stream ignores stale control-plane env and uses sandbox service", async () => {
+  test("stream fails closed without the conversation coordinator", async () => {
     globalThis.fetch = deadControlPlaneFetch as unknown as typeof fetch;
-    requireAuthOrApiKeyWithOrg.mockResolvedValue({
-      user: { id: "user-1", organization_id: "org-1" },
-    });
-    bridgeStream.mockResolvedValue(
-      new Response(
-        'event: done\ndata: {"messageId":"msg-1","text":"hello"}\n\n',
-        { headers: { "Content-Type": "text/event-stream" } },
-      ),
-    );
 
     const rpcRequest = {
       jsonrpc: "2.0",
@@ -136,24 +122,25 @@ describe("agent bridge runtime routing", () => {
       method: "message.send",
       params: { text: "say hello", roomId: "room-1" },
     };
-    const response = await streamRoute.__agentStreamTestHooks.handlePost(
-      makeJsonRequest("/api/v1/eliza/agents/agent-1/stream", rpcRequest),
-      { params: Promise.resolve({ agentId: "agent-1" }) },
-      staleControlPlaneContext(),
+    const response = await streamRoute.default.request(
+      "/",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rpcRequest),
+      },
+      staleControlPlaneContext().env,
+      executionCtx as never,
     );
 
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toContain("event: done");
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "shared_runtime_context_unavailable",
+      retryable: true,
+    });
     expect(deadControlPlaneFetch).not.toHaveBeenCalled();
-    // 4th arg: the Workers executionCtx that defers the shared-turn billing
-    // tail — this fixture has none, so the route degrades to undefined
-    // (inline settlement). Mirrors the bridge (non-stream) assertion above.
-    expect(bridgeStream).toHaveBeenCalledWith(
-      "agent-1",
-      "org-1",
-      rpcRequest,
-      undefined,
-    );
+    expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
     expect(bridge).not.toHaveBeenCalled();
   });
 
@@ -176,10 +163,10 @@ describe("agent bridge runtime routing", () => {
     const response = await bridgeRoute.__agentBridgeTestHooks.handlePost(
       makeJsonRequest("/api/v1/eliza/agents/agent-1/bridge", rpcRequest),
       { params: Promise.resolve({ agentId: "agent-1" }) },
-      staleControlPlaneContext(),
       {
         agent: sharedAgent,
         namespace: { getByName } as never,
+        executionCtx,
       },
     );
 
@@ -211,10 +198,10 @@ describe("agent bridge runtime routing", () => {
     const response = await bridgeRoute.__agentBridgeTestHooks.handlePost(
       makeJsonRequest("/api/v1/eliza/agents/agent-1/bridge", rpcRequest),
       { params: Promise.resolve({ agentId: "agent-1" }) },
-      staleControlPlaneContext(),
       {
         agent: sharedAgent,
         namespace: { getByName: () => ({ fetch }) } as never,
+        executionCtx,
       },
     );
 
@@ -236,10 +223,32 @@ describe("agent bridge runtime routing", () => {
         body: "{",
       }),
       { params: Promise.resolve({ agentId: "agent-1" }) },
+      {
+        agent: sharedAgent,
+        namespace: {
+          getByName: () => ({
+            fetch: async () => {
+              throw new Error("invalid input must not dispatch");
+            },
+          }),
+        },
+        executionCtx,
+      },
     );
     const invalid = await bridgeRoute.__agentBridgeTestHooks.handlePost(
       makeJsonRequest("/bridge", { jsonrpc: "1.0", method: "" }),
       { params: Promise.resolve({ agentId: "agent-1" }) },
+      {
+        agent: sharedAgent,
+        namespace: {
+          getByName: () => ({
+            fetch: async () => {
+              throw new Error("invalid input must not dispatch");
+            },
+          }),
+        },
+        executionCtx,
+      },
     );
 
     expect(malformed.status).toBe(400);
@@ -265,10 +274,10 @@ describe("agent bridge runtime routing", () => {
     const response = await streamRoute.__agentStreamTestHooks.handlePost(
       makeJsonRequest("/api/v1/eliza/agents/agent-1/stream", rpcRequest),
       { params: Promise.resolve({ agentId: "agent-1" }) },
-      staleControlPlaneContext(),
       {
         agent: sharedAgent,
         namespace: { getByName } as never,
+        executionCtx,
       },
     );
 
@@ -279,16 +288,8 @@ describe("agent bridge runtime routing", () => {
     expect(getByName).toHaveBeenCalledWith("agent-1:room-1");
   });
 
-  test("stream synthesizes a deterministic fallback only after a healthy heartbeat", async () => {
-    requireAuthOrApiKeyWithOrg.mockResolvedValue({
-      user: { id: "user-1", organization_id: "org-1" },
-    });
-    bridgeStream.mockResolvedValue(new Response(null));
-    bridge.mockResolvedValue({
-      jsonrpc: "2.0",
-      id: "rpc-fallback",
-      result: { status: "ok" },
-    });
+  test("stream never synthesizes a legacy heartbeat fallback", async () => {
+    const fetch = mock(async () => new Response(null));
     const rpcRequest = {
       jsonrpc: "2.0",
       id: "rpc-fallback",
@@ -302,27 +303,27 @@ describe("agent bridge runtime routing", () => {
     const response = await streamRoute.__agentStreamTestHooks.handlePost(
       makeJsonRequest("/api/v1/eliza/agents/agent-1/stream", rpcRequest),
       { params: Promise.resolve({ agentId: "agent-1" }) },
+      {
+        agent: sharedAgent,
+        namespace: { getByName: () => ({ fetch }) },
+        executionCtx,
+      },
     );
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("fallback ok");
-    expect(bridge).toHaveBeenCalledWith(
-      "agent-1",
-      "org-1",
-      expect.objectContaining({ method: "heartbeat" }),
-    );
+    expect(await response.text()).toContain("event: error");
+    expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
   });
 
-  test("stream emits an SSE error when both the turn and heartbeat are unavailable", async () => {
-    requireAuthOrApiKeyWithOrg.mockResolvedValue({
-      user: { id: "user-1", organization_id: "org-1" },
-    });
-    bridgeStream.mockResolvedValue(new Response(null));
-    bridge.mockResolvedValue({
-      jsonrpc: "2.0",
-      id: "rpc-unavailable",
-      error: { code: -32000, message: "offline" },
-    });
+  test("stream preserves coordinator warming as a retryable 503", async () => {
+    const fetch = mock(async () =>
+      Response.json(
+        { error: "Conversation cache is warming. Retry shortly." },
+        { status: 503 },
+      ),
+    );
     const rpcRequest = {
       jsonrpc: "2.0",
       id: "rpc-unavailable",
@@ -333,9 +334,19 @@ describe("agent bridge runtime routing", () => {
     const response = await streamRoute.__agentStreamTestHooks.handlePost(
       makeJsonRequest("/api/v1/eliza/agents/agent-1/stream", rpcRequest),
       { params: Promise.resolve({ agentId: "agent-1" }) },
+      {
+        agent: sharedAgent,
+        namespace: { getByName: () => ({ fetch }) },
+        executionCtx,
+      },
     );
 
-    expect(response.status).toBe(200);
-    expect(await response.text()).toContain("event: error");
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      retryable: true,
+      error: "Conversation cache is warming. Retry shortly.",
+    });
+    expect(bridgeStream).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
   });
 });

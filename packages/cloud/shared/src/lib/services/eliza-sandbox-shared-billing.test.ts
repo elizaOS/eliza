@@ -37,9 +37,18 @@ const reconcileReservation = mock(async (actualCost: number) => ({
   adjustmentType: "refund" as const,
 }));
 
+const affiliateAttribution = {
+  affiliateCodeId: "00000000-0000-4000-8000-000000000010",
+  affiliateUserId: "00000000-0000-4000-8000-000000000011",
+  affiliateCode: "PARTNER",
+  markupPercent: 0.2,
+};
+
 const reserveCredits = mock(async () => ({
   reservedAmount: 0.002,
   reservationTransactionId: "reservation-1",
+  affiliateAttribution,
+  affiliatePayoutSourceId: "ai_billing:affiliate:shared-sandbox-test",
   reconcile: reconcileReservation,
 }));
 
@@ -369,6 +378,11 @@ describe("ElizaSandboxService shared runtime billing", () => {
           model: "gpt-oss-120b",
         }),
         { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+        expect.objectContaining({
+          affiliateAttribution,
+          affiliatePayoutSourceId: "ai_billing:affiliate:shared-sandbox-test",
+          reconcile: expect.any(Function),
+        }),
       );
       expect(reconcileReservation).toHaveBeenCalledWith(0.0003);
       expect(recordUsageAnalytics).toHaveBeenCalledWith(
@@ -608,6 +622,11 @@ describe("ElizaSandboxService shared runtime billing", () => {
           model: "gpt-oss-120b",
         }),
         { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+        expect.objectContaining({
+          affiliateAttribution,
+          affiliatePayoutSourceId: "ai_billing:affiliate:shared-sandbox-test",
+          reconcile: expect.any(Function),
+        }),
       );
       expect(reconcileReservation).toHaveBeenCalledWith(0.0003);
       expect(recordUsageAnalytics).toHaveBeenCalledWith(

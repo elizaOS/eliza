@@ -45,7 +45,24 @@ const billFlatUsage = mock(
     };
   },
 );
-mock.module("@/lib/services/ai-billing", () => ({ billFlatUsage }));
+const reconcile = mock(async (_amount: number) => {});
+const payoutAwareReservation = {
+  reservedAmount: 0.0012,
+  reservationTransactionId: "reservation-1",
+  affiliateAttribution: {
+    affiliateCodeId: "00000000-0000-4000-8000-000000000010",
+    affiliateUserId: "00000000-0000-4000-8000-000000000011",
+    affiliateCode: "PARTNER",
+    markupPercent: 0.2,
+  },
+  affiliatePayoutSourceId: "ai_billing:affiliate:voice-stt-test",
+  reconcile,
+};
+const reserve = mock(async () => payoutAwareReservation);
+mock.module("@/lib/services/ai-billing", () => ({
+  billFlatUsage,
+  reserveFlatUsageCredits: reserve,
+}));
 const calculateSTTCostFromCatalog = mock(async () => ({
   totalCost: 0.0012,
   baseTotalCost: 0.001,
@@ -66,10 +83,7 @@ class MockInsufficientCreditsError extends Error {
     this.required = required;
   }
 }
-const reconcile = mock(async (_amount: number) => {});
-const reserve = mock(async () => ({ reconcile }));
 mock.module("@/lib/services/credits", () => ({
-  creditsService: { reserve },
   InsufficientCreditsError: MockInsufficientCreditsError,
 }));
 const speechToText = mock(
@@ -453,7 +467,7 @@ beforeEach(() => {
   });
   billFlatUsage.mockClear();
   reserve.mockReset();
-  reserve.mockResolvedValue({ reconcile });
+  reserve.mockResolvedValue(payoutAwareReservation);
   reconcile.mockClear();
   speechToText.mockReset();
   speechToText.mockResolvedValue("elevenlabs transcript");
@@ -992,12 +1006,25 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
     });
     expect(reserve).toHaveBeenCalledTimes(1);
     const reserveCalls = reserve.mock.calls as unknown as [
-      [Record<string, unknown>],
+      [Record<string, unknown>, Record<string, unknown>],
     ];
-    const reserveArgs = reserveCalls[0][0];
-    expect(reserveArgs.organizationId).toBe("org-1");
-    expect(reserveArgs.userId).toBe("user-1");
-    expect(reserveArgs.amount).toBe(0.0012);
+    const [reserveContext, reserveCost] = reserveCalls[0];
+    expect(reserveContext).toMatchObject({
+      organizationId: "org-1",
+      userId: "user-1",
+      model: "nova-3",
+      provider: "deepgram",
+      billingSource: "elevenlabs",
+      metadata: {
+        pricingProxyProvider: "elevenlabs",
+        pricingProxyModel: "elevenlabs/scribe_v1",
+      },
+    });
+    expect(reserveCost).toMatchObject({
+      totalCost: 0.0012,
+      baseTotalCost: 0.001,
+      platformMarkup: 0.0002,
+    });
 
     expect(billFlatUsage).toHaveBeenCalledTimes(1);
     const billFlatUsageCalls = billFlatUsage.mock.calls as unknown as [
@@ -1026,7 +1053,7 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
       baseTotalCost: 0.001,
       platformMarkup: 0.0002,
     });
-    expect(billingReservation).toEqual({ reconcile });
+    expect(billingReservation).toBe(payoutAwareReservation);
     expect(reconcile).toHaveBeenCalledWith(0.0012);
 
     await Bun.sleep(0);

@@ -94,6 +94,7 @@ beforeAll(async () => {
         name text NOT NULL,
         slug text NOT NULL UNIQUE,
         credit_balance numeric(12,6) NOT NULL DEFAULT '0',
+        balance_revision bigint NOT NULL DEFAULT 0,
         settings jsonb DEFAULT '{}',
         stripe_customer_id text,
         billing_email text,

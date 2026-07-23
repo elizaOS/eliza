@@ -12,13 +12,15 @@ import { APICallError, embed, embedMany, RetryError } from "ai";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { enforceOrgRateLimit } from "@/lib/middleware/rate-limit";
+import {
+  enforceOrgRateLimit,
+  OrgRateLimitCacheNotReadyError,
+} from "@/lib/middleware/rate-limit";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
-  calculateCost,
   estimateTokens,
   getProviderFromModel,
   normalizeModelName,
@@ -30,35 +32,20 @@ import {
   resolveEmbeddingProviderSource,
   resolvePassthroughEmbeddingsUpstream,
 } from "@/lib/providers/language-model";
-import {
-  billUsage,
-  InsufficientCreditsError,
-  reserveCredits,
-} from "@/lib/services/ai-billing";
+import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
+import type { CreditReservation } from "@/lib/services/credits";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
-import {
-  createDeferredAdmissionSettler,
-  type DeferredAdmissionOutcome,
-  isDeferredAdmissionEnabled,
-  isOrgAdmissionRefused,
-} from "@/lib/services/inference-billing-deferred";
-import {
-  createOptimisticDebitSettler,
-  getGateBalanceUsd,
-  isOptimisticBackstopAvailable,
-  isOptimisticBillingEnabled,
-  isOptimisticEligible,
-  resolveSafeBalanceThresholdUsd,
-  writePendingInferenceCharge,
-} from "@/lib/services/inference-billing-fast-path";
-import {
-  admitInferenceChargeViaLedger,
-  createLedgerDebitSettler,
-  resolveInferenceBillingLedger,
-} from "@/lib/services/inference-billing-ledger";
+import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
 import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
+import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+  InferenceAffiliateCacheUnavailableError,
+  InferencePricingCacheUnavailableError,
+  type OrganizationInferenceAdmission,
+} from "@/lib/services/organization-inference-admission";
 import { usageService } from "@/lib/services/usage";
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -74,31 +61,78 @@ const app = new Hono<AppEnv>();
 
 // Embeddings use RELAXED to match chat completions and responses — embeddings
 // are typically issued in batches for RAG ingestion.
-app.use("*", rateLimit(RateLimitPresets.RELAXED));
+app.use(
+  "*",
+  rateLimit(RateLimitPresets.RELAXED, {
+    bindingName: "CHAT_ROUTE_RATE_LIMITER",
+  }),
+);
 
 app.post("/", async (c) => {
-  // Hoisted so the catch can release the upfront credit hold when a provider
-  // failure (e.g. the embedding provider's 429/5xx) throws AFTER the reservation
-  // was taken but BEFORE billing reconciled it. Without this the ~1.5x hold is
-  // debited permanently — a money leak on the paid inference path. Mirrors the
-  // /v1/chat/completions settler (idempotent, first-call-wins).
-  let settleReservation:
-    | ReturnType<typeof createCreditReservationSettler>
+  let settleReservation: OrganizationInferenceAdmission["settle"] | undefined;
+  let settleUnknown:
+    | OrganizationInferenceAdmission["settleUnknown"]
     | undefined;
+  let markProviderDispatched:
+    | OrganizationInferenceAdmission["markProviderDispatched"]
+    | undefined;
+  let billingReservation: CreditReservation | undefined;
+  let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
+  try {
+    const candidate = c.executionCtx;
+    executionCtx =
+      typeof candidate?.waitUntil === "function" ? candidate : undefined;
+  } catch {
+    // error-policy:J4 Hono intentionally throws outside Workers; local tools
+    // retain compatibility, while enabled Worker admission fails closed below.
+    executionCtx = undefined;
+  }
+  if (!executionCtx && c.env?.INFERENCE_DEFERRED_ADMISSION === "true") {
+    logger.error(
+      "[Embeddings] Worker execution context is unavailable for cache-only inference",
+    );
+    return c.json(
+      {
+        error: {
+          message: "Inference authorization is warming. Retry shortly.",
+          type: "service_unavailable",
+          code: "inference_context_unavailable",
+        },
+      },
+      503,
+    );
+  }
   // True once settleBilling() has taken ownership of settling/releasing the
   // reservation, so the outer catch never double-applies a release.
   let billed = false;
+  let providerDispatched = false;
   try {
     // Resolve auth (+ org + moderation) in a SINGLE cache read for API-key
     // inference requests (#9899) — the same fast-path as /v1/chat/completions.
     // This route is on the agent reply hot path: the always-on
     // `relevant-conversations` recall provider embeds the incoming message on
     // EVERY memory-backed turn (blocking Stage-1), so the old per-request
-    // auth+org+moderation DB chain added ~1.5s+ to every reply. Non-API-key /
-    // cache-unavailable requests fall to the authoritative slow path verbatim.
+    // auth+org+moderation DB chain added ~1.5s+ to every reply. Workers fail
+    // closed on cold cache state while hydration runs under waitUntil; the
+    // authoritative compatibility path is available only outside Workers.
     let user: { id: string; organization_id: string };
     let apiKeyId: string | null;
-    const resolution = await resolveInferenceAuthContext(c.req.raw);
+    const resolution = await resolveInferenceAuthContext(c.req.raw, {
+      executionCtx,
+      cacheOnly: Boolean(executionCtx),
+    });
+    if (resolution.kind === "warming") {
+      return c.json(
+        {
+          error: {
+            message: "Authorization cache is warming. Retry shortly.",
+            type: "service_unavailable",
+            code: "auth_cache_warming",
+          },
+        },
+        503,
+      );
+    }
     if (resolution.kind === "suspended") {
       return c.json(
         {
@@ -112,6 +146,27 @@ app.post("/", async (c) => {
         403,
       );
     }
+    if (resolution.kind === "rejected") {
+      return c.json(
+        {
+          error: {
+            message:
+              resolution.status === 403
+                ? "Account or organization access is disabled."
+                : "Authentication required.",
+            type:
+              resolution.status === 403
+                ? "permission_error"
+                : "authentication_error",
+            code:
+              resolution.status === 403
+                ? "access_denied"
+                : "authentication_required",
+          },
+        },
+        resolution.status,
+      );
+    }
     if (resolution.kind === "authorized") {
       user = {
         id: resolution.ctx.userId,
@@ -119,6 +174,18 @@ app.post("/", async (c) => {
       };
       apiKeyId = resolution.ctx.apiKeyId;
     } else {
+      if (executionCtx) {
+        return c.json(
+          {
+            error: {
+              message: "Authentication required.",
+              type: "authentication_error",
+              code: "authentication_required",
+            },
+          },
+          401,
+        );
+      }
       user = await requireUserOrApiKeyWithOrg(c);
       // `requireUserOrApiKeyWithOrg` already validated the API key (when present)
       // and exposed its id on the request context — reuse it instead of doing a
@@ -127,16 +194,46 @@ app.post("/", async (c) => {
     }
 
     const orgRateLimitPromise = user.organization_id
-      ? enforceOrgRateLimit(user.organization_id, "embeddings")
+      ? enforceOrgRateLimit(user.organization_id, "embeddings", {
+          cacheOnly: Boolean(executionCtx),
+          executionCtx,
+        })
       : Promise.resolve(null);
 
     // Guard a malformed/empty body to a 400 instead of a 500 (mirrors the agents
     // routes). An unguarded parse throws a SyntaxError that failureResponse maps
     // to 500 on this always-on agent-recall hot path.
-    const requestPromise = c.req
-      .json()
-      .catch(() => null) as Promise<EmbeddingsRequest | null>;
-    const orgRateLimited = await orgRateLimitPromise;
+    const requestPromise = c.req.json().catch(() => {
+      // error-policy:J3 malformed JSON becomes an explicit invalid-request
+      // signal and is never interpreted as a valid empty payload.
+      return null;
+    }) as Promise<EmbeddingsRequest | null>;
+    let orgRateLimited: Response | null;
+    try {
+      orgRateLimited = await orgRateLimitPromise;
+    } catch (error) {
+      // error-policy:J1 the route boundary translates a cold policy cache into
+      // a retryable response; all other errors continue to the outer boundary.
+      if (error instanceof OrgRateLimitCacheNotReadyError) {
+        return c.json(
+          {
+            error: {
+              message:
+                error.state === "warming"
+                  ? "Organization rate-limit policy is warming. Retry shortly."
+                  : "Organization rate-limit policy cache is unavailable. Retry shortly.",
+              type: "service_unavailable",
+              code:
+                error.state === "warming"
+                  ? "rate_limit_cache_warming"
+                  : "rate_limit_cache_unavailable",
+            },
+          },
+          503,
+        );
+      }
+      throw error;
+    }
     if (orgRateLimited) return orgRateLimited;
     const request = await requestPromise;
 
@@ -188,9 +285,9 @@ app.post("/", async (c) => {
     const model = request.model;
     const provider = getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
-    const billingSource = resolveEmbeddingProviderSource() ?? undefined;
+    const billingSource = resolveEmbeddingProviderSource();
 
-    if (!hasTextEmbeddingProviderConfigured()) {
+    if (!hasTextEmbeddingProviderConfigured() || !billingSource) {
       return c.json(
         {
           error: {
@@ -208,322 +305,73 @@ app.post("/", async (c) => {
       : request.input;
     const estimatedInputTokens = estimateTokens(inputText);
 
-    // #9899 Tier-2 optimistic billing on the embeddings recall hot path. When
-    // enabled AND this org's balance comfortably clears SAFE_BALANCE_THRESHOLD,
-    // SKIP the synchronous reserve write (~0.8-1.7s of serial credit DB on every
-    // memory-backed reply) and defer the ACTUAL-cost debit to the post-response
-    // settle, backed by a durable pending-charge. Gated + fail-SAFE: flag off
-    // / null org / low balance / cache down / non-durable backstop all fall
-    // through to the synchronous reserve below, VERBATIM (same try/catch/402 as
-    // today). On the optimistic path the reservation's `reconcile` IS the
-    // actual-cost debit, and settleBilling invokes it through the single
-    // first-call-wins settler.
-    // #11588: server-generate the billing requestId — it feeds the affiliate
-    // dedupe sourceId and must not be client-controllable (see the fuller note
-    // in v1/chat/completions/route.ts).
     const requestId = crypto.randomUUID();
-    const orgId = user.organization_id;
-    // Read once, up front: the affiliate code must reach BOTH the reserve
-    // (#12017 — so the upfront hold covers the affiliate markup delta,
-    // fail-closed, exactly like /v1/messages and /v1/chat/completions) and the
-    // deferred billUsage below. Reserving WITHOUT it left the hold at
-    // base+platform only, so an attacker-set markup (up to 1000%) settled as an
-    // uncollectable overage while the affiliate was still credited cashable
-    // earnings — minting money the platform never collected (#11972 residual).
     const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
-    let reservation: Awaited<ReturnType<typeof reserveCredits>> | undefined;
-    let optimisticReady = false;
-
-    // Durable backstop selected by INFERENCE_BILLING_LEDGER (see chat route). The
-    // DB ledger's atomic admission is itself the gate and needs no writable cache.
-    const optimisticBillingEnabled = isOptimisticBillingEnabled();
-    // #12017 (part 2): a request carrying an affiliate code must take the
-    // SYNCHRONOUS reserve. Both optimistic fast paths below admit on a
-    // BASE-cost estimate (calculateCost only) — the affiliate markup
-    // (attacker-set, up to 1000%) is invisible to them because
-    // resolveBillableAffiliate lives inside reserveCredits, and on this route
-    // billUsage runs WITHOUT the reservation (#10557), so nothing clamps the
-    // affiliate credit to collected money on those paths. An optimistically
-    // admitted marked-up request could therefore settle far past the admission
-    // gate's headroom while still minting the full cashable affiliate cut —
-    // the same uncollectable-overage mint this issue fixes on the synchronous
-    // path, one env flag away. Falling through folds the markup into the
-    // upfront hold (estimatedCostMultiplier) and 402s upfront when the balance
-    // can't cover base+markup (fail-closed). This costs the fast path nothing
-    // where it matters: the optimistic paths exist for the internal
-    // agent-recall embed hot path, which never sends X-Affiliate-Code.
-    const optimisticAllowedForRequest =
-      optimisticBillingEnabled && affiliateCode === null;
-    const useDbLedger =
-      !!orgId &&
-      optimisticAllowedForRequest &&
-      resolveInferenceBillingLedger() === "db";
-
-    // #9899 Tier-3 deferred admission: with a Workers executionCtx, start the
-    // durable ledger/KV admission write now and let it run under waitUntil while
-    // the provider call is in flight. The response path keeps only the cached
-    // balance/refusal gate; the post-response settler awaits admission before
-    // delegating to the existing exactly-once ledger/KV settler.
-    const deferAdmission =
-      !!orgId &&
-      optimisticAllowedForRequest &&
-      isDeferredAdmissionEnabled() &&
-      typeof c.executionCtx?.waitUntil === "function" &&
-      (useDbLedger || isOptimisticBackstopAvailable()) &&
-      !isOrgAdmissionRefused(orgId);
-
-    if (deferAdmission) {
-      const { totalCost: backstopEstimateUsd } = await calculateCost(
-        model,
-        provider,
-        estimatedInputTokens,
-        0,
-        billingSource,
-      );
-      const thresholdUsd = resolveSafeBalanceThresholdUsd();
-      const balanceUsd = await getGateBalanceUsd(orgId);
-      const useOptimistic = isOptimisticEligible({
-        enabled: true,
-        useAppCredits: false,
-        balanceUsd,
-        thresholdUsd,
-        estimatedCostUsd: backstopEstimateUsd,
-      });
-      if (useOptimistic) {
-        const chargeCtx = {
-          requestId,
-          organizationId: orgId,
+    try {
+      const admission = await admitOrganizationInference({
+        context: {
+          organizationId: user.organization_id,
           userId: user.id,
           apiKeyId,
           model,
           provider,
-          billingSource: billingSource ?? "",
-        };
-        const admission: Promise<DeferredAdmissionOutcome> = useDbLedger
-          ? admitInferenceChargeViaLedger({
-              charge: chargeCtx,
-              estimatedCostUsd: backstopEstimateUsd,
-              thresholdUsd,
-            })
-          : writePendingInferenceCharge(
-              { ...chargeCtx, estimatedCostUsd: backstopEstimateUsd },
-              Date.now(),
-            ).then((persisted) => ({ admitted: persisted }));
-        c.executionCtx?.waitUntil(admission);
-
-        const debitCtx = {
-          requestId,
-          organizationId: orgId,
-          userId: user.id,
-          model,
-          provider,
-          billingSource: billingSource ?? "",
-        };
-        const deferredSettler = createDeferredAdmissionSettler({
-          admission,
-          onAdmitted: useDbLedger
-            ? createLedgerDebitSettler(chargeCtx)
-            : createOptimisticDebitSettler(debitCtx),
-          fallback: debitCtx,
-        });
-        reservation = {
-          reservedAmount: 0,
-          reservationTransactionId: null,
-          reconcile: async (actualCost: number) => {
-            await deferredSettler(actualCost);
-          },
-        };
-        optimisticReady = true;
-      }
-    }
-
-    if (!optimisticReady && useDbLedger) {
-      const { totalCost: backstopEstimateUsd } = await calculateCost(
-        model,
-        provider,
-        estimatedInputTokens,
-        0,
-        billingSource,
-      );
-      const admission = await admitInferenceChargeViaLedger({
-        charge: {
-          requestId,
-          organizationId: orgId,
-          userId: user.id,
-          apiKeyId,
-          model,
-          provider,
-          billingSource: billingSource ?? "",
-        },
-        estimatedCostUsd: backstopEstimateUsd,
-        thresholdUsd: resolveSafeBalanceThresholdUsd(),
-      });
-      if (admission.admitted) {
-        const ledgerSettler = createLedgerDebitSettler({
-          requestId,
-          organizationId: orgId,
-          userId: user.id,
-          apiKeyId,
-          model,
-          provider,
-          billingSource: billingSource ?? "",
-        });
-        reservation = {
-          reservedAmount: 0,
-          reservationTransactionId: null,
-          reconcile: async (actualCost: number) => {
-            await ledgerSettler(actualCost);
-          },
-        };
-        optimisticReady = true;
-      }
-    }
-
-    if (
-      !optimisticReady &&
-      orgId &&
-      optimisticAllowedForRequest &&
-      !useDbLedger &&
-      isOptimisticBackstopAvailable()
-    ) {
-      // Embeddings cost ~$0, so SAFE_BALANCE_THRESHOLD is the real guard: the
-      // gate estimate is 0 (balance must still clear the threshold).
-      // resolveSafeBalanceThresholdUsd() returns +Infinity when unset/invalid →
-      // isOptimisticEligible returns false → no org is fast-pathed on misconfig.
-      const balanceUsd = await getGateBalanceUsd(orgId);
-      const useOptimistic = isOptimisticEligible({
-        enabled: true,
-        useAppCredits: false,
-        balanceUsd,
-        thresholdUsd: resolveSafeBalanceThresholdUsd(),
-        estimatedCostUsd: 0,
-      });
-      if (useOptimistic) {
-        // Durability gate: take the optimistic path ONLY if the pending-charge
-        // backstop actually persisted. The inline debit only fires when it
-        // CLAIMS this entry (getAndDelete) at settle time, so a missing entry
-        // would mean free inference — fall back to the synchronous reserve
-        // instead. The backstop records the REAL input-token cost estimate (NOT
-        // 0): in steady state the inline settler charges the actual cost, but a
-        // DROPPED settle (isolate eviction) falls to the cron sweep, which then
-        // recovers THIS estimate — so a bulk embedMany ingestion batch can't leak
-        // its whole cost. Embeddings have no output tokens and input tokens are
-        // known up front, so the estimate is accurate (no blind-over-bill risk),
-        // mirroring the chat path's `estimatedCostUsd = totalCost` backstop.
-        const { totalCost: backstopEstimateUsd } = await calculateCost(
-          model,
-          provider,
-          estimatedInputTokens,
-          0,
           billingSource,
-        );
-        const persisted = await writePendingInferenceCharge(
+          requestId,
+        },
+        apiKeyId,
+        estimatedInputTokens,
+        estimatedOutputTokens: 0,
+        affiliateCode,
+        executionCtx,
+      });
+      settleReservation = admission.settle;
+      settleUnknown = admission.settleUnknown;
+      markProviderDispatched = admission.markProviderDispatched;
+      billingReservation = admission.reservation;
+    } catch (error) {
+      // error-policy:J1 the route boundary exposes cached credit decisions and
+      // cache readiness without falling through to authoritative storage.
+      if (error instanceof InsufficientCreditsError) {
+        return c.json(
           {
-            requestId,
-            organizationId: orgId,
-            userId: user.id,
-            apiKeyId,
-            model,
-            provider,
-            billingSource: billingSource ?? "",
-            estimatedCostUsd: backstopEstimateUsd,
-          },
-          Date.now(),
-        );
-        if (persisted) {
-          // Build a reservation whose `reconcile` IS the optimistic debit
-          // settler. We deliberately do NOT use
-          // creditsService.createAnonymousReservation() here — its reconcile is
-          // a no-op (`async () => {}`), which would make settleReservation charge
-          // NOTHING (free embeddings — the known trap). When settleBilling calls
-          // settleReservation(totalCost), the settler atomically claims the
-          // pending backstop (so the sweep can't also charge) and debits the
-          // ACTUAL marked-up cost via deductCredits.
-          const optimisticSettler = createOptimisticDebitSettler({
-            requestId,
-            organizationId: orgId,
-            userId: user.id,
-            model,
-            provider,
-            billingSource: billingSource ?? "",
-          });
-          reservation = {
-            reservedAmount: 0,
-            reservationTransactionId: null,
-            reconcile: async (actualCost: number) => {
-              await optimisticSettler(actualCost);
+            error: {
+              message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+              type: "insufficient_quota",
+              code: "insufficient_balance",
             },
-          };
-          optimisticReady = true;
-        } else {
-          logger.warn(
-            "[Embeddings] optimistic backstop not durable; using synchronous reserve",
-            { requestId, organizationId: orgId },
-          );
-        }
+          },
+          402,
+        );
       }
+      if (error instanceof InferenceBalanceCacheWarmingError) {
+        const unavailable =
+          error instanceof InferenceAdmissionUnavailableError ||
+          error instanceof InferencePricingCacheUnavailableError ||
+          error instanceof InferenceAffiliateCacheUnavailableError;
+        return c.json(
+          {
+            error: {
+              message: unavailable
+                ? "Inference admission cache is unavailable. Retry shortly."
+                : "Inference admission cache is warming. Retry shortly.",
+              type: "service_unavailable",
+              code: unavailable
+                ? "inference_admission_cache_unavailable"
+                : "inference_admission_cache_warming",
+            },
+          },
+          503,
+        );
+      }
+      throw error;
     }
 
-    if (!optimisticReady) {
-      // SAFE PATH — byte-identical to today: synchronous reserve up front + a
-      // clean 402 on insufficient balance. Also the path for flag-off, null-org,
-      // low-balance, and cache-down requests.
-      try {
-        reservation = await reserveCredits(
-          {
-            organizationId: user.organization_id,
-            userId: user.id,
-            model,
-            provider,
-            billingSource,
-            // #12017: fold the affiliate markup into the hold
-            // (estimatedCostMultiplier inside reserveCredits) so the later
-            // affiliate credit is always backed by collected money.
-            affiliateCode,
-          },
-          estimatedInputTokens,
-          0,
-        );
-      } catch (error) {
-        if (error instanceof InsufficientCreditsError) {
-          return c.json(
-            {
-              error: {
-                message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-                type: "insufficient_quota",
-                code: "insufficient_balance",
-              },
-            },
-            402,
-          );
-        }
-        throw error;
-      }
-    }
-
-    // Idempotent settler over whatever reservation we built. The success path
-    // settles the actual cost; failure paths release to zero. For the optimistic
-    // reservation, settleReservation(0) → reconcile(0) → optimisticSettler(0):
-    // it claims (removes) the pending entry and debits nothing.
-    if (!reservation) {
-      // Unreachable: every branch above assigns `reservation` or returns/throws.
-      // Narrows the `| undefined` for the settler type below.
-      throw new Error("[Embeddings] credit reservation missing");
-    }
-    settleReservation = createCreditReservationSettler(reservation);
-    // #12017 residual (leg 2, missed by #12047's reserve fix): a view of the
-    // reservation whose reconcile routes through the SAME first-call-wins
-    // settler, handed to billUsage so the #11976 collected-earnings clamp is
-    // live on this path too — the affiliate is paid from the COLLECTED markup
-    // only (0 on an `uncollected_overage`), even when the actual token count
-    // blows past the estimated reserve (estimateTokens is chars/4; CJK/emoji
-    // inputs tokenize at >1.5x that, defeating the buffered hold). The settler
-    // stays the single reconcile owner (#10557): billUsage settles through it,
-    // and the explicit settle in settleBilling below becomes an idempotent
-    // no-op.
+    // billUsage receives the admission settler so affiliate earnings remain
+    // clamped to what the authoritative asynchronous reservation collected.
     const settleOwner = settleReservation;
-    const settlerBackedReservation = {
-      ...reservation,
+    const settlerBackedReservation: CreditReservation = billingReservation ?? {
+      reservedAmount: 0,
+      reservationTransactionId: null,
       reconcile: async (actualCost: number) =>
         (await settleOwner(actualCost)) ?? undefined,
     };
@@ -552,6 +400,8 @@ app.post("/", async (c) => {
         : null;
 
     if (passthroughUpstream) {
+      await markProviderDispatched?.();
+      providerDispatched = true;
       const upstreamResponse = await fetch(passthroughUpstream.url, {
         method: "POST",
         headers: {
@@ -581,29 +431,30 @@ app.post("/", async (c) => {
       };
       actualTokens = parsed.usage?.prompt_tokens || estimatedInputTokens;
     } else if (Array.isArray(request.input)) {
+      const embeddingModel = getTextEmbeddingModel(model);
+      await markProviderDispatched?.();
+      providerDispatched = true;
       const result = await embedMany({
-        model: getTextEmbeddingModel(model),
+        model: embeddingModel,
         values: request.input,
       });
       embeddings = result.embeddings;
       actualTokens = result.usage?.tokens || estimatedInputTokens;
     } else {
+      const embeddingModel = getTextEmbeddingModel(model);
+      await markProviderDispatched?.();
+      providerDispatched = true;
       const result = await embed({
-        model: getTextEmbeddingModel(model),
+        model: embeddingModel,
         value: request.input,
       });
       embeddings = [result.embedding];
       actualTokens = result.usage?.tokens || estimatedInputTokens;
     }
-
-    // Defer billing off the response path: reconciliation + usage recording add
-    // serial DB round-trips that need not block the vector return. We still RUN
-    // billUsage + settle the reservation, just after the response is sent via
-    // waitUntil. The terminal insufficient-credits guard already fired above
-    // (reserveCredits), so a caller with no balance was rejected before embedding;
-    // the only residual risk is an under-bill if the Worker dies before the
-    // deferred task completes — an accepted trade-off for this route. The settler
-    // prevents double-settlement inside the task.
+    // Reconciliation and usage recording run after the vector response. The
+    // pre-dispatch cache gate rejects known insufficient balances, while the
+    // durable admission promise and this settlement are both owned by
+    // waitUntil. The settler prevents double-settlement inside the task.
     const settleBilling = async () => {
       try {
         // #10557: `settleReservation` is the SINGLE idempotent reconcile owner
@@ -611,7 +462,7 @@ app.post("/", async (c) => {
         // the settler-backed reservation VIEW (never the raw reservation), so
         // its internal reconcile also flows through the first-call-wins settler
         // — no double-settlement is possible with the explicit settle below or
-        // with the catch's settleReservation(0). Routing the reconcile through
+        // with the catch's conservative terminal. Routing the reconcile through
         // billUsage (before its affiliate-earnings write) is what arms the
         // #11976 collected-earnings clamp on this path (#12017 leg 2).
         const billing = await billUsage(
@@ -660,10 +511,14 @@ app.post("/", async (c) => {
           is_successful: true,
         });
       } catch (err) {
+        // error-policy:J7 settlement is a background job; its conservative
+        // terminal remains
+        // observable and the rejection is handled by billedPromise below.
         // billUsage / calculateCost / affiliate lookup threw before the hold was
-        // reconciled → release it. Idempotent: a no-op if we already settled the
-        // actual cost above. Rethrow so the waitUntil .catch logs it.
-        await settleReservation?.(0);
+        // reconciled after provider usage occurred, so zero is not an honest
+        // fallback. Idempotent: a no-op if the actual cost already settled.
+        // Rethrow so the waitUntil .catch logs it.
+        await settleUnknown?.();
         throw err;
       }
     };
@@ -679,8 +534,8 @@ app.post("/", async (c) => {
       });
     });
 
-    if (typeof c.executionCtx?.waitUntil === "function") {
-      c.executionCtx.waitUntil(billedPromise);
+    if (executionCtx) {
+      executionCtx.waitUntil(billedPromise);
     }
 
     // Verbatim upstream bytes for the pass-through path — billing above ran
@@ -711,23 +566,40 @@ app.post("/", async (c) => {
       },
     });
   } catch (error) {
-    // error-policy:J1 route boundary — this catch releases the upfront credit hold and translates the failure into a structured HTTP error via failureResponse below (never a fabricated 200/empty embedding set).
-    // Release the upfront credit hold on any failure that landed here before
-    // billing took over (e.g. the embedding provider threw 429/5xx). Guarded by
-    // `billed` so the success path's reconcile is never double-applied, and by
-    // `settleReservation` so a failure BEFORE reserve() (settler undefined) is a
-    // no-op. The settler is idempotent, so this can never over-refund.
+    // error-policy:J1 route boundary — this catch cancels admitted credit on a
+    // provider failure and translates the failure into a structured response.
+    // The same idempotent settler owns deferred ledgers and reservations, so a
+    // failure cannot double-refund or supersede a successful settlement.
     if (!billed && settleReservation) {
-      try {
-        await settleReservation(0);
-        logger.info("[Embeddings] Reservation released after provider error");
-      } catch (reconcileError) {
-        logger.error("[Embeddings] Failed to release reservation after error", {
-          error:
-            reconcileError instanceof Error
-              ? reconcileError.message
-              : String(reconcileError),
+      const conservative =
+        providerDispatched &&
+        !isKnownUnacceptedProviderError(error) &&
+        Boolean(settleUnknown);
+      const releaseReservation =
+        conservative && settleUnknown ? settleUnknown() : settleReservation(0);
+      const observedRelease = releaseReservation
+        .then(() => {
+          logger.info("[Embeddings] Admission settled after provider error", {
+            conservative,
+          });
+        })
+        .catch((reconcileError) => {
+          // error-policy:J7 deferred settlement failures are observed here and
+          // drained by the Worker execution context.
+          logger.error(
+            "[Embeddings] Failed to release reservation after error",
+            {
+              error:
+                reconcileError instanceof Error
+                  ? reconcileError.message
+                  : String(reconcileError),
+            },
+          );
         });
+      if (executionCtx) {
+        executionCtx.waitUntil(observedRelease);
+      } else {
+        await observedRelease;
       }
     }
 

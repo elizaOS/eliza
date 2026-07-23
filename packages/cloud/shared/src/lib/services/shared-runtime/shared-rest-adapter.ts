@@ -6,15 +6,14 @@
  * (`message.send`) + the SSE stream. The mobile/web chat client, however, speaks
  * the agent-server REST conversation contract (`/api/conversations`,
  * `/api/conversations/:id/messages`, …). This use-case maps that REST contract
- * onto the existing, proven shared-runtime primitives (the bridge engine, its
- * billing, and its KV turn-history) so a REST client can chat with a shared
- * agent unchanged. The cloud-api route at
+ * onto the conversation Durable Object, which owns cache-local execution,
+ * billing coordination, and ordered history so a REST client can chat with a
+ * shared agent unchanged. The cloud-api route at
  * `.../agents/:agentId/api/[...path]` is a thin caller of these functions.
  *
- * Launch model: ONE canonical conversation per agent (conversationId === agentId,
- * bridge roomId === conversationId). The list always has exactly one item, so no
- * conversation index is needed — every turn lands in the same KV channel the
- * bridge already writes.
+ * Launch model: one canonical conversation per agent (conversationId ===
+ * agentId, bridge roomId === conversationId). The list always has exactly one
+ * item, so no conversation index is needed.
  */
 
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
@@ -204,7 +203,7 @@ export function sharedRestViews(viewType?: string): {
  *  - `streaming: false` — kept conservative. A shared agent runs its turn in a
  *    single in-Worker call (no token-by-token generation), so even though
  *    `/messages/stream` IS now reachable (it emits the full reply as one SSE
- *    chunk via bridgeStream — see the messages/stream route), there is no
+ *    chunk through the conversation coordinator), there is no
  *    incremental token stream to gain. Declaring `false` keeps the client on the
  *    non-stream `POST .../messages` (which returns the full reply) cleanly; flip
  *    to `true` only once the shared turn emits real token chunks.
@@ -249,25 +248,18 @@ export function sharedRestAuthMe(
 }
 
 /**
- * GET .../api/character — the character the app reads (getCharacter() →
- * `{ character, agentName }`, character-routes.ts GET /api/character). Reuse the
- * EXACT character the shared turn answers as: getSharedRuntimeCharacter resolves
- * the same `SharedAgentCharacter` buildSharedRuntimeCharacter feeds into
- * message.send. Falls back to an empty character object (the agent server's
- * "no runtime" branch shape) if the sandbox can't be resolved.
+ * GET .../api/character — the character the app reads. Reuse the same cache-only
+ * character resolver as the shared turn; a linked-character cache miss schedules
+ * authoritative hydration under waitUntil and fails retryably instead of reading
+ * Postgres in the request.
  */
 export async function sharedRestCharacter(
-  agentId: string,
-  orgId: string,
+  agent: AgentSandbox,
   agentName: string,
-  agent?: AgentSandbox,
-): Promise<{ character: SharedAgentCharacter | Record<string, never>; agentName: string }> {
-  const character = agent
-    ? await sharedRuntimeChatService.getCharacter(agent)
-    : await import("../eliza-sandbox").then(({ elizaSandboxService }) =>
-        elizaSandboxService.getSharedRuntimeCharacter(agentId, orgId),
-      );
-  return { character: character ?? {}, agentName: agentName || "Eliza" };
+  executionCtx: BridgeExecutionContext,
+): Promise<{ character: SharedAgentCharacter; agentName: string }> {
+  const character = await sharedRuntimeChatService.getCharacter(agent, executionCtx);
+  return { character, agentName: agentName || "Eliza" };
 }
 
 /** GET .../api/conversations — always the one canonical conversation. */
@@ -335,7 +327,7 @@ function sharedRestMessageTimestamp(
 export async function sharedRestMessagesGet(
   agentId: string,
   conversationId: string,
-  namespace?: RuntimeDurableObjectNamespace,
+  namespace: RuntimeDurableObjectNamespace,
 ): Promise<{ messages: SharedRestMessage[] }> {
   const history = await coordinateSharedHistory(agentId, conversationId, { namespace });
   const messages = history.map((turn, index) => ({
@@ -353,14 +345,12 @@ export async function sharedRestMessagesGet(
  * return the assistant reply in the REST send-result shape.
  */
 export async function sharedRestMessageSend(
-  agentId: string,
-  orgId: string,
+  agent: AgentSandbox,
   conversationId: string,
   text: string,
   agentName: string,
-  executionCtx?: BridgeExecutionContext,
-  agent?: AgentSandbox,
-  namespace?: RuntimeDurableObjectNamespace,
+  executionCtx: BridgeExecutionContext,
+  namespace: RuntimeDurableObjectNamespace,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -368,13 +358,9 @@ export async function sharedRestMessageSend(
     method: "message.send",
     params: { text, roomId: conversationId },
   };
-  // executionCtx (Workers only) lets the bridge defer the post-reply billing
-  // tail off the response path; without it the turn settles inline as before.
-  const response = agent
-    ? await coordinateSharedBridge(agent, rpc, { executionCtx, namespace })
-    : await import("../eliza-sandbox").then(({ elizaSandboxService }) =>
-        elizaSandboxService.bridge(agentId, orgId, rpc, executionCtx),
-      );
+  // The production coordinator and Worker lifetime are required together so a
+  // missing binding cannot select an inline legacy bridge or billing path.
+  const response = await coordinateSharedBridge(agent, rpc, { executionCtx, namespace });
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a
     // transient bridge failure — surface it typed so the route boundary can

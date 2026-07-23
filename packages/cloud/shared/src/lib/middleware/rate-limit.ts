@@ -1,19 +1,24 @@
 /**
- * Rate Limiting Middleware
- * Implements multiple rate limiting strategies for API protection
+ * Rate-limit policies for public callers and organization inference.
  *
- * PRODUCTION: Uses Redis-backed rate limiting when REDIS_RATE_LIMITING=true
- * DEVELOPMENT: Falls back to in-memory storage when Redis is unavailable
- *
- * @see lib/middleware/rate-limit-redis.ts for distributed implementation
- * @see ANALYTICS_PR_REVIEW_ANALYSIS.md - Issue #1 (Fixed)
+ * Worker inference consumes exact per-organization windows from a Durable
+ * Object after cache-only tier resolution. Non-Worker production surfaces keep
+ * Redis compatibility, while local development uses an in-memory fallback.
  */
 
 import { createHash } from "node:crypto";
 import type { RouteParams } from "../api/hono-next-style-params";
+import {
+  consumeInferenceRateLimit,
+  InferenceAdmissionGateUnavailableError,
+} from "../services/inference-admission-gate";
 import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
-import { getOrgRpmForEndpoint } from "../services/org-rate-limits";
+import {
+  getOrgRpmForEndpoint,
+  getOrgRpmForEndpointCacheOnly,
+  type OrgTierCacheExecutionContext,
+} from "../services/org-rate-limits";
 import { logger } from "../utils/logger";
 import { getRequestCookie } from "../utils/request-cookie";
 import { checkRateLimitRedis, type RateLimitResult } from "./rate-limit-redis";
@@ -267,11 +272,13 @@ export const ORGANIZATION_SERVICE_BURST_LIMIT = {
   maxRequests: 100,
 } as const;
 
+type RateLimitPolicy = "redis" | "in-memory" | "durable-object";
+
 export function rateLimitExceededPayload(
   result: RateLimitResult,
   maxRequests: number,
   windowMs: number,
-  policy: "redis" | "in-memory",
+  policy: RateLimitPolicy,
 ): {
   body: {
     success: false;
@@ -304,7 +311,7 @@ export function rateLimitExceededResponse(
   result: RateLimitResult,
   maxRequests: number,
   windowMs: number,
-  policy: "redis" | "in-memory",
+  policy: RateLimitPolicy,
 ): Response {
   const { body, headers } = rateLimitExceededPayload(result, maxRequests, windowMs, policy);
   const h = new Headers(headers);
@@ -333,14 +340,12 @@ export async function enforceMcpOrganizationRateLimit(
 }
 
 /**
- * #9899 Tier-3: in-isolate decision lease for `enforceOrgRateLimit`, gated
- * behind `INFERENCE_HOT_PATH_CACHES` (default OFF — flag off is byte-identical
- * to the un-leased path). On CF Workers the authoritative check costs a
- * per-request Redis client build + a TCP/TLS connect + a pipeline (plus a
- * cache read for the org tier) — ~100-400ms of the measured inference warm
- * floor. The lease serves repeat decisions for the same (org, endpoint) from
- * isolate memory, bounded by a local budget, and falls back to the
- * authoritative check the moment the budget is spent or the lease expires.
+ * #9899 Tier-3: in-isolate decision lease for the non-Worker Redis
+ * compatibility path, gated behind `INFERENCE_HOT_PATH_CACHES`. Cache-only
+ * Worker inference returns through the Durable Object branch above and never
+ * reaches this structure. The lease serves repeat Node-process decisions for
+ * the same (org, endpoint) from memory, bounded by a local budget, and falls
+ * back to Redis when the budget is spent or the lease expires.
  *
  * CONVERGENT, not lossy: every leased request is counted. `localUsed` is
  * carried into the NEXT authoritative check (`checkRateLimitRedis`'s
@@ -397,6 +402,44 @@ export function __clearOrgRateLimitLeases(): void {
   orgRateLimitLeases.clear();
 }
 
+export class OrgRateLimitCacheNotReadyError extends Error {
+  readonly state: "warming" | "unavailable";
+  readonly cacheRead: "miss" | "invalid" | "unavailable" | "error";
+
+  constructor(
+    state: "warming" | "unavailable",
+    cacheRead: "miss" | "invalid" | "unavailable" | "error",
+  ) {
+    super(
+      state === "warming"
+        ? "Organization rate-limit policy is warming"
+        : "Organization rate-limit policy cache is unavailable",
+    );
+    this.name = "OrgRateLimitCacheNotReadyError";
+    this.state = state;
+    this.cacheRead = cacheRead;
+  }
+}
+
+function rateLimitUnavailableResponse(): Response {
+  return Response.json(
+    {
+      success: false,
+      error: "Rate limit unavailable",
+      code: "rate_limit_unavailable",
+      message: "The inference rate limiter is temporarily unavailable.",
+    },
+    {
+      status: 503,
+      headers: {
+        "Cache-Control": "no-store",
+        "Retry-After": "1",
+        "X-RateLimit-Policy": "durable-object",
+      },
+    },
+  );
+}
+
 /**
  * Per-org tier-based rate limit. Returns a 429 `Response` when denied, or `null` when allowed.
  * Call INSIDE the handler AFTER auth — same pattern as enforceMcpOrganizationRateLimit.
@@ -404,7 +447,43 @@ export function __clearOrgRateLimitLeases(): void {
 export async function enforceOrgRateLimit(
   organizationId: string,
   endpointType: EndpointType,
+  options: {
+    cacheOnly?: boolean;
+    executionCtx?: OrgTierCacheExecutionContext;
+  } = {},
 ): Promise<Response | null> {
+  if (options.cacheOnly) {
+    const resolution = await getOrgRpmForEndpointCacheOnly(organizationId, endpointType, {
+      executionCtx: options.executionCtx,
+    });
+    if (resolution.kind !== "ready") {
+      throw new OrgRateLimitCacheNotReadyError(resolution.kind, resolution.cacheRead);
+    }
+    const { windowMs, maxRequests } = resolution.config;
+    try {
+      const result = await consumeInferenceRateLimit({
+        organizationId,
+        endpointType,
+        windowMs,
+        maxRequests,
+      });
+      if (result.allowed) return null;
+      return rateLimitExceededResponse(result, maxRequests, windowMs, "durable-object");
+    } catch (error) {
+      // error-policy:J4 inference requests fail closed with a distinct
+      // retryable response when the authoritative Worker limiter is down.
+      if (error instanceof InferenceAdmissionGateUnavailableError) {
+        logger.warn("[RateLimit] Inference admission gate unavailable", {
+          organizationId,
+          endpointType,
+          error: error.message,
+        });
+        return rateLimitUnavailableResponse();
+      }
+      throw error;
+    }
+  }
+
   // Mirror withRateLimit: skip when Redis is not configured (dev/staging)
   if (process.env.REDIS_RATE_LIMITING !== "true") return null;
 
@@ -442,7 +521,7 @@ export async function enforceOrgRateLimit(
     ownsLeaseFlush = true;
   }
 
-  const config = await getOrgRpmForEndpoint(organizationId, endpointType);
+  const config: OrgRateLimitConfig = await getOrgRpmForEndpoint(organizationId, endpointType);
   const { windowMs, maxRequests } = config;
   const key = `org:${organizationId}:${endpointType}`;
   const result = await checkRateLimitRedis(key, windowMs, maxRequests, { carriedCount });

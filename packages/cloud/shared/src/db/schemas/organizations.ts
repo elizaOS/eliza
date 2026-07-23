@@ -2,16 +2,20 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   index,
   jsonb,
   numeric,
+  pgSequence,
   pgTable,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+
+export const organizationBalanceRevisionSequence = pgSequence("organization_balance_revision_seq");
 
 /**
  * Organizations table schema (core).
@@ -37,6 +41,12 @@ export const organizations = pgTable(
       // (steward-sync.ts), so this only affects orgs created via other paths — which
       // must not start with free credit. The old $100 default was a give-away footgun.
       .default("0.000000"),
+    // A database trigger advances this sequence-backed revision on every
+    // credit-balance mutation. Cache-only inference admission uses it to reject
+    // delayed stale snapshots that arrive after a newer debit or top-up. Zero
+    // is the per-organization initial revision; only mutations need a globally
+    // monotonic sequence value.
+    balance_revision: bigint("balance_revision", { mode: "number" }).notNull().default(0),
 
     // Settings (kept for backward compatibility with container management)
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),

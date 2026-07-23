@@ -3,7 +3,8 @@
  *
  * Automatically computes a rate limit tier based on cumulative paid credits,
  * merges any manual overrides from the org_rate_limit_overrides table,
- * and caches the result in Redis (1h TTL) for fast lookups.
+ * and caches the result in the configured shared cache for fast lookups.
+ * Worker inference reads that cache only and hydrates Postgres state off path.
  */
 
 import { and, eq, sql } from "drizzle-orm";
@@ -11,6 +12,7 @@ import { dbRead } from "../../db/helpers";
 import { orgRateLimitOverridesRepository } from "../../db/repositories/org-rate-limit-overrides";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { cache } from "../cache/client";
+import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -72,8 +74,61 @@ const FREE_TIER = SORTED_THRESHOLDS[SORTED_THRESHOLDS.length - 1];
 /** Credit transaction metadata types that represent free/bonus credits (excluded from spend). */
 const FREE_CREDIT_TYPES = ["initial_free_credits", "wallet_signup", "signup_code_bonus"];
 
-const TIER_CACHE_TTL_SECONDS = 3600; // 1h
-const tierCacheKey = (orgId: string) => `orgtier:${orgId}:v1`;
+export interface OrgTierCacheExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+export type OrgTierCacheResolution =
+  | { kind: "ready"; tier: OrgTierData }
+  | {
+      kind: "warming" | "unavailable";
+      cacheRead: "miss" | "invalid" | "unavailable" | "error";
+    };
+
+const orgTierHydrations = new Map<string, Promise<void>>();
+
+function isOrgTierData(value: unknown): value is OrgTierData {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<OrgTierData>;
+  return (
+    typeof candidate.tierName === "string" &&
+    candidate.tierName.length > 0 &&
+    Number.isSafeInteger(candidate.completionsRpm) &&
+    (candidate.completionsRpm ?? 0) > 0 &&
+    Number.isSafeInteger(candidate.embeddingsRpm) &&
+    (candidate.embeddingsRpm ?? 0) > 0 &&
+    Number.isSafeInteger(candidate.standardRpm) &&
+    (candidate.standardRpm ?? 0) > 0 &&
+    Number.isSafeInteger(candidate.strictRpm) &&
+    (candidate.strictRpm ?? 0) > 0
+  );
+}
+
+function scheduleOrgTierHydration(orgId: string, executionCtx: OrgTierCacheExecutionContext): void {
+  let hydration = orgTierHydrations.get(orgId);
+  if (!hydration) {
+    hydration = recalculateOrgTier(orgId)
+      .then(() => undefined)
+      .catch((error) => {
+        // error-policy:J7 cache hydration is observed here and by the warming
+        // response; a retry remains fail-closed until a valid tier is cached.
+        logger.warn("[OrgRateLimits] Background tier hydration failed", {
+          orgId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        orgTierHydrations.delete(orgId);
+      });
+    orgTierHydrations.set(orgId, hydration);
+  }
+  executionCtx.waitUntil(hydration);
+}
+
+/** Test hook: isolate cache-only tier hydration state between cases. */
+export function __clearOrgTierHydrationsForTests(): void {
+  orgTierHydrations.clear();
+}
 
 // ---------------------------------------------------------------------------
 // Core functions
@@ -104,13 +159,7 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
           )})`,
         ),
       ),
-    orgRateLimitOverridesRepository.findByOrganizationId(orgId).catch((err) => {
-      logger.warn("[OrgRateLimits] Failed to load overrides, using tier defaults", {
-        orgId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return undefined;
-    }),
+    orgRateLimitOverridesRepository.findByOrganizationId(orgId),
   ]);
 
   const totalSpend = Number.parseFloat(creditResult[0]?.totalSpend ?? "0");
@@ -144,7 +193,7 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
 
   // 4. Cache (non-fatal: if Redis is down, next request will re-query DB)
   try {
-    await cache.set(tierCacheKey(orgId), tierData, TIER_CACHE_TTL_SECONDS);
+    await cache.set(CacheKeys.org.rateLimitTier(orgId), tierData, CacheTTL.org.rateLimitTier);
   } catch (err) {
     logger.warn("[OrgRateLimits] Failed to cache tier, will re-query on next request", {
       orgId,
@@ -165,9 +214,34 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
  * Returns the cached tier for an org, computing it lazily on cache miss.
  */
 export async function getOrgTier(orgId: string): Promise<OrgTierData> {
-  const cached = await cache.get<OrgTierData>(tierCacheKey(orgId));
+  const cached = await cache.get<OrgTierData>(CacheKeys.org.rateLimitTier(orgId));
   if (cached) return cached;
   return recalculateOrgTier(orgId);
+}
+
+/**
+ * Resolve a rate-limit tier without joining Postgres work to an inference
+ * request. Cold, malformed, or unavailable cache state is explicit; when a
+ * Worker execution context is present the authoritative refresh is retained
+ * under `waitUntil` for the retry.
+ */
+export async function getOrgTierCacheOnly(
+  orgId: string,
+  options: { executionCtx?: OrgTierCacheExecutionContext } = {},
+): Promise<OrgTierCacheResolution> {
+  const outcome = await cache.getWithOutcome<unknown>(CacheKeys.org.rateLimitTier(orgId));
+  if (outcome.kind === "hit" && isOrgTierData(outcome.value)) {
+    return { kind: "ready", tier: outcome.value };
+  }
+
+  const cacheRead = outcome.kind === "hit" ? ("invalid" as const) : outcome.kind;
+  if (options.executionCtx) {
+    scheduleOrgTierHydration(orgId, options.executionCtx);
+  }
+  return {
+    kind: cacheRead === "unavailable" || cacheRead === "error" ? "unavailable" : "warming",
+    cacheRead,
+  };
 }
 
 /**
@@ -185,11 +259,33 @@ export async function getOrgRpmForEndpoint(
   };
 }
 
+export type OrgRateLimitConfigCacheResolution =
+  | { kind: "ready"; config: OrgRateLimitConfig }
+  | Exclude<OrgTierCacheResolution, { kind: "ready" }>;
+
+/** Cache-only counterpart used by Worker inference handlers. */
+export async function getOrgRpmForEndpointCacheOnly(
+  orgId: string,
+  endpointType: EndpointType,
+  options: { executionCtx?: OrgTierCacheExecutionContext } = {},
+): Promise<OrgRateLimitConfigCacheResolution> {
+  const resolution = await getOrgTierCacheOnly(orgId, options);
+  if (resolution.kind !== "ready") return resolution;
+  const rpmKey = `${endpointType}Rpm` as const;
+  return {
+    kind: "ready",
+    config: {
+      windowMs: 60_000,
+      maxRequests: resolution.tier[rpmKey],
+    },
+  };
+}
+
 /**
  * Invalidates the cached tier for an org. The next request will trigger
  * a lazy recalculation via getOrgTier().
  */
 export async function invalidateOrgTierCache(orgId: string): Promise<void> {
-  await cache.del(tierCacheKey(orgId));
+  await cache.del(CacheKeys.org.rateLimitTier(orgId));
   logger.debug("[OrgRateLimits] Tier cache invalidated", { orgId });
 }

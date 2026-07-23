@@ -66,6 +66,8 @@ function callStreaming(request: Record<string, unknown>) {
     30_000,
     1,
     (async () => null) as never,
+    (async () => null) as never,
+    undefined,
     {} as never,
     undefined,
     {} as never,

@@ -7,12 +7,18 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 import * as realResolveSharedAgent from "@/lib/services/shared-runtime/resolve-shared-agent";
+import * as realSharedRestAdapter from "@/lib/services/shared-runtime/shared-rest-adapter";
 
 const resolveSharedAgent = mock();
+const sharedRestCharacter = mock();
 
 mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
   ...realResolveSharedAgent,
   resolveSharedAgent,
+}));
+mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
+  ...realSharedRestAdapter,
+  sharedRestCharacter,
 }));
 
 const shellRoute = (
@@ -23,6 +29,10 @@ afterAll(() => {
   mock.module(
     "@/lib/services/shared-runtime/resolve-shared-agent",
     () => realResolveSharedAgent,
+  );
+  mock.module(
+    "@/lib/services/shared-runtime/shared-rest-adapter",
+    () => realSharedRestAdapter,
   );
 });
 
@@ -38,11 +48,33 @@ function request(path: string, method = "GET") {
   );
 }
 
+function requestWithWorkerContext(path: string) {
+  return app.request(
+    `https://api.elizacloud.ai/api/v1/eliza/agents/${AGENT_ID}/api/${path}`,
+    { headers: { Origin: APP_ORIGIN } },
+    {
+      SHARED_RUNTIME_CONVERSATIONS: {
+        getByName: () => ({ fetch: async () => new Response() }),
+      },
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    },
+  );
+}
+
 describe("shared-agent workflow capability on hosted app paths", () => {
   beforeEach(() => {
     resolveSharedAgent.mockReset();
+    sharedRestCharacter.mockReset();
     resolveSharedAgent.mockResolvedValue({
-      agent: { execution_tier: "shared" },
+      agent: {
+        id: AGENT_ID,
+        organization_id: "org-1",
+        execution_tier: "shared",
+      },
       agentId: AGENT_ID,
       orgId: "org-1",
       agentName: "Eliza",
@@ -92,6 +124,41 @@ describe("shared-agent workflow capability on hosted app paths", () => {
       success: false,
       error: "Not found",
       code: "resource_not_found",
+    });
+  });
+
+  test("character fails closed before resolving identity without Worker runtime bindings", async () => {
+    const response = await request("character");
+
+    expect(response.status).toBe(503);
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "shared_runtime_context_unavailable",
+      retryable: true,
+    });
+  });
+
+  test("character preserves a cold character cache as retryable 503", async () => {
+    const warming = new Error("Character cache is warming. Retry shortly.");
+    warming.name = "SharedRuntimeCacheWarmingError";
+    sharedRestCharacter.mockRejectedValue(warming);
+
+    const response = await requestWithWorkerContext("character");
+
+    expect(response.status).toBe(503);
+    expect(resolveSharedAgent.mock.calls[0]?.[1]).toMatchObject({
+      cacheOnly: true,
+      executionCtx: expect.objectContaining({
+        waitUntil: expect.any(Function),
+      }),
+    });
+    expect(sharedRestCharacter).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Character cache is warming. Retry shortly.",
+      code: "shared_runtime_cache_warming",
+      retryable: true,
     });
   });
 });

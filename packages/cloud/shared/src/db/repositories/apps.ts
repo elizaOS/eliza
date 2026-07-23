@@ -82,6 +82,22 @@ export class AppsRepository {
   }
 
   /**
+   * Reads an app within its organization from the primary for write/recovery
+   * decisions where replica lag must not be mistaken for a durable deletion.
+   */
+  async findByIdInOrganizationForWrite(
+    id: string,
+    organizationId: string,
+  ): Promise<App | undefined> {
+    if (!UUID_PATTERN.test(id)) {
+      return undefined;
+    }
+    return await dbWrite.query.apps.findFirst({
+      where: and(eq(apps.id, id), eq(apps.organization_id, organizationId)),
+    });
+  }
+
+  /**
    * Finds an app by slug.
    */
   async findBySlug(slug: string): Promise<App | undefined> {

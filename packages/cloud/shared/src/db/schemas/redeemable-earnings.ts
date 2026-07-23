@@ -227,6 +227,14 @@ export const redeemableEarningsLedger = pgTable(
         app_id?: string;
         earnings_type?: string;
         transaction_user_id?: string;
+        appCreatorShadowVersion?: number;
+        appPlatformRevenueDelta?: string;
+        affiliatePayoutVersion?: number;
+        affiliateCodeId?: string;
+        affiliateCode?: string;
+        actualTotalCost?: string;
+        collectedTotalCost?: string;
+        original_source_id?: string;
         mcp_id?: string;
         mcp_name?: string;
         tool_name?: string;
@@ -258,6 +266,26 @@ export const redeemableEarningsLedger = pgTable(
       table.earnings_source,
       table.source_id,
     ),
+    miniapp_creator_movement_identity_unique: uniqueIndex(
+      "redeemable_earnings_ledger_miniapp_creator_movement_uidx",
+    )
+      .on(table.entry_type, table.earnings_source, table.source_id)
+      .where(
+        sql`${table.earnings_source} = 'miniapp'
+          AND ${table.entry_type} IN ('earning', 'adjustment')
+          AND ${table.source_id} IS NOT NULL
+          AND (${table.metadata} ->> 'appCreatorShadowVersion') = '1'`,
+      ),
+    affiliate_payout_identity_unique: uniqueIndex(
+      "redeemable_earnings_ledger_affiliate_payout_identity_uidx",
+    )
+      .on(table.entry_type, table.earnings_source, table.source_id)
+      .where(
+        sql`${table.earnings_source} = 'affiliate'
+          AND ${table.entry_type} = 'earning'
+          AND ${table.source_id} IS NOT NULL
+          AND (${table.metadata} ->> 'affiliatePayoutVersion') = '1'`,
+      ),
     // Idempotency backstop for convertToCredits: at most one credit_conversion
     // entry per idempotency key. Partial so it only constrains keyed rows.
     conversion_idempotency_idx: uniqueIndex("redeemable_earnings_ledger_conversion_idempotency_idx")

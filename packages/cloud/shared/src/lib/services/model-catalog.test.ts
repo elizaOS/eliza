@@ -41,6 +41,7 @@ const {
   getCachedBitRouterModelById,
   getCachedBitRouterModelCatalog,
   getCachedMergedModelCatalog,
+  getGatewayModelByIdCacheOnly,
   refreshBitRouterModelCatalog,
 } = await import("./model-catalog");
 
@@ -220,5 +221,87 @@ describe("model catalog cache wiring", () => {
     expect(await getCachedBitRouterModelById("fresh-model")).toEqual(fresh[0]);
     expect(await getCachedBitRouterModelById("does-not-exist")).toBeNull();
     expect(listModelsCalls).toBe(1);
+  });
+
+  test("cache-only gateway lookup reads a fresh catalog without provider I/O", async () => {
+    const model = catalogModel("dynamic-reasoner");
+    await cache.set(
+      CACHE_KEY,
+      {
+        data: [model],
+        cachedAt: Date.now(),
+        staleAt: Date.now() + 60_000,
+      } satisfies SWRCacheEntry<CatalogModel[]>,
+      CacheTTL.models.catalog,
+    );
+
+    expect(await getGatewayModelByIdCacheOnly(model.id)).toEqual({
+      kind: "ready",
+      model,
+      stale: false,
+    });
+    expect(listModelsCalls).toBe(0);
+  });
+
+  test("cache-only cold lookup returns warming and refreshes under waitUntil", async () => {
+    const model = catalogModel("dynamic-reasoner");
+    listModelsImpl = async () => ({
+      json: async () => ({ data: [model] }),
+    });
+    const background: Promise<unknown>[] = [];
+
+    expect(
+      await getGatewayModelByIdCacheOnly(model.id, {
+        executionCtx: { waitUntil: (promise) => background.push(promise) },
+      }),
+    ).toEqual({ kind: "warming", cacheRead: "miss" });
+    expect(background).toHaveLength(1);
+    await background[0];
+    expect(listModelsCalls).toBe(1);
+    expect(await getGatewayModelByIdCacheOnly(model.id)).toEqual({
+      kind: "ready",
+      model,
+      stale: false,
+    });
+  });
+
+  test("cache-only lookup never fetches a cold catalog without waitUntil", async () => {
+    expect(await getGatewayModelByIdCacheOnly("dynamic-not-cached")).toEqual({
+      kind: "warming",
+      cacheRead: "miss",
+    });
+    expect(listModelsCalls).toBe(0);
+  });
+
+  test("cache-only lookup serves stale metadata and refreshes it off path", async () => {
+    const staleModel = catalogModel("dynamic-reasoner");
+    const refreshedModel = {
+      ...staleModel,
+      supported_parameters: ["reasoning"],
+    };
+    await cache.set(
+      CACHE_KEY,
+      {
+        data: [staleModel],
+        cachedAt: Date.now() - 120_000,
+        staleAt: Date.now() - 1,
+      } satisfies SWRCacheEntry<CatalogModel[]>,
+      CacheTTL.models.catalog,
+    );
+    listModelsImpl = async () => ({
+      json: async () => ({ data: [refreshedModel] }),
+    });
+    const background: Promise<unknown>[] = [];
+
+    expect(
+      await getGatewayModelByIdCacheOnly(staleModel.id, {
+        executionCtx: { waitUntil: (promise) => background.push(promise) },
+      }),
+    ).toEqual({ kind: "ready", model: staleModel, stale: true });
+    expect(background).toHaveLength(1);
+    await background[0];
+    expect(listModelsCalls).toBe(1);
+    const entry = await cache.get<SWRCacheEntry<CatalogModel[]>>(CACHE_KEY);
+    expect(entry?.data).toEqual([refreshedModel]);
   });
 });

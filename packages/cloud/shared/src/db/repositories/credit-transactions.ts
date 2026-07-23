@@ -39,6 +39,18 @@ export class CreditTransactionsRepository {
   }
 
   /**
+   * Reads an idempotency identity from the primary after a uniqueness race.
+   * Replica lag must never turn a committed debit replay into a false miss.
+   */
+  async findByStripePaymentIntentForWrite(
+    paymentIntentId: string,
+  ): Promise<CreditTransaction | undefined> {
+    return await dbWrite.query.creditTransactions.findFirst({
+      where: eq(creditTransactions.stripe_payment_intent_id, paymentIntentId),
+    });
+  }
+
+  /**
    * Lists credit transactions for an organization, ordered by creation date.
    * Always bounded — `limit` defaults to 50 and is clamped to [1, 200].
    */

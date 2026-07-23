@@ -45,6 +45,35 @@ import { embeddedStewardHandler } from "./steward/embedded";
  */
 type UiLanguage = "en" | "zh-CN" | "ko" | "ja" | "vi" | "tl" | "pt" | "es";
 
+const REDIS_INDEPENDENT_INFERENCE_ROUTES = [
+  "/api/v1/chat",
+  "/api/v1/messages",
+  "/api/v1/embeddings",
+  "/api/v1/responses",
+] as const;
+
+/**
+ * Worker inference owns ingress and organization limits in Cloudflare-native
+ * bindings and Durable Objects. Keeping these routes behind the legacy Redis
+ * deployment guard would make a public Railway dependency an availability and
+ * latency prerequisite even though no inference decision consumes it.
+ */
+export function isRedisIndependentInferencePath(pathname: string): boolean {
+  if (
+    REDIS_INDEPENDENT_INFERENCE_ROUTES.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`),
+    )
+  ) {
+    return true;
+  }
+  return (
+    /^\/api\/v1\/eliza\/agents\/[^/]+\/(?:bridge|stream)$/.test(pathname) ||
+    /^\/api\/v1\/eliza\/agents\/[^/]+\/api\/conversations\/[^/]+\/messages(?:\/stream)?$/.test(
+      pathname,
+    )
+  );
+}
+
 /** ISO 3166-1 alpha-2 country → best-supported UI language. */
 const REGION_LANGUAGE: Record<string, UiLanguage> = {
   CN: "zh-CN",
@@ -287,6 +316,10 @@ export function createApp(): Hono<AppEnv> {
   //     the documented #9853 ops cutover is: set REDIS_URL, flip the flag true).
   let rateLimitConfigLogged = false;
   app.use("*", async (c, next) => {
+    if (isRedisIndependentInferencePath(new URL(c.req.url).pathname)) {
+      await next();
+      return;
+    }
     const env = c.env as { ENVIRONMENT?: string; REDIS_RATE_LIMITING?: string };
     const verdict = rateLimitConfigVerdict({
       environment: env.ENVIRONMENT,

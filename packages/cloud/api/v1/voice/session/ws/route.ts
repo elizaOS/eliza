@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { hasDbCacheContext } from "@/db/client";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { hasCloudBindingsContext } from "@/lib/runtime/cloud-bindings";
+import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import {
   createDurableVoiceUsageStore,
   InMemoryVoiceUsageStore,
@@ -169,10 +170,18 @@ app.get("/", (c) => {
   );
 
   const maxSessions = resolveMaxSessions(env);
-  // Capture Worker bindings while this upgrade request is live. The returned
-  // factory restores a fresh bindings/DB context for each later WS voice turn.
+  // Capture the request's platform handles while it is live. Late WebSocket
+  // turns use the execution context to register cold scope hydration and the
+  // Durable Object binding to keep history/billing DB work off the turn path.
+  let voiceExecutionCtx: BridgeExecutionContext | undefined;
+  try {
+    voiceExecutionCtx = c.executionCtx;
+  } catch {
+    voiceExecutionCtx = undefined;
+  }
   const createScopedElizaFetch = createInternalElizaConversationFetchFactory(
     c.env as unknown as Bindings,
+    voiceExecutionCtx,
   );
   attachVoiceWsHandler(server, {
     requestedSessionId: sessionId,

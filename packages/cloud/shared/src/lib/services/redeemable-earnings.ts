@@ -80,6 +80,17 @@ interface RefundEarningsParams {
   reason: string;
 }
 
+export class RedeemableEarningsReplayMismatchError extends Error {
+  constructor(
+    readonly source: EarningsSource,
+    readonly sourceId: string,
+    readonly mismatch: string,
+  ) {
+    super(`Redeemable earnings replay mismatch for ${source}:${sourceId}: ${mismatch}`);
+    this.name = "RedeemableEarningsReplayMismatchError";
+  }
+}
+
 const normalizeLedgerMetadata = (metadata?: Record<string, unknown>): Record<string, unknown> => {
   if (!metadata) return {};
   const mapped: Record<string, unknown> = {};
@@ -131,6 +142,20 @@ const normalizeLedgerMetadata = (metadata?: Record<string, unknown>): Record<str
   }
   return mapped;
 };
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, canonicalJson(nested)]),
+  );
+}
+
+function ledgerMetadataMatches(existing: unknown, expected: unknown): boolean {
+  return JSON.stringify(canonicalJson(existing)) === JSON.stringify(canonicalJson(expected));
+}
 
 // ============================================================================
 // SERVICE
@@ -203,8 +228,14 @@ class RedeemableEarningsService {
     source: EarningsSource;
     sourceId: string;
   }): Promise<boolean> {
+    if (params.sourceId.trim() === "") {
+      throw new Error("Source ID must not be blank");
+    }
     const ledgerSourceId = normalizeLedgerSourceId(params.sourceId);
-    const [existing] = await dbRead
+    // This is also the commit-ack verification seam for creator accounting.
+    // Read the primary so an immediately committed earning cannot appear
+    // absent under replica lag and trigger an unbacked consumer refund.
+    const [existing] = await dbWrite
       .select({ id: redeemableEarningsLedger.id })
       .from(redeemableEarningsLedger)
       .where(
@@ -235,7 +266,8 @@ class RedeemableEarningsService {
       dedupeBySourceId = false,
     } = params;
 
-    if (amount <= 0) {
+    const inputAmount = new Decimal(amount);
+    if (!inputAmount.isFinite() || !inputAmount.gt(0)) {
       return {
         success: false,
         newBalance: 0,
@@ -243,9 +275,25 @@ class RedeemableEarningsService {
         error: "Amount must be positive",
       };
     }
+    if (sourceId.trim() === "") {
+      return {
+        success: false,
+        newBalance: 0,
+        ledgerEntryId: "",
+        error: "Source ID must not be blank",
+      };
+    }
 
-    // Use Decimal for precision
-    const amountDecimal = new Decimal(amount).toFixed(4);
+    const quantizedAmount = inputAmount.toDecimalPlaces(6).toDecimalPlaces(4, Decimal.ROUND_DOWN);
+    if (!quantizedAmount.gt(0)) {
+      return {
+        success: false,
+        newBalance: 0,
+        ledgerEntryId: "",
+        error: "Amount is below the minimum ledger precision of 0.0001",
+      };
+    }
+    const amountDecimal = quantizedAmount.toFixed(4);
     const ledgerSourceId = normalizeLedgerSourceId(sourceId);
     const ledgerMetadata = normalizeLedgerMetadata({
       ...(metadata ?? {}),
@@ -265,22 +313,61 @@ class RedeemableEarningsService {
         .for("update");
 
       if (dedupeBySourceId) {
+        const globallyVersionedAffiliate =
+          source === "affiliate" && ledgerMetadata.affiliatePayoutVersion === 1;
         const [existingLedger] = await tx
           .select({
             id: redeemableEarningsLedger.id,
+            userId: redeemableEarningsLedger.user_id,
+            entryType: redeemableEarningsLedger.entry_type,
+            source: redeemableEarningsLedger.earnings_source,
+            sourceId: redeemableEarningsLedger.source_id,
+            amount: redeemableEarningsLedger.amount,
+            description: redeemableEarningsLedger.description,
+            metadata: redeemableEarningsLedger.metadata,
           })
           .from(redeemableEarningsLedger)
           .where(
             and(
-              eq(redeemableEarningsLedger.user_id, userId),
               eq(redeemableEarningsLedger.entry_type, "earning"),
               eq(redeemableEarningsLedger.earnings_source, source),
               eq(redeemableEarningsLedger.source_id, ledgerSourceId),
+              ...(globallyVersionedAffiliate
+                ? [sql`${redeemableEarningsLedger.metadata} ->> 'affiliatePayoutVersion' = '1'`]
+                : [eq(redeemableEarningsLedger.user_id, userId)]),
             ),
           )
           .limit(1);
 
         if (existingLedger) {
+          if (source === "affiliate") {
+            const mismatch =
+              existingLedger.userId !== userId
+                ? "affiliate owner differs"
+                : existingLedger.entryType !== "earning"
+                  ? "entry type differs"
+                  : existingLedger.source !== source
+                    ? "earnings source differs"
+                    : existingLedger.sourceId !== ledgerSourceId
+                      ? "normalized source ID differs"
+                      : !new Decimal(existingLedger.amount).equals(quantizedAmount)
+                        ? "amount differs"
+                        : existingLedger.description !== description
+                          ? "description differs"
+                          : !ledgerMetadataMatches(existingLedger.metadata, ledgerMetadata)
+                            ? "metadata differs"
+                            : null;
+            if (mismatch) {
+              throw new RedeemableEarningsReplayMismatchError(source, sourceId, mismatch);
+            }
+          }
+          if (!earnings) {
+            throw new RedeemableEarningsReplayMismatchError(
+              source,
+              sourceId,
+              "balance row is missing",
+            );
+          }
           return {
             earnings,
             ledgerEntryId: existingLedger.id,
@@ -523,7 +610,7 @@ class RedeemableEarningsService {
           earnings.available_balance,
           "available_balance",
         );
-        if (new Decimal(currentBalance).lessThan(amount)) {
+        if (new Decimal(currentBalance).lessThan(amountDecimal)) {
           return {
             earnings: null,
             ledgerEntryId: "",
