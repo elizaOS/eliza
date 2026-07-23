@@ -14,6 +14,7 @@ on:
     paths:
       - "packages/app-core/deploy/Dockerfile.ci"
       - "plugins/plugin-sql/**"
+      - "plugins/plugin-simple-views/**"
       - "plugins/plugin-elizacloud/**"
       - "plugins/plugin-local-inference/**"
       - "packages/agent/**"

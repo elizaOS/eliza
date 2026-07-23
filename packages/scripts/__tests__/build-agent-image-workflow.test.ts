@@ -1,4 +1,4 @@
-// Exercises tests build agent image workflow.test automation behavior with deterministic script fixtures.
+/** Guards the production agent-image workflow's build inputs and step ordering. */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
@@ -48,6 +48,19 @@ function extractTurboFilters(runBlock: string): string[] {
 }
 
 describe("build-agent-image workflow", () => {
+  test("rebuilds the image when the built-in Notes and Calendar plugin changes", () => {
+    const pushBlock = workflowText.match(
+      /^ {2}push:\n(?<body>[\s\S]*?)(?=^ {2}release:)/m,
+    );
+    if (!pushBlock?.groups?.body) {
+      throw new Error("Missing push trigger in build-agent-image workflow");
+    }
+
+    expect(pushBlock.groups.body).toContain(
+      '- "plugins/plugin-simple-views/**"',
+    );
+  });
+
   test("uses Turbo filters for Docker workspace artifact builds", () => {
     const runBlock = extractStepRunBlock("Build Docker workspace artifacts");
 
