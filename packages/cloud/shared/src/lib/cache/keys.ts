@@ -50,6 +50,8 @@ export const CacheKeys = {
   sharedAgentScope: {
     resolve: (keyHashPrefix: string, agentId: string) =>
       `shared-agent-scope:${keyHashPrefix}:${agentId}:v1`,
+    runningSandbox: (agentId: string, orgId: string) =>
+      `shared-agent-scope:running-sandbox:${orgId}:${agentId}:v1`,
   },
   /**
    * Inference hot-path caches (#9899). The IAC entry collapses auth + org +
@@ -277,6 +279,7 @@ export const CacheTTL = {
    */
   sharedAgentScope: {
     resolve: 30,
+    runningSandbox: 30,
     /**
      * SLIDING-TTL CAP (COLDPATH-FIX-2026-07-22): a validated scope-cache hit
      * refreshes the entry's TTL back to `resolve` so an ACTIVE conversation

@@ -84,6 +84,7 @@ import {
   type SandboxProvider,
 } from "./sandbox-provider";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
+import { getCachedSharedAgentRunningSandbox } from "./shared-runtime/resolve-shared-agent";
 import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
@@ -4302,8 +4303,15 @@ export class ElizaSandboxService {
     orgId: string,
     rpc: BridgeRequest,
     executionCtx?: BridgeExecutionContext,
+    resolvedAgent?: AgentSandbox,
   ): Promise<Response | null> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec =
+      resolvedAgent?.id === agentId &&
+      resolvedAgent.organization_id === orgId &&
+      resolvedAgent.status === "running"
+        ? resolvedAgent
+        : (await getCachedSharedAgentRunningSandbox(agentId, orgId)) ??
+          (await agentSandboxesRepository.findRunningSandbox(agentId, orgId));
     if (!rec) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
         agentId,

@@ -85,7 +85,7 @@ function rehydrateNullableCachedDate(value: unknown, field: AgentSandboxDateFiel
  * malformed values fail at this boundary because returning a row that violates
  * `AgentSandbox` would defer the fault into an unrelated route consumer.
  */
-function rehydrateCachedAgentDates(agent: CachedAgentSandbox): AgentSandbox {
+export function rehydrateCachedAgentDates(agent: CachedAgentSandbox): AgentSandbox {
   return {
     ...agent,
     created_at: rehydrateRequiredCachedDate(agent.created_at, "created_at"),
@@ -117,7 +117,7 @@ function rehydrateCachedAgentDates(agent: CachedAgentSandbox): AgentSandbox {
  * time-sensitive dedicated-bootstrap window, whose eligibility flips as the
  * container boots.
  */
-interface CachedSharedAgentScope {
+export interface CachedSharedAgentScope {
   orgId: string;
   agent: CachedAgentSandbox;
   /**
@@ -164,6 +164,50 @@ async function revalidateCachedScope(c: Context<AppEnv>, cachedOrgId: string): P
   // The key must still be scoped to the org the cached agent belongs to. A
   // detach/re-scope changes organization_id, so a stale cross-org read fails here.
   return validated.organization_id === cachedOrgId;
+}
+
+export async function cacheSharedAgentRunningSandbox(
+  agentId: string,
+  orgId: string,
+  agent: AgentSandbox,
+): Promise<void> {
+  if (agent.execution_tier !== "shared" || agent.status !== "running") return;
+  await cache
+    .set(
+      CacheKeys.sharedAgentScope.runningSandbox(agentId, orgId),
+      agent,
+      CacheTTL.sharedAgentScope.runningSandbox,
+    )
+    .catch((error) => {
+      logger.debug("[resolveSharedAgent] running sandbox cache write failed", {
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+}
+
+export async function getCachedSharedAgentRunningSandbox(
+  agentId: string,
+  orgId: string,
+): Promise<AgentSandbox | null> {
+  const cached = await cache
+    .get<CachedAgentSandbox>(CacheKeys.sharedAgentScope.runningSandbox(agentId, orgId))
+    .catch(() => null);
+  if (!cached) return null;
+  const agent = rehydrateCachedAgentDates(cached);
+  return agent.execution_tier === "shared" && agent.status === "running" ? agent : null;
+}
+
+export async function invalidateSharedAgentRunningSandbox(
+  agentId: string,
+  orgId: string,
+): Promise<void> {
+  await cache.del(CacheKeys.sharedAgentScope.runningSandbox(agentId, orgId)).catch((error) => {
+    logger.debug("[resolveSharedAgent] running sandbox cache invalidation failed", {
+      agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 }
 
 /**
@@ -352,6 +396,7 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
         error: error instanceof Error ? error.message : String(error),
       });
     });
+    void cacheSharedAgentRunningSandbox(agentId, user.organization_id, agent);
   }
 
   return { agent, agentId, orgId: user.organization_id, agentName: agent.agent_name ?? "Eliza" };
