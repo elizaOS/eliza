@@ -61,6 +61,11 @@ function collectLogs(page: Page): CapturedLogs {
     ) {
       return;
     }
+    // The save-failure leg aborts exactly one PUT at the network layer on
+    // purpose; the browser logs that induced abort as a resource error.
+    if (/^Failed to load resource: net::ERR_CONNECTION_FAILED/i.test(text)) {
+      return;
+    }
     logs.failures.push(`console.error: ${text}`);
   });
   page.on("pageerror", (error) => {
