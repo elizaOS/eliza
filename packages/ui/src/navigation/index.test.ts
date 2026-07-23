@@ -12,6 +12,7 @@ import {
   LEGACY_PREFIX_TAB_ALIASES,
   TAB_PATHS,
   tabFromPath,
+  titleForTab,
 } from "./index";
 
 beforeEach(() => {
@@ -143,6 +144,13 @@ describe("navigation prefix sub-tab resolution is registry-derived", () => {
       // registry would already own it and the alias would be dead duplication.
       expect(canonicalPaths.has(aliasPath)).toBe(false);
     }
+  });
+
+  it("titles the tasks tab as Projects while the id and route stay stable", () => {
+    // The coding-task orchestrator surface presents as "Projects"; renaming
+    // the tab id or /apps/tasks route would break saved links + telemetry.
+    expect(titleForTab("tasks")).toBe("Projects");
+    expect(TAB_PATHS.tasks).toBe("/apps/tasks");
   });
 });
 

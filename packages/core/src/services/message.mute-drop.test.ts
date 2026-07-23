@@ -46,6 +46,7 @@ function makeRuntime(seed: {
 		stateCache: new Map(),
 		turnControllers: new TurnControllerRegistry(),
 		emitEvent,
+		reportError: vi.fn(),
 		useModel,
 		getService: () => null,
 		getSetting: () => undefined,

@@ -9,7 +9,11 @@
     "rootDir": "./src",
     "rewriteRelativeImportExtensions": true,
     "stripInternal": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "paths": {
+      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../ui/dist/*"]
+    }
   },
   "exclude": [
     "src/**/*.stories.ts",

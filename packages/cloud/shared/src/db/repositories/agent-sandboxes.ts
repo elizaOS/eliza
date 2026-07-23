@@ -9,6 +9,7 @@ import {
   selectPrunableBackupIds,
 } from "../../lib/services/agent-backup-diff";
 import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config";
+import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
 import { logger } from "../../lib/utils/logger";
@@ -1183,6 +1184,18 @@ export class AgentSandboxesRepository {
         .update(agentSandboxes)
         .set({
           status: "running",
+          // Container-boot-coupled env transfer: the pool container is ALREADY
+          // RUNNING with the pool row's ELIZA_API_TOKEN (its inbound API auth
+          // boundary), and the pool row is deleted in this same transaction.
+          // Without carrying that token onto the user's row, every
+          // authenticated call to the claimed container (character push,
+          // bridge proxy, web UI gate) fails 401 against a token the container
+          // never saw. User-provided env keys are preserved; only the keys the
+          // container was booted with are overridden.
+          environment_vars: mergeWarmClaimEnvironmentVars(
+            userRow.environment_vars as Record<string, string> | null,
+            pool.environment_vars as Record<string, string> | null,
+          ),
           node_id: pool.node_id,
           container_name: pool.container_name,
           bridge_port: pool.bridge_port,

@@ -8218,10 +8218,6 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
-// Sub-agent completions emit follow-up evaluators (URL verification, attachment
-// routing, transcript stripping) that legitimately take >5s; 30s gives them
-// room without indefinitely blocking response finalization.
-const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 30_000;
 const INFERENCE_TIMING_LOG_TYPE = "inference_timing";
 const INFERENCE_TIMING_LOG_RETENTION = 4_096;
 const INFERENCE_TIMING_LOG_SWEEP_INTERVAL = 64;
@@ -8312,61 +8308,25 @@ function clearLatestResponseId(
 	}
 }
 
-function resolvePostDeliverySideEffectTimeoutMs(): number {
-	const raw = process.env.ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS?.trim();
-	if (!raw) return DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS;
-	const parsed = Number.parseInt(raw, 10);
-	if (!Number.isFinite(parsed) || parsed <= 0) {
-		return DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS;
-	}
-	return Math.max(100, parsed);
-}
-
 async function runPostDeliverySideEffect(
-	runtime: Pick<IAgentRuntime, "logger" | "agentId">,
+	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
 	label: string,
 	task: () => Promise<unknown>,
 ): Promise<void> {
-	const timeoutMs = resolvePostDeliverySideEffectTimeoutMs();
-	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 	try {
-		const result = await Promise.race([
-			Promise.resolve()
-				.then(task)
-				.then(() => "completed" as const),
-			new Promise<"timed_out">((resolve) => {
-				timeoutHandle = setTimeout(() => resolve("timed_out"), timeoutMs);
-				(timeoutHandle as { unref?: () => void }).unref?.();
-			}),
-		]);
-		if (result === "timed_out") {
-			runtime.logger.warn(
-				{
-					src: "service:message",
-					agentId: runtime.agentId,
-					label,
-					timeoutMs,
-				},
-				"Post-delivery side effect timed out",
-			);
-		}
+		await task();
 	} catch (err) {
-		runtime.logger.warn(
-			{
-				src: "service:message",
-				agentId: runtime.agentId,
-				label,
-				err: err instanceof Error ? err.message : String(err),
-			},
-			"Post-delivery side effect failed",
-		);
-	} finally {
-		if (timeoutHandle) clearTimeout(timeoutHandle);
+		// error-policy:J1 Detached background-task boundary reports failures
+		// without converting them into a successful user-visible operation.
+		runtime.reportError("MessageService.postDeliverySideEffect", err, {
+			agentId: runtime.agentId,
+			label,
+		});
 	}
 }
 
 function detachPostDeliverySideEffect(
-	runtime: Pick<IAgentRuntime, "logger" | "agentId">,
+	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
 	label: string,
 	task: () => Promise<unknown>,
 ): void {
@@ -9754,16 +9714,20 @@ export class DefaultMessageService implements IMessageService {
 						});
 
 					// Emit run started event
-					await runtime.emitEvent(EventType.RUN_STARTED, {
-						runtime,
-						source: "messageHandler",
-						runId,
-						messageId: message.id,
-						roomId: message.roomId,
-						entityId: message.entityId,
-						startTime,
-						status: "started",
-					} as RunEventPayload);
+					await runWithInferenceTiming(inferenceTimer, () =>
+						timeInferenceSpan("message:lifecycle:run-started", () =>
+							runtime.emitEvent(EventType.RUN_STARTED, {
+								runtime,
+								source: "messageHandler",
+								runId,
+								messageId: message.id,
+								roomId: message.roomId,
+								entityId: message.entityId,
+								startTime,
+								status: "started",
+							} as RunEventPayload),
+						),
+					);
 
 					const timeoutPromise = new Promise<never>((_, reject) => {
 						timeoutId = setTimeout(async () => {
@@ -10052,48 +10016,58 @@ export class DefaultMessageService implements IMessageService {
 			{ src: "service:message" },
 			"Saving message to memory",
 		);
-		let memoryToQueue: Memory;
+		await timeInferenceSpan("message:ingress:persistence", async () => {
+			let memoryToQueue: Memory;
 
-		// The document augmentation envelope
-		// (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
-		// is a model-facing wrapper added just for this turn's LLM prompt. Persist
-		// and embed the clean user text so the stored memory does not echo raw
-		// wrapper XML back into the user's chat bubble or re-enter context as
-		// history on later turns. `message` (used downstream this turn) keeps its
-		// wrap.
-		const persistableMessage = stripAugmentationForPersistence(message);
+			// The document augmentation envelope
+			// (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
+			// is a model-facing wrapper added just for this turn's LLM prompt. Persist
+			// and embed the clean user text so the stored memory does not echo raw
+			// wrapper XML back into the user's chat bubble or re-enter context as
+			// history on later turns. `message` (used downstream this turn) keeps its
+			// wrap.
+			const persistableMessage = stripAugmentationForPersistence(message);
 
-		if (message.id) {
-			const existingMemory = await runtime.getMemoryById(message.id);
-			if (existingMemory) {
-				runtime.logger.debug(
-					{ src: "service:message" },
-					"Memory already exists, skipping creation",
-				);
-				memoryToQueue = existingMemory;
+			if (message.id) {
+				const existingMemory = await runtime.getMemoryById(message.id);
+				if (existingMemory) {
+					runtime.logger.debug(
+						{ src: "service:message" },
+						"Memory already exists, skipping creation",
+					);
+					memoryToQueue = existingMemory;
+				} else {
+					const createdMemoryId = await runtime.createMemory(
+						persistableMessage,
+						"messages",
+					);
+					memoryToQueue = { ...persistableMessage, id: createdMemoryId };
+				}
+				await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
 			} else {
-				const createdMemoryId = await runtime.createMemory(
+				const memoryId = await runtime.createMemory(
 					persistableMessage,
 					"messages",
 				);
-				memoryToQueue = { ...persistableMessage, id: createdMemoryId };
+				message.id = memoryId;
+				memoryToQueue = { ...persistableMessage, id: memoryId };
+				await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
 			}
-			await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
-		} else {
-			const memoryId = await runtime.createMemory(
-				persistableMessage,
-				"messages",
-			);
-			message.id = memoryId;
-			memoryToQueue = { ...persistableMessage, id: memoryId };
-			await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
-		}
+		});
+
+		// Participant state and room are independent reads. Resolving them together
+		// also lets mute evaluation reuse this room instead of fetching it once to
+		// discover the world and again before should-respond routing.
+		const [agentUserState, room] = await Promise.all([
+			timeInferenceSpan("message:ingress:participant-state", () =>
+				runtime.getParticipantUserState(message.roomId, runtime.agentId),
+			),
+			timeInferenceSpan("message:ingress:room", () =>
+				runtime.getRoom(message.roomId),
+			),
+		]);
 
 		// Check if LLM is off by default
-		const agentUserState = await runtime.getParticipantUserState(
-			message.roomId,
-			runtime.agentId,
-		);
 		const defLllmOff = parseBooleanFromText(
 			String(runtime.getSetting("BASIC_CAPABILITIES_DEFLLMOFF") || ""),
 		);
@@ -10122,11 +10096,18 @@ export class DefaultMessageService implements IMessageService {
 			runtime,
 			message,
 		);
-		const muteState = await resolveEffectiveMuteState(runtime, {
-			roomIds: [message.roomId],
-			primaryParticipantState: agentUserState,
-			...(message.worldId ? { worldId: message.worldId } : {}),
-		});
+		const muteState = await timeInferenceSpan(
+			"message:ingress:mute-state",
+			() =>
+				resolveEffectiveMuteState(runtime, {
+					roomIds: [message.roomId],
+					primaryRoom: room,
+					primaryParticipantState: agentUserState,
+					...(message.worldId || room?.worldId
+						? { worldId: message.worldId ?? room?.worldId }
+						: {}),
+				}),
+		);
 		if (muteState.muted) {
 			runtime.logger.debug(
 				{
@@ -10267,15 +10248,12 @@ export class DefaultMessageService implements IMessageService {
 			});
 		}
 
-		// Room context for shouldRespond (fetch before compose so providers see
-		// post-attachment and post-incoming-hook message state).
-		const room = await runtime.getRoom(message.roomId);
-
 		// Process attachments before state composition / incoming hooks
 		if (message.content.attachments && message.content.attachments.length > 0) {
-			message.content.attachments = await this.processAttachments(
-				runtime,
-				message.content.attachments,
+			const attachments = message.content.attachments;
+			message.content.attachments = await timeInferenceSpan(
+				"message:ingress:attachments",
+				() => this.processAttachments(runtime, attachments),
 			);
 			if (message.id) {
 				await runtime.updateMemory({
@@ -10293,13 +10271,15 @@ export class DefaultMessageService implements IMessageService {
 		const preIncomingHookText =
 			typeof message.content?.text === "string" ? message.content.text : "";
 
-		await runtime.applyPipelineHooks(
-			"incoming_before_compose",
-			incomingPipelineHookContext(message, {
-				roomId: message.roomId,
-				responseId,
-				runId,
-			}),
+		await timeInferenceSpan("message:ingress:hooks", () =>
+			runtime.applyPipelineHooks(
+				"incoming_before_compose",
+				incomingPipelineHookContext(message, {
+					roomId: message.roomId,
+					responseId,
+					runId,
+				}),
+			),
 		);
 
 		const postIncomingHookText =
@@ -10329,15 +10309,17 @@ export class DefaultMessageService implements IMessageService {
 		const autonomyMode =
 			typeof metadata?.autonomyMode === "string" ? metadata.autonomyMode : null;
 
-		await runtime.applyPipelineHooks(
-			"pre_should_respond",
-			preShouldRespondPipelineHookContext(message, {
-				roomId: message.roomId,
-				responseId,
-				runId,
-				state,
-				isAutonomous,
-			}),
+		await timeInferenceSpan("message:ingress:pre-respond-hooks", () =>
+			runtime.applyPipelineHooks(
+				"pre_should_respond",
+				preShouldRespondPipelineHookContext(message, {
+					roomId: message.roomId,
+					responseId,
+					runId,
+					state,
+					isAutonomous,
+				}),
+			),
 		);
 
 		let shouldRespondToMessage = true;
@@ -10821,30 +10803,39 @@ export class DefaultMessageService implements IMessageService {
 						{ src: "service:message", memoryId: responseMemory.id },
 						"Saving response to memory",
 					);
-					await runtime.createMemory(responseMemory, "messages");
+					await timeInferenceSpan("message:delivery:persistence", () =>
+						runtime.createMemory(responseMemory, "messages"),
+					);
 
-					await this.emitMessageSent(
-						runtime,
-						responseMemory,
-						message.content.source ?? "messageHandler",
+					await timeInferenceSpan("message:delivery:event", () =>
+						this.emitMessageSent(
+							runtime,
+							responseMemory,
+							message.content.source ?? "messageHandler",
+						),
 					);
 				}
 			}
 
 			if (responseContent) {
+				const deliverableResponseContent = responseContent;
 				if (mode === "simple") {
 					// Keep content hooks and DB write before delivery so the wire
 					// response and stored memory match. Do not put MESSAGE_SENT
 					// handlers or post-turn evaluators before the callback; they are
 					// side effects and must not stall user-visible streaming.
-					await runtime.applyPipelineHooks(
-						"outgoing_before_deliver",
-						outgoingPipelineHookContext(responseContent, {
-							source: "simple",
-							roomId: message.roomId,
-							message,
-							responseId: responseContent.responseId ?? responseMessages[0]?.id,
-						}),
+					await timeInferenceSpan("message:delivery:hooks", () =>
+						runtime.applyPipelineHooks(
+							"outgoing_before_deliver",
+							outgoingPipelineHookContext(deliverableResponseContent, {
+								source: "simple",
+								roomId: message.roomId,
+								message,
+								responseId:
+									deliverableResponseContent.responseId ??
+									responseMessages[0]?.id,
+							}),
+						),
 					);
 					if (responseMessages.length > 0) {
 						for (const responseMemory of responseMessages) {
@@ -10854,9 +10845,7 @@ export class DefaultMessageService implements IMessageService {
 							) {
 								continue;
 							}
-							if (responseContent) {
-								responseMemory.content = responseContent;
-							}
+							responseMemory.content = deliverableResponseContent;
 							if (shouldSkipResponseMemoryPersistence(responseMemory)) {
 								runtime.logger.debug(
 									{ src: "service:message", memoryId: responseMemory.id },
@@ -10868,7 +10857,9 @@ export class DefaultMessageService implements IMessageService {
 								{ src: "service:message", memoryId: responseMemory.id },
 								"Saving response to memory",
 							);
-							await runtime.createMemory(responseMemory, "messages");
+							await timeInferenceSpan("message:delivery:persistence", () =>
+								runtime.createMemory(responseMemory, "messages"),
+							);
 
 							detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
 								this.emitMessageSent(
@@ -10880,10 +10871,10 @@ export class DefaultMessageService implements IMessageService {
 						}
 					}
 					if (callback) {
-						if (responseContent) {
-							await callback(responseContent);
-							markInference(INFERENCE_MARKS.replyDelivered);
-						}
+						await timeInferenceSpan("message:delivery:callback", () =>
+							callback(deliverableResponseContent),
+						);
+						markInference(INFERENCE_MARKS.replyDelivered);
 					}
 				}
 			}
@@ -10948,13 +10939,15 @@ export class DefaultMessageService implements IMessageService {
 				inReplyTo: createUniqueUuid(runtime, message.id),
 			};
 
-			await runtime.applyPipelineHooks(
-				"outgoing_before_deliver",
-				outgoingPipelineHookContext(terminalContent, {
-					source: "excluded",
-					roomId: message.roomId,
-					message,
-				}),
+			await timeInferenceSpan("message:delivery:hooks", () =>
+				runtime.applyPipelineHooks(
+					"outgoing_before_deliver",
+					outgoingPipelineHookContext(terminalContent, {
+						source: "excluded",
+						roomId: message.roomId,
+						message,
+					}),
+				),
 			);
 
 			const terminalMemory: Memory = {
@@ -10965,11 +10958,15 @@ export class DefaultMessageService implements IMessageService {
 				roomId: message.roomId,
 				createdAt: Date.now(),
 			};
-			await runtime.createMemory(terminalMemory, "messages");
-			await this.emitMessageSent(
-				runtime,
-				terminalMemory,
-				message.content.source ?? "messageHandler",
+			await timeInferenceSpan("message:delivery:persistence", () =>
+				runtime.createMemory(terminalMemory, "messages"),
+			);
+			await timeInferenceSpan("message:delivery:event", () =>
+				this.emitMessageSent(
+					runtime,
+					terminalMemory,
+					message.content.source ?? "messageHandler",
+				),
 			);
 			runtime.logger.debug(
 				{ src: "service:message", memoryId: terminalMemory.id },
@@ -10980,7 +10977,9 @@ export class DefaultMessageService implements IMessageService {
 				callback &&
 				!(terminalAction === "IGNORE" && isVoiceChannelMessage(message))
 			) {
-				await callback(terminalContent);
+				await timeInferenceSpan("message:delivery:callback", () =>
+					callback(terminalContent),
+				);
 			}
 		}
 
@@ -11026,14 +11025,21 @@ export class DefaultMessageService implements IMessageService {
 		let roomName = entityName;
 
 		if (!isDM) {
-			const roomDatas = await runtime.getRoomsByIds([message.roomId]);
+			const roomDatas = await timeInferenceSpan(
+				"message:lifecycle:log-context-room",
+				() => runtime.getRoomsByIds([message.roomId]),
+			);
 			if (roomDatas?.length) {
 				const roomData = roomDatas[0];
 				if (roomData.name) {
 					roomName = roomData.name;
 				}
 				if (roomData.worldId) {
-					const worldData = await runtime.getWorld(roomData.worldId);
+					const worldId = roomData.worldId;
+					const worldData = await timeInferenceSpan(
+						"message:lifecycle:log-context-world",
+						() => runtime.getWorld(worldId),
+					);
 					if (worldData) {
 						roomName = `${worldData.name}-${roomName}`;
 					}
@@ -11072,18 +11078,20 @@ export class DefaultMessageService implements IMessageService {
 		};
 
 		// Emit run ended event
-		await runtime.emitEvent(EventType.RUN_ENDED, {
-			runtime,
-			source: "messageHandler",
-			runId,
-			messageId: message.id,
-			roomId: message.roomId,
-			entityId: message.entityId,
-			startTime,
-			status: "completed",
-			endTime: Date.now(),
-			duration: Date.now() - startTime,
-		} as RunEventPayload);
+		await timeInferenceSpan("message:lifecycle:run-ended", () =>
+			runtime.emitEvent(EventType.RUN_ENDED, {
+				runtime,
+				source: "messageHandler",
+				runId,
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: message.entityId,
+				startTime,
+				status: "completed",
+				endTime: Date.now(),
+				duration: Date.now() - startTime,
+			} as RunEventPayload),
+		);
 
 		return {
 			didRespond,

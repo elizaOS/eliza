@@ -432,6 +432,9 @@
       "@elizaos/plugin-signal": [
         "./plugins/plugin-signal/dist/index.d.ts"
       ],
+      "@elizaos/plugin-simple-views": [
+        "./plugins/plugin-simple-views/dist/index.d.ts"
+      ],
       "@elizaos/plugin-slack": [
         "./plugins/plugin-slack/dist/index.d.ts"
       ],

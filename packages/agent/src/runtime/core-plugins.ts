@@ -307,6 +307,7 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
+  "@elizaos/plugin-simple-views", // managed Cloud Notes + Calendar data and capabilities
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
   "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
   "@elizaos/plugin-commands", // slash commands
