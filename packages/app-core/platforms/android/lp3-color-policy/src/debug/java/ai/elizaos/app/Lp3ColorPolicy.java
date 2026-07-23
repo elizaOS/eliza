@@ -23,6 +23,7 @@ final class Lp3ColorPolicy {
         WRONG_DEVICE,
         OPTED_OUT,
         MISSING_PERMISSION,
+        MISSING_NOTIFICATION_PERMISSION,
         ELIGIBLE
     }
 
@@ -31,6 +32,7 @@ final class Lp3ColorPolicy {
         WRONG_DEVICE,
         OPTED_OUT,
         MISSING_PERMISSION,
+        MISSING_NOTIFICATION_PERMISSION,
         ALREADY_CORRECT,
         REPAIRED
     }
@@ -52,6 +54,8 @@ final class Lp3ColorPolicy {
         boolean optedIn();
 
         boolean hasWriteSecureSettings();
+
+        boolean hasPostNotificationsPermission();
 
         int colorCorrectionEnabled();
 
@@ -118,11 +122,15 @@ final class Lp3ColorPolicy {
             String manufacturer,
             String model,
             boolean optedIn,
-            boolean hasWriteSecureSettings) {
+            boolean hasWriteSecureSettings,
+            boolean hasPostNotificationsPermission) {
         if (!buildEnabled) return Decision.BUILD_DISABLED;
         if (!isTargetDevice(manufacturer, model)) return Decision.WRONG_DEVICE;
         if (!optedIn) return Decision.OPTED_OUT;
         if (!hasWriteSecureSettings) return Decision.MISSING_PERMISSION;
+        if (!hasPostNotificationsPermission) {
+            return Decision.MISSING_NOTIFICATION_PERMISSION;
+        }
         return Decision.ELIGIBLE;
     }
 
@@ -162,7 +170,8 @@ final class Lp3ColorPolicy {
             state.manufacturer(),
             state.model(),
             state.optedIn(),
-            state.hasWriteSecureSettings()
+            state.hasWriteSecureSettings(),
+            state.hasPostNotificationsPermission()
         );
         if (decision != Decision.ELIGIBLE) return Outcome.valueOf(decision.name());
 

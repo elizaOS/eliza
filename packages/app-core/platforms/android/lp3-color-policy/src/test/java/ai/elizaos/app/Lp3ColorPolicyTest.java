@@ -147,7 +147,20 @@ public class Lp3ColorPolicyTest {
     }
 
     @Test
-    public void optOutAndPermissionRevokeMakeTheNextReconcileIneligible() {
+    public void missingNotificationPermissionNeverRunsAnInvisibleGuard() {
+        FakeState state = eligibleState();
+        state.hasNotificationPermission = false;
+
+        assertEquals(
+            Lp3ColorPolicy.Outcome.MISSING_NOTIFICATION_PERMISSION,
+            Lp3ColorPolicy.reconcile(state)
+        );
+        assertEquals(0, state.secureReads);
+        assertEquals(List.of(), state.writes);
+    }
+
+    @Test
+    public void optOutAndPermissionRevokesMakeTheNextReconcileIneligible() {
         FakeState optedOut = eligibleState();
         assertEquals(
             Lp3ColorPolicy.Outcome.ALREADY_CORRECT,
@@ -168,6 +181,18 @@ public class Lp3ColorPolicyTest {
             Lp3ColorPolicy.reconcile(revoked)
         );
         assertEquals(2, revoked.secureReads);
+
+        FakeState notificationsRevoked = eligibleState();
+        assertEquals(
+            Lp3ColorPolicy.Outcome.ALREADY_CORRECT,
+            Lp3ColorPolicy.reconcile(notificationsRevoked)
+        );
+        notificationsRevoked.hasNotificationPermission = false;
+        assertEquals(
+            Lp3ColorPolicy.Outcome.MISSING_NOTIFICATION_PERMISSION,
+            Lp3ColorPolicy.reconcile(notificationsRevoked)
+        );
+        assertEquals(2, notificationsRevoked.secureReads);
     }
 
     @Test
@@ -346,6 +371,7 @@ public class Lp3ColorPolicyTest {
         String model = "tlp301";
         boolean optedIn = true;
         boolean hasPermission = true;
+        boolean hasNotificationPermission = true;
         int enabled = 0;
         int mode = -1;
         boolean acceptEnabledWrite = true;
@@ -378,6 +404,11 @@ public class Lp3ColorPolicyTest {
         @Override
         public boolean hasWriteSecureSettings() {
             return hasPermission;
+        }
+
+        @Override
+        public boolean hasPostNotificationsPermission() {
+            return hasNotificationPermission;
         }
 
         @Override

@@ -156,6 +156,7 @@
       "ElizaVoiceInteractionSessionService",
       "ElizaRecognitionService",
       "ElizaVoiceInputMethodService",
+      "Lp3ColorPolicyInitializer",
       "Lp3ColorPolicyService",
       "Lp3ColorPolicyBootReceiver"
     ],

@@ -292,14 +292,15 @@ public final class Lp3ColorPolicyService extends Service {
             .build();
     }
 
-    private static Lp3ColorPolicy.Decision currentDecision(Context context) {
+    static Lp3ColorPolicy.Decision currentDecision(Context context) {
         AndroidState state = new AndroidState(context);
         return Lp3ColorPolicy.decide(
             state.buildEnabled(),
             state.manufacturer(),
             state.model(),
             state.optedIn(),
-            state.hasWriteSecureSettings()
+            state.hasWriteSecureSettings(),
+            state.hasPostNotificationsPermission()
         );
     }
 
@@ -323,6 +324,10 @@ public final class Lp3ColorPolicyService extends Service {
         String message = "[Lp3ColorPolicy] guard inactive; trigger=" + trigger + "; reason=" + decision;
         if (decision == Lp3ColorPolicy.Decision.MISSING_PERMISSION) {
             Log.e(TAG, message + "; grant android.permission.WRITE_SECURE_SETTINGS");
+        } else if (
+            decision == Lp3ColorPolicy.Decision.MISSING_NOTIFICATION_PERMISSION
+        ) {
+            Log.e(TAG, message + "; grant android.permission.POST_NOTIFICATIONS");
         } else {
             Log.i(TAG, message);
         }
@@ -361,6 +366,13 @@ public final class Lp3ColorPolicyService extends Service {
         public boolean hasWriteSecureSettings() {
             return context.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
                 == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @Override
+        public boolean hasPostNotificationsPermission() {
+            return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    == PackageManager.PERMISSION_GRANTED;
         }
 
         @Override
