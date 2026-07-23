@@ -70,10 +70,13 @@ describe("listInboxAction", () => {
 
 		expect(result.success).toBe(true);
 		expect(result.data).toMatchObject({ total: 2, returned: 2 });
+		const messages = result.data?.messages;
+		expect(messages).toBeDefined();
+		if (!messages) {
+			throw new Error("Expected aggregated inbox messages");
+		}
 		expect(
-			(result.data?.messages as Array<{ id: string }>).map(
-				(message) => message.id,
-			),
+			(messages as Array<{ id: string }>).map((message) => message.id),
 		).toEqual(["gmail-1", "signal-1"]);
 	});
 });

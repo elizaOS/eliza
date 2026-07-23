@@ -15,11 +15,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from benchmarks.mind2web.dataset import Mind2WebDataset, expand_tasks
+from benchmarks.mind2web.dataset import (
+    MIND2WEB_RANKER_SCORES_SHA256,
+    Mind2WebDataset,
+    ensure_ranker_scores_available,
+    expand_tasks,
+    validate_tasks,
+)
 from benchmarks.mind2web.eliza_agent import (
     create_mind2web_agent,
 )
 from benchmarks.mind2web.evaluator import Mind2WebEvaluator
+from benchmarks.mind2web.ranker import DEFAULT_RANKER_MODEL, DEFAULT_RANKER_REVISION
 from benchmarks.mind2web.types import (
     Mind2WebConfig,
     Mind2WebReport,
@@ -73,11 +80,52 @@ class Mind2WebRunner:
                 use_huggingface=self.use_huggingface,
                 use_sample=self.use_sample,
             )
+            if self.config.ranker_mode.value == "real" and not self.config.use_mock:
+                ranker_scores_path = ensure_ranker_scores_available()
+                self.dataset.data_provenance.update(
+                    {
+                        "ranker_scores_path": str(ranker_scores_path.resolve()),
+                        "ranker_scores_sha256": MIND2WEB_RANKER_SCORES_SHA256,
+                        "ranker_scores_source": "official-pinned-candidate-generation-output",
+                    }
+                )
 
             base_tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
             tasks = expand_tasks(base_tasks) if self.config.include_edge_scenarios else base_tasks
             if not tasks:
                 raise RuntimeError("No tasks loaded from dataset")
+            validate_tasks(tasks)
+            if (
+                self.config.expected_tasks is not None
+                and len(base_tasks) != self.config.expected_tasks
+            ):
+                raise RuntimeError(
+                    "Mind2Web base task count mismatch: "
+                    f"expected {self.config.expected_tasks}, got {len(base_tasks)}"
+                )
+            if (
+                self.config.expected_scenarios is not None
+                and len(tasks) != self.config.expected_scenarios
+            ):
+                raise RuntimeError(
+                    "Mind2Web scenario count mismatch: "
+                    f"expected {self.config.expected_scenarios}, got {len(tasks)}"
+                )
+            full_base_count = int(
+                self.dataset.data_provenance.get("base_task_count", len(base_tasks))
+            )
+            complete_split = len(base_tasks) == full_base_count
+            self.dataset.data_provenance.update(
+                {
+                    "selected_base_task_count": len(base_tasks),
+                    "expanded_task_count": len(tasks),
+                    "complete_split": complete_split,
+                    "publishable": bool(
+                        self.dataset.data_provenance.get("publishable")
+                    )
+                    and complete_split,
+                }
+            )
 
             logger.info(f"Running Mind2Web benchmark on {len(tasks)} tasks")
 
@@ -117,7 +165,12 @@ class Mind2WebRunner:
     def _ensure_bridge_manager(self) -> Any:
         if self._bridge_manager is None:
             self._configure_bridge_model_env()
-            if os.environ.get("ELIZA_BENCH_URL"):
+            harness = (
+                os.environ.get("ELIZA_BENCH_HARNESS")
+                or os.environ.get("BENCHMARK_HARNESS")
+                or "eliza"
+            ).strip().lower()
+            if harness != "eliza" or os.environ.get("ELIZA_BENCH_URL"):
                 from eliza_adapter.client import ElizaClient
 
                 client = ElizaClient()
@@ -128,7 +181,7 @@ class Mind2WebRunner:
 
                 self._bridge_manager = ElizaServerManager()
                 self._bridge_manager.start()
-            logger.info("[Mind2WebRunner] Running with Eliza TypeScript bridge")
+            logger.info("[Mind2WebRunner] Running with native %s bridge", harness)
         return self._bridge_manager
 
     def _stop_bridge_manager(self) -> None:
@@ -195,19 +248,12 @@ class Mind2WebRunner:
 
         try:
             await agent.initialize()
-
-            # Run with timeout
             predictions = await asyncio.wait_for(
                 agent.process_task(task),
                 timeout=self.config.timeout_ms / 1000,
             )
-
             latency_ms = (time.time() - start_time) * 1000
-
-            # Pull per-step ranker recalls from the agent if it tracked them.
             ranker_recalls = getattr(agent, "ranker_recalls", None)
-
-            # Evaluate predictions
             return self.evaluator.evaluate_task(
                 task,
                 predictions,
@@ -215,57 +261,20 @@ class Mind2WebRunner:
                 latency_ms=latency_ms,
                 ranker_recalls=ranker_recalls,
             )
-
-
-        except asyncio.TimeoutError:
-            return Mind2WebResult(
-                task_id=task.annotation_id,
-                instruction=task.confirmed_task,
-                website=task.website,
-                domain=task.domain,
-                trial_number=trial_number,
-                success=False,
-                error="Task timed out",
-                latency_ms=(time.time() - start_time) * 1000,
-                total_steps=len(task.actions),
-            )
-
-        except Exception as e:
-            logger.error(f"Error running task {task.annotation_id}: {e}")
-            return Mind2WebResult(
-                task_id=task.annotation_id,
-                instruction=task.confirmed_task,
-                website=task.website,
-                domain=task.domain,
-                trial_number=trial_number,
-                success=False,
-                error=str(e),
-                latency_ms=(time.time() - start_time) * 1000,
-                total_steps=len(task.actions),
-            )
-
         finally:
             await agent.close()
 
     def _generate_report(self, results: list[Mind2WebResult]) -> Mind2WebReport:
         """Generate benchmark report from results."""
         if not results:
-            return Mind2WebReport(
-                total_tasks=0,
-                total_trials=0,
-                overall_element_accuracy=0.0,
-                overall_operation_accuracy=0.0,
-                overall_step_accuracy=0.0,
-                overall_task_success_rate=0.0,
-                results=[],
-            )
+            raise RuntimeError("Mind2Web cannot generate a report with no task results")
 
         # Aggregate metrics
         metrics = self.evaluator.compute_aggregate_metrics(results)
 
         # Group by domain
         by_domain: dict[str, dict[str, float]] = {}
-        domains = set(r.domain for r in results)
+        domains = {r.domain for r in results}
         for domain in domains:
             domain_results = [r for r in results if r.domain == domain]
             domain_metrics = self.evaluator.compute_aggregate_metrics(domain_results)
@@ -273,13 +282,13 @@ class Mind2WebRunner:
 
         # Group by website
         by_website: dict[str, dict[str, float]] = {}
-        websites = set(r.website for r in results)
+        websites = {r.website for r in results}
         for website in websites:
             website_results = [r for r in results if r.website == website]
             website_metrics = self.evaluator.compute_aggregate_metrics(website_results)
             by_website[website] = website_metrics
 
-        total_tasks = len(set(r.task_id for r in results))
+        total_tasks = len({r.task_id for r in results})
         total_trials = len(results)
 
         status: str
@@ -309,6 +318,11 @@ class Mind2WebRunner:
             "mode": mode,
             "split": self.config.split.value,
             "model_provider": self.config.model_provider or "auto",
+            "native_harness": (
+                os.environ.get("ELIZA_BENCH_HARNESS")
+                or os.environ.get("BENCHMARK_HARNESS")
+                or "eliza"
+            ),
             "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
             "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
             "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
@@ -320,8 +334,15 @@ class Mind2WebRunner:
         # Surface the ranker mode + Recall@K in the run summary so the report
         # is self-describing (oracle/none modes are NOT leaderboard-comparable).
         ranker_recall = metrics.get("overall_ranker_recall_at_k", float("nan"))
-        summary["ranker_mode"] = self.config.ranker_mode.value
+        summary["ranker_mode"] = (
+            "oracle" if self.config.use_mock else self.config.ranker_mode.value
+        )
         summary["ranker_top_k"] = self.config.ranker_top_k
+        summary["ranker_model"] = self.config.ranker_model or DEFAULT_RANKER_MODEL
+        summary["ranker_revision"] = (
+            self.config.ranker_revision or DEFAULT_RANKER_REVISION
+        )
+        summary["upstream_leaderboard_comparable"] = False
         if isinstance(ranker_recall, (int, float)) and not (
             isinstance(ranker_recall, float) and ranker_recall != ranker_recall  # NaN check
         ):
@@ -397,6 +418,18 @@ class Mind2WebRunner:
         return {
             "total_tasks": report.total_tasks,
             "total_trials": report.total_trials,
+            "scenario_counts": {
+                "base": report.total_tasks // 11
+                if self.config.include_edge_scenarios
+                else report.total_tasks,
+                "edge": report.total_tasks - (
+                    report.total_tasks // 11
+                    if self.config.include_edge_scenarios
+                    else report.total_tasks
+                ),
+                "total": report.total_tasks,
+            },
+            "data_provenance": self.dataset.data_provenance,
             "overall_element_accuracy": report.overall_element_accuracy,
             "overall_operation_accuracy": report.overall_operation_accuracy,
             "overall_step_accuracy": report.overall_step_accuracy,
@@ -405,6 +438,17 @@ class Mind2WebRunner:
             "by_domain": report.by_domain,
             "by_website": report.by_website,
             "summary": report.summary,
+            "results": [
+                {
+                    "task_id": result.task_id,
+                    "trial_number": result.trial_number,
+                    "success": result.success,
+                    "error": result.error,
+                    "steps_completed": result.steps_completed,
+                    "total_steps": result.total_steps,
+                }
+                for result in report.results
+            ],
         }
 
     def _generate_markdown_summary(self, report: Mind2WebReport) -> str:

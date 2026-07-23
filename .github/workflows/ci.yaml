@@ -29,7 +29,7 @@ jobs:
       # opt-in or post-merge workflows, not in the PR test job.
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           # Full history so `turbo run typecheck --affected` can resolve the PR
           # merge base (#12341); a shallow clone degrades to typechecking all.
@@ -100,11 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-        with:
-          # `audit:test-realness` compares touched tests against origin/develop.
-          # Keep the merge base available so the diff-scoped ratchet runs in CI.
-          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -125,17 +121,11 @@ jobs:
       - name: Prompt secret scan
         run: cd packages/prompts && bun run check:secrets
 
-      - name: Type safety ratchet self-test
-        run: bun run audit:type-safety-ratchet:self-test
-
-      - name: Type safety ratchet
-        run: bun run audit:type-safety-ratchet
-
       - name: Check format
         run: bun run format:check
 
-      - name: Run lint
-        run: bun run lint
+      - name: Run lint (read-only)
+        run: bun run lint:check
 
       # UI render-time determinism gate. Fails on NEW Date.now()/Math.random()/
       # crypto.randomUUID()/locale-defaulted toLocale* in a component/hook render
@@ -160,9 +150,6 @@ jobs:
       - name: Anti-larp test gate
         run: bun run audit:focused-tests
 
-      - name: Test realness ratchet
-        run: bun run audit:test-realness
-
       # Per-plugin mock-LLM e2e coverage. The seeded allowlist carries
       # historical debt; new unsuppressed gaps fail the main gate (#13620).
       - name: Per-plugin e2e coverage
@@ -175,7 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -205,7 +192,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e

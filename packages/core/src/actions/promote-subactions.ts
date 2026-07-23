@@ -16,6 +16,7 @@ import type {
 	ActionExample,
 	ActionParameter,
 	ActionParameters,
+	ActionResult,
 	Handler,
 	HandlerCallback,
 	HandlerOptions,
@@ -27,6 +28,7 @@ import type {
 } from "../types";
 import {
 	CANONICAL_SUBACTION_KEY,
+	DEFAULT_SUBACTION_KEYS,
 	LEGACY_SUBACTION_KEYS,
 	normalizeSubaction,
 } from "./subaction-dispatch";
@@ -74,7 +76,27 @@ export interface PromoteSubactionsOptions {
 const PROMOTED_MARKER = Symbol.for("@elizaos/core/promote-subactions/marker");
 
 interface PromotedAction extends Action {
-	[PROMOTED_MARKER]?: { parent: string; virtuals: readonly string[] };
+	[PROMOTED_MARKER]?: {
+		parent: string;
+		virtuals: readonly string[];
+		parentRoutingHint?: string;
+	};
+}
+
+/**
+ * The umbrella parent's `routingHint` for a promoted virtual, carried on the
+ * non-enumerable promotion marker rather than on the virtual itself so tool
+ * rendering (which prepends `routingHint` to each tool's description) never
+ * duplicates it across every virtual. The planner's routing-hints block reads
+ * it through this accessor and dedupes by parent, so a promoted family like
+ * TRIGGER_* contributes exactly one hint line when any virtual is exposed.
+ */
+export function promotedParentRoutingHint(
+	action: Action,
+): { parent: string; hint: string } | undefined {
+	const marker = (action as PromotedAction)[PROMOTED_MARKER];
+	const hint = marker?.parentRoutingHint?.trim();
+	return marker && hint ? { parent: marker.parent, hint } : undefined;
 }
 
 /**
@@ -257,6 +279,48 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	) => {
+		// A virtual must reject a conflicting discriminator before its pinned
+		// value is merged, or a call routed to one operation can silently execute
+		// another. The structured failure lets the planner choose the intended
+		// virtual without invoking the parent handler.
+		const rawParams = (options as HandlerOptions | undefined)?.parameters as
+			| Record<string, unknown>
+			| undefined;
+		if (rawParams) {
+			for (const key of DEFAULT_SUBACTION_KEYS) {
+				// An alias-named parameter can be a second-level selector. Its enum
+				// must include the pinned value before it is treated as a discriminator;
+				// otherwise its independent vocabulary remains untouched.
+				const declared = parent.parameters?.find((p) => p.name === key);
+				if (declared) {
+					const declaredEnum = (
+						declared.schema as { enum?: unknown } | undefined
+					)?.enum;
+					const carriesPin =
+						Array.isArray(declaredEnum) &&
+						declaredEnum.some(
+							(v) =>
+								typeof v === "string" &&
+								normalizeSubaction(v) === normalizeSubaction(subaction),
+						);
+					if (!carriesPin) continue;
+				}
+				const value = rawParams[key];
+				if (
+					typeof value === "string" &&
+					value.trim() !== "" &&
+					normalizeSubaction(value) !== normalizeSubaction(subaction)
+				) {
+					const wanted = `${toUpperSnake(parent.name)}_${toUpperSnake(value.trim())}`;
+					const text = `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${toUpperSnake(parent.name)} with ${key}=${value}) instead.`;
+					return {
+						success: false,
+						text,
+						error: new Error(text),
+					} as ActionResult;
+				}
+			}
+		}
 		const merged = mergeOptionsWithSubaction(parent, options, subaction);
 		return parentHandler(runtime, message, state, merged, callback, responses);
 	};
@@ -322,7 +386,9 @@ export function promoteSubactionsToActions(
 		// finds virtuals through their similes (parent name + subaction) and
 		// through the parent's own search text, and tool rendering falls back
 		// to the short composed `description` when no per-subaction
-		// `descriptionCompressed` override is provided.
+		// `descriptionCompressed` override is provided. The parent's
+		// routingHint instead rides the promotion marker below, where the
+		// planner's routing-hints block picks it up once per family.
 		const virtual: PromotedAction = {
 			name: virtualName,
 			description,
@@ -346,7 +412,11 @@ export function promoteSubactionsToActions(
 			accountPolicy: parent.accountPolicy,
 		};
 		Object.defineProperty(virtual, PROMOTED_MARKER, {
-			value: { parent: parent.name, virtuals: [virtualName] },
+			value: {
+				parent: parent.name,
+				virtuals: [virtualName],
+				parentRoutingHint: parent.routingHint,
+			},
 			enumerable: false,
 			configurable: false,
 			writable: false,

@@ -1,4 +1,5 @@
 /** Barrel for the coding-tools services and the coding-agent-context Zod schemas. */
+export { BackgroundShellService } from "./background-shell-service.js";
 export * from "./coding-agent-context.js";
 export { FileStateService } from "./file-state-service.js";
 export {

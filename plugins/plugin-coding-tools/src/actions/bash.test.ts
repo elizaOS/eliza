@@ -10,6 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
+  type ActionResult,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
@@ -30,8 +31,19 @@ import { describe, expect, it, vi } from "vitest";
 // the suite on Windows and trust the equivalent Linux/macOS runs.
 const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
-import { SandboxService, SessionCwdService } from "../services/index.js";
-import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
+import codingToolsPlugin from "../index.js";
+import { runShell } from "../lib/run-shell.js";
+import { availableToolsProvider } from "../providers/available-tools.js";
+import {
+  BackgroundShellService,
+  SandboxService,
+  SessionCwdService,
+} from "../services/index.js";
+import {
+  BACKGROUND_SHELL_SERVICE,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+} from "../types.js";
 import {
   type CommandPlatform,
   localResourceUserFacingText,
@@ -45,18 +57,56 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+async function createRecursiveDeleteCommand(): Promise<{
+  command: string;
+  target: string;
+}> {
+  const target = await fs.mkdtemp(
+    path.join(os.tmpdir(), "coding-tools-destructive-gate-"),
+  );
+  const quotedTarget =
+    process.platform === "win32"
+      ? `'${target.replaceAll("'", "''")}'`
+      : `'${target.replaceAll("'", "'\\''")}'`;
+  return {
+    target,
+    command:
+      process.platform === "win32"
+        ? `Remove-Item -LiteralPath ${quotedTarget} -Recurse -Force`
+        : `rm -rf ${quotedTarget}`,
+  };
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    // error-policy:J3 filesystem probe; a missing path is the explicit signal.
+    return false;
+  }
+}
+
 interface RuntimeOptions {
   blockedPaths?: string;
   shellTimeoutMs?: number;
   shellHistoryCommands?: string[];
   withShellHistoryService?: boolean;
   capabilityRouter?: ElizaCapabilityRouter;
+  backgroundBufferChars?: number;
+}
+
+function requireActionResult(result: ActionResult | undefined): ActionResult {
+  expect(result).toBeDefined();
+  if (!result) throw new Error("Expected SHELL action result");
+  return result;
 }
 
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   runtime: IAgentRuntime;
   sandbox: SandboxService;
   session: SessionCwdService;
+  backgroundShell: BackgroundShellService;
   shellHistoryService?: {
     clearCommandHistory: ReturnType<typeof vi.fn>;
     getCommandHistory: ReturnType<typeof vi.fn>;
@@ -67,6 +117,10 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
   if (opts.shellTimeoutMs !== undefined)
     settings.CODING_TOOLS_SHELL_TIMEOUT_MS = opts.shellTimeoutMs;
+  if (opts.backgroundBufferChars !== undefined) {
+    settings.CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS =
+      opts.backgroundBufferChars;
+  }
 
   const services = new Map<string, unknown>();
   const runtime = {
@@ -77,8 +131,10 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
 
   const sandbox = await SandboxService.start(runtime);
   const session = await SessionCwdService.start(runtime);
+  const backgroundShell = await BackgroundShellService.start(runtime);
   services.set(SANDBOX_SERVICE, sandbox);
   services.set(SESSION_CWD_SERVICE, session);
+  services.set(BACKGROUND_SHELL_SERVICE, backgroundShell);
   const shellHistoryService =
     opts.withShellHistoryService || opts.shellHistoryCommands
       ? {
@@ -97,7 +153,47 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     services.set(CAPABILITY_ROUTER_SERVICE_TYPE, opts.capabilityRouter);
   }
 
-  return { runtime, sandbox, session, shellHistoryService };
+  return { runtime, sandbox, session, backgroundShell, shellHistoryService };
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollUntil(
+  runtime: IAgentRuntime,
+  message: Memory,
+  handle: string,
+  predicate: (data: Record<string, unknown>, text: string) => boolean,
+): Promise<ActionResult> {
+  let last: ActionResult | undefined;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const result = await shellAction.handler?.(runtime, message, undefined, {
+      action: "poll_background",
+      handle,
+    });
+    if (!result) throw new Error("SHELL handler missing");
+    last = result;
+    if (
+      predicate(
+        (result.data as Record<string, unknown> | undefined) ?? {},
+        result.text ?? "",
+      )
+    ) {
+      return result;
+    }
+    await delay(50);
+  }
+  throw new Error(`condition not met; last=${last?.text ?? "(none)"}`);
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
 }
 
 function unavailableCapability(
@@ -161,6 +257,192 @@ function makeMessage(
 }
 
 describeIfPosix("shellAction", () => {
+  it("runs local-safe commands through the configured sandbox backend", async () => {
+    const exec = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "sandboxed\n",
+      stderr: "",
+      durationMs: 12,
+      executedInSandbox: true,
+    }));
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+      getSandboxManager: vi.fn(() => ({
+        exec,
+        engine: { engineType: "docker" },
+      })),
+    } as unknown as IAgentRuntime;
+
+    const result = await runShell(runtime, {
+      command: "printf sandboxed",
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+    });
+
+    expect(exec).toHaveBeenCalledWith({
+      command: "printf sandboxed",
+      workdir: "/workspace",
+      timeoutMs: 1_000,
+    });
+    expect(result).toMatchObject({
+      exitCode: 0,
+      stdout: "sandboxed\n",
+      sandbox: "docker",
+      timedOut: false,
+    });
+  });
+
+  it("reports the apple-container sandbox backend", async () => {
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+      getSandboxManager: vi.fn(() => ({
+        engine: { engineType: "apple-container" },
+        exec: async () => ({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          durationMs: 1,
+          executedInSandbox: true,
+        }),
+      })),
+    } as unknown as IAgentRuntime;
+
+    const result = await runShell(runtime, {
+      command: "true",
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+    });
+    expect(result.sandbox).toBe("apple-container");
+  });
+
+  it("maps nested local-safe paths and reports an unknown sandbox backend", async () => {
+    const exec = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      durationMs: 1,
+      executedInSandbox: true,
+    }));
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+      getSandboxManager: vi.fn(() => ({ exec })),
+    } as unknown as IAgentRuntime;
+    const cwd = path.join(process.cwd(), "src");
+
+    const result = await runShell(runtime, {
+      command: "true",
+      cwd,
+      timeoutMs: 1_000,
+    });
+
+    expect(exec).toHaveBeenCalledWith({
+      command: "true",
+      workdir: "/workspace/src",
+      timeoutMs: 1_000,
+    });
+    expect(result.sandbox).toBe("none");
+  });
+
+  it("refuses local-safe execution without a sandbox manager", async () => {
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      runShell(runtime, {
+        command: "pwd",
+        cwd: process.cwd(),
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow("requires SandboxManager");
+  });
+
+  it("refuses local-safe execution outside the sandbox workspace", async () => {
+    const exec = vi.fn();
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+      getSandboxManager: vi.fn(() => ({ exec })),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      runShell(runtime, {
+        command: "pwd",
+        cwd: os.tmpdir(),
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow("outside process workspace");
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("refuses cloud shell execution before touching the host", async () => {
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "cloud" : undefined,
+      ),
+      getService: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      runShell(runtime, {
+        command: "pwd",
+        cwd: process.cwd(),
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow("disabled in cloud mode");
+  });
+
+  it("exposes coding tools through the provider and plugin auto-enable policy", async () => {
+    const providerResult = await availableToolsProvider.get(
+      {} as IAgentRuntime,
+      makeMessage(),
+      {} as State,
+    );
+    expect(providerResult.text).toContain("start_background");
+    expect(providerResult.data?.codingTools).toEqual([
+      "FILE",
+      "SHELL",
+      "WEB_FETCH",
+      "WEB_SEARCH",
+      "WORKTREE",
+    ]);
+
+    const shouldEnable = codingToolsPlugin.autoEnable?.shouldEnable;
+    expect(shouldEnable).toBeTypeOf("function");
+    expect(
+      shouldEnable?.(
+        { ELIZA_RUNTIME_MODE: "local-yolo" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(true);
+    expect(
+      shouldEnable?.(
+        { ELIZA_BUILD_VARIANT: "store" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnable?.(
+        { ELIZA_PLATFORM: "ios" },
+        { features: { "coding-agent": true } },
+      ),
+    ).toBe(false);
+  });
+
   it("prefers capability router for command execution when available", async () => {
     const calls: Array<{ command: string; cwd?: string; timeoutMs?: number }> =
       [];
@@ -208,6 +490,50 @@ describeIfPosix("shellAction", () => {
     expect(data?.command).toBe("echo hello");
   });
 
+  it("caps only the visible callback for long foreground output", async () => {
+    const lines = Array.from(
+      { length: 300 },
+      (_, index) =>
+        `foreground-${index.toString().padStart(3, "0")}-xxxxxxxxxxxxxxxxxxxx`,
+    );
+    const router = makeShellRouter(async () => ({
+      output: lines.join("\n"),
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "printf long-output" },
+        async (content) => {
+          posts.push(content as { text: string; source?: string });
+          return [];
+        },
+      ),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(lines[0]);
+    expect(result.text).toContain(lines[150]);
+    expect(result.text).toContain(lines[299]);
+    expect(result.text).not.toContain("lines omitted — ask to see more");
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain(lines[0]);
+    expect(posts[0].text).not.toContain(lines[150]);
+    expect(posts[0].text).toContain(lines[299]);
+    expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+    expect(posts[0].text.length).toBeLessThan(1700);
+  });
+
   it("marks empty stdout and stderr explicitly for successful commands", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
@@ -221,6 +547,268 @@ describeIfPosix("shellAction", () => {
     expect(result.text).toContain("[exit 0]");
     expect(result.text).toContain("--- stdout ---\n(empty)");
     expect(result.text).toContain("--- stderr ---\n(empty)");
+  });
+
+  it("starts, polls, writes to, lists, and kills a background shell session", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command:
+        "printf 'ready\\n'; while IFS= read -r line; do printf 'got:%s\\n' \"$line\"; done",
+    });
+
+    expect(start?.success).toBe(true);
+    const startData = start?.data as Record<string, unknown>;
+    const handle = startData.handle as string;
+    const session = startData.session as Record<string, unknown>;
+    const pid = session.pid as number;
+    expect(handle).toMatch(/^bgsh_/);
+    expect(isProcessAlive(pid)).toBe(true);
+
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("ready"),
+    );
+
+    const write = await shellAction.handler?.(runtime, message, undefined, {
+      action: "write_background",
+      handle,
+      stdin: "alpha\n",
+    });
+    expect(write?.success).toBe(true);
+
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("got:alpha"),
+    );
+
+    const list = await shellAction.handler?.(runtime, message, undefined, {
+      action: "list_background",
+    });
+    expect(list?.success).toBe(true);
+    expect(list?.text).toContain(handle);
+
+    const killed = await shellAction.handler?.(runtime, message, undefined, {
+      action: "kill_background",
+      handle,
+    });
+    expect(killed?.success).toBe(true);
+    expect(killed?.text).toContain("status=killed");
+    expect(isProcessAlive(pid)).toBe(false);
+  });
+
+  it("returns incremental background output using stream offsets", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command:
+        "for i in 0 1 2; do printf 'tick-%s\\n' \"$i\"; sleep 0.06; done",
+    });
+    const handle = (requireActionResult(start).data as Record<string, unknown>)
+      .handle as string;
+
+    const first = await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("tick-0"),
+    );
+    const firstData = first.data as Record<string, unknown>;
+    const stdout = firstData.stdout as Record<string, unknown>;
+    const nextOffset = stdout.endOffset as number;
+
+    const second = await pollUntil(
+      runtime,
+      message,
+      handle,
+      (_data, text) => text.includes("tick-1") || text.includes("tick-2"),
+    );
+    expect(second.text).toContain("tick-");
+
+    const incremental = await shellAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        action: "poll_background",
+        handle,
+        stdout_offset: nextOffset,
+      },
+    );
+    expect(incremental?.success).toBe(true);
+    expect(incremental?.text).not.toContain("tick-0");
+
+    await pollUntil(
+      runtime,
+      message,
+      handle,
+      (data) => data.status === "exited",
+    );
+  });
+
+  it("fences every user-facing background/history relay (#16563)", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const posts: Array<{ text: string; source?: string }> = [];
+    const cb = async (content: unknown) => {
+      posts.push(content as { text: string; source?: string });
+      return [];
+    };
+
+    // start_background echoes `$ command` — the literal italics-eaten shape
+    // from #16542's repro when the command carries paired asterisks.
+    const start = await shellAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        action: "start_background",
+        command: "printf 'globs: *.md and *.ts'",
+      },
+      cb,
+    );
+    const handle = (requireActionResult(start).data as Record<string, unknown>)
+      .handle as string;
+
+    await shellAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      { action: "poll_background", handle },
+      cb,
+    );
+    await shellAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      { action: "list_background" },
+      cb,
+    );
+    // view_history needs the shell-history service this harness does not
+    // register; its relay shares the same fencePreformatted call (#16563).
+
+    expect(posts.length).toBe(3);
+    for (const post of posts) {
+      expect(post.source).toBe("coding-tools");
+      expect(post.text.startsWith("```")).toBe(true);
+      expect(post.text.trimEnd().endsWith("```")).toBe(true);
+    }
+
+    await pollUntil(
+      runtime,
+      message,
+      handle,
+      (data) => data.status === "exited",
+    );
+  });
+
+  it("caps only the visible callback for long background polls", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command:
+          'i=0; while [ "$i" -lt 300 ]; do printf \'background-%03d-xxxxxxxxxxxxxxxxxxxx\\n\' "$i"; i=$((i + 1)); done',
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    await pollUntil(
+      runtime,
+      message,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        message,
+        undefined,
+        { action: "poll_background", handle },
+        async (content) => {
+          posts.push(content as { text: string; source?: string });
+          return [];
+        },
+      ),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("background-000-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).toContain("background-150-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).toContain("background-299-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).not.toContain("lines omitted — ask to see more");
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain("background-000-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).not.toContain("background-150-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).toContain("background-299-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+    expect(posts[0].text.length).toBeLessThan(1700);
+  });
+
+  it("reports buffer truncation when background output exceeds the cap", async () => {
+    const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
+    const message = makeMessage();
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command: "printf 'abcdefghijklmnopqrstuvwxyz'",
+    });
+    const handle = (requireActionResult(start).data as Record<string, unknown>)
+      .handle as string;
+
+    const poll = await pollUntil(runtime, message, handle, (data) => {
+      const stdout = data.stdout as Record<string, unknown> | undefined;
+      return (
+        data.status === "exited" &&
+        typeof stdout?.truncatedBefore === "number" &&
+        stdout.truncatedBefore > 0
+      );
+    });
+    const data = poll.data as Record<string, unknown>;
+    const stdout = data.stdout as Record<string, unknown>;
+    expect(stdout.text).toBe("ghijklmnopqrstuvwxyz");
+    expect(stdout.startOffset).toBe(6);
+    expect(stdout.endOffset).toBe(26);
+    expect(stdout.truncatedBefore).toBe(6);
+  });
+
+  it("reaps background sessions during service teardown", async () => {
+    const { runtime, backgroundShell } = await makeRuntime();
+    const message = makeMessage();
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command: "sleep 30",
+    });
+    const session = (requireActionResult(start).data as Record<string, unknown>)
+      .session as Record<string, unknown>;
+    const pid = session.pid as number;
+    expect(isProcessAlive(pid)).toBe(true);
+
+    await backgroundShell.stop();
+    expect(isProcessAlive(pid)).toBe(false);
+  });
+
+  it("fails honestly instead of host-spawning background sessions through capability router", async () => {
+    const router = makeShellRouter(async () => ({
+      output: "foreground only\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        action: "start_background",
+        command: "sleep 30",
+      },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.text).toContain("capability-router");
   });
 
   it("rejects a cwd under the blocklist", async () => {
@@ -1380,5 +1968,93 @@ describe("platform-aware canned resource commands", () => {
       expect(result.command).not.toContain("sed -n");
       expect(result.command).not.toContain('find "$SEARCH_ROOT"');
     });
+  });
+});
+
+describe("destructive-bulk confirm gate", () => {
+  it("blocks an unconfirmed recursive delete with needs_confirmation", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean up the old projects"),
+        undefined,
+        { command },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.text).toContain("confirm=true");
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.destructive_reason).toBe("recursive delete");
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it("runs the same command when confirm=true", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "yes do it"),
+      undefined,
+      {
+        command,
+        confirm: true,
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(await pathExists(target)).toBe(false);
+  });
+
+  it("is exempt on the coding sub-agent path (task briefs carry confirmation)", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
+    process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+    try {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "build step"),
+        undefined,
+        { command },
+      );
+      expect(result.success).toBe(true);
+      expect(await pathExists(target)).toBe(false);
+    } finally {
+      delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it("honors the ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0 escape hatch", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
+    process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM = "0";
+    try {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean up"),
+        undefined,
+        { command },
+      );
+      expect(result.success).toBe(true);
+      expect(await pathExists(target)).toBe(false);
+    } finally {
+      delete process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM;
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it("never gates ordinary commands", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "whats here"),
+      undefined,
+      { command: 'node -e "process.exit(0)"' },
+    );
+    expect(result.success).toBe(true);
   });
 });

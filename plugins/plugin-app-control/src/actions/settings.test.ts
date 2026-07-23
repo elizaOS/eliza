@@ -2,8 +2,8 @@
  * Unit coverage for the SETTINGS action (#14364): param routing, boolean-value
  * parsing, section-token resolution, the delegate/route/readonly/unwired write
  * paths, and the completeness invariant that every built-in settings section has
- * a registry entry. The backend route is exercised through an injected fetch
- * (`SettingsRouteFetch`) so `set` dispatch is asserted without a live server.
+ * a registry entry. Injected fetches cover route selection; the default fetch
+ * path is also exercised to enforce authenticated view-loopback delivery.
  */
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
@@ -16,7 +16,7 @@ import {
 	SETTINGS_SECTION_META,
 } from "@elizaos/ui/components/settings/settings-section-meta";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "@elizaos/ui/voice/local-asr-capture";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createSettingsAction,
 	DEFAULT_VOICE_SETTINGS_PREFS,
@@ -30,6 +30,11 @@ import {
 
 const runtime = {} as IAgentRuntime;
 const message = { content: { text: "" } } as Memory;
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
+});
 
 /** Collect callback replies so we can assert what the user is told. */
 function makeCallback(): { cb: HandlerCallback; texts: string[] } {
@@ -318,8 +323,10 @@ describe("SETTINGS action: list", () => {
 	it("lists writable sections with how each is written", async () => {
 		const { result } = await invoke({ action: "list" });
 		expect(result?.success).toBe(true);
+		expect(result).toBeDefined();
+		if (!result) throw new Error("Expected SETTINGS list result");
 		const sections = (
-			result?.data as { sections: Array<Record<string, unknown>> }
+			result.data as { sections: Array<Record<string, unknown>> }
 		).sections;
 		expect(sections).toHaveLength(SETTINGS_SECTION_META.length);
 		const model = sections.find((s) => s.id === "ai-model");
@@ -347,6 +354,39 @@ describe("SETTINGS action: list", () => {
 });
 
 describe("SETTINGS action: set on an owned route section", () => {
+	it("authenticates the default appearance broadcast view route", async () => {
+		vi.stubEnv("ELIZA_PORT", "3456");
+		vi.stubEnv("ELIZA_API_TOKEN", "settings-loopback-token");
+		const fetchMock = vi.fn(
+			async () =>
+				({ ok: true, status: 200, json: async () => ({}) }) as Response,
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { result } = await invoke({
+			action: "set",
+			section: "appearance",
+			key: "theme",
+			value: "dark",
+		});
+
+		expect(result?.success).toBe(true);
+		expect(fetchMock).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/events/broadcast",
+			expect.objectContaining({
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer settings-loopback-token",
+				},
+			}),
+		);
+		const [url, init] = fetchMock.mock.calls[0] ?? [];
+		expect(`${String(url)}\n${String(init?.body ?? "")}`).not.toContain(
+			"settings-loopback-token",
+		);
+	});
+
 	it("dispatches appearance theme mode through the view event broadcast route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
 		const { result, texts } = await invoke(
@@ -1000,22 +1040,22 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(result?.success).toBe(true);
 	});
 
-	it.each([
-		"computerUse",
-		"computer-use",
-	])("accepts %s as the computer-use capability key", async (key) => {
-		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result } = await invoke(
-			{ action: "set", section: "capabilities", key, value: "off" },
-			routeFetch,
-		);
-		expect(routeFetch).toHaveBeenCalledWith({
-			method: "PUT",
-			path: "/api/config",
-			body: { ui: { capabilities: { computerUse: false } } },
-		});
-		expect(result?.success).toBe(true);
-	});
+	it.each(["computerUse", "computer-use"])(
+		"accepts %s as the computer-use capability key",
+		async (key) => {
+			const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
+			const { result } = await invoke(
+				{ action: "set", section: "capabilities", key, value: "off" },
+				routeFetch,
+			);
+			expect(routeFetch).toHaveBeenCalledWith({
+				method: "PUT",
+				path: "/api/config",
+				body: { ui: { capabilities: { computerUse: false } } },
+			});
+			expect(result?.success).toBe(true);
+		},
+	);
 
 	it("updates one wallet RPC provider through the wallet config route", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {

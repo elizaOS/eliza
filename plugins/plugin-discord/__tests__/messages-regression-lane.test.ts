@@ -17,6 +17,8 @@ import "./generation-abort.test.ts";
 import "./generation-timeout-dispatch.test.ts";
 import "./generation-timeout.test.ts";
 import "./messages-component-delivery.test.ts";
+import "./messages-durable-turn.test.ts";
+import "./messages-inbound-idempotency.test.ts";
 import "./messages-url.test.ts";
 import "./numeric-fact-dedup.test.ts";
 

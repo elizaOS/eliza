@@ -45,15 +45,14 @@ const CATEGORY_LABEL: Record<AccountProviderCategory, string> = {
 /** One short capability line, not a pill row (kills the tag maze). */
 function capabilityLine(option: AccountProviderOption): string {
   if (option.unavailable) return "Not available to link here";
-  if (option.category === "chat") return "Chat · bring your own API key";
+  if (option.category === "chat") return "Chat, using your API key";
   if (option.id === "anthropic-subscription")
-    return "Chat + coding agents · browser login";
-  if (option.id === "gemini-cli")
-    return "Coding agents · third-party CLI login";
+    return "Chat and coding agents, using browser login";
+  if (option.id === "gemini-cli") return "Coding agents, using CLI login";
   const usesKey = option.id === "zai-coding" || option.id === "kimi-coding";
   return usesKey
-    ? "Coding agents · dedicated plan key"
-    : "Coding agents · browser login";
+    ? "Coding agents, using a plan key"
+    : "Coding agents, using browser login";
 }
 
 export function ProviderPicker({ onPick }: ProviderPickerProps) {

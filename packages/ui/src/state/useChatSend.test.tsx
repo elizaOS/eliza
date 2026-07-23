@@ -28,10 +28,14 @@ import {
   NAVIGATE_VIEW_EVENT,
 } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
+import { listPendingChatTurns } from "./pending-chat-turns";
 import {
   buildSendFailureNotice,
+  createConversationForFirstSend,
   getSendValidationFailureMessage,
   isRetryableSendError,
+  prewarmSharedChatScope,
+  resolveAbortRoomId,
   UNDELIVERED_TURN_NOTICE,
   type UseChatSendDeps,
   useChatSend,
@@ -219,6 +223,7 @@ describe("useChatSend stop handling", () => {
       reason: "ui-chat-stop",
     });
     mocks.client.stopCodingAgent.mockResolvedValue(undefined);
+    window.localStorage.clear();
   });
 
   it("aborts the backend turn using the latest conversation room id when Stop is clicked", async () => {
@@ -449,6 +454,60 @@ describe("useChatSend stop handling", () => {
     expect(assistantMessages).toHaveLength(1);
     expect(assistantMessages[0].id).toBe("server-asst-1");
   });
+
+  it("keeps the pending-turn receipt when page teardown aborts an active send", async () => {
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const view = renderHook(() => useChatSend(deps));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = view.result.current.sendChatText("survive reload", {
+        conversationId: "conv-1",
+      });
+      await started.promise;
+    });
+    expect(listPendingChatTurns("conv-1")).toHaveLength(1);
+
+    view.unmount();
+    await act(async () => {
+      await sendPromise;
+    });
+
+    expect(listPendingChatTurns("conv-1")).toMatchObject([
+      { conversationId: "conv-1", text: "survive reload" },
+    ]);
+  });
+
+  it("clears the pending-turn receipt after an explicit Stop", async () => {
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("stop settles", {
+        conversationId: "conv-1",
+      });
+      await started.promise;
+    });
+    expect(listPendingChatTurns("conv-1")).toHaveLength(1);
+
+    await act(async () => {
+      result.current.handleChatStop();
+      await sendPromise;
+    });
+
+    expect(listPendingChatTurns("conv-1")).toHaveLength(0);
+  });
 });
 
 function http404(): Error {
@@ -640,7 +699,7 @@ describe("useChatSend always streams (#9174)", () => {
   });
 });
 
-describe("useChatSend VIEWS action handoff", () => {
+describe("useChatSend action handoff", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.client.getBaseUrl.mockReturnValue("");
@@ -707,6 +766,103 @@ describe("useChatSend VIEWS action handoff", () => {
       viewType: "gui",
     });
     expect(deps.setActionNotice).not.toHaveBeenCalled();
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
+  it("opens a workflow created by a completed chat action", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: 'Created workflow "Daily digest".',
+      completed: true,
+      actionResults: [
+        {
+          actionName: "WORKFLOW",
+          success: true,
+          values: {
+            workflowId: "workflow-daily-digest",
+            workflowName: "Daily digest",
+          },
+        },
+      ],
+    });
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("create a daily digest workflow", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(navigations[0]?.detail).toEqual({
+      viewId: "automations",
+      viewPath: "/automations#automations/workflow-daily-digest",
+    });
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
+  it("keeps VIEWS navigation authoritative when a turn also returns a workflow id", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Opening Calendar.",
+      completed: true,
+      actionResults: [
+        {
+          actionName: "WORKFLOW",
+          success: true,
+          values: { workflowId: "workflow-secondary" },
+        },
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "calendar" },
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              currentView: {
+                viewId: "calendar",
+                viewPath: "/calendar",
+                viewLabel: "Calendar",
+                viewType: "gui",
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      ),
+    );
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("open the calendar after creating it", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(navigations[0]?.detail).toMatchObject({
+      viewId: "calendar",
+      viewPath: "/calendar",
+    });
     window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
   });
 
@@ -957,6 +1113,76 @@ describe("useChatSend streaming-frame coalescing (text + status + tool)", () => 
       historyReload.resolve({ ok: true });
       await sendPromise;
     });
+  });
+
+  it("does not project a prior conversation's token, status, tool, completion, or reconcile into the active transcript", async () => {
+    let onTokenCb!: (t: string, a?: string) => void;
+    let onStatusCb!: (s: ChatTurnStatus) => void;
+    let onToolCb!: (e: ChatToolCallEvent) => void;
+    let resolveStream!: (v: { text: string; completed: boolean }) => void;
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        onToken: (t: string, a?: string) => void,
+        _channelType: string,
+        _signal: AbortSignal,
+        _images: unknown,
+        _metadata: unknown,
+        onStatus: (s: ChatTurnStatus) => void,
+        onTool: (e: ChatToolCallEvent) => void,
+      ) => {
+        onTokenCb = onToken;
+        onStatusCb = onStatus;
+        onToolCb = onTool;
+        return new Promise((resolve) => {
+          resolveStream = resolve;
+        });
+      },
+    );
+    const convBMessages: ConversationMessage[] = [
+      {
+        id: "b-user",
+        role: "user",
+        text: "B stays visible",
+        timestamp: 10,
+      },
+    ];
+    const deps = makeDeps({
+      activeConversationId: "conv-A",
+      conversations: [conversation("conv-A", "room-A")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("A send", {
+        conversationId: "conv-A",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    deps.activeConversationIdRef.current = "conv-B";
+    deps.conversationMessagesRef.current = convBMessages;
+    act(() => {
+      onTokenCb("A leaked token", "A leaked token");
+      onStatusCb({ kind: "running_tool", toolName: "search" });
+      onToolCb({ phase: "call", callId: "call-A", toolName: "search" });
+    });
+    flushRaf();
+
+    await act(async () => {
+      resolveStream({ text: "A final reply", completed: true });
+      await sendPromise;
+    });
+
+    expect(deps.conversationMessagesRef.current).toEqual(convBMessages);
+    expect(deps.setServerTurnStatus).not.toHaveBeenCalledWith({
+      kind: "running_tool",
+      toolName: "search",
+    });
+    expect(deps.loadConversationMessages).not.toHaveBeenCalledWith("conv-A");
   });
 });
 
@@ -1973,6 +2199,71 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
   });
 });
 
+describe("useChatSend — sendActionMessage cold-open defers the create like the fixed send path (#16665)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Complete the send cleanly so the cold-open create path is the only
+    // thing under test (a resolved stream, no notice, no retry).
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "ok",
+      completed: true,
+    } as never);
+  });
+
+  it("skips the redundant client.createConversation round trip on a shared-agent base", async () => {
+    // Shared base: the server POST handler ignores the body, so
+    // createConversationForFirstSend synthesizes the canonical record locally.
+    mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
+    // Cold open: no active conversation, so sendActionMessage takes the create
+    // branch (`if (!convId)`).
+    const deps = makeDeps({
+      activeConversationId: null,
+      conversations: [],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("run the report");
+    });
+
+    // The bug: sendActionMessage used to call client.createConversation here,
+    // re-introducing the exact cold Worker/Hyperdrive round trip #16619 removed
+    // from the ordinary send path. It must now be zero on a shared base.
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    // The synthesized shared conversation is adopted as active (id === agentId).
+    expect(deps.setActiveConversationId).toHaveBeenCalledWith("agent-123");
+    // No failure notice on the happy path.
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("still creates on a dedicated base and forwards the action title to the REST fallback", async () => {
+    // Dedicated base: no shared-agent id, so the real REST create runs and the
+    // action title must reach it.
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    mocks.client.createConversation.mockResolvedValue({
+      conversation: conversation("conv-new", "room-new"),
+    });
+    const deps = makeDeps({
+      activeConversationId: null,
+      conversations: [],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("run the report");
+    });
+
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    // Title forwarded as the first arg; language options as the second.
+    expect(mocks.client.createConversation).toHaveBeenCalledWith(
+      "run the report",
+      { lang: "en" },
+    );
+    expect(deps.setActiveConversationId).toHaveBeenCalledWith("conv-new");
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+});
+
 describe("useChatSend — structured SSE error surfaces the gate (#10231)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2612,5 +2903,80 @@ describe("useChatSend manual resend still works after auto-retry exhausts", () =
     const sentText =
       mocks.client.sendConversationMessageStream.mock.calls[0][1];
     expect(sentText).toBe("hello");
+  });
+});
+
+describe("createConversationForFirstSend", () => {
+  it("synthesizes the canonical shared conversation without a create request", async () => {
+    const createConversation = vi.fn();
+    const result = await createConversationForFirstSend(
+      {
+        getBaseUrl: () => SHARED_BASE,
+        createConversation,
+      } as never,
+      "en",
+    );
+
+    expect(createConversation).not.toHaveBeenCalled();
+    expect(result.conversation).toMatchObject({
+      id: "agent-123",
+      roomId: "agent-123",
+      title: "Chat",
+    });
+  });
+
+  it("keeps dedicated conversation creation on the REST client", async () => {
+    const conversation = {
+      id: "dedicated-conversation",
+      roomId: "dedicated-room",
+      title: "Chat",
+      createdAt: "2026-07-18T00:00:00.000Z",
+      updatedAt: "2026-07-18T00:00:00.000Z",
+    };
+    const createConversation = vi.fn(async () => ({ conversation }));
+    const result = await createConversationForFirstSend(
+      {
+        getBaseUrl: () => DEDICATED_BASE,
+        createConversation,
+      } as never,
+      "en",
+    );
+
+    expect(createConversation).toHaveBeenCalledWith(undefined, { lang: "en" });
+    expect(result.conversation).toEqual(conversation);
+  });
+});
+
+describe("prewarmSharedChatScope", () => {
+  it("warms the authenticated status gate for a selected shared Cloud agent", async () => {
+    const getStatus = vi.fn(async () => ({ status: "running" }));
+    await prewarmSharedChatScope({
+      getBaseUrl: () => SHARED_BASE,
+      getStatus,
+    } as never);
+    expect(getStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not probe a dedicated agent base", async () => {
+    const getStatus = vi.fn();
+    await prewarmSharedChatScope({
+      getBaseUrl: () => DEDICATED_BASE,
+      getStatus,
+    } as never);
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveAbortRoomId", () => {
+  it("resolves synchronously without requiring a conversation refresh", () => {
+    expect(
+      resolveAbortRoomId("conversation-1", " room-known ", "room-cached"),
+    ).toBe("room-known");
+    expect(resolveAbortRoomId("conversation-1", null, " room-cached ")).toBe(
+      "room-cached",
+    );
+    expect(resolveAbortRoomId("conversation-1", null, null)).toBe(
+      "conversation-1",
+    );
   });
 });

@@ -1,13 +1,9 @@
 /**
- * @module plugin-app-control/client/api
- * @description HTTP client for the Eliza dashboard `/api/apps/*` routes.
+ * Loopback HTTP client for the dashboard app-control routes.
  *
- * This plugin runs in the same process as the dashboard API. We talk to it
- * over loopback HTTP rather than reaching into the runtime service registry
- * so the plugin stays portable across the three shell variants (dev,
- * desktop, cloud). The server and port are discovered from the same
- * `resolveServerOnlyPort` helper that Eliza's other in-process actions
- * use.
+ * The HTTP boundary keeps this plugin portable across dev, desktop, and cloud
+ * shells. Each operation owns a deadline matching its workload, while a
+ * caller-supplied abort signal can cancel it with the surrounding turn.
  */
 
 import { resolveServerOnlyPort } from "@elizaos/core";
@@ -19,13 +15,15 @@ import type {
 	InstalledAppInfo,
 } from "../types.js";
 
-const REQUEST_TIMEOUT_MS = 30_000;
+const LOOPBACK_READ_DEADLINE_MS = 2_000;
+const LOOPBACK_STOP_DEADLINE_MS = 10_000;
+const APP_LAUNCH_DEADLINE_MS = 120_000;
 
 export interface AppControlClient {
-	listInstalledApps(): Promise<InstalledAppInfo[]>;
-	listAppRuns(): Promise<AppRunSummary[]>;
-	launchApp(name: string): Promise<AppLaunchResult>;
-	stopAppRun(runId: string): Promise<AppStopResult>;
+	listInstalledApps(signal?: AbortSignal): Promise<InstalledAppInfo[]>;
+	listAppRuns(signal?: AbortSignal): Promise<AppRunSummary[]>;
+	launchApp(name: string, signal?: AbortSignal): Promise<AppLaunchResult>;
+	stopAppRun(runId: string, signal?: AbortSignal): Promise<AppStopResult>;
 }
 
 function getApiBase(): string {
@@ -62,15 +60,20 @@ async function requestJson<T>(
 	init: RequestInit,
 	parse: (body: unknown) => T,
 	errorContext: string,
+	deadlineMs: number,
 ): Promise<T> {
 	const url = `${getApiBase()}${path}`;
+	const deadlineSignal = AbortSignal.timeout(deadlineMs);
+	const callerSignal = init.signal;
 	const response = await fetch(url, {
 		...init,
 		headers: {
 			"Content-Type": "application/json",
 			...(init.headers ?? {}),
 		},
-		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+		signal: callerSignal
+			? AbortSignal.any([callerSignal, deadlineSignal])
+			: deadlineSignal,
 	});
 
 	const rawText = await response.text();
@@ -243,42 +246,47 @@ function parseStopResult(body: unknown): AppStopResult {
 
 export function createAppControlClient(): AppControlClient {
 	return {
-		async listInstalledApps() {
+		async listInstalledApps(signal?: AbortSignal) {
 			return requestJson(
 				"/api/apps/installed",
-				{ method: "GET" },
+				{ method: "GET", signal },
 				parseInstalledApps,
 				"Failed to list installed apps",
+				LOOPBACK_READ_DEADLINE_MS,
 			);
 		},
 
-		async listAppRuns() {
+		async listAppRuns(signal?: AbortSignal) {
 			return requestJson(
 				"/api/apps/runs",
-				{ method: "GET" },
+				{ method: "GET", signal },
 				parseAppRuns,
 				"Failed to list running apps",
+				LOOPBACK_READ_DEADLINE_MS,
 			);
 		},
 
-		async launchApp(name: string) {
+		async launchApp(name: string, signal?: AbortSignal) {
 			return requestJson(
 				"/api/apps/launch",
 				{
 					method: "POST",
 					body: JSON.stringify({ name }),
+					signal,
 				},
 				parseLaunchResult,
 				`Failed to launch app ${name}`,
+				APP_LAUNCH_DEADLINE_MS,
 			);
 		},
 
-		async stopAppRun(runId: string) {
+		async stopAppRun(runId: string, signal?: AbortSignal) {
 			return requestJson(
 				`/api/apps/runs/${encodeURIComponent(runId)}/stop`,
-				{ method: "POST" },
+				{ method: "POST", signal },
 				parseStopResult,
 				`Failed to stop app run ${runId}`,
+				LOOPBACK_STOP_DEADLINE_MS,
 			);
 		},
 	};

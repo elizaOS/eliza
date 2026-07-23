@@ -124,7 +124,7 @@ async function shot(page: Page, name: string): Promise<void> {
 
 /** Open the overlay's thread sheet — the transcript only renders inside it. */
 async function ensureThreadOpen(page: Page): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   for (let i = 0; i < 6; i += 1) {
     if ((await overlay.getAttribute("data-open")) === "true") return;

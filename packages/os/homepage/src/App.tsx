@@ -33,8 +33,8 @@ type ReleaseArtifact = {
   kind: string;
   platform: string;
   architecture: string;
-  url: string;
-  checksumUrl?: string;
+  url: string | null;
+  checksumUrl?: string | null;
 };
 
 type ReleaseManifest = {
@@ -55,9 +55,8 @@ const releaseFallback: ReleaseManifest = {
       kind: "raw-image",
       platform: "linux-bare-metal",
       architecture: "x86_64",
-      url: "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/eliza-canary-linux-x64.tar.zst",
-      checksumUrl:
-        "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/SHA256SUMS.txt",
+      url: null,
+      checksumUrl: null,
     },
     {
       id: "elizaos-usb-installer-windows-x86_64",
@@ -65,9 +64,8 @@ const releaseFallback: ReleaseManifest = {
       kind: "usb-installer",
       platform: "windows",
       architecture: "x86_64",
-      url: "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/eliza-canary-windows-x64.exe.zip",
-      checksumUrl:
-        "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/SHA256SUMS.txt",
+      url: null,
+      checksumUrl: null,
     },
     {
       id: "elizaos-vm-macos-silicon",
@@ -75,9 +73,8 @@ const releaseFallback: ReleaseManifest = {
       kind: "vm-bundle",
       platform: "macos",
       architecture: "arm64",
-      url: "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/eliza-canary-macos-arm64.app.tar.gz",
-      checksumUrl:
-        "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/SHA256SUMS.txt",
+      url: null,
+      checksumUrl: null,
     },
     {
       id: "elizaos-android-beta",
@@ -85,9 +82,8 @@ const releaseFallback: ReleaseManifest = {
       kind: "android-image",
       platform: "android",
       architecture: "arm64",
-      url: "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/elizaos-android-2.0.0-beta.2-release.apk",
-      checksumUrl:
-        "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/SHA256SUMS.txt",
+      url: null,
+      checksumUrl: null,
     },
   ],
 };
@@ -132,6 +128,7 @@ function ReleaseDownloads() {
           setManifest(data);
         }
       })
+      // error-policy:J4 The embedded manifest renders a visibly unavailable download state.
       .catch(() => {});
 
     return () => {
@@ -146,6 +143,9 @@ function ReleaseDownloads() {
     day: "numeric",
     year: "numeric",
   });
+  const hasAvailableArtifact = manifest.artifacts.some(
+    (artifact) => artifact.url !== null,
+  );
 
   return (
     <section id="download" className="band band-white release-section">
@@ -162,10 +162,14 @@ function ReleaseDownloads() {
             </h2>
           </div>
           <p className="section-lede">
-            {t("homepage_os.release.available", {
-              defaultValue: "Available {{date}}.",
-              date: releaseDate,
-            })}
+            {hasAvailableArtifact
+              ? t("homepage_os.release.available", {
+                  defaultValue: "Available {{date}}.",
+                  date: releaseDate,
+                })
+              : t("homepage_os.release.unavailable", {
+                  defaultValue: "Downloads are temporarily unavailable.",
+                })}
           </p>
         </div>
 
@@ -178,12 +182,20 @@ function ReleaseDownloads() {
               </div>
               <h3>{artifact.label}</h3>
               <div className="release-actions">
-                <a href={artifact.url} className="button button-dark">
-                  {t("homepage_os.release.download", {
-                    defaultValue: "Download",
-                  })}
-                  <Download className="icon" />
-                </a>
+                {artifact.url ? (
+                  <a href={artifact.url} className="button button-dark">
+                    {t("homepage_os.release.download", {
+                      defaultValue: "Download",
+                    })}
+                    <Download className="icon" />
+                  </a>
+                ) : (
+                  <span className="button button-dark" aria-disabled="true">
+                    {t("homepage_os.release.unavailableAction", {
+                      defaultValue: "Unavailable",
+                    })}
+                  </span>
+                )}
                 {artifact.checksumUrl ? (
                   <a href={artifact.checksumUrl} className="checksum-link">
                     {t("homepage_os.release.checksum", {

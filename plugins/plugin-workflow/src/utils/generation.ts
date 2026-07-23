@@ -5,7 +5,13 @@
  * schema and runs through `runtime.useModel`.
  */
 import type { GenerateTextParams } from '@elizaos/core';
-import { type IAgentRuntime, logger, ModelType } from '@elizaos/core';
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  parseJsonModelOutput,
+} from '@elizaos/core';
 import {
   draftIntentSchema,
   feasibilitySchema,
@@ -212,11 +218,23 @@ async function useStructuredModel<T>(
     },
     callSite
   );
-  return (await structuredRuntime.useModel<T>(
+  const result = await structuredRuntime.useModel<unknown>(
     ModelType.TEXT_SMALL,
     routed.params as GenerateTextParams & { responseSchema: unknown },
     routed.provider
-  )) as T;
+  );
+  if (typeof result !== 'string') {
+    return result as T;
+  }
+  const parsed = parseJsonModelOutput(result);
+  if (parsed === null) {
+    throw new ElizaError('Structured workflow model returned invalid JSON', {
+      code: 'WORKFLOW_STRUCTURED_MODEL_INVALID_JSON',
+      context: { callSite, outputLength: result.length },
+      severity: 'ephemeral',
+    });
+  }
+  return parsed as T;
 }
 
 async function useWorkflowTextModel(
@@ -439,7 +457,8 @@ export async function fixWorkflowErrors(
     expression?: string;
     availableFields?: string[];
   }>,
-  relevantNodes: NodeDefinition[]
+  relevantNodes: NodeDefinition[],
+  originalInstruction?: string
 ): Promise<WorkflowDefinition> {
   if (errors.length === 0) {
     return workflow;
@@ -450,12 +469,16 @@ export async function fixWorkflowErrors(
         ? ` Available fields on the upstream node: ${e.availableFields.join(', ')}.`
         : '';
       const expr = e.expression ? ` Expression: \`${e.expression}\`.` : '';
-      return `${i + 1}. Node "${e.node}" — ${e.detail}.${expr}${av}`;
+      return `${i + 1}. [${e.kind}] Node "${e.node}" — ${e.detail}.${expr}${av}`;
     })
     .join('\n');
 
   const simplifiedNodes = relevantNodes.map(simplifyNodeForLLM);
   const fixPrompt = `You are fixing a deterministic-validator-flagged workflow. Apply ONLY the listed fixes — do not refactor anything else.
+
+## Original user instruction
+
+${originalInstruction ? JSON.stringify(originalInstruction) : 'Not available. Preserve the current workflow intent exactly.'}
 
 ## Errors to fix
 

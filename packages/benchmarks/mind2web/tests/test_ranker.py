@@ -55,6 +55,7 @@ def test_config_default_ranker_mode_is_real() -> None:
     cfg = Mind2WebConfig()
     assert cfg.ranker_mode == Mind2WebRankerMode.REAL
     assert cfg.ranker_top_k == 50
+    assert cfg.ranker_revision is None
 
 
 def test_oracle_mode_returns_positives_then_negatives() -> None:
@@ -172,6 +173,40 @@ def test_recall_at_k_semantics() -> None:
     assert math.isnan(recall_at_k([], empty_step))
 
 
+def test_pinned_ranker_scores_preserve_released_candidate_order(monkeypatch) -> None:
+    from benchmarks.mind2web import ranker
+    from benchmarks.mind2web.types import (
+        Mind2WebActionStep,
+        Mind2WebElement,
+        Mind2WebOperation,
+    )
+
+    positive = Mind2WebElement(tag="button", backend_node_id="positive")
+    negative = Mind2WebElement(tag="a", backend_node_id="negative")
+    step = Mind2WebActionStep(
+        action_uid="step-1",
+        operation=Mind2WebOperation.CLICK,
+        pos_candidates=[positive],
+        neg_candidates=[negative],
+    )
+    monkeypatch.setattr(
+        ranker,
+        "_load_precomputed_rankings",
+        lambda: ranker._PrecomputedRankings(
+            scores={"task-1_step-1": {"positive": 0.2, "negative": 0.9}},
+            ranks={"task-1_step-1": {"positive": 1, "negative": 0}},
+        ),
+    )
+
+    ranked = ranker.score_precomputed_candidates(step, task_id="task-1", top_k=2)
+
+    assert [candidate.element.backend_node_id for candidate in ranked] == [
+        "negative",
+        "positive",
+    ]
+    assert ranker.recall_at_k(ranked, step) == 1.0
+
+
 def test_cli_parses_ranker_flag() -> None:
     from benchmarks.mind2web.cli import create_config, parse_args
     from benchmarks.mind2web.types import Mind2WebRankerMode
@@ -183,6 +218,20 @@ def test_cli_parses_ranker_flag() -> None:
         cfg = create_config(args)
         assert cfg.ranker_mode == Mind2WebRankerMode.ORACLE
         assert cfg.ranker_top_k == 10
+    finally:
+        sys.argv = original
+
+
+def test_cli_mock_mode_reports_oracle_ranker() -> None:
+    from benchmarks.mind2web.cli import create_config, parse_args
+    from benchmarks.mind2web.types import Mind2WebRankerMode
+
+    original = sys.argv
+    try:
+        sys.argv = ["mind2web", "--sample", "--mock"]
+        args = parse_args()
+        cfg = create_config(args)
+        assert cfg.ranker_mode == Mind2WebRankerMode.ORACLE
     finally:
         sys.argv = original
 

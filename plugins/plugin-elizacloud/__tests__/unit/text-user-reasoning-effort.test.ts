@@ -67,17 +67,15 @@ describe("ELIZAOS_CLOUD_REASONING_EFFORT user pin", () => {
     vi.restoreAllMocks();
   });
 
-  it.each([
-    "gemma-4-31b",
-    "zai-glm-4.7",
-    "gpt-oss-120b",
-    "openai/gpt-oss-120b",
-  ])("forwards a valid pin as reasoning_effort for %s", async (modelName) => {
-    const body = await captureBody(modelName, {
-      ELIZAOS_CLOUD_REASONING_EFFORT: "high",
-    });
-    expect(body?.reasoning_effort).toBe("high");
-  });
+  it.each(["gemma-4-31b", "zai-glm-4.7", "gpt-oss-120b", "openai/gpt-oss-120b"])(
+    "forwards a valid pin as reasoning_effort for %s",
+    async (modelName) => {
+      const body = await captureBody(modelName, {
+        ELIZAOS_CLOUD_REASONING_EFFORT: "high",
+      });
+      expect(body?.reasoning_effort).toBe("high");
+    }
+  );
 
   it("omits reasoning_effort when no pin is set", async () => {
     const body = await captureBody("zai-glm-4.7", {});

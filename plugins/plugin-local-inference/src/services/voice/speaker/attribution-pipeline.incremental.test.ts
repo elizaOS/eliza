@@ -297,10 +297,11 @@ describe("VoiceAttributionPipeline speculative-match promise lifecycle", () => {
 
 		// The rejection surfaced through the diagnostic sink...
 		expect(reported).toHaveLength(1);
-		expect(reported[0]?.scope).toBe(
-			"VoiceAttributionPipeline.speculativeMatch",
-		);
-		expect((reported[0]?.error as Error).message).toBe(
+		const report = reported[0];
+		expect(report).toBeDefined();
+		if (!report) throw new Error("Expected a speculative-match report");
+		expect(report.scope).toBe("VoiceAttributionPipeline.speculativeMatch");
+		expect((report.error as Error).message).toBe(
 			"wespeaker forward pass failed",
 		);
 		// ...and NEVER as an unhandled rejection.

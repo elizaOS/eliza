@@ -18,13 +18,12 @@ const sources = ["TrajectoryLoggerView.tsx"].map((file) => ({
 }));
 
 describe("TrajectoryLogger visual copy", () => {
-  it.each(
-    sources,
-  )("uses plain separators instead of raw arrow or bullet glyphs ($file)", ({
-    source,
-  }) => {
-    expect(source).not.toContain(" → ");
-    expect(source).not.toContain(" · ");
-    expect(source).not.toContain("—");
-  });
+  it.each(sources)(
+    "uses plain separators instead of raw arrow or bullet glyphs ($file)",
+    ({ source }) => {
+      expect(source).not.toContain(" → ");
+      expect(source).not.toContain(" · ");
+      expect(source).not.toContain("—");
+    },
+  );
 });

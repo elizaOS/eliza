@@ -635,6 +635,10 @@ describe("useFirstRunConductor", () => {
     const authWindow = { close: vi.fn() } as unknown as Window;
     mocks.preOpenCloudLoginWindow.mockReturnValue(authWindow);
     mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    // No stored bearer: a usable stored token now short-circuits login
+    // entirely (the agents list is the connectivity probe), so the popup
+    // path this test pins is only reachable when login is genuinely needed.
+    localStorage.removeItem("steward_session_token");
     const spies = seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
@@ -643,7 +647,9 @@ describe("useFirstRunConductor", () => {
 
     expect(mocks.preOpenCloudLoginWindow).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(spies.handleCloudLogin).toHaveBeenCalledWith(authWindow);
+      expect(spies.handleCloudLogin).toHaveBeenCalledWith(authWindow, {
+        requireClientAuth: true,
+      });
     });
     unmount();
   });
@@ -951,7 +957,9 @@ describe("useFirstRunConductor", () => {
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await waitFor(() => {
-      expect(handleCloudLogin).toHaveBeenCalledWith(popup);
+      expect(handleCloudLogin).toHaveBeenCalledWith(popup, {
+        requireClientAuth: true,
+      });
     });
     await waitFor(() => {
       expect(close).toHaveBeenCalledTimes(1);

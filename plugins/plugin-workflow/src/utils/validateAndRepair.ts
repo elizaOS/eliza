@@ -26,6 +26,10 @@ import type {
 import { CATALOG_CLARIFICATION_SUFFIX, isCatalogClarification } from './clarification';
 import { inferSyntheticOutputSchema } from './inferSyntheticOutputSchema';
 import { loadOutputSchema, loadTriggerOutputSchema, parseExpressions } from './outputSchema';
+import {
+  normalizeSetNodeParametersInWorkflow,
+  type SetNodeParameterIssueKind,
+} from './setNodeParameters';
 
 export type RepairKind =
   | 'typeVersionClamp'
@@ -35,7 +39,10 @@ export type RepairKind =
   | 'nodeNameDeduplication'
   | 'droppedDanglingEdge';
 
-export type ValidationErrorKind = 'unknownOutputField' | 'requiredParameterMissing';
+export type ValidationErrorKind =
+  | 'unknownOutputField'
+  | 'requiredParameterMissing'
+  | SetNodeParameterIssueKind;
 
 export interface Repair {
   kind: RepairKind;
@@ -555,6 +562,15 @@ export function validateAndRepair(
   if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
     return { workflow, repairs, errors };
   }
+
+  const setParameterResult = normalizeSetNodeParametersInWorkflow(workflow);
+  errors.push(
+    ...setParameterResult.issues.map((parameterIssue) => ({
+      kind: parameterIssue.kind,
+      node: parameterIssue.node,
+      detail: parameterIssue.detail,
+    }))
+  );
 
   const defByType = new Map<string, NodeDefinition>(relevantNodes.map((d) => [d.name, d]));
 

@@ -1,6 +1,6 @@
 // Fixture for the #11670 warm-up eviction e2e. Mounts the REAL send pipeline
 // (`useChatSend` — the unit the fix lives in) wired to the real
-// ContinuousChatOverlay, with the warm-up condition simulated at the client-API
+// ChatOverlay, with the warm-up condition simulated at the client-API
 // boundary: `client.sendConversationMessageStream` 503s ("Agent is not
 // running") until the harness flips `window.__setModelReady(true)`, and the
 // history reload full-replaces local state with the scripted server truth —
@@ -15,7 +15,7 @@ import { client } from "../../../api";
 import { MockAppProvider } from "../../../storybook/mock-providers";
 import type { UseChatSendDeps } from "../../../state/useChatSend";
 import { useChatSend } from "../../../state/useChatSend";
-import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
+import { ChatOverlay } from "../ChatOverlay";
 import type { ShellMessage } from "../shell-state";
 import type { ConversationNav, ShellController } from "../useShellController";
 
@@ -278,7 +278,7 @@ function Harness(): React.JSX.Element {
           {notice}
         </div>
       ) : null}
-      <ContinuousChatOverlay controller={controller} />
+      <ChatOverlay controller={controller} />
     </div>
   );
 }

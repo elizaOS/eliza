@@ -9,6 +9,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { promotedParentRoutingHint } from "../actions/promote-subactions";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
@@ -1222,7 +1223,7 @@ const MANDATORY_PLANNER_POLICY = [
 	'- messageToUser alone cannot save, schedule, send, update, remember, or complete anything. If an exposed tool can perform the requested side effect, call it. Never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it.',
 	"- Structured chat markers are allowed in messageToUser when they are the actual user-visible interaction payload: [FORM]\\n{json}\\n[/FORM], [CHOICE:scope id=id]\\nvalue=Label\\n[/CHOICE], [FOLLOWUPS id=id]\\nvalue=Label\\n[/FOLLOWUPS], or [TASK:threadId]Title[/TASK]. The JSON inside [FORM] is form data, not a tool attempt; keep JSON inside the marker and do not emit unrelated JSON.",
 	"- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. When the user wants chat-message search/recall, memory queries, or agent-history lookups and no dedicated search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH) is exposed, do not run shell greps, echo placeholders, or simulate the search — set messageToUser explaining that the capability is not available this turn.",
-	'- candidateActions naming a tool that is not in this turn\'s exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user\'s intent (call it), or no tool fits (set messageToUser). Never emit echo-placeholder SHELL commands such as: echo "<intent-name>" / echo "placeholder for <ACTION>" / echo "search <X>" as a way to "trigger" a missing capability — placeholder echoes burn cost and produce no progress.',
+	'- candidateActions naming a tool that is not in this turn\'s exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user\'s intent (call it), or no tool fits (set messageToUser). A dead hint does NOT mean the capability is missing: scan the exposed tools\' names, routing hints, and descriptions for one that covers the same intent (e.g. github issues -> TASKS_MANAGE_ISSUES when GITHUB_LIST_ISSUES is not exposed; reminders -> TRIGGER_CREATE when OWNER_REMINDERS is not exposed) and call it before declaring the capability unavailable. Never emit echo-placeholder SHELL commands such as: echo "<intent-name>" / echo "placeholder for <ACTION>" / echo "search <X>" as a way to "trigger" a missing capability — placeholder echoes burn cost and produce no progress.',
 	'- TASKS_SPAWN_AGENT is for delegating coding/build/repo work to a coding sub-agent (file edits, shell tooling, building/deploying apps, running tests, opening PRs). It is not a fallback for chat-message recall, memory queries, or agent-history lookups. Spawning a coding sub-agent to "search the Discord channel for messages mentioning X" routinely ends in sub-agent error/timeout and a generic "Sorry, something went wrong" reply to the user. When the user wants chat-message recall and no dedicated search action is exposed, set messageToUser explaining the capability is not available — do not spawn a sub-agent for it.',
 	'- messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening, has happened, or is about to happen — "I\'m fetching X, please hold", "Let me look that up", "Pulling up the info", "Searching for the answer", "I\'m checking now", "I\'ll get back to you", "Spawning a sub-agent", "I\'m working on it", "I\'m fixing that now", "Let me get that done", "Wrapping it up", "Almost done", "Building it now", "I\'ll start on that" — when no tool call this turn is in flight to produce that content. A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call (e.g. TASKS_SPAWN_AGENT) is actually in flight THIS turn; if you did not spawn a sub-agent or take an action this turn, do not say the task is underway. The planner does not run in the background after returning; once this turn ends, no further tool work happens unless a NEW user message arrives. If your tool iterations exhausted without a usable result (search returned nothing, fetch was blocked, scrape gave no usable HTML, RSS was empty), set messageToUser saying so plainly: "I tried web search via the available tools and couldn\'t find current info on X — try checking a news site directly" or "The searches returned no usable results". Never promise ongoing fetch when this turn is the planner\'s final iteration. This rule covers every grammatical form for both investigative and task-execution verbs (fetch/search/look up/check AND work on/start/fix/build/wrap up/finish): past-perfect ("I have fetched", "I have started fixing it"), bare past-tense ("I fetched", "I started on it"), present-continuous with subject ("I\'m fetching now", "I\'m checking", "I\'m working on it", "I\'m fixing it"), bare present-participle without subject ("Fetching latest info", "Looking it up", "Working on it", "Wrapping it up"), and "please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases.',
 	'- messageToUser and REPLY text must NEVER fabricate a failure, error, or interruption that did not actually occur this turn. Do not claim something "glitched", "hiccuped", "broke", "went wrong", "snagged", "errored out", "got cut off", "didn\'t go through", "failed on my end", or invite the user to "give it another go / try that again / ask again" UNLESS a real tool call THIS turn actually returned an error or empty result. If you are choosing NOT to take an action this turn (no tool call in flight), do not invent a malfunction to excuse it: instead either (a) take the correct action (e.g. spawn the coding sub-agent for a build request), or (b) say plainly and truthfully what you can do and ask the user to confirm scope, e.g. "I can build that as a single-file site in its own folder, want me to start?". A fabricated "something glitched, give it another go" is a hallucinated failure and is forbidden when nothing failed.',
@@ -1248,9 +1249,18 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
-		const hint = tool.action?.routingHint?.trim();
+		// A promoted virtual (TRIGGER_CREATE, MESSAGE_SEND, …) carries no hint
+		// of its own; fall back to its umbrella parent's hint, deduped by the
+		// parent so a whole promoted family contributes one line.
+		const own = tool.action?.routingHint?.trim();
+		const promoted = tool.action
+			? promotedParentRoutingHint(tool.action)
+			: undefined;
+		const hint = own || promoted?.hint;
 		if (!hint) continue;
-		const key = normalizePlannerToolName(tool.name);
+		const key = normalizePlannerToolName(
+			own ? tool.name : (promoted?.parent ?? tool.name),
+		);
 		if (seen.has(key)) continue;
 		seen.add(key);
 		lines.push(`- ${hint}`);
@@ -3388,7 +3398,10 @@ function preferredFinalMessageFromToolOrModel(
 	//   1. A single successful tool whose result was explicitly marked
 	//      `verifiedUserFacing: true` — used for structured outputs
 	//      (paths, ids, counts) where evaluator paraphrase risks
-	//      hallucinating a value.
+	//      hallucinating a value. When the evaluator ALSO supplied grounded
+	//      prose, the two are combined (verbatim output first, prose after)
+	//      instead of discarding the evaluator's answer — see
+	//      `combinedVerifiedToolTextAndProse`.
 	//   2. A grammar-valid widget emitted for a structurally-marked missing-input
 	//      result. The widget preserves the planner's field types and supersedes
 	//      the tool's prose question, but never a lifeDraft confirmation preview.
@@ -3405,17 +3418,72 @@ function preferredFinalMessageFromToolOrModel(
 	//   - `planner-loop-user-facing-text.test.ts` → "does not regress
 	//     evaluator's explicit messageToUser path" — evaluator wins when
 	//     no tool sets `verifiedUserFacing`.
-	//   - `planner-happy-path.test.ts` → "prefers a single tool's verified
-	//     user-facing text over evaluator paraphrase" — tool wins when it
-	//     opts in via `verifiedUserFacing: true`.
+	//   - `planner-happy-path.test.ts` → "falls back to a single tool's
+	//     user-facing text when the evaluator omits messageToUser" — the
+	//     verified verbatim text stands alone when there is no prose.
+	//   - `planner-loop-user-facing-text.test.ts` → "delivers verified tool
+	//     output AND the evaluator's grounded prose" — both survive when both
+	//     exist and neither contains the other.
+	const verifiedToolText = singleVerifiedUserFacingToolResultText(trajectory);
 	return (
-		singleVerifiedUserFacingToolResultText(trajectory) ??
+		combinedVerifiedToolTextAndProse(
+			trajectory,
+			verifiedToolText,
+			modelTextWithoutUnlicensedNoopWidget,
+		) ??
+		verifiedToolText ??
 		(widgetCollectsLatestMissingInput ? widgetReply : undefined) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
 		modelTextWithoutUnlicensedNoopWidget ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);
+}
+
+/**
+ * A verified tool result and a grounded evaluator reply are complementary, not
+ * competing: the verified text is the verbatim output (#7960 — never dropped,
+ * never paraphrased) and the evaluator's `messageToUser` answers what the user
+ * actually asked. Returning only the verified text silently discarded grounded
+ * evaluator prose (observed live: `df -h` via the terminal action posted a bare
+ * mount table and dropped the evaluator's "still 95%, 22G free" answer).
+ * Deliver both — the verbatim output, fenced when it is multiline command
+ * output, followed by the prose. Containment collapses the pair when one side
+ * already carries the other, and confirmation previews stay pure (action-owned
+ * copy is never decorated with extra prose).
+ */
+function combinedVerifiedToolTextAndProse(
+	trajectory: PlannerTrajectory,
+	verifiedToolText: string | undefined,
+	modelText: string | undefined,
+): string | undefined {
+	if (!verifiedToolText || !modelText) return undefined;
+	const hasVerifiedConfirmationPreview = trajectory.steps.some(
+		(step) =>
+			step.result?.verifiedUserFacing === true &&
+			hasRequiresConfirmationMarker(step.result),
+	);
+	if (hasVerifiedConfirmationPreview) return undefined;
+	const verified = verifiedToolText.trim();
+	// Widget payloads ([CHOICE]/[FORM] interaction blocks) are grammar the
+	// client renders; appended prose would corrupt the block contract.
+	if (parseInteractionBlocks(verified).blocks.length > 0) return undefined;
+	const prose = modelText.trim();
+	// Combining must preserve the same user-safety boundary as selecting model
+	// text directly; evaluator channels can contain serialized tool invocations.
+	if (isUnsafeUserVisibleText(prose)) return undefined;
+	// Prose that already embeds the verbatim output IS the combined message.
+	if (prose.includes(verified)) return prose;
+	const normalize = (text: string) =>
+		text.toLowerCase().replace(/\s+/g, " ").trim();
+	// Prose that adds nothing over the verified output (a restatement or
+	// fragment of it) keeps the verbatim-echo behavior unchanged.
+	if (normalize(verified).includes(normalize(prose))) return undefined;
+	const fenced =
+		verified.includes("\n") && !verified.includes("```")
+			? `\`\`\`\n${verified}\n\`\`\``
+			: verified;
+	return `${fenced}\n\n${prose}`;
 }
 
 function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
@@ -3776,6 +3844,10 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		return true;
 	}
 	return [
+		// Models sometimes serialize a namespaced client action as
+		// `call:automation:GET_WORKFLOW{...}`. It is still an invocation, not a
+		// user reply, even when its loose argument object is not valid JSON.
+		/^\s*(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/i,
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,
 		/"action"\s*:\s*"functions\.[A-Z0-9_]+"/i,

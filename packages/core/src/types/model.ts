@@ -915,6 +915,8 @@ export interface DetokenizeTextParams {
  */
 export interface TextEmbeddingParams {
 	text: string;
+	/** Cancels the underlying embedding request with its owning turn. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -1612,6 +1614,18 @@ export interface ModelRegistrationMetadata {
 	 * for this registration.
 	 */
 	displayModelSetting?: string;
+	/**
+	 * Ordered runtime setting/env keys used to resolve the concrete display model.
+	 * The first non-empty value wins. Providers whose effective model has a
+	 * fallback chain should declare that chain rather than snapshotting host env
+	 * at plugin construction time.
+	 */
+	displayModelSettings?: string[];
+	/**
+	 * Provider-owned model id used only when no declared display-model setting is
+	 * configured for this runtime.
+	 */
+	displayModelDefault?: string;
 	/**
 	 * Provider-declared capability: this registration runs on local/on-device
 	 * inference (Ollama, LM Studio, MLX, llama.cpp, capacitor-llama, …) rather

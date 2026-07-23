@@ -600,6 +600,146 @@ describe("completion envelope gate (#8895)", () => {
   });
 });
 
+describe("claimed-file ledger cross-check (#16523)", () => {
+  let savedFlag: string | undefined;
+  beforeEach(() => {
+    savedFlag = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+    delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  });
+  afterEach(() => {
+    if (savedFlag === undefined)
+      delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+    else process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = savedFlag;
+  });
+
+  async function addToolEvent(
+    store: OrchestratorTaskStore,
+    taskId: string,
+    sessionId: string,
+    toolCall: Record<string, unknown>,
+  ): Promise<void> {
+    await store.addEvent({
+      id: `evt-${Math.random().toString(36).slice(2)}`,
+      taskId,
+      sessionId,
+      eventType: "tool_running",
+      summary: "tool",
+      data: { toolCall },
+      timestamp: Date.now(),
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  it("a claimed file whose write the tool layer rejected is flagged fail-closed, not relayed as Created", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    // The issue's trace shape: the only writer of the claimed path was
+    // terminally rejected (the stale-write guard's invalid_param).
+    await addToolEvent(store, taskId, sessionId, {
+      id: "w1",
+      kind: "write",
+      rawInput: { file_path: "src/x.ts", content: "v1" },
+      status: "failed",
+    });
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
+
+    // Flag-don't-rewrite: the worker's fields are intact, and the
+    // deterministic markers ride the envelope's existing fields.
+    const doc = await store.getTask(taskId);
+    const envelope = doc?.task.metadata.completionEnvelope as
+      | {
+          filesChanged: string[];
+          artifactsVerified?: boolean;
+          missingArtifacts?: string[];
+        }
+      | undefined;
+    expect(envelope?.filesChanged).toEqual(["src/x.ts"]);
+    expect(envelope?.artifactsVerified).toBe(false);
+    expect(envelope?.missingArtifacts).toContain("src/x.ts");
+    // The judge saw the fail-closed section, not a bare "Created" claim.
+    const judgePrompt = useModel.mock.calls[0]?.[1] as
+      | { prompt?: string }
+      | undefined;
+    expect(judgePrompt?.prompt).toContain("UNVERIFIED FILE CLAIMS");
+    expect(judgePrompt?.prompt).toContain("REJECTED");
+  });
+
+  it("a claim backed by a successful ledger write gets no markers", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    await addToolEvent(store, taskId, sessionId, {
+      id: "w1",
+      kind: "write",
+      rawInput: { file_path: "src/x.ts", content: "v1" },
+      status: "completed",
+    });
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
+
+    const doc = await store.getTask(taskId);
+    const envelope = doc?.task.metadata.completionEnvelope as
+      | { artifactsVerified?: boolean; missingArtifacts?: string[] }
+      | undefined;
+    expect(envelope?.artifactsVerified).toBeUndefined();
+    expect(envelope?.missingArtifacts).toBeUndefined();
+    const judgePrompt = useModel.mock.calls[0]?.[1] as
+      | { prompt?: string }
+      | undefined;
+    expect(judgePrompt?.prompt).not.toContain("UNVERIFIED FILE CLAIMS");
+  });
+
+  it("a session with no structured tool ledger is never false-flagged (legacy adapters)", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
+
+    const doc = await store.getTask(taskId);
+    const envelope = doc?.task.metadata.completionEnvelope as
+      | { artifactsVerified?: boolean }
+      | undefined;
+    expect(envelope?.artifactsVerified).toBeUndefined();
+    const judgePrompt = useModel.mock.calls[0]?.[1] as
+      | { prompt?: string }
+      | undefined;
+    expect(judgePrompt?.prompt).not.toContain("UNVERIFIED FILE CLAIMS");
+  });
+});
+
 /**
  * A richer fake ACP for the #8898 independent verifier: supports multiple event
  * subscribers, records spawnSession calls, and pushes a configurable verifier

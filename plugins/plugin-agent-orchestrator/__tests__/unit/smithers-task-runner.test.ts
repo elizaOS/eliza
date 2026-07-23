@@ -21,16 +21,29 @@ interface FakeOpts {
   approved?: boolean;
   malformedApproval?: boolean; // requestApproval returns a result missing `approved`
   throwOnTurnCall?: number; // throw a fatal error on the Nth runTurn call
+  hangOnTurnCall?: number;
   abort?: { controller: AbortController; onCall: number }; // abort + hang on the Nth call
 }
 
 class FakeExecutor implements TaskStepExecutor {
   turnCalls: TaskStepContext[] = [];
+  cancellationSignals = 0;
   provisionCalls = 0;
   approvalCalls = 0;
   submitCalls = 0;
 
   constructor(private readonly opts: FakeOpts = {}) {}
+
+  private waitForCancellation(ctx: TaskStepContext): Promise<never> {
+    return new Promise((_, reject) => {
+      const cancel = (): void => {
+        this.cancellationSignals += 1;
+        reject(new Error("cancelled by runner"));
+      };
+      if (ctx.signal?.aborted) cancel();
+      else ctx.signal?.addEventListener("abort", cancel, { once: true });
+    });
+  }
 
   async provision(ctx: TaskStepContext): Promise<TaskProvisionResult> {
     this.provisionCalls += 1;
@@ -45,7 +58,10 @@ class FakeExecutor implements TaskStepExecutor {
     }
     if (this.opts.abort && call >= this.opts.abort.onCall) {
       this.opts.abort.controller.abort();
-      await new Promise<never>(() => {}); // hang until SIGKILL
+      await this.waitForCancellation(ctx);
+    }
+    if (this.opts.hangOnTurnCall && call >= this.opts.hangOnTurnCall) {
+      await this.waitForCancellation(ctx);
     }
     const done = this.opts.doneOnTurn
       ? (ctx.turn ?? 0) >= this.opts.doneOnTurn
@@ -71,7 +87,13 @@ class FakeExecutor implements TaskStepExecutor {
 
 function spec(overrides: Partial<TaskRunSpec> = {}): TaskRunSpec {
   const id = `task-${Math.random().toString(36).slice(2, 10)}`;
-  return { taskId: id, runId: id, initialPrompt: "do the thing", ...overrides };
+  return {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    taskId: id,
+    runId: id,
+    initialPrompt: "do the thing",
+    ...overrides,
+  };
 }
 
 describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
@@ -83,6 +105,7 @@ describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
       expect(result.status).toBe("completed");
       expect(result.turns).toBe(1);
       expect(fake.turnCalls).toHaveLength(1);
+      expect(fake.turnCalls[0]?.signal).toBeInstanceOf(AbortSignal);
       expect(result.agentsDone).toEqual([true]);
     },
     TIMEOUT,
@@ -196,6 +219,22 @@ describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
   );
 
   it(
+    "kills a stalled Smithers task at the configured execution deadline",
+    async () => {
+      const fake = new FakeExecutor({ hangOnTurnCall: 1 });
+      await expect(
+        runTaskWithSmithers(spec(), fake, { timeoutMs: 5_000 }),
+      ).rejects.toMatchObject({
+        name: "ElizaError",
+        code: "SMITHERS_TASK_TIMEOUT",
+      });
+      expect(fake.turnCalls).toHaveLength(1);
+      expect(fake.cancellationSignals).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  it(
     "durably resumes after a crash, skipping completed turns",
     async () => {
       const shared = spec({ maxTurns: 10 });
@@ -210,12 +249,103 @@ describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
       ).rejects.toThrow();
       expect(run1.turnCalls.length).toBeGreaterThanOrEqual(2);
 
-      // Run 2: same runId resumes; completed turns 1 & 2 are NOT re-run. The fresh
-      // executor finishes on its first (resumed) turn, so it sees exactly one turn.
-      const run2 = new FakeExecutor({ doneOnTurn: 1 });
+      // Run 2: same runId resumes; completed turns 1 & 2 are NOT re-run. Smithers'
+      // persisted iteration makes the next delegated context absolute turn 3,
+      // even though this is the fresh executor's first call.
+      const run2 = new FakeExecutor({ doneOnTurn: 3 });
       const result = await runTaskWithSmithers(shared, run2);
       expect(result.status).toBe("completed");
       expect(run2.turnCalls).toHaveLength(1); // turns 1 & 2 were durably skipped
+      expect(run2.turnCalls[0]?.turn).toBe(3);
+      expect(result.turns).toBe(3);
+      expect(result.metrics.turns).toBe(3);
+
+      const run3 = new FakeExecutor({ doneOnTurn: 999 });
+      const fullyResumed = await runTaskWithSmithers(shared, run3);
+      expect(run3.turnCalls).toHaveLength(0);
+      expect(fullyResumed.turns).toBe(result.turns);
+      expect(fullyResumed.metrics.turns).toBe(result.metrics.turns);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "recovers provision, approval, and submit outputs on identical resume",
+    async () => {
+      const shared = spec({
+        provision: true,
+        approvalBeforeSubmit: true,
+        submit: true,
+        maxTurns: 1,
+      });
+      const firstExecutor = new FakeExecutor({
+        doneOnTurn: 1,
+        approved: true,
+      });
+      const first = await runTaskWithSmithers(shared, firstExecutor);
+      expect(first).toMatchObject({
+        status: "completed",
+        approved: true,
+        workspace: { dir: expect.stringContaining("/tmp/ws-") },
+        submit: { pr: expect.stringContaining("https://pr/") },
+      });
+
+      const resumedExecutor = new FakeExecutor({
+        doneOnTurn: 1,
+        approved: false,
+      });
+      const resumed = await runTaskWithSmithers(shared, resumedExecutor);
+      expect(resumed).toMatchObject({
+        status: "completed",
+        approved: true,
+        workspace: first.workspace,
+        submit: first.submit,
+      });
+      expect(resumedExecutor.turnCalls).toHaveLength(0);
+      expect(resumedExecutor.provisionCalls).toBe(0);
+      expect(resumedExecutor.approvalCalls).toBe(0);
+      expect(resumedExecutor.submitCalls).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "keeps denial fail-closed across resume and incompatible spec evolution",
+    async () => {
+      const deniedSpec = spec({
+        approvalBeforeSubmit: true,
+        submit: false,
+        maxTurns: 1,
+      });
+      const firstExecutor = new FakeExecutor({
+        doneOnTurn: 1,
+        approved: false,
+      });
+      const first = await runTaskWithSmithers(deniedSpec, firstExecutor);
+      expect(first.status).toBe("denied");
+      expect(firstExecutor.approvalCalls).toBe(1);
+
+      const resumedExecutor = new FakeExecutor({
+        doneOnTurn: 1,
+        approved: true,
+      });
+      const resumed = await runTaskWithSmithers(deniedSpec, resumedExecutor);
+      expect(resumed.status).toBe("denied");
+      expect(resumed.approved).toBe(false);
+      expect(resumedExecutor.turnCalls).toHaveLength(0);
+      expect(resumedExecutor.approvalCalls).toBe(0);
+
+      const evolvedExecutor = new FakeExecutor({
+        doneOnTurn: 1,
+        approved: false,
+      });
+      const evolved = await runTaskWithSmithers(
+        { ...deniedSpec, submit: true },
+        evolvedExecutor,
+      );
+      expect(evolved.status).toBe("denied");
+      expect(evolvedExecutor.approvalCalls).toBe(1);
+      expect(evolvedExecutor.submitCalls).toBe(0);
     },
     TIMEOUT,
   );

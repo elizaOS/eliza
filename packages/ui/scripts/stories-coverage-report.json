@@ -366,7 +366,7 @@
     "src\\components\\shared\\confirm-delete-control.tsx",
     "src\\components\\shell\\CommandPalette.tsx",
     "src\\components\\shell\\ConnectionFailedBanner.tsx",
-    "src\\components\\shell\\ContinuousChatOverlay.tsx",
+    "src\\components\\shell\\ChatOverlay.tsx",
     "src\\components\\shell\\LoadingScreen.tsx",
     "src\\components\\shell\\PairingCommandHint.tsx",
     "src\\components\\shell\\RestartBanner.tsx",

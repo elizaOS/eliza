@@ -104,7 +104,7 @@ describe("parseComposerBody", () => {
       parseComposerBody(
         JSON.stringify({
           activity: "typing_paused",
-          surface: "continuous_chat_overlay",
+          surface: "chat_overlay",
           conversationId: "conversation-1",
           draftLength: 14,
           idleForMs: 2000,
@@ -113,7 +113,7 @@ describe("parseComposerBody", () => {
       ),
     ).toEqual({
       activity: "typing_paused",
-      surface: "continuous_chat_overlay",
+      surface: "chat_overlay",
       conversationId: "conversation-1",
       draftLength: 14,
       idleForMs: 2000,
@@ -129,7 +129,7 @@ describe("parseComposerBody", () => {
       parseComposerBody(
         JSON.stringify({
           activity: "typing_paused",
-          surface: "continuous_chat_overlay",
+          surface: "chat_overlay",
           draftLength: 4,
         }),
       ),
@@ -147,7 +147,7 @@ describe("parseComposerBody", () => {
       parseComposerBody(
         JSON.stringify({
           activity: "typing_started",
-          surface: "continuous_chat_overlay",
+          surface: "chat_overlay",
           draftLength: -1,
         }),
       ),
@@ -156,7 +156,7 @@ describe("parseComposerBody", () => {
       parseComposerBody(
         JSON.stringify({
           activity: "typing_started",
-          surface: "continuous_chat_overlay",
+          surface: "chat_overlay",
           draftLength: 4,
           occurredAt: "not-a-date",
         }),
@@ -250,7 +250,7 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
     const { ctx, emitEvent, json } = makeCtx(
       {
         activity: "typing_started",
-        surface: "continuous_chat_overlay",
+        surface: "chat_overlay",
         conversationId: "conversation-1",
         draftLength: 5,
         occurredAt: "2026-06-01T12:00:00.000Z",
@@ -267,7 +267,7 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
     expect(calls[0][1]).toEqual(
       expect.objectContaining({
         activity: "typing_started",
-        surface: "continuous_chat_overlay",
+        surface: "chat_overlay",
         conversationId: "conversation-1",
         draftLength: 5,
         occurredAt: "2026-06-01T12:00:00.000Z",
@@ -286,7 +286,7 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
     const { ctx, emitEvent } = makeCtx(
       {
         activity: "typing_paused",
-        surface: "continuous_chat_overlay",
+        surface: "chat_overlay",
         draftLength: 5,
         idleForMs: 2000,
         occurredAt: "2026-06-01T12:00:02.000Z",
@@ -311,7 +311,7 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
     const { ctx, emitEvent } = makeCtx(
       {
         activity: "draft_abandoned",
-        surface: "continuous_chat_overlay",
+        surface: "chat_overlay",
         draftLength: 0,
         reason: "cleared",
         occurredAt: "2026-06-01T12:00:03.000Z",
@@ -336,7 +336,7 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
     const { ctx, emitEvent, error } = makeCtx(
       {
         activity: "typing_paused",
-        surface: "continuous_chat_overlay",
+        surface: "chat_overlay",
         draftLength: 5,
       },
       "POST",
@@ -352,7 +352,7 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
     const { ctx, emitEvent, reportError, json } = makeCtx(
       {
         activity: "typing_started",
-        surface: "continuous_chat_overlay",
+        surface: "chat_overlay",
         draftLength: 5,
         occurredAt: "2026-06-01T12:00:00.000Z",
       },
@@ -374,7 +374,7 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
         failure,
         {
           activity: "typing_started",
-          surface: "continuous_chat_overlay",
+          surface: "chat_overlay",
         },
       ),
     );

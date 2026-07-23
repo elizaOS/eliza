@@ -12,6 +12,12 @@ on:
   push:
     branches: [develop]
   workflow_dispatch:
+    inputs:
+      remote_capability_live:
+        description: "Run strict remote-capability Cloud and provider live smokes"
+        required: false
+        default: false
+        type: boolean
   schedule:
     # Nightly live smoke for container-backed remote capability plugins.
     - cron: "17 9 * * *"
@@ -63,7 +69,7 @@ jobs:
     steps:
       - name: Checkout target branch (guard logic comes from the base, not the PR)
         if: github.event_name == 'pull_request'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           # The guard disables lazy promisor fetches while it runs. Fetch the
@@ -127,7 +133,7 @@ jobs:
       zero_key: ${{ steps.filter.outputs.zero_key }}
       cloud: ${{ steps.filter.outputs.cloud }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           submodules: false
@@ -214,7 +220,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -235,7 +241,7 @@ jobs:
     env:
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -305,7 +311,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -370,7 +376,7 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-shared-target
       CARGO_INCREMENTAL: "0"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
           fetch-depth: 1
@@ -470,7 +476,7 @@ jobs:
     env:
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -506,7 +512,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -549,7 +555,7 @@ jobs:
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -609,7 +615,7 @@ jobs:
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -684,7 +690,7 @@ jobs:
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -743,7 +749,7 @@ jobs:
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -817,7 +823,7 @@ jobs:
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -897,6 +903,7 @@ jobs:
         id: cloud
         env:
           EVENT_NAME: ${{ github.event_name }}
+          CAPABILITY_LIVE_REQUIRED: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.remote_capability_live) }}
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
           ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED: ${{ vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED != '' && vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED || secrets.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED }}
         run: |
@@ -919,20 +926,20 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [ "${ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED}" = "1" ]; then
+          if [ "${CAPABILITY_LIVE_REQUIRED}" != "true" ]; then
+            echo "::notice::Remote capability cloud sandbox live smoke was not requested for ${EVENT_NAME}."
+            echo "capability_skip=true" >> "$GITHUB_OUTPUT"
+          elif [ "${ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED}" = "1" ]; then
             echo "capability_skip=false" >> "$GITHUB_OUTPUT"
           else
-            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
-              echo "::error::Remote capability cloud sandbox live smoke is required for ${EVENT_NAME}; set ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED=1 instead of producing a green skip."
-              exit 1
-            fi
-            echo "::notice::Remote capability cloud sandbox live smoke skipped because ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED is not configured."
-            echo "capability_skip=true" >> "$GITHUB_OUTPUT"
+            echo "::error::Remote capability cloud sandbox live smoke is required for ${EVENT_NAME}; set ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED=1 instead of producing a green skip."
+            exit 1
           fi
 
       - name: Checkout
+        id: checkout
         if: steps.cloud.outputs.skip != 'true'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -1015,7 +1022,7 @@ jobs:
           retention-days: 7
 
       - name: Prune remote capability cloud report
-        if: always() && steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        if: always() && steps.checkout.outcome == 'success' && steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud
 
       - name: Note remote capability cloud live smoke not observed
@@ -1039,25 +1046,22 @@ jobs:
         id: providers
         env:
           EVENT_NAME: ${{ github.event_name }}
+          LIVE_REQUIRED: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.remote_capability_live) }}
           E2B_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_URL }}
           HOME_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL }}
           MOBILE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
           DESKTOP_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
         run: |
-          strict_context=false
-          case "${EVENT_NAME}" in
-            workflow_dispatch|schedule) strict_context=true ;;
-          esac
+          if [ "${LIVE_REQUIRED}" != "true" ]; then
+            echo "::notice::Remote capability provider live smoke was not requested for ${EVENT_NAME}."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [ -z "${E2B_URL}${HOME_URL}${MOBILE_URL}${DESKTOP_URL}" ]; then
             message="No remote capability provider endpoints configured"
-            if [ "${strict_context}" = "true" ]; then
-              echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
-              exit 1
-            fi
-            echo "::warning::${message} - skipping optional provider live E2E."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
+            exit 1
           fi
 
           missing_required=()
@@ -1073,19 +1077,16 @@ jobs:
 
           if [ "${#missing_required[@]}" -gt 0 ]; then
             message="Missing required remote capability provider endpoint secrets: ${missing_required[*]}"
-            if [ "${strict_context}" = "true" ]; then
-              echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
-              exit 1
-            fi
-            echo "::warning::${message}. Skipping optional provider live E2E for ${EVENT_NAME}."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
+            exit 1
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout
+        id: checkout
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -1148,7 +1149,7 @@ jobs:
           retention-days: 7
 
       - name: Prune remote capability provider reports
-        if: always() && steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        if: always() && steps.checkout.outcome == 'success' && steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
 
       - name: Note provider live smoke not observed
@@ -1173,7 +1174,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -1230,7 +1231,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           submodules: false
@@ -1245,8 +1246,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Repo-wide biome lint
-        run: bun run lint
+      - name: Repo-wide biome lint (read-only)
+        run: bun run lint:check
 
       - name: Repo-wide biome format check
         run: bun run format:check

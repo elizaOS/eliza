@@ -29,11 +29,16 @@ const stewardAuthSpies = vi.hoisted(() => ({
   getProviders: vi.fn(),
   getSession: vi.fn(),
   refreshSession: vi.fn(),
-  signInWithEmail: vi.fn(),
   signInWithPasskey: vi.fn(),
   sendEmailOtp: vi.fn(),
   verifyEmailOtp: vi.fn(),
   addPasskey: vi.fn(),
+}));
+
+const emailLoginSpies = vi.hoisted(() => ({
+  start: vi.fn(),
+  verify: vi.fn(),
+  poll: vi.fn(),
 }));
 
 vi.mock("@stwd/sdk", () => ({
@@ -41,12 +46,27 @@ vi.mock("@stwd/sdk", () => ({
     getProviders = stewardAuthSpies.getProviders;
     getSession = stewardAuthSpies.getSession;
     refreshSession = stewardAuthSpies.refreshSession;
-    signInWithEmail = stewardAuthSpies.signInWithEmail;
     signInWithPasskey = stewardAuthSpies.signInWithPasskey;
     sendEmailOtp = stewardAuthSpies.sendEmailOtp;
     verifyEmailOtp = stewardAuthSpies.verifyEmailOtp;
     addPasskey = stewardAuthSpies.addPasskey;
   },
+}));
+
+vi.mock("../../lib/steward-email-login", () => ({
+  StewardEmailLoginError: class StewardEmailLoginError extends Error {
+    status: number;
+    code: string | null;
+    constructor(message: string, status: number, code: string | null) {
+      super(message);
+      this.name = "StewardEmailLoginError";
+      this.status = status;
+      this.code = code;
+    }
+  },
+  startStewardEmailLogin: emailLoginSpies.start,
+  verifyStewardEmailSignInCode: emailLoginSpies.verify,
+  pollStewardEmailSignInStatus: emailLoginSpies.poll,
 }));
 
 vi.mock("../../../shell/steward-url", () => ({
@@ -109,7 +129,16 @@ describe("StewardLoginSection passkey capability gating", () => {
     stewardAuthSpies.getProviders.mockResolvedValue(defaultProviders());
     stewardAuthSpies.getSession.mockReturnValue(null);
     stewardAuthSpies.refreshSession.mockResolvedValue(null);
-    stewardAuthSpies.signInWithEmail.mockResolvedValue(undefined);
+    emailLoginSpies.start.mockResolvedValue({
+      expiresAt: "2026-07-17T12:10:00.000Z",
+      challengeId: "challenge-1",
+      pollSecret: "poll-secret",
+    });
+    emailLoginSpies.verify.mockResolvedValue({
+      token: "email-token",
+      refreshToken: null,
+    });
+    emailLoginSpies.poll.mockResolvedValue("pending");
     stewardAuthSpies.signInWithPasskey.mockResolvedValue({
       token: "session-token",
       refreshToken: null,
@@ -139,7 +168,8 @@ describe("StewardLoginSection passkey capability gating", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() =>
-      expect(stewardAuthSpies.signInWithEmail).toHaveBeenCalledWith(
+      expect(emailLoginSpies.start).toHaveBeenCalledWith(
+        { baseUrl: "https://api.example.test", tenantId: "elizacloud" },
         "person@example.com",
       ),
     );
@@ -164,7 +194,7 @@ describe("StewardLoginSection passkey capability gating", () => {
         "person@example.com",
       ),
     );
-    expect(stewardAuthSpies.signInWithEmail).not.toHaveBeenCalled();
+    expect(emailLoginSpies.start).not.toHaveBeenCalled();
   });
 
   it("requires an email before invoking passkey sign-in", async () => {
@@ -270,9 +300,7 @@ describe("StewardLoginSection passkey capability gating", () => {
   });
 
   it("requires an email before sending a magic link and surfaces send failures", async () => {
-    stewardAuthSpies.signInWithEmail.mockRejectedValue(
-      new Error("SMTP unavailable"),
-    );
+    emailLoginSpies.start.mockRejectedValue(new Error("SMTP unavailable"));
 
     renderSection();
 
@@ -281,7 +309,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     });
     fireEvent.click(magicLink);
     expect(await screen.findByText("Enter your email")).toBeTruthy();
-    expect(stewardAuthSpies.signInWithEmail).not.toHaveBeenCalled();
+    expect(emailLoginSpies.start).not.toHaveBeenCalled();
 
     const input = screen.getByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
@@ -289,17 +317,19 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(await screen.findByText("SMTP unavailable")).toBeTruthy();
   });
 
-  it("renders the magic-link sent state and returns to the login form", async () => {
-    stewardAuthSpies.signInWithEmail.mockResolvedValue(undefined);
-
+  it("renders the email code state and returns to the login form", async () => {
     renderSection();
 
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
 
-    expect(await screen.findByText("Magic link sent to")).toBeTruthy();
+    expect(await screen.findByText("Check your email")).toBeTruthy();
     expect(screen.getByText("person@example.com")).toBeTruthy();
+    const codeInput = screen.getByLabelText("Six-digit code");
+    expect(codeInput.getAttribute("inputmode")).toBe("numeric");
+    expect(codeInput.getAttribute("autocomplete")).toBe("one-time-code");
+    expect(codeInput.getAttribute("maxlength")).toBe("6");
 
     fireEvent.click(screen.getByRole("button", { name: /Back to login/i }));
     expect(await screen.findByPlaceholderText("you@example.com")).toBeTruthy();

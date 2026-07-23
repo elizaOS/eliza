@@ -522,56 +522,131 @@ describe("EvaluatorService", () => {
 		expect(useModel.mock.calls[3]?.[1]).toHaveProperty("responseSchema");
 	});
 
-	it("fails fast without any model call when the merged prompt exceeds the size cap (#15087)", async () => {
+	it("trims oversized shared provider context and still calls the model", async () => {
 		const runtime = makeRuntime();
+		const processed: string[] = [];
 
 		runtime.registerEvaluator({
-			name: "small",
-			description: "well-behaved section",
+			name: "alpha",
+			description: "alpha section",
 			schema: schema(),
 			shouldRun: async () => true,
-			prompt: () => "Extract small.",
+			prompt: () => "Extract alpha.",
 			parse: (output) => output as never,
 			processors: [
-				{ name: "storeSmall", process: async () => ({ success: true }) },
+				{
+					name: "storeAlpha",
+					process: async () => {
+						processed.push("alpha");
+						return { success: true };
+					},
+				},
 			],
 		});
 		runtime.registerEvaluator({
-			name: "runaway",
-			description: "section with an unbounded context block",
+			name: "beta",
+			description: "beta section",
 			schema: schema(),
 			shouldRun: async () => true,
-			prompt: () => "x".repeat(EVALUATOR_PROMPT_MAX_CHARS + 1),
+			prompt: () => "Extract beta.",
 			parse: (output) => output as never,
 			processors: [
-				{ name: "storeRunaway", process: async () => ({ success: true }) },
+				{
+					name: "storeBeta",
+					process: async () => {
+						processed.push("beta");
+						return { success: true };
+					},
+				},
 			],
 		});
 
-		const useModel = vi.fn();
+		const providerTail = "SHARED_PROVIDER_TAIL";
+		const oversizedProviderContext = `SHARED_PROVIDER_PREFIX${"x".repeat(
+			EVALUATOR_PROMPT_MAX_CHARS,
+		)}${providerTail}`;
+		const useModel = vi.fn(async (_modelType, params) => {
+			const prompt = String(params.messages?.[0]?.content ?? "");
+			expect(prompt.length).toBeLessThanOrEqual(EVALUATOR_PROMPT_MAX_CHARS);
+			expect(prompt).toContain("[... truncated; kept latest tail ...]");
+			expect(prompt).toContain(providerTail);
+			expect(prompt).not.toContain("SHARED_PROVIDER_PREFIX");
+			expect(prompt).toContain("### alpha");
+			expect(prompt).toContain('Put result under "alpha".');
+			expect(prompt).toContain("### beta");
+			expect(prompt).toContain('Put result under "beta".');
+			return {
+				alpha: { ok: true },
+				beta: { ok: true },
+			};
+		});
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const result = await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {},
+			text: oversizedProviderContext,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(result.skipped).toBe(false);
+		expect(processed).toEqual(["alpha", "beta"]);
+		expect(result.errors).toEqual([]);
+	});
+
+	it("trims oversized evaluator sections while retaining every evaluator name", async () => {
+		const runtime = makeRuntime();
+		const processed: string[] = [];
+		const evaluatorTail = "RUNAWAY_EVALUATOR_TAIL";
+
+		for (const name of ["small", "runaway", "later"]) {
+			runtime.registerEvaluator({
+				name,
+				description: `${name} section`,
+				schema: schema(),
+				shouldRun: async () => true,
+				prompt: () =>
+					name === "runaway"
+						? `RUNAWAY_EVALUATOR_PREFIX${"x".repeat(
+								EVALUATOR_PROMPT_MAX_CHARS,
+							)}${evaluatorTail}`
+						: `Extract ${name}.`,
+				parse: (output) => output as never,
+				processors: [
+					{
+						name: `store-${name}`,
+						process: async () => {
+							processed.push(name);
+							return { success: true };
+						},
+					},
+				],
+			});
+		}
+
+		const useModel = vi.fn(async (_modelType, params) => {
+			const prompt = String(params.messages?.[0]?.content ?? "");
+			expect(prompt.length).toBeLessThanOrEqual(EVALUATOR_PROMPT_MAX_CHARS);
+			expect(prompt).toContain("[... truncated; kept latest tail ...]");
+			expect(prompt).toContain(evaluatorTail);
+			expect(prompt).toContain("RUNAWAY_EVALUATOR_PREFIX");
+			for (const name of ["small", "runaway", "later"]) {
+				expect(prompt).toContain(`### ${name}`);
+				expect(prompt).toContain(`Put result under "${name}".`);
+			}
+			return {
+				small: { ok: true },
+				runaway: { ok: true },
+				later: { ok: true },
+			};
+		});
 		runtime.useModel = useModel as AgentRuntime["useModel"];
 
 		const result = await new EvaluatorService(runtime).run(makeMessage());
 
-		// The oversized prompt is guaranteed to fail on the TEXT_SMALL tier —
-		// the guard must spend zero model round-trips (the pre-guard behavior
-		// burned three: schema, json_object, plain).
-		expect(useModel).not.toHaveBeenCalled();
+		expect(useModel).toHaveBeenCalledTimes(1);
 		expect(result.skipped).toBe(false);
-		expect(result.processedEvaluators).toEqual([]);
-		expect(result.results).toEqual([]);
-		expect(result.errors).toEqual([
-			{
-				evaluatorName: "post_turn",
-				error: expect.stringContaining("exceeds") as unknown as string,
-			},
-		]);
-		expect(runtime.emitEvent).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({
-				evaluatorName: "post_turn",
-				completed: false,
-			}),
-		);
+		expect(processed).toEqual(["later", "runaway", "small"]);
+		expect(result.errors).toEqual([]);
 	});
 });

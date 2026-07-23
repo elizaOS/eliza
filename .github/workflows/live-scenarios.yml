@@ -94,7 +94,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           filter: blob:none
@@ -138,8 +138,27 @@ jobs:
           );
           NODE
 
+      - name: Validate authoritative shard prerequisites
+        id: preflight
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+        run: |
+          status=0
+          for shard in lifeops-connectors plugin-health app-control; do
+            node packages/scripts/live-scenario-contract.mjs preflight "$shard" || status=$?
+          done
+          exit "$status"
+
       - name: Build live scenario runtime packages
         id: build
+        if: ${{ steps.preflight.outcome == 'success' }}
         # The live runner executes TypeScript sources directly, but several
         # workspace packages intentionally export dist/* entry points. Because
         # dependency installation ignores postinstall scripts, build only the
@@ -243,6 +262,8 @@ jobs:
 
       - name: Run EA + connector live scenarios
         id: run
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
         env:
           # The runner and ordinary workspace dependencies stay on checkout
           # sources; generated/native and dist-only artifacts come from the
@@ -305,11 +326,15 @@ jobs:
           SKIP_REASON: ${{ inputs.skip_reason }}
           REPORT_PATH: artifacts/lifeops-scenario-report.json
           RUN_DIR: artifacts/scenario-runs/live
-        run: node packages/scripts/run-live-scenarios.mjs
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/scenario-runs/live
+          node packages/scripts/run-live-scenarios.mjs 2>&1 | tee artifacts/scenario-runs/live/runner.log
 
       - name: Run plugin-health live scenarios
         id: run-health
         if: ${{ !cancelled() && steps.build.outcome == 'success' && !inputs.scenario_filter }}
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
@@ -332,11 +357,15 @@ jobs:
           REPORT_PATH: artifacts/plugin-health-scenario-report.json
           RUN_DIR: artifacts/scenario-runs/plugin-health
           EXPORT_NATIVE_PATH: artifacts/scenario-runs/plugin-health/native.jsonl
-        run: node packages/scripts/run-live-scenarios.mjs --lane live-only
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/scenario-runs/plugin-health
+          node packages/scripts/run-live-scenarios.mjs --lane live-only 2>&1 | tee artifacts/scenario-runs/plugin-health/runner.log
 
       - name: Run app-control live scenarios
         id: run-app-control
         if: ${{ !cancelled() && steps.build.outcome == 'success' && !inputs.scenario_filter }}
+        continue-on-error: true
         env:
           NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
@@ -359,7 +388,22 @@ jobs:
           REPORT_PATH: artifacts/app-control-scenario-report.json
           RUN_DIR: artifacts/scenario-runs/app-control
           EXPORT_NATIVE_PATH: artifacts/scenario-runs/app-control/native.jsonl
-        run: node packages/scripts/run-live-scenarios.mjs --lane live-only
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/scenario-runs/app-control
+          node packages/scripts/run-live-scenarios.mjs --lane live-only 2>&1 | tee artifacts/scenario-runs/app-control/runner.log
+
+      - name: Verify every requested shard published its evidence contract
+        id: verify-evidence
+        if: ${{ always() && steps.preflight.outcome == 'success' && steps.build.outcome == 'success' }}
+        env:
+          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+        run: |
+          node packages/scripts/live-scenario-contract.mjs verify lifeops-connectors
+          if [ -z "$SCENARIO_FILTER" ]; then
+            node packages/scripts/live-scenario-contract.mjs verify plugin-health
+            node packages/scripts/live-scenario-contract.mjs verify app-control
+          fi
 
       - name: Upload scenario report
         if: always()
@@ -373,5 +417,27 @@ jobs:
             artifacts/scenario-runs/live/
             artifacts/scenario-runs/plugin-health/
             artifacts/scenario-runs/app-control/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
+
+      - name: Enforce aggregate shard result
+        if: always()
+        env:
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          LIFEOPS_OUTCOME: ${{ steps.run.outcome }}
+          HEALTH_OUTCOME: ${{ steps.run-health.outcome }}
+          APP_CONTROL_OUTCOME: ${{ steps.run-app-control.outcome }}
+          EVIDENCE_OUTCOME: ${{ steps.verify-evidence.outcome }}
+          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+        run: |
+          node - <<'NODE'
+          const required = ["PREFLIGHT_OUTCOME", "BUILD_OUTCOME", "LIFEOPS_OUTCOME", "EVIDENCE_OUTCOME"];
+          if (!process.env.SCENARIO_FILTER) required.push("HEALTH_OUTCOME", "APP_CONTROL_OUTCOME");
+          const failures = required.filter((name) => process.env[name] !== "success");
+          if (failures.length) {
+            console.error(`Live scenario authority failed: ${failures.map((name) => `${name}=${process.env[name] || "missing"}`).join(", ")}`);
+            process.exit(1);
+          }
+          console.log(`All requested live scenario shards and evidence contracts succeeded: ${required.join(", ")}`);
+          NODE

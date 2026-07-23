@@ -3107,7 +3107,11 @@ def test_smoke_preflight_cli_does_not_require_provider_key(tmp_path: Path) -> No
     assert "### Release Preflight" in markdown
 
 
-def test_live_preflight_cli_persists_blocker_report(tmp_path: Path) -> None:
+def test_live_preflight_cli_persists_blocker_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     code = main(
         [
             "--benchmarks",
@@ -3167,7 +3171,11 @@ def test_live_preflight_cli_persists_blocker_report(tmp_path: Path) -> None:
     assert not (tmp_path / "run" / "summary.json").exists()
 
 
-def test_blocked_normal_run_persists_preflight_artifacts(tmp_path: Path) -> None:
+def test_blocked_normal_run_persists_preflight_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     code = main(
         [
             "--benchmarks",
@@ -3286,7 +3294,11 @@ def test_preflight_markdown_lists_unclean_quality_guardrail_findings(
     )
 
 
-def test_live_cli_blocks_before_running_without_provider_key(tmp_path: Path) -> None:
+def test_live_cli_blocks_before_running_without_provider_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     code = main(
         [
             "--benchmarks",

@@ -2,11 +2,12 @@
  * Route-level contract tests for POST /api/v1/voice/stt: the REAL Hono route
  * handler runs end to end with only auth/billing/provider modules mocked at
  * the module boundary. Covers the shared upload-validation gates (multipart,
- * size, declared-type and magic-number checks), the whisper lane against a
- * local OpenAI-shaped upstream (#14806 verbose_json word/segment timestamps +
- * the J3 malformed-200 boundary), the billed ElevenLabs lane with its error
- * mapping, and — gated on ELIZA_VOICE_LIVE_RAILWAY=1 — the deployed Railway
- * faster-whisper with real Kokoro-synthesized speech.
+ * size, declared-type and magic-number checks), the Deepgram prerecorded lane,
+ * the whisper lane against a local OpenAI-shaped upstream (#14806 verbose_json
+ * word/segment timestamps + the J3 malformed-200 boundary), the billed
+ * ElevenLabs lane with its error mapping, and — gated on
+ * ELIZA_VOICE_LIVE_RAILWAY=1 — the deployed Railway faster-whisper with real
+ * Kokoro-synthesized speech.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -30,14 +31,28 @@ mock.module("@/lib/utils/logger", () => ({
 // initialize DB-backed services in a unit-test process; their behavior is
 // mutable per test so both lanes (free whisper, billed ElevenLabs) and the
 // route's error-mapping catch are drivable through the real handler.
-const billFlatUsage = mock(async () => ({
-  totalCost: 0,
-  platformMarkup: 0,
-  baseTotalCost: 0,
-}));
+const billFlatUsage = mock(
+  async (
+    _context?: unknown,
+    cost?: { totalCost: number },
+    reservation?: { reconcile: (amount: number) => Promise<void> },
+  ) => {
+    await reservation?.reconcile(cost?.totalCost ?? 0.0012);
+    return {
+      totalCost: 0.0012,
+      platformMarkup: 0.0002,
+      baseTotalCost: 0.001,
+    };
+  },
+);
 mock.module("@/lib/services/ai-billing", () => ({ billFlatUsage }));
+const calculateSTTCostFromCatalog = mock(async () => ({
+  totalCost: 0.0012,
+  baseTotalCost: 0.001,
+  platformMarkup: 0.0002,
+}));
 mock.module("@/lib/services/ai-pricing", () => ({
-  calculateSTTCostFromCatalog: mock(async () => ({ totalCost: 0 })),
+  calculateSTTCostFromCatalog,
   calculateTTSCostFromCatalog: mock(async () => ({
     totalCost: 0,
     baseTotalCost: 0,
@@ -179,6 +194,61 @@ function sttRequest(
   });
 }
 
+async function cloneMultipartRequestWithHeaders(
+  request: Request,
+  headers: HeadersInit,
+): Promise<Request> {
+  const nextHeaders = new Headers(request.headers);
+  const body = await request.arrayBuffer();
+  for (const [key, value] of new Headers(headers)) {
+    nextHeaders.set(key, value);
+  }
+  return new Request(request.url, {
+    body,
+    headers: nextHeaders,
+    method: request.method,
+  });
+}
+
+async function multipartBodyLength(request: Request): Promise<number> {
+  return (await request.clone().arrayBuffer()).byteLength;
+}
+
+function streamRequest(
+  chunks: Uint8Array[],
+  headers: HeadersInit,
+  onCancel: () => void = () => {},
+): Request {
+  let index = 0;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      onCancel();
+    },
+    pull(controller) {
+      const chunk = chunks[index];
+      index += 1;
+      if (chunk) {
+        controller.enqueue(chunk);
+        return;
+      }
+      controller.close();
+    },
+  });
+  return new Request("http://localhost/api/v1/voice/stt", {
+    body,
+    headers,
+    method: "POST",
+  });
+}
+
+function expectNoOversizedSideEffects() {
+  expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
+  expect(reserve).not.toHaveBeenCalled();
+  expect(billFlatUsage).not.toHaveBeenCalled();
+  expect(speechToText).not.toHaveBeenCalled();
+  expect(usageCreate).not.toHaveBeenCalled();
+}
+
 /**
  * The merged workers-types/DOM/bun globals leave `Response#json()`'s generic
  * unresolvable at bare call sites (it infers `undefined`, which rejects every
@@ -206,18 +276,56 @@ function isFilePart(value: unknown): value is { name: string; type: string } {
   );
 }
 
-/** One-shot local upstream: answers the next transcription POST with `reply`. */
+/** One-shot provider seams: answer the next transcription POST with `reply`. */
 interface UpstreamCapture {
   fields: Record<string, string[]>;
   fileName: string | null;
   fileType: string | null;
 }
+interface DeepgramCapture {
+  authorization: string | null;
+  bodyBytes: Uint8Array;
+  contentType: string | null;
+  url: string | null;
+}
 let upstreamReply: () => Response = () => Response.json({ text: "" });
+let deepgramReply: () => Response = () => Response.json({ results: {} });
 const captured: UpstreamCapture = {
   fields: {},
   fileName: null,
   fileType: null,
 };
+const deepgramCaptured: DeepgramCapture = {
+  authorization: null,
+  bodyBytes: new Uint8Array(),
+  contentType: null,
+  url: null,
+};
+
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async (
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<Response> => {
+  const url = new URL(
+    typeof input === "string" || input instanceof URL ? input : input.url,
+  );
+  if (url.origin === "https://api.deepgram.com") {
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
+    deepgramCaptured.authorization = headers.get("authorization");
+    deepgramCaptured.contentType = headers.get("content-type");
+    deepgramCaptured.url = url.toString();
+    const body = init?.body ?? (input instanceof Request ? input.body : null);
+    const bytes = body
+      ? await new Response(body).arrayBuffer()
+      : new ArrayBuffer(0);
+    deepgramCaptured.bodyBytes = new Uint8Array(bytes);
+    return deepgramReply();
+  }
+  return originalFetch.call(globalThis, input, init);
+}) as typeof fetch;
 
 const upstream = Bun.serve({
   port: 0,
@@ -248,9 +356,21 @@ const upstream = Bun.serve({
     return new Response("not found", { status: 404 });
   },
 });
-afterAll(() => upstream.stop(true));
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+  upstream.stop(true);
+});
 
 const whisperEnv = {
+  WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+} as never;
+const deepgramEnv = {
+  VOICE_BATCH_STT_PROVIDER: "deepgram",
+  DEEPGRAM_API_KEY: "dg-secret",
+} as never;
+const deepgramAndWhisperEnv = {
+  VOICE_BATCH_STT_PROVIDER: "deepgram",
+  DEEPGRAM_API_KEY: "dg-secret",
   WHISPER_STT_URL: `http://localhost:${upstream.port}`,
 } as never;
 // No WHISPER_STT_URL binding: the route falls through to the billed
@@ -279,6 +399,38 @@ const LIVE_SHAPE = {
   ],
 };
 
+const DEEPGRAM_SHAPE = {
+  metadata: { duration: 1.23 },
+  results: {
+    channels: [
+      {
+        alternatives: [
+          {
+            transcript: "Hello there world.",
+            words: [
+              { word: "Hello", start: 0, end: 0.31, confidence: 0.98 },
+              { word: "there", start: 0.31, end: 0.52, confidence: 0.97 },
+              { word: "world", start: 0.52, end: 0.84, confidence: 0.96 },
+            ],
+          },
+        ],
+      },
+    ],
+    utterances: [
+      {
+        transcript: "Hello there world.",
+        start: 0,
+        end: 0.84,
+        words: [
+          { word: "Hello", start: 0, end: 0.31 },
+          { word: "there", start: 0.31, end: 0.52 },
+          { word: "world", start: 0.52, end: 0.84 },
+        ],
+      },
+    ],
+  },
+};
+
 /** Every string that reached any logger method in this test, joined. */
 function allLoggedContent(): string {
   return JSON.stringify([
@@ -293,6 +445,7 @@ beforeEach(() => {
   logInfo.mockClear();
   logWarn.mockClear();
   usageCreate.mockClear();
+  calculateSTTCostFromCatalog.mockClear();
   requireAuthOrApiKeyWithOrg.mockReset();
   requireAuthOrApiKeyWithOrg.mockResolvedValue({
     user: { id: "user-1", organization_id: "org-1" },
@@ -315,9 +468,178 @@ beforeEach(() => {
       }),
   );
   upstreamReply = () => Response.json({ text: "" });
+  deepgramReply = () => Response.json(DEEPGRAM_SHAPE);
+  captured.fields = {};
+  captured.fileName = null;
+  captured.fileType = null;
+  deepgramCaptured.authorization = null;
+  deepgramCaptured.bodyBytes = new Uint8Array();
+  deepgramCaptured.contentType = null;
+  deepgramCaptured.url = null;
 });
 
 describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
+  test("rejects trustworthy oversized Content-Length before auth or body parsing", async () => {
+    const cancel = mock(() => {});
+    const res = await app.request(
+      streamRequest(
+        [new Uint8Array(8)],
+        {
+          "content-type": "multipart/form-data; boundary=oversized",
+          "content-length": String(25 * 1024 * 1024 + 1),
+        },
+        cancel,
+      ),
+      undefined,
+      whisperEnv,
+    );
+
+    expect(res.status).toBe(413);
+    expect(await readJson(res)).toEqual({
+      error: "STT multipart request body too large",
+      maxBytes: 25 * 1024 * 1024,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expectNoOversizedSideEffects();
+  });
+
+  test("cancels a chunked body as soon as it exceeds the configured multipart cap", async () => {
+    const cancel = mock(() => {});
+    const res = await app.request(
+      streamRequest(
+        [new Uint8Array(8), new Uint8Array(8)],
+        { "content-type": "multipart/form-data; boundary=chunked" },
+        cancel,
+      ),
+      undefined,
+      { VOICE_STT_MAX_MULTIPART_BYTES: "10" } as never,
+    );
+
+    expect(res.status).toBe(413);
+    expect(await readJson(res)).toEqual({
+      error: "STT multipart request body too large",
+      maxBytes: 10,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expectNoOversizedSideEffects();
+  });
+
+  test("does not trust a smaller Content-Length when the streamed body grows past the cap", async () => {
+    const cancel = mock(() => {});
+    const res = await app.request(
+      streamRequest(
+        [new Uint8Array(8), new Uint8Array(8)],
+        {
+          "content-type": "multipart/form-data; boundary=lying",
+          "content-length": "1",
+        },
+        cancel,
+      ),
+      undefined,
+      { VOICE_STT_MAX_MULTIPART_BYTES: "10" } as never,
+    );
+
+    expect(res.status).toBe(413);
+    expect(await readJson(res)).toEqual({
+      error: "STT multipart request body too large",
+      maxBytes: 10,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expectNoOversizedSideEffects();
+  });
+
+  test("removes a false smaller Content-Length from buffered in-limit multipart requests", async () => {
+    upstreamReply = () => Response.json({ text: "false length accepted" });
+    const base = sttRequest(wavFile(), { languageCode: "en" });
+    const bodyBytes = await multipartBodyLength(base);
+    const falseLength = await cloneMultipartRequestWithHeaders(base, {
+      "content-length": "1",
+    });
+
+    const res = await app.request(falseLength, undefined, {
+      ...(whisperEnv as unknown as Record<string, string>),
+      VOICE_STT_MAX_MULTIPART_BYTES: String(bodyBytes + 1),
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("false length accepted");
+    expect(captured.fields.language).toEqual(["en"]);
+    expect(requireAuthOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+  });
+
+  test("accepts a multipart body exactly at the configured cap including overhead", async () => {
+    upstreamReply = () => Response.json({ text: "exact boundary" });
+    const base = sttRequest(wavFile(), { languageCode: "en" });
+    const bodyBytes = await multipartBodyLength(base);
+    const exact = await cloneMultipartRequestWithHeaders(base, {
+      "content-length": String(bodyBytes),
+    });
+
+    const res = await app.request(exact, undefined, {
+      ...(whisperEnv as unknown as Record<string, string>),
+      VOICE_STT_MAX_MULTIPART_BYTES: String(bodyBytes),
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("exact boundary");
+    expect(requireAuthOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+  });
+
+  test("rejects a multipart body one byte over the configured cap including overhead", async () => {
+    const base = sttRequest(wavFile(), { languageCode: "en" });
+    const bodyBytes = await multipartBodyLength(base);
+    const over = await cloneMultipartRequestWithHeaders(base, {
+      "content-length": String(bodyBytes),
+    });
+
+    const res = await app.request(over, undefined, {
+      VOICE_STT_MAX_MULTIPART_BYTES: String(bodyBytes - 1),
+    } as never);
+
+    expect(res.status).toBe(413);
+    expect(await readJson(res)).toEqual({
+      error: "STT multipart request body too large",
+      maxBytes: bodyBytes - 1,
+    });
+    expectNoOversizedSideEffects();
+  });
+
+  test("invalid optional multipart limit configuration fails closed", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      VOICE_STT_MAX_MULTIPART_BYTES: "not-a-number",
+    } as never);
+
+    expect(res.status).toBe(500);
+    expect(await readJson(res)).toEqual({
+      error: "Speech-to-text service is misconfigured",
+    });
+    expect(logError).toHaveBeenCalledWith(
+      "[Voice STT API] Invalid multipart body limit configuration",
+      { errorType: "Error" },
+    );
+    expectNoOversizedSideEffects();
+  });
+
+  test("blank multipart limit configuration fails closed instead of using the default", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      VOICE_STT_MAX_MULTIPART_BYTES: "   ",
+    } as never);
+
+    expect(res.status).toBe(500);
+    expect(await readJson(res)).toEqual({
+      error: "Speech-to-text service is misconfigured",
+    });
+    expect(logError).toHaveBeenCalledWith(
+      "[Voice STT API] Invalid multipart body limit configuration",
+      { errorType: "Error" },
+    );
+    expectNoOversizedSideEffects();
+  });
+
   test("a non-multipart body is a 400", async () => {
     const res = await app.request(
       new Request("http://localhost/api/v1/voice/stt", {
@@ -344,7 +666,7 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
     expect(await readJson(res)).toEqual({ error: "No audio file provided" });
   });
 
-  test("a file over the 25MB cap is rejected before any provider call", async () => {
+  test("a file over the 25 MiB request cap is rejected before auth or provider calls", async () => {
     const res = await app.request(
       sttRequest(
         new File([new ArrayBuffer(25 * 1024 * 1024 + 1)], "big.wav", {
@@ -354,10 +676,12 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
       undefined,
       whisperEnv,
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
     expect(await readJson(res)).toEqual({
-      error: "File too large. Maximum size is 25MB",
+      error: "STT multipart request body too large",
+      maxBytes: 25 * 1024 * 1024,
     });
+    expectNoOversizedSideEffects();
   });
 
   test("an unsupported declared MIME type is a 400", async () => {
@@ -404,6 +728,29 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
     const res = await app.request(sttRequest(), undefined, whisperEnv);
     expect(res.status).toBe(401);
     expect(await readJson(res)).toEqual({ error: "Unauthorized" });
+  });
+
+  test("malformed multipart remains a parse failure after auth when it is under the cap", async () => {
+    const res = await app.request(
+      new Request("http://localhost/api/v1/voice/stt", {
+        method: "POST",
+        headers: {
+          "content-type": "multipart/form-data",
+        },
+        body: "not a multipart body",
+      }),
+      undefined,
+      whisperEnv,
+    );
+
+    expect(res.status).toBe(500);
+    expect(await readJson(res)).toEqual({
+      error: "Failed to transcribe audio. Please try again.",
+    });
+    expect(requireAuthOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(billFlatUsage).not.toHaveBeenCalled();
   });
 });
 
@@ -550,6 +897,276 @@ describe("POST /api/v1/voice/stt — whisper lane (#14806)", () => {
     const logs = allLoggedContent();
     expect(logs).not.toContain("private-meeting-notes.wav");
     expect(logs).toContain("audioSizeBytes");
+  });
+});
+
+describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
+  test("prefers Deepgram nova-3 over Whisper when both bindings exist", async () => {
+    upstreamReply = () => Response.json({ text: "whisper should not run" });
+    const res = await app.request(
+      sttRequest(),
+      undefined,
+      deepgramAndWhisperEnv,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("Hello there world.");
+    expect(deepgramCaptured.url).not.toBeNull();
+    expect(captured.fileName).toBeNull();
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(billFlatUsage).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not select paid batch Deepgram from key presence alone", async () => {
+    upstreamReply = () => Response.json({ text: "whisper remains default" });
+    const res = await app.request(sttRequest(), undefined, {
+      DEEPGRAM_API_KEY: "dg-secret",
+      WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+    } as never);
+
+    expect(res.status).toBe(200);
+    expect(await readJson(res)).toEqual({
+      transcript: "whisper remains default",
+      duration_ms: expect.any(Number),
+    });
+    expect(deepgramCaptured.url).toBeNull();
+  });
+
+  test("fails closed when Deepgram is selected without its key", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      VOICE_BATCH_STT_PROVIDER: "deepgram",
+      WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+    } as never);
+
+    expect(res.status).toBe(503);
+    expect(await readJson(res)).toEqual({
+      error: "Speech-to-text service is not configured",
+    });
+    expect(deepgramCaptured.url).toBeNull();
+    expect(captured.fileName).toBeNull();
+  });
+
+  test("sends verified raw audio bytes with auth, content type, and query shape", async () => {
+    const file = wavFile("deepgram-probe.wav", "audio/wav");
+    const expectedBytes = new Uint8Array(await file.arrayBuffer());
+    const res = await app.request(
+      sttRequest(file, { languageCode: "en-US" }),
+      undefined,
+      deepgramEnv,
+    );
+
+    expect(res.status).toBe(200);
+    expect(deepgramCaptured.authorization).toBe("Token dg-secret");
+    const deepgramContentType = deepgramCaptured.contentType;
+    if (!deepgramContentType) {
+      throw new Error("Deepgram request content type was not captured");
+    }
+    expect(["audio/wav", "audio/x-wav"]).toContain(deepgramContentType);
+    expect(deepgramCaptured.bodyBytes).toEqual(expectedBytes);
+
+    if (!deepgramCaptured.url) throw new Error("Deepgram was not called");
+    const url = new URL(deepgramCaptured.url);
+    expect(url.origin + url.pathname).toBe(
+      "https://api.deepgram.com/v1/listen",
+    );
+    expect(url.searchParams.get("model")).toBe("nova-3");
+    expect(url.searchParams.get("smart_format")).toBe("true");
+    expect(url.searchParams.get("utterances")).toBe("true");
+    expect(url.searchParams.get("words")).toBe("true");
+    expect(url.searchParams.get("language")).toBe("en-US");
+  });
+
+  test("reserves, bills, reconciles, and records Deepgram usage on success", async () => {
+    const res = await app.request(
+      sttRequest(wavFile(), { languageCode: "en-US" }),
+      undefined,
+      deepgramEnv,
+    );
+
+    expect(res.status).toBe(200);
+    expect(calculateSTTCostFromCatalog).toHaveBeenCalledWith({
+      model: "elevenlabs/scribe_v1",
+      durationSeconds: expect.any(Number),
+    });
+    expect(reserve).toHaveBeenCalledTimes(1);
+    const reserveCalls = reserve.mock.calls as unknown as [
+      [Record<string, unknown>],
+    ];
+    const reserveArgs = reserveCalls[0][0];
+    expect(reserveArgs.organizationId).toBe("org-1");
+    expect(reserveArgs.userId).toBe("user-1");
+    expect(reserveArgs.amount).toBe(0.0012);
+
+    expect(billFlatUsage).toHaveBeenCalledTimes(1);
+    const billFlatUsageCalls = billFlatUsage.mock.calls as unknown as [
+      [
+        Record<string, unknown>,
+        Record<string, unknown>,
+        { reconcile: typeof reconcile },
+      ],
+    ];
+    const [billingContext, billingCost, billingReservation] =
+      billFlatUsageCalls[0];
+    expect(billingContext).toMatchObject({
+      organizationId: "org-1",
+      userId: "user-1",
+      apiKeyId: null,
+      model: "nova-3",
+      provider: "deepgram",
+      billingSource: "elevenlabs",
+      metadata: {
+        pricingProxyProvider: "elevenlabs",
+        pricingProxyModel: "elevenlabs/scribe_v1",
+      },
+    });
+    expect(billingCost).toMatchObject({
+      totalCost: 0.0012,
+      baseTotalCost: 0.001,
+      platformMarkup: 0.0002,
+    });
+    expect(billingReservation).toEqual({ reconcile });
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
+
+    await Bun.sleep(0);
+    expect(usageCreate).toHaveBeenCalledTimes(1);
+    const usageRecord = usageCreate.mock.calls[0][0] as {
+      model: string;
+      provider: string;
+      input_cost: string;
+      markup: string;
+      metadata: Record<string, unknown>;
+    };
+    expect(usageRecord.model).toBe("nova-3");
+    expect(usageRecord.provider).toBe("deepgram");
+    expect(usageRecord.input_cost).toBe("0.0012");
+    expect(usageRecord.markup).toBe("0.0002");
+    expect(usageRecord.metadata).toMatchObject({
+      billingSource: "elevenlabs",
+      pricingProxyProvider: "elevenlabs",
+      pricingProxyModel: "elevenlabs/scribe_v1",
+      provider: "deepgram",
+      model: "nova-3",
+      languageCode: "en-US",
+    });
+    expect(usageRecord.metadata.audioFileName).toBeUndefined();
+  });
+
+  test("insufficient Deepgram credits is a 402 before the provider call", async () => {
+    reserve.mockRejectedValue(new MockInsufficientCreditsError(42));
+    const res = await app.request(sttRequest(), undefined, deepgramEnv);
+
+    expect(res.status).toBe(402);
+    expect(await readJson(res)).toEqual({
+      error: "Insufficient credits for speech-to-text",
+      required: 42,
+    });
+    expect(deepgramCaptured.url).toBeNull();
+    expect(billFlatUsage).not.toHaveBeenCalled();
+    expect(usageCreate).not.toHaveBeenCalled();
+  });
+
+  test("omits the language query when languageCode is absent", async () => {
+    const res = await app.request(sttRequest(), undefined, deepgramEnv);
+
+    expect(res.status).toBe(200);
+    if (!deepgramCaptured.url) throw new Error("Deepgram was not called");
+    const url = new URL(deepgramCaptured.url);
+    expect(url.searchParams.has("language")).toBe(false);
+  });
+
+  test("maps Deepgram utterances and words to millisecond spans", async () => {
+    const res = await app.request(sttRequest(), undefined, deepgramEnv);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("Hello there world.");
+    expect(typeof body.duration_ms).toBe("number");
+    expect(body.segments).toEqual([
+      { text: "Hello there world.", startMs: 0, endMs: 840 },
+    ]);
+    expect(body.words).toEqual([
+      { text: "Hello", startMs: 0, endMs: 310 },
+      { text: "there", startMs: 310, endMs: 520 },
+      { text: "world", startMs: 520, endMs: 840 },
+    ]);
+  });
+
+  test("a malformed 200 fails closed and does not fall back to Whisper", async () => {
+    upstreamReply = () => Response.json({ text: "whisper fallback" });
+    deepgramReply = () =>
+      Response.json({
+        results: {
+          channels: [{ alternatives: [{ words: [] }] }],
+          utterances: [],
+        },
+      });
+    const res = await app.request(
+      sttRequest(),
+      undefined,
+      deepgramAndWhisperEnv,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(captured.fileName).toBeNull();
+    expect(reconcile).toHaveBeenCalledWith(0);
+  });
+
+  test("an unparseable Deepgram 200 refunds the reservation", async () => {
+    deepgramReply = () =>
+      new Response("<html>proxy error</html>", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    const res = await app.request(sttRequest(), undefined, deepgramEnv);
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(billFlatUsage).not.toHaveBeenCalled();
+  });
+
+  test("an upstream error is a 502 without logging provider body or key", async () => {
+    deepgramReply = () =>
+      new Response("secret transcript and provider key dg-secret", {
+        status: 503,
+      });
+    const res = await app.request(
+      sttRequest(),
+      undefined,
+      deepgramAndWhisperEnv,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(captured.fileName).toBeNull();
+    expect(reconcile).toHaveBeenCalledWith(0);
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("secret transcript");
+    expect(logs).not.toContain("dg-secret");
+    expect(logs).toContain('"status":503');
+  });
+
+  test("a transport failure is a 502 without falling back to Whisper", async () => {
+    upstreamReply = () => Response.json({ text: "whisper fallback" });
+    deepgramReply = () => {
+      throw new TypeError("secret provider socket failure");
+    };
+    const res = await app.request(
+      sttRequest(),
+      undefined,
+      deepgramAndWhisperEnv,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(captured.fileName).toBeNull();
+    expect(reconcile).toHaveBeenCalledWith(0);
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("secret provider socket failure");
+    expect(logs).toContain('"errorType":"TypeError"');
   });
 });
 

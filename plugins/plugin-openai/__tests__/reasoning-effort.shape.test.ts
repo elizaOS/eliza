@@ -121,16 +121,15 @@ describe("Cerebras default reasoning effort", () => {
     ).toBe("low");
   });
 
-  it.each([
-    "glm-4.7",
-    "zai-glm-4.7-preview",
-    "my-glm-router",
-  ])("does not infer reasoning support from a GLM-like model id: %s", (modelName) => {
-    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
-    const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime, modelName);
-    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
-    expect(openai?.reasoningEffort).toBeUndefined();
-  });
+  it.each(["glm-4.7", "zai-glm-4.7-preview", "my-glm-router"])(
+    "does not infer reasoning support from a GLM-like model id: %s",
+    (modelName) => {
+      const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+      const opts = __INTERNAL_resolveProviderOptions({ prompt: "hi" } as never, runtime, modelName);
+      const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+      expect(openai?.reasoningEffort).toBeUndefined();
+    }
+  );
 
   it("does NOT default reasoning effort for a non-reasoning Cerebras model", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
@@ -213,29 +212,26 @@ describe("eliza.thinking='off' reasoning suppression (Cerebras mode)", () => {
     expect(openai?.reasoningEffort).toBeUndefined();
   });
 
-  it.each([
-    "gemma-4-31b",
-    "gpt-oss-20b",
-    "zai-glm-4.6",
-    "custom-glm-router",
-  ])("sends nothing for an undocumented model lookalike: %s", (modelName) => {
-    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
-    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, modelName);
-    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
-    expect(openai?.reasoningEffort).toBeUndefined();
-  });
+  it.each(["gemma-4-31b", "gpt-oss-20b", "zai-glm-4.6", "custom-glm-router"])(
+    "sends nothing for an undocumented model lookalike: %s",
+    (modelName) => {
+      const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, modelName);
+      const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+      expect(openai?.reasoningEffort).toBeUndefined();
+    }
+  );
 
-  it.each([
-    "cerebras:zai-glm-4.7",
-    "cerebras/zai-glm-4.7",
-    "openai/zai-glm-4.7",
-  ])("normalizes a supported provider-prefixed model id: %s", (modelName) => {
-    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
-    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, modelName);
-    expect(
-      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
-    ).toBe("none");
-  });
+  it.each(["cerebras:zai-glm-4.7", "cerebras/zai-glm-4.7", "openai/zai-glm-4.7"])(
+    "normalizes a supported provider-prefixed model id: %s",
+    (modelName) => {
+      const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, modelName);
+      expect(
+        (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+      ).toBe("none");
+    }
+  );
 
   it("suppression outranks a user-pinned OPENAI_REASONING_EFFORT (planner calls stay cheap)", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "high" });
@@ -309,7 +305,7 @@ describe("strip reasoning-content from outbound assistant messages", () => {
     const normalized = __INTERNAL_normalizeNativeMessages([
       { role: "assistant", content: "plain text reply" },
     ]);
-    expect((normalized?.[0] as { content: string }).content).toBe("plain text reply");
+    expect(normalized?.[0]).toMatchObject({ content: "plain text reply" });
   });
 
   it("preserves text + tool-call parts when no reasoning is present", () => {
@@ -318,6 +314,6 @@ describe("strip reasoning-content from outbound assistant messages", () => {
       { type: "tool-call", toolCallId: "t1", toolName: "x", input: {} },
     ];
     const normalized = __INTERNAL_normalizeNativeMessages([{ role: "assistant", content: before }]);
-    expect((normalized?.[0] as { content: unknown[] }).content).toEqual(before);
+    expect(normalized?.[0]).toMatchObject({ content: before });
   });
 });

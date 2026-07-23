@@ -125,14 +125,15 @@ bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated 
 | `CHANNEL_IDS` | No | Comma-separated channel IDs the bot is restricted to (whitelist) |
 | `DISCORD_LISTEN_CHANNEL_IDS` | No | Comma-separated channel IDs where the bot ingests messages but does NOT reply |
 | `DISCORD_VOICE_CHANNEL_ID` | No | Voice channel ID to auto-join on guild scan; defaults to most-populated channel |
-| `DISCORD_SHOULD_IGNORE_BOT_MESSAGES` | No | `"false"` to process messages from other bots (default: `true` — see `DISCORD_DEFAULTS` in `environment.ts`) |
+| `DISCORD_SHOULD_IGNORE_BOT_MESSAGES` | No | `"true"` to ignore messages from other bots. Default: `false` — the bot engages other bots (agent-to-agent chat is first-class); the core bot-noise triage (`ELIZA_BOT_NOISE_TRIAGE`, on by default) still pre-filters unaddressed webhook/bot group chatter. See `DISCORD_DEFAULTS` in `environment.ts`. |
 | `DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES` | No | `"false"` to process DMs (default: `true`) |
-| `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | `"false"` to reply without an @-mention (default: `true`) |
+| `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | `"true"` to reply only when @-mentioned. Default: `false` — the bot replies in-channel without requiring a mention. |
 | `DISCORD_DM_POLICY` | No | DM access policy: `open` / `allowlist` / `pairing` / `disabled` (default: `pairing`) |
 | `DISCORD_ALLOW_FROM` | No | Comma-separated Discord user IDs allowed under the `allowlist` DM policy |
 | `ELIZA_DISCORD_OWNER_USER_IDS_JSON` | No | JSON array of Discord user IDs that should alias to the canonical Eliza owner entity. Use only for the actual owner or deliberate owner aliases; Discord application team members are kept as separate entities; accepted, non-read-only members are seeded as connector admins (pending invitees and `read_only` members get no standing), and more can be added via `ELIZA_ROLES_CONNECTOR_ADMINS_JSON`. |
-| `DISCORD_AUTO_REPLY` | No | `"true"` to auto-generate replies; default `false` (messages are ingested but not answered) |
-| `DISCORD_USER_INSTALL` | No | `"true"` to register commands as user-installable and available in group DMs / DMs-with-others (contexts guild+bot-DM+private-channel, integration types guild+user install). Requires the Discord app to be configured as **User Install** in the developer portal, or Discord rejects registration. Default `false` (guild + bot-DM only). |
+| `DISCORD_AUTO_REPLY` | No | `"false"` to ingest messages into memory without generating replies. Default: `true` — the bot auto-answers. |
+| `DISCORD_USER_INSTALL` | No | `"false"` for a guild-only app not portal-configured for user install. Default: `true` — commands register as user-installable and available in group DMs / DMs-with-others (contexts guild+bot-DM+private-channel, integration types guild+user install). **Requires the Discord app be configured as "User Install" in the developer portal** (Installation settings), or Discord rejects registration — see the setup docs. |
+| `DISCORD_STATUS_REACTIONS` | No | Scope of the acknowledgement emoji reaction on handled inbound messages: `all` / `group-mentions` / `none` (default: `all`). |
 | `DISCORD_SYNC_PROFILE` | No | `"false"` to skip bot profile sync on startup (default: `true`) |
 | `DISCORD_IPC_DIR` | No | Override the IPC socket directory searched by `DiscordLocalService` when connecting to the Discord desktop app |
 | `DISCORD_GENERATION_TIMEOUT_MS` | No | Milliseconds cap for generation before the pending Discord message is discarded |
@@ -158,7 +159,7 @@ All settings can also be provided in the character file under `settings.discord`
 - **Native dependencies.** `@discordjs/opus` and `libsodium-wrappers` have native binaries. They must build successfully in the Node.js environment; the plugin does not run in browsers (see `eliza.platforms: ["node"]`).
 - **Voice requires ffmpeg.** The `fluent-ffmpeg` dep expects a system `ffmpeg` binary on `PATH` for audio processing.
 - **Multi-account mode** is activated by setting `DISCORD_BOT_TOKENS` (comma-separated) instead of `DISCORD_API_TOKEN`. See `accounts.ts` for resolution order.
-- **`autoReply` is false by default** in `DiscordSettings` — messages are ingested but the agent does not auto-reply unless explicitly enabled.
+- **`autoReply` is true by default** in `DiscordSettings` — the agent auto-answers inbound messages. Set `DISCORD_AUTO_REPLY=false` (or `character.settings.discord.autoReply=false`, or the per-account `autoReply`) to ingest messages into memory without replying.
 - See root `AGENTS.md` for repo-wide architecture rules, logger-only logging, ESM conventions, and naming standards.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

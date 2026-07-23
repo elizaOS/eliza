@@ -49,6 +49,10 @@ export interface AcpActionService {
   getSession(
     sessionId: string,
   ): SessionInfo | undefined | Promise<SessionInfo | null | undefined>;
+  updateSessionMetadata?(
+    sessionId: string,
+    patch: Record<string, unknown>,
+  ): Promise<void>;
   findResumableSessionByLabel?(
     label: string,
     workdir: string,
@@ -261,7 +265,7 @@ export async function resolveOriginatingRequestText(
   runtime: IAgentRuntime,
   message: Memory,
   state?: State,
-  opts: { timeoutMs?: number; scanLimit?: number } = {},
+  opts: { scanLimit?: number } = {},
 ): Promise<string> {
   // Primary: the raw request carried on the current message itself.
   const direct = userRequestFromMessage(message);
@@ -284,22 +288,16 @@ export async function resolveOriginatingRequestText(
   if (typeof runtime.getMemories !== "function" || !roomId) {
     return direct;
   }
-  const timeoutMs = opts.timeoutMs ?? 2_000;
   const scanLimit = opts.scanLimit ?? 8;
   let recent: Memory[] = [];
   try {
-    recent = await Promise.race([
-      runtime.getMemories({
-        roomId: roomId as UUID,
-        tableName: "messages",
-        count: scanLimit,
-        unique: false,
-        includeEmbedding: false,
-      }),
-      new Promise<Memory[]>((resolve) =>
-        setTimeout(() => resolve([]), timeoutMs),
-      ),
-    ]);
+    recent = await runtime.getMemories({
+      roomId: roomId as UUID,
+      tableName: "messages",
+      count: scanLimit,
+      unique: false,
+      includeEmbedding: false,
+    });
   } catch {
     // error-policy:J4 optional last-resort room read; failure degrades to the direct message text (a real value, not fabricated)
     return direct;
@@ -345,14 +343,8 @@ export function newestSession(
 
 export async function listSessionsWithin(
   service: AcpActionService,
-  timeoutMs = 2000,
 ): Promise<SessionInfo[]> {
-  return Promise.race([
-    Promise.resolve(service.listSessions()),
-    new Promise<SessionInfo[]>((resolve) =>
-      setTimeout(() => resolve([]), timeoutMs),
-    ),
-  ]);
+  return Promise.resolve(service.listSessions());
 }
 
 /**
@@ -394,7 +386,7 @@ export async function waitForSpawnSlot(
   while (Date.now() - startedAt < maxWaitMs) {
     let active = 0;
     try {
-      const sessions = await listSessionsWithin(service, 2000);
+      const sessions = await listSessionsWithin(service);
       active = sessions.filter(
         (s) => !TERMINAL_SESSION_STATUSES.has(String(s.status)),
       ).length;

@@ -12,10 +12,13 @@ and replaced with this in-process synthesis path:
    interpretable.
 3. Calibration harnesses are always meaningful. They inject expected
    aggregate scores so benchmark scoring can be sanity-checked:
-   ``perfect_v1`` -> 1.0, ``wrong_v1`` -> 0.0, ``half_v1`` -> 0.5.
-4. When a benchmark has a known result-file template, generate the
-   minimal JSON shape the score extractor expects. Otherwise the
-   runner records the score directly via metrics.
+   ``perfect_v1`` -> 1.0, ``wrong_v1`` -> 0.0, and ``half_v1`` -> 0.5
+   when the pinned corpus can represent an exact midpoint. Action-calling's
+   odd 693-case corpus realizes ``half_v1`` as 346/693.
+4. When a benchmark has a known result-file template, generate the JSON
+   contract its score extractor expects, including full recomputable ledgers
+   where publication scorers require them. Otherwise the runner records the
+   score directly via metrics.
 5. The runner's existing ``score_extractor`` then reads this file and
    produces a score, which lands in SQLite alongside any other run.
 
@@ -24,9 +27,13 @@ Stdlib only.
 
 from __future__ import annotations
 
+import copy
+import importlib
 import json
 import logging
+import math
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +44,26 @@ if str(_BENCHMARKS_ROOT) not in sys.path:
 from lib.random_baseline import (  # noqa: E402
     BENCHMARK_STRATEGIES,
     get_strategy,
+)
+from benchmarks.publication_contracts import (  # noqa: E402
+    ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
+    ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
+    ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+    ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
+    ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
+    ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
+    ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
+    ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
+    WEBSHOP_FULL_REPORT_CONTRACT,
+)
+from benchmarks.action_calling_contract import (  # noqa: E402
+    ACTION_CALLING_METRIC_NAMES,
+    score_action_calling_case,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +95,14 @@ def _metrics_score_payload(score: float) -> dict[str, Any]:
 
 
 def _vision_language_payload(score: float) -> dict[str, Any]:
+    samples = [
+        {
+            "id": f"synthetic-calibration-{index + 1}",
+            "score": score,
+            "error": None,
+        }
+        for index in range(2)
+    ]
     return {
         "schemaVersion": "vision-language-bench-v1",
         "tier": "calibration-real-runtime",
@@ -80,7 +115,7 @@ def _vision_language_payload(score: float) -> dict[str, Any]:
         "delta": None,
         "runtime_seconds": 0.01,
         "error_count": 0,
-        "samples": [],
+        "samples": samples,
     }
 
 
@@ -101,17 +136,108 @@ def _bfcl_payload(score: float) -> dict[str, Any]:
 
 
 def _action_calling_payload(score: float) -> dict[str, Any]:
+    """Build a full-corpus synthetic ledger without weakening publication checks."""
+
+    action_cli = importlib.import_module("benchmarks.action-calling.cli")
+    base_cases = action_cli._load_cases(action_cli.DEFAULT_TEST, None)
+    cases = action_cli._expand_cases(base_cases)
+    if len(base_cases) != 63 or len(cases) != 693:
+        raise RuntimeError("action-calling calibration corpus drifted")
+
+    if math.isclose(score, 1.0, abs_tol=1e-12):
+        mode_counts = (693, 0, 0, 0, 0)
+    elif math.isclose(score, 0.0, abs_tol=1e-12):
+        mode_counts = (0, 0, 0, 0, 693)
+    elif math.isclose(score, 346 / 693, abs_tol=1e-12):
+        # An exact half is impossible for an odd corpus. Keep every public
+        # metric honest by making the same deterministic 346 cases pass.
+        mode_counts = (346, 0, 0, 0, 347)
+    else:
+        raise ValueError(
+            "action-calling synthetic calibration supports only 0.0, 346/693, or 1.0"
+        )
+
+    boundaries: list[int] = []
+    running = 0
+    for count in mode_counts:
+        running += count
+        boundaries.append(running)
+
+    counts = {name: 0 for name in ACTION_CALLING_METRIC_NAMES}
+    case_outcomes: list[dict[str, Any]] = []
+    for index, case in enumerate(cases):
+        expected_calls = copy.deepcopy(case.expected_calls)
+        expected = expected_calls[0]
+        if index < boundaries[0]:
+            predicted_calls = copy.deepcopy(expected_calls)
+        elif index < boundaries[1]:
+            predicted_calls = [
+                {
+                    "name": "__calibration_wrong_tool__",
+                    "arguments": copy.deepcopy(expected["arguments"]),
+                }
+            ]
+        elif index < boundaries[2]:
+            predicted_calls = [
+                {
+                    "name": expected["name"],
+                    "arguments": {"__calibration_invalid__": True},
+                }
+            ]
+        elif index < boundaries[3]:
+            predicted_calls = [
+                {
+                    "name": expected["name"],
+                    "arguments": "not-a-json-object",
+                }
+            ]
+        else:
+            predicted_calls = []
+        case_score = score_action_calling_case(
+            expected_calls,
+            predicted_calls,
+            case.tools,
+        )
+        for name, passed in case_score.items():
+            counts[name] += int(passed)
+        case_outcomes.append(
+            {
+                "case_id": action_cli._case_id(case, index),
+                "messages": case.messages,
+                "tools": case.tools,
+                "expected_tool_calls": expected_calls,
+                "predicted_tool_calls": predicted_calls,
+                "generation_source": "captured_action",
+                **case_score,
+            }
+        )
+
+    metrics = {name: counts[name] / len(cases) for name in ACTION_CALLING_METRIC_NAMES}
+    metrics["score"] = (
+        0.0
+        if any(value == 0.0 for value in metrics.values())
+        else math.exp(sum(math.log(value) for value in metrics.values()) / len(metrics))
+    )
+    dataset_identity = action_cli._dataset_identity(action_cli.DEFAULT_TEST)
+    contract_provenance = action_cli._contract_provenance(base_cases, cases)
     return {
-        "generation_source": "synthetic_calibration",
-        "n": 1,
-        "metrics": {
-            "score": score,
-            "native_tool_calls_ok": score,
-            "tool_name_match": score,
-            "args_parse_ok": score,
-            "required_keys_ok": score,
-            "arguments_match": score,
+        "model": "synthetic-calibration",
+        "provider": "synthetic-calibration",
+        "tool_choice": "auto",
+        "generation_source": "captured_action",
+        "generation_sources": ["captured_action"],
+        "n": len(cases),
+        "dataset": str(dataset_identity["resolved_path"]),
+        "dataset_provenance": {
+            **dataset_identity,
+            **contract_provenance,
+            "loaded_base_case_count": len(base_cases),
+            "evaluated_case_count": len(cases),
+            "scenario_expansion": True,
         },
+        "counts": counts,
+        "metrics": metrics,
+        "case_outcomes": case_outcomes,
     }
 
 
@@ -359,9 +485,41 @@ def _lifeops_payload(score: float) -> dict[str, Any]:
     }
 
 
+def _multitask_payload(score: float) -> dict[str, Any]:
+    scenario_ids = [f"synthetic-calibration-{index + 1}" for index in range(10)]
+    lanes = [
+        {
+            "n": n,
+            "tasks_total": 10,
+            "tasks_completed": 10,
+            "completion_rate": 1.0,
+            "mean_task_score": score,
+            "per_task": [
+                {
+                    "scenario_id": scenario_id,
+                    "completed": True,
+                    "score": score,
+                }
+                for scenario_id in scenario_ids
+            ],
+        }
+        for n in (1, 5, 10)
+    ]
+    return {
+        "benchmark": "multitask_bench",
+        "harness": "synthetic-calibration",
+        "isolation": "synthetic-calibration",
+        "model": "synthetic-calibration",
+        "sample": {"scenario_ids": scenario_ids, "size": 10},
+        "lanes": lanes,
+        "interference": {"n5_minus_n1": 0.0, "n10_minus_n1": 0.0},
+    }
+
+
 def _mind2web_payload(score: float) -> dict[str, Any]:
     total = 2
     return {
+        "synthetic_calibration": True,
         "overall_step_accuracy": score,
         "overall_element_accuracy": score,
         "overall_operation_accuracy": score,
@@ -381,6 +539,8 @@ def _mint_payload(score: float) -> dict[str, Any]:
 
 
 def _mmau_payload(score: float) -> dict[str, Any]:
+    total = 2
+    passed = _passed_count(score, total)
     return {
         "overall_accuracy": score,
         "accuracy_by_category": {
@@ -388,9 +548,21 @@ def _mmau_payload(score: float) -> dict[str, Any]:
             "sound": score,
             "music": score,
         },
-        "total_samples": 2,
+        "total_samples": total,
         "error_count": 0,
-        "summary": {"split": "synthetic-calibration", "agent": "synthetic"},
+        "summary": {
+            "split": "synthetic-calibration",
+            "agent": "synthetic",
+            "complete": True,
+        },
+        "results": [
+            {
+                "sample_id": f"synthetic-calibration-{index + 1}",
+                "is_correct": index < passed,
+                "error": None,
+            }
+            for index in range(total)
+        ],
     }
 
 
@@ -456,14 +628,6 @@ def _rlm_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _social_alpha_payload(score: float) -> dict[str, Any]:
-    raw = score * 100.0
-    return {
-        "COMPOSITE": {"trust_marketplace_score": raw},
-        "detect": {"suite_score": raw},
-    }
-
-
 def _swe_bench_payload(score: float) -> dict[str, Any]:
     total = 2
     return {
@@ -516,6 +680,8 @@ def _trust_payload(score: float) -> dict[str, Any]:
 
 def _vending_payload(score: float) -> dict[str, Any]:
     return {
+        "metadata": {"total_runs": 1, "successful_runs": 1},
+        "scenario_counts": {"base": 1, "edge": 0, "total": 1},
         "metrics": {
             "avg_revenue": score,
             "avg_profit": score,
@@ -589,11 +755,28 @@ def _voicebench_quality_payload(score: float) -> dict[str, Any]:
 
 
 def _webshop_payload(score: float) -> dict[str, Any]:
+    # Calibration exercises the strict scorer with the same immutable contract
+    # as its production fixtures. The synthetic harness marker added by the
+    # caller keeps this artifact distinct from executable campaign evidence;
+    # publication still requires independent runtime telemetry.
+    summary = dict(WEBSHOP_FULL_REPORT_CONTRACT)
+    summary["java_version"] = 'openjdk version "21.0.10" 2026-01-20'
     return {
         "success_rate": score,
         "average_reward": score,
-        "total_tasks": 2,
-        "total_trials": 2,
+        "average_turns": 1.0,
+        "average_steps": 1.0,
+        "average_duration_ms": 1.0,
+        "total_tasks": 5_500,
+        "total_trials": 5_500,
+        "sample": False,
+        "split": "test",
+        "profile": "full",
+        "dataset_source": "upstream-files",
+        "hf_requested": True,
+        "use_hf": False,
+        "include_edge_scenarios": True,
+        "summary": summary,
     }
 
 
@@ -633,6 +816,140 @@ def _openclaw_payload(score: float) -> dict[str, Any]:
         "overall_score": score,
         "tasks_completed": _passed_count(score),
         "mode": "synthetic-calibration",
+    }
+
+
+def _orchestrator_lifecycle_payload(score: float) -> dict[str, Any]:
+    """Build a full pinned-corpus report that the strict scorer recomputes."""
+
+    from benchmarks.orchestrator_lifecycle.dataset import LifecycleDataset
+    from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+    from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
+    from benchmarks.orchestrator_lifecycle.runner import _simulate_turn
+    from benchmarks.orchestrator_lifecycle.types import TurnRecord
+
+    if math.isclose(score, 1.0, abs_tol=1e-12):
+        ideal_scenarios = ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT
+    elif math.isclose(score, 0.5, abs_tol=1e-12):
+        ideal_scenarios = ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT // 2
+    elif math.isclose(score, 0.0, abs_tol=1e-12):
+        ideal_scenarios = 0
+    else:
+        raise ValueError(
+            "orchestrator-lifecycle synthetic calibration supports only "
+            "0.0, 0.5, or 1.0"
+        )
+
+    scenario_dir = (
+        Path(__file__).resolve().parents[1] / "orchestrator_lifecycle" / "scenarios"
+    )
+    scenarios = LifecycleDataset(str(scenario_dir)).load()
+    if len(scenarios) != ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT:
+        raise RuntimeError("orchestrator-lifecycle calibration corpus drifted")
+
+    evaluator = LifecycleEvaluator()
+    results = []
+    transcripts: dict[str, list[dict[str, object]]] = {}
+    for scenario_index, scenario in enumerate(scenarios):
+        transcript: list[dict[str, object]] = []
+        turn_records: list[TurnRecord] = []
+        user_turns = [turn for turn in scenario.turns if turn.actor == "user"]
+        for turn in user_turns:
+            transcript.append({"actor": "user", "message": turn.message})
+            if scenario_index < ideal_scenarios:
+                raw_record = _simulate_turn(turn)
+            else:
+                params: dict[str, object] = {}
+                if "do_not_start_without_required_info" in turn.expected_behaviors:
+                    # A blank no-op correctly satisfies the negative
+                    # do-not-start check. Emit a real capture-only spawn intent
+                    # so a deliberately wrong scenario fails every check.
+                    params = {
+                        "lifecycle_results": [
+                            {
+                                "name": "TASKS",
+                                "arguments": {
+                                    "action": "spawn_agent",
+                                    "task": turn.message,
+                                },
+                                "result": {
+                                    "captured": True,
+                                    "effect": "not_executed",
+                                    "sequence": 0,
+                                    "tool": "TASKS",
+                                },
+                            }
+                        ]
+                    }
+                raw_record = TurnRecord(params=params)
+
+            actions = list(raw_record.actions)
+            params = copy.deepcopy(raw_record.params)
+            events = extract_lifecycle_events(actions, params)
+            record = TurnRecord(
+                reply_text=raw_record.reply_text,
+                actions=actions,
+                params=params,
+                events=events,
+            )
+            turn_records.append(record)
+            transcript.append(
+                {
+                    "actor": "assistant",
+                    "message": record.reply_text,
+                    "actions": actions,
+                    "params": params,
+                    "events": events,
+                }
+            )
+        results.append(evaluator.evaluate_scenario(scenario, turn_records))
+        transcripts[scenario.scenario_id] = transcript
+
+    metrics = evaluator.compute_metrics(results)
+    if not math.isclose(metrics.overall_score, score, abs_tol=1e-12):
+        raise RuntimeError(
+            "orchestrator-lifecycle calibration could not realize requested score"
+        )
+
+    return {
+        "metadata": {
+            "timestamp": "1970-01-01T00:00:00+00:00",
+            "model": "synthetic-calibration",
+            "provider": "synthetic-calibration",
+            "strict": True,
+            "max_scenarios": None,
+            "scenario_filter": None,
+            "mode": "bridge",
+            "scored": True,
+        },
+        "mode": "bridge",
+        "scored": True,
+        "workload": {
+            "measurement_scope": ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
+            "side_effects_executed": ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
+            "base_scenario_count": (ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT),
+            "edge_scenario_count": (ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT),
+            "scenario_count": ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+            "scenario_id_manifest_count": (ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT),
+            "scenario_id_manifest_sha256": (
+                ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256
+            ),
+            "transcript_scenario_count": (ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT),
+            "user_turn_count": ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+            "user_turn_manifest_sha256": (
+                ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256
+            ),
+            "assistant_turn_count": ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+            "corpus_scenario_count": ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+            "corpus_sha256": ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
+            "tool_contract_count": ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
+            "tool_contract_names": list(ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES),
+            "tool_contract_sha256": ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
+            "system_hint_sha256": ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
+        },
+        "scenarios": [asdict(result) for result in results],
+        "metrics": asdict(metrics),
+        "transcripts": transcripts,
     }
 
 
@@ -695,9 +1012,15 @@ def _generic_payload(benchmark_id: str, harness: str, score: float) -> dict[str,
 # canonical name with a timestamp suffix matches what the real
 # benchmark CLIs emit.
 _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
-    "abliteration-robustness": ("abliteration-robustness-results.json", _metrics_score_payload),
+    "abliteration-robustness": (
+        "abliteration-robustness-results.json",
+        _metrics_score_payload,
+    ),
     "bfcl": ("bfcl_results_random_v1.json", _bfcl_payload),
-    "action-calling": ("action_calling_results_random_v1.json", _action_calling_payload),
+    "action-calling": (
+        "action_calling_results_random_v1.json",
+        _action_calling_payload,
+    ),
     "adhdbench": ("adhdbench_summary_random_v1.json", _adhd_payload),
     "agentbench": ("agentbench-results.json", _agentbench_payload),
     "realm": ("realm_results_random_v1.json", _realm_payload),
@@ -714,7 +1037,10 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "gsm8k": ("gsm8k-results.json", _metrics_score_payload),
     "hermes_swe_env": ("hermes_hermes_swe_env_random_v1.json", _hermes_env_payload),
     "hermes_tblite": ("hermes_tblite_random_v1.json", _hermes_env_payload),
-    "hermes_terminalbench_2": ("hermes_terminalbench_2_random_v1.json", _hermes_env_payload),
+    "hermes_terminalbench_2": (
+        "hermes_terminalbench_2_random_v1.json",
+        _hermes_env_payload,
+    ),
     "hermes_yc_bench": ("hermes_yc_bench_random_v1.json", _hermes_env_payload),
     "humaneval": ("humaneval-results.json", _metrics_score_payload),
     "hyperliquid_bench": ("hyperliquid_bench-random_v1.json", _hyperliquid_payload),
@@ -746,17 +1072,23 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "mmau": ("mmau_random_v1.json", _mmau_payload),
     "mmlu": ("mmlu-results.json", _metrics_score_payload),
     "mt_bench": ("mt-bench-results.json", _metrics_score_payload),
+    "multitask_bench": ("multitask_random_v1.json", _multitask_payload),
     "openclaw_bench": ("openclaw-results.json", _openclaw_payload),
-    "orchestrator_lifecycle": ("orchestrator-lifecycle-results.json", lambda score: {"metrics": {"overall_score": score, "scenario_pass_rate": score, "clarification_success_rate": score, "interruption_handling_rate": score}}),
+    "orchestrator_lifecycle": (
+        "orchestrator-lifecycle-results.json",
+        _orchestrator_lifecycle_payload,
+    ),
     "osworld": ("osworld-results.json", _osworld_payload),
     "personality_bench": ("report.json", _personality_payload),
     "recall_bench": ("recall-bench-results.json", _recall_bench_payload),
     "rlm_bench": ("rlm-results.json", _rlm_payload),
-    "social_alpha": ("benchmark_results_random_v1.json", _social_alpha_payload),
     "solana": ("eliza_random_v1_metrics.json", _solana_payload),
     "swe_bench": ("swe-bench-results.json", _swe_bench_payload),
     "three_agent_dialogue": ("verification.json", _three_agent_dialogue_payload),
-    "swe_bench_orchestrated": ("swe-bench-orchestrated-results.json", _swe_bench_orchestrated_payload),
+    "swe_bench_orchestrated": (
+        "swe-bench-orchestrated-results.json",
+        _swe_bench_orchestrated_payload,
+    ),
     "tau_bench": ("tau-bench-results.json", _tau_bench_payload),
     "terminal_bench": ("terminal-bench-results.json", _terminal_bench_payload),
     "trajectory_replay": ("trajectory-replay-results.json", _metrics_score_payload),
@@ -766,7 +1098,10 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "vision_language": ("vision-language-results.json", _vision_language_payload),
     "voiceagentbench": ("voiceagentbench_random_v1.json", _voiceagentbench_payload),
     "voicebench": ("voicebench-results.json", _voicebench_payload),
-    "voicebench_quality": ("voicebench-quality-results.json", _voicebench_quality_payload),
+    "voicebench_quality": (
+        "voicebench-quality-results.json",
+        _voicebench_quality_payload,
+    ),
     "webshop": ("webshop-results.json", _webshop_payload),
     "woobench": ("woobench_random_v1.json", _woobench_payload),
 }
@@ -837,6 +1172,18 @@ def synthetic_score_for_harness(harness: str) -> float:
     raise ValueError(f"unknown synthetic harness: {harness}")
 
 
+def synthetic_score_for_benchmark_harness(
+    benchmark_id: str,
+    harness: str,
+) -> float:
+    """Return the closest score a benchmark's discrete corpus can represent."""
+
+    score = synthetic_score_for_harness(harness)
+    if benchmark_id == "action-calling" and score == 0.5:
+        return 346 / 693
+    return score
+
+
 def _filename_for_harness(filename: str, harness: str) -> str:
     if harness == "random_v1":
         return filename
@@ -867,7 +1214,11 @@ def run_synthetic_baseline(
         raise ValueError(f"unknown synthetic harness: {harness}")
 
     strategy = get_strategy(benchmark_id)
-    expected_score = synthetic_score_for_harness(harness) if score is None else float(score)
+    expected_score = (
+        synthetic_score_for_benchmark_harness(benchmark_id, harness)
+        if score is None
+        else float(score)
+    )
     if harness == "random_v1" and not strategy.is_meaningful:
         return RandomBaselineOutcome(
             harness=harness,
@@ -982,6 +1333,7 @@ __all__ = [
     "is_synthetic_harness",
     "run_random_baseline",
     "run_synthetic_baseline",
+    "synthetic_score_for_benchmark_harness",
     "synthetic_score_for_harness",
     "known_random_baseline_benchmarks",
 ]

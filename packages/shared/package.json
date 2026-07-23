@@ -31,13 +31,13 @@
     "prepublishOnly": "bun run build",
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs",
-    "typecheck": "bun run build:i18n && tsgo --noEmit -p tsconfig.json",
+    "typecheck": "bun run build:i18n && tsc --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write src",
     "lint:check": "bunx @biomejs/biome check src",
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
-    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "sync": "node scripts/sync-to-public.mjs"
   },
@@ -92,6 +92,26 @@
       },
       "import": "./dist/config/brand-env-aliases.js",
       "default": "./dist/config/brand-env-aliases.js"
+    },
+    "./config/boot-config": {
+      "types": "./dist/config/boot-config.d.ts",
+      "eliza-source": {
+        "types": "./src/config/boot-config.ts",
+        "import": "./src/config/boot-config.ts",
+        "default": "./src/config/boot-config.ts"
+      },
+      "import": "./dist/config/boot-config.js",
+      "default": "./dist/config/boot-config.js"
+    },
+    "./config/boot-config-store": {
+      "types": "./dist/config/boot-config-store.d.ts",
+      "eliza-source": {
+        "types": "./src/config/boot-config-store.ts",
+        "import": "./src/config/boot-config-store.ts",
+        "default": "./src/config/boot-config-store.ts"
+      },
+      "import": "./dist/config/boot-config-store.js",
+      "default": "./dist/config/boot-config-store.js"
     },
     "./dev-settings-banner-style": {
       "types": "./dist/dev-settings-banner-style.d.ts",
@@ -208,6 +228,16 @@
       "import": "./dist/contracts/index.js",
       "default": "./dist/contracts/index.js"
     },
+    "./contracts/pendant-session-sync": {
+      "types": "./dist/contracts/pendant-session-sync.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/pendant-session-sync.ts",
+        "import": "./src/contracts/pendant-session-sync.ts",
+        "default": "./src/contracts/pendant-session-sync.ts"
+      },
+      "import": "./dist/contracts/pendant-session-sync.js",
+      "default": "./dist/contracts/pendant-session-sync.js"
+    },
     "./utils/asset-url": {
       "types": "./dist/utils/asset-url.d.ts",
       "eliza-source": {
@@ -278,6 +308,16 @@
       "import": "./dist/views/view-interact-protocol.js",
       "default": "./dist/views/view-interact-protocol.js"
     },
+    "./views/view-command-matcher": {
+      "types": "./dist/views/view-command-matcher.d.ts",
+      "eliza-source": {
+        "types": "./src/views/view-command-matcher.ts",
+        "import": "./src/views/view-command-matcher.ts",
+        "default": "./src/views/view-command-matcher.ts"
+      },
+      "import": "./dist/views/view-command-matcher.js",
+      "default": "./dist/views/view-command-matcher.js"
+    },
     "./voice-wer": {
       "types": "./dist/voice-wer.d.ts",
       "eliza-source": {
@@ -307,6 +347,16 @@
       },
       "import": "./dist/voice/respond-gate.js",
       "default": "./dist/voice/respond-gate.js"
+    },
+    "./voice/first-sentence-snip": {
+      "types": "./dist/voice/first-sentence-snip.d.ts",
+      "eliza-source": {
+        "types": "./src/voice/first-sentence-snip.ts",
+        "import": "./src/voice/first-sentence-snip.ts",
+        "default": "./src/voice/first-sentence-snip.ts"
+      },
+      "import": "./dist/voice/first-sentence-snip.js",
+      "default": "./dist/voice/first-sentence-snip.js"
     },
     "./voice/owner-inference": {
       "types": "./dist/voice/owner-inference.d.ts",
@@ -369,6 +419,7 @@
   "devDependencies": {
     "@types/figlet": "^1.7.0",
     "bun-types": "^1.3.12",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.0",
     "vitest": "^4.0.17"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,84 @@ def test_harness_client_assigns_unique_standard_task_ids() -> None:
 def test_make_client_with_mock_returns_mock_client() -> None:
     client = make_client(endpoint="http://x", api_key="k", mock_responses=["ok"])
     assert isinstance(client, MockClient)
+
+
+def test_harness_client_uses_native_hermes_campaign_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter_path = Path(__file__).resolve().parents[2] / "hermes-adapter"
+    if str(adapter_path) not in sys.path:
+        sys.path.insert(0, str(adapter_path))
+    import hermes_adapter.client as client_module
+
+    captured: dict[str, object] = {}
+
+    class FakeHermesClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def wait_until_ready(self, timeout: int) -> None:
+            captured["ready_timeout"] = timeout
+
+    monkeypatch.setattr(client_module, "HermesClient", FakeHermesClient)
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "claude-subscription")
+    monkeypatch.setenv("BENCHMARK_MODEL_NAME", "claude-opus-4-6")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:43123/v1")
+    monkeypatch.delenv("BENCHMARK_BASE_URL", raising=False)
+    monkeypatch.delenv("BENCHMARK_REASONING_EFFORT", raising=False)
+    monkeypatch.delenv("CEREBRAS_REASONING_EFFORT", raising=False)
+    monkeypatch.delenv("HERMES_TIMEOUT_S", raising=False)
+
+    client = HarnessClient(harness="hermes", endpoint="ignored", api_key="ignored")
+
+    assert isinstance(client._client, FakeHermesClient)
+    assert captured == {
+        "provider": "claude-subscription",
+        "model": "claude-opus-4-6",
+        "base_url": "http://127.0.0.1:43123/v1",
+        "timeout_s": 120.0,
+        "reasoning_effort": None,
+        "ready_timeout": 120,
+    }
+
+
+def test_harness_client_uses_native_openclaw_campaign_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter_path = Path(__file__).resolve().parents[2] / "openclaw-adapter"
+    if str(adapter_path) not in sys.path:
+        sys.path.insert(0, str(adapter_path))
+    import openclaw_adapter.client as client_module
+
+    captured: dict[str, object] = {}
+
+    class FakeOpenClawClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def wait_until_ready(self, timeout: int) -> None:
+            captured["ready_timeout"] = timeout
+
+    monkeypatch.setattr(client_module, "OpenClawClient", FakeOpenClawClient)
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "claude-subscription")
+    monkeypatch.setenv("BENCHMARK_MODEL_NAME", "claude-opus-4-6")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:43123/v1")
+    monkeypatch.delenv("BENCHMARK_BASE_URL", raising=False)
+    monkeypatch.delenv("BENCHMARK_REASONING_EFFORT", raising=False)
+    monkeypatch.delenv("CEREBRAS_REASONING_EFFORT", raising=False)
+    monkeypatch.delenv("OPENCLAW_TIMEOUT_S", raising=False)
+
+    client = HarnessClient(harness="openclaw", endpoint="ignored", api_key="ignored")
+
+    assert isinstance(client._client, FakeOpenClawClient)
+    assert captured == {
+        "provider": "claude-subscription",
+        "model": "claude-opus-4-6",
+        "base_url": "http://127.0.0.1:43123/v1",
+        "timeout_s": 120.0,
+        "reasoning_effort": None,
+        "ready_timeout": 120,
+    }
 
 
 def test_benchmark_result_roundtrip(tmp_path: Path) -> None:

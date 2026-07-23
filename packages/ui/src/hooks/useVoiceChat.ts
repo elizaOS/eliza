@@ -24,7 +24,7 @@ import {
 } from "react";
 import type { VoiceConfig } from "../api/client";
 import { getCloudAuthToken } from "../api/client-cloud";
-import { fetchWithCsrf } from "../api/csrf-client";
+import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -120,6 +120,7 @@ import {
   type VoiceTurn,
   webSpeechVoiceDebugFields,
 } from "../voice/voice-chat-types";
+import { resolveWavAsrRoute } from "../voice/voice-provider-defaults";
 
 // ── Re-exports (public API) ──────────────────────────────────────────
 
@@ -435,6 +436,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // Voice config ref (latest value always available to callbacks)
   const voiceConfigRef = useRef<VoiceConfig | null>(effectiveVoiceConfig);
   voiceConfigRef.current = effectiveVoiceConfig;
+  // Cloud-session ref for capture-time route resolution (#16524): whether the
+  // cloud STT proxy is a viable fallback when local-inference is unready.
+  const cloudConnectedRef = useRef(options.cloudConnected === true);
+  cloudConnectedRef.current = options.cloudConnected === true;
   const interruptOnSpeechRef = useRef(options.interruptOnSpeech ?? true);
   interruptOnSpeechRef.current = options.interruptOnSpeech ?? true;
   const onUserSpeechInterruptRef = useRef(options.onUserSpeechInterrupt);
@@ -1005,26 +1010,20 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const transcribeCloudAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
-      return transcribeCloudWav(audio, { signal });
+      return transcribeCloudWav(audio, {
+        signal,
+        configuredCloudOrigin: configuredCloudVoiceOrigin(),
+        cloudSessionToken: getCloudAuthToken(),
+      });
     },
     [],
   );
 
+  // Arms the local-inference WAV recorder. Route eligibility (provider choice,
+  // capture support, server readiness) is resolved ONCE by `startListening`
+  // via the shared `resolveWavAsrRoute` rule — this only owns the recorder.
   const startLocalInferenceRecognition = useCallback(
     async (mode: Exclude<VoiceCaptureMode, "idle">) => {
-      if (!shouldUseLocalInferenceAsr(voiceConfigRef.current)) {
-        return false;
-      }
-      if (!isLocalAsrCaptureSupported()) {
-        return false;
-      }
-      // Defer to the next backend (talk-mode / browser) when the server can't
-      // transcribe right now — capturing here would only 502 at stop() with no
-      // recoverable fallback (no local ASR assets / native adapter installed).
-      if (!(await isLocalInferenceAsrReady())) {
-        return false;
-      }
-
       try {
         const recorder = await startLocalAsrRecorder();
         localAsrRecorderRef.current = recorder;
@@ -1062,16 +1061,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // recognizer is engine-dependent (and unreliable/absent on iOS PWA), so a
   // cloud config must not fall through to it. Reuses `localAsrRecorderRef` for
   // the mic recorder; `sttBackendRef` = "cloud" routes the stop-time transcribe.
+  // Route eligibility lives in `startListening`'s `resolveWavAsrRoute` call.
   const startCloudRecognition = useCallback(
     async (mode: Exclude<VoiceCaptureMode, "idle">) => {
-      if (!shouldUseCloudAsr(voiceConfigRef.current)) {
-        return false;
-      }
-      // No WAV capture primitives (no getUserMedia / AudioContext) → there is no
-      // WAV to POST; defer to the browser recognizer as the sole client option.
-      if (!isLocalAsrCaptureSupported()) {
-        return false;
-      }
       try {
         const recorder = await startLocalAsrRecorder();
         localAsrRecorderRef.current = recorder;
@@ -1293,27 +1285,56 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       // first fork the on-screen HUD needs: a cloud-STT config that silently
       // fell through to the browser recognizer (absent on iOS PWA) is a classic
       // crickets cause. `asrProvider` is the resolved value that decides it.
+      const asrProvider = voiceConfigRef.current?.asr?.provider;
+      const captureSupported = isLocalAsrCaptureSupported();
       voiceCaptureDebug("start:enter", {
         mode,
-        asrProvider: voiceConfigRef.current?.asr?.provider ?? null,
-        captureSupported: isLocalAsrCaptureSupported(),
+        asrProvider: asrProvider ?? null,
+        captureSupported,
         preferNative: shouldPreferNativeTalkMode(),
       });
 
-      const localStarted = await startLocalInferenceRecognition(mode);
-      if (localStarted) {
-        voiceCaptureDebug("provider:local-inference", { mode });
-        return;
-      }
+      // Resolve the WAV route ONCE via the rule shared with the hook-free
+      // capture factory (#16524): explicit local-inference stays local while
+      // the server reports ready; selected-but-unready degrades to the cloud
+      // WAV route when a cloud session exists, instead of stranding capture on
+      // browser SpeechRecognition (absent on Safari/iOS PWA). The readiness
+      // probe (GET /api/asr/local-inference/status) only fires when the config
+      // actually selects local-inference.
+      const localInferenceReady =
+        shouldUseLocalInferenceAsr(voiceConfigRef.current) && captureSupported
+          ? await isLocalInferenceAsrReady()
+          : false;
+      const wavRoute = resolveWavAsrRoute({
+        provider: asrProvider,
+        cloudConnected: cloudConnectedRef.current,
+        captureSupported,
+        localInferenceReady,
+      });
 
-      // Cloud STT (`eliza-cloud` / `openai`): the deterministic transcriber for
-      // that config default. Selected ahead of talk-mode/browser so a cloud
-      // config on the PWA records a WAV for `/api/asr/cloud` instead of falling
-      // through to the engine-dependent browser recognizer.
-      const cloudStarted = await startCloudRecognition(mode);
-      if (cloudStarted) {
-        voiceCaptureDebug("provider:cloud", { mode });
-        return;
+      if (wavRoute === "local-inference") {
+        const localStarted = await startLocalInferenceRecognition(mode);
+        if (localStarted) {
+          voiceCaptureDebug("provider:local-inference", { mode });
+          return;
+        }
+      } else if (wavRoute === "cloud") {
+        // Cloud STT: the deterministic transcriber for the `eliza-cloud` /
+        // `openai` config default AND the forced fallback for an unready
+        // explicit local-inference choice. Selected ahead of talk-mode/browser
+        // so the capture records a WAV for `/api/asr/cloud` instead of falling
+        // through to the engine-dependent browser recognizer.
+        const cloudStarted = await startCloudRecognition(mode);
+        if (cloudStarted) {
+          voiceCaptureDebug("provider:cloud", {
+            mode,
+            note:
+              asrProvider === "local-inference"
+                ? "local-inference unready — cloud WAV fallback"
+                : undefined,
+          });
+          return;
+        }
       }
 
       if (shouldPreferNativeTalkMode()) {
@@ -1604,6 +1625,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
          * path, so chat fell back to browser (Edge) TTS. If cloud rejects
          * (no key), fall back to the upstream ElevenLabs proxy.
          */
+        // #16425: ONE key per logical utterance across BOTH proxy legs (the
+        // cloud proxy and its direct-ElevenLabs-proxy retry below re-POST the
+        // same utterance), so upstream billing can replay the committed
+        // reservation instead of charging the retry as a new operation.
+        const proxyUtteranceKey = crypto.randomUUID();
         const makeProxyRequestInit = (): RequestInit => {
           const dbg = task.debugUtteranceContext;
           return {
@@ -1611,6 +1637,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             headers: {
               "Content-Type": "application/json",
               Accept: "audio/mpeg",
+              "Idempotency-Key": proxyUtteranceKey,
               ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
               ...(isTtsDebugEnabled() && dbg
                 ? {
@@ -1645,6 +1672,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             const cloudRes = await fetchWithCsrf(
               cloudTarget,
               makeProxyRequestInit(),
+              { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
             );
             if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status)) {
               return cloudRes;
@@ -1676,6 +1704,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           return fetchWithCsrf(
             resolveApiUrl("/api/tts/elevenlabs"),
             makeProxyRequestInit(),
+            { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
           );
         };
 
@@ -1931,18 +1960,29 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                   ),
                 }
               : {};
+          // #16425: ONE key per logical utterance, sent on BOTH the direct
+          // request and the proxy fallback. The cloud route keys its credit
+          // reservation on it, so a fallback retry after an ambiguous network
+          // outcome replays the committed reservation instead of billing the
+          // same utterance twice. (Header is in CORS_ALLOW_HEADER_NAMES.)
+          const ttsUtteranceKey = crypto.randomUUID();
           const fetchViaProxy = (url: string, bearer: string | null) =>
-            fetchWithCsrf(url, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
-                ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
-                ...debugHeaders,
+            fetchWithCsrf(
+              url,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
+                  "Idempotency-Key": ttsUtteranceKey,
+                  ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+                  ...debugHeaders,
+                },
+                body: JSON.stringify({ text }),
+                signal: controller.signal,
               },
-              body: JSON.stringify({ text }),
-              signal: controller.signal,
-            });
+              { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
+            );
           if (route.via === "direct-cloud") {
             ttsDebug("useVoiceChat:eliza-cloud-direct-worker", {
               ttsTarget: route.url,
@@ -1950,7 +1990,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             });
             fetchedTtsUrl = route.url;
             try {
-              // CORS-safe bare fetch for the cross-origin cloud worker POST:
+              // Caller-authenticated request through the canonical transport selector:
               // Bearer auth needs no cookies, so no `credentials: "include"`
               // (the worker answers `Access-Control-Allow-Origin: *`, which a
               // browser rejects when combined with credentials), and no
@@ -1960,21 +2000,29 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               // both in `CORS_ALLOW_HEADER_NAMES`
               // (packages/cloud/shared/src/lib/cors-constants.ts), so the
               // preflight passes.
-              const directRes = await fetch(route.url, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...(route.bearer
-                    ? { Authorization: `Bearer ${route.bearer}` }
-                    : {}),
+              const directRes = await requestViaAgentTransport(
+                route.url,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": ttsUtteranceKey,
+                    ...(route.bearer
+                      ? { Authorization: `Bearer ${route.bearer}` }
+                      : {}),
+                  },
+                  body: JSON.stringify({
+                    text,
+                    ...(route.voiceId ? { voiceId: route.voiceId } : {}),
+                    ...(route.modelId ? { modelId: route.modelId } : {}),
+                  }),
+                  signal: controller.signal,
                 },
-                body: JSON.stringify({
-                  text,
-                  ...(route.voiceId ? { voiceId: route.voiceId } : {}),
-                  ...(route.modelId ? { modelId: route.modelId } : {}),
-                }),
-                signal: controller.signal,
-              });
+                {
+                  responseType: "arraybuffer",
+                  timeoutMs: CLOUD_TTS_TIMEOUT_MS,
+                },
+              );
               if (!directRes.ok) {
                 const preview = await directRes.text().catch(() => "");
                 throw new Error(

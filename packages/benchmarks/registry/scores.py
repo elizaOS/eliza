@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import math
+import runpy
 from typing import cast
 
 try:
+    from benchmarks.action_calling_contract import (
+        ACTION_CALLING_METRIC_NAMES,
+        score_action_calling_case,
+    )
     from benchmarks.bench_cli_types import (
         JSONValue,
         ScoreExtraction,
@@ -12,7 +20,34 @@ try:
         get_optional,
         get_required,
     )
+    from benchmarks.publication_contracts import (
+        ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256,
+        ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256,
+        ACTION_CALLING_FULL_SCENARIO_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
+        ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
+        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
+        ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
+        ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
+        ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
+        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
+        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
+        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
+        WEBSHOP_FULL_REPORT_CONTRACT,
+        action_calling_report_contract_reason,
+        canonical_identifier_manifest_sha256,
+        canonical_json_sha256,
+        webshop_report_contract_reason,
+    )
 except ImportError:
+    from action_calling_contract import (  # type: ignore[no-redef]
+        ACTION_CALLING_METRIC_NAMES,
+        score_action_calling_case,
+    )
     from bench_cli_types import (  # type: ignore[no-redef]
         JSONValue,
         ScoreExtraction,
@@ -22,14 +57,42 @@ except ImportError:
         get_optional,
         get_required,
     )
+    from publication_contracts import (  # type: ignore[no-redef]
+        ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256,
+        ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256,
+        ACTION_CALLING_FULL_SCENARIO_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
+        ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256,
+        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+        ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256,
+        ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
+        ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
+        ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
+        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
+        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES,
+        ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
+        WEBSHOP_FULL_REPORT_CONTRACT,
+        action_calling_report_contract_reason,
+        canonical_identifier_manifest_sha256,
+        canonical_json_sha256,
+        webshop_report_contract_reason,
+    )
 
 
 def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="bfcl:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="bfcl:root"), ctx="bfcl:metrics")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="bfcl:root"), ctx="bfcl:metrics"
+    )
     metadata_raw = get_optional(root, "metadata")
     metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
-    overall = expect_float(get_required(metrics, "overall_score", ctx="bfcl:metrics"), ctx="bfcl:overall_score")
+    overall = expect_float(
+        get_required(metrics, "overall_score", ctx="bfcl:metrics"),
+        ctx="bfcl:overall_score",
+    )
     total_tests = get_optional(metrics, "total_tests") or 0
     error_analysis = get_optional(metrics, "error_analysis")
     if total_tests == 0:
@@ -77,14 +140,18 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="realm:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="realm:root"), ctx="realm:metrics")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="realm:root"), ctx="realm:metrics"
+    )
     metadata = get_optional(root, "metadata")
     metadata_dict = metadata if isinstance(metadata, dict) else {}
     config = metadata_dict.get("config")
     config_dict = config if isinstance(config, dict) else {}
     use_sample_tasks = bool(config_dict.get("use_sample_tasks"))
     if use_sample_tasks:
-        raise ValueError("realm: sample-task run is not publishable as a real harness score")
+        raise ValueError(
+            "realm: sample-task run is not publishable as a real harness score"
+        )
     overall = expect_float(
         get_required(metrics, "overall_success_rate", ctx="realm:metrics"),
         ctx="realm:overall_success_rate",
@@ -115,9 +182,14 @@ def _score_from_mint_json(data: JSONValue) -> ScoreExtraction:
         if cr_raw is None:
             return None
         cr = expect_dict(cr_raw, ctx=f"mint:{config_key}")
-        metrics = expect_dict(get_required(cr, "metrics", ctx=f"mint:{config_key}"), ctx=f"mint:{config_key}.metrics")
+        metrics = expect_dict(
+            get_required(cr, "metrics", ctx=f"mint:{config_key}"),
+            ctx=f"mint:{config_key}.metrics",
+        )
         rate = expect_float(
-            get_required(metrics, "overall_success_rate", ctx=f"mint:{config_key}.metrics"),
+            get_required(
+                metrics, "overall_success_rate", ctx=f"mint:{config_key}.metrics"
+            ),
             ctx=f"mint:{config_key}.overall_success_rate",
         )
         total_tasks = int(get_optional(metrics, "total_tasks") or 0)
@@ -183,7 +255,11 @@ def _score_from_agentbench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_contextbench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="context_bench:root")
     metrics_obj = get_optional(root, "metrics")
-    metrics = expect_dict(metrics_obj, ctx="context_bench:metrics") if isinstance(metrics_obj, dict) else root
+    metrics = (
+        expect_dict(metrics_obj, ctx="context_bench:metrics")
+        if isinstance(metrics_obj, dict)
+        else root
+    )
     overall_raw = get_optional(metrics, "overall_accuracy")
     if isinstance(overall_raw, str):
         cleaned = overall_raw.strip()
@@ -260,7 +336,10 @@ def _score_from_recall_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="terminal_bench:root")
-    summary = expect_dict(get_required(root, "summary", ctx="terminal_bench:root"), ctx="terminal_bench:summary")
+    summary = expect_dict(
+        get_required(root, "summary", ctx="terminal_bench:root"),
+        ctx="terminal_bench:summary",
+    )
     acc = expect_float(
         get_required(summary, "accuracy", ctx="terminal_bench:summary"),
         ctx="terminal_bench:accuracy",
@@ -320,7 +399,11 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
         )
     else:
         pass_k = root.get("pass_k")
-        pass_k_dict = expect_dict(pass_k, ctx="tau_bench:pass_k") if isinstance(pass_k, dict) else {}
+        pass_k_dict = (
+            expect_dict(pass_k, ctx="tau_bench:pass_k")
+            if isinstance(pass_k, dict)
+            else {}
+        )
         raw = pass_k_dict.get("1", pass_k_dict.get("pass@1", root.get("avg_reward")))
         if isinstance(raw, dict):
             raw = raw.get("pass_hat_k", raw.get("pass@1", raw.get("score")))
@@ -349,7 +432,10 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="vending_bench:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="vending_bench:root"), ctx="vending_bench:metrics")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="vending_bench:root"),
+        ctx="vending_bench:metrics",
+    )
     metadata = expect_dict(root.get("metadata") or {}, ctx="vending_bench:metadata")
     results_raw = root.get("results")
 
@@ -368,18 +454,40 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
                 return 0.0
         return 0.0
 
-    results = expect_list(results_raw, ctx="vending_bench:results") if isinstance(results_raw, list) else []
+    results = (
+        expect_list(results_raw, ctx="vending_bench:results")
+        if isinstance(results_raw, list)
+        else []
+    )
     successful_runs = to_float(metadata.get("successful_runs"))
     total_runs = to_float(metadata.get("total_runs"))
     errored_runs = [
         item
         for item in results
-        if isinstance(item, dict) and isinstance(item.get("error"), str) and item.get("error")
+        if isinstance(item, dict)
+        and isinstance(item.get("error"), str)
+        and item.get("error")
     ]
-    if total_runs > 0 and successful_runs <= 0:
+    result_count = len([item for item in results if isinstance(item, dict)])
+    if total_runs <= 0:
+        raise ValueError("vending_bench: zero-run score is not publishable")
+    if successful_runs <= 0:
         raise ValueError("vending_bench: zero successful runs is not publishable")
-    if results and len(errored_runs) == len([item for item in results if isinstance(item, dict)]):
-        raise ValueError("vending_bench: all runs failed")
+    if successful_runs != total_runs or errored_runs:
+        raise ValueError("vending_bench: partial or errored cohort is not publishable")
+    if result_count != int(total_runs):
+        raise ValueError("vending_bench: result count does not match metadata")
+    scenario_counts = expect_dict(
+        get_required(root, "scenario_counts", ctx="vending_bench:root"),
+        ctx="vending_bench:scenario_counts",
+    )
+    expected_total = to_float(
+        get_required(scenario_counts, "total", ctx="vending_bench:scenario_counts")
+    )
+    if expected_total != total_runs:
+        raise ValueError(
+            "vending_bench: expanded scenario count does not match executed runs"
+        )
     total_revenue = 0.0
     total_incremental_revenue = 0.0
     total_profit = 0.0
@@ -396,14 +504,20 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
         total_items_sold += to_float(item.get("items_sold"))
         total_orders += to_float(item.get("orders_placed"))
 
-    run_count = len([item for item in results if isinstance(item, dict)])
-    avg_revenue = (total_revenue / run_count) if run_count else to_float(metrics.get("avg_revenue"))
+    run_count = result_count
+    avg_revenue = (
+        (total_revenue / run_count)
+        if run_count
+        else to_float(metrics.get("avg_revenue"))
+    )
     avg_incremental_revenue = (
         (total_incremental_revenue / run_count)
         if run_count
         else to_float(metrics.get("avg_incremental_revenue"))
     )
-    avg_profit = (total_profit / run_count) if run_count else to_float(metrics.get("avg_profit"))
+    avg_profit = (
+        (total_profit / run_count) if run_count else to_float(metrics.get("avg_profit"))
+    )
     avg_net_worth = to_float(metrics.get("avg_net_worth"))
     max_net_worth = to_float(metrics.get("max_net_worth"))
     return ScoreExtraction(
@@ -423,16 +537,25 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
             "total_runs": total_runs,
             "profitability_rate": metrics.get("profitability_rate") or 0,
             "coherence_score": metrics.get("coherence_score") or 0,
-            "avg_items_sold": (total_items_sold / run_count) if run_count else (metrics.get("avg_items_sold") or 0),
-            "avg_orders_placed": (total_orders / run_count) if run_count else (metrics.get("avg_orders_placed") or 0),
+            "avg_items_sold": (total_items_sold / run_count)
+            if run_count
+            else (metrics.get("avg_items_sold") or 0),
+            "avg_orders_placed": (total_orders / run_count)
+            if run_count
+            else (metrics.get("avg_orders_placed") or 0),
         },
     )
 
 
 def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench:root")
-    summary = expect_dict(get_required(root, "summary", ctx="swe_bench:root"), ctx="swe_bench:summary")
-    rr = expect_float(get_required(summary, "resolve_rate", ctx="swe_bench:summary"), ctx="swe_bench:resolve_rate")
+    summary = expect_dict(
+        get_required(root, "summary", ctx="swe_bench:root"), ctx="swe_bench:summary"
+    )
+    rr = expect_float(
+        get_required(summary, "resolve_rate", ctx="swe_bench:summary"),
+        ctx="swe_bench:resolve_rate",
+    )
     total_instances = expect_float(
         get_required(summary, "total_instances", ctx="swe_bench:summary"),
         ctx="swe_bench:total_instances",
@@ -500,22 +623,451 @@ def _score_from_swebench_orchestrated_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _attest_installed_orchestrator_lifecycle_sources() -> None:
+    """Reject publication when loaded or installed model-facing sources drift."""
+
+    from pathlib import Path
+
+    if __package__ is not None and __package__.startswith("benchmarks."):
+        from benchmarks.orchestrator_lifecycle import contract as lifecycle_contract
+    else:
+        from orchestrator_lifecycle import contract as lifecycle_contract  # type: ignore[no-redef]
+
+    loaded_hint = getattr(lifecycle_contract, "LIFECYCLE_SYSTEM_HINT", None)
+    loaded_tools = getattr(lifecycle_contract, "LIFECYCLE_TASKS_TOOLS", None)
+    if not isinstance(loaded_hint, str) or (
+        hashlib.sha256(loaded_hint.encode("utf-8")).hexdigest()
+        != ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256
+    ):
+        raise ValueError("orchestrator_lifecycle: loaded lifecycle system hint drifted")
+    if not isinstance(loaded_tools, tuple) or (
+        canonical_json_sha256(list(loaded_tools))
+        != ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256
+    ):
+        raise ValueError("orchestrator_lifecycle: loaded TASKS tool contract drifted")
+
+    lifecycle_dir = Path(__file__).resolve().parents[1] / "orchestrator_lifecycle"
+    contract_path = lifecycle_dir / "contract.py"
+    tasks_tool_path = lifecycle_dir / "tasks-tool.json"
+    try:
+        # Publication reloads the disk source in an isolated namespace so a
+        # cached import cannot conceal source changes made after process start.
+        installed_contract = runpy.run_path(
+            str(contract_path),
+            run_name="_orchestrator_lifecycle_publication_attestation",
+        )
+        installed_hint = installed_contract.get("LIFECYCLE_SYSTEM_HINT")
+        installed_loaded_tools = installed_contract.get("LIFECYCLE_TASKS_TOOLS")
+        installed_tool = json.loads(tasks_tool_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        # error-policy:J1 Publication is the boundary that translates unreadable
+        # benchmark sources into an explicit, non-publishable result.
+        raise ValueError(
+            "orchestrator_lifecycle: installed model-facing sources "
+            "could not be attested"
+        ) from exc
+
+    if not isinstance(installed_hint, str) or (
+        hashlib.sha256(installed_hint.encode("utf-8")).hexdigest()
+        != ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256
+    ):
+        raise ValueError(
+            "orchestrator_lifecycle: installed lifecycle system hint drifted"
+        )
+    if not isinstance(installed_loaded_tools, tuple) or (
+        canonical_json_sha256(list(installed_loaded_tools))
+        != ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256
+    ):
+        raise ValueError(
+            "orchestrator_lifecycle: installed TASKS tool contract drifted"
+        )
+    if (
+        canonical_json_sha256([installed_tool])
+        != ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256
+    ):
+        raise ValueError(
+            "orchestrator_lifecycle: installed TASKS tool contract drifted"
+        )
+
+
 def _score_from_orchestrator_lifecycle_json(data: JSONValue) -> ScoreExtraction:
+    from dataclasses import asdict
+    from pathlib import Path
+
+    try:
+        from benchmarks.orchestrator_lifecycle.dataset import (
+            LifecycleDataset,
+            scenario_corpus_sha256,
+        )
+        from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
+        from benchmarks.orchestrator_lifecycle.events import extract_lifecycle_events
+        from benchmarks.orchestrator_lifecycle.types import TurnRecord
+    except ImportError:
+        from orchestrator_lifecycle.dataset import (  # type: ignore[no-redef]
+            LifecycleDataset,
+            scenario_corpus_sha256,
+        )
+        from orchestrator_lifecycle.evaluator import (  # type: ignore[no-redef]
+            LifecycleEvaluator,
+        )
+        from orchestrator_lifecycle.events import (  # type: ignore[no-redef]
+            extract_lifecycle_events,
+        )
+        from orchestrator_lifecycle.types import TurnRecord  # type: ignore[no-redef]
+
+    _attest_installed_orchestrator_lifecycle_sources()
+
     root = expect_dict(data, ctx="orchestrator_lifecycle:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="orchestrator_lifecycle:root"), ctx="orchestrator_lifecycle:metrics")
-    overall_raw = metrics.get("overall_score")
-    if not isinstance(overall_raw, (int, float)):
-        raise ValueError("orchestrator_lifecycle: missing metrics.overall_score")
-    overall = float(overall_raw)
+    if root.get("mode") != "bridge" or root.get("scored") is not True:
+        raise ValueError(
+            "orchestrator_lifecycle: only scored bridge reports are publishable"
+        )
+    metadata = expect_dict(
+        get_required(root, "metadata", ctx="orchestrator_lifecycle:root"),
+        ctx="orchestrator_lifecycle:metadata",
+    )
+    required_metadata = {
+        "mode": "bridge",
+        "scored": True,
+        "strict": True,
+        "max_scenarios": None,
+        "scenario_filter": None,
+    }
+    for key, expected in required_metadata.items():
+        if key not in metadata or metadata[key] != expected:
+            raise ValueError(
+                f"orchestrator_lifecycle:metadata.{key} must be {expected!r}"
+            )
+    for key in ("model", "provider"):
+        value = metadata.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"orchestrator_lifecycle:metadata.{key} must be a non-empty string"
+            )
+
+    scenario_dir = (
+        Path(__file__).resolve().parents[1] / "orchestrator_lifecycle" / "scenarios"
+    )
+    pinned_scenarios = LifecycleDataset(str(scenario_dir)).load()
+    if (
+        len(pinned_scenarios) != ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT
+        or scenario_corpus_sha256(pinned_scenarios)
+        != ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256
+    ):
+        raise ValueError("orchestrator_lifecycle: installed scenario corpus drifted")
+    pinned_by_id = {scenario.scenario_id: scenario for scenario in pinned_scenarios}
+
+    scenarios = expect_list(
+        get_required(root, "scenarios", ctx="orchestrator_lifecycle:root"),
+        ctx="orchestrator_lifecycle:scenarios",
+    )
+    if len(scenarios) != ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT:
+        raise ValueError(
+            "orchestrator_lifecycle: full report requires exactly "
+            f"{ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT} scenarios"
+        )
+    scenario_ids: list[str] = []
+    scenario_scores: list[float] = []
+    passed_count = 0
+    category_scores: dict[str, list[float]] = {}
+    reported_scenarios: dict[str, dict[str, JSONValue]] = {}
+    for index, raw_scenario in enumerate(scenarios):
+        scenario = expect_dict(
+            raw_scenario,
+            ctx=f"orchestrator_lifecycle:scenarios[{index}]",
+        )
+        scenario_id = scenario.get("scenario_id")
+        category = scenario.get("category")
+        passed = scenario.get("passed")
+        checks_passed = scenario.get("checks_passed")
+        checks_total = scenario.get("checks_total")
+        if not isinstance(scenario_id, str) or not scenario_id:
+            raise ValueError(
+                f"orchestrator_lifecycle:scenarios[{index}].scenario_id is invalid"
+            )
+        if not isinstance(category, str) or not category:
+            raise ValueError(
+                f"orchestrator_lifecycle:scenarios[{index}].category is invalid"
+            )
+        if not isinstance(passed, bool):
+            raise ValueError(
+                f"orchestrator_lifecycle:scenarios[{index}].passed is invalid"
+            )
+        if (
+            not isinstance(checks_total, int)
+            or isinstance(checks_total, bool)
+            or checks_total <= 0
+            or not isinstance(checks_passed, int)
+            or isinstance(checks_passed, bool)
+            or not 0 <= checks_passed <= checks_total
+        ):
+            raise ValueError(
+                f"orchestrator_lifecycle:scenarios[{index}] check counts are invalid"
+            )
+        score = expect_float(
+            get_required(
+                scenario,
+                "score",
+                ctx=f"orchestrator_lifecycle:scenarios[{index}]",
+            ),
+            ctx=f"orchestrator_lifecycle:scenarios[{index}].score",
+        )
+        if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+            raise ValueError(
+                f"orchestrator_lifecycle:scenarios[{index}].score is out of range"
+            )
+        expected_score = checks_passed / checks_total
+        if not math.isclose(score, expected_score, abs_tol=1e-12):
+            raise ValueError(
+                f"orchestrator_lifecycle:scenarios[{index}].score is inconsistent"
+            )
+        violations = scenario.get("violations")
+        if not isinstance(violations, list) or not all(
+            isinstance(item, str) for item in violations
+        ):
+            raise ValueError(
+                f"orchestrator_lifecycle:scenarios[{index}].violations is invalid"
+            )
+        expected_passed = score >= 0.75 and not any(
+            item.startswith("forbidden") or item.startswith("unknown_tag")
+            for item in violations
+        )
+        if passed is not expected_passed:
+            raise ValueError(
+                f"orchestrator_lifecycle:scenarios[{index}].passed is inconsistent"
+            )
+        scenario_ids.append(scenario_id)
+        scenario_scores.append(score)
+        passed_count += int(passed)
+        category_scores.setdefault(category, []).append(score)
+        reported_scenarios[scenario_id] = scenario
+
+    if len(set(scenario_ids)) != len(scenario_ids):
+        raise ValueError("orchestrator_lifecycle: duplicate scenario IDs")
+    if (
+        canonical_identifier_manifest_sha256(scenario_ids)
+        != ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256
+    ):
+        raise ValueError("orchestrator_lifecycle: scenario manifest mismatch")
+    if set(pinned_by_id) != set(scenario_ids):
+        raise ValueError("orchestrator_lifecycle: report does not match pinned corpus")
+
+    transcripts = expect_dict(
+        get_required(root, "transcripts", ctx="orchestrator_lifecycle:root"),
+        ctx="orchestrator_lifecycle:transcripts",
+    )
+    if set(transcripts) != set(scenario_ids):
+        raise ValueError(
+            "orchestrator_lifecycle: transcript scenario manifest mismatch"
+        )
+    user_turn_count = 0
+    assistant_turn_count = 0
+    user_turn_manifest: list[dict[str, object]] = []
+    evaluator = LifecycleEvaluator()
+    recomputed_results = []
+    for scenario_id in scenario_ids:
+        transcript = expect_list(
+            transcripts[scenario_id],
+            ctx=f"orchestrator_lifecycle:transcripts.{scenario_id}",
+        )
+        pinned_scenario = pinned_by_id[scenario_id]
+        pinned_user_turns = [
+            turn for turn in pinned_scenario.turns if turn.actor == "user"
+        ]
+        if not transcript or len(transcript) != len(pinned_user_turns) * 2:
+            raise ValueError(
+                f"orchestrator_lifecycle: transcript {scenario_id!r} is incomplete"
+            )
+        turn_records = []
+        for turn_index, pinned_turn in enumerate(pinned_user_turns):
+            user_entry = expect_dict(
+                transcript[turn_index * 2],
+                ctx=(
+                    f"orchestrator_lifecycle:transcripts.{scenario_id}"
+                    f"[{turn_index * 2}]"
+                ),
+            )
+            assistant_entry = expect_dict(
+                transcript[turn_index * 2 + 1],
+                ctx=(
+                    f"orchestrator_lifecycle:transcripts.{scenario_id}"
+                    f"[{turn_index * 2 + 1}]"
+                ),
+            )
+            if (
+                user_entry.get("actor") != "user"
+                or user_entry.get("message") != pinned_turn.message
+            ):
+                raise ValueError(
+                    f"orchestrator_lifecycle: transcript {scenario_id!r} "
+                    f"user turn {turn_index} does not match the pinned corpus"
+                )
+            reply_text = assistant_entry.get("message")
+            actions = assistant_entry.get("actions")
+            params = assistant_entry.get("params")
+            stored_events = assistant_entry.get("events")
+            if assistant_entry.get("actor") != "assistant" or not isinstance(
+                reply_text, str
+            ):
+                raise ValueError(
+                    f"orchestrator_lifecycle: transcript {scenario_id!r} "
+                    f"assistant turn {turn_index} is invalid"
+                )
+            if (
+                not isinstance(actions, list)
+                or not all(isinstance(action, str) for action in actions)
+                or not isinstance(params, dict)
+                or not isinstance(stored_events, list)
+                or not all(isinstance(event, str) for event in stored_events)
+            ):
+                raise ValueError(
+                    f"orchestrator_lifecycle: transcript {scenario_id!r} "
+                    "assistant turn lacks action/params/event evidence"
+                )
+            recomputed_events = extract_lifecycle_events(actions, params)
+            if stored_events != recomputed_events:
+                raise ValueError(
+                    f"orchestrator_lifecycle: transcript {scenario_id!r} "
+                    f"turn {turn_index} has forged lifecycle events"
+                )
+            user_turn_manifest.append(
+                {
+                    "scenario_id": scenario_id,
+                    "turn_index": turn_index,
+                    "message": pinned_turn.message,
+                }
+            )
+            user_turn_count += 1
+            assistant_turn_count += 1
+            turn_records.append(
+                TurnRecord(
+                    reply_text=reply_text,
+                    actions=list(actions),
+                    params=dict(params),
+                    events=recomputed_events,
+                )
+            )
+        recomputed_result = evaluator.evaluate_scenario(pinned_scenario, turn_records)
+        if reported_scenarios[scenario_id] != asdict(recomputed_result):
+            raise ValueError(
+                f"orchestrator_lifecycle: scenario {scenario_id!r} result "
+                "does not match transcript evidence"
+            )
+        recomputed_results.append(recomputed_result)
+    if (
+        user_turn_count != ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT
+        or assistant_turn_count != ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT
+    ):
+        raise ValueError("orchestrator_lifecycle: transcript turn count mismatch")
+    user_turn_manifest.sort(
+        key=lambda item: (str(item["scenario_id"]), int(item["turn_index"]))
+    )
+    if (
+        canonical_json_sha256(user_turn_manifest)
+        != ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256
+    ):
+        raise ValueError(
+            "orchestrator_lifecycle: transcript user-turn manifest mismatch"
+        )
+    recomputed_metrics = asdict(evaluator.compute_metrics(recomputed_results))
+
+    workload = expect_dict(
+        get_required(root, "workload", ctx="orchestrator_lifecycle:root"),
+        ctx="orchestrator_lifecycle:workload",
+    )
+    expected_workload = {
+        "measurement_scope": ORCHESTRATOR_LIFECYCLE_MEASUREMENT_SCOPE,
+        "side_effects_executed": ORCHESTRATOR_LIFECYCLE_SIDE_EFFECTS_EXECUTED,
+        "base_scenario_count": ORCHESTRATOR_LIFECYCLE_FULL_BASE_SCENARIO_COUNT,
+        "edge_scenario_count": ORCHESTRATOR_LIFECYCLE_FULL_EDGE_SCENARIO_COUNT,
+        "scenario_count": ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+        "scenario_id_manifest_count": ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+        "scenario_id_manifest_sha256": (
+            ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_ID_MANIFEST_SHA256
+        ),
+        "transcript_scenario_count": ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+        "user_turn_count": ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+        "user_turn_manifest_sha256": (
+            ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_MANIFEST_SHA256
+        ),
+        "assistant_turn_count": ORCHESTRATOR_LIFECYCLE_FULL_USER_TURN_COUNT,
+        "corpus_scenario_count": ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+        "corpus_sha256": ORCHESTRATOR_LIFECYCLE_FULL_CORPUS_SHA256,
+        "tool_contract_count": ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_COUNT,
+        "tool_contract_names": list(ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_NAMES),
+        "tool_contract_sha256": ORCHESTRATOR_LIFECYCLE_TOOL_CONTRACT_SHA256,
+        "system_hint_sha256": ORCHESTRATOR_LIFECYCLE_SYSTEM_HINT_SHA256,
+    }
+    for key, expected in expected_workload.items():
+        if key not in workload or workload[key] != expected:
+            raise ValueError(
+                f"orchestrator_lifecycle:workload.{key} must be {expected!r}"
+            )
+
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="orchestrator_lifecycle:root"),
+        ctx="orchestrator_lifecycle:metrics",
+    )
+    rate_fields = (
+        "overall_score",
+        "scenario_pass_rate",
+        "clarification_success_rate",
+        "status_accuracy_rate",
+        "interruption_handling_rate",
+        "completion_summary_quality",
+    )
+    rates: dict[str, float] = {}
+    for field in rate_fields:
+        value = expect_float(
+            get_required(metrics, field, ctx="orchestrator_lifecycle:metrics"),
+            ctx=f"orchestrator_lifecycle:metrics.{field}",
+        )
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(
+                f"orchestrator_lifecycle:metrics.{field} must be finite in [0, 1]"
+            )
+        rates[field] = value
+    total_scenarios = metrics.get("total_scenarios")
+    passed_scenarios = metrics.get("passed_scenarios")
+    if total_scenarios != recomputed_metrics["total_scenarios"]:
+        raise ValueError("orchestrator_lifecycle:metrics.total_scenarios mismatch")
+    if passed_scenarios != recomputed_metrics["passed_scenarios"]:
+        raise ValueError("orchestrator_lifecycle:metrics.passed_scenarios mismatch")
+
+    required_categories = (
+        "clarification",
+        "status",
+        "interrupt",
+        "completion_summary",
+    )
+    for category in required_categories:
+        if not category_scores.get(category):
+            raise ValueError(
+                f"orchestrator_lifecycle: required category {category!r} is missing"
+            )
+
+    for field in rate_fields:
+        expected = recomputed_metrics[field]
+        if not isinstance(expected, float):
+            raise ValueError(
+                f"orchestrator_lifecycle: recomputed metric {field} is invalid"
+            )
+        if not math.isclose(rates[field], expected, abs_tol=1e-12):
+            raise ValueError(f"orchestrator_lifecycle:metrics.{field} is inconsistent")
+    overall = rates["overall_score"]
     return ScoreExtraction(
         score=overall,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_score": overall,
-            "scenario_pass_rate": metrics.get("scenario_pass_rate") or 0,
-            "clarification_success_rate": metrics.get("clarification_success_rate") or 0,
-            "interruption_handling_rate": metrics.get("interruption_handling_rate") or 0,
+            "scenario_pass_rate": rates["scenario_pass_rate"],
+            "clarification_success_rate": rates["clarification_success_rate"],
+            "status_accuracy_rate": rates["status_accuracy_rate"],
+            "interruption_handling_rate": rates["interruption_handling_rate"],
+            "completion_summary_quality": rates["completion_summary_quality"],
+            "total_scenarios": ORCHESTRATOR_LIFECYCLE_FULL_SCENARIO_COUNT,
+            "passed_scenarios": passed_count,
         },
     )
 
@@ -532,15 +1084,78 @@ def _score_from_mind2web_json(data: JSONValue) -> ScoreExtraction:
     )
     if total_tasks <= 0:
         raise ValueError("mind2web: zero-task score is not publishable")
+    if root.get("synthetic_calibration") is not True:
+        total_trials = expect_float(
+            get_required(root, "total_trials", ctx="mind2web:root"),
+            ctx="mind2web:total_trials",
+        )
+        results = expect_list(
+            get_required(root, "results", ctx="mind2web:root"),
+            ctx="mind2web:results",
+        )
+        if total_trials <= 0 or len(results) != int(total_trials):
+            raise ValueError("mind2web: result count does not match executed trials")
+        if any(
+            isinstance(item, dict)
+            and isinstance(item.get("error"), str)
+            and item["error"]
+            for item in results
+        ):
+            raise ValueError("mind2web: errored task results are not publishable")
+        scenario_counts = expect_dict(
+            get_required(root, "scenario_counts", ctx="mind2web:root"),
+            ctx="mind2web:scenario_counts",
+        )
+        scenario_total = expect_float(
+            get_required(scenario_counts, "total", ctx="mind2web:scenario_counts"),
+            ctx="mind2web:scenario_counts.total",
+        )
+        if scenario_total != total_tasks:
+            raise ValueError("mind2web: scenario count does not match executed tasks")
+        provenance = expect_dict(
+            get_required(root, "data_provenance", ctx="mind2web:root"),
+            ctx="mind2web:data_provenance",
+        )
+        if provenance.get("publishable") is not True:
+            raise ValueError("mind2web: sample or unpinned data is not publishable")
+        if provenance.get("complete_split") is not True:
+            raise ValueError("mind2web: truncated official split is not publishable")
+        if provenance.get("ranker_scores_sha256") != (
+            "884c97cd9ae0544485d21ea39e0d46422aee0291969a7324e56df3a84466dbd7"
+        ):
+            raise ValueError(
+                "mind2web: official candidate-ranker scores are not pinned"
+            )
+        summary = expect_dict(
+            get_required(root, "summary", ctx="mind2web:root"),
+            ctx="mind2web:summary",
+        )
+        if summary.get("ranker_mode") != "real":
+            raise ValueError("mind2web: only the real candidate ranker is publishable")
+        if summary.get("ranker_model") != (
+            "osunlp/MindAct_CandidateGeneration_deberta-v3-base"
+        ):
+            raise ValueError(
+                "mind2web: candidate ranker model is not the pinned release"
+            )
+        if summary.get("ranker_revision") != (
+            "92d3ddcb079b1749015d72293c82d640b0b9a1da"
+        ):
+            raise ValueError("mind2web: candidate ranker revision is not pinned")
     return ScoreExtraction(
         score=step_acc,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_step_accuracy": step_acc,
-            "overall_element_accuracy": get_optional(root, "overall_element_accuracy") or 0,
-            "overall_operation_accuracy": get_optional(root, "overall_operation_accuracy") or 0,
-            "overall_task_success_rate": get_optional(root, "overall_task_success_rate") or 0,
+            "overall_element_accuracy": get_optional(root, "overall_element_accuracy")
+            or 0,
+            "overall_operation_accuracy": get_optional(
+                root, "overall_operation_accuracy"
+            )
+            or 0,
+            "overall_task_success_rate": get_optional(root, "overall_task_success_rate")
+            or 0,
             "total_tasks": total_tasks,
         },
     )
@@ -576,25 +1191,59 @@ def _score_from_visualwebbench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
     """Extract Vision-Language Bench scores from real runtime reports."""
     root = expect_dict(data, ctx="vision_language:root")
+    if root.get("schemaVersion") != "vision-language-bench-v1":
+        raise ValueError("vision_language: unsupported or missing report schema")
     if root.get("smoke") is True:
-        raise ValueError("vision_language: smoke report is not publishable as a real harness score")
+        raise ValueError(
+            "vision_language: smoke report is not publishable as a real harness score"
+        )
     tier = str(get_required(root, "tier", ctx="vision_language:root")).strip().lower()
-    runtime_id = str(get_required(root, "runtime_id", ctx="vision_language:root")).strip().lower()
-    if tier == "stub" or not runtime_id or runtime_id == "stub" or runtime_id.endswith("-stub"):
-        raise ValueError("vision_language: stub runtime report is not publishable as a real harness score")
+    runtime_id = (
+        str(get_required(root, "runtime_id", ctx="vision_language:root"))
+        .strip()
+        .lower()
+    )
+    if (
+        tier == "stub"
+        or not runtime_id
+        or runtime_id == "stub"
+        or runtime_id.endswith("-stub")
+    ):
+        raise ValueError(
+            "vision_language: stub runtime report is not publishable as a real harness score"
+        )
     sample_count = expect_float(
         get_required(root, "sample_count", ctx="vision_language:root"),
         ctx="vision_language:sample_count",
     )
     if sample_count <= 0:
         raise ValueError("vision_language: zero-sample report is not publishable")
-    error_count = expect_float(root.get("error_count") or 0, ctx="vision_language:error_count")
-    if error_count >= sample_count:
-        raise ValueError("vision_language: all samples errored")
+    if not sample_count.is_integer():
+        raise ValueError("vision_language: sample_count must be an integer")
+    error_count = expect_float(
+        get_required(root, "error_count", ctx="vision_language:root"),
+        ctx="vision_language:error_count",
+    )
+    if error_count != 0:
+        raise ValueError(
+            "vision_language: partial/error reports are not publishable "
+            f"(error_count={error_count:g})"
+        )
+    samples = expect_list(
+        get_required(root, "samples", ctx="vision_language:root"),
+        ctx="vision_language:samples",
+    )
+    if len(samples) != int(sample_count):
+        raise ValueError(
+            "vision_language: sample_count does not match the per-sample report "
+            f"({sample_count:g} != {len(samples)})"
+        )
     score = expect_float(
         get_required(root, "score", ctx="vision_language:root"),
         ctx="vision_language:score",
     )
+    if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+        raise ValueError("vision_language: score must be a finite ratio")
     return ScoreExtraction(
         score=score,
         unit="ratio",
@@ -606,7 +1255,9 @@ def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
             "benchmark": root.get("benchmark") or "",
             "sample_count": sample_count,
             "error_count": error_count,
-            "baseline_score": root.get("baseline_score") if root.get("baseline_score") is not None else "",
+            "baseline_score": root.get("baseline_score")
+            if root.get("baseline_score") is not None
+            else "",
             "delta": root.get("delta") if root.get("delta") is not None else "",
         },
     )
@@ -621,7 +1272,9 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
     Reference: arXiv:2512.24601 - Recursive Language Models
     """
     root = expect_dict(data, ctx="rlm_bench:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="rlm_bench:root"), ctx="rlm_bench:metrics")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="rlm_bench:root"), ctx="rlm_bench:metrics"
+    )
     overall_acc = expect_float(
         get_required(metrics, "overall_accuracy", ctx="rlm_bench:metrics"),
         ctx="rlm_bench:overall_accuracy",
@@ -641,7 +1294,9 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
     s_niah_by_length = get_optional(metrics, "s_niah_by_length")
     s_niah_avg = 0.0
     if isinstance(s_niah_by_length, dict) and s_niah_by_length:
-        accuracies = [v for v in s_niah_by_length.values() if isinstance(v, (int, float))]
+        accuracies = [
+            v for v in s_niah_by_length.values() if isinstance(v, (int, float))
+        ]
         if accuracies:
             s_niah_avg = sum(accuracies) / len(accuracies)
 
@@ -655,7 +1310,8 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
             "passed_tasks": get_optional(metrics, "passed_tasks") or 0,
             "s_niah_avg_accuracy": s_niah_avg,  # Computed from s_niah_by_length dict
             "oolong_accuracy": get_optional(metrics, "oolong_accuracy") or 0,
-            "oolong_pairs_accuracy": get_optional(metrics, "oolong_pairs_accuracy") or 0,
+            "oolong_pairs_accuracy": get_optional(metrics, "oolong_pairs_accuracy")
+            or 0,
             "total_cost_usd": get_optional(metrics, "total_cost_usd") or 0,
             "avg_iterations": get_optional(metrics, "avg_iterations") or 0,
         },
@@ -762,7 +1418,10 @@ def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
     Hermes/OpenClaw runs look like successful agent comparisons.
     """
     root = expect_dict(data, ctx="configbench:root")
-    handlers = expect_list(get_required(root, "handlers", ctx="configbench:root"), ctx="configbench:handlers")
+    handlers = expect_list(
+        get_required(root, "handlers", ctx="configbench:root"),
+        ctx="configbench:handlers",
+    )
     target: dict[str, JSONValue] | None = None
     for entry in handlers:
         if not isinstance(entry, dict):
@@ -774,7 +1433,9 @@ def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
     if target is None:
         raise ValueError("configbench: no Eliza handler entry found")
     overall_raw = target.get("overallScore")
-    overall = expect_float(overall_raw if overall_raw is not None else 0.0, ctx="configbench:overallScore")
+    overall = expect_float(
+        overall_raw if overall_raw is not None else 0.0, ctx="configbench:overallScore"
+    )
     security_raw = target.get("securityScore")
     capability_raw = target.get("capabilityScore")
     return ScoreExtraction(
@@ -864,22 +1525,60 @@ def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
     )
     if total_samples <= 0:
         raise ValueError("mmau: zero-sample score is not publishable")
-    error_count = expect_float(root.get("error_count") or 0, ctx="mmau:error_count")
-    if error_count >= total_samples:
-        raise ValueError("mmau: all samples errored")
-    by_cat_raw = root.get("accuracy_by_category")
-    by_cat = by_cat_raw if isinstance(by_cat_raw, dict) else {}
-    summary_raw = root.get("summary")
-    summary = summary_raw if isinstance(summary_raw, dict) else {}
+    if not total_samples.is_integer():
+        raise ValueError("mmau: total_samples must be an integer")
+    error_count = expect_float(
+        get_required(root, "error_count", ctx="mmau:root"),
+        ctx="mmau:error_count",
+    )
+    if error_count != 0:
+        raise ValueError(
+            "mmau: partial/error reports are not publishable "
+            f"(error_count={error_count:g})"
+        )
+    if not math.isfinite(overall) or not 0.0 <= overall <= 1.0:
+        raise ValueError("mmau: overall_accuracy must be a finite ratio")
+    by_cat = expect_dict(
+        get_required(root, "accuracy_by_category", ctx="mmau:root"),
+        ctx="mmau:accuracy_by_category",
+    )
+    category_scores: dict[str, float] = {}
+    for category in ("speech", "sound", "music"):
+        value = expect_float(
+            get_required(by_cat, category, ctx="mmau:accuracy_by_category"),
+            ctx=f"mmau:accuracy_by_category.{category}",
+        )
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(
+                f"mmau:accuracy_by_category.{category} must be a finite ratio"
+            )
+        category_scores[category] = value
+    summary = expect_dict(
+        get_required(root, "summary", ctx="mmau:root"),
+        ctx="mmau:summary",
+    )
+    if summary.get("complete") is not True:
+        raise ValueError("mmau: report is not marked complete")
+    results = expect_list(
+        get_required(root, "results", ctx="mmau:root"),
+        ctx="mmau:results",
+    )
+    if len(results) != int(total_samples):
+        raise ValueError(
+            "mmau: total_samples does not match the per-sample report "
+            f"({total_samples:g} != {len(results)})"
+        )
+    if any(isinstance(item, dict) and item.get("error") for item in results):
+        raise ValueError("mmau: per-sample errors are not publishable")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_accuracy": overall,
-            "speech_accuracy": by_cat.get("speech") or 0,
-            "sound_accuracy": by_cat.get("sound") or 0,
-            "music_accuracy": by_cat.get("music") or 0,
+            "speech_accuracy": category_scores["speech"],
+            "sound_accuracy": category_scores["sound"],
+            "music_accuracy": category_scores["music"],
             "total_samples": total_samples,
             "error_count": error_count,
             "split": summary.get("split") or "",
@@ -1004,13 +1703,18 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
         len(speaker_name_provenance) if isinstance(speaker_name_provenance, list) else 0
     )
     audio_visual_cases = root.get("audio_visual_cases")
-    audio_visual_case_count = len(audio_visual_cases) if isinstance(audio_visual_cases, list) else 0
+    audio_visual_case_count = (
+        len(audio_visual_cases) if isinstance(audio_visual_cases, list) else 0
+    )
     generated_artifact_observed: dict[str, float] = {}
     generated_artifact_ids: set[str] = set()
     generated_artifact_scores = root.get("generated_artifact_scores")
     if isinstance(generated_artifact_scores, list):
         for index, row in enumerate(generated_artifact_scores):
-            score_row = expect_dict(row, ctx=f"meeting_transcription_proof:generated_artifact_scores[{index}]")
+            score_row = expect_dict(
+                row,
+                ctx=f"meeting_transcription_proof:generated_artifact_scores[{index}]",
+            )
             score_id = str(
                 get_required(
                     score_row,
@@ -1025,14 +1729,18 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                     ctx=f"meeting_transcription_proof:generated_artifact_scores[{index}].observed_score",
                 )
     baseline_comparisons = root.get("baseline_comparisons")
-    baseline_count = len(baseline_comparisons) if isinstance(baseline_comparisons, list) else 0
+    baseline_count = (
+        len(baseline_comparisons) if isinstance(baseline_comparisons, list) else 0
+    )
     open_source_run_count = 0
     internal_baseline_count = 0
     if isinstance(baseline_comparisons, list):
         for comparison in baseline_comparisons:
             if not isinstance(comparison, dict):
                 continue
-            if comparison.get("comparison_type") == "open_source" and comparison.get("run_status") in {
+            if comparison.get("comparison_type") == "open_source" and comparison.get(
+                "run_status"
+            ) in {
                 "run",
                 "imported",
             }:
@@ -1043,17 +1751,23 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             ):
                 internal_baseline_count += 1
     adversarial_cases = root.get("adversarial_cases")
-    adversarial_count = len(adversarial_cases) if isinstance(adversarial_cases, list) else 0
+    adversarial_count = (
+        len(adversarial_cases) if isinstance(adversarial_cases, list) else 0
+    )
     qa_items = root.get("qa_review_checklist")
     qa_count = len(qa_items) if isinstance(qa_items, list) else 0
     qa_machine_pass_count = 0
     qa_human_pass_count = 0
     if isinstance(qa_items, list):
         qa_machine_pass_count = sum(
-            1 for item in qa_items if isinstance(item, dict) and item.get("machine_verdict") == "pass"
+            1
+            for item in qa_items
+            if isinstance(item, dict) and item.get("machine_verdict") == "pass"
         )
         qa_human_pass_count = sum(
-            1 for item in qa_items if isinstance(item, dict) and item.get("verdict") == "pass"
+            1
+            for item in qa_items
+            if isinstance(item, dict) and item.get("verdict") == "pass"
         )
     parity_summary_raw = root.get("parity_matrix_summary")
     parity_summary = parity_summary_raw if isinstance(parity_summary_raw, dict) else {}
@@ -1063,9 +1777,13 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
     publishable = root.get("publishable") is True
     if lane == "real_product":
         if not publishable:
-            raise ValueError("meeting_transcription_proof: real lane must be publishable")
+            raise ValueError(
+                "meeting_transcription_proof: real lane must be publishable"
+            )
         if not isinstance(evidence_files, dict):
-            raise ValueError("meeting_transcription_proof: real lane requires evidence file map")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires evidence file map"
+            )
         missing_evidence = _MEETING_PROOF_REQUIRED_EVIDENCE - set(evidence_files)
         if missing_evidence:
             raise ValueError(
@@ -1078,7 +1796,9 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                 ctx=f"meeting_transcription_proof:{section}",
             )
             if not rows:
-                raise ValueError(f"meeting_transcription_proof: real lane requires non-empty {section}")
+                raise ValueError(
+                    f"meeting_transcription_proof: real lane requires non-empty {section}"
+                )
         missing_metrics = _MEETING_PROOF_REQUIRED_REAL_METRICS - set(metrics)
         if missing_metrics:
             raise ValueError(
@@ -1088,49 +1808,83 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
         # #12498: the named-evidence gate above (#12502) subsumes the old count
         # check; the speaker-name provenance requirement is additive on top of it.
         if speaker_name_provenance_count < 8:
-            raise ValueError("meeting_transcription_proof: real lane requires speaker name provenance")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires speaker name provenance"
+            )
         if audio_visual_case_count < 7:
-            raise ValueError("meeting_transcription_proof: real lane requires audio_visual_cases")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires audio_visual_cases"
+            )
         missing_av_metrics = _MEETING_PROOF_REQUIRED_AV_METRICS - set(metrics)
         if missing_av_metrics:
             raise ValueError(
                 "meeting_transcription_proof: real lane requires audio-visual metrics "
                 f"{sorted(missing_av_metrics)}"
             )
-        missing_generated_scores = MEETING_PROOF_REQUIRED_GENERATED_ARTIFACT_SCORE_IDS - generated_artifact_ids
+        missing_generated_scores = (
+            MEETING_PROOF_REQUIRED_GENERATED_ARTIFACT_SCORE_IDS - generated_artifact_ids
+        )
         if missing_generated_scores:
             raise ValueError(
                 "meeting_transcription_proof: real lane requires complete generated artifact scores"
             )
         if baseline_count < 7:
-            raise ValueError("meeting_transcription_proof: real lane requires baseline comparisons")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires baseline comparisons"
+            )
         if open_source_run_count < 1:
-            raise ValueError("meeting_transcription_proof: real lane requires an open-source baseline run")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires an open-source baseline run"
+            )
         if internal_baseline_count < 1:
-            raise ValueError("meeting_transcription_proof: real lane requires current Eliza baseline")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires current Eliza baseline"
+            )
         if adversarial_count < 10:
-            raise ValueError("meeting_transcription_proof: real lane requires adversarial cases")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires adversarial cases"
+            )
         if qa_count < 5:
-            raise ValueError("meeting_transcription_proof: real lane requires QA checklist verdicts")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires QA checklist verdicts"
+            )
         if qa_machine_pass_count != qa_count or qa_human_pass_count != qa_count:
-            raise ValueError("meeting_transcription_proof: real lane requires passing QA checklist verdicts")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires passing QA checklist verdicts"
+            )
         parity_matrix = expect_list(
             get_required(root, "parity_matrix", ctx="meeting_transcription_proof:root"),
             ctx="meeting_transcription_proof:parity_matrix",
         )
         parity_summary = expect_dict(
-            get_required(root, "parity_matrix_summary", ctx="meeting_transcription_proof:root"),
+            get_required(
+                root, "parity_matrix_summary", ctx="meeting_transcription_proof:root"
+            ),
             ctx="meeting_transcription_proof:parity_matrix_summary",
         )
         parity_lane_ids: set[str] = set()
         row_evidence_platforms: set[str] = set()
         for index, row_raw in enumerate(parity_matrix):
-            row = expect_dict(row_raw, ctx=f"meeting_transcription_proof:parity_matrix[{index}]")
-            lane_id = str(get_required(row, "id", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"))
+            row = expect_dict(
+                row_raw, ctx=f"meeting_transcription_proof:parity_matrix[{index}]"
+            )
+            lane_id = str(
+                get_required(
+                    row, "id", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"
+                )
+            )
             parity_lane_ids.add(lane_id)
-            status = str(get_required(row, "status", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"))
+            status = str(
+                get_required(
+                    row,
+                    "status",
+                    ctx=f"meeting_transcription_proof:parity_matrix[{index}]",
+                )
+            )
             if status != "pass":
-                raise ValueError("meeting_transcription_proof: real lane requires all parity rows to pass")
+                raise ValueError(
+                    "meeting_transcription_proof: real lane requires all parity rows to pass"
+                )
             artifact_schema = {
                 str(item)
                 for item in expect_list(
@@ -1142,7 +1896,9 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                     ctx=f"meeting_transcription_proof:parity_matrix[{index}].artifact_schema",
                 )
             }
-            missing_artifact_schema = _MEETING_PROOF_REQUIRED_PARITY_ARTIFACT_SCHEMA - artifact_schema
+            missing_artifact_schema = (
+                _MEETING_PROOF_REQUIRED_PARITY_ARTIFACT_SCHEMA - artifact_schema
+            )
             if missing_artifact_schema:
                 raise ValueError(
                     "meeting_transcription_proof: real lane parity row missing artifact schema "
@@ -1151,7 +1907,11 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             evidence = {
                 str(item)
                 for item in expect_list(
-                    get_required(row, "evidence", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"),
+                    get_required(
+                        row,
+                        "evidence",
+                        ctx=f"meeting_transcription_proof:parity_matrix[{index}]",
+                    ),
                     ctx=f"meeting_transcription_proof:parity_matrix[{index}].evidence",
                 )
             }
@@ -1162,11 +1922,17 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                     f"{sorted(missing_evidence)}"
                 )
             baseline = expect_dict(
-                get_required(row, "baseline", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"),
+                get_required(
+                    row,
+                    "baseline",
+                    ctx=f"meeting_transcription_proof:parity_matrix[{index}]",
+                ),
                 ctx=f"meeting_transcription_proof:parity_matrix[{index}].baseline",
             )
             if baseline.get("regression") is True:
-                raise ValueError("meeting_transcription_proof: real lane parity row has baseline regression")
+                raise ValueError(
+                    "meeting_transcription_proof: real lane parity row has baseline regression"
+                )
             row_platforms = {
                 str(item)
                 for item in expect_list(
@@ -1193,19 +1959,31 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             )
         parity_pass_count = int(
             expect_float(
-                get_required(parity_summary, "pass_count", ctx="meeting_transcription_proof:parity_matrix_summary"),
+                get_required(
+                    parity_summary,
+                    "pass_count",
+                    ctx="meeting_transcription_proof:parity_matrix_summary",
+                ),
                 ctx="meeting_transcription_proof:parity_matrix_summary.pass_count",
             )
         )
         parity_fail_count = int(
             expect_float(
-                get_required(parity_summary, "fail_count", ctx="meeting_transcription_proof:parity_matrix_summary"),
+                get_required(
+                    parity_summary,
+                    "fail_count",
+                    ctx="meeting_transcription_proof:parity_matrix_summary",
+                ),
                 ctx="meeting_transcription_proof:parity_matrix_summary.fail_count",
             )
         )
         parity_skip_count = int(
             expect_float(
-                get_required(parity_summary, "skip_count", ctx="meeting_transcription_proof:parity_matrix_summary"),
+                get_required(
+                    parity_summary,
+                    "skip_count",
+                    ctx="meeting_transcription_proof:parity_matrix_summary",
+                ),
                 ctx="meeting_transcription_proof:parity_matrix_summary.skip_count",
             )
         )
@@ -1215,9 +1993,15 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             or parity_skip_count != 0
             or parity_summary.get("publishable") is not True
         ):
-            raise ValueError("meeting_transcription_proof: real lane requires complete parity matrix")
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires complete parity matrix"
+            )
         evidence_platforms = expect_list(
-            get_required(parity_summary, "evidence_platforms", ctx="meeting_transcription_proof:parity_matrix_summary"),
+            get_required(
+                parity_summary,
+                "evidence_platforms",
+                ctx="meeting_transcription_proof:parity_matrix_summary",
+            ),
             ctx="meeting_transcription_proof:parity_matrix_summary.evidence_platforms",
         )
         missing_platforms = _MEETING_PROOF_REQUIRED_PARITY_EVIDENCE_PLATFORMS - (
@@ -1229,15 +2013,21 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                 f"{sorted(missing_platforms)}"
             )
     elif publishable:
-        raise ValueError("meeting_transcription_proof: mocked lane cannot be publishable")
+        raise ValueError(
+            "meeting_transcription_proof: mocked lane cannot be publishable"
+        )
 
     generated_artifact_metrics: dict[str, JSONValue] = {}
     for metric_id in sorted(MEETING_PROOF_REQUIRED_GENERATED_ARTIFACT_SCORE_IDS):
         metric_value = metrics.get(metric_id)
-        if isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
+        if isinstance(metric_value, (int, float)) and not isinstance(
+            metric_value, bool
+        ):
             generated_artifact_metrics[metric_id] = float(metric_value)
         else:
-            generated_artifact_metrics[metric_id] = generated_artifact_observed.get(metric_id, 0)
+            generated_artifact_metrics[metric_id] = generated_artifact_observed.get(
+                metric_id, 0
+            )
 
     return ScoreExtraction(
         score=score,
@@ -1263,11 +2053,24 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             "face_count_accuracy": metrics.get("face_count_accuracy") or 0,
             "active_speaker_f1": metrics.get("active_speaker_f1") or 0,
             "active_speaker_map": metrics.get("active_speaker_map") or 0,
-            "audio_video_association_accuracy": metrics.get("audio_video_association_accuracy") or 0,
-            "off_screen_speaker_detection_accuracy": metrics.get("off_screen_speaker_detection_accuracy") or 0,
-            "room_feed_heuristic_precision": metrics.get("room_feed_heuristic_precision") or 0,
-            "room_feed_heuristic_recall": metrics.get("room_feed_heuristic_recall") or 0,
-            "visual_acoustic_disagreement_rate": metrics.get("visual_acoustic_disagreement_rate") or 0,
+            "audio_video_association_accuracy": metrics.get(
+                "audio_video_association_accuracy"
+            )
+            or 0,
+            "off_screen_speaker_detection_accuracy": metrics.get(
+                "off_screen_speaker_detection_accuracy"
+            )
+            or 0,
+            "room_feed_heuristic_precision": metrics.get(
+                "room_feed_heuristic_precision"
+            )
+            or 0,
+            "room_feed_heuristic_recall": metrics.get("room_feed_heuristic_recall")
+            or 0,
+            "visual_acoustic_disagreement_rate": metrics.get(
+                "visual_acoustic_disagreement_rate"
+            )
+            or 0,
             **generated_artifact_metrics,
             "parity_pass_count": parity_pass_count,
             "parity_fail_count": parity_fail_count,
@@ -1288,11 +2091,15 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="voicebench:root")
     profile = str(root.get("profile") or "").strip().lower()
     if profile == "mock":
-        raise ValueError("voicebench: mock profile result is not publishable as a real harness score")
+        raise ValueError(
+            "voicebench: mock profile result is not publishable as a real harness score"
+        )
     if profile != "synthetic-calibration":
         runtime = str(root.get("runtime") or "").strip().lower()
         if runtime != "typescript":
-            raise ValueError("voicebench: real score requires the TypeScript runtime artifact")
+            raise ValueError(
+                "voicebench: real score requires the TypeScript runtime artifact"
+            )
         if profile not in {"groq", "elevenlabs", "local-cerebras", "local-eliza1"}:
             raise ValueError(
                 "voicebench: real score requires a groq, elevenlabs, "
@@ -1304,22 +2111,35 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
         )
         if sample_count <= 0:
             raise ValueError("voicebench: zero-sample result is not publishable")
-        results = expect_list(get_required(root, "results", ctx="voicebench:root"), ctx="voicebench:results")
+        results = expect_list(
+            get_required(root, "results", ctx="voicebench:root"),
+            ctx="voicebench:results",
+        )
         if not results:
-            raise ValueError("voicebench: result records are required for a real harness score")
+            raise ValueError(
+                "voicebench: result records are required for a real harness score"
+            )
         dataset_name = str(root.get("datasetName") or "").strip().lower()
         if "mock" in dataset_name or "fixture" in dataset_name:
-            raise ValueError("voicebench: mock/fixture dataset result is not publishable")
-    summary = expect_dict(get_required(root, "summary", ctx="voicebench:root"), ctx="voicebench:summary")
+            raise ValueError(
+                "voicebench: mock/fixture dataset result is not publishable"
+            )
+    summary = expect_dict(
+        get_required(root, "summary", ctx="voicebench:root"), ctx="voicebench:summary"
+    )
     if not summary:
         raise ValueError("voicebench: empty summary block")
     mode_key = "simple" if "simple" in summary else next(iter(summary))
     mode_summary = expect_dict(summary[mode_key], ctx=f"voicebench:summary.{mode_key}")
     avg_e2e = expect_float(
-        get_required(mode_summary, "avgEndToEndMs", ctx=f"voicebench:summary.{mode_key}"),
+        get_required(
+            mode_summary, "avgEndToEndMs", ctx=f"voicebench:summary.{mode_key}"
+        ),
         ctx=f"voicebench:summary.{mode_key}.avgEndToEndMs",
     )
-    runs = expect_float(mode_summary.get("runs") or 0, ctx=f"voicebench:summary.{mode_key}.runs")
+    runs = expect_float(
+        mode_summary.get("runs") or 0, ctx=f"voicebench:summary.{mode_key}.runs"
+    )
     if runs <= 0:
         raise ValueError("voicebench: summary.runs must be positive")
     quality = expect_float(
@@ -1337,57 +2157,17 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
             "p99EndToEndMs": mode_summary.get("p99EndToEndMs") or 0,
             "avgTranscriptionMs": mode_summary.get("avgTranscriptionMs") or 0,
             "avgResponseTtftMs": mode_summary.get("avgResponseTtftMs") or 0,
-            "avgVoiceFirstTokenCachedMs": mode_summary.get("avgVoiceFirstTokenCachedMs") or 0,
-            "transcriptionNormalizedAccuracy": mode_summary.get("transcriptionNormalizedAccuracy") or 0,
+            "avgVoiceFirstTokenCachedMs": mode_summary.get("avgVoiceFirstTokenCachedMs")
+            or 0,
+            "transcriptionNormalizedAccuracy": mode_summary.get(
+                "transcriptionNormalizedAccuracy"
+            )
+            or 0,
             "runs": runs,
             "profile": root.get("profile") or "",
             "runtime": root.get("runtime") or "",
             "sampleCount": root.get("sampleCount") or 0,
             "datasetName": root.get("datasetName") or "",
-        },
-    )
-
-
-def _score_from_social_alpha_json(data: JSONValue) -> ScoreExtraction:
-    """Extract scores from Social-Alpha results.
-
-    Reports the COMPOSITE Trust Marketplace Score (0..100) when all four
-    suites ran. Falls back to averaging the available per-suite scores when
-    only a subset of suites was selected (e.g. ``--suite detect``).
-    """
-    root = expect_dict(data, ctx="social_alpha:root")
-    composite_raw = root.get("COMPOSITE")
-    suite_scores: dict[str, float] = {}
-    for key, value in root.items():
-        if not isinstance(value, dict) or key == "COMPOSITE":
-            continue
-        suite_score_raw = value.get("suite_score")
-        if isinstance(suite_score_raw, (int, float)):
-            suite_scores[key] = float(suite_score_raw)
-    if isinstance(composite_raw, dict):
-        tms_raw = composite_raw.get("trust_marketplace_score")
-        if isinstance(tms_raw, (int, float)):
-            tms = float(tms_raw)
-            return ScoreExtraction(
-                score=tms / 100.0,
-                unit="ratio",
-                higher_is_better=True,
-                metrics={
-                    "trust_marketplace_score": tms,
-                    "suite_scores": cast(JSONValue, suite_scores),
-                },
-            )
-    if not suite_scores:
-        raise ValueError("social_alpha: no suite_score values found")
-    avg_score = sum(suite_scores.values()) / len(suite_scores)
-    return ScoreExtraction(
-        score=avg_score / 100.0,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "average_suite_score": avg_score,
-            "suite_scores": cast(JSONValue, suite_scores),
-            "suites_run": list(suite_scores.keys()),
         },
     )
 
@@ -1413,7 +2193,7 @@ def _score_from_trust_json(data: JSONValue) -> ScoreExtraction:
 
 
 def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
-    """Extract scores from WebShop benchmark results."""
+    """Extract only the complete, provenance-pinned campaign workload."""
     root = expect_dict(data, ctx="webshop:root")
     total_tasks = expect_float(
         get_required(root, "total_tasks", ctx="webshop:root"),
@@ -1423,8 +2203,11 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "total_trials", ctx="webshop:root"),
         ctx="webshop:total_trials",
     )
-    if total_tasks <= 0 or total_trials <= 0:
-        raise ValueError("webshop: zero-task score is not publishable")
+    if total_tasks != 5_500 or total_trials != 5_500:
+        raise ValueError(
+            "webshop: publishable full campaign requires exactly 5,500 "
+            f"tasks and trials, got tasks={total_tasks:g}, trials={total_trials:g}"
+        )
     average_reward = expect_float(
         get_required(root, "average_reward", ctx="webshop:root"),
         ctx="webshop:average_reward",
@@ -1433,6 +2216,63 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "success_rate", ctx="webshop:root"),
         ctx="webshop:success_rate",
     )
+    if (
+        not math.isfinite(average_reward)
+        or not 0.0 <= average_reward <= 1.0
+        or not math.isfinite(success_rate)
+        or not 0.0 <= success_rate <= 1.0
+    ):
+        raise ValueError("webshop: reward and success rate must be finite ratios")
+    average_turns = expect_float(
+        get_required(root, "average_turns", ctx="webshop:root"),
+        ctx="webshop:average_turns",
+    )
+    average_steps = expect_float(
+        get_required(root, "average_steps", ctx="webshop:root"),
+        ctx="webshop:average_steps",
+    )
+    average_duration_ms = expect_float(
+        get_required(root, "average_duration_ms", ctx="webshop:root"),
+        ctx="webshop:average_duration_ms",
+    )
+    if any(
+        not math.isfinite(value) or value < 0
+        for value in (average_turns, average_steps, average_duration_ms)
+    ):
+        raise ValueError(
+            "webshop: aggregate timing/step metrics must be finite and non-negative"
+        )
+
+    summary = expect_dict(
+        get_required(root, "summary", ctx="webshop:root"),
+        ctx="webshop:summary",
+    )
+    expected_fields = cast(dict[str, JSONValue], WEBSHOP_FULL_REPORT_CONTRACT)
+    for key, expected in expected_fields.items():
+        actual = get_required(summary, key, ctx="webshop:summary")
+        if actual != expected:
+            raise ValueError(
+                f"webshop:summary.{key} must be {expected!r}, got {actual!r}"
+            )
+    java_version = get_required(summary, "java_version", ctx="webshop:summary")
+    report_contract_reason = webshop_report_contract_reason(summary)
+    if report_contract_reason is not None:
+        raise ValueError(f"webshop:{report_contract_reason}")
+    for key in (
+        "sample",
+        "split",
+        "profile",
+        "dataset_source",
+        "hf_requested",
+        "use_hf",
+        "include_edge_scenarios",
+    ):
+        actual = get_required(root, key, ctx="webshop:root")
+        if actual != expected_fields[key]:
+            raise ValueError(
+                f"webshop:{key} must match the full campaign contract "
+                f"{expected_fields[key]!r}, got {actual!r}"
+            )
     return ScoreExtraction(
         score=average_reward,
         unit="ratio",
@@ -1440,15 +2280,13 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
         metrics={
             "success_rate": success_rate,
             "average_reward": average_reward,
-            "average_turns": root.get("average_turns") or 0,
-            "average_steps": root.get("average_steps") or 0,
-            "average_duration_ms": root.get("average_duration_ms") or 0,
+            "average_turns": average_turns,
+            "average_steps": average_steps,
+            "average_duration_ms": average_duration_ms,
             "total_tasks": int(total_tasks),
             "total_trials": int(total_trials),
-            "sample": bool(root.get("sample", False)),
-            "split": root.get("split") or "",
-            "profile": root.get("profile") or "",
-            "use_hf": bool(root.get("use_hf", False)),
+            **expected_fields,
+            "java_version": java_version,
         },
     )
 
@@ -1490,7 +2328,9 @@ def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
         )
     scenarios = get_optional(root, "scenarios")
     if not isinstance(scenarios, list) or not scenarios:
-        raise ValueError("hyperliquid_bench: missing scenario-level live execution evidence")
+        raise ValueError(
+            "hyperliquid_bench: missing scenario-level live execution evidence"
+        )
     failed = [
         item
         for item in scenarios
@@ -1548,7 +2388,9 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
         if isinstance(execution, dict) and (
             execution.get("mock_mode") is True or execution.get("offline_mode") is True
         ):
-            raise ValueError("gauntlet: mock/offline execution result is not publishable as a real harness score")
+            raise ValueError(
+                "gauntlet: mock/offline execution result is not publishable as a real harness score"
+            )
     results = expect_dict(
         get_required(root, "results", ctx="gauntlet:root"),
         ctx="gauntlet:results",
@@ -1578,8 +2420,13 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_scambench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="scambench:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="scambench:root"), ctx="scambench:metrics")
-    score = expect_float(get_required(metrics, "score", ctx="scambench:metrics"), ctx="scambench:metrics.score")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="scambench:root"), ctx="scambench:metrics"
+    )
+    score = expect_float(
+        get_required(metrics, "score", ctx="scambench:metrics"),
+        ctx="scambench:metrics.score",
+    )
     n_scam = expect_float(metrics.get("n_scam") or 0, ctx="scambench:metrics.n_scam")
     n_legit = expect_float(metrics.get("n_legit") or 0, ctx="scambench:metrics.n_legit")
     if n_scam + n_legit <= 0:
@@ -1699,19 +2546,92 @@ def _score_from_multitask_bench_json(data: JSONValue) -> ScoreExtraction:
     interference = get_optional(root, "interference")
     if not isinstance(interference, dict):
         raise ValueError("multitask_bench:interference block is required")
+    sample = expect_dict(
+        get_required(root, "sample", ctx="multitask_bench:root"),
+        ctx="multitask_bench:sample",
+    )
+    scenario_ids = expect_list(
+        get_required(sample, "scenario_ids", ctx="multitask_bench:sample"),
+        ctx="multitask_bench:sample.scenario_ids",
+    )
+    sample_size = expect_float(
+        get_required(sample, "size", ctx="multitask_bench:sample"),
+        ctx="multitask_bench:sample.size",
+    )
+    normalized_scenario_ids = [str(value) for value in scenario_ids]
+    if (
+        sample_size != 10
+        or len(normalized_scenario_ids) != 10
+        or len(set(normalized_scenario_ids)) != 10
+    ):
+        raise ValueError(
+            "multitask_bench: publishable report requires the complete "
+            "10-scenario sample"
+        )
 
     lane_by_n: dict[int, dict[str, JSONValue]] = {}
     for lane in lanes:
         lane_dict = expect_dict(lane, ctx="multitask_bench:lane")
         n_val = get_required(lane_dict, "n", ctx="multitask_bench:lane")
-        lane_by_n[int(expect_float(n_val, ctx="multitask_bench:lane.n"))] = lane_dict
+        n_float = expect_float(n_val, ctx="multitask_bench:lane.n")
+        if not n_float.is_integer():
+            raise ValueError("multitask_bench: lane n must be an integer")
+        n = int(n_float)
+        if n in lane_by_n:
+            raise ValueError(f"multitask_bench: duplicate N={n} lane")
+        lane_by_n[n] = lane_dict
+    if set(lane_by_n) != {1, 5, 10}:
+        raise ValueError("multitask_bench: complete N=1/5/10 lanes are required")
+    for n, lane in lane_by_n.items():
+        tasks_total = expect_float(
+            get_required(lane, "tasks_total", ctx=f"multitask_bench:n{n}"),
+            ctx=f"multitask_bench:n{n}.tasks_total",
+        )
+        tasks_completed = expect_float(
+            get_required(lane, "tasks_completed", ctx=f"multitask_bench:n{n}"),
+            ctx=f"multitask_bench:n{n}.tasks_completed",
+        )
+        completion_rate = expect_float(
+            get_required(lane, "completion_rate", ctx=f"multitask_bench:n{n}"),
+            ctx=f"multitask_bench:n{n}.completion_rate",
+        )
+        per_task = expect_list(
+            get_required(lane, "per_task", ctx=f"multitask_bench:n{n}"),
+            ctx=f"multitask_bench:n{n}.per_task",
+        )
+        per_task_rows = [
+            expect_dict(item, ctx=f"multitask_bench:n{n}.per_task") for item in per_task
+        ]
+        per_task_ids = [str(item.get("scenario_id") or "") for item in per_task_rows]
+        if (
+            tasks_total != 10
+            or tasks_completed != 10
+            or completion_rate != 1.0
+            or len(per_task_rows) != 10
+            or set(per_task_ids) != set(normalized_scenario_ids)
+            or any(item.get("completed") is not True for item in per_task_rows)
+        ):
+            raise ValueError(
+                f"multitask_bench: N={n} lane is partial or does not match "
+                "the complete 10-scenario sample"
+            )
+    if set(interference) != {"n5_minus_n1", "n10_minus_n1"}:
+        raise ValueError("multitask_bench: complete N=5/N=10 interference is required")
+    for key, raw in interference.items():
+        value = expect_float(raw, ctx=f"multitask_bench:interference.{key}")
+        if not math.isfinite(value):
+            raise ValueError(f"multitask_bench:interference.{key} must be finite")
     n10 = lane_by_n.get(10)
     if n10 is None:
-        raise ValueError("multitask_bench: the N=10 lane is required for the scalar score")
+        raise ValueError(
+            "multitask_bench: the N=10 lane is required for the scalar score"
+        )
     mean_task_score = expect_float(
         get_required(n10, "mean_task_score", ctx="multitask_bench:n10"),
         ctx="multitask_bench:n10.mean_task_score",
     )
+    if not math.isfinite(mean_task_score) or not 0.0 <= mean_task_score <= 1.0:
+        raise ValueError("multitask_bench:n10.mean_task_score must be a finite ratio")
     return ScoreExtraction(
         score=mean_task_score,
         unit="ratio",
@@ -1741,10 +2661,14 @@ def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="voiceagentbench:root")
     model_name = get_optional(root, "model_name") or ""
     if str(model_name).strip().lower() == "mock":
-        raise ValueError("voiceagentbench: mock agent result is not publishable as a real harness score")
+        raise ValueError(
+            "voiceagentbench: mock agent result is not publishable as a real harness score"
+        )
     stt_provider = str(get_optional(root, "stt_provider") or "").strip().lower()
     if stt_provider == "fixture":
-        raise ValueError("voiceagentbench: fixture STT result is not publishable as a real harness score")
+        raise ValueError(
+            "voiceagentbench: fixture STT result is not publishable as a real harness score"
+        )
     pass_at_1 = expect_float(
         get_required(root, "pass_at_1", ctx="voiceagentbench:root"),
         ctx="voiceagentbench:pass_at_1",
@@ -1768,27 +2692,169 @@ def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _action_calling_object_list(value: object, *, ctx: str) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        raise ValueError(f"{ctx}: expected array")
+    objects: list[dict[str, object]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"{ctx}[{index}]: expected object")
+        objects.append(item)
+    return objects
+
+
 def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="action_calling:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="action_calling:root"), ctx="action_calling:metrics")
-    score = expect_float(get_required(metrics, "score", ctx="action_calling:metrics"), ctx="action_calling:metrics.score")
-    generation_source = root.get("generation_source")
-    n = root.get("n") or 0
-    if not isinstance(n, int) or n <= 0:
+    n = root.get("n")
+    if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
         raise ValueError("action_calling:n must be positive")
+    contract_reason = action_calling_report_contract_reason(root)
+    if contract_reason is not None:
+        raise ValueError(contract_reason)
+
+    raw_outcomes = root.get("case_outcomes")
+    if not isinstance(raw_outcomes, list):
+        raise ValueError("action_calling:case_outcomes must be a complete array")
+    if len(raw_outcomes) != ACTION_CALLING_FULL_SCENARIO_COUNT:
+        raise ValueError("action_calling:case_outcomes must contain all 693 cases")
+
+    case_ids: list[str] = []
+    case_contract_manifest: list[dict[str, object]] = []
+    computed_counts = {name: 0 for name in ACTION_CALLING_METRIC_NAMES}
+    case_generation_sources: list[str] = []
+    for index, raw_outcome in enumerate(raw_outcomes):
+        if not isinstance(raw_outcome, dict):
+            raise ValueError(f"action_calling:case_outcomes[{index}] must be an object")
+        ctx = f"action_calling:case_outcomes[{index}]"
+        case_id = raw_outcome.get("case_id")
+        if not isinstance(case_id, str) or not case_id or case_id != case_id.strip():
+            raise ValueError(f"{ctx}.case_id must be a non-empty opaque identifier")
+        messages = _action_calling_object_list(
+            raw_outcome.get("messages"), ctx=f"{ctx}.messages"
+        )
+        tools = _action_calling_object_list(
+            raw_outcome.get("tools"), ctx=f"{ctx}.tools"
+        )
+        expected_calls = _action_calling_object_list(
+            raw_outcome.get("expected_tool_calls"),
+            ctx=f"{ctx}.expected_tool_calls",
+        )
+        predicted_calls = _action_calling_object_list(
+            raw_outcome.get("predicted_tool_calls"),
+            ctx=f"{ctx}.predicted_tool_calls",
+        )
+        generation_source = raw_outcome.get("generation_source")
+        if not isinstance(generation_source, str) or not generation_source:
+            raise ValueError(f"{ctx}.generation_source must be a non-empty string")
+        if generation_source not in {
+            "captured_action",
+            "native_tool_calls",
+            "model_text",
+        }:
+            raise ValueError(f"{ctx}.generation_source is not a native result source")
+
+        recomputed = score_action_calling_case(expected_calls, predicted_calls, tools)
+        for name, expected_value in recomputed.items():
+            reported_value = raw_outcome.get(name)
+            if not isinstance(reported_value, bool):
+                raise ValueError(f"{ctx}.{name} must be boolean")
+            if reported_value is not expected_value:
+                raise ValueError(f"{ctx}.{name} does not match recomputed calls")
+            computed_counts[name] += int(expected_value)
+
+        case_ids.append(case_id)
+        case_generation_sources.append(generation_source)
+        case_contract_manifest.append(
+            {
+                "id": case_id,
+                "messages": messages,
+                "tools": tools,
+                "expected_calls": expected_calls,
+            }
+        )
+
+    if len(case_ids) != len(set(case_ids)):
+        raise ValueError("action_calling:case_outcomes contains duplicate case_id")
+    case_id_manifest_sha256 = canonical_identifier_manifest_sha256(case_ids)
+    if case_id_manifest_sha256 != ACTION_CALLING_EVALUATED_CASE_ID_MANIFEST_SHA256:
+        raise ValueError(
+            "action_calling:case outcome ID manifest does not match corpus"
+        )
+    case_contract_sha256 = canonical_json_sha256(case_contract_manifest)
+    if case_contract_sha256 != ACTION_CALLING_EVALUATED_CASE_MANIFEST_SHA256:
+        raise ValueError("action_calling:case contract manifest does not match corpus")
+
+    reported_counts = root.get("counts")
+    if not isinstance(reported_counts, dict):
+        raise ValueError("action_calling:counts must be an object")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="action_calling:root"),
+        ctx="action_calling:metrics",
+    )
+    computed_metrics: dict[str, float] = {}
+    for name in ACTION_CALLING_METRIC_NAMES:
+        reported_count = reported_counts.get(name)
+        if (
+            not isinstance(reported_count, int)
+            or isinstance(reported_count, bool)
+            or reported_count != computed_counts[name]
+        ):
+            raise ValueError(
+                f"action_calling:counts.{name} does not match case outcomes"
+            )
+        computed_metric = computed_counts[name] / n
+        reported_metric = expect_float(
+            get_required(metrics, name, ctx="action_calling:metrics"),
+            ctx=f"action_calling:metrics.{name}",
+        )
+        if not math.isclose(
+            reported_metric, computed_metric, rel_tol=1e-12, abs_tol=1e-12
+        ):
+            raise ValueError(
+                f"action_calling:metrics.{name} does not match case outcomes"
+            )
+        computed_metrics[name] = computed_metric
+
+    score = expect_float(
+        get_required(metrics, "score", ctx="action_calling:metrics"),
+        ctx="action_calling:metrics.score",
+    )
+    computed_score = (
+        0.0
+        if any(value == 0.0 for value in computed_metrics.values())
+        else math.exp(
+            sum(math.log(value) for value in computed_metrics.values())
+            / len(computed_metrics)
+        )
+    )
+    if not math.isclose(score, computed_score, rel_tol=1e-12, abs_tol=1e-12):
+        raise ValueError("action_calling:metrics.score does not match case outcomes")
+
+    unique_generation_sources = sorted(set(case_generation_sources))
+    if root.get("generation_sources") != unique_generation_sources:
+        raise ValueError(
+            "action_calling:generation_sources does not match case outcomes"
+        )
+    computed_generation_source = (
+        unique_generation_sources[0] if len(unique_generation_sources) == 1 else "mixed"
+    )
+    if root.get("generation_source") != computed_generation_source:
+        raise ValueError(
+            "action_calling:generation_source does not match case outcomes"
+        )
+
     return ScoreExtraction(
-        score=score,
+        score=computed_score,
         unit="ratio",
         higher_is_better=True,
         metrics={
-            "score": score,
-            "native_tool_calls_ok": metrics.get("native_tool_calls_ok") or 0,
-            "tool_name_match": metrics.get("tool_name_match") or 0,
-            "args_parse_ok": metrics.get("args_parse_ok") or 0,
-            "required_keys_ok": metrics.get("required_keys_ok") or 0,
-            "arguments_match": metrics.get("arguments_match") or 0,
+            "score": computed_score,
+            **computed_metrics,
+            "counts": computed_counts,
             "n": n,
-            "generation_source": generation_source or "",
+            "generation_source": computed_generation_source,
+            "case_id_manifest_sha256": case_id_manifest_sha256,
+            "case_contract_manifest_sha256": case_contract_sha256,
         },
     )
 
@@ -1796,7 +2862,11 @@ def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_eliza_format_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="eliza_format:root")
     metrics_obj = get_optional(root, "metrics")
-    metrics = expect_dict(metrics_obj, ctx="eliza_format:metrics") if isinstance(metrics_obj, dict) else root
+    metrics = (
+        expect_dict(metrics_obj, ctx="eliza_format:metrics")
+        if isinstance(metrics_obj, dict)
+        else root
+    )
     score_raw = get_optional(metrics, "score")
     if score_raw is None:
         score_raw = get_optional(root, "score")
@@ -1838,8 +2908,12 @@ def _standard_benchmark_metrics(
 
 def _score_from_mmlu_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="mmlu:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="mmlu:root"), ctx="mmlu:metrics")
-    score = expect_float(get_required(metrics, "score", ctx="mmlu:metrics"), ctx="mmlu:score")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="mmlu:root"), ctx="mmlu:metrics"
+    )
+    score = expect_float(
+        get_required(metrics, "score", ctx="mmlu:metrics"), ctx="mmlu:score"
+    )
     n = expect_float(get_required(metrics, "n", ctx="mmlu:metrics"), ctx="mmlu:n")
     if n <= 0:
         raise ValueError("mmlu:n must be positive")
@@ -1847,15 +2921,23 @@ def _score_from_mmlu_json(data: JSONValue) -> ScoreExtraction:
         score=score,
         unit="ratio",
         higher_is_better=True,
-        metrics=_standard_benchmark_metrics(metrics, extra_keys=("accuracy", "correct")),
+        metrics=_standard_benchmark_metrics(
+            metrics, extra_keys=("accuracy", "correct")
+        ),
     )
 
 
 def _score_from_humaneval_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="humaneval:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="humaneval:root"), ctx="humaneval:metrics")
-    score = expect_float(get_required(metrics, "score", ctx="humaneval:metrics"), ctx="humaneval:score")
-    n = expect_float(get_required(metrics, "n", ctx="humaneval:metrics"), ctx="humaneval:n")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="humaneval:root"), ctx="humaneval:metrics"
+    )
+    score = expect_float(
+        get_required(metrics, "score", ctx="humaneval:metrics"), ctx="humaneval:score"
+    )
+    n = expect_float(
+        get_required(metrics, "n", ctx="humaneval:metrics"), ctx="humaneval:n"
+    )
     if n <= 0:
         raise ValueError("humaneval:n must be positive")
     return ScoreExtraction(
@@ -1868,8 +2950,12 @@ def _score_from_humaneval_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_gsm8k_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="gsm8k:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="gsm8k:root"), ctx="gsm8k:metrics")
-    score = expect_float(get_required(metrics, "score", ctx="gsm8k:metrics"), ctx="gsm8k:score")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="gsm8k:root"), ctx="gsm8k:metrics"
+    )
+    score = expect_float(
+        get_required(metrics, "score", ctx="gsm8k:metrics"), ctx="gsm8k:score"
+    )
     n = expect_float(get_required(metrics, "n", ctx="gsm8k:metrics"), ctx="gsm8k:n")
     if n <= 0:
         raise ValueError("gsm8k:n must be positive")
@@ -1886,9 +2972,15 @@ def _score_from_gsm8k_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_mt_bench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="mt_bench:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="mt_bench:root"), ctx="mt_bench:metrics")
-    score = expect_float(get_required(metrics, "score", ctx="mt_bench:metrics"), ctx="mt_bench:score")
-    n = expect_float(get_required(metrics, "n", ctx="mt_bench:metrics"), ctx="mt_bench:n")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="mt_bench:root"), ctx="mt_bench:metrics"
+    )
+    score = expect_float(
+        get_required(metrics, "score", ctx="mt_bench:metrics"), ctx="mt_bench:score"
+    )
+    n = expect_float(
+        get_required(metrics, "n", ctx="mt_bench:metrics"), ctx="mt_bench:n"
+    )
     if n <= 0:
         raise ValueError("mt_bench:n must be positive")
     return ScoreExtraction(
@@ -1912,7 +3004,10 @@ def _score_from_trajectory_replay_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "score", ctx="trajectory_replay:metrics"),
         ctx="trajectory_replay:score",
     )
-    n = expect_float(get_required(metrics, "n", ctx="trajectory_replay:metrics"), ctx="trajectory_replay:n")
+    n = expect_float(
+        get_required(metrics, "n", ctx="trajectory_replay:metrics"),
+        ctx="trajectory_replay:n",
+    )
     if n <= 0:
         raise ValueError("trajectory_replay:n must be positive")
     return ScoreExtraction(
@@ -1935,9 +3030,15 @@ def _score_from_clawbench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="clawbench:root")
     score_data = get_optional(root, "score")
     if isinstance(score_data, dict):
-        score_val = expect_float(get_optional(score_data, "score") or 0.0, ctx="clawbench:score")
+        score_val = expect_float(
+            get_optional(score_data, "score") or 0.0, ctx="clawbench:score"
+        )
         passed = get_optional(score_data, "passed") or 0
-        total = get_optional(score_data, "total_checks") or get_optional(score_data, "total") or 0
+        total = (
+            get_optional(score_data, "total_checks")
+            or get_optional(score_data, "total")
+            or 0
+        )
     else:
         score_val = 0.0
         passed = 0
@@ -1963,18 +3064,63 @@ def _score_from_openclaw_bench_json(data: JSONValue) -> ScoreExtraction:
     scoring_type = str(get_optional(root, "scoring_type") or "").strip().lower()
     real_validation = get_optional(root, "real_validation")
     if mode == "conceptual" or scoring_type == "conceptual_understanding":
-        raise ValueError("openclaw_bench: conceptual result is not publishable as a real harness score")
-    if isinstance(real_validation, dict) and real_validation.get("conceptual_scoring") is True:
-        raise ValueError("openclaw_bench: conceptual result is not publishable as a real harness score")
+        raise ValueError(
+            "openclaw_bench: conceptual result is not publishable as a real harness score"
+        )
+    if (
+        isinstance(real_validation, dict)
+        and real_validation.get("conceptual_scoring") is True
+    ):
+        raise ValueError(
+            "openclaw_bench: conceptual result is not publishable as a real harness score"
+        )
+    complete = get_optional(root, "complete")
+    if complete is not None and complete is not True:
+        raise ValueError(
+            "openclaw_bench: incomplete all-task report is not publishable"
+        )
+    if complete is True:
+        expected_tasks = expect_float(
+            get_required(root, "expected_tasks", ctx="openclaw:root"),
+            ctx="openclaw:expected_tasks",
+        )
+        completed_tasks = expect_float(
+            get_required(root, "tasks_completed", ctx="openclaw:root"),
+            ctx="openclaw:tasks_completed",
+        )
+        failed_tasks = expect_float(
+            get_required(root, "failed_tasks", ctx="openclaw:root"),
+            ctx="openclaw:failed_tasks",
+        )
+        tasks = expect_dict(
+            get_required(root, "tasks", ctx="openclaw:root"),
+            ctx="openclaw:tasks",
+        )
+        if (
+            expected_tasks <= 0
+            or completed_tasks != expected_tasks
+            or failed_tasks != 0
+            or len(tasks) != int(expected_tasks)
+            or any(
+                isinstance(item, dict) and item.get("error") for item in tasks.values()
+            )
+        ):
+            raise ValueError(
+                "openclaw_bench: all-task report is partial or contains errors"
+            )
     overall_raw = get_optional(root, "overall_score")
     if isinstance(overall_raw, (int, float)):
         overall = float(overall_raw)
     else:
         score_obj = get_optional(root, "score")
         if isinstance(score_obj, dict):
-            overall = expect_float(get_optional(score_obj, "score") or 0.0, ctx="openclaw:score.score")
+            overall = expect_float(
+                get_optional(score_obj, "score") or 0.0, ctx="openclaw:score.score"
+            )
         else:
             overall = 0.0
+    if not math.isfinite(overall) or not 0.0 <= overall <= 1.0:
+        raise ValueError("openclaw_bench: score must be a finite ratio")
     tasks_completed = get_optional(root, "tasks_completed") or 0
     if not tasks_completed and isinstance(get_optional(root, "score"), dict):
         tasks_completed = 1
@@ -1987,7 +3133,9 @@ def _score_from_openclaw_bench_json(data: JSONValue) -> ScoreExtraction:
             "tasks_completed": tasks_completed,
             "mode": mode or scoring_type or "",
             "harness": get_optional(root, "harness") or "",
-            "real_validation": real_validation if isinstance(real_validation, dict) else {},
+            "real_validation": real_validation
+            if isinstance(real_validation, dict)
+            else {},
         },
     )
 

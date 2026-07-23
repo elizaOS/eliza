@@ -104,9 +104,13 @@ describe("scenario runner wrapper", () => {
     await expect(readFile(result.viewerHtmlPath, "utf8")).resolves.toContain(
       "Scenario dry run",
     );
-    await expect(readFile(result.nativeJsonlPath!, "utf8")).resolves.toBe("");
+    const nativeJsonlPath = result.nativeJsonlPath;
+    if (!nativeJsonlPath) throw new Error("expected nativeJsonlPath");
+    await expect(readFile(nativeJsonlPath, "utf8")).resolves.toBe("");
+    const nativeManifestPath = result.nativeManifestPath;
+    if (!nativeManifestPath) throw new Error("expected nativeManifestPath");
     const nativeManifest = JSON.parse(
-      await readFile(result.nativeManifestPath!, "utf8"),
+      await readFile(nativeManifestPath, "utf8"),
     );
     expect(nativeManifest).toMatchObject({
       schema: "eliza_scenario_native_export",

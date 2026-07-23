@@ -34,8 +34,8 @@ export interface ScheduledTaskLogStore {
 
 /**
  * In-memory store used for unit tests + as a fallback when no DB-backed
- * store is wired in. The DB-backed store lives behind the route handlers
- * via `LifeOpsRepository`.
+ * store is wired in. The DB-backed store lives in `store.ts` and is owned by
+ * plugin-scheduling.
  */
 export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
   const rows: ScheduledTaskLogEntry[] = [];

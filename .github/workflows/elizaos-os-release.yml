@@ -21,7 +21,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -84,6 +84,37 @@ jobs:
           bun run --cwd packages/os/setup typecheck
           bun run --cwd packages/os/setup build
 
+      - name: Provision ripgrep for Linux metadata validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v rg >/dev/null 2>&1; then
+            rg --version
+            exit 0
+          fi
+
+          version=15.1.0
+          case "${RUNNER_ARCH}" in
+            X64) target=x86_64-unknown-linux-musl ;;
+            ARM64) target=aarch64-unknown-linux-gnu ;;
+            *)
+              echo "::error::Unsupported runner architecture for ripgrep: ${RUNNER_ARCH}"
+              exit 1
+              ;;
+          esac
+
+          archive="ripgrep-${version}-${target}.tar.gz"
+          release_url="https://github.com/BurntSushi/ripgrep/releases/download/${version}"
+          install_root="${RUNNER_TEMP}/ripgrep-${version}"
+          mkdir -p "${install_root}"
+          curl -fsSL "${release_url}/${archive}" -o "${install_root}/${archive}"
+          curl -fsSL "${release_url}/${archive}.sha256" -o "${install_root}/${archive}.sha256"
+          (cd "${install_root}" && sha256sum --check "${archive}.sha256")
+          tar -xzf "${install_root}/${archive}" -C "${install_root}"
+          bin_dir="${install_root}/ripgrep-${version}-${target}"
+          echo "${bin_dir}" >> "${GITHUB_PATH}"
+          "${bin_dir}/rg" --version
+
       - name: Validate Linux live USB metadata
         run: |
           cd packages/os/linux
@@ -94,7 +125,7 @@ jobs:
           bun run --cwd packages/os/homepage lint:check
           bun run --cwd packages/os/homepage typecheck
           bun run --cwd packages/os/homepage build
-          (cd packages/os/homepage && ../../node_modules/.bin/playwright install --with-deps chromium)
+          (cd packages/os/homepage && ../../../node_modules/.bin/playwright install --with-deps chromium)
           bun run --cwd packages/os/homepage test:e2e
 
       - name: Capture homepage contact sheet

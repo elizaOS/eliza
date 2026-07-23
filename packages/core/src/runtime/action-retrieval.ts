@@ -5,6 +5,7 @@
  * fusion into a tier-sized candidate set.
  */
 import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
+import { logger } from "../logger";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
 
@@ -302,6 +303,15 @@ export function retrieveActions(
 				? []
 				: parentAliasesForCandidateAction(actionName),
 		),
+		// Stage-1 routinely hints an action by one of its similes — the canonical
+		// documented example is candidateActions=["BASH"] for the SHELL parent
+		// (message-handler.ts). Similes feed the fuzzy search text but carry no
+		// rank guarantee, so a simile hint can lose the surface cut to unrelated
+		// keyword matches and reach the planner as a dead hint (it then improvises
+		// with whatever tools did rank, or falsely reports missing tool access).
+		// Resolve simile hints to their catalog parent so they exact-score like
+		// any explicit parent hint.
+		...resolveSimileParentHints(input.catalog.parents, candidateActions),
 	]);
 	const recentConversationText = shouldUseRecentConversationForActionSearch(
 		input.messageText ?? "",
@@ -983,6 +993,68 @@ function hasOnlyOperationTokens(tokens: Set<string>): boolean {
 		if (!VIEW_OPERATION_TOKENS.has(token)) return false;
 	}
 	return true;
+}
+
+/** Once-per-process dedupe for the ambiguous-simile warn — the resolver runs
+ *  on every retrieval and the catalog is stable within a process. */
+const warnedAmbiguousSimiles = new Set<string>();
+
+function resolveSimileParentHints(
+	parents: readonly ActionCatalogParent[],
+	candidateActions: readonly string[],
+): string[] {
+	if (candidateActions.length === 0) {
+		return [];
+	}
+	const parentNames = new Set(parents.map((parent) => parent.normalizedName));
+	const parentBySimile = new Map<string, string>();
+	// A simile claimed by MORE than one parent is ambiguous and must not route
+	// at all (#16561): first-writer-wins silently steals the intent from the
+	// other parent (catalog order is alphabetical, not semantic — e.g. a
+	// LIST_FILES simile on both a file-ops action and a stored-media action).
+	// The warn dedupes per process: this resolver runs on every retrieval.
+	const ambiguousSimiles = new Set<string>();
+	for (const parent of parents) {
+		const ownSimiles = new Set(
+			[
+				...parent.similes,
+				...parent.children.flatMap((child) => child.similes),
+			].flatMap((simile) => {
+				const normalized = normalizeActionName(simile);
+				// A simile that collides with a real parent name must not hijack it.
+				return !normalized || parentNames.has(normalized) ? [] : [normalized];
+			}),
+		);
+		for (const normalized of ownSimiles) {
+			const claimedBy = parentBySimile.get(normalized);
+			if (claimedBy !== undefined && claimedBy !== parent.normalizedName) {
+				if (!warnedAmbiguousSimiles.has(normalized)) {
+					warnedAmbiguousSimiles.add(normalized);
+					logger.warn(
+						{
+							src: "action-retrieval",
+							simile: normalized,
+							parents: [claimedBy, parent.normalizedName],
+						},
+						"simile claimed by multiple parents — dropped from routing as ambiguous",
+					);
+				}
+				ambiguousSimiles.add(normalized);
+				continue;
+			}
+			parentBySimile.set(normalized, parent.normalizedName);
+		}
+	}
+	for (const normalized of ambiguousSimiles) {
+		parentBySimile.delete(normalized);
+	}
+	return candidateActions.flatMap((actionName) => {
+		if (parentNames.has(actionName)) {
+			return [];
+		}
+		const parent = parentBySimile.get(actionName);
+		return parent ? [parent] : [];
+	});
 }
 
 export function candidateNamespaceParentExists(

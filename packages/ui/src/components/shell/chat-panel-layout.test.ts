@@ -219,7 +219,7 @@ describe("resolveChatPanelLayout", () => {
 
   it("seats the panel between the notch and the keyboard on the measured device geometry (ih542 vv542 sh932, kbd 390)", () => {
     // The EXACT device chip that reproduced the bug: keyboard open in the
-    // continuous-chat overlay, ih542 vv542 ce873 sh932. Post the readViewport
+    // chat overlay, ih542 vv542 ce873 sh932. Post the readViewport
     // fix the keyboard is DETECTED via screen.height - vv.height = 390, so both
     // keyboardInset and effectiveKeyboardInset are 390 (visual viewport already
     // reflects the shrink) and nothing extra is subtracted. The panel bounds to

@@ -2,18 +2,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
 
-vi.mock("@elizaos/core", () => ({
-  clearWorkspaceFolderConfig: vi.fn(),
-  formatError: (error: unknown) =>
-    error instanceof Error ? error.message : String(error),
-  writeWorkspaceFolderConfig: vi.fn(),
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    clearWorkspaceFolderConfig: vi.fn(),
+    formatError: (error: unknown) =>
+      error instanceof Error ? error.message : String(error),
+    writeWorkspaceFolderConfig: vi.fn(),
+  };
+});
 
 vi.mock("./mac-window-effects", () => ({
+  createSecurityScopedBookmark: vi.fn(() => null),
   enableVibrancy: vi.fn(() => false),
   ensureShadow: vi.fn(() => false),
+  isAppActive: vi.fn(() => false),
+  isKeyWindow: vi.fn(() => false),
+  makeKeyAndOrderFront: vi.fn(),
+  orderOut: vi.fn(),
   setNativeDragRegion: vi.fn(),
   setTrafficLightsPosition: vi.fn(),
+  startAccessingSecurityScopedBookmark: vi.fn(() => false),
+  stopAccessingSecurityScopedBookmarks: vi.fn(),
 }));
 
 const electrobunMock = vi.hoisted(() => {
@@ -126,7 +137,16 @@ const electrobunMock = vi.hoisted(() => {
   });
   const Utils = {
     clipboard: {},
+    clipboardAvailableFormats: vi.fn<() => string[] | null>(() => [
+      "text/plain",
+    ]),
+    clipboardClear: vi.fn(),
+    clipboardReadImage: vi.fn(() => new Uint8Array([1])),
+    clipboardReadText: vi.fn(() => "copied text"),
+    clipboardWriteImage: vi.fn(),
+    clipboardWriteText: vi.fn(),
     openExternal: vi.fn(),
+    openPath: vi.fn(),
     paths: {
       home: "/tmp",
       appData: "/tmp",
@@ -150,6 +170,10 @@ const electrobunMock = vi.hoisted(() => {
     setDockIconVisible: vi.fn(),
     isDockIconVisible: vi.fn(() => true),
   };
+  const ContextMenu = {
+    on: vi.fn(),
+    showContextMenu: vi.fn(),
+  };
   const GlobalShortcut = {
     isRegistered: vi.fn(() => false),
     register: vi.fn(),
@@ -162,6 +186,7 @@ const electrobunMock = vi.hoisted(() => {
     browserWindowInstances,
     trayInstances,
     BrowserWindow,
+    ContextMenu,
     GlobalShortcut,
     Tray,
     Utils,
@@ -206,9 +231,7 @@ vi.mock("electrobun/bun", () => {
         runtime: "test",
       })),
     },
-    ContextMenu: {
-      on: vi.fn(),
-    },
+    ContextMenu: electrobunMock.ContextMenu,
     GlobalShortcut: electrobunMock.GlobalShortcut,
     Screen: {
       getAllDisplays: vi.fn(() => []),
@@ -332,6 +355,14 @@ describe("DesktopManager main window controls", () => {
     expect(window.setAlwaysOnTop).toHaveBeenCalledWith(true);
     expect(window.setFullScreen).toHaveBeenCalledWith(true);
     expect(window.setTitle).toHaveBeenCalledWith("Window Manager");
+
+    await manager.setAlwaysOnTop({ flag: false });
+    await manager.setFullscreen({ flag: false });
+    await expect(
+      manager.setOpacity({ opacity: 0.75 }),
+    ).resolves.toBeUndefined();
+    expect(window.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+    expect(window.setFullScreen).toHaveBeenLastCalledWith(false);
   });
 
   it("gets and sets full window bounds", async () => {
@@ -696,8 +727,95 @@ describe("DesktopManager notifications", () => {
     resetDesktopManagerForTesting();
   });
 
-  it("maps notification options to Utils.showNotification and returns monotonic ids", async () => {
+  it("covers callback and native context-menu boundaries used beside notifications", async () => {
     const manager = new DesktopManager();
+    const sent = vi.fn();
+    const openSettings = vi.fn();
+    const openSurface = vi.fn(async () => ({
+      id: "surface-1",
+      surface: "chat",
+      title: "Chat",
+      singleton: true,
+      alwaysOnTop: false,
+    }));
+    const openApp = vi.fn(async () => ({
+      id: "app-1",
+      surface: "app",
+      title: "App",
+      singleton: false,
+      alwaysOnTop: false,
+    }));
+    manager.setSendToWebview(sent);
+    manager.setOpenSettingsCallback(openSettings);
+    manager.setOpenSurfaceWindowCallback(openSurface);
+    manager.setOpenAppWindowCallback(openApp);
+    manager.setManagedWindowAlwaysOnTopCallback(() => true);
+    manager.setOpenExternalHandler(async () => true);
+    manager.setRequestQuitCallback(async () => undefined);
+    manager.setRestoreMainWindowCallback(async () => undefined);
+
+    manager.openSettings("notifications");
+    expect(openSettings).toHaveBeenCalledWith("notifications");
+    expect(await manager.openSurfaceWindow("chat")).toMatchObject({
+      id: "surface-1",
+      surface: "chat",
+    });
+    expect(
+      await manager.openAppWindow({ title: "App", path: "/app" }),
+    ).toMatchObject({ id: "app-1", surface: "app" });
+    expect(manager.setManagedWindowAlwaysOnTop("surface-1", true)).toBe(true);
+
+    const context = manager as unknown as {
+      handleNativeContextMenuClick(event: unknown): void;
+    };
+    for (const action of [
+      "ask-agent",
+      "quote-in-chat",
+      "create-skill",
+      "save-as-command",
+    ]) {
+      context.handleNativeContextMenuClick({
+        data: { action, data: { text: "selected" } },
+      });
+    }
+    expect(sent).toHaveBeenCalledTimes(4);
+    context.handleNativeContextMenuClick({ data: {} });
+    context.handleNativeContextMenuClick({
+      data: { action: "ask-agent", data: { text: "" } },
+    });
+    expect(await manager.showSelectionContextMenu({ text: "   " })).toEqual({
+      shown: false,
+    });
+    expect(
+      await manager.showSelectionContextMenu({ text: " selected " }),
+    ).toEqual({ shown: true });
+    expect(electrobunMock.ContextMenu.showContextMenu).toHaveBeenCalledWith([
+      expect.objectContaining({
+        action: "ask-agent",
+        data: { text: "selected" },
+      }),
+      expect.objectContaining({ action: "quote-in-chat" }),
+      expect.objectContaining({ action: "create-skill" }),
+      expect.objectContaining({ action: "save-as-command" }),
+      { type: "separator" },
+      expect.objectContaining({ action: "copy-selection" }),
+    ]);
+
+    manager.setOpenAppWindowCallback(null);
+    manager.setManagedWindowAlwaysOnTopCallback(null);
+    manager.setOpenExternalHandler(null);
+    manager.setRequestQuitCallback(null);
+    manager.setRestoreMainWindowCallback(null);
+    manager.clearMainWindow();
+    expect(
+      await manager.openAppWindow({ title: "None", path: "/none" }),
+    ).toBeNull();
+  });
+
+  it("observes native notification delivery at the canonical DesktopManager boundary", async () => {
+    const manager = new DesktopManager();
+    // Exercise the real Utils boundary used by packaged Electrobun, never a
+    // browser Notification substitute or a monkey-patched diagnostics recorder.
 
     await expect(
       manager.showNotification({
@@ -743,6 +861,17 @@ describe("DesktopManager notifications", () => {
       }),
     ]);
 
+    for (let index = 3; index <= 51; index += 1) {
+      await manager.showNotification({
+        title: `Notification ${index}`,
+        body: `Body ${index}`,
+      });
+    }
+    const boundedDiagnostics = manager.getNotificationDiagnostics();
+    expect(boundedDiagnostics).toHaveLength(50);
+    expect(boundedDiagnostics[0]?.id).toBe("notification_2");
+    expect(boundedDiagnostics.at(-1)?.id).toBe("notification_51");
+
     manager.clearNotificationDiagnostics();
     expect(manager.getNotificationDiagnostics()).toEqual([]);
   });
@@ -754,6 +883,81 @@ describe("DesktopManager notifications", () => {
       manager.closeNotification({ id: "notification_1" }),
     ).resolves.toBeUndefined();
     expect(electrobunMock.Utils.showNotification).not.toHaveBeenCalled();
+  });
+
+  it("uses native clipboard and safe shell boundaries", async () => {
+    const manager = new DesktopManager();
+
+    await manager.writeToClipboard({ text: "hello" });
+    expect(electrobunMock.Utils.clipboardWriteText).toHaveBeenCalledWith(
+      "hello",
+    );
+
+    await manager.writeToClipboard({
+      image: Buffer.from([1, 2, 3]).toString("base64"),
+    });
+    expect(electrobunMock.Utils.clipboardWriteImage).toHaveBeenCalledWith(
+      new Uint8Array([1, 2, 3]),
+    );
+    await manager.writeToClipboard({ html: "<b>unsupported</b>" });
+
+    await expect(manager.readFromClipboard()).resolves.toEqual({
+      text: "copied text",
+      hasImage: true,
+    });
+    electrobunMock.Utils.clipboardReadText.mockReturnValueOnce("");
+    electrobunMock.Utils.clipboardReadImage.mockImplementationOnce(() => {
+      throw new Error("no image");
+    });
+    await expect(manager.readFromClipboard()).resolves.toEqual({
+      text: undefined,
+      hasImage: false,
+    });
+
+    await manager.clearClipboard();
+    expect(electrobunMock.Utils.clipboardClear).toHaveBeenCalledOnce();
+    await expect(manager.clipboardAvailableFormats()).resolves.toEqual({
+      formats: ["text/plain"],
+    });
+    electrobunMock.Utils.clipboardAvailableFormats.mockReturnValueOnce(null);
+    await expect(manager.clipboardAvailableFormats()).resolves.toEqual({
+      formats: [],
+    });
+
+    await expect(
+      manager.openExternal({ url: "javascript:alert(1)" }),
+    ).rejects.toThrow("Blocked openExternal");
+    await expect(manager.openExternal({ url: "not a url" })).rejects.toThrow(
+      "Invalid URL",
+    );
+    manager.setOpenExternalHandler(async () => false);
+    await manager.openExternal({ url: " https://example.com/path " });
+    expect(electrobunMock.Utils.openExternal).toHaveBeenCalledWith(
+      "https://example.com/path",
+    );
+    manager.setOpenExternalHandler(async () => {
+      throw new Error("handler unavailable");
+    });
+    await manager.openExternal({ url: "https://example.com/fallback" });
+    expect(electrobunMock.Utils.openExternal).toHaveBeenLastCalledWith(
+      "https://example.com/fallback",
+    );
+    manager.setOpenExternalHandler(async () => true);
+    await manager.openExternal({ url: "https://example.com/handled" });
+    expect(electrobunMock.Utils.openExternal).toHaveBeenCalledTimes(2);
+
+    await expect(
+      manager.showItemInFolder({ path: "relative/file.txt" }),
+    ).rejects.toThrow("absolute path");
+    await manager.showItemInFolder({ path: " /tmp/file.txt " });
+    expect(electrobunMock.Utils.showItemInFolder).toHaveBeenCalledWith(
+      "/tmp/file.txt",
+    );
+    await expect(manager.openPath({ path: "   " })).rejects.toThrow(
+      "non-empty path",
+    );
+    await manager.openPath({ path: " /tmp " });
+    expect(electrobunMock.Utils.openPath).toHaveBeenCalledWith("/tmp");
   });
 });
 

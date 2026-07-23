@@ -23,6 +23,7 @@ const ENV_KEYS = [
   "CLAUDE_CODE_API_KEY",
   "CODEX_API_KEY",
   "ELIZA_AGENT_SELECTION_STRATEGY",
+  "ELIZA_CODEX_ACP_COMMAND",
   "ELIZA_CONFIG_PATH",
   "ELIZA_DEFAULT_AGENT_TYPE",
   "ELIZA_ELIZAOS_ACP_COMMAND",
@@ -81,6 +82,11 @@ function setEnv(values: Record<string, string | undefined>) {
   }
 }
 
+function writeExecutable(filePath: string) {
+  fs.writeFileSync(filePath, "#!/bin/sh\nexit 0\n");
+  fs.chmodSync(filePath, 0o755);
+}
+
 describe("getTaskAgentFrameworkState", () => {
   beforeEach(() => {
     for (const key of ENV_KEYS) {
@@ -125,6 +131,29 @@ describe("getTaskAgentFrameworkState", () => {
     ).toBe(false);
   });
 
+  it("prefers eliza-code over OpenCode as the BYO default once eliza-code is installed", async () => {
+    // With a native ElizaOS ACP command configured, eliza-code is a real
+    // candidate. It shares OpenCode's BYO provider thumb (no Claude/Codex key is
+    // set), and its dominant capability-profile fit makes it the default over
+    // OpenCode — which stays the fallback for hosts without eliza-code.
+    writeExecutable(path.join(tempHome, "eliza-code-acp"));
+    setEnv({
+      ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
+      BENCHMARK_MODEL_PROVIDER: "cerebras",
+      CEREBRAS_API_KEY: "csk-test",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
+
+    expect(state.preferred.id).toBe("elizaos");
+    expect(
+      state.frameworks.find((item) => item.id === "elizaos")?.installed,
+    ).toBe(true);
+    expect(
+      state.frameworks.find((item) => item.id === "opencode")?.installed,
+    ).toBe(true);
+  });
+
   it("honors ElizaOS as an explicit native task-agent default", async () => {
     setEnv({
       ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
@@ -161,6 +190,47 @@ describe("getTaskAgentFrameworkState", () => {
     ).toBe(true);
   });
 
+  it("fails Pi Agent readiness closed when a configured ACP command is missing", async () => {
+    writeExecutable(path.join(tempHome, "pi-agent"));
+    setEnv({
+      ELIZA_PI_AGENT_ACP_COMMAND: "missing-pi-agent-acp --stdio",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "pi-agent")?.installed,
+    ).toBe(false);
+  });
+
+  it("rejects a configured Pi Agent ACP command when the file is not executable", async () => {
+    const commandPath = path.join(tempHome, "pi-agent-acp");
+    fs.writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");
+    fs.chmodSync(commandPath, 0o644);
+    setEnv({
+      ELIZA_PI_AGENT_ACP_COMMAND: "pi-agent-acp --stdio",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "pi-agent")?.installed,
+    ).toBe(false);
+  });
+
+  it("accepts a configured Pi Agent ACP shell command when the leading executable exists", async () => {
+    writeExecutable(path.join(tempHome, "pi-agent-acp"));
+    setEnv({
+      ELIZA_PI_AGENT_ACP_COMMAND: "pi-agent-acp --stdio --flag value",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "pi-agent")?.installed,
+    ).toBe(true);
+  });
+
   it("does not treat a Cerebras-mirrored OpenAI key as Codex auth", async () => {
     setEnv({
       BENCHMARK_MODEL_PROVIDER: "cerebras",
@@ -186,6 +256,69 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
     ).toBe(true);
+  });
+
+  it("fails Codex readiness closed when a configured ACP command is missing", async () => {
+    writeExecutable(path.join(tempHome, "codex"));
+    setEnv({
+      CODEX_API_KEY: "codex-test",
+      ELIZA_CODEX_ACP_COMMAND: "missing-codex-acp --stdio",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(false);
+  });
+
+  it("rejects a configured Codex ACP command when the file is not executable", async () => {
+    const commandPath = path.join(tempHome, "codex-acp");
+    fs.writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");
+    fs.chmodSync(commandPath, 0o644);
+    setEnv({
+      CODEX_API_KEY: "codex-test",
+      ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(false);
+  });
+
+  it("accepts a configured Codex ACP shell command when the leading executable exists", async () => {
+    writeExecutable(path.join(tempHome, "codex-acp"));
+    setEnv({
+      CODEX_API_KEY: "codex-test",
+      ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio --flag value",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(true);
+  });
+
+  it("validates configured ElizaOS ACP absolute commands instead of trusting the env var", async () => {
+    const commandPath = path.join(tempHome, "eliza-code-acp");
+    writeExecutable(commandPath);
+
+    setEnv({ ELIZA_ELIZAOS_ACP_COMMAND: `"${commandPath}" --stdio` });
+    const installedState = await getTaskAgentFrameworkState(runtime());
+    expect(
+      installedState.frameworks.find((item) => item.id === "elizaos")
+        ?.installed,
+    ).toBe(true);
+
+    clearTaskAgentFrameworkStateCache();
+    setEnv({ ELIZA_ELIZAOS_ACP_COMMAND: `${commandPath}-missing --stdio` });
+    const missingState = await getTaskAgentFrameworkState(runtime());
+    expect(
+      missingState.frameworks.find((item) => item.id === "elizaos")?.installed,
+    ).toBe(false);
   });
 
   it("prefers Claude when a Claude-specific key is present", async () => {

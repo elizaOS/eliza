@@ -125,6 +125,8 @@ export interface GoalPromptInput {
   /** Reflexion-style post-mortems from prior failed verification attempts of
    * this same task. Injected on re-spawn so the worker doesn't repeat them. */
   attemptReflections?: readonly AttemptReflection[];
+  /** Bounded, relevant lessons from verified prior tasks in this repository. */
+  curatedCodingMemory?: string;
 }
 
 export type GoalFollowUpReason =
@@ -153,6 +155,7 @@ const COMPLETION_CONTRACT: readonly string[] = [
   "If you are blocked or need input, write the question as your reply text and stop — no routing-kind labels or banners; the orchestrator classifies routing from the session event, not your prose.",
   "Report token/tool status when the runtime exposes it.",
   "On completion, return a structured summary: what changed, tests run, remaining risks, and whether peer coordination is still needed.",
+  "If this task revealed a durable repo-specific lesson, include one concise `Lesson: ...` line. If a failing test taught and verified a reusable fix, use `Test failure/fix: ...`. Never include secrets, credentials, personal data, or raw tool output.",
 ];
 
 /**
@@ -186,6 +189,14 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
     sections.push(
       "--- Acceptance Criteria ---",
       bulletList(input.acceptanceCriteria),
+    );
+  }
+
+  if (input.curatedCodingMemory?.trim()) {
+    sections.push(
+      "--- Relevant Repo Notes ---",
+      "Apply these verified repo-specific lessons when relevant. They are advisory, not a replacement for inspecting current code.",
+      input.curatedCodingMemory.trim(),
     );
   }
 

@@ -207,6 +207,7 @@ describe("useVoiceChat TTS fails closed (#12253)", () => {
     expect(fetchWithCsrf).toHaveBeenCalledWith(
       expect.stringContaining("/api/tts/cloud"),
       expect.objectContaining({ method: "POST" }),
+      { responseType: "arraybuffer", timeoutMs: 60_000 },
     );
     expect(result.current.isSpeaking).toBe(false);
   });

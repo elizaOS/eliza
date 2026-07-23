@@ -20,6 +20,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { AcpService } from "../../src/services/acp-service.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import {
@@ -34,6 +35,7 @@ import {
   createRouterLoopState,
   routerLoopTransition,
 } from "../../src/services/router-loop-guard.js";
+import { CodingWorkspaceService } from "../../src/services/workspace-service.js";
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
 // the #8896 default-criteria feature. createTask now auto-populates acceptance
@@ -165,7 +167,8 @@ function runtime(
   settings: Record<string, string> = {},
 ): IAgentRuntime {
   return {
-    getService: () => acp ?? null,
+    getService: (type: string) =>
+      type === AcpService.serviceType ? (acp ?? null) : null,
     getSetting: (key: string) => settings[key],
     reportError: vi.fn(),
     logger: {
@@ -196,6 +199,29 @@ function makeService(
   settings: Record<string, string> = {},
 ): OrchestratorTaskService {
   return makeServiceWithStore(acp, settings).service;
+}
+
+function runtimeWithWorkspace(
+  acp: FakeAcp | undefined,
+  workspace: CodingWorkspaceService,
+  useModel?: IAgentRuntime["useModel"],
+): IAgentRuntime {
+  return {
+    getService: (type: string) => {
+      if (type === CodingWorkspaceService.serviceType) return workspace;
+      if (type === AcpService.serviceType) return acp ?? null;
+      return null;
+    },
+    getSetting: () => undefined,
+    useModel,
+    reportError: vi.fn(),
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  } as never;
 }
 
 function createInput(
@@ -595,6 +621,130 @@ describe("OrchestratorTaskService — lifecycle", () => {
     });
   });
 
+  it("manual validateTask blocks completion when claimed PR checks are pending", async () => {
+    const acp = new FakeAcp();
+    const workspace = new CodingWorkspaceService(runtime(acp));
+    const fetchGroundTruth = vi.fn(async () => ({
+      url: "https://github.com/elizaos/eliza/pull/16453",
+      state: "open" as const,
+      headSha: "abc123",
+      changedFiles: [],
+      checks: [
+        {
+          name: "unit",
+          status: "queued",
+          conclusion: null,
+          required: true,
+        },
+      ],
+    }));
+    workspace.getPullRequestGroundTruth = fetchGroundTruth;
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(
+      runtimeWithWorkspace(acp, workspace),
+      { store },
+    );
+    const task = await service.createTask(createInput());
+    await service.updateTask(task.id, {
+      status: "validating",
+      metadata: {
+        prUrl: "https://github.com/elizaos/eliza/pull/16453",
+        prRepo: "elizaos/eliza",
+        prNumber: 16453,
+      },
+    });
+
+    await expect(
+      service.validateTask(task.id, {
+        passed: true,
+        summary: "verified manually",
+      }),
+    ).rejects.toThrow(/Ground-truth verification blocks validation/);
+
+    const doc = await store.getTask(task.id);
+    expect(doc?.task.status).toBe("validating");
+    expect(fetchGroundTruth).toHaveBeenCalledTimes(1);
+    expect(
+      doc?.events.some(
+        (event) => event.eventType === "validation_blocked_ground_truth",
+      ),
+    ).toBe(true);
+  });
+
+  it("manual validateTask skips default-on GitHub calls for PR-less tasks with no changeset", async () => {
+    const acp = new FakeAcp();
+    const workspace = new CodingWorkspaceService(runtime(acp));
+    const fetchGroundTruth = vi.fn();
+    workspace.getPullRequestGroundTruth = fetchGroundTruth;
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(
+      runtimeWithWorkspace(acp, workspace),
+      { store },
+    );
+    const task = await service.createTask(createInput());
+    await service.updateTask(task.id, { status: "validating" });
+
+    const detail = await service.validateTask(task.id, {
+      passed: true,
+      summary: "verified manually without a PR",
+    });
+
+    expect(detail?.status).toBe("done");
+    expect(fetchGroundTruth).not.toHaveBeenCalled();
+  });
+
+  it("automatic validation reuses the stored ground-truth verdict when promoting", async () => {
+    const acp = new FakeAcp();
+    const workspace = new CodingWorkspaceService(runtime(acp));
+    const fetchGroundTruth = vi.fn(async () => ({
+      url: "https://github.com/elizaos/eliza/pull/16453",
+      state: "open" as const,
+      headSha: "abc123",
+      changedFiles: [],
+      checks: [
+        {
+          name: "unit",
+          status: "completed",
+          conclusion: "success",
+          required: true,
+        },
+      ],
+    }));
+    workspace.getPullRequestGroundTruth = fetchGroundTruth;
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const useModel = vi.fn(async () =>
+      JSON.stringify({
+        passed: true,
+        summary: "all criteria met",
+        missing: [],
+      }),
+    ) as IAgentRuntime["useModel"];
+    const service = new OrchestratorTaskService(
+      runtimeWithWorkspace(acp, workspace, useModel),
+      { store },
+    );
+    await service.start();
+    const task = await service.createTask(
+      createInput({ acceptanceCriteria: ["tests pass"] }),
+    );
+    const detail = must(
+      await service.spawnAgentForTask(task.id),
+      "expected spawn detail",
+    );
+    const sessionId = must(detail.sessions[0], "session").sessionId;
+
+    await drive(acp, sessionId, "task_complete", {
+      response: "Done https://github.com/elizaos/eliza/pull/16453",
+    });
+    await settleStatus(service, task.id, "done");
+
+    expect(fetchGroundTruth).toHaveBeenCalledTimes(1);
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(
+      (await store.getTask(task.id))?.task.metadata.groundTruthVerdict,
+    ).toBeDefined();
+  });
+
   it("adds a user message and stamps the last user turn", async () => {
     const service = makeService();
     const { id } = await service.createTask(createInput());
@@ -733,16 +883,25 @@ describe("OrchestratorTaskService — lifecycle", () => {
   });
 
   it("auto-spawns a coding agent when a message is posted with no session live", async () => {
+    const prevHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "ots-home-"));
+    process.env.HOME = tempHome;
     const acp = new FakeAcp();
     const service = makeService(acp);
-    const { id } = await service.createTask(createInput());
-    const result = must(await service.postUserMessage(id, "hello"), "post");
-    // Parity: messaging a task with no live agent "just works" — it spawns one
-    // (the default vendored opencode backend) to act on the message, rather than
-    // silently recording it with nowhere to go.
-    expect(result.forwardedTo).toEqual(["auto-spawned"]);
-    expect(acp.spawnArgs).toHaveLength(1);
-    expect(acp.sent).toHaveLength(0);
+    try {
+      const { id } = await service.createTask(createInput());
+      const result = must(await service.postUserMessage(id, "hello"), "post");
+      // Parity: messaging a task with no live agent "just works" — it spawns one
+      // (the default vendored opencode backend) to act on the message, rather than
+      // silently recording it with nowhere to go.
+      expect(result.forwardedTo).toEqual(["auto-spawned"]);
+      expect(acp.spawnArgs).toHaveLength(1);
+      expect(acp.sent).toHaveLength(0);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
   });
 
   it("reports ACP-unavailable auto-spawn failure when no session is live", async () => {
@@ -1977,7 +2136,9 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
   } {
     const warn = vi.fn();
     const rt = {
-      getService: () => acp ?? null,
+      getService: (type: string) =>
+        type === AcpService.serviceType ? (acp ?? null) : null,
+      getSetting: () => undefined,
       reportError: vi.fn(),
       logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() },
     } as never as IAgentRuntime;

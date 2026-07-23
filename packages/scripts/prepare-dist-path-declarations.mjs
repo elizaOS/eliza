@@ -15,11 +15,11 @@ const localTsc = path.join(
   repoRoot,
   "node_modules",
   ".bin",
-  process.platform === "win32" ? "tsc.cmd" : "tsc",
+  process.platform === "win32" ? "tsc6.cmd" : "tsc6",
 );
-const tsc = existsSync(localTsc) ? localTsc : "tsc";
+const tsc = existsSync(localTsc) ? localTsc : "tsc6";
 
-const emits = [
+export const emits = [
   {
     label: "@elizaos/prompts",
     cwd: path.join(repoRoot, "packages/prompts"),
@@ -43,27 +43,38 @@ const emits = [
   },
 ];
 
-for (const emit of emits) {
-  console.log(`[prepare-dist-path-declarations] ${emit.label}`);
-  const result = spawnSync(tsc, emit.args, {
-    cwd: emit.cwd,
-    env: process.env,
-    stdio: "inherit",
-  });
-  if (result.error) {
-    console.error(
-      `[prepare-dist-path-declarations] failed to start ${tsc}: ${result.error.message}`,
-    );
-    process.exit(1);
+export function prepareDistPathDeclarations(options = {}) {
+  const spawn = options.spawnSync ?? spawnSync;
+  const compiler = options.tsc ?? tsc;
+  const env = options.env ?? process.env;
+
+  for (const emit of options.emits ?? emits) {
+    console.log(`[prepare-dist-path-declarations] ${emit.label}`);
+    const result = spawn(compiler, emit.args, {
+      cwd: emit.cwd,
+      env,
+      stdio: "inherit",
+    });
+    if (result.error) {
+      console.error(
+        `[prepare-dist-path-declarations] failed to start ${compiler}: ${result.error.message}`,
+      );
+      return 1;
+    }
+    if (result.status !== 0) {
+      console.error(
+        `[prepare-dist-path-declarations] ${emit.label} failed with exit code ${result.status}`,
+      );
+      return result.status ?? 1;
+    }
   }
-  if (result.status !== 0) {
-    console.error(
-      `[prepare-dist-path-declarations] ${emit.label} failed with exit code ${result.status}`,
-    );
-    process.exit(result.status ?? 1);
-  }
+
+  console.log(
+    `[prepare-dist-path-declarations] prepared ${(options.emits ?? emits).length} declaration emit(s)`,
+  );
+  return 0;
 }
 
-console.log(
-  `[prepare-dist-path-declarations] prepared ${emits.length} declaration emit(s)`,
-);
+if (import.meta.main) {
+  process.exit(prepareDistPathDeclarations());
+}

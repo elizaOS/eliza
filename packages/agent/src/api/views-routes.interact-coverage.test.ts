@@ -8,6 +8,7 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { viewActionAffinityMap } from "../runtime/view-action-affinity.ts";
 import {
@@ -55,11 +56,14 @@ const REFERENCE_VIEWS = [
   { id: "settings", label: "Settings" },
 ];
 let lastOpenedViewId: string | null = null;
+let lastInteractionRuntime: IAgentRuntime | undefined;
 
 async function referenceServerInteract(
   capability: string,
   params?: Record<string, unknown>,
+  context?: { runtime?: IAgentRuntime },
 ): Promise<unknown> {
+  lastInteractionRuntime = context?.runtime;
   if (capability === "list-views") {
     return { views: REFERENCE_VIEWS };
   }
@@ -79,6 +83,7 @@ function makeCtx(
   method: "POST",
   pathname: string,
   body: Record<string, unknown> | null,
+  runtime?: IAgentRuntime,
 ): {
   ctx: ViewsRouteContext;
   json: ReturnType<typeof vi.fn>;
@@ -101,6 +106,7 @@ function makeCtx(
     json,
     error,
     broadcastWs,
+    runtime,
   };
   return { ctx, json, error, broadcastWs };
 }
@@ -110,6 +116,7 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
     registerBuiltinViews();
     clearCurrentViewState();
     lastOpenedViewId = null;
+    lastInteractionRuntime = undefined;
 
     // (a) reference view: capabilities + a headless serverInteract, mirroring
     // the plugin-app-control views-manager declaration.
@@ -231,6 +238,22 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
     // The dispatched result is the reference view list — proves the round-trip
     // returned real serverInteract output, not just "did not throw".
     expect(payload.result.views).toEqual(REFERENCE_VIEWS);
+  });
+
+  it("passes the owning runtime through the direct interact route", async () => {
+    const runtime = { agentId: "runtime-owner" } as unknown as IAgentRuntime;
+    const { ctx, json, error } = makeCtx(
+      "POST",
+      "/api/views/views-manager-ref/interact",
+      { capability: "list-views" },
+      runtime,
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledTimes(1);
+    expect(lastInteractionRuntime).toBe(runtime);
   });
 
   it("dispatches open-view with params and mutates server-side state", async () => {

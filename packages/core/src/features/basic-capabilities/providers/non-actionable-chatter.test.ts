@@ -73,9 +73,12 @@ describe("catalog visibility for benchmark-shaped chatter phrases", () => {
 			state,
 		);
 
-		const names = (result.data?.actionsData as Action[]).map(
-			(item) => item.name,
-		);
+		const actionsData = result.data?.actionsData;
+		expect(actionsData).toBeDefined();
+		if (!actionsData) {
+			throw new Error("Expected action catalog data for actionable chatter");
+		}
+		const names = (actionsData as Action[]).map((item) => item.name);
 		expect(names).toContain("ARCHIVE_NEWSLETTERS");
 		expect(names).toContain("REPLY");
 	});
@@ -87,7 +90,12 @@ describe("catalog visibility for benchmark-shaped chatter phrases", () => {
 			state,
 		);
 
-		const names = (result.data?.allProviders as Array<{ name: string }>).map(
+		const allProviders = result.data?.allProviders;
+		expect(allProviders).toBeDefined();
+		if (!allProviders) {
+			throw new Error("Expected provider catalog data for actionable chatter");
+		}
+		const names = (allProviders as Array<{ name: string }>).map(
 			(item) => item.name,
 		);
 		expect(names).toContain("INBOX");
@@ -118,9 +126,12 @@ describe("catalog visibility for benchmark-shaped chatter phrases", () => {
 			state,
 		);
 
-		const names = (result.data?.actionsData as Action[]).map(
-			(item) => item.name,
-		);
+		const actionsData = result.data?.actionsData;
+		expect(actionsData).toBeDefined();
+		if (!actionsData) {
+			throw new Error("Expected the follow-up action catalog data");
+		}
+		const names = (actionsData as Action[]).map((item) => item.name);
 		expect(names).toContain("CONTACT_FOLLOW_UP");
 		expect(names).toContain("REPLY");
 		expect(names).not.toContain("CALENDAR_CREATE");

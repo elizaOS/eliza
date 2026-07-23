@@ -1,8 +1,12 @@
+"""Deterministic math tool implementation used by BFCL multi-turn scenarios.
+
+Only the Python standard library is used so the canonical scoring runtime does
+not depend on an undeclared optional package.
+"""
+
 import math
 from decimal import Decimal, InvalidOperation, getcontext
 from typing import Dict, List
-
-import mpmath
 
 
 class MathAPI:
@@ -24,11 +28,10 @@ class MathAPI:
             result (float): The logarithm of the number with respect to the given base.
         """
         try:
-            # Set precision for mpmath
-            mpmath.mp.dps = precision
-
-            # Use mpmath for high-precision logarithmic calculations
-            result = mpmath.log(value) / mpmath.log(base)
+            # Decimal keeps the requested precision available in the minimal
+            # benchmark environment, unlike the optional upstream mpmath dependency.
+            getcontext().prec = precision
+            result = Decimal(str(value)).ln() / Decimal(str(base)).ln()
 
             return {"result": result}
         except Exception as e:

@@ -35,9 +35,9 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run --config vitest.config.ts",
     "prepublishOnly": "bun run build",
-    "watch": "tsc --watch",
-    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "watch": "tsc6 --watch",
+    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -49,6 +49,7 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "rollup": "^4.60.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   },

@@ -28,9 +28,9 @@ from pathlib import Path
 # Add paths
 sys.path.insert(0, str(Path(__file__).parent))
 
+from elizaos_experience_bench.edge_cases import expand_learning_scenarios
 from elizaos_experience_bench.runner import ExperienceBenchmarkRunner
 from elizaos_experience_bench.types import BenchmarkConfig, BenchmarkResult
-from elizaos_experience_bench.edge_cases import expand_learning_scenarios
 
 
 def _load_env_file(env_path: Path) -> None:
@@ -50,7 +50,7 @@ def _load_env_file(env_path: Path) -> None:
         key, value = line.split("=", 1)
         key = key.strip()
         if key.startswith("export "):
-            key = key[len("export "):].strip()
+            key = key[len("export ") :].strip()
         value = value.strip().strip('"').strip("'")
         if not key:
             continue
@@ -121,16 +121,19 @@ async def _chat_completion(
         "User-Agent": "eliza-experience-benchmark/1.0",
     }
 
-    async with aiohttp.ClientSession() as session, session.post(
-        f"{base_urls[provider]}/chat/completions",
-        headers=headers,
-        json={
-            "model": model_name,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        },
-    ) as resp:
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(
+            f"{base_urls[provider]}/chat/completions",
+            headers=headers,
+            json={
+                "model": model_name,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
+        ) as resp,
+    ):
         data = await resp.json(content_type=None)
         if resp.status >= 400 or "error" in data:
             detail = data.get("error", data) if isinstance(data, dict) else data
@@ -232,10 +235,11 @@ async def _run_local_agent_fallback(
     agent_keyword_hits = 0
     retrieval_count = 0
 
-    retrieval_scenarios = [
-        scenarios[i % len(scenarios)]
-        for i in range(config.num_retrieval_queries)
-    ] if scenarios else []
+    retrieval_scenarios = (
+        [scenarios[i % len(scenarios)] for i in range(config.num_retrieval_queries)]
+        if scenarios
+        else []
+    )
 
     for i, scenario in enumerate(retrieval_scenarios):
         if progress_callback:
@@ -244,8 +248,7 @@ async def _run_local_agent_fallback(
             ExperienceQuery(query=scenario.similar_query, limit=max(config.top_k_values))
         )
         context_lines = [
-            f"- [{exp.domain}] {exp.context}; learned: {exp.learning}"
-            for exp in query_results[:5]
+            f"- [{exp.domain}] {exp.context}; learned: {exp.learning}" for exp in query_results[:5]
         ]
         prompt = (
             "The user is facing a familiar problem. Reuse the most relevant "
@@ -254,8 +257,7 @@ async def _run_local_agent_fallback(
             "concrete tokens (commands, flags, identifiers) appear in your "
             "reply, then add any clarifying instructions.\n\n"
             f"User problem: {scenario.similar_query}\n\n"
-            "Past experiences:\n"
-            + ("\n".join(context_lines) if context_lines else "- none")
+            "Past experiences:\n" + ("\n".join(context_lines) if context_lines else "- none")
         )
         start = time.time()
         response = await call_model(
@@ -266,10 +268,7 @@ async def _run_local_agent_fallback(
         retrieval_count += 1
 
         response_lower = response.lower()
-        expected_keywords = [
-            keyword.lower()
-            for keyword in scenario.expected_learning_keywords
-        ]
+        expected_keywords = [keyword.lower() for keyword in scenario.expected_learning_keywords]
         keywords_found = bool(expected_keywords) and all(
             keyword in response_lower for keyword in expected_keywords
         )
@@ -364,7 +363,6 @@ def _configure_bridge_model_env(args: argparse.Namespace) -> None:
     os.environ["OPENROUTER_SMALL_MODEL"] = model_name
 
 
-
 async def run_eliza_agent(args: argparse.Namespace) -> None:
     """Run the Eliza agent benchmark mode via the TypeScript bridge."""
     print("eliza-agent mode now routes through the Eliza TypeScript benchmark bridge.")
@@ -389,7 +387,7 @@ async def run_eliza_bridge(args: argparse.Namespace) -> None:
     config = ElizaExperienceConfig(
         num_learning_scenarios=args.learning_cycles,
         num_retrieval_queries=args.queries,
-        num_background_experiences=min(args.experiences, 200),
+        num_background_experiences=args.experiences,
         seed=args.seed,
     )
 
@@ -452,7 +450,7 @@ def _serialize_agent_result(result: "BenchmarkResult") -> dict:
 
 
 def main() -> None:
-    """Main entry point."""
+    """Parse arguments and run the selected benchmark mode."""
     parser = argparse.ArgumentParser(description="Experience Plugin Benchmark")
     parser.add_argument(
         "--mode",
@@ -467,9 +465,13 @@ def main() -> None:
             "and must be requested explicitly."
         ),
     )
-    parser.add_argument("--experiences", type=int, default=1000, help="Number of synthetic experiences")
+    parser.add_argument(
+        "--experiences", type=int, default=1000, help="Number of synthetic experiences"
+    )
     parser.add_argument("--queries", type=int, default=100, help="Number of retrieval queries")
-    parser.add_argument("--learning-cycles", type=int, default=20, help="Number of learning cycle scenarios")
+    parser.add_argument(
+        "--learning-cycles", type=int, default=20, help="Number of learning cycle scenarios"
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output", type=str, default=None, help="Output JSON path")
     parser.add_argument(

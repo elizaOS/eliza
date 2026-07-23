@@ -539,7 +539,7 @@ describe("coding save flow", () => {
     );
 
     expect(
-      await screen.findByText("Saved — applies to the next coding task"),
+      await screen.findByText("Saved. Applies to the next coding task."),
     ).toBeTruthy();
     expect(clientMock.getStatus).not.toHaveBeenCalled();
     expect(clientMock.restartAgent).not.toHaveBeenCalled();

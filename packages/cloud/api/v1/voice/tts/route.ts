@@ -53,16 +53,16 @@ import {
 } from "@/lib/services/tts-first-line-cache";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
-import { synthesizeCartesiaWav } from "./cartesia-synthesis";
+import {
+  CartesiaRestTtsError,
+  synthesizeCartesiaBytes,
+  synthesizeCartesiaWav,
+} from "./cartesia-synthesis";
 import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
-import {
-  LEGACY_DEFAULT_ELEVENLABS_VOICE_ID,
-  selectTtsProvider,
-  type TtsProvider,
-} from "./provider-selection";
+import { selectTtsProvider, type TtsProvider } from "./provider-selection";
 
 /**
  * Default ElevenLabs output format. Must stay in sync with the ElevenLabs
@@ -103,10 +103,7 @@ interface TtsTimings {
 }
 
 function buildTtsObservabilityHeaders(
-  // "cartesia" is a synthesis ENGINE substitution inside the elevenlabs
-  // selection branch, not a third selectable provider — hence the widening
-  // here rather than in TtsProvider.
-  provider: TtsProvider | "cartesia",
+  provider: TtsProvider,
   timings: TtsTimings,
 ): Record<string, string> {
   const serverTiming = [
@@ -132,12 +129,19 @@ const WAV_PCM_SAMPLE_RATE = 24_000;
 const MAX_WAV_PCM_BYTES = 64 * 1024 * 1024;
 
 /**
- * Default Cartesia voice for un-pinned WAV requests ("Skylar — Friendly
- * Guide", verified live). Override per-environment with
- * CARTESIA_DEFAULT_VOICE_ID; callers that pin any voice identity (custom
- * voices, explicit ElevenLabs ids) never reach the Cartesia engine.
+ * Default Cartesia voice for un-pinned requests ("Skylar — Friendly Guide",
+ * verified live). Override per-environment with CARTESIA_VOICE_ID; the legacy
+ * CARTESIA_DEFAULT_VOICE_ID remains accepted for older deploy configs.
  */
 const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
+
+function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
+  return (
+    env.CARTESIA_VOICE_ID?.trim() ||
+    env.CARTESIA_DEFAULT_VOICE_ID?.trim() ||
+    DEFAULT_CARTESIA_VOICE_ID
+  );
+}
 
 /**
  * PCM byte cap for a Cartesia synthesis. The synthesis buffers frames + a
@@ -178,8 +182,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     }
     const { text, voiceId, modelId } = parsed.data;
     const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
+    const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
+    const cartesiaVoiceId = resolveCartesiaVoiceId(env);
     const providerSelection = selectTtsProvider({
       voiceId,
+      cartesiaConfigured: Boolean(cartesiaApiKey),
       kokoroConfigured: Boolean(kokoroBaseUrl),
     });
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
@@ -415,13 +422,22 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // still populate the cache in the background — concat-with-remainder is
     // a follow-up.
     // ---------------------------------------------------------------------
-    const resolvedVoiceId = voiceId || "EXAVITQu4vr4xnSDxMaL";
+    const resolvedVoiceId =
+      providerSelection.provider === "cartesia"
+        ? cartesiaVoiceId
+        : voiceId || "EXAVITQu4vr4xnSDxMaL";
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
     const cacheBypass = shouldBypassCloudFirstLineCache({
       modelId: resolvedModelId,
     });
     const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
+    const mp3CacheProvider =
+      providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
+    const mp3VoiceRevision =
+      providerSelection.provider === "cartesia"
+        ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
+        : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
     });
@@ -440,12 +456,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         const cacheService = getCloudFirstLineCacheService();
         const cached = await cacheService.get({
           algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-          provider: "elevenlabs",
+          provider: mp3CacheProvider,
           voiceId: resolvedVoiceId,
-          voiceRevision: resolveElevenLabsVoiceRevision(
-            resolvedVoiceId,
-            resolvedModelId,
-          ),
+          voiceRevision: mp3VoiceRevision,
           sampleRate: 44100,
           codec: "mp3",
           voiceSettingsFingerprint,
@@ -461,7 +474,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             headers: {
               "Content-Type": cached.contentType,
               "Cache-Control": "no-cache",
-              ...buildTtsObservabilityHeaders("elevenlabs", timings),
+              ...buildTtsObservabilityHeaders(
+                providerSelection.provider,
+                timings,
+              ),
               "X-TTS-Cache": "hit; first-sentence",
             },
           });
@@ -479,18 +495,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // WAV callers, so codec-less clients paid full synthesis for every short
     // opener. Same whole-input gate; key is codec/provider/rate-specific so
     // MP3 and WAV entries can never collide.
-    const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
-    const callerPinnedVoice =
-      Boolean(voiceId) && voiceId !== LEGACY_DEFAULT_ELEVENLABS_VOICE_ID;
-    const cartesiaVoiceId =
-      env.CARTESIA_DEFAULT_VOICE_ID?.trim() || DEFAULT_CARTESIA_VOICE_ID;
     const cartesiaEligible =
-      wantWav &&
-      Boolean(cartesiaApiKey) &&
-      !isCustomVoice &&
-      !callerPinnedVoice;
+      providerSelection.provider === "cartesia" && Boolean(cartesiaApiKey);
     const wavCacheKey =
       cartesiaEligible &&
+      wantWav &&
       snipResult &&
       !cacheBypass &&
       snipResult.endOffset === text.trimEnd().length
@@ -544,12 +553,19 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         1_000_000
       : ttsCost.totalCost;
 
+    // #16425: the client mints one Idempotency-Key per logical utterance and
+    // sends it on BOTH the direct request and the proxy fallback, so a retry
+    // after an ambiguous network outcome replays the committed reservation
+    // instead of charging the utterance twice. Org-scoped inside reserve().
+    const ttsIdempotencyKey = request.headers.get("Idempotency-Key");
+
     try {
       reservation = await creditsService.reserve({
         organizationId: user.organization_id,
         amount: estimatedCost,
         userId: user.id,
         description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
+        ...(ttsIdempotencyKey && { idempotencyKey: ttsIdempotencyKey }),
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -565,8 +581,6 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     }
     timings.admissionMs = Date.now() - admissionStart;
 
-    const elevenlabs = getElevenLabsService(env);
-
     const startTime = Date.now();
     // WAV fast path: Cartesia Sonic streams raw PCM (~150 ms to first audio,
     // ~0.6 s total, measured live) where the buffered ElevenLabs PCM
@@ -577,9 +591,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // ElevenLabs catalog rate either way, so the engine choice never changes
     // the user's price (Cartesia's upstream cost is lower, not higher).
     let wav: Uint8Array | undefined;
+    let audioStream: ReadableStream<Uint8Array> | undefined;
     let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
+    let cartesiaMp3ContentType = "audio/mpeg";
     if (cartesiaEligible && cartesiaApiKey) {
-      try {
+      if (wantWav) {
         const cartesia = await synthesizeCartesiaWav({
           apiKey: cartesiaApiKey,
           voiceId: cartesiaVoiceId,
@@ -618,27 +634,30 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           totalMs: cartesia.totalMs,
           pcmBytes: cartesia.pcmBytes,
         });
-      } catch (error) {
-        // error-policy:J4 designed engine degrade — a Cartesia outage must not
-        // drop voice: the ElevenLabs synthesis below is the fallback engine at
-        // the identical billed rate, and the failure is surfaced here.
-        logger.warn(
-          "[Voice TTS API] Cartesia synthesis failed; falling back to ElevenLabs",
-          { error: error instanceof Error ? error.message : String(error) },
-        );
+      } else {
+        const cartesia = await synthesizeCartesiaBytes({
+          apiKey: cartesiaApiKey,
+          voiceId: cartesiaVoiceId,
+          text,
+        });
+        audioStream = cartesia.body;
+        cartesiaMp3ContentType = cartesia.contentType;
+        synthesisEngine = "cartesia";
       }
     }
 
-    let audioStream: ReadableStream<Uint8Array> | undefined;
     if (wav === undefined) {
-      audioStream = await elevenlabs.textToSpeech({
-        text,
-        voiceId,
-        modelId,
-        // WAV path requests raw PCM (wrapped in a WAV header below); default
-        // callers get the service's MP3 default.
-        ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
-      });
+      if (audioStream === undefined) {
+        const elevenlabs = getElevenLabsService(env);
+        audioStream = await elevenlabs.textToSpeech({
+          text,
+          voiceId,
+          modelId,
+          // WAV path requests raw PCM (wrapped in a WAV header below); default
+          // callers get the service's MP3 default.
+          ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
+        });
+      }
       if (wantWav) {
         wav = pcm16ToWav(
           await drainPcm16Stream(audioStream, MAX_WAV_PCM_BYTES),
@@ -660,8 +679,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         organizationId: user.organization_id,
         userId: user.id,
         apiKeyId: apiKey?.id ?? null,
-        model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
-        provider: "elevenlabs",
+        model:
+          synthesisEngine === "cartesia"
+            ? "cartesia/sonic-3.5"
+            : `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
+        provider: synthesisEngine,
         billingSource: "elevenlabs",
         // Affiliate revenue-share via X-Affiliate-Code (existing billFlatUsage branch).
         affiliateCode: request.headers.get("X-Affiliate-Code"),
@@ -740,12 +762,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           const cacheService = getCloudFirstLineCacheService();
           const cacheKey = {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-            provider: "elevenlabs",
+            provider: mp3CacheProvider,
             voiceId: resolvedVoiceId,
-            voiceRevision: resolveElevenLabsVoiceRevision(
-              resolvedVoiceId,
-              resolvedModelId,
-            ),
+            voiceRevision: mp3VoiceRevision,
             sampleRate: 44100,
             codec: "mp3" as const,
             voiceSettingsFingerprint,
@@ -753,11 +772,20 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             scope: cacheScope,
           };
           if (await cacheService.has(cacheKey)) return;
-          const snipStream = await elevenlabs.textToSpeech({
-            text: snipResult.raw,
-            voiceId,
-            modelId,
-          });
+          const snipStream =
+            synthesisEngine === "cartesia" && cartesiaApiKey
+              ? (
+                  await synthesizeCartesiaBytes({
+                    apiKey: cartesiaApiKey,
+                    voiceId: cartesiaVoiceId,
+                    text: snipResult.raw,
+                  })
+                ).body
+              : await getElevenLabsService(env).textToSpeech({
+                  text: snipResult.raw,
+                  voiceId,
+                  modelId,
+                });
           const reader = snipStream.getReader();
           const chunks: Uint8Array[] = [];
           let total = 0;
@@ -811,10 +839,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
     return new Response(audioStream, {
       headers: {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": cartesiaMp3ContentType,
         "Transfer-Encoding": "chunked",
         "Cache-Control": "no-cache",
-        ...buildTtsObservabilityHeaders("elevenlabs", timings),
+        ...buildTtsObservabilityHeaders(synthesisEngine, timings),
         "X-TTS-Cache": "miss",
       },
     });
@@ -832,6 +860,28 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
     if (error instanceof ApiError) {
       return Response.json(error.toJSON(), { status: error.status });
+    }
+
+    if (error instanceof CartesiaRestTtsError) {
+      const status =
+        error.classification === "auth"
+          ? error.status === 403
+            ? 403
+            : 401
+          : error.classification === "rate_limit" ||
+              error.classification === "quota"
+            ? 429
+            : error.classification === "bad_request"
+              ? 400
+              : 502;
+      return Response.json(
+        {
+          error: error.safeProviderMessage,
+          provider: "cartesia",
+          code: error.classification,
+        },
+        { status },
+      );
     }
 
     const errorMessage =

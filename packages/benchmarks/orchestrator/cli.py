@@ -11,6 +11,7 @@ from uuid import uuid4
 from .adapters import discover_adapters
 from .artifact_guard import build_artifact_guard_report
 from .calibration_report import build_calibration_report, print_calibration_report
+from .cohort import run_benchmark_cohorts
 from .compare_vs_random import add_compare_vs_random_parser
 from .db import (
     connect_database,
@@ -24,6 +25,7 @@ from .db import (
 from .latest_comparability import print_comparability_report, validate_latest_comparability
 from .latest_publishability import print_publishability_report, validate_latest_publishability
 from .latest_readiness import print_readiness_report, validate_latest_readiness
+from .locking import latest_publication_lock
 from .inventory import (
     build_inventory_report,
     report_to_json as inventory_report_to_json,
@@ -171,8 +173,35 @@ def _execute_run(args: argparse.Namespace) -> dict[str, int]:
     harnesses = _selected_harnesses(args)
     all_outcomes = []
     viewer_snapshot: Path | None = None
+    unsupported_count = 0
 
-    for harness in harnesses:
+    if len(harnesses) > 1:
+        cohorts = run_benchmark_cohorts(
+            workspace_root=workspace_root,
+            request=request,
+            harnesses=harnesses,
+        )
+        for cohort in cohorts:
+            all_outcomes.extend(cohort.outcomes)
+            unsupported_count += len(cohort.unsupported_harnesses)
+            if cohort.viewer_snapshot is not None:
+                viewer_snapshot = cohort.viewer_snapshot
+            supported_label = ",".join(cohort.harnesses) or "none"
+            unsupported_label = ",".join(cohort.unsupported_harnesses) or "none"
+            print(
+                f"Cohort ({cohort.benchmark_id}): "
+                f"{cohort.run_group_id or 'not-run'} "
+                f"supported={supported_label} unsupported={unsupported_label}"
+            )
+        if cohorts and any(
+            outcome.status == "failed" for outcome in cohorts[-1].outcomes
+        ):
+            print(
+                "Campaign stopped after the failed cohort; later benchmarks "
+                "were not started."
+            )
+    else:
+        harness = harnesses[0]
         harness_request = replace(request, agent=harness)
         run_group_id, outcomes, viewer_snapshot = run_benchmarks(
             workspace_root=workspace_root,
@@ -185,9 +214,14 @@ def _execute_run(args: argparse.Namespace) -> dict[str, int]:
         print(f"Viewer snapshot: {viewer_snapshot}")
     print("")
 
-    counts = {"succeeded": 0, "failed": 0, "skipped": 0, "incompatible": 0}
-    # Default-on: suppress per-outcome printing for incompatible (harness/benchmark
-    # mismatch) rows in the summary. They are always recorded in SQLite either way.
+    counts = {
+        "succeeded": 0,
+        "failed": 0,
+        "skipped": 0,
+        "incompatible": unsupported_count,
+    }
+    # Default-on: suppress per-outcome printing for incompatible pairs. Cohort
+    # runs count unsupported harnesses without scheduling or persisting fake work.
     skip_incompatible = bool(getattr(args, "skip_incompatible", True))
 
     for outcome in all_outcomes:
@@ -284,10 +318,14 @@ def _rebuild_viewer_json(
     *,
     benchmark_ids: set[str] | None = None,
 ) -> Path:
-    data = build_viewer_dataset(conn, benchmark_ids=benchmark_ids)
-    out = workspace_root / "benchmarks" / "benchmark_results" / "viewer_data.json"
+    output_root = workspace_root / "benchmarks" / "benchmark_results"
+    out = output_root / "viewer_data.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data, indent=2, ensure_ascii=True), encoding="utf-8")
+    with latest_publication_lock(output_root):
+        data = build_viewer_dataset(conn, benchmark_ids=benchmark_ids)
+        tmp = out.with_name(f"{out.name}.{uuid4().hex}.tmp")
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=True), encoding="utf-8")
+        tmp.replace(out)
     return out
 
 
@@ -1084,7 +1122,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--tolerance",
         type=float,
         default=0.08,
-        help="Allowed absolute score spread across required real harnesses",
+        help="Deprecated compatibility option; outcome scores are not compared",
     )
     p_review.add_argument(
         "--skip-runtime-gates",
@@ -1169,7 +1207,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--tolerance",
         type=float,
         default=0.08,
-        help="Allowed absolute score spread across required real harnesses",
+        help="Deprecated compatibility option; outcome scores are not compared",
     )
     p_review_all.add_argument(
         "--skip-runtime-gates",
@@ -1314,13 +1352,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_latest_comparability = sub.add_parser(
         "validate-latest-comparability",
-        help="Fail if required latest real harness scores are missing, mixed-config, or outside tolerance",
+        help="Fail if required latest real-harness rows are missing or use different inputs/config",
     )
     p_latest_comparability.add_argument(
         "--tolerance",
         type=float,
         default=0.08,
-        help="Allowed absolute score spread across required real harnesses",
+        help="Deprecated compatibility option; outcome scores are not compared",
     )
     p_latest_comparability.add_argument(
         "--latest-dir",
@@ -1348,7 +1386,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--tolerance",
         type=float,
         default=0.08,
-        help="Allowed absolute/relative score spread across required real harnesses",
+        help="Deprecated compatibility option; outcome scores are not compared",
     )
     p_latest_readiness.add_argument(
         "--latest-dir",

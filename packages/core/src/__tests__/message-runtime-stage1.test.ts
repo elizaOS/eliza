@@ -332,7 +332,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"prioritize syntactically valid runnable code",
 		);
 		expect(String(systemMessage?.content ?? "")).toContain(
-			"goals -> OWNER_GOALS",
+			"the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER)",
 		);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
@@ -1063,7 +1063,11 @@ describe("runV5MessageRuntimeStage1", () => {
 
 		expect(result.kind).toBe("direct_reply");
 		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as {
+		expect(firstCall).toBeDefined();
+		if (!firstCall) {
+			throw new Error("Expected the stage-one model call to be captured");
+		}
+		const params = firstCall[1] as {
 			tools?: Array<{ parameters?: { required?: string[] } }>;
 			maxTokens?: number;
 			omitMaxTokens?: boolean;
@@ -1093,7 +1097,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
 		);
 		const systemMessage = (
-			firstCall?.[1] as {
+			firstCall[1] as {
 				messages?: Array<{ content?: unknown }>;
 			}
 		).messages?.[0];
@@ -1366,37 +1370,37 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
 	});
 
-	it.each([
-		"Draw scenario sunset",
-		"Say scenario audio",
-	])("keeps media generation request %s on the structured routing path", async (text) => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["media"],
-				replyText: "Looking into it.",
-				candidateActionNames: ["GENERATE_MEDIA"],
-			}),
-			JSON.stringify({
-				thought: "No media tool is registered in this fixture.",
-				toolCalls: [],
-				messageToUser: "I would need the media action to do that.",
-			}),
-		]);
+	it.each(["Draw scenario sunset", "Say scenario audio"])(
+		"keeps media generation request %s on the structured routing path",
+		async (text) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["media"],
+					replyText: "Looking into it.",
+					candidateActionNames: ["GENERATE_MEDIA"],
+				}),
+				JSON.stringify({
+					thought: "No media tool is registered in this fixture.",
+					toolCalls: [],
+					messageToUser: "I would need the media action to do that.",
+				}),
+			]);
 
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				channelType: ChannelType.DM,
-				text,
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					channelType: ChannelType.DM,
+					text,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
 
-		expect(result.kind).toBe("planned_reply");
-		const firstCall = useModelCalls(runtime)[0];
-		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
-	});
+			expect(result.kind).toBe("planned_reply");
+			const firstCall = useModelCalls(runtime)[0];
+			expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		},
+	);
 
 	it("parses provider-native message-handler calls that use args instead of arguments", async () => {
 		const runtime = makeRuntime([
@@ -3280,6 +3284,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(providerNames).toContain("RUNTIME_MODEL_CONTEXT");
 		expect(providerNames).not.toContain("PROVIDERS");
 		expect(providerNames).not.toContain("CHARACTER");
+		expect(composeState.mock.calls[0]?.[4]).toEqual([]);
 	});
 
 	it("emits a response-handler reply before planner recomposition when provided", async () => {
@@ -3318,6 +3323,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				text: "I'll check that now.",
 			}),
 		);
+		const composeState = runtime.composeState as {
+			mock: { calls: unknown[][] };
+		};
+		expect(composeState.mock.calls[0]?.[4]).toEqual(["RECENT_MESSAGES"]);
 		expect(order).toEqual(["early-reply", "compose-planner-state"]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
@@ -4024,30 +4033,30 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it.each([
-		"IGNORE",
-		"STOP",
-	] as const)("stops immediately for %s", async (action) => {
-		const runtime = makeRuntime([
-			stage1Response({
-				shouldRespond: action,
-				thought: "Terminal decision.",
-			}),
-		]);
+	it.each(["IGNORE", "STOP"] as const)(
+		"stops immediately for %s",
+		async (action) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					shouldRespond: action,
+					thought: "Terminal decision.",
+				}),
+			]);
 
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
 
-		expect(result).toMatchObject({
-			kind: "terminal",
-			action,
-		});
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
-	});
+			expect(result).toMatchObject({
+				kind: "terminal",
+				action,
+			});
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	it("renders direct-message instructions that forbid ungrounded simple replies and phantom action claims", async () => {
 		const runtime = makeRuntime([

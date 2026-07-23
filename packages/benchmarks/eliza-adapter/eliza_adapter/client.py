@@ -99,7 +99,8 @@ def _resolve_telemetry_path() -> str | None:
         import tempfile
 
         _TELEMETRY_FALLBACK_PATH = str(
-            Path(tempfile.mkdtemp(prefix="eliza-adapter-telemetry-")) / "telemetry.jsonl"
+            Path(tempfile.mkdtemp(prefix="eliza-adapter-telemetry-"))
+            / "telemetry.jsonl"
         )
         logger.info(
             "BENCHMARK_RUN_DIR not set; writing per-turn telemetry to %s",
@@ -110,8 +111,12 @@ def _resolve_telemetry_path() -> str | None:
 
 def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
     token_payload_raw = usage.get("tokens")
-    token_payload = token_payload_raw if isinstance(token_payload_raw, Mapping) else usage
-    cache_payload_raw = token_payload.get("cache") if isinstance(token_payload, Mapping) else None
+    token_payload = (
+        token_payload_raw if isinstance(token_payload_raw, Mapping) else usage
+    )
+    cache_payload_raw = (
+        token_payload.get("cache") if isinstance(token_payload, Mapping) else None
+    )
     cache_payload = cache_payload_raw if isinstance(cache_payload_raw, Mapping) else {}
 
     def pick_from(payload: Mapping[str, object], *keys: str) -> int | None:
@@ -122,7 +127,11 @@ def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
         return None
 
     def pick_detail(*keys: str) -> int | None:
-        for container_key in ("prompt_tokens_details", "input_token_details", "token_details"):
+        for container_key in (
+            "prompt_tokens_details",
+            "input_token_details",
+            "token_details",
+        ):
             details = usage.get(container_key)
             if not isinstance(details, Mapping):
                 continue
@@ -214,12 +223,16 @@ def _usage_from_response_params(params: Mapping[str, object]) -> dict[str, objec
     if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
         return _normalize_usage_payload(meta_raw["usage"])  # type: ignore[index]
     metadata_raw = params.get("eliza_metadata")
-    if isinstance(metadata_raw, Mapping) and isinstance(metadata_raw.get("usage"), Mapping):
+    if isinstance(metadata_raw, Mapping) and isinstance(
+        metadata_raw.get("usage"), Mapping
+    ):
         return _normalize_usage_payload(metadata_raw["usage"])  # type: ignore[index]
     return {}
 
 
-def _context_tool_schemas(context: Mapping[str, object] | None) -> list[dict[str, object]]:
+def _context_tool_schemas(
+    context: Mapping[str, object] | None,
+) -> list[dict[str, object]]:
     if not isinstance(context, Mapping):
         return []
     tools = context.get("tools")
@@ -246,6 +259,66 @@ def _metadata_from_response(response: MessageResponse | None) -> dict[str, objec
     if isinstance(params_metadata, Mapping):
         metadata.update(dict(params_metadata))
     return metadata
+
+
+def _eliza_runtime_provenance(response: MessageResponse | None) -> dict[str, object]:
+    metadata = _metadata_from_response(response)
+    trajectory_endpoint = metadata.get("trajectory_endpoint")
+    diagnostics_endpoint = metadata.get("diagnostics_endpoint")
+    native_runtime_class = metadata.get("native_runtime_class")
+    native_runtime_api = metadata.get("native_runtime_api")
+    transport = metadata.get("transport")
+    tool_bridge = metadata.get("tool_bridge")
+    direct_model_bypass = metadata.get("direct_model_bypass")
+    stand_in = metadata.get("stand_in")
+    release_evidence = metadata.get("release_evidence")
+    lifecycle_system_hint_attestation_raw = metadata.get(
+        "lifecycle_system_hint_attestation"
+    )
+    lifecycle_system_hint_attestation = (
+        dict(lifecycle_system_hint_attestation_raw)
+        if isinstance(lifecycle_system_hint_attestation_raw, Mapping)
+        else None
+    )
+    server_verified = (
+        metadata.get("agent_label") == "eliza"
+        and native_runtime_class == "@elizaos/core.AgentRuntime"
+        and native_runtime_api in {"messageService.handleMessage", "useModel"}
+        and transport == "eliza_benchmark_http"
+        and tool_bridge
+        in {
+            "native_action_capture",
+            "lifecycle_capture_only",
+            "runtime_model_native_tools",
+            "runtime_model_text",
+        }
+        and direct_model_bypass is False
+        and stand_in is False
+        and release_evidence is True
+        and isinstance(trajectory_endpoint, str)
+        and trajectory_endpoint.startswith("/api/benchmark/trajectory")
+        and isinstance(diagnostics_endpoint, str)
+        and diagnostics_endpoint.startswith("/api/benchmark/diagnostics")
+    )
+    return {
+        "agent_runtime": "eliza",
+        "native_runtime_class": native_runtime_class,
+        "native_runtime_api": native_runtime_api,
+        "transport": transport,
+        "path_label": (
+            "eliza-native-message-service"
+            if native_runtime_api == "messageService.handleMessage"
+            else "eliza-native-model"
+            if native_runtime_api == "useModel"
+            else None
+        ),
+        "tool_bridge": tool_bridge,
+        "direct_model_bypass": direct_model_bypass,
+        "stand_in": stand_in,
+        "release_evidence": release_evidence,
+        "lifecycle_system_hint_attestation": lifecycle_system_hint_attestation,
+        "publishable_native": server_verified,
+    }
 
 
 def _capture_trajectory_enabled() -> bool:
@@ -332,10 +405,16 @@ def _write_telemetry(
     tool_calls = []
     if response is not None:
         raw_tool_calls = response.params.get("tool_calls")
-        if isinstance(raw_tool_calls, Sequence) and not isinstance(raw_tool_calls, (str, bytes)):
-            tool_calls = [dict(call) for call in raw_tool_calls if isinstance(call, Mapping)]
+        if isinstance(raw_tool_calls, Sequence) and not isinstance(
+            raw_tool_calls, (str, bytes)
+        ):
+            tool_calls = [
+                dict(call) for call in raw_tool_calls if isinstance(call, Mapping)
+            ]
     trajectory_snapshot = (
-        response.params.get("_eliza_trajectory_snapshot") if response is not None else None
+        response.params.get("_eliza_trajectory_snapshot")
+        if response is not None
+        else None
     )
     trajectory_snapshot_error = (
         response.params.get("_eliza_trajectory_snapshot_error")
@@ -345,24 +424,32 @@ def _write_telemetry(
     global _TELEMETRY_TURN_COUNTER
     turn_index = _TELEMETRY_TURN_COUNTER
     _TELEMETRY_TURN_COUNTER += 1
-    tokens = _extract_usage_tokens(usage) if usage else {
-        "prompt_tokens": None,
-        "completion_tokens": None,
-        "total_tokens": None,
-        "cache_read_input_tokens": None,
-        "cache_creation_input_tokens": None,
-    }
+    tokens = (
+        _extract_usage_tokens(usage)
+        if usage
+        else {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+            "cache_read_input_tokens": None,
+            "cache_creation_input_tokens": None,
+        }
+    )
     record: dict[str, Any] = {
         "harness": "eliza",
         "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
         "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
         "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
-        "agent_selection_strategy": os.environ.get("ELIZA_AGENT_SELECTION_STRATEGY", ""),
+        "agent_selection_strategy": os.environ.get(
+            "ELIZA_AGENT_SELECTION_STRATEGY", ""
+        ),
         "provider": os.environ.get("BENCHMARK_MODEL_PROVIDER", ""),
         "model": os.environ.get("BENCHMARK_MODEL_NAME", ""),
         "benchmark": context.get("benchmark") if isinstance(context, Mapping) else None,
         "task_id": context.get("task_id") if isinstance(context, Mapping) else None,
-        "session_id": context.get("session_id") if isinstance(context, Mapping) else None,
+        "session_id": context.get("session_id")
+        if isinstance(context, Mapping)
+        else None,
         "turn_index": turn_index,
         "agent_label": metadata.get("agent_label", "eliza"),
         "prompt_text": _redact(prompt),
@@ -384,6 +471,7 @@ def _write_telemetry(
         "response_text": _redact(response_text),
         "response_chars": len(response_text),
         "metadata": _jsonable(_redact(metadata)),
+        "runtime_provenance": _jsonable(_eliza_runtime_provenance(response)),
         "trajectory_snapshot": _jsonable(_redact(trajectory_snapshot))
         if trajectory_snapshot is not None
         else None,
@@ -421,9 +509,7 @@ class ElizaClient:
     ) -> None:
         self._delegate = _build_delegate_client()
         resolved_url = (
-            base_url
-            or os.environ.get("ELIZA_BENCH_URL")
-            or "http://localhost:3939"
+            base_url or os.environ.get("ELIZA_BENCH_URL") or "http://localhost:3939"
         )
         self.base_url = resolved_url.rstrip("/")
         if token is None:
@@ -497,7 +583,11 @@ class ElizaClient:
         if self._delegate is not None:
             response = self._delegate.send_message(
                 text,
-                context={"benchmark": "lifeops_bench", "task_id": task_id, "tools": tools or []},
+                context={
+                    "benchmark": "lifeops_bench",
+                    "task_id": task_id,
+                    "tools": tools or [],
+                },
             )
             return {
                 "text": response.text,
@@ -681,7 +771,10 @@ class ElizaClient:
                 if not self.is_ready():
                     last_err = "Socket connection refused or timed out"
                     if progress and time.monotonic() >= next_progress:
-                        print(f"DEBUG: Waiting for {self.base_url} ({last_err})", flush=True)
+                        print(
+                            f"DEBUG: Waiting for {self.base_url} ({last_err})",
+                            flush=True,
+                        )
                         next_progress = time.monotonic() + 5.0
                     time.sleep(poll)
                     continue
@@ -729,7 +822,9 @@ class ElizaClient:
         return self._do(req)
 
     @staticmethod
-    def _do(req: urllib.request.Request, *, timeout_s: float | None = None) -> dict[str, object]:
+    def _do(
+        req: urllib.request.Request, *, timeout_s: float | None = None
+    ) -> dict[str, object]:
         # Long ceiling: vending-bench day 1 with a fresh runtime (full plugin
         # init + first slow LLM call) regularly takes >5 min. Override via
         # ELIZA_BENCH_HTTP_TIMEOUT env var if the operator wants a tighter cap.
@@ -759,11 +854,17 @@ def _build_delegate_client():
     """
 
     harness = (
-        os.environ.get("ELIZA_BENCH_HARNESS")
-        or os.environ.get("BENCHMARK_HARNESS")
-        or ""
-    ).strip().lower()
-    provider = (os.environ.get("BENCHMARK_MODEL_PROVIDER") or "cerebras").strip().lower()
+        (
+            os.environ.get("ELIZA_BENCH_HARNESS")
+            or os.environ.get("BENCHMARK_HARNESS")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
+    provider = (
+        (os.environ.get("BENCHMARK_MODEL_PROVIDER") or "cerebras").strip().lower()
+    )
     model = (
         os.environ.get("BENCHMARK_MODEL_NAME")
         or os.environ.get("MODEL_NAME")
@@ -773,6 +874,9 @@ def _build_delegate_client():
     base_url = (
         os.environ.get("BENCHMARK_BASE_URL")
         or os.environ.get("OPENAI_BASE_URL")
+        # The gateway URL is the server origin; OpenAI-compatible clients need
+        # the /v1 base published under either of the two variables above.
+        or os.environ.get("CLAUDE_SUBSCRIPTION_GATEWAY_URL")
         or os.environ.get("CEREBRAS_BASE_URL")
         or None
     )
@@ -787,16 +891,30 @@ def _build_delegate_client():
         from hermes_adapter.client import HermesClient  # noqa: WPS433
 
         timeout_s = float(os.environ.get("HERMES_TIMEOUT_S", "1200"))
-        mode = (os.environ.get("HERMES_MODE") or "in_process").strip() or "in_process"
+        lifecycle_workspace_raw = os.environ.get(
+            "ORCHESTRATOR_LIFECYCLE_WORKSPACE_PATH", ""
+        ).strip()
+        lifecycle_workspace = (
+            Path(lifecycle_workspace_raw).expanduser().resolve()
+            if lifecycle_workspace_raw
+            else None
+        )
+        if lifecycle_workspace is not None and not lifecycle_workspace.is_dir():
+            raise ValueError(
+                "ORCHESTRATOR_LIFECYCLE_WORKSPACE_PATH is not a directory: "
+                f"{lifecycle_workspace}"
+            )
         return HermesClient(
             provider=provider,
             model=model,
             base_url=base_url,
-            mode=mode,
             timeout_s=timeout_s,
             temperature=temperature,
-            reasoning_effort=reasoning_effort.strip() if isinstance(reasoning_effort, str) else None,
+            reasoning_effort=reasoning_effort.strip()
+            if isinstance(reasoning_effort, str)
+            else None,
             max_tokens=max_tokens,
+            workspace_path=lifecycle_workspace,
         )
     if harness == "smithers":
         from smithers_adapter.client import SmithersClient  # noqa: WPS433
@@ -808,7 +926,9 @@ def _build_delegate_client():
             base_url=base_url,
             timeout_s=timeout_s,
             temperature=temperature,
-            reasoning_effort=reasoning_effort.strip() if isinstance(reasoning_effort, str) else None,
+            reasoning_effort=reasoning_effort.strip()
+            if isinstance(reasoning_effort, str)
+            else None,
             max_tokens=max_tokens,
         )
     if harness == "openclaw":
@@ -827,9 +947,10 @@ def _build_delegate_client():
             timeout_s=timeout_s,
             thinking_level=thinking_level,
             temperature=temperature,
-            reasoning_effort=reasoning_effort.strip() if isinstance(reasoning_effort, str) else None,
+            reasoning_effort=reasoning_effort.strip()
+            if isinstance(reasoning_effort, str)
+            else None,
             max_tokens=max_tokens,
-            direct_openai_compatible=True,
         )
     return None
 

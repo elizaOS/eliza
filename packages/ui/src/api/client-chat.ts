@@ -3,7 +3,10 @@
  * share ingest, workbench, trajectories, database.
  */
 
-import type { DatabaseProviderType } from "@elizaos/shared";
+import type {
+  DatabaseProviderType,
+  PostInboxMessageRequest,
+} from "@elizaos/shared";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { ElizaClient } from "./client-base";
 import type {
@@ -450,15 +453,7 @@ declare module "./client-base" {
       muted?: boolean;
       mutedScope?: "room" | "server";
     }>;
-    sendInboxMessage(data: {
-      accountId?: string;
-      channel?: string;
-      metadata?: Record<string, unknown>;
-      roomId: string;
-      source: string;
-      text: string;
-      replyToMessageId?: string;
-    }): Promise<{
+    sendInboxMessage(data: PostInboxMessageRequest): Promise<{
       ok: boolean;
       message?: ConversationMessage & { roomId: string; source: string };
     }>;

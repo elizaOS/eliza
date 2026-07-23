@@ -5,7 +5,7 @@
 "use client";
 
 import { BrandButton, EmptyState } from "@elizaos/ui/cloud-ui";
-import { Server } from "lucide-react";
+import { Bot, Plus } from "lucide-react";
 import { useT } from "../lib/i18n";
 
 interface EmptyStateProps {
@@ -16,14 +16,19 @@ function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
   const t = useT();
   return (
     <EmptyState
+      icon={<Bot className="h-6 w-6" />}
       title={t("cloud.myAgents.noCloudAgent", {
-        defaultValue: "No cloud agent yet",
+        defaultValue: "No agents yet",
+      })}
+      description={t("cloud.myAgents.noCloudAgentDesc", {
+        defaultValue:
+          "Create your first agent to start chatting. It only takes a minute.",
       })}
       action={
         <BrandButton variant="primary" onClick={onCreateNew}>
-          <Server className="h-4 w-4" />
-          {t("cloud.myAgents.openRuntimeAdmin", {
-            defaultValue: "Open runtime admin",
+          <Plus className="h-4 w-4" />
+          {t("cloud.myAgents.createFirstAgent", {
+            defaultValue: "Create your first agent",
           })}
         </BrandButton>
       }

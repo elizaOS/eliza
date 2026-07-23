@@ -10,8 +10,8 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 ### Actions
 
-- **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
-- **SHELL** — `action=run` executes a command via `/bin/bash -c`; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by an external `shell` service when present). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
+- **SHELL** — `action=run` executes a command via `/bin/bash -c`; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by an external `shell` service when present). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Provider
@@ -24,7 +24,8 @@ Adds filesystem operations, shell command execution, and git worktree management
 |---|---|---|
 | `SandboxService` | `CODING_TOOLS_SANDBOX` | Path-blocklist policy. Validates every path before read/write. Defaults block `~/pvt`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`, `~/Library`, plus per-OS system paths. Optional allow-roots via `CODING_TOOLS_WORKSPACE_ROOTS`. |
 | `FileStateService` | `CODING_TOOLS_FILE_STATE` | Per-(conversation, file) mtime tracking. Write/Edit check that the file was not externally modified since the last Read. |
-| `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Glob/Grep/LS/Shell use this when no explicit `path`/`cwd` is given. Worktree push/pop mutates it. |
+| `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Read/Write/Edit resolve relative paths against it; Glob/Grep/LS/Shell use it when no explicit `path`/`cwd` is given. Worktree push/pop mutates it. |
+| `BackgroundShellService` | `CODING_TOOLS_BACKGROUND_SHELL` | Per-conversation background shell process manager. Owns stable handles, stdin writes, bounded stdout/stderr rings, SIGTERM→SIGKILL termination, and teardown reaping. |
 | `RipgrepService` | `CODING_TOOLS_RIPGREP` | Wraps `@vscode/ripgrep` binary. Used by `grep` operation. Always excludes VCS dirs. 30 s hard cap. |
 
 ### Other exports
@@ -52,12 +53,13 @@ plugins/plugin-coding-tools/
       sandbox-service.ts          Path policy (blocklist + allow-roots)
       file-state-service.ts       Per-conversation file mtime tracking
       session-cwd-service.ts      Per-conversation working directory + worktree stack
+      background-shell-service.ts Per-conversation background shell sessions
       ripgrep-service.ts          @vscode/ripgrep wrapper
       coding-agent-context.ts     Zod schemas for coding-agent context types
       index.ts                    Re-exports all services
     lib/
       format.ts                   Param readers (readStringParam, readNumberParam), successActionResult, failureToActionResult
-      path-utils.ts               isAbsolutePath, isWithin, resolveRealPath, isUncPath
+      path-utils.ts               Path predicates plus FILE input resolution against the session cwd
       run-shell.ts                runShell helper (child_process wrapper with timeout/streaming)
       run-git-command.ts          runGitCommand helper
       terminal-capabilities.ts    Platform capability detection
@@ -95,6 +97,8 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Comma-separated paths to **add** to the default blocklist. |
 | `CODING_TOOLS_SHELL` | (auto-detected) | Override the shell binary used by SHELL action. Takes priority over `SHELL`. Useful on Android/AOSP where the default shell path may not be executable. |
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Default SHELL timeout (ms); per-call `timeout` clamps to `[100, 600000]`. |
+| `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
+| `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read before truncation. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Pre-stat byte cap on FILE action=read. Larger files are rejected. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Default `head_limit` for GREP output. Set to 0 to disable. |
@@ -135,7 +139,7 @@ Runtime gating env vars (read by `auto-enable.ts` and `index.ts`):
 
 ## Conventions / gotchas
 
-- **All file paths must be absolute** for READ/WRITE/EDIT operations. GLOB/GREP/LS accept absolute or default to `SessionCwdService.getCwd(message.roomId)`.
+- **READ/WRITE/EDIT paths may be absolute or relative.** Relative paths resolve against `SessionCwdService.getCwd(message.roomId)`; the resolved absolute path must still pass `SandboxService.validatePath`. A missing session-cwd service is an explicit failure.
 - **Always validate paths through `SandboxService.validatePath`** before any filesystem access. Never bypass this.
 - **Read before write**: `FileStateService.assertWritable` will reject a write if the file was modified externally since the last read. The agent must re-read first.
 - **`conversationId` = `message.roomId`** (string-coerced). Missing `roomId` is a hard failure.

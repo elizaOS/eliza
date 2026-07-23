@@ -12,6 +12,48 @@ import {
   type ToolFailure,
 } from "../types.js";
 
+/**
+ * Wrap preformatted tool output (shell transcripts, grep matches, directory
+ * listings) in a markdown code fence for the user-facing callback channel.
+ * Chat connectors render callback text as markdown, so unfenced transcripts
+ * get mangled — Discord eats `*` pairs as italics, turning `-name "*.md"`
+ * into `-name ".md"` in the rendered message. The fence length adapts to the
+ * longest backtick run in the payload so embedded fences cannot break out.
+ * Planner-facing ActionResult text stays raw — fence only what users see.
+ */
+export function fencePreformatted(text: string): string {
+  const longestRun =
+    text.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  const body = text.endsWith("\n") ? text : `${text}\n`;
+  return `${fence}\n${body}${fence}`;
+}
+
+/**
+ * Bound a tool transcript for the USER-VISIBLE chat callback. Connectors split
+ * anything over their message limit into a flood of follow-up messages (a bare
+ * `ls -la` becomes 8+ Discord posts), so the visible copy keeps the head and
+ * tail on line boundaries with an elision marker. The planner-facing
+ * ActionResult text is never capped — the model always sees the full output.
+ */
+export function capTranscriptForChat(text: string, maxChars = 1500): string {
+  if (text.length <= maxChars) return text;
+  const headBudget = Math.floor(maxChars * 0.65);
+  const tailBudget = maxChars - headBudget;
+  const head = text.slice(0, headBudget);
+  const tail = text.slice(-tailBudget);
+  const headEnd = head.lastIndexOf("\n");
+  const tailStart = tail.indexOf("\n");
+  const headPart = headEnd > 0 ? head.slice(0, headEnd) : head;
+  const tailPart = tailStart >= 0 ? tail.slice(tailStart + 1) : tail;
+  const middle = text
+    .slice(headPart.length, text.length - tailPart.length)
+    .replace(/^\n/, "")
+    .replace(/\n$/, "");
+  const omitted = middle.split("\n").length;
+  return `${headPart}\n… [${omitted} lines omitted — ask to see more] …\n${tailPart}`;
+}
+
 export function failureToActionResult(
   failure: ToolFailure,
   data?: Record<string, unknown>,

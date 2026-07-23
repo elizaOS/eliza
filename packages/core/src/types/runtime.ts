@@ -362,6 +362,12 @@ export interface MessageConnector {
 	source: string;
 	accountId?: string;
 	account?: ConnectorAccountRef;
+	/**
+	 * `connector` opts an unscoped registration into receiving a trusted
+	 * `MessageConnectorQueryContext.accountId` and dispatching it internally.
+	 * The default is runtime-scoped routing via this connector's `accountId`.
+	 */
+	accountRouting?: "connector";
 	label: string;
 	capabilities: MessageConnectorCapability[];
 	supportedTargetKinds: MessageTargetKind[];
@@ -493,12 +499,21 @@ export interface PostConnector {
 	source: string;
 	accountId?: string;
 	account?: ConnectorAccountRef;
+	/**
+	 * `connector` opts an unscoped registration into receiving a trusted
+	 * `PostConnectorQueryContext.accountId` and dispatching it internally.
+	 */
+	accountRouting?: "connector";
 	label: string;
 	capabilities: PostConnectorCapability[];
 	description?: string;
 	contexts: AgentContext[];
 	metadata?: Metadata;
-	postHandler?: (runtime: IAgentRuntime, content: Content) => SendHandlerResult;
+	postHandler?: (
+		runtime: IAgentRuntime,
+		content: Content,
+		context?: PostConnectorQueryContext,
+	) => SendHandlerResult;
 	fetchFeed?: (
 		context: PostConnectorQueryContext,
 		params: PostConnectorFeedParams,
@@ -852,11 +867,10 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		onlyInclude?: boolean,
 		skipCache?: boolean,
 		/**
-		 * When set, REUSE cached provider results for the requested set and re-run
-		 * only the named providers (plus any not yet cached for this message.id).
-		 * The full requested set still drives the rendered text/order. Used to
-		 * refresh only the providers that changed mid-turn (e.g. RECENT_MESSAGES
-		 * after an early reply) instead of recomposing everything.
+		 * When set (including an empty array), REUSE cached provider results for
+		 * the requested set and re-run only the named providers, plus any not yet
+		 * cached for this message.id. The full requested set still drives the
+		 * rendered text/order. An empty array means maximum reuse.
 		 */
 		refreshProviders?: string[] | null,
 	): Promise<State>;

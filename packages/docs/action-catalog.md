@@ -10,12 +10,12 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 
 ## Summary
 
-- **Canonical actions:** 23
+- **Canonical actions:** 25
 - **Core actions:** 14
-- **Plugin overlay actions:** 9
+- **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 187
+- **Registered runtime actions:** 188
 
 ## Actions
 
@@ -222,6 +222,28 @@ Trust system control. action=evaluate reads a trust profile for an entity; recor
 | `duration` | no | number | Requested duration in hours (request_elevation). Defaults to 60. |
 | `roleAssignments` | no | array | Role assignments (update_role). |
 
+### ACCOUNTS_COMMAND
+
+View provider accounts and usage, or manage them
+
+- **Aliases:** /accounts
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | no | string | use, enable, disable, strategy, refresh — omit for the report |
+| `provider` | no | string | claude, codex, cerebras, or a full provider id |
+| `value` | no | string | account by id, label, or email — or the strategy name for `strategy` |
+
+### BACKEND_COMMAND
+
+Show or set the default coding backend
+
+- **Aliases:** /backend
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `backend` | no | string | default coding backend for new tasks |
+
 ### COMPACT_COMMAND
 
 Compact conversation history
@@ -261,7 +283,7 @@ Set or show current model
 | Parameter | Required | Type | Description |
 | --- | --- | --- | --- |
 | `target` | no | string | small, large, coding, show, local, cloud — or a model for this room |
-| `model` | no | string | model id — for coding, the backend (codex, claude, opencode, elizaos) |
+| `model` | no | string | model id — for coding, the backend (codex, claude, eliza) |
 | `effort` | no | string | reasoning effort — for coding, the model id |
 | `coding-effort` | no | string | reasoning effort (coding target) |
 
@@ -324,8 +346,7 @@ registered action surface** scanned from source
 declaration under `packages/core`, `packages/agent`, and `plugins/*`, plus
 view-scoped actions. An action can be real and registered without having a
 canonical spec entry — before concluding an action "does not exist", check this
-list. CI (`node packages/scripts/view-action-ratchet.mjs`) fails when this
-section drifts from source.
+list. Regenerate this document after changing the registered action surface.
 
 - `ACTIVATE_PLUGIN_IF_READY` — `packages/core/src/features/plugin-config/actions/activate-plugin-if-ready.ts`
 - `AGENT_SWITCH` — `plugins/plugin-app-control/src/actions/agent-switch.ts`
@@ -382,7 +403,6 @@ section drifts from source.
 - `DOCUMENT` — `packages/core/src/features/documents/actions.ts`
 - `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
-- `ELIZAOS` — `plugins/plugin-agent-orchestrator/src/actions/elizaos-capability.ts`
 - `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
 - `ENTITY` — `plugins/plugin-personal-assistant/src/actions/entity.ts`
 - `ESCALATE` — `packages/core/src/features/autonomy/action.ts`
@@ -509,6 +529,8 @@ section drifts from source.
 - `VISUALWEBBENCH_TASK` — `plugins/plugin-benchmarks/src/actions/visualwebbench.ts`
 - `VOICE_CALL` — `plugins/plugin-personal-assistant/src/actions/voice-call.ts`
 - `WALLET` — `plugins/plugin-wallet/src/chains/wallet-action.ts`
+- `WEB_FETCH` — `plugins/plugin-coding-tools/src/actions/web-fetch.ts`
+- `WEB_SEARCH` — `plugins/plugin-coding-tools/src/actions/web-search.ts`
 - `WEBSHOP` — `plugins/plugin-benchmarks/src/actions/webshop.ts`
 - `WINDOW` — `plugins/plugin-computeruse/src/actions/window.ts`
 - `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`

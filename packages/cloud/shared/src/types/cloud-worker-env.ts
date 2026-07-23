@@ -22,6 +22,11 @@ export interface Bindings {
    * names (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /**
+   * Routes chat completions through the lazy chat-only Worker application.
+   * Default off provides an immediate rollback to the monolithic router.
+   */
+  THIN_INFERENCE_ENTRY_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -53,13 +58,15 @@ export interface Bindings {
 
   // ---- Cartesia ----
   /**
-   * Server-side Cartesia API key. When set, WAV-format TTS requests (codec-less
-   * clients) synthesize via Cartesia Sonic streaming (~150 ms to first audio)
-   * instead of the buffered ElevenLabs PCM round-trip, billed at the same
-   * ElevenLabs catalog rate. Unset → ElevenLabs behavior is unchanged.
+   * Server-side Cartesia API key. When set, un-pinned/default cloud TTS
+   * synthesizes with Cartesia Sonic. MP3 uses Cartesia's REST bytes endpoint;
+   * WAV uses the streaming adapter for codec-less clients. Unset falls back to
+   * the Kokoro/ElevenLabs selection chain.
    */
   CARTESIA_API_KEY?: string;
-  /** Overrides the default Cartesia voice id used for un-pinned WAV requests. */
+  /** Overrides the default Cartesia voice id used for un-pinned requests. */
+  CARTESIA_VOICE_ID?: string;
+  /** Legacy name accepted while deploy environments migrate to CARTESIA_VOICE_ID. */
   CARTESIA_DEFAULT_VOICE_ID?: string;
 
   // ---- Free self-hosted voice (default) ----
@@ -99,6 +106,12 @@ export interface Bindings {
    * different hosted model for a deployment.
    */
   WHISPER_STT_MODEL?: string;
+  /**
+   * Positive integer byte cap for the whole STT multipart request, including
+   * MIME boundaries and field overhead. Unset defaults to 25 MiB; invalid
+   * values fail the STT route closed instead of weakening the upload guard.
+   */
+  VOICE_STT_MAX_MULTIPART_BYTES?: string;
 
   // ---- Realtime voice-session WebSocket (Phase 1, flag-gated) ----
   /**
@@ -112,23 +125,22 @@ export interface Bindings {
   /** Cartesia voice id (UUID) used for the realtime downlink. */
   VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
   /**
-   * Worker-internal SSE endpoint for the LLM leg. MUST be an agent-scoped
-   * conversation endpoint (or a voice-aware shim) that consumes the
-   * `X-Eliza-Agent-Id` / `X-Eliza-Conversation-Id` scope headers the bridge
-   * sends — NOT raw `/api/v1/chat/completions`, whose ChatRequest ignores that
-   * scope and would run turns without agent context/persistence.
+   * API origin for the LLM leg. The bridge constructs the canonical
+   * `/eliza/agents/:agentId/api/conversations/:conversationId/messages/stream`
+   * URL from the signed voice-session scope. Never point this at a raw model
+   * gateway, which would bypass agent context and conversation persistence.
    */
   VOICE_REALTIME_ELIZA_ENDPOINT?: string;
   /**
    * Server-held credential (Bearer value) the voice-session uses to call the
-   * internal chat/completions SSE leg. The realtime WS is headerless (WebView
+   * internal canonical agent message SSE leg. The realtime WS is headerless (WebView
    * 113), so the client's Authorization is unavailable inside the session; the
    * server presents this credential instead. The user identity is carried by
    * the verified voice-token claims, NOT by the client. Deploy as a wrangler
    * secret; never returned to clients.
    */
   VOICE_REALTIME_ELIZA_AUTHORIZATION?: string;
-  /** Gemma pass-through model id for the LLM leg. */
+  /** Legacy model setting retained for rollout compatibility. */
   VOICE_REALTIME_ELIZA_MODEL?: string;
   /** Per-org daily voice minute cap (SEC-15). */
   VOICE_REALTIME_ORG_DAILY_MINUTES?: string;
@@ -139,7 +151,9 @@ export interface Bindings {
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
-  /** Deepgram Flux realtime STT key (server-held; NEVER returned to clients). */
+  /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
+  VOICE_BATCH_STT_PROVIDER?: string;
+  /** Deepgram realtime Flux and opt-in prerecorded STT key (server-held; NEVER returned to clients). */
   DEEPGRAM_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;

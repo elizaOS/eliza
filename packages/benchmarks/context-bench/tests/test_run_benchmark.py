@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from elizaos_context_bench import ContextBenchConfig, ContextBenchRunner
+
 
 def _load_run_benchmark_module():
     module_path = Path(__file__).resolve().parents[1] / "run_benchmark.py"
@@ -32,3 +34,29 @@ def test_adapter_import_paths_are_present_and_idempotent() -> None:
     for path in expected:
         assert path in sys.path
         assert sys.path.count(path) == before[path]
+
+
+def test_canonical_full_configuration_contains_270_base_cases() -> None:
+    module = _load_run_benchmark_module()
+    config = ContextBenchConfig(
+        context_lengths=[1024, 2048, 4096, 8192, 16384, 32768],
+        positions=[
+            module.NeedlePosition.START,
+            module.NeedlePosition.EARLY,
+            module.NeedlePosition.MIDDLE,
+            module.NeedlePosition.LATE,
+            module.NeedlePosition.END,
+        ],
+        tasks_per_position=5,
+        run_niah_basic=True,
+        run_niah_semantic=True,
+        run_multi_hop=True,
+        multi_hop_depths=[1, 2, 3],
+    )
+
+    counts = ContextBenchRunner(
+        config=config,
+        llm_query_fn=module._make_mock_llm_query(),
+    ).count_scenarios()
+
+    assert counts == {"base": 270, "edge": 0, "total": 270, "edge_multiplier": 10}

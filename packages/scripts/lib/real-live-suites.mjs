@@ -81,6 +81,12 @@ export const GUARDED_REAL_LIVE_SUITES = [
     notes: "runs in .github/workflows/orchestrator-live-multi-account.yml",
   },
   {
+    file: "packages/app-core/test/services/smithers-linked-codex-subscription.live.test.ts",
+    optIn: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
+    notes:
+      "app-core Smithers-linked Codex subscription roundtrip; needs an authenticated ~/.codex/auth.json and spends real ChatGPT-subscription traffic",
+  },
+  {
     file: "packages/core/src/runtime/__tests__/field-registry-cerebras.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     requires: ["CEREBRAS_API_KEY"],
@@ -116,6 +122,12 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-agent-orchestrator/__tests__/live/native-acp-smoke.live.test.ts",
     optIn: "RUN_LIVE_NATIVE_ACP",
+  },
+  {
+    file: "plugins/plugin-agent-orchestrator/__tests__/live/smithers-codex-subscription.live.test.ts",
+    optIn: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
+    notes:
+      "real Codex ChatGPT subscription through AcpService + durable Smithers child + native ACP adapter; needs an authenticated ~/.codex/auth.json",
   },
   {
     file: "plugins/plugin-agent-orchestrator/__tests__/live/sub-agent-router.live.test.ts",

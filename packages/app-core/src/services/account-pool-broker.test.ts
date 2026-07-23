@@ -33,6 +33,7 @@ describe("AccountPoolBroker TTL", () => {
       recordCall,
       markHealthy: vi.fn(async () => {}),
       markRateLimited: vi.fn(async () => {}),
+      markRateLimitedUnknown: vi.fn(async () => {}),
       markNeedsReauth: vi.fn(async () => {}),
       list: vi.fn(() => [account()]),
     } as unknown as AccountPool;
@@ -118,6 +119,7 @@ describe("AccountPoolBroker observability", () => {
       recordCall: vi.fn(async () => {}),
       markHealthy: vi.fn(async () => {}),
       markRateLimited: vi.fn(async () => {}),
+      markRateLimitedUnknown: vi.fn(async () => {}),
       markNeedsReauth: vi.fn(async () => {}),
       list: vi.fn(() => [account({ id: "primary" })]),
     } as unknown as AccountPool;
@@ -182,6 +184,7 @@ describe("AccountPoolBroker observability", () => {
       recordCall: vi.fn(async () => {}),
       markHealthy: vi.fn(async () => {}),
       markRateLimited: vi.fn(async () => {}),
+      markRateLimitedUnknown: vi.fn(async () => {}),
       markNeedsReauth: vi.fn(async () => {}),
       list: vi.fn(() => [account({ id: "a" }), account({ id: "b" })]),
     } as unknown as AccountPool;
@@ -297,6 +300,7 @@ describe("AccountPoolBroker observability", () => {
       recordCall: vi.fn(async () => {}),
       markHealthy: vi.fn(async () => {}),
       markRateLimited: vi.fn(async () => {}),
+      markRateLimitedUnknown: vi.fn(async () => {}),
       markNeedsReauth: vi.fn(async () => {}),
       list: vi.fn(() => [account({ id: "a" }), account({ id: "b" })]),
     } as unknown as AccountPool;
@@ -336,5 +340,64 @@ describe("AccountPoolBroker observability", () => {
     expect(failovers).toHaveLength(10);
     expect(failovers[0]?.atMs).toBe(6_000);
     expect(failovers[9]?.atMs).toBe(24_000);
+  });
+});
+
+describe("AccountPoolBroker provider reset preservation", () => {
+  it("keeps resets beyond one hour and leaves unknown resets without an until", async () => {
+    const now = 10_000;
+    const markRateLimited = vi.fn(async () => {});
+    const markRateLimitedUnknown = vi.fn(async () => {});
+    let leaseIndex = 0;
+    const pool = {
+      select: vi.fn(async () => account()),
+      recordCall: vi.fn(async () => {}),
+      markHealthy: vi.fn(async () => {}),
+      markRateLimited,
+      markRateLimitedUnknown,
+      markNeedsReauth: vi.fn(async () => {}),
+      list: vi.fn(() => [account()]),
+    } as unknown as AccountPool;
+    const broker = new AccountPoolBroker({
+      pool,
+      now: () => now,
+      idGenerator: () => `lease-${++leaseIndex}`,
+      tokenResolver: async () => ({
+        accessToken: "access",
+        accessExpiresAt: now + 100_000,
+      }),
+    });
+
+    const known = await broker.lease({
+      providerId: "anthropic-subscription",
+      sessionKey: "known",
+    });
+    await broker.report({
+      leaseId: known?.leaseId ?? "",
+      ok: false,
+      httpStatus: 429,
+      retryAfterMs: 5 * 60 * 60_000,
+    });
+    expect(markRateLimited).toHaveBeenCalledWith(
+      "primary",
+      now + 5 * 60 * 60_000,
+      "rate_limited",
+      { providerId: "anthropic-subscription" },
+    );
+
+    const unknown = await broker.lease({
+      providerId: "anthropic-subscription",
+      sessionKey: "unknown",
+    });
+    await broker.report({
+      leaseId: unknown?.leaseId ?? "",
+      ok: false,
+      httpStatus: 429,
+    });
+    expect(markRateLimitedUnknown).toHaveBeenCalledWith(
+      "primary",
+      "rate_limited",
+      { providerId: "anthropic-subscription" },
+    );
   });
 });

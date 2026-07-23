@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   filterNodesByIntegrationSupport,
+  getDefaultRequiredCredentialTypes,
   getNodeDefinition,
   searchNodes,
   simplifyNodeForLLM,
@@ -50,6 +51,46 @@ describe('filterNodesByIntegrationSupport', () => {
 
     expect(remaining.length).toBeGreaterThan(0);
     expect(removed).toEqual([]);
+  });
+
+  test('keeps Webhook when its default authentication mode is none', () => {
+    const webhookNode = getNodeDefinition('workflows-nodes-base.webhook');
+    expect(webhookNode).toBeDefined();
+    if (!webhookNode) throw new Error('expected webhook node');
+
+    const webhook = { node: webhookNode, score: 1, matchReason: 'test' };
+    const { remaining, removed } = filterNodesByIntegrationSupport([webhook], new Set());
+
+    expect(remaining).toEqual([webhook]);
+    expect(removed).toEqual([]);
+    expect(getDefaultRequiredCredentialTypes(webhookNode)).toEqual([]);
+  });
+
+  test('still gates a credential selected by the node default', () => {
+    const webhookNode = getNodeDefinition('workflows-nodes-base.webhook');
+    expect(webhookNode).toBeDefined();
+    if (!webhookNode) throw new Error('expected webhook node');
+
+    const authenticatedWebhook = {
+      node: {
+        ...webhookNode,
+        properties: webhookNode.properties.map((property) =>
+          property.name === 'authentication' ? { ...property, default: 'headerAuth' } : property
+        ),
+      },
+      score: 1,
+      matchReason: 'test',
+    };
+    const { remaining, removed } = filterNodesByIntegrationSupport(
+      [authenticatedWebhook],
+      new Set()
+    );
+
+    expect(remaining).toEqual([]);
+    expect(removed).toEqual([authenticatedWebhook]);
+    expect(getDefaultRequiredCredentialTypes(authenticatedWebhook.node)).toEqual([
+      'httpHeaderAuth',
+    ]);
   });
 
   test('removes credentialed nodes when credentials are unsupported', () => {

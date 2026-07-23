@@ -1,7 +1,4 @@
-"""Unit tests for ``openclaw_adapter.client.OpenClawClient``.
-
-Every subprocess invocation is mocked — no actual OpenClaw spawn, no network.
-"""
+"""Tests the OpenClaw client with subprocess and network boundaries mocked."""
 
 from __future__ import annotations
 
@@ -40,14 +37,92 @@ def _fake_completed(
 @pytest.fixture
 def fake_binary(tmp_path: Path) -> Path:
     binary = tmp_path / "openclaw"
-    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.write_text("#!/bin/sh\nprintf 'OpenClaw 2026.5.7 (eeef486)\\n'\n")
     binary.chmod(0o755)
     return binary
 
 
 @pytest.fixture
-def client(fake_binary: Path) -> OpenClawClient:
-    return OpenClawClient(binary_path=fake_binary, repo_path=fake_binary.parent, provider="openai")
+def client(
+    fake_binary: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> OpenClawClient:
+    monkeypatch.delenv("CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN", raising=False)
+    return OpenClawClient(
+        binary_path=fake_binary,
+        repo_path=fake_binary.parent,
+        provider="claude-subscription",
+        model="claude-opus-4-8",
+        api_key="gateway-sentinel",
+        base_url="http://127.0.0.1:39999",
+        native_state_root=fake_binary.parent / "state",
+    )
+
+
+def _write_native_session(
+    env: dict[str, str],
+    assistant_messages: list[dict[str, object]],
+    *,
+    thinking_level: str | None = None,
+) -> Path:
+    state_dir = Path(env["OPENCLAW_STATE_DIR"])
+    session_path = state_dir / "agents" / "benchmark" / "sessions" / "turn.jsonl"
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    records = [
+        {"type": "session", "version": 3, "id": "turn"},
+        *(
+            [{"type": "thinking_level_change", "thinkingLevel": thinking_level}]
+            if thinking_level is not None
+            else []
+        ),
+        {
+            "type": "message",
+            "message": {"role": "user", "content": [{"type": "text", "text": "go"}]},
+        },
+        *({"type": "message", "message": message} for message in assistant_messages),
+    ]
+    session_path.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+    return session_path
+
+
+def _write_native_trajectory(
+    session_path: Path,
+    *,
+    usage: dict[str, int],
+    version: str = "2026.5.7",
+    build: str = "eeef486",
+    thinking_level: str = "medium",
+) -> Path:
+    trajectory_path = session_path.with_name("turn.trajectory.jsonl")
+    records = [
+        {
+            "type": "trace.metadata",
+            "data": {
+                "harness": {
+                    "type": "openclaw",
+                    "version": version,
+                    "gitSha": build,
+                },
+                "model": {
+                    "thinkLevel": thinking_level,
+                    "reasoningLevel": "off",
+                },
+            },
+        },
+        {"type": "model.completed", "data": {"usage": usage}},
+        {
+            "type": "session.ended",
+            "data": {"status": "success", "aborted": False, "timedOut": False},
+        },
+    ]
+    trajectory_path.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+    return trajectory_path
 
 
 def test_message_response_dataclass_shape() -> None:
@@ -84,7 +159,60 @@ def test_client_init_uses_provided_binary(fake_binary: Path) -> None:
     assert c.binary_path == fake_binary
 
 
-def test_client_init_default_binary_falls_back(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_client_inherits_campaign_provider_and_model_when_defaults_are_implicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "claude-subscription")
+    monkeypatch.setenv("BENCHMARK_MODEL_NAME", "claude-opus-4-6")
+
+    client = OpenClawClient()
+
+    assert client.provider == "claude-subscription"
+    assert client.model == "claude-opus-4-6"
+    assert client.api_key_env == "CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN"
+    assert client.base_url_env == "CLAUDE_SUBSCRIPTION_GATEWAY_URL"
+
+
+def test_subscription_auth_ignores_ambient_generic_provider_keys(
+    fake_binary: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENCLAW_API_KEY", "ambient-openclaw-key")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "ambient-provider-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "ambient-openai-key")
+    monkeypatch.setenv("CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN", "gateway-bearer")
+
+    client = OpenClawClient(
+        binary_path=fake_binary,
+        provider="claude-subscription",
+    )
+    assert client.api_key == "gateway-bearer"
+
+    with pytest.raises(ValueError, match="does not match"):
+        OpenClawClient(
+            binary_path=fake_binary,
+            provider="claude-subscription",
+            api_key="different-explicit-bearer",
+        )
+
+    monkeypatch.delenv("CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN")
+    fail_closed = OpenClawClient(
+        binary_path=fake_binary,
+        provider="claude-subscription",
+    )
+    explicit = OpenClawClient(
+        binary_path=fake_binary,
+        provider="claude-subscription",
+        api_key="explicit-gateway-bearer",
+    )
+
+    assert fail_closed.api_key == ""
+    assert explicit.api_key == "explicit-gateway-bearer"
+
+
+def test_client_init_default_binary_falls_back(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """With no override, no manifest, and no ``openclaw`` on PATH, resolution
     lands on the pinned ~/.eliza/agents/openclaw/v2026.5.7/... fallback."""
     monkeypatch.delenv("OPENCLAW_BIN", raising=False)
@@ -97,7 +225,9 @@ def test_client_init_default_binary_falls_back(monkeypatch: pytest.MonkeyPatch, 
     assert c.binary_path.parts[-3:] == ("node_modules", ".bin", "openclaw")
 
 
-def test_client_init_resolves_openclaw_on_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_client_init_resolves_openclaw_on_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """A global ``openclaw`` on PATH is preferred over the pinned fallback, so
     a plain ``npm i -g openclaw`` install works without an OPENCLAW_BIN export."""
     monkeypatch.delenv("OPENCLAW_BIN", raising=False)
@@ -114,12 +244,12 @@ def test_client_init_resolves_openclaw_on_path(monkeypatch: pytest.MonkeyPatch, 
     assert c.binary_path == on_path
 
 
-def test_client_init_reads_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_client_init_reads_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.delenv("OPENCLAW_BIN", raising=False)
     manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(
-        json.dumps({"binary_path": "/custom/path/openclaw"})
-    )
+    manifest_path.write_text(json.dumps({"binary_path": "/custom/path/openclaw"}))
     monkeypatch.setattr(
         "openclaw_adapter.client.DEFAULT_MANIFEST_PATH",
         manifest_path,
@@ -128,13 +258,45 @@ def test_client_init_reads_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert c.binary_path == Path("/custom/path/openclaw")
 
 
+def test_client_init_rejects_malformed_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("OPENCLAW_BIN", raising=False)
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{", encoding="utf-8")
+    monkeypatch.setattr(
+        "openclaw_adapter.client.DEFAULT_MANIFEST_PATH",
+        manifest_path,
+    )
+
+    with pytest.raises(json.JSONDecodeError):
+        OpenClawClient()
+
+
+def test_client_init_rejects_manifest_without_binary_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("OPENCLAW_BIN", raising=False)
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "openclaw_adapter.client.DEFAULT_MANIFEST_PATH",
+        manifest_path,
+    )
+
+    with pytest.raises(ValueError, match="binary_path"):
+        OpenClawClient()
+
+
 def test_client_init_honors_openclaw_bin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENCLAW_BIN", "/override/openclaw")
     c = OpenClawClient()
     assert c.binary_path == Path("/override/openclaw")
 
 
-def test_client_health_calls_version(client: OpenClawClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_health_calls_version(
+    client: OpenClawClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """health() spawns ``<binary> --version`` and parses the version string."""
     monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
     with patch("openclaw_adapter.client.subprocess.run") as mock_run:
@@ -186,6 +348,29 @@ def test_client_health_reports_error_on_nonzero(
     assert "boom" in str(result["error"])
 
 
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "OpenClaw 2026.5.7\n",
+        "OpenClaw not-a-version (eeef486)\n",
+        "OpenClaw 2026.5.7 (not-a-commit)\n",
+        "unexpected version output\n",
+    ],
+)
+def test_client_health_rejects_unattestable_runtime_identity(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: str,
+) -> None:
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+    with patch("openclaw_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout=stdout, rc=0)
+        result = client.health()
+
+    assert result["status"] == "error"
+    assert "version or build" in str(result["error"])
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason=(
@@ -195,8 +380,14 @@ def test_client_health_reports_error_on_nonzero(
     ),
 )
 def test_client_is_ready_checks_path(fake_binary: Path, tmp_path: Path) -> None:
-    assert OpenClawClient(binary_path=fake_binary, repo_path=fake_binary.parent).is_ready() is True
-    assert OpenClawClient(binary_path=tmp_path / "absent", repo_path=tmp_path).is_ready() is False
+    assert (
+        OpenClawClient(binary_path=fake_binary, repo_path=fake_binary.parent).is_ready()
+        is True
+    )
+    assert (
+        OpenClawClient(binary_path=tmp_path / "absent", repo_path=tmp_path).is_ready()
+        is False
+    )
 
 
 def test_client_wait_until_ready_times_out(tmp_path: Path) -> None:
@@ -217,14 +408,14 @@ def test_build_argv_includes_model_thinking_message(client: OpenClawClient) -> N
     assert "--local" in argv
     assert "--json" in argv
     assert "--model" in argv
-    assert argv[argv.index("--model") + 1] == "openai/gemma-4-31b"
+    assert argv[argv.index("--model") + 1] == "eliza-benchmark-gateway/claude-opus-4-8"
     assert "--thinking" in argv
     assert argv[argv.index("--thinking") + 1] == "medium"
     assert "--message" in argv
     assert argv[argv.index("--message") + 1] == "say PONG"
 
 
-def test_build_argv_flattens_chat_history_and_tools(client: OpenClawClient) -> None:
+def test_build_argv_excludes_system_role_and_tools(client: OpenClawClient) -> None:
     argv = client.build_argv(
         "latest request",
         {
@@ -248,18 +439,40 @@ def test_build_argv_flattens_chat_history_and_tools(client: OpenClawClient) -> N
     )
 
     message = argv[argv.index("--message") + 1]
-    assert "OpenClaw benchmark harness" in message
-    assert "lookup_order" in message
-    assert "system: system rules" in message
+    assert "lookup_order" not in message
+    assert "system rules" not in message
     assert "assistant: first answer" in message
     assert "user: latest request" in message
 
 
-def test_build_argv_does_not_double_prefix_model(fake_binary: Path) -> None:
-    """When ``model`` already contains '/', no extra provider prefix is added."""
+def test_build_argv_appends_current_turn_to_explicit_benchmark_history(
+    client: OpenClawClient,
+) -> None:
+    argv = client.build_argv(
+        "Undo cancel and continue.",
+        {
+            "benchmark_messages": [
+                {"role": "user", "content": "Cancel this task."},
+                {"role": "assistant", "content": "The task is cancelled."},
+            ],
+            "system_hint": "Use lifecycle tools when needed.",
+        },
+    )
+
+    message = argv[argv.index("--message") + 1]
+    assert "Use lifecycle tools when needed." not in message
+    assert message.count("user: Cancel this task.") == 1
+    assert message.count("assistant: The task is cancelled.") == 1
+    assert message.count("user: Undo cancel and continue.") == 1
+
+
+def test_build_argv_maps_prefixed_model_to_gateway_catalog(fake_binary: Path) -> None:
+    """The embedded runtime always selects the isolated gateway provider."""
     c = OpenClawClient(binary_path=fake_binary, model="anthropic/claude-3-5-sonnet")
     argv = c.build_argv("hi", None)
-    assert argv[argv.index("--model") + 1] == "anthropic/claude-3-5-sonnet"
+    assert (
+        argv[argv.index("--model") + 1] == "eliza-benchmark-gateway/claude-3-5-sonnet"
+    )
 
 
 def test_build_argv_passes_session_and_agent(client: OpenClawClient) -> None:
@@ -398,19 +611,25 @@ def test_client_session_id_passed(
     assert argv[argv.index("--session-id") + 1] == "abc"
 
 
-def test_client_send_message_passes_env(
+def test_client_send_message_passes_isolated_gateway_env(
     fake_binary: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The spawned env must include CEREBRAS_API_KEY mirrored into OPENAI_API_KEY,
-    and --model and --thinking present in argv."""
+    """The embedded runtime receives isolated state and ephemeral gateway auth."""
     monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
-    monkeypatch.setenv("CEREBRAS_API_KEY", "sk-test-key")
-    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
-    client = OpenClawClient(binary_path=fake_binary, provider="cerebras")
+    client = OpenClawClient(
+        binary_path=fake_binary,
+        provider="claude-subscription",
+        model="claude-opus-4-8",
+        api_key="gateway-sentinel",
+        base_url="http://127.0.0.1:39999",
+        native_state_root=fake_binary.parent / "state",
+    )
     captured: dict[str, object] = {}
 
-    def _fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def _fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         captured["argv"] = argv
         captured["env"] = dict(kwargs.get("env") or {})
         return _fake_completed(stdout=json.dumps({"reply": "ok"}), rc=0)
@@ -419,12 +638,415 @@ def test_client_send_message_passes_env(
         client.send_message("hi")
 
     env = captured["env"]
-    assert env["CEREBRAS_API_KEY"] == "sk-test-key"
-    assert env["OPENAI_API_KEY"] == "sk-test-key"
-    assert env["OPENAI_BASE_URL"] == "https://api.cerebras.ai/v1"
+    assert env["CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN"] == "gateway-sentinel"
+    assert env["BENCHMARK_HARNESS"] == "openclaw"
+    assert Path(env["OPENCLAW_STATE_DIR"]).is_dir()
+    assert Path(env["OPENCLAW_CONFIG_PATH"]).is_file()
+    assert "gateway-sentinel" not in Path(env["OPENCLAW_CONFIG_PATH"]).read_text()
     argv = captured["argv"]
     assert "--model" in argv
     assert "--thinking" in argv
+
+
+def test_native_turn_requires_terminal_session_evidence_for_publication(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+
+    def _fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        if argv[1:] == ["--version"]:
+            return _fake_completed(stdout="OpenClaw 2026.5.7 (eeef486)\n")
+        env = dict(kwargs.get("env") or {})
+        session_path = _write_native_session(
+            env,
+            [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "toolCall", "name": "TASKS"}],
+                    "stopReason": "toolUse",
+                    "usage": {
+                        "input": 4518,
+                        "output": 477,
+                        "totalTokens": 4995,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                    },
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "done"}],
+                    "stopReason": "stop",
+                    "usage": {
+                        "input": 4992,
+                        "output": 342,
+                        "totalTokens": 5334,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                    },
+                },
+            ],
+            thinking_level="medium",
+        )
+        _write_native_trajectory(
+            session_path,
+            usage={
+                "input": 9510,
+                "output": 819,
+                "total": 10329,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+            },
+        )
+        return _fake_completed(
+            stdout=json.dumps(
+                {
+                    "payloads": [{"text": "done"}],
+                    "meta": {
+                        "agentMeta": {
+                            "lastCallUsage": {
+                                "promptTokens": 4992,
+                                "completionTokens": 342,
+                                "totalTokens": 5334,
+                            }
+                        }
+                    },
+                }
+            ),
+            rc=0,
+        )
+
+    with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
+        assert client.health()["status"] == "ready"
+        response = client.send_message("hi")
+
+    metadata = response.params["_meta"]["openclaw_adapter"]
+    assert metadata["publishable_native"] is True
+    assert metadata["native_session_evidence"] == "succeeded"
+    assert metadata["native_session_terminal_stop_reason"] == "stop"
+    assert len(metadata["native_session_sha256"]) == 64
+    assert metadata["native_session_assistant_model_call_count"] == 2
+    assert metadata["native_trajectory_evidence"] == "succeeded"
+    assert metadata["native_runtime_identity_attested"] is True
+    assert metadata["thinking_level_attested"] is True
+    assert metadata["native_usage_scope"] == "full_native_turn_aggregate"
+    assert response.params["usage"] == {
+        "prompt_tokens": 9510,
+        "completion_tokens": 819,
+        "total_tokens": 10329,
+        "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+        },
+    }
+
+
+def test_native_turn_rejects_zero_exit_when_terminal_session_has_connection_error(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+    telemetry_path = tmp_path / "telemetry.jsonl"
+    monkeypatch.setenv("BENCHMARK_TELEMETRY_JSONL", str(telemetry_path))
+
+    def _fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        del argv
+        env = dict(kwargs.get("env") or {})
+        _write_native_session(
+            env,
+            [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "On it; starting a worker."}],
+                    "stopReason": "toolUse",
+                },
+                {
+                    "role": "assistant",
+                    "content": [],
+                    "stopReason": "error",
+                    "errorMessage": "Connection error.",
+                },
+            ],
+        )
+        return _fake_completed(
+            stdout=json.dumps(
+                {
+                    "payloads": [
+                        {"text": "On it; starting a worker.", "mediaUrl": None},
+                        {"text": "Connection error.", "mediaUrl": None},
+                    ],
+                    "meta": {"durationMs": 25_000},
+                }
+            ),
+            rc=0,
+        )
+
+    with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
+        with pytest.raises(RuntimeError, match="Connection error"):
+            client.send_message("Implement the login timeout fix.")
+
+    telemetry = json.loads(telemetry_path.read_text(encoding="utf-8").splitlines()[0])
+    assert telemetry["error_if_any"].endswith("Connection error.")
+
+
+def test_native_turn_without_session_evidence_is_explicitly_nonpublishable(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+    with patch("openclaw_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(
+            stdout=json.dumps({"payloads": [{"text": "unattested"}]}),
+            rc=0,
+        )
+        response = client.send_message("hi")
+
+    metadata = response.params["_meta"]["openclaw_adapter"]
+    assert metadata["publishable_native"] is False
+    assert metadata["native_session_evidence"] == "missing"
+    assert metadata["native_session_sha256"] is None
+
+
+def test_native_turn_applies_per_turn_generation_parameters(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+    captured_config: dict[str, object] = {}
+
+    def _fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        del argv
+        env = dict(kwargs.get("env") or {})
+        config = json.loads(
+            Path(env["OPENCLAW_CONFIG_PATH"]).read_text(encoding="utf-8")
+        )
+        captured_config.update(config)
+        return _fake_completed(stdout=json.dumps({"reply": "ok"}), rc=0)
+
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "lookup",
+            "description": "Look up one record.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        },
+    }
+    with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
+        response = client.send_message(
+            "find the orchid",
+            context={
+                "messages": [
+                    {"role": "system", "content": "Use the listed tool."},
+                    {"role": "user", "content": "find the orchid"},
+                ],
+                "tools": [tool],
+                "tool_choice": "auto",
+                "max_tokens": 512,
+                "temperature": 0.0,
+            },
+        )
+
+    assert captured_config["agents"]["list"][0]["params"] == {
+        "maxTokens": 512,
+        "temperature": 0.0,
+    }
+    meta = response.params["_meta"]["openclaw_adapter"]
+    assert meta["requested_max_tokens"] == 512
+    assert meta["requested_temperature"] == 0.0
+    assert meta["requested_tool_choice"] == "auto"
+    assert meta["tool_choice_native_policy"] == "native_default_auto"
+    assert meta["capture_stop_after_scored_action"] is False
+    assert len(meta["benchmark_messages_sha256"]) == 64
+    assert len(meta["tool_schema_sha256"]) == 64
+
+
+def test_native_turn_loads_system_prompt_once_through_agents_md(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+    captured: dict[str, object] = {}
+
+    def _fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        if argv[0] == "git":
+            return _fake_completed(stdout="a" * 40 + "\n")
+        env = dict(kwargs.get("env") or {})
+        state_dir = Path(env["OPENCLAW_STATE_DIR"])
+        captured["message"] = argv[argv.index("--message") + 1]
+        captured["agents"] = (state_dir / "workspace" / "AGENTS.md").read_text(
+            encoding="utf-8"
+        )
+        return _fake_completed(stdout=json.dumps({"reply": "ok"}), rc=0)
+
+    with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
+        response = client.send_message(
+            "find the orchid",
+            context={
+                "messages": [
+                    {"role": "system", "content": "Use the listed tool."},
+                    {"role": "user", "content": "find the orchid"},
+                ],
+                "system_prompt": "Use the listed tool.",
+            },
+        )
+
+    assert captured["agents"] == "Use the listed tool."
+    assert "Use the listed tool." not in str(captured["message"])
+    assert str(captured["message"]).count("user: find the orchid") == 1
+    meta = response.params["_meta"]["openclaw_adapter"]
+    assert meta["native_system_prompt_surface"] == "workspace/AGENTS.md"
+    assert meta["native_system_prompt_in_cli_message"] is False
+    assert len(meta["native_system_prompt_sha256"]) == 64
+
+
+def test_native_turn_routes_system_hint_through_agents_md(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+    captured: dict[str, object] = {}
+
+    def _fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        if argv[0] == "git":
+            return _fake_completed(stdout="a" * 40 + "\n")
+        env = dict(kwargs.get("env") or {})
+        state_dir = Path(env["OPENCLAW_STATE_DIR"])
+        captured["message"] = argv[argv.index("--message") + 1]
+        captured["agents"] = (state_dir / "workspace" / "AGENTS.md").read_text(
+            encoding="utf-8"
+        )
+        return _fake_completed(stdout=json.dumps({"reply": "ok"}), rc=0)
+
+    with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
+        response = client.send_message(
+            "Undo cancel and continue.",
+            context={
+                "benchmark_messages": [
+                    {"role": "user", "content": "Cancel this task."},
+                    {"role": "assistant", "content": "Cancelled."},
+                ],
+                "system_hint": "Use lifecycle tools when needed.",
+                "benchmark_workspace_path": str(client.repo_path),
+            },
+        )
+
+    assert captured["agents"] == "Use lifecycle tools when needed."
+    assert "Use lifecycle tools when needed." not in str(captured["message"])
+    assert str(client.repo_path) not in str(captured["message"])
+    assert str(captured["message"]).count("user: Undo cancel and continue.") == 1
+    metadata = response.params["_meta"]["openclaw_adapter"]
+    assert metadata["benchmark_workspace_path"] == str(client.repo_path.resolve())
+    assert metadata["benchmark_workspace_git_sha"] == "a" * 40
+    assert metadata["native_system_prompt_matches_requested"] is True
+
+
+def test_client_send_message_returns_two_sequential_tasks_calls(
+    client: OpenClawClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The native capture boundary preserves every tool round in order."""
+    monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
+
+    def _fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        del argv
+        env = dict(kwargs.get("env") or {})
+        capture_path = Path(env["OPENCLAW_BENCHMARK_CAPTURE_PATH"])
+        capture_path.write_text(
+            "\n".join(
+                json.dumps(record)
+                for record in (
+                    {
+                        "call_id": "call-spawn",
+                        "runtime_name": "TASKS",
+                        "original_name": "TASKS",
+                        "arguments": {
+                            "action": "spawn_agent",
+                            "task": "fix tests",
+                        },
+                        "result": {
+                            "captured": True,
+                            "effect": "not_executed",
+                            "sequence": 0,
+                            "tool": "TASKS",
+                        },
+                    },
+                    {
+                        "call_id": "call-status",
+                        "runtime_name": "TASKS",
+                        "original_name": "TASKS",
+                        "arguments": {"action": "list_agents"},
+                        "result": {
+                            "captured": True,
+                            "effect": "not_executed",
+                            "sequence": 1,
+                            "tool": "TASKS",
+                        },
+                    },
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return _fake_completed(stdout=json.dumps({"reply": "done"}), rc=0)
+
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "TASKS",
+            "description": "Manage task lifecycle.",
+            "parameters": {
+                "type": "object",
+                "properties": {"action": {"type": "string"}},
+                "required": ["action"],
+            },
+        },
+        "x-eliza-benchmark": {
+            "mode": "capture_only",
+            "result": {"captured": True, "effect": "not_executed"},
+        },
+    }
+    with patch("openclaw_adapter.client.subprocess.run", side_effect=_fake_run):
+        result = client.send_message(
+            "Start a worker and report its status.",
+            context={"tools": [tool], "tool_choice": "auto"},
+        )
+
+    assert result.actions == ["TASKS", "TASKS"]
+    assert [call["arguments"]["action"] for call in result.params["tool_calls"]] == [
+        "spawn_agent",
+        "list_agents",
+    ]
+    assert [entry["result"] for entry in result.params["lifecycle_results"]] == [
+        {
+            "captured": True,
+            "effect": "not_executed",
+            "sequence": 0,
+            "tool": "TASKS",
+        },
+        {
+            "captured": True,
+            "effect": "not_executed",
+            "sequence": 1,
+            "tool": "TASKS",
+        },
+    ]
 
 
 def test_client_send_message_parses_json(
@@ -441,12 +1063,11 @@ def test_client_send_message_parses_json(
     assert result.actions == []
 
 
-def test_client_base_url_does_not_bypass_cli_by_default(
+def test_client_rejects_non_loopback_native_provider(
     fake_binary: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A live OpenClaw harness may set base_url for provider routing; that must
-    still exercise the CLI unless direct_openai_compatible is explicit."""
+    """Publishable native runs cannot silently target a remote provider."""
     monkeypatch.delenv("OPENCLAW_DIRECT_OPENAI_COMPAT", raising=False)
     monkeypatch.delenv("OPENCLAW_USE_CLI", raising=False)
     c = OpenClawClient(
@@ -455,12 +1076,9 @@ def test_client_base_url_does_not_bypass_cli_by_default(
         base_url="https://api.cerebras.ai/v1",
     )
     with patch("openclaw_adapter.client.subprocess.run") as mock_run:
-        mock_run.return_value = _fake_completed(stdout=json.dumps({"reply": "ok"}), rc=0)
-        result = c.send_message("hi")
-    assert result.text == "ok"
-    argv = mock_run.call_args.args[0]
-    assert argv[0] == str(fake_binary)
-    assert "agent" in argv
+        with pytest.raises(ValueError, match="loopback completion gateway"):
+            c.send_message("hi")
+    mock_run.assert_not_called()
 
 
 def test_client_handles_warnings_before_json(
@@ -470,8 +1088,8 @@ def test_client_handles_warnings_before_json(
     """Stdout that begins with config warnings before the JSON blob must parse."""
     monkeypatch.setenv("OPENCLAW_USE_CLI", "1")
     stdout = (
-        'Config warnings:\n'
-        '- plugins.entries.eliza-adapter: plugin not found\n'
+        "Config warnings:\n"
+        "- plugins.entries.eliza-adapter: plugin not found\n"
         '{"reply": "x", "actions": []}\n'
     )
     with patch("openclaw_adapter.client.subprocess.run") as mock_run:
@@ -596,7 +1214,9 @@ def test_response_from_payload_normalizes_tool_calls() -> None:
     assert r.params["BAR"] == {"y": 2}
 
 
-def test_response_from_payload_does_not_count_text_embedded_tool_call_by_default() -> None:
+def test_response_from_payload_does_not_count_text_embedded_tool_call_by_default() -> (
+    None
+):
     payload = {
         "reply": 'Need lookup. {"tool": "SEARCH", "args": {"query": "approvals"}}'
     }
@@ -610,6 +1230,7 @@ def test_response_from_payload_does_not_count_text_embedded_tool_call_by_default
         "native_openai_tool_calls",
         "preserves_full_messages",
         "passes_benchmark_tools",
+        "publishable_native",
     }
 
 

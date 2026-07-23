@@ -518,7 +518,7 @@ test("REAL audio: transcription start during spoken local TTS barges in and sile
   });
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 30_000,
   });
   const mic = page.getByTestId("chat-composer-mic");
@@ -712,7 +712,7 @@ test.describe("voice failure paths (keyless)", () => {
     const asrPosts = countPosts(page, "/api/asr/local-inference");
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 30_000,
     });
     const mic = page.getByTestId("chat-composer-mic");
@@ -762,7 +762,7 @@ test.describe("voice failure paths (keyless)", () => {
     );
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 30_000,
     });
     const mic = page.getByTestId("chat-composer-mic");
@@ -819,7 +819,7 @@ test.describe("voice failure paths (keyless)", () => {
     }
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 30_000,
     });
     const mic = page.getByTestId("chat-composer-mic");
@@ -926,7 +926,7 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     });
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 30_000,
     });
     const mic = page.getByTestId("chat-composer-mic");

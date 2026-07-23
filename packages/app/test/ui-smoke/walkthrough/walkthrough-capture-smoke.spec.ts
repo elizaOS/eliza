@@ -188,7 +188,7 @@ async function captureState(
  */
 async function flickSheetToFull(page: Page): Promise<void> {
   const sheet = page.getByTestId("chat-sheet");
-  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+  await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
     "data-open",
     "true",
     { timeout: 15_000 },
@@ -225,7 +225,7 @@ test.describe("walkthrough capture smoke", () => {
     await installWalkthroughConversationStore(page);
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const onboarding = page.getByTestId("continuous-chat-overlay");
+    const onboarding = page.getByTestId("chat-overlay");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
     await expect(
       page.getByText("Sign in to Eliza Cloud and I'll get you set up.", {
@@ -250,7 +250,7 @@ test.describe("walkthrough capture smoke", () => {
     firstRun.setComplete(true);
     await seedFirstRunCompleteBeforeLoad(page);
     await openAppPath(page, "/chat");
-    const overlay = page.getByTestId("continuous-chat-overlay");
+    const overlay = page.getByTestId("chat-overlay");
     await expect(overlay).toBeVisible({ timeout: 60_000 });
     const setupSkip = page.getByRole("button", { name: "Skip for now" });
     if (await setupSkip.isVisible().catch(() => false)) {

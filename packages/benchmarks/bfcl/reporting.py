@@ -156,6 +156,9 @@ class BFCLReporter:
             "metadata": results.metadata,
             "config": {
                 "version": results.config.version,
+                "dataset": results.config.huggingface_dataset,
+                "dataset_revision": results.config.dataset_revision,
+                "require_complete_dataset": results.config.require_complete_dataset,
                 "categories": [c.value for c in results.config.categories] if results.config.categories else None,
                 "max_tests_per_category": results.config.max_tests_per_category,
             },

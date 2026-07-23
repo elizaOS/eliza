@@ -298,8 +298,8 @@ function getSdkSession(
     claudeExecutablePath: getSetting(runtime, "ELIZA_CLI_CLAUDE_BIN"),
     restartAfterTurns: parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_RESTART_AFTER_TURNS")),
     turnTimeoutMs:
-      parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
-      parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
+      parseTurnTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
+      parseTurnTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
     effort: resolveSdkEffort(runtime, mode),
     subprocessEnv,
   });
@@ -383,6 +383,17 @@ function parseTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const n = Number.parseInt(value, 10);
   return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/** Turn-timeout parse (#16553): like {@link parseTimeout}, but an explicit
+ *  `"0"` passes through as 0 — the documented operator opt-out to an
+ *  unbounded turn. Unset/invalid still return undefined so the session's
+ *  bounded default applies. Exported for tests. */
+export function parseTurnTimeout(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return n;
 }
 
 // One binary setting covers both warm and cold backends so container images can
@@ -601,15 +612,10 @@ export function buildModels(
 }
 
 /**
- * Per-slot display-model metadata so RUNTIME_MODEL_CONTEXT (the provider that
- * answers "what model are you running?") reports the ACTUAL Claude/Codex model
- * this plugin calls, not the losing provider's `SMALL_MODEL` fallback. Resolved
- * from env at construction (service.env is hydrated into process.env before
- * plugin load) using the SAME precedence as resolveSdkModel/resolveCodexModel,
- * so the self-report matches what actually runs. Without it the winning
- * cli-inference registration carries no displayModel and the provider walks the
- * generic OPENAI_/ANTHROPIC_ prefix chain, mis-reporting the cerebras triage
- * model (e.g. "gemma-4-31b") for a slot Claude actually serves.
+ * Declare the same runtime-setting precedence used by the handlers. Metadata is
+ * intentionally serializable and handler-free, but it must not snapshot host
+ * environment values: character settings can differ for every agent sharing a
+ * process and are resolved by RUNTIME_MODEL_CONTEXT at provider execution time.
  */
 export function buildModelMetadata(
   source: { ELIZA_CHAT_VIA_CLI?: string } = {
@@ -619,26 +625,35 @@ export function buildModelMetadata(
   const backend = resolveCliBackend(source);
   if (!backend) return undefined;
   const isCodex = backend === "codex" || backend === "codex-sdk";
-  const large = isCodex
-    ? readEnv("ELIZA_CLI_CODEX_MODEL")?.trim() || "gpt-5.5"
-    : readEnv("ELIZA_CLI_CLAUDE_MODEL")?.trim() || "claude-opus-4-8";
-  const plannerRaw = isCodex
-    ? readEnv("ELIZA_CLI_CODEX_PLANNER_MODEL")?.trim()
-    : readEnv("ELIZA_CLI_CLAUDE_PLANNER_MODEL")?.trim();
-  const planner = plannerRaw || large;
-  const small = isCodex ? large : readEnv("ELIZA_CLI_CLAUDE_SMALL_MODEL")?.trim() || large;
-  const metadata: Record<string, { displayModel: string }> = {};
+  const isWarm = backend === "claude-sdk" || backend === "codex-sdk";
+  const largeSetting = isCodex ? "ELIZA_CLI_CODEX_MODEL" : "ELIZA_CLI_CLAUDE_MODEL";
+  const plannerSetting = isCodex
+    ? "ELIZA_CLI_CODEX_PLANNER_MODEL"
+    : "ELIZA_CLI_CLAUDE_PLANNER_MODEL";
+  const defaultModel = isCodex ? "gpt-5.5" : "claude-opus-4-8";
+  const metadata: NonNullable<Plugin["modelMetadata"]> = {};
+  const declaration = (settings: string[]) => ({
+    displayModelSettings: settings,
+    displayModelDefault: defaultModel,
+  });
+
   for (const modelType of LARGE_TIER_MODEL_TYPES) {
-    metadata[modelType] = { displayModel: large };
+    metadata[modelType] = declaration([largeSetting]);
   }
   if (allTiersEnabled()) {
     for (const modelType of SMALL_TIER_MODEL_TYPES) {
-      metadata[modelType] = { displayModel: small };
+      const settings =
+        backend === "claude-sdk"
+          ? ["ELIZA_CLI_CLAUDE_SMALL_MODEL", largeSetting]
+          : backend === "codex-sdk" && modelType === ModelType.TEXT_SMALL
+            ? [plannerSetting, largeSetting]
+            : [largeSetting];
+      metadata[modelType] = declaration(settings);
     }
   }
   if (textPlannerEnabled()) {
     for (const modelType of PLANNER_MODEL_TYPES) {
-      metadata[modelType] = { displayModel: planner };
+      metadata[modelType] = declaration(isWarm ? [plannerSetting, largeSetting] : [largeSetting]);
     }
   }
   return metadata;

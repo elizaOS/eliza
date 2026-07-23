@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Proactive-suggestion affordance on the SHIPPED chat surface (#8792/#11387):
-// the ContinuousChatOverlay ThreadLine must render the distinct Suggestion
+// the ChatOverlay ThreadLine must render the distinct Suggestion
 // treatment (data-proactive-suggestion + "Do it" + dismiss) for assistant
 // turns with source "proactive-interaction" — the overlay is the only chat
 // surface mounted in the app shell, so without this the decider's suggestions
@@ -25,7 +25,7 @@ const clientMock = vi.hoisted(() => ({
 vi.mock("../../../api/client", () => ({ client: clientMock }));
 
 // The overlay module renders inline widgets; import after the mocks.
-import { __renderThreadLineForParity } from "../ContinuousChatOverlay";
+import { __renderThreadLineForParity } from "../ChatOverlay";
 
 function withApp(node: React.ReactElement) {
   const appValue = {
@@ -59,7 +59,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("ContinuousChatOverlay ThreadLine proactive suggestion (#8792)", () => {
+describe("ChatOverlay ThreadLine proactive suggestion (#8792)", () => {
   it("renders the Suggestion affordance for source proactive-interaction", () => {
     withApp(
       __renderThreadLineForParity(

@@ -5,13 +5,26 @@
  */
 import { expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listScenarioMetadata } from "../../scenario-runner/src/loader.ts";
 import { main as auditScenarioCoverage } from "../check-scenario-workflow-coverage.mjs";
 import { PLUGIN_ROUTE_COVERAGE } from "../e2e-coverage/manifest.ts";
+import {
+  evaluatePrerequisites,
+  loadShard,
+  verifyEvidence,
+  writeOutcome,
+} from "../live-scenario-contract.mjs";
 import {
   createLiveScenarioPlan,
   main as runLiveScenarios,
@@ -66,6 +79,101 @@ function exitingChild(
   return child;
 }
 
+test("pins an authoritative, bounded shard catalog", () => {
+  const manifestPath = fileURLToPath(
+    new URL("../live-scenario-shards.json", import.meta.url),
+  );
+  const { manifest, shard } = loadShard(manifestPath, "plugin-health");
+  expect(manifest.authority).toBe(".github/workflows/live-scenarios.yml");
+  expect(manifest.costCeiling).toMatchObject({
+    maxConcurrentShards: 1,
+    maxWorkflowMinutes: 120,
+  });
+  expect(manifest.shards.map((entry: { id: string }) => entry.id)).toEqual([
+    "lifeops-connectors",
+    "plugin-health",
+    "app-control",
+  ]);
+  expect(shard.artifactContract).toEqual([
+    "report",
+    "matrix",
+    "viewer",
+    "native-jsonl",
+    "logs",
+  ]);
+});
+
+test("emits typed prerequisite outcomes without exposing secret values", () => {
+  const shard = {
+    id: "sample",
+    root: "sample-root",
+    artifactContract: ["report"],
+    requiredSecrets: ["JUDGE_KEY"],
+    requiredAnySecrets: [["MODEL_A", "MODEL_B"]],
+  };
+  const blocked = evaluatePrerequisites(shard, { MODEL_A: "top-secret" });
+  expect(blocked).toEqual({
+    status: "prerequisite_unavailable",
+    missing: ["JUDGE_KEY"],
+    missingAny: [],
+  });
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "scenario-preflight-"));
+  try {
+    const outputPath = path.join(tempRoot, "outcome.json");
+    writeOutcome({
+      shard,
+      result: blocked,
+      outputPath,
+      sha: "abc",
+      runId: "123",
+    });
+    const serialized = readFileSync(outputPath, "utf8");
+    expect(serialized).toContain("prerequisite_unavailable");
+    expect(serialized).not.toContain("top-secret");
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("fails evidence verification when any contracted artifact is absent", () => {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "scenario-evidence-"));
+  const shard = {
+    report: "artifacts/report.json",
+    runDir: "artifacts/run",
+  };
+  try {
+    for (const relative of [
+      shard.report,
+      `${shard.runDir}/matrix.json`,
+      `${shard.runDir}/viewer/index.html`,
+      `${shard.runDir}/native.jsonl`,
+      `${shard.runDir}/runner.log`,
+    ]) {
+      const target = path.join(tempRoot, relative);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, "evidence");
+    }
+    expect(verifyEvidence(shard, tempRoot)).toEqual({
+      status: "evidence_complete",
+      missing: [],
+    });
+    rmSync(path.join(tempRoot, shard.runDir, "native.jsonl"));
+    expect(verifyEvidence(shard, tempRoot).status).toBe("evidence_incomplete");
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("keeps shard failures non-short-circuiting and enforces one aggregate result", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  expect(workflow.match(/continue-on-error: true/g)).toHaveLength(4);
+  expect(workflow).toContain("Enforce aggregate shard result");
+  expect(workflow).toContain("if-no-files-found: error");
+  expect(workflow).toContain(
+    "live-scenario-contract.mjs verify lifeops-connectors",
+  );
+});
+
 test("builds the dist-exported runtime packages before the scenario CLI starts", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   const runStep = "- name: Run EA + connector live scenarios";
@@ -115,7 +223,11 @@ test("keeps retired no-op workflow entry points absent", () => {
   expect(auditSource).not.toContain("scenario-matrix.yml");
 
   const workflowReadme = readFileSync(workflowReadmePath, "utf8");
-  expect(workflowReadme).toContain("tracked in #16449");
+  // The GPU/scenario retirement must stay owned by #16449. #16537 reworded the
+  // guide from "tracked in #16449" to "must not close #16449" while keeping the
+  // same tracking issue; assert the issue reference survives regardless of the
+  // surrounding phrasing so a future reword can't silently drop the owner.
+  expect(workflowReadme).toContain("#16449");
   expect(workflowReadme).not.toContain("packages/inference/voice-bench");
 });
 
@@ -136,10 +248,15 @@ test("reports uncovered live-only scenarios as explicit deferrals", () => {
     expect(Object.values(summary.deferredDefaultReasons)).toContainEqual(
       expect.stringContaining("#16448"),
     );
-    expect(PLUGIN_ROUTE_COVERAGE["plugin-personal-assistant"]).toMatchObject({
-      status: "exempt",
-      reason: expect.stringContaining("live-scenarios.yml"),
-    });
+    // Plain reads, not toMatchObject with an asymmetric matcher: bun's
+    // toMatchObject writes expect.stringContaining(...) INTO the received
+    // object, and PLUGIN_ROUTE_COVERAGE is shared module state — the corrupted
+    // entry then fails e2e-coverage.test.ts's written-reason gate later in the
+    // same sweep process.
+    const paEntry = PLUGIN_ROUTE_COVERAGE["plugin-personal-assistant"];
+    expect(paEntry?.status).toBe("exempt");
+    if (paEntry?.status !== "exempt") throw new Error("unreachable");
+    expect(paEntry.reason).toContain("live-scenarios.yml");
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

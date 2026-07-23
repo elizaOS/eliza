@@ -4,6 +4,7 @@
  * runners enforce access, routing, lifecycle, and session-event invariants.
  */
 
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import type {
   Action,
@@ -30,6 +31,12 @@ import {
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
+import {
+  collisionProviderFromWorkspaceService,
+  LanePlannerService,
+  laneReadiness,
+  shouldUseLanePlanner,
+} from "../services/lane-planner.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
@@ -37,7 +44,9 @@ import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   runDurableTask,
+  type SmithersDurableRunLink,
   shouldUseSmithersTaskRunner,
+  smithersDurableRunMetadata,
 } from "../services/smithers-task-integration";
 import {
   KNOWN_ADAPTER_TYPES,
@@ -614,6 +623,7 @@ async function runPromptViaSmithers(
   service: ReturnType<typeof getAcpService> & {},
   session: SpawnResult,
   task: string,
+  durableRun: SmithersDurableRunLink,
   timeoutMs: number | undefined,
   model: string | undefined,
   keepAliveAfterComplete: boolean,
@@ -622,8 +632,12 @@ async function runPromptViaSmithers(
   let completed = false;
   try {
     const { lastResponse } = await runDurableTask(service, session, task, {
+      tenantId: durableRun.tenantId,
+      taskId: durableRun.taskId,
+      runId: durableRun.runId,
       timeoutMs,
       model,
+      maxTurns: durableRun.maxTurns,
     });
     if (service.emitsPromptTerminalEvents !== true) {
       emitSessionEvent(service, session.sessionId, "task_complete", {
@@ -730,7 +744,7 @@ async function runPromptAndClose(
   }
 }
 
-async function runCreate(
+async function runCreateLegacy(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
@@ -787,6 +801,9 @@ async function runCreate(
     pickString(params, content, "approvalPreset"),
   );
   const timeoutMs = getTimeoutMs(params, content);
+  const maxSmithersTurns = readPositiveInteger(
+    params.maxTurns ?? content.maxTurns,
+  );
   const baseLabel = pickString(params, content, "label");
   const extraMetadata = additionalSessionMetadata(params, content);
   const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
@@ -815,6 +832,122 @@ async function runCreate(
     extraMetadata,
     resolvedTaskRoomId,
   );
+
+  // The durable task must exist before ACP work begins. Its id is the stable
+  // owner recorded in every Smithers run link, so a host restart can discover
+  // the task/session pair and resume the same graph without reconstructing the
+  // action call from transient planner state.
+  const taskTitle =
+    pickString(params, content, "title") ??
+    pickString(params, content, "goal") ??
+    (tasks[0] ? labelFrom(tasks[0], 0) : "Coding task");
+  const taskGoal = pickString(params, content, "goal") ?? taskTitle;
+  const taskPriority = (pickString(params, content, "priority") ?? "normal") as
+    | "low"
+    | "normal"
+    | "high"
+    | "urgent";
+  const acceptanceCriteria = pickStringArrayFromInputs(
+    params,
+    content,
+    "acceptanceCriteria",
+  );
+  const taskRoomId =
+    typeof swarmRoomMetadata.taskRoomId === "string"
+      ? swarmRoomMetadata.taskRoomId
+      : undefined;
+  const originRoomId =
+    typeof swarmRoomMetadata.originRoomId === "string"
+      ? swarmRoomMetadata.originRoomId
+      : undefined;
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  const useSmithers = shouldUseSmithersTaskRunner();
+  let threadId: string | null = null;
+  try {
+    if (!taskService || typeof taskService.createTask !== "function") {
+      if (useSmithers) {
+        throw new ElizaError(
+          "Smithers requires the durable orchestrator task service",
+          {
+            code: "SMITHERS_DURABLE_TASK_SERVICE_UNAVAILABLE",
+            context: { taskTitle },
+          },
+        );
+      }
+    } else {
+      const explicitProjectId = pickString(params, content, "projectId");
+      const first = tasks[0]
+        ? parseAgentPrefix(tasks[0], baseAgentType).task
+        : undefined;
+      const boundWorkdir = first
+        ? resolveSpawnWorkdir(runtime, first, routingRequest, explicitWorkdir, {
+            lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+          }).workdir
+        : explicitWorkdir;
+      const detail = await taskService.createTask({
+        title: taskTitle,
+        goal: taskGoal,
+        kind: "coding",
+        priority: taskPriority,
+        originalRequest: messageText(message),
+        ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
+        ...(boundWorkdir ? { workdir: boundWorkdir } : {}),
+        ...((originRoomId ?? taskRoomId)
+          ? { roomId: originRoomId ?? taskRoomId }
+          : {}),
+        ...(taskRoomId ? { taskRoomId } : {}),
+        acceptanceCriteria,
+        ...(objectValue(extraMetadata.lane)
+          ? {
+              metadata: {
+                waveId: extraMetadata.waveId,
+                lane: extraMetadata.lane,
+              },
+            }
+          : {}),
+      });
+      threadId = detail?.id ?? null;
+      if (useSmithers && !threadId) {
+        throw new ElizaError(
+          "Durable task creation returned no task id for Smithers",
+          {
+            code: "SMITHERS_DURABLE_TASK_MISSING_ID",
+            context: { taskTitle },
+          },
+        );
+      }
+    }
+  } catch (error) {
+    // error-policy:J1 the action boundary refuses Smithers execution when its
+    // restart owner cannot be persisted; no ACP session or graph side effect
+    // exists yet. The explicitly configured direct runner keeps its legacy J4
+    // widget-less degradation because it has no durable graph to recover.
+    const detail = error instanceof Error ? error.message : String(error);
+    if (useSmithers) {
+      logger(runtime).error(
+        `[TASKS:create] refusing Smithers launch without a durable task: ${detail}`,
+      );
+      const textOut =
+        "I couldn't create the durable task record, so no workflow agent was started. Please retry once task storage is available.";
+      await callbackText(callback, textOut);
+      return errorResult("SMITHERS_DURABLE_TASK_UNAVAILABLE", textOut);
+    }
+    logger(runtime).warn(
+      `[TASKS:create] durable task thread creation failed: ${detail}`,
+    );
+    threadId = null;
+  }
+
+  const smithersOwnerTaskId = useSmithers ? (threadId ?? undefined) : undefined;
+  if (useSmithers && !smithersOwnerTaskId) {
+    const textOut =
+      "I couldn't establish a durable task owner, so no workflow agent was started.";
+    await callbackText(callback, textOut);
+    return errorResult("SMITHERS_DURABLE_TASK_UNAVAILABLE", textOut);
+  }
+
   const settled = await Promise.allSettled(
     tasks.map(async (part, index) => {
       const parsed = parseAgentPrefix(part, baseAgentType);
@@ -839,6 +972,26 @@ async function runCreate(
         undefined,
         { monetized: pickBoolean(params, content, "appMonetized") === true },
       );
+      const smithersRunId = randomUUID();
+      const durableRun: SmithersDurableRunLink | undefined =
+        smithersOwnerTaskId === undefined
+          ? undefined
+          : {
+              version: 1,
+              orchestratorTaskId: smithersOwnerTaskId,
+              taskId: `${smithersOwnerTaskId}:part:${index}`,
+              runId: smithersRunId,
+              tenantId: runtime.agentId,
+              initialPrompt: taskWithRouteHints,
+              state: "pending",
+              keepAliveAfterComplete,
+              ...(timeoutMs === undefined ? {} : { timeoutMs }),
+              ...(model === undefined ? {} : { model }),
+              ...(approvalPreset === undefined ? {} : { approvalPreset }),
+              ...(maxSmithersTurns === undefined
+                ? {}
+                : { maxTurns: maxSmithersTurns }),
+            };
       const session = await service.spawnSession({
         agentType,
         workdir: sessionWorkdir,
@@ -861,17 +1014,118 @@ async function runCreate(
           workdirRouteId: route?.id,
           workdirRoute: route,
           keepAliveAfterComplete,
+          ...(durableRun ? smithersDurableRunMetadata(durableRun) : {}),
         },
       });
-      if (shouldUseSmithersTaskRunner()) {
+
+      // Link the already-durable ACP record to its task before the first
+      // prompt. If this write fails on the Smithers path, do not execute: boot
+      // recovery can reconstruct the missing copy from ACP metadata and start
+      // once the store is healthy, without risking an unowned side effect.
+      if (
+        threadId &&
+        taskService &&
+        typeof taskService.attachSession === "function"
+      ) {
+        try {
+          const attached = await taskService.attachSession(threadId, {
+            sessionId: session.sessionId,
+            agentType: session.agentType,
+            workdir: session.workdir,
+            status: session.status,
+            ...(session.metadata ? { metadata: session.metadata } : {}),
+            label,
+            originalTask: taskWithRouteHints,
+            ...(model ? { model } : {}),
+            ...(durableRun ? { durableRun } : {}),
+          });
+          if (!attached && durableRun) {
+            throw new ElizaError(
+              "Durable task disappeared before Smithers execution",
+              {
+                code: "SMITHERS_TASK_LINK_MISSING",
+                context: { threadId, sessionId: session.sessionId },
+              },
+            );
+          }
+        } catch (error) {
+          if (durableRun) {
+            try {
+              await service.stopSession(session.sessionId);
+            } catch (stopError) {
+              // error-policy:J6 the attachment failure remains authoritative;
+              // stopping an unprompted ACP session is best-effort teardown.
+              logger(runtime).warn(
+                `[TASKS:create] failed to stop unlinked Smithers session ${session.sessionId}: ${
+                  stopError instanceof Error
+                    ? stopError.message
+                    : String(stopError)
+                }`,
+              );
+            }
+            throw error;
+          }
+          // error-policy:J7 direct-prompt compatibility path: the ACP session
+          // still has value when optional widget bookkeeping is unavailable.
+          logger(runtime).warn(
+            `[TASKS:create] attachSession failed for ${session.sessionId} on task ${threadId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+
+      if (durableRun) {
+        const runningRun: SmithersDurableRunLink = {
+          ...durableRun,
+          state: "running",
+        };
+        const stateWrites: Promise<unknown>[] = [];
+        if (service.updateSessionMetadata) {
+          stateWrites.push(
+            service.updateSessionMetadata(
+              session.sessionId,
+              smithersDurableRunMetadata(runningRun),
+            ),
+          );
+        }
+        if (threadId && taskService?.updateSmithersDurableRun) {
+          stateWrites.push(
+            taskService.updateSmithersDurableRun(session.sessionId, runningRun),
+          );
+        }
+        await Promise.all(stateWrites);
         await runPromptViaSmithers(
           service,
           session,
           taskWithRouteHints,
+          runningRun,
           timeoutMs,
           model,
           keepAliveAfterComplete,
         );
+        const completedRun: SmithersDurableRunLink = {
+          ...durableRun,
+          state: "completed",
+        };
+        const completionWrites: Promise<unknown>[] = [];
+        if (service.updateSessionMetadata) {
+          completionWrites.push(
+            service.updateSessionMetadata(
+              session.sessionId,
+              smithersDurableRunMetadata(completedRun),
+            ),
+          );
+        }
+        if (threadId && taskService?.updateSmithersDurableRun) {
+          completionWrites.push(
+            taskService.updateSmithersDurableRun(
+              session.sessionId,
+              completedRun,
+            ),
+          );
+        }
+        await Promise.all(completionWrites);
       } else {
         await runPromptAndClose(
           service,
@@ -882,21 +1136,16 @@ async function runCreate(
           keepAliveAfterComplete,
         );
       }
-      return { session, label, agentType, originalTask: taskWithRouteHints };
+      return { session, label, agentType };
     }),
   );
 
   const results: Array<Record<string, unknown>> = [];
   const sessions: SpawnResult[] = [];
-  // Parallel to `sessions`; carries the per-part context needed to attach a
-  // successful spawn into the durable task thread minted below. Kept out of
-  // SpawnResult so the ACP contract stays lean.
-  const sessionAttachHints: Array<{ label: string; originalTask: string }> = [];
   for (const [index, outcome] of settled.entries()) {
     if (outcome.status === "fulfilled") {
-      const { session, label, originalTask } = outcome.value;
+      const { session, label } = outcome.value;
       sessions.push(session);
-      sessionAttachHints.push({ label, originalTask });
       results.push({
         id: session.sessionId,
         sessionId: session.sessionId,
@@ -943,124 +1192,6 @@ async function runCreate(
     };
   }
 
-  // Mint a durable orchestrator task thread so the chat surface can render
-  // the `[TASK:<id>]<title>[/TASK]` widget that links back to the workbench.
-  // The ACP sessions have already succeeded; a failure here is logged but
-  // never demotes the action's success — the agents are still running.
-  //
-  // The ACP sessions spawned above via `service.spawnSession` are then
-  // registered against the freshly-minted thread through the task service's
-  // `attachSession` — without that, `resolveTaskId` never learns about them,
-  // event routing drops their session events, and the widget reads `0/0
-  // agents`. Per-session attach failures are logged but never demote the
-  // action's success, same policy as thread-mint failure.
-  const taskTitle =
-    pickString(params, content, "title") ??
-    pickString(params, content, "goal") ??
-    (tasks[0] ? labelFrom(tasks[0], 0) : "Coding task");
-  const taskGoal = pickString(params, content, "goal") ?? taskTitle;
-  const taskPriority = (pickString(params, content, "priority") ?? "normal") as
-    | "low"
-    | "normal"
-    | "high"
-    | "urgent";
-  const acceptanceCriteria = pickStringArrayFromInputs(
-    params,
-    content,
-    "acceptanceCriteria",
-  );
-  const taskRoomId =
-    typeof swarmRoomMetadata.taskRoomId === "string"
-      ? swarmRoomMetadata.taskRoomId
-      : undefined;
-  // Preserve the ORIGIN (chat) room on the durable task's `roomId` so the
-  // supervisor can bridge task status back to the human (getTaskOriginTarget),
-  // while `taskRoomId` carries the DISTINCT swarm room the sub-agents share.
-  // When task rooms are opted out, both resolve to the origin room (no change).
-  const originRoomId =
-    typeof swarmRoomMetadata.originRoomId === "string"
-      ? swarmRoomMetadata.originRoomId
-      : undefined;
-  let threadId: string | null = null;
-  const taskService = runtime.getService?.(
-    OrchestratorTaskService.serviceType,
-  ) as OrchestratorTaskService | null | undefined;
-  try {
-    if (taskService && typeof taskService.createTask === "function") {
-      // Bind the durable task to a registered Project: an explicit caller
-      // `projectId` (validated against the registry by the service) wins;
-      // otherwise the resolved spawn workdir (all sessions of this create share
-      // it) is realpath-matched against the registry. Unmatched = unbound.
-      const explicitProjectId = pickString(params, content, "projectId");
-      const boundWorkdir = sessions[0]?.workdir;
-      const detail = await taskService.createTask({
-        title: taskTitle,
-        goal: taskGoal,
-        kind: "coding",
-        priority: taskPriority,
-        originalRequest: messageText(message),
-        ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
-        ...(boundWorkdir ? { workdir: boundWorkdir } : {}),
-        ...((originRoomId ?? taskRoomId)
-          ? { roomId: originRoomId ?? taskRoomId }
-          : {}),
-        ...(taskRoomId ? { taskRoomId } : {}),
-        acceptanceCriteria,
-      });
-      threadId = detail?.id ?? null;
-    }
-  } catch (error) {
-    // error-policy:J4 durable-thread mint failed → omit the task widget (threadId
-    // null); the spawned agents already succeeded, and the failure is warned.
-    logger(runtime).warn(
-      `[TASKS:create] durable task thread creation failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    threadId = null;
-  }
-
-  // Bind every successfully spawned session to the freshly-minted thread so
-  // the task widget / tasks panel sees them (sessionCount, latestSessionId,
-  // token usage). Thread-mint-failed path skips this cleanly — no taskId to
-  // attach against, and the sessions are still running / stopped independently.
-  if (
-    threadId &&
-    taskService &&
-    typeof taskService.attachSession === "function"
-  ) {
-    for (const [index, session] of sessions.entries()) {
-      const hint = sessionAttachHints[index];
-      try {
-        // The spawn snapshot can be stale after the prompt: ordinary sessions
-        // are stopped, while validator-owned sessions deliberately remain
-        // ready for a corrective turn. Read the real state so the task widget
-        // reflects whichever lifecycle owns the session.
-        const refreshed = await service.getSession(session.sessionId);
-        const effectiveStatus =
-          refreshed?.status ?? (keepAliveAfterComplete ? "ready" : "stopped");
-        await taskService.attachSession(threadId, {
-          sessionId: session.sessionId,
-          agentType: session.agentType,
-          workdir: session.workdir,
-          status: effectiveStatus,
-          ...(session.metadata ? { metadata: session.metadata } : {}),
-          ...(hint?.label ? { label: hint.label } : {}),
-          ...(hint?.originalTask ? { originalTask: hint.originalTask } : {}),
-          ...(model ? { model } : {}),
-        });
-      } catch (error) {
-        // error-policy:J7 per-session attach is best-effort widget bookkeeping;
-        // warned, never demotes the already-succeeded spawn.
-        logger(runtime).warn(
-          `[TASKS:create] attachSession failed for ${session.sessionId} on task ${threadId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
-  }
-
   const widgetBlock = threadId
     ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
     : "";
@@ -1078,6 +1209,259 @@ async function runCreate(
   };
 }
 
+async function runCreate(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  if (!shouldUseLanePlanner(runtime)) {
+    return runCreateLegacy(runtime, message, state, params, content, callback);
+  }
+
+  let plan: Awaited<ReturnType<LanePlannerService["plan"]>>;
+  try {
+    const text = messageText(message);
+    const tasks = taskParts(params, content, text);
+    const waveId = randomUUID();
+    const explicitWorkdir = pickString(params, content, "workdir");
+    const planner = new LanePlannerService(
+      runtime,
+      collisionProviderFromWorkspaceService(getCodingWorkspaceService(runtime)),
+    );
+    plan = await planner.plan({
+      task: pickString(params, content, "task") ?? text,
+      tasks,
+      dependencies: readLaneDependencies(params, content),
+      maxParallel: readPositiveInteger(
+        params.maxParallel ?? content.maxParallel,
+      ),
+      title: pickString(params, content, "title"),
+      goal: pickString(params, content, "goal"),
+      acceptanceCriteria: pickStringArrayFromInputs(
+        params,
+        content,
+        "acceptanceCriteria",
+      ),
+      difficultyTag: pickString(params, content, "taskComplexity"),
+      waveId,
+      workdir: explicitWorkdir,
+    });
+  } catch (error) {
+    if (
+      error instanceof ElizaError &&
+      (String(error.code).startsWith("LANE_DEPENDENCY_") ||
+        error.code === "LANE_PLAN_DEADLOCK")
+    ) {
+      const msg = failureMessage(error);
+      await callbackText(callback, msg);
+      return {
+        success: false,
+        error: error.code,
+        text: msg,
+        continueChain: false,
+      };
+    }
+    logger(runtime).warn(
+      `[TASKS:create] lane planner failed, falling back to legacy single-task behavior: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return runCreateLegacy(runtime, message, state, params, content, callback);
+  }
+
+  if (plan.lanes.length <= 1) {
+    const lane = plan.lanes[0];
+    if (!lane || lane.scopePaths.length === 0) {
+      return runCreateLegacy(
+        runtime,
+        message,
+        state,
+        params,
+        content,
+        callback,
+      );
+    }
+  }
+
+  const laneOutcome = await runLanePlan(
+    runtime,
+    message,
+    state,
+    params,
+    content,
+    callback,
+    plan,
+  );
+  if (!laneOutcome.success) return laneOutcome.result;
+  const successfulResults = laneOutcome.results;
+  return {
+    success: true,
+    text: `Created ${successfulResults.length} task-agent lanes.`,
+    data: {
+      waveId: plan.waveId,
+      lanes: plan.lanes.map((lane, index) => ({
+        id: lane.id,
+        title: lane.title,
+        taskId: successfulResults[index]?.data?.taskId,
+        scopePaths: lane.scopePaths,
+        forbiddenPaths: lane.forbiddenPaths,
+        branchName: lane.branchName,
+        dependencies: lane.dependencies,
+        collisions: lane.collisions,
+      })),
+      suppressActionResultClipboard: true,
+    },
+  };
+}
+
+/** Execute a lane plan with dependency-aware admission. maxParallel only gates
+ * currently running lanes; ready backlog stays queued until predecessors finish
+ * instead of being dropped when capacity is saturated. */
+async function runLanePlan(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  callback: HandlerCallback | undefined,
+  plan: Awaited<ReturnType<LanePlannerService["plan"]>>,
+): Promise<
+  | { success: true; results: ActionResult[] }
+  | { success: false; result: ActionResult }
+> {
+  const pending = new Map(
+    plan.lanes.map((lane, index) => [lane.id, { lane, index }]),
+  );
+  const completed = new Set<string>();
+  const failed = new Set<string>();
+  const results = new Array<ActionResult>(plan.lanes.length);
+  const active = new Set<Promise<void>>();
+  let dependencyFailure: ActionResult | undefined;
+  const workspaceService = getCodingWorkspaceService(runtime);
+  const reuseTaskId =
+    pickString(params, content, "taskId") ??
+    pickString(params, content, "threadId");
+  const launch = (lane: (typeof plan.lanes)[number], index: number) => {
+    const run = (async () => {
+      if (workspaceService && reuseTaskId) {
+        const activeSession = await workspaceService.findActiveSessionForTask({
+          taskId: reuseTaskId,
+        });
+        if (activeSession) {
+          results[index] = {
+            success: true,
+            text: `Reused active task-agent session ${activeSession.sessionId}.`,
+            data: {
+              taskId: activeSession.taskId,
+              agents: [
+                {
+                  id: activeSession.sessionId,
+                  sessionId: activeSession.sessionId,
+                  agentType: activeSession.agentType,
+                  workdir: activeSession.workdir,
+                  status: activeSession.status,
+                  label: lane.title,
+                  reused: true,
+                },
+              ],
+              suppressActionResultClipboard: true,
+            },
+          };
+          completed.add(lane.id);
+          return;
+        }
+      }
+      results[index] = await runCreateLegacy(
+        runtime,
+        message,
+        state,
+        {
+          ...params,
+          task: lane.initialPrompt,
+          agents: undefined,
+          title: lane.title,
+          goal: lane.initialPrompt,
+          taskComplexity: lane.difficultyTag,
+          acceptanceCriteria: [...lane.acceptanceCriteria],
+          branchName: lane.branchName,
+          metadata: {
+            ...(objectValue(params.metadata) ?? {}),
+            ...laneMetadata(plan, lane),
+          },
+        },
+        laneExecutionContent(content),
+        callback,
+      );
+    })()
+      .then((result) => {
+        const actionResult = result ?? results[index];
+        if (!actionResult) {
+          throw new ElizaError("Lane did not produce an action result", {
+            code: "LANE_RESULT_MISSING",
+            context: { laneId: lane.id },
+            severity: "ephemeral",
+          });
+        }
+        if (actionResult.success) completed.add(lane.id);
+        else failed.add(lane.id);
+      })
+      .finally(() => {
+        active.delete(run);
+      });
+    active.add(run);
+  };
+
+  while (pending.size > 0 || active.size > 0) {
+    let launched = false;
+    for (const [id, entry] of [...pending]) {
+      if (active.size >= plan.maxParallel) break;
+      const readiness = laneReadiness(entry.lane, completed, failed);
+      const failedBlocker = readiness.blockers.find((blocker) =>
+        blocker.endsWith(": failed"),
+      );
+      if (failedBlocker) {
+        dependencyFailure = {
+          success: false,
+          error: "LANE_DEPENDENCY_FAILED",
+          text: `Lane ${entry.lane.id} blocked by ${failedBlocker}.`,
+        };
+        pending.clear();
+        break;
+      }
+      if (!readiness.ready) continue;
+      pending.delete(id);
+      launch(entry.lane, entry.index);
+      launched = true;
+    }
+    if (dependencyFailure) {
+      // Already-launched independent lanes remain owned by this action. Wait for
+      // them to settle so failures cannot escape as unobserved background work.
+      if (active.size > 0) await Promise.allSettled([...active]);
+      return { success: false, result: dependencyFailure };
+    }
+    if (active.size === 0 && !launched) {
+      const blocked = [...pending.values()].map(({ lane }) => ({
+        laneId: lane.id,
+        blockers: laneReadiness(lane, completed, failed).blockers,
+      }));
+      throw new ElizaError("No lane is ready to launch", {
+        code: "LANE_PLAN_DEADLOCK",
+        context: { blocked },
+        severity: "ephemeral",
+      });
+    }
+    if (active.size > 0) await Promise.race(active);
+  }
+
+  for (const result of results) {
+    if (!result.success) return { success: false, result };
+  }
+  return { success: true, results };
+}
+
 function pickStringArrayFromInputs(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -1089,6 +1473,73 @@ function pickStringArrayFromInputs(
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+}
+
+/** Read planner-supplied lane dependency edges from a strict object:
+ * `{ "lane-2": ["lane-1"] }`. Other shapes are ignored so natural-language
+ * content cannot accidentally invent graph edges. */
+function readLaneDependencies(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+): Record<string, string[]> | undefined {
+  const raw = objectValue(params.dependencies ?? content.dependencies);
+  if (!raw) return undefined;
+  const deps: Record<string, string[]> = {};
+  for (const [laneId, value] of Object.entries(raw)) {
+    if (!Array.isArray(value)) continue;
+    deps[laneId] = value.filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
+    );
+  }
+  return deps;
+}
+
+/** Parse numeric planner parameters only when they are explicit positive
+ * integers; malformed values fall back to the planner default. */
+function readPositiveInteger(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value !== "string") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function laneExecutionContent(
+  content: Record<string, unknown>,
+): Record<string, unknown> {
+  const rest = { ...content };
+  delete rest.agents;
+  return rest;
+}
+
+function laneMetadata(
+  plan: { waveId: string },
+  lane: {
+    id: string;
+    title: string;
+    branchName: string;
+    dependencies: string[];
+    scopePaths: string[];
+    forbiddenPaths: string[];
+    collisions: unknown[];
+    difficultyTag: string;
+  },
+): Record<string, unknown> {
+  return {
+    waveId: plan.waveId,
+    lane: {
+      id: lane.id,
+      title: lane.title,
+      branchName: lane.branchName,
+      dependencies: [...lane.dependencies],
+      scopePaths: lane.scopePaths,
+      forbiddenPaths: lane.forbiddenPaths,
+      collisions: lane.collisions,
+      difficultyTag: lane.difficultyTag,
+    },
+  };
 }
 
 // ── action: spawn_agent (SPAWN_AGENT) ───────────────────────────────────────
@@ -1533,15 +1984,14 @@ async function runSend(
       };
     }
 
-    await callbackText(
-      callback,
-      "No input provided. Specify 'input', 'task', or 'keys' parameter.",
-    );
+    // Planner-input error: the failure reaches the model via the ActionResult
+    // and the planner corrects or reports — posting the raw diagnostic mid-turn
+    // produced a bare "Failed to send to agent: …" message before the answer.
     return errorResult("NO_INPUT");
   } catch (error) {
-    // error-policy:J1 send action boundary → user-facing error + structured failure.
+    // error-policy:J1 send action boundary → structured failure to the planner;
+    // no raw callback text (the turn's final message reports honestly).
     const msg = failureMessage(error);
-    await callbackText(callback, `Failed to send to agent: ${msg}`);
     return { success: false, error: msg };
   }
 }
@@ -1684,7 +2134,7 @@ async function runListAgents(
     return errorResult("SERVICE_UNAVAILABLE");
   }
 
-  const sessions = await listSessionsWithin(service, 2000);
+  const sessions = await listSessionsWithin(service);
   const preferredTaskAgent = {
     id: String((await service.resolveAgentType?.({})) ?? "codex"),
     reason: "acpx default agent",
@@ -1695,7 +2145,7 @@ async function runListAgents(
   if (sessions.length === 0) {
     const text =
       'No active task agents. Use TASKS { action: "create" } when the user needs anything more involved than a simple direct reply.';
-    await callbackText(callback, text);
+    // Read-only query: no visible callback (see history).
     return {
       success: true,
       text,
@@ -1710,7 +2160,8 @@ async function runListAgents(
     );
   }
   const text = lines.join("\n");
-  await callbackText(callback, text);
+  // Read-only query: no visible callback. The listing reaches the model via
+  // the ActionResult; posting it raw produced a double reply (dump, answer).
 
   return {
     success: true,
@@ -2113,6 +2564,10 @@ async function runHistory(
   const window = historyWindowValue(params.window ?? content.window);
   const statuses = historyStatusesValue(params.statuses ?? content.statuses);
   const search = textValue(params.search) ?? textValue(content.search);
+  // Session-scoped history resolves through the durable session index. A task
+  // may have several sessions, so comparing only its latest session would make
+  // older sessions disappear or allow an unrelated thread into the answer.
+  const sessionId = textValue(params.sessionId) ?? textValue(content.sessionId);
   // Registered-project filter: restrict the thread listing to tasks bound to
   // one project (the store filters on the indexed/structural `projectId`).
   const projectId = textValue(params.projectId) ?? textValue(content.projectId);
@@ -2124,14 +2579,21 @@ async function runHistory(
   ) as OrchestratorTaskService | null | undefined;
   if (taskService && typeof taskService.listTasks === "function") {
     try {
-      const allTasks = (
-        await taskService.listTasks({
-          includeArchived,
-          ...(search ? { search } : {}),
-          ...(projectId ? { projectId } : {}),
-        })
-      ).filter((task) =>
-        taskMatchesHistoryFilters(task, statuses, windowFilters, search),
+      const sessionTask = sessionId
+        ? await taskService.getTaskForSession(sessionId)
+        : undefined;
+      const taskCandidates =
+        sessionId && !sessionTask
+          ? []
+          : await taskService.listTasks({
+              includeArchived,
+              ...(search ? { search } : {}),
+              ...(projectId ? { projectId } : {}),
+            });
+      const allTasks = taskCandidates.filter(
+        (task) =>
+          taskMatchesHistoryFilters(task, statuses, windowFilters, search) &&
+          (!sessionTask || task.id === sessionTask.id),
       );
       const count = allTasks.length;
       const tasks = allTasks.slice(0, limit);
@@ -2140,6 +2602,7 @@ async function runHistory(
         statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
         search ? `search "${search}"` : undefined,
         projectId ? `project ${projectId}` : undefined,
+        sessionId ? `session ${sessionId}` : undefined,
         includeArchived ? "including archived" : undefined,
       ].filter((part): part is string => Boolean(part));
       const filterSuffix =
@@ -2153,7 +2616,9 @@ async function runHistory(
       } else if (metric === "detail") {
         const task = tasks[0];
         responseText = [
-          `The most recent orchestrator task is "${task.title}" [${task.status}].`,
+          sessionId
+            ? `The orchestrator task containing session ${sessionId} is "${task.title}" [${task.status}].`
+            : `The most recent orchestrator task is "${task.title}" [${task.status}].`,
           `Task id: ${task.id}`,
           `Latest session: ${task.latestSessionLabel ?? task.latestSessionId ?? "none"}`,
           `Workspace: ${task.latestWorkdir ?? "none"}`,
@@ -2169,7 +2634,9 @@ async function runHistory(
         ].join("\n");
       }
 
-      if (callback) await callback({ text: responseText });
+      // Read-only query: no visible callback. The listing reaches the model
+      // via the ActionResult and the user via the planner's final message —
+      // posting the raw dump produced a double reply (dump, then answer).
       return {
         success: true,
         text: responseText,
@@ -2183,6 +2650,7 @@ async function runHistory(
             ...(statuses.length > 0 ? { statuses } : {}),
             ...(search ? { search } : {}),
             ...(projectId ? { projectId } : {}),
+            ...(sessionId ? { sessionId } : {}),
             includeArchived,
             limit,
           },
@@ -2205,9 +2673,11 @@ async function runHistory(
       reason: "acp_unavailable",
     });
   }
-  const sessions = (await listSessionsWithin(service, 2000))
-    .filter((session) =>
-      sessionMatchesHistoryFilters(session, statuses, windowFilters, search),
+  const sessions = (await listSessionsWithin(service))
+    .filter(
+      (session) =>
+        (!sessionId || session.id === sessionId) &&
+        sessionMatchesHistoryFilters(session, statuses, windowFilters, search),
     )
     .slice(0, limit);
   const count = sessions.length;
@@ -2237,7 +2707,7 @@ async function runHistory(
     ].join("\n");
   }
 
-  if (callback) await callback({ text: responseText });
+  // Read-only query: no visible callback (same contract as history).
   return {
     success: true,
     text: responseText,
@@ -3389,7 +3859,7 @@ export const tasksAction: Action & {
   descriptionCompressed:
     "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
   routingHint:
-    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> SCHEDULED_TASKS / OWNER_REMINDERS / OWNER_ROUTINES instead; not for one-off inline file edits or shell commands -> FILE / BASH',
+    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); not for one-off inline file edits or shell commands -> FILE / BASH',
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
   // suppress the response-handler's draft reply: the action's own callback
@@ -3466,9 +3936,24 @@ export const tasksAction: Action & {
     },
     {
       name: "agents",
-      description: "Pipe-delimited multi-agent task list for action=create.",
+      description:
+        "Pipe-delimited multi-agent task list for action=create. When lane planner is enabled, each part becomes lane-N in order.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "dependencies",
+      description:
+        'Lane dependency graph for gated action=create, shaped as {"lane-2":["lane-1"]}. References must use generated lane ids.',
+      required: false,
+      schema: { type: "object" as const },
+    },
+    {
+      name: "maxParallel",
+      description:
+        "Maximum concurrently launched lanes for gated action=create; ready backlog remains queued until dependencies and capacity allow launch.",
+      required: false,
+      schema: { type: "integer" as const, minimum: 1 },
     },
     {
       name: "repo",
@@ -3530,7 +4015,7 @@ export const tasksAction: Action & {
     {
       name: "sessionId",
       description:
-        "Target session id for action=send / action=stop_agent / action=cancel / action=control / action=share.",
+        "Exact ACP session id for action=send / action=stop_agent / action=cancel / action=control / action=share / action=history. For history, returns the durable task containing that session even when it is not the task's latest session.",
       required: false,
       schema: { type: "string" as const },
     },

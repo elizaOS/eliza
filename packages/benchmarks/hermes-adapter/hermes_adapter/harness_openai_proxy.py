@@ -3,7 +3,7 @@
 The Hermes-native terminal/simulation envs drive their rollout loop through an
 OpenAI chat-completions endpoint. For cross-harness runs we keep that real env
 and scorer, but point the model endpoint at this local bridge so model turns
-    are answered by the selected harness adapter instead of bypassing the
+are answered by the selected harness adapter instead of bypassing the
 harness label.
 """
 
@@ -122,6 +122,9 @@ class HarnessOpenAIProxy:
         stop = getattr(self._server_handle, "stop", None)
         if callable(stop):
             stop()
+        close = getattr(self._client, "close", None)
+        if callable(close):
+            close()
         self._server_handle = None
         self._client = None
 
@@ -184,7 +187,6 @@ def _build_client(
                 provider=provider or "cerebras",
                 model=model,
                 base_url=upstream_base_url,
-                mode="in_process",
             ),
             None,
         )
@@ -196,7 +198,6 @@ def _build_client(
                 provider=provider or "cerebras",
                 model=model,
                 base_url=upstream_base_url,
-                direct_openai_compatible=True,
             ),
             None,
         )

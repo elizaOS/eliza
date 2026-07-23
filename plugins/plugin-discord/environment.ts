@@ -28,17 +28,22 @@ function getEnvArray(name: string, fallback: string[]): string[] {
 }
 
 export const DISCORD_DEFAULTS = {
+	// Default: engage other bots (agent-to-agent chat is a first-class use).
+	// A cheap bot-noise triage gate (ELIZA_BOT_NOISE_TRIAGE, on by default)
+	// still pre-filters unaddressed webhook/bot chatter before a full turn.
 	SHOULD_IGNORE_BOT_MESSAGES: getEnvBoolean(
 		"DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
-		true,
+		false,
 	),
 	SHOULD_IGNORE_DIRECT_MESSAGES: getEnvBoolean(
 		"DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
 		true,
 	),
+	// Default: reply in-channel without requiring an @mention. Set
+	// DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS=true to restore mention-gating.
 	SHOULD_RESPOND_ONLY_TO_MENTIONS: getEnvBoolean(
 		"DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
-		true,
+		false,
 	),
 	ALLOWED_CHANNEL_IDS: getEnvArray("CHANNEL_IDS", []),
 	DM_POLICY: (process.env?.DISCORD_DM_POLICY || "pairing") as
@@ -184,10 +189,12 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
 			(value: string) => value.trim(),
 		),
 
+		// Default: auto-answer messages. Set DISCORD_AUTO_REPLY=false to ingest
+		// messages into memory without generating replies.
 		autoReply: resolveSetting(
 			"DISCORD_AUTO_REPLY",
 			characterSettings.autoReply,
-			false,
+			true,
 			parseBooleanFromText,
 		),
 	};

@@ -140,6 +140,25 @@ describe("prompt templates (src/index.ts)", () => {
     );
   });
 
+  it("plannerTemplate keeps native args direct and reserves the parameters envelope for plain JSON", () => {
+    assert.match(
+      prompts.plannerTemplate,
+      /native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares/,
+    );
+    assert.match(
+      prompts.plannerTemplate,
+      /never nest arguments under `parameters` unless the tool schema itself declares a `parameters` field/,
+    );
+    assert.match(
+      prompts.plannerTemplate,
+      /plain-JSON fallback only \(when native tool calls are unavailable\)/,
+    );
+    assert.match(
+      prompts.plannerTemplate,
+      /never put that envelope inside a native tool's args/,
+    );
+  });
+
   it("factExtractionTemplate names structured fields for multilingual LifeOps projection", () => {
     const body = prompts.factExtractionTemplate;
     assert.match(
@@ -283,6 +302,28 @@ describe("prompt templates (src/index.ts)", () => {
       body,
       /screen-time FOCUS BLOCK only/,
       "focus-block routing should be narrowed to blocking/limiting apps, not app/site building",
+    );
+  });
+
+  it("messageHandlerTemplate routes workflow lifecycle requests to the canonical WORKFLOW parent", () => {
+    const src = readSrc();
+    const body = src.match(
+      /export const messageHandlerTemplate = `([^`]+)`/,
+    )[1];
+    assert.match(
+      body,
+      /explicit workflow lifecycle \(create\/list\/show\/get\/edit\/activate\/deactivate\/run\/delete\/revisions\/executions\)/,
+      "workflow lifecycle operations should have an explicit Stage-1 route",
+    );
+    assert.match(
+      body,
+      /candidateActions=\["WORKFLOW"\] \+ parentActionHints=\["WORKFLOW"\]/,
+      "Stage 1 should exact-rank the canonical WORKFLOW parent",
+    );
+    assert.match(
+      body,
+      /never hint PAGE_DELEGATE, WORKFLOW_CREATE, or CREATE_WORKFLOW/,
+      "Stage 1 should not invent page-delegate workflow aliases",
     );
   });
 

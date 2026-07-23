@@ -85,4 +85,14 @@ export interface SandboxCreateConfig {
    * Used for retry-on-failure to avoid re-selecting a node that just failed.
    */
   excludeNodeId?: string;
+  /**
+   * When false, an existing Headscale node under the agent's deterministic
+   * hostname is preserved and recorded instead of deleted pre-provision
+   * (#16565). Blue/green upgrade/downgrade set this: the "stale" node is the
+   * LIVE serving one until the atomic swap commits. The orchestrator deletes
+   * it by the recorded id (`metadata.previousVpnNodeId`) after cutover;
+   * rolled-back paths leave it untouched. Default true (plain reprovision
+   * keeps today's reclaim).
+   */
+  reclaimStaleVpnNode?: boolean;
 }

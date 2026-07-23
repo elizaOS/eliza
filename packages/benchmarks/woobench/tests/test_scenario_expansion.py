@@ -1,5 +1,7 @@
 """Regression tests for WooBench scenario expansion."""
 
+from woobench.__main__ import _build_parser
+
 from woobench.scenarios import (
     ALL_SCENARIOS,
     BASE_SCENARIOS,
@@ -44,3 +46,9 @@ def test_expanded_scenarios_validate() -> None:
 
     assert result["valid"] is True
     assert result["expansionMatches"] is True
+
+
+def test_full_campaign_expansion_flag_is_supported() -> None:
+    args = _build_parser().parse_args(["--expand-scenarios", "--dry-run"])
+
+    assert args.expand_scenarios is True

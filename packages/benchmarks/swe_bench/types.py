@@ -44,6 +44,7 @@ class SWEBenchInstance:
     pass_to_pass: list[str]
     version: str = ""
     environment_setup_commit: str = ""
+    source_instance_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate instance fields."""
@@ -53,6 +54,11 @@ class SWEBenchInstance:
             raise ValueError("repo is required")
         if not self.base_commit:
             raise ValueError("base_commit is required")
+
+    @property
+    def official_instance_id(self) -> str:
+        """Return the official dataset ID used by the Docker evaluator."""
+        return self.source_instance_id or self.instance_id
 
 
 @dataclass
@@ -184,8 +190,8 @@ class SWEBenchConfig:
     swebench_instance_image_tag: str = "latest"
     swebench_env_image_tag: str = "latest"
     # Which adapter harness to drive: "eliza" (default, current behavior),
-    # "hermes" (HermesClient, in-process Cerebras chat), or "openclaw"
-    # (OpenClawClient, direct OpenAI-compat or CLI).
+    # "hermes" (pinned native Hermes AIAgent), or "openclaw"
+    # (isolated OpenClaw embedded runtime + native tool plugin).
     harness: str = "eliza"
     # Offline calibration baseline. "always-right" emits the dataset gold
     # patch, "always-wrong" emits no patch, and "random" picks either

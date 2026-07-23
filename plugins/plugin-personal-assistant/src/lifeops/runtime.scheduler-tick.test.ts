@@ -1,9 +1,10 @@
 /** Verifies the LifeOps scheduler tick processes scheduled work and surfaces subsystem failures rather than swallowing them. Deterministic vitest with the scheduled-work path mocked. */
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { IAgentRuntime, TaskWorker, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { escalateUnacknowledgedIntents } from "./intent-sync.js";
 import {
   executeLifeOpsSchedulerTask,
+  registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
 } from "./runtime.js";
 
@@ -14,6 +15,18 @@ const scheduledWorkFixture = vi.hoisted(() => ({
   scheduledTaskFires: [],
   scheduledTaskCompletionTimeouts: [],
   subsystemFailures: [{ subsystem: "reminders", error: "reminders down" }],
+}));
+
+vi.mock("./scheduler-task.js", () => ({
+  ensureLifeOpsSchedulerTask: vi.fn(),
+  ensureRuntimeAgentRecord: vi.fn(),
+  isMissingLifeOpsRelationError: vi.fn(() => false),
+  LIFEOPS_TASK_INTERVAL_MS: 60_000,
+  LIFEOPS_TASK_JITTER_MS: 10_000,
+  LIFEOPS_TASK_NAME: "LIFEOPS_SCHEDULER",
+  LIFEOPS_TASK_TAGS: ["queue", "repeat", "lifeops"],
+  rerunLifeOpsPluginMigrations: vi.fn(),
+  resolveLifeOpsTaskIntervalMs: vi.fn(() => 60_000),
 }));
 
 vi.mock("./service.js", () => ({
@@ -30,6 +43,27 @@ vi.mock("./intent-sync.js", () => ({
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ee" as UUID;
 const runtime = { agentId: AGENT_ID } as unknown as IAgentRuntime;
+
+describe("registerLifeOpsTaskWorker", () => {
+  it("keeps the task identity valid without executing when scheduler is disabled", async () => {
+    let registered: TaskWorker | undefined;
+    const disabledRuntime = {
+      getTaskWorker: () => undefined,
+      registerTaskWorker: (worker: TaskWorker) => {
+        registered = worker;
+      },
+    } as unknown as IAgentRuntime;
+
+    registerLifeOpsTaskWorker(disabledRuntime, { disabled: true });
+
+    expect(registered?.name).toBe("LIFEOPS_SCHEDULER");
+    await expect(
+      registered?.shouldRun?.(disabledRuntime, {
+        name: "LIFEOPS_SCHEDULER",
+      }),
+    ).resolves.toBe(false);
+  });
+});
 
 describe("executeLifeOpsSchedulerTask", () => {
   beforeEach(() => {

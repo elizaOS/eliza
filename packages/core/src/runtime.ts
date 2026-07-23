@@ -218,7 +218,6 @@ import {
 	type PromptSegment,
 	type Provider,
 	type ProviderResult,
-	type ProviderValue,
 	type RegisteredEvaluator,
 	type Relationship,
 	type RemotePluginInstallOptions,
@@ -336,7 +335,59 @@ const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 // recent and in-flight turns while bounding memory.
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
-const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = 30_000;
+const SLOW_PROVIDER_WARN_MS = 100;
+
+type ProviderExecutionOutcome =
+	| "success"
+	| "error"
+	| "aborted"
+	| "deadline_exceeded";
+
+interface ProviderExecutionRecord extends ProviderResult {
+	providerName: string;
+	providerStartedAt: number;
+	providerEndedAt: number;
+	providerDurationMs: number;
+	providerOutcome: ProviderExecutionOutcome;
+	providerCoalesced: boolean;
+	providerError?: ElizaError;
+}
+
+interface CachedProviderResult extends ProviderResult {
+	providerName: string;
+	providerStartedAt?: number;
+	providerEndedAt?: number;
+	providerDurationMs?: number;
+	providerOutcome?: ProviderExecutionOutcome;
+}
+
+interface InFlightProviderExecution {
+	promise: Promise<ProviderResult>;
+	startedAt: number;
+	startedAtMonotonic: number;
+}
+
+export function calculateProviderOverlaps(
+	timings: readonly {
+		providerName: string;
+		providerStartedAt: number;
+		providerEndedAt: number;
+	}[],
+): Array<Array<{ providerName: string; overlapMs: number }>> {
+	return timings.map((timing, index) =>
+		timings.flatMap((sibling, siblingIndex) => {
+			if (siblingIndex === index) return [];
+			const overlapMs = Math.max(
+				0,
+				Math.min(timing.providerEndedAt, sibling.providerEndedAt) -
+					Math.max(timing.providerStartedAt, sibling.providerStartedAt),
+			);
+			return overlapMs > 0
+				? [{ providerName: sibling.providerName, overlapMs }]
+				: [];
+		}),
+	);
+}
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
 	"bio",
@@ -782,6 +833,8 @@ function normalizeMessageConnector(
 		contexts: metadata.contexts ? [...metadata.contexts] : [],
 	};
 
+	if (metadata.accountRouting === "connector" && !accountId)
+		connector.accountRouting = metadata.accountRouting;
 	if (metadata.description) connector.description = metadata.description;
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
 	if (metadata.resolveTargets)
@@ -838,6 +891,8 @@ function normalizePostConnector(
 		contexts: metadata.contexts ? [...metadata.contexts] : [],
 	};
 
+	if (metadata.accountRouting === "connector" && !accountId)
+		connector.accountRouting = metadata.accountRouting;
 	if (metadata.description) connector.description = metadata.description;
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
 	if (metadata.postHandler) connector.postHandler = metadata.postHandler;
@@ -929,6 +984,10 @@ export class AgentRuntime implements IAgentRuntime {
 	public getAllPluginOwnership!: () => PluginOwnership[];
 	events: RuntimeEventStorage = {};
 	stateCache = new Map<string, State>();
+	private providerExecutionsInFlight = new Map<
+		string,
+		InFlightProviderExecution
+	>();
 	readonly fetch = fetch;
 	promptBatcher: PromptBatcher;
 	services = new Map<ServiceTypeName, Service[]>();
@@ -2323,6 +2382,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.eventHandlers.clear();
 		this.events = {};
 		this.stateCache.clear();
+		this.providerExecutionsInFlight.clear();
 		this.servicePromises.clear();
 		this.servicePromiseHandlers.clear();
 		this.startingServices.clear();
@@ -4129,14 +4189,10 @@ export class AgentRuntime implements IAgentRuntime {
 				? trajectoryStepIdFromMessage
 				: getTrajectoryContext()?.trajectoryStepId;
 
-		// When composing state for a recorded trajectory step, every requested
-		// provider re-executes (see providersToRun below) so provider accesses
-		// are logged. Recording must not change what providers OBSERVE: the
-		// turn's cached state still flows to them — and into the merged result —
-		// exactly as it would without the recorder. Blanking it here made
-		// providers that read prior-pass state (e.g. RECENT_MESSAGES' turn-
-		// recompose gate on cross-room interactions) behave differently whenever
-		// trajectories were active.
+		// Recording is observational: it must neither blank cached state nor force
+		// cached providers to execute again. Reused providers are logged as cache
+		// hits below, so enabling trajectories cannot add latency or change what a
+		// provider observes.
 		const filterList = onlyInclude ? includeList : null;
 		const emptyObj = {
 			values: {},
@@ -4225,22 +4281,14 @@ export class AgentRuntime implements IAgentRuntime {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
-		// `refreshProviders` lets a caller REUSE cached provider results for the
-		// requested set and re-run only the named providers (plus any not yet in
-		// the cache) — e.g. the planner pass refreshes only RECENT_MESSAGES (which
-		// changes after an early reply) and reuses everything the first compose
-		// already ran for this message.id. The full requested set still drives the
-		// rendered text/order below (pulled from `currentProviderResults`, which
-		// merges cache + fresh); only the run-set shrinks. No-op (run everything)
-		// when `refreshProviders` is null or there is no cached state. Also a
-		// no-op while a trajectory step is recording: reusing a cached result
-		// would leave that provider's access out of the step's log, so every
-		// requested provider re-executes (against the same cached state a
-		// non-recording compose would hand it).
+		// `refreshProviders` lets a caller reuse cached provider results and re-run
+		// only the named providers, plus providers not yet cached for this
+		// message. An empty array requests maximum reuse. `null` preserves the
+		// explicit full-recompose behavior used by callers that need a fresh view.
+		// Trajectory recording logs reused entries as cache hits instead of
+		// changing execution behavior.
 		const refreshSet =
-			refreshProviders && refreshProviders.length > 0 && !trajectoryStepId
-				? new Set(refreshProviders)
-				: null;
+			refreshProviders !== null ? new Set(refreshProviders) : null;
 		const cachedProviderNames = refreshSet
 			? new Set(
 					Object.keys(
@@ -4255,53 +4303,74 @@ export class AgentRuntime implements IAgentRuntime {
 					(p) => refreshSet.has(p.name) || !cachedProviderNames?.has(p.name),
 				)
 			: providersToGet;
+		const providersToRunNames = new Set(providersToRun.map((p) => p.name));
+		const reusedProviders = providersToGet.filter(
+			(provider) => !providersToRunNames.has(provider.name),
+		);
 
 		// Optional trajectory logging service; absent unless configured.
 		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
 			| (Service & TrajectoryProviderAccessLogger)
 			| null;
 		const composeStartedAt = Date.now();
-		const providerData = await Promise.all(
+		const providerSignal =
+			this.turnControllers.signalFor(message.roomId) ??
+			getStreamingContext()?.abortSignal;
+		const providerData: ProviderExecutionRecord[] = await Promise.all(
 			providersToRun.map(async (provider) => {
-				const start = Date.now();
-				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-				let timedOut = false;
 				const providerRuntime: IAgentRuntime = this;
-				try {
-					const result = await Promise.race([
-						withProviderStep(providerRuntime, provider.name, () =>
-							provider.get(providerRuntime, message, cachedState),
-						),
-						new Promise<ProviderResult>((resolve) => {
-							timeoutHandle = setTimeout(() => {
-								timedOut = true;
-								this.logger.error(
-									{
-										src: "agent",
-										agentId: this.agentId,
-										provider: provider.name,
-										timeoutMs: COMPOSE_STATE_PROVIDER_TIMEOUT_MS,
-									},
-									"Provider timed out during state composition",
-								);
-								resolve({ text: "", values: {}, data: {} });
-							}, COMPOSE_STATE_PROVIDER_TIMEOUT_MS);
-						}),
-					]);
-					const duration = Date.now() - start;
-
-					if (!timedOut) {
-						recordInferenceSpan(`provider:${provider.name}`, duration);
+				const inFlightKey =
+					message.id && !refreshSet?.has(provider.name)
+						? `${message.id}\u0000${provider.name}`
+						: null;
+				let execution =
+					inFlightKey !== null
+						? this.providerExecutionsInFlight.get(inFlightKey)
+						: undefined;
+				const providerCoalesced = execution !== undefined;
+				if (!execution) {
+					const startedAt = Date.now();
+					const startedAtMonotonic = performance.now();
+					const promise = providerSignal?.aborted
+						? Promise.reject(
+								providerSignal.reason ??
+									new Error("Provider execution aborted before start"),
+							)
+						: withProviderStep(providerRuntime, provider.name, () =>
+								provider.get(providerRuntime, message, cachedState, {
+									...(providerSignal ? { signal: providerSignal } : {}),
+								}),
+							);
+					execution = { promise, startedAt, startedAtMonotonic };
+					if (inFlightKey !== null) {
+						this.providerExecutionsInFlight.set(inFlightKey, execution);
+						const cleanup = () => {
+							if (
+								this.providerExecutionsInFlight.get(inFlightKey) === execution
+							) {
+								this.providerExecutionsInFlight.delete(inFlightKey);
+							}
+						};
+						void promise.then(cleanup, cleanup);
 					}
+				}
+				try {
+					const result = await execution.promise;
+					const endedAt = Date.now();
+					const duration = performance.now() - execution.startedAtMonotonic;
+					recordInferenceSpan(`provider:${provider.name}`, duration, {
+						outcome: "success",
+						coalesced: providerCoalesced,
+					});
 
-					// Only log slow successful providers. Timed-out providers already logged above.
-					if (!timedOut && duration > 100) {
-						this.logger.debug(
+					if (duration > SLOW_PROVIDER_WARN_MS) {
+						this.logger.warn(
 							{
 								src: "agent",
 								agentId: this.agentId,
 								provider: provider.name,
-								duration,
+								durationMs: duration,
+								coalesced: providerCoalesced,
 							},
 							"Slow provider",
 						);
@@ -4309,55 +4378,98 @@ export class AgentRuntime implements IAgentRuntime {
 					return {
 						...result,
 						providerName: provider.name,
+						providerStartedAt: execution.startedAt,
+						providerEndedAt: endedAt,
+						providerDurationMs: duration,
+						providerOutcome: "success",
+						providerCoalesced,
 					};
-				} catch (error) {
-					this.logger.error(
+				} catch (cause) {
+					const endedAt = Date.now();
+					const duration = performance.now() - execution.startedAtMonotonic;
+					const causeName = cause instanceof Error ? cause.name : "";
+					const outcome: ProviderExecutionOutcome = providerSignal?.aborted
+						? "aborted"
+						: causeName === "TimeoutError"
+							? "deadline_exceeded"
+							: causeName === "AbortError"
+								? "aborted"
+								: "error";
+					const code =
+						outcome === "aborted"
+							? "PROVIDER_COMPOSITION_ABORTED"
+							: outcome === "deadline_exceeded"
+								? "PROVIDER_DEADLINE_EXCEEDED"
+								: "PROVIDER_COMPOSITION_FAILED";
+					const error = new ElizaError(
+						`Provider "${provider.name}" ${
+							outcome === "aborted"
+								? "was aborted"
+								: outcome === "deadline_exceeded"
+									? "exceeded its boundary deadline"
+									: "failed"
+						} during state composition`,
 						{
-							src: "agent",
-							agentId: this.agentId,
-							provider: provider.name,
-							error: error instanceof Error ? error.message : String(error),
+							code,
+							cause,
+							severity: "ephemeral",
+							context: {
+								provider: provider.name,
+								durationMs: duration,
+								roomId: message.roomId,
+								messageId: message.id,
+								outcome,
+							},
 						},
-						"Provider failed during state composition",
 					);
+					recordInferenceSpan(`provider:${provider.name}`, duration, {
+						outcome,
+						errorCode: code,
+						coalesced: providerCoalesced,
+					});
+					this.reportError("AgentRuntime.composeState.provider", error);
 					return {
-						text: "",
-						values: {},
-						data: {},
 						providerName: provider.name,
+						providerStartedAt: execution.startedAt,
+						providerEndedAt: endedAt,
+						providerDurationMs: duration,
+						providerOutcome: outcome,
+						providerCoalesced,
+						providerError: error,
 					};
-				} finally {
-					if (timeoutHandle !== undefined) {
-						clearTimeout(timeoutHandle);
-					}
 				}
 			}),
 		);
+		const providerOverlaps = calculateProviderOverlaps(providerData);
+		const failedProviderData = providerData.filter(
+			(record) => record.providerError !== undefined,
+		);
+		for (const provider of reusedProviders) {
+			const cached = (
+				cachedState.data.providers as
+					| Record<string, CachedProviderResult>
+					| undefined
+			)?.[provider.name];
+			recordInferenceSpan(`provider-cache:${provider.name}`, 0, {
+				cacheHit: true,
+				...(typeof cached?.providerDurationMs === "number"
+					? { sourceDurationMs: cached.providerDurationMs }
+					: {}),
+			});
+		}
 		recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
 			providers: providersToRun.length,
 			reused: providersToGet.length - providersToRun.length,
+			failed: failedProviderData.length,
 		});
 
-		const currentProviderResults: Record<
-			string,
-			{
-				text?: string;
-				values?: Record<string, ProviderValue>;
-				providerName: string;
-			}
-		> = {
+		const currentProviderResults: Record<string, CachedProviderResult> = {
 			...(cachedState.data.providers as
-				| Record<
-						string,
-						{
-							text?: string;
-							values?: Record<string, ProviderValue>;
-							providerName: string;
-						}
-				  >
+				| Record<string, CachedProviderResult>
 				| undefined),
 		};
 		for (const freshResult of providerData) {
+			if (freshResult.providerError) continue;
 			// Redact secrets from individual provider text results
 			const redactedText = freshResult.text
 				? this.redactSecrets(freshResult.text)
@@ -4419,15 +4531,31 @@ export class AgentRuntime implements IAgentRuntime {
 				typeof message.content.text === "string" ? message.content.text : "";
 			const trajCtx = activeTrajectoryContext;
 			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
-			for (const r of providerData) {
+			for (const [providerIndex, r] of providerData.entries()) {
 				try {
+					const overlapsWith = providerOverlaps[providerIndex];
+					if (!overlapsWith) {
+						throw new Error(
+							`Missing provider overlap row at index ${providerIndex}`,
+						);
+					}
 					const redactedText =
 						currentProviderResults[r.providerName]?.text ?? "";
 					const attribution = providerAttributionByName.get(r.providerName);
 					trajLogger.logProviderAccess({
 						stepId: trajectoryStepId,
 						providerName: r.providerName,
-						data: { textLength: redactedText.length },
+						startedAt: r.providerStartedAt,
+						endedAt: r.providerEndedAt,
+						durationMs: r.providerDurationMs,
+						overlapsWith,
+						data: {
+							textLength: redactedText.length,
+							outcome: r.providerOutcome,
+							coalesced: r.providerCoalesced,
+							cacheHit: false,
+							...(r.providerError ? { errorCode: r.providerError.code } : {}),
+						},
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
@@ -4440,10 +4568,92 @@ export class AgentRuntime implements IAgentRuntime {
 						messageId: trajCtx?.messageId,
 						executionTraceId: providerTraceId,
 					});
-				} catch {
-					// Trajectory logging must never break core message flow.
+				} catch (error) {
+					// error-policy:J7 trajectory diagnostics must not replace the
+					// provider result or kill the message loop.
+					this.reportError(
+						"AgentRuntime.composeState.providerTrajectory",
+						error,
+						{
+							provider: r.providerName,
+							messageId: message.id,
+						},
+					);
 				}
 			}
+			for (const provider of reusedProviders) {
+				try {
+					const cached = currentProviderResults[provider.name];
+					const attribution = providerAttributionByName.get(provider.name);
+					trajLogger.logProviderAccess({
+						stepId: trajectoryStepId,
+						providerName: provider.name,
+						startedAt: composeStartedAt,
+						endedAt: composeStartedAt,
+						durationMs: 0,
+						overlapsWith: [],
+						data: {
+							textLength:
+								typeof cached?.text === "string" ? cached.text.length : 0,
+							outcome: "success",
+							coalesced: false,
+							cacheHit: true,
+							...(typeof cached?.providerDurationMs === "number"
+								? { sourceDurationMs: cached.providerDurationMs }
+								: {}),
+						},
+						sha256: attribution?.sha256,
+						tokenCount: attribution?.tokenCount,
+						position: attribution?.position,
+						spanStart: attribution?.spanStart,
+						spanEnd: attribution?.spanEnd,
+						purpose: "compose_state",
+						query: { message: userText.slice(0, 2000) },
+						runId: trajCtx?.runId,
+						roomId: trajCtx?.roomId,
+						messageId: trajCtx?.messageId,
+						executionTraceId: providerTraceId,
+					});
+				} catch (error) {
+					// error-policy:J7 trajectory diagnostics must not replace the
+					// cached provider result or kill the message loop.
+					this.reportError(
+						"AgentRuntime.composeState.cachedProviderTrajectory",
+						error,
+						{
+							provider: provider.name,
+							messageId: message.id,
+						},
+					);
+				}
+			}
+		}
+		if (failedProviderData.length === 1) {
+			const failedProvider = failedProviderData[0];
+			if (failedProvider?.providerError) {
+				throw failedProvider.providerError;
+			}
+		}
+		if (failedProviderData.length > 1) {
+			// error-policy:J2 preserve every provider failure behind one
+			// state-composition error so callers receive the complete cause chain.
+			throw new ElizaError(
+				`State composition failed in ${failedProviderData.length} providers`,
+				{
+					code: "STATE_COMPOSITION_PROVIDER_FAILURES",
+					cause: new AggregateError(
+						failedProviderData.flatMap((record) =>
+							record.providerError ? [record.providerError] : [],
+						),
+					),
+					severity: "ephemeral",
+					context: {
+						providers: failedProviderData.map((record) => record.providerName),
+						messageId: message.id,
+						roomId: message.roomId,
+					},
+				},
+			);
 		}
 		const conversationSeed = buildDeterministicSeed(
 			this.agentId,
@@ -5257,6 +5467,7 @@ export class AgentRuntime implements IAgentRuntime {
 		recordInferenceSpan(`model:${modelType}`, elapsedTime, {
 			modelKey,
 			provider: resolvedProvider,
+			outcome: "success",
 		});
 		if (modelType !== ModelType.TEXT_EMBEDDING) {
 			setInferenceModelProvider(resolvedProvider);
@@ -5306,6 +5517,7 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
+		const useModelStartedAt = Date.now();
 		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
 			? captureModelLookupCaller()
 			: undefined;
@@ -5484,6 +5696,20 @@ export class AgentRuntime implements IAgentRuntime {
 			const resolvedModelKey = resolvedModel.modelKey;
 			const handler = resolvedModel.handler;
 			providerAttemptStartedOutput = false;
+			const attemptMeta = {
+				modelKey: String(resolvedModelKey),
+				provider: resolvedModel.provider ?? "unknown",
+				attempt: resolvedIndex + 1,
+			};
+			const preprocessingStartedAt = Date.now();
+			let handlerStartedAt: number | null = null;
+			if (resolvedIndex === 0) {
+				recordInferenceSpan(
+					`model-routing:${String(modelType)}`,
+					preprocessingStartedAt - useModelStartedAt,
+					attemptMeta,
+				);
+			}
 
 			try {
 				const binaryModels: string[] = [
@@ -5634,6 +5860,16 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 					if (streamedText === "" && safeChunk.length > 0) {
 						markInference(INFERENCE_MARKS.firstToken);
+						const firstTokenAt =
+							typeof performance !== "undefined" &&
+							typeof performance.now === "function"
+								? performance.now()
+								: Date.now();
+						recordInferenceSpan(
+							`model-ttft:${String(modelType)}`,
+							firstTokenAt - startTime,
+							attemptMeta,
+						);
 					}
 					streamedText += safeChunk;
 					// Per-token hook dispatch: skip the whole ceremony (trajectory
@@ -5943,6 +6179,12 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof performance.now === "function"
 						? performance.now()
 						: Date.now();
+				recordInferenceSpan(
+					`model-preprocess:${String(modelType)}`,
+					Date.now() - preprocessingStartedAt,
+					attemptMeta,
+				);
+				handlerStartedAt = Date.now();
 				const rawResponse = await handler(
 					this,
 					modelParams as Record<string, JsonValue | object>,
@@ -6042,6 +6284,7 @@ export class AgentRuntime implements IAgentRuntime {
 						typeof performance.now === "function"
 							? performance.now()
 							: Date.now()) - startTime;
+					const postprocessingStartedAt = Date.now();
 
 					await this.invokePipelineHooks(
 						"post_model",
@@ -6107,6 +6350,11 @@ export class AgentRuntime implements IAgentRuntime {
 							elapsedTime,
 						});
 					}
+					recordInferenceSpan(
+						`model-postprocess:${String(modelType)}`,
+						Date.now() - postprocessingStartedAt,
+						{ ...attemptMeta, streaming: true },
+					);
 
 					return resultRef.current as R;
 				}
@@ -6140,6 +6388,7 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof performance.now === "function"
 						? performance.now()
 						: Date.now()) - startTime;
+				const postprocessingStartedAt = Date.now();
 
 				await this.invokePipelineHooks(
 					"post_model",
@@ -6204,8 +6453,26 @@ export class AgentRuntime implements IAgentRuntime {
 						elapsedTime,
 					});
 				}
+				recordInferenceSpan(
+					`model-postprocess:${String(modelType)}`,
+					Date.now() - postprocessingStartedAt,
+					{ ...attemptMeta, streaming: handlerDeliveredStream },
+				);
 				return resultRef.current as R;
 			} catch (error) {
+				if (handlerStartedAt === null) {
+					recordInferenceSpan(
+						`model-preprocess:${String(modelType)}`,
+						Date.now() - preprocessingStartedAt,
+						{ ...attemptMeta, outcome: "error" },
+					);
+				} else {
+					recordInferenceSpan(
+						`model:${String(modelType)}`,
+						Date.now() - handlerStartedAt,
+						{ ...attemptMeta, outcome: "error" },
+					);
+				}
 				lastModelError = error;
 				const nextModel = resolvedModels[resolvedIndex + 1];
 				if (

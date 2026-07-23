@@ -285,11 +285,11 @@ class TestTerminalBenchRunner:
         assert report.accuracy == 0.0
         assert len(report.results) == 0
 
-    def test_openclaw_harness_builds_configured_cerebras_client(
+    def test_openclaw_harness_builds_configured_native_client(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """OpenClaw receives the configured Cerebras gpt-oss model."""
+        """OpenClaw receives the configured model without a direct bypass."""
         captured = {}
 
         class FakeOpenClawClient:
@@ -325,7 +325,6 @@ class TestTerminalBenchRunner:
         assert captured["client_kwargs"] == {
             "provider": "cerebras",
             "model": "gpt-oss-120b",
-            "direct_openai_compatible": True,
         }
         factory_kwargs = captured["factory_kwargs"]
         assert factory_kwargs["client"].__class__ is FakeOpenClawClient
@@ -383,7 +382,6 @@ class TestTerminalBenchRunner:
         assert captured["client_kwargs"] == {
             "provider": "cerebras",
             "model": "gpt-oss-120b",
-            "mode": "in_process",
         }
         factory_kwargs = captured["factory_kwargs"]
         assert factory_kwargs["client"].__class__ is FakeHermesClient

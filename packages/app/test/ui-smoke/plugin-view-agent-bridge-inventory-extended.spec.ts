@@ -27,7 +27,7 @@
 
 import { expect, type Page, test } from "@playwright/test";
 import {
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -192,14 +192,16 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Hyperliquid",
     path: "/hyperliquid",
     viewId: "hyperliquid",
-    ready: { selector: '[aria-label="Hyperliquid controls"]' },
+    // The visible "<Name> controls" toolbars were removed (#14596); each
+    // spatial view stamps its root Card with a stable data-agent-id instead.
+    ready: { selector: '[data-agent-id="hyperliquid-root"]' },
     requiredIds: ["hyperliquid-refresh", "hyperliquid-home"],
   },
   {
     label: "Polymarket",
     path: "/polymarket",
     viewId: "polymarket",
-    ready: { selector: '[aria-label="Polymarket controls"]' },
+    ready: { selector: '[data-agent-id="polymarket-root"]' },
     requiredIds: ["polymarket-refresh"],
   },
   {
@@ -407,7 +409,7 @@ async function scanUnwiredControls(page: Page, label: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
-  await hideContinuousChatOverlay(page);
+  await hideChatOverlay(page);
   await installDefaultAppRoutes(page);
 });
 

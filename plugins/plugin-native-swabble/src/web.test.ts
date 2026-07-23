@@ -150,28 +150,26 @@ describe("SwabbleWeb fallback", () => {
       said: "أليزا افتح التقويم",
       command: "افتح التقويم",
     },
-  ])("detects a non-Latin wake word and command ($lang)", async ({
-    lang,
-    trigger,
-    said,
-    command,
-  }) => {
-    setWindow({ SpeechRecognition: FakeRecognition });
-    setNavigator({
-      mediaDevices: {
-        getUserMedia: vi.fn(async () => null),
-      } as unknown as MediaDevices,
-    });
-    const plugin = new SwabbleWeb();
-    const wakeWords = vi.fn();
-    await plugin.addListener("wakeWord", wakeWords);
-    await plugin.start({ config: { triggers: [trigger], locale: lang } });
-    FakeRecognition.latest?.onresult?.(speechEvent(said));
+  ])(
+    "detects a non-Latin wake word and command ($lang)",
+    async ({ lang, trigger, said, command }) => {
+      setWindow({ SpeechRecognition: FakeRecognition });
+      setNavigator({
+        mediaDevices: {
+          getUserMedia: vi.fn(async () => null),
+        } as unknown as MediaDevices,
+      });
+      const plugin = new SwabbleWeb();
+      const wakeWords = vi.fn();
+      await plugin.addListener("wakeWord", wakeWords);
+      await plugin.start({ config: { triggers: [trigger], locale: lang } });
+      FakeRecognition.latest?.onresult?.(speechEvent(said));
 
-    expect(wakeWords).toHaveBeenCalledWith(
-      expect.objectContaining({ wakeWord: trigger, command }),
-    );
-  });
+      expect(wakeWords).toHaveBeenCalledWith(
+        expect.objectContaining({ wakeWord: trigger, command }),
+      );
+    },
+  );
 
   it("ignores malformed speech result payloads without emitting transcripts", async () => {
     setWindow({ SpeechRecognition: FakeRecognition });

@@ -548,3 +548,183 @@ describe("looksLikeSpawnEnvelopeJson — spawn-arg leak detector", () => {
 		expect(looksLikeSpawnEnvelopeJson("")).toBe(false);
 	});
 });
+
+/**
+ * Verified tool output + grounded evaluator prose are complementary — both must
+ * reach the user. Texts mirror the live regression: `df -h` through the
+ * terminal action marked its clean stdout `verifiedUserFacing`, and the old
+ * precedence returned only the mount table, silently discarding the
+ * evaluator's actual answer.
+ */
+describe("planner-loop — verified tool text + evaluator prose combine", () => {
+	const dfStdout =
+		"Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1       387G  366G   22G  95% /\ntmpfs            16G     0   16G   0% /dev/shm";
+	const dfProse =
+		"third check, still `/` at 95% — 366G used, 22G free. hasn't budged. say the word and i'll hunt the big offenders.";
+
+	const makeHarness = (opts: {
+		toolResult: Record<string, unknown>;
+		messageToUser?: string;
+	}) => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ id: "call-1", name: "TERMINAL_SHELL", arguments: {} }],
+					usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+				})
+				.mockResolvedValueOnce({
+					text: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Tool ran; answering.",
+						...(opts.messageToUser
+							? { messageToUser: opts.messageToUser }
+							: {}),
+					}),
+					usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70 },
+				}),
+		};
+		const executeToolCall = vi.fn(async () => opts.toolResult);
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Tool ran; answering.",
+			...(opts.messageToUser ? { messageToUser: opts.messageToUser } : {}),
+		}));
+		return { runtime, executeToolCall, evaluate };
+	};
+
+	it("delivers verified tool output AND the evaluator's grounded prose", async () => {
+		const { runtime, executeToolCall, evaluate } = makeHarness({
+			toolResult: {
+				success: true,
+				text: "Shell command completed: `df -h`\nExit code: 0",
+				userFacingText: dfStdout,
+				verifiedUserFacing: true,
+			},
+			messageToUser: dfProse,
+		});
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+		expect(result.status).toBe("finished");
+		const finalMessage = result.finalMessage ?? "";
+		// The verbatim output survives (#7960) …
+		expect(finalMessage).toContain(dfStdout);
+		// … fenced as multiline command output …
+		expect(finalMessage).toContain("```");
+		// … and the evaluator's answer is no longer discarded.
+		expect(finalMessage).toContain("hasn't budged");
+	});
+
+	it("preserves an already-fenced multiline result without nesting fences", async () => {
+		const alreadyFenced = `\`\`\`text\n${dfStdout}\n\`\`\``;
+		const { runtime, executeToolCall, evaluate } = makeHarness({
+			toolResult: {
+				success: true,
+				text: "Shell command completed: `df -h`\nExit code: 0",
+				userFacingText: alreadyFenced,
+				verifiedUserFacing: true,
+			},
+			messageToUser: dfProse,
+		});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(`${alreadyFenced}\n\n${dfProse}`);
+	});
+
+	it("returns prose alone when it already embeds the verified text verbatim", async () => {
+		const verified = "/home/example/.bun";
+		const prose = `biggest offender is /home/example/.bun — 19G. want me to clear it?`;
+		const { runtime, executeToolCall, evaluate } = makeHarness({
+			toolResult: {
+				success: true,
+				text: "diag",
+				userFacingText: verified,
+				verifiedUserFacing: true,
+			},
+			messageToUser: prose,
+		});
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+		expect(result.finalMessage).toBe(prose);
+	});
+
+	it("keeps the verified text alone when the prose adds nothing over it", async () => {
+		const verified =
+			"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).";
+		const { runtime, executeToolCall, evaluate } = makeHarness({
+			toolResult: {
+				success: true,
+				text: "diag",
+				userFacingText: verified,
+				verifiedUserFacing: true,
+			},
+			// A pure fragment/restatement of the verified text.
+			messageToUser: "Root disk: 65% used, 138G available.",
+		});
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+		expect(result.finalMessage).toBe(verified);
+	});
+
+	it("keeps the verified text alone when the evaluator omits messageToUser", async () => {
+		const { runtime, executeToolCall, evaluate } = makeHarness({
+			toolResult: {
+				success: true,
+				text: "diag",
+				userFacingText: dfStdout,
+				verifiedUserFacing: true,
+			},
+		});
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+		expect(result.finalMessage).toBe(dfStdout);
+	});
+
+	it("never decorates a verified confirmation preview with evaluator prose", async () => {
+		const preview =
+			"About to delete 3 reminders. Reply yes to confirm or no to cancel.";
+		const { runtime, executeToolCall, evaluate } = makeHarness({
+			toolResult: {
+				success: false,
+				text: "diag",
+				userFacingText: preview,
+				verifiedUserFacing: true,
+				data: { requiresConfirmation: true },
+			},
+			messageToUser: "i queued the delete — confirm when ready.",
+		});
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+		expect(result.finalMessage).toBe(preview);
+	});
+});

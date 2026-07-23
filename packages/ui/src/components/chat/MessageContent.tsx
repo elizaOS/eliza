@@ -548,6 +548,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           declares more than one setup mode. A single-mode connector shows no
           switch (nothing to choose). */}
       {modes.length > 1 && (
+        // biome-ignore lint/a11y/useSemanticElements: a mode-switch button row is a grouped toolbar, not a form field set — <fieldset> would add form semantics and legacy layout quirks.
         <div
           className="flex flex-wrap items-center gap-1.5 px-3 pt-3"
           role="group"

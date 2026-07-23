@@ -602,39 +602,72 @@ function isOpencodeLocalMode(): boolean {
   return flag === "1" || flag?.toLowerCase() === "true";
 }
 
-function hasBinaryOnPath(binaryName: string): boolean {
-  const command = process.platform === "win32" ? "where" : "which";
-  const args = [binaryName];
+function isExecutableFile(candidate: string): boolean {
   try {
-    execFileSync(command, args, {
-      encoding: "utf8",
-      timeout: 1500,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    if (!fs.statSync(candidate).isFile()) return false;
+    fs.accessSync(candidate, fs.constants.X_OK);
     return true;
   } catch {
-    // error-policy:J3 binary existence probe (`which`/`where`); a non-zero exit
-    // or missing command means the binary is absent (false).
+    // error-policy:J3 command-path probe; a missing, inaccessible, or
+    // non-executable candidate means the framework is unavailable.
     return false;
   }
 }
 
+function hasBinaryOnPath(binaryName: string): boolean {
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, binaryName);
+    if (isExecutableFile(candidate)) return true;
+    if (process.platform === "win32") {
+      for (const ext of (process.env.PATHEXT ?? ".EXE;.CMD;.BAT")
+        .split(";")
+        .filter(Boolean)) {
+        if (isExecutableFile(`${candidate}${ext.toLowerCase()}`)) return true;
+        if (isExecutableFile(`${candidate}${ext.toUpperCase()}`)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function leadingCommandToken(command: string): string | undefined {
+  const [token] = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
+  return token?.replace(/^(['"])(.*)\1$/u, "$2");
+}
+
+function isCommandExecutableAvailable(command: string | undefined): boolean {
+  const executable = leadingCommandToken(command?.trim() ?? "");
+  if (!executable) return false;
+  if (path.isAbsolute(executable)) return isExecutableFile(executable);
+  if (executable.includes("/") || executable.includes("\\")) {
+    return isExecutableFile(resolveUserPath(executable));
+  }
+  return hasBinaryOnPath(executable);
+}
+
 function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
   switch (id) {
-    case "elizaos":
-      return (
-        Boolean(readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND")) ||
-        hasBinaryOnPath("eliza-code-acp")
-      );
-    case "pi-agent":
-      return (
-        Boolean(readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND")) ||
-        hasBinaryOnPath("pi-agent")
-      );
+    case "elizaos": {
+      const configured = readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND");
+      return configured
+        ? isCommandExecutableAvailable(configured)
+        : hasBinaryOnPath("eliza-code-acp");
+    }
+    case "pi-agent": {
+      const configured = readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND");
+      return configured
+        ? isCommandExecutableAvailable(configured)
+        : hasBinaryOnPath("pi-agent");
+    }
     case "claude":
       return hasBinaryOnPath("claude");
-    case "codex":
-      return hasBinaryOnPath("codex");
+    case "codex": {
+      const configured = readConfigEnvKey("ELIZA_CODEX_ACP_COMMAND");
+      return configured
+        ? isCommandExecutableAvailable(configured)
+        : hasBinaryOnPath("codex");
+    }
     case "opencode":
       return hasOpencodeBinary();
   }
@@ -716,8 +749,14 @@ async function computeTaskAgentFrameworkState(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
-  // OpenCode is the BYO-provider default. Claude/Codex only become the
-  // preferred default when their specific subscription/key path is configured.
+  // eliza-code (elizaos) and OpenCode are co-equal BYO backends when no
+  // provider-specific key prefers Claude/Codex. eliza-code is the default WHEN
+  // INSTALLED: it shares OpenCode's provider thumb (below) and its
+  // capability-profile fit dominates OpenCode on every axis, so with an equal
+  // provider signal it wins the weighted sort (alphabetical tie-break also
+  // favors "elizaos"). OpenCode is the fallback when eliza-code is not installed
+  // (an uninstalled framework's availabilityScore of -100 keeps it out of the
+  // running). Claude/Codex only become preferred when their key path is set.
   const providerPrefersOpencode =
     !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
@@ -804,7 +843,14 @@ async function computeTaskAgentFrameworkState(
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : 0
+          : // eliza-code shares OpenCode's BYO provider thumb when no provider
+            // key prefers claude/codex; its dominant capability-profile fit then
+            // makes an installed eliza-code the default over OpenCode.
+            framework.id === "elizaos" && providerPrefersOpencode
+            ? framework.authReady
+              ? 18
+              : 6
+            : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18
@@ -1012,8 +1058,14 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
-  // OpenCode is the BYO-provider default. Claude/Codex only become the
-  // preferred default when their specific subscription/key path is configured.
+  // eliza-code (elizaos) and OpenCode are co-equal BYO backends when no
+  // provider-specific key prefers Claude/Codex. eliza-code is the default WHEN
+  // INSTALLED: it shares OpenCode's provider thumb (below) and its
+  // capability-profile fit dominates OpenCode on every axis, so with an equal
+  // provider signal it wins the weighted sort (alphabetical tie-break also
+  // favors "elizaos"). OpenCode is the fallback when eliza-code is not installed
+  // (an uninstalled framework's availabilityScore of -100 keeps it out of the
+  // running). Claude/Codex only become preferred when their key path is set.
   const providerPrefersOpencode =
     !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
@@ -1027,7 +1079,14 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : 0
+          : // eliza-code shares OpenCode's BYO provider thumb when no provider
+            // key prefers claude/codex; its dominant capability-profile fit then
+            // makes an installed eliza-code the default over OpenCode.
+            framework.id === "elizaos" && providerPrefersOpencode
+            ? framework.authReady
+              ? 18
+              : 6
+            : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18

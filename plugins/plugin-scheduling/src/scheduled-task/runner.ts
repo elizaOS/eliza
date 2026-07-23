@@ -146,7 +146,7 @@ export interface ScheduledTaskStore {
    *
    * The store is the only place where the read-mutate-write becomes
    * atomic; the runner's previous read-then-upsert pattern was racy
-   * across parallel ticks. See `LifeOpsRepository.claimScheduledTaskForFire`.
+   * across parallel ticks.
    */
   claimForFire(args: {
     taskId: string;

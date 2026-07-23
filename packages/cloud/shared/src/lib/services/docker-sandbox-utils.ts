@@ -490,3 +490,25 @@ export function parseDockerNodes(): DockerNodeEnv[] {
   _cachedDockerNodesRaw = raw;
   return nodes;
 }
+
+/**
+ * Which Headscale teardown applies to a container's VPN state (#16565).
+ * During a blue/green overlap old and new nodes share the deterministic
+ * hostname, so:
+ *  - a registered id is the only safe deletion handle (`by-id`);
+ *  - preserve-mode with NO registered id means the container never joined —
+ *    the only same-name node is the LIVE preserved one, and by-name deletion
+ *    is forbidden (`skip-preserved`);
+ *  - plain provisions without an id fall back to the historical by-name
+ *    cleanup (`by-name`) — nothing ambiguous exists there.
+ * Pure so every caller (stop teardown, create-failure rollback) shares one
+ * pinned decision instead of re-deriving it.
+ */
+export function resolveVpnTeardown(state: {
+  vpnNodeId?: string;
+  previousVpnNodeId?: string;
+}): { kind: "by-id"; nodeId: string } | { kind: "by-name" } | { kind: "skip-preserved" } {
+  if (state.vpnNodeId) return { kind: "by-id", nodeId: state.vpnNodeId };
+  if (state.previousVpnNodeId) return { kind: "skip-preserved" };
+  return { kind: "by-name" };
+}

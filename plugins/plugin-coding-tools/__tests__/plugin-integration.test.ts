@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as pluginModule from "../src/index.ts";
 import codingToolsPlugin, {
   availableToolsProvider,
+  BackgroundShellService,
   CODING_TOOLS_CONTEXTS,
   FILE_STATE_SERVICE,
   FileStateService,
@@ -22,7 +23,13 @@ import codingToolsPlugin, {
   SessionCwdService,
 } from "../src/index.ts";
 
-const EXPECTED_ACTIONS = ["FILE", "SHELL", "WORKTREE"];
+const EXPECTED_ACTIONS = [
+  "FILE",
+  "SHELL",
+  "WEB_FETCH",
+  "WEB_SEARCH",
+  "WORKTREE",
+];
 
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
   it("exports a Plugin with the expected name", () => {
@@ -46,7 +53,6 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
       "GREP",
       "GLOB",
       "LS",
-      "WEB_FETCH",
       "ASK_USER_QUESTION",
       "ENTER_WORKTREE",
       "EXIT_WORKTREE",
@@ -59,7 +65,20 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     const fileAction = (codingToolsPlugin.actions ?? []).find(
       (action) => action.name === "FILE",
     );
-    expect(fileAction?.similes).toEqual(["FILE_OPERATION", "FILE_IO"]);
+    // The #16546 invented-name family. NOTE: LIST_FILES also belongs to the
+    // stored-media FILES action (since #8970) — the resolver drops a simile
+    // claimed by two parents as ambiguous (#16561), so it is runtime-inert
+    // here; removing it from this list is #16546-author follow-up.
+    expect(fileAction?.similes).toEqual([
+      "FILE_OPERATION",
+      "FILE_IO",
+      "FILES_READ",
+      "FILES_LIST",
+      "FILE_READ",
+      "FILE_LIST",
+      "READ_FILE",
+      "LIST_FILES",
+    ]);
   });
 
   it("each action has the required fields", () => {
@@ -76,13 +95,14 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("exports the 4 active services", () => {
+  it("exports the 5 active services", () => {
     const services = codingToolsPlugin.services ?? [];
+    expect(services).toContain(BackgroundShellService);
     expect(services).toContain(FileStateService);
     expect(services).toContain(SandboxService);
     expect(services).toContain(SessionCwdService);
     expect(services).toContain(RipgrepService);
-    expect(services.length).toBe(4);
+    expect(services.length).toBe(5);
   });
 
   it("does not export removed actions or service constants", () => {

@@ -23,10 +23,14 @@ describe("parseOwnerRepo", () => {
     });
   });
 
-  it("stops the repo name at a dot (drops .git)", () => {
+  it("drops only the trailing .git suffix", () => {
     expect(parseOwnerRepo("https://github.com/owner/repo.git")).toEqual({
       owner: "owner",
       repo: "repo",
+    });
+    expect(parseOwnerRepo("https://github.com/owner/repo.name.git")).toEqual({
+      owner: "owner",
+      repo: "repo.name",
     });
   });
 

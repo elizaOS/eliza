@@ -158,6 +158,18 @@ describe("parseAccountsArgs", () => {
 				key: "accounts",
 				canonical: "/accounts",
 				args: [],
+				rawArgs: "strategy claude drain-soonest-reset",
+			}),
+		).toEqual({
+			kind: "strategy",
+			provider: "anthropic-subscription",
+			strategy: "drain-soonest-reset",
+		});
+		expect(
+			parseAccountsArgs({
+				key: "accounts",
+				canonical: "/accounts",
+				args: [],
 				rawArgs: "refresh cerebras",
 			}),
 		).toEqual({ kind: "refresh", provider: "cerebras-api" });
@@ -410,18 +422,18 @@ describe("/accounts writes", () => {
 		);
 	});
 
-	it("reset-soonest PATCHes the provider strategy route with the exact body", async () => {
+	it("drain-soonest-reset PATCHes the provider strategy route with the exact body", async () => {
 		const fetchMock = vi.fn(async () =>
 			jsonResponse({
 				providerId: "anthropic-subscription",
-				strategy: "reset-soonest",
+				strategy: "drain-soonest-reset",
 			}),
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		const r = await resolveCommand(
 			runtime,
-			msg("/accounts strategy claude reset-soonest"),
+			msg("/accounts strategy claude drain-soonest-reset"),
 			OWNER,
 		);
 		const [call] = recordedCalls(fetchMock);
@@ -429,9 +441,9 @@ describe("/accounts writes", () => {
 		expect(new URL(call?.url ?? "").pathname).toBe(
 			"/api/providers/anthropic-subscription/strategy",
 		);
-		expect(call?.body).toEqual({ strategy: "reset-soonest" });
+		expect(call?.body).toEqual({ strategy: "drain-soonest-reset" });
 		expect(r.reply).toBe(
-			"Account strategy for anthropic-subscription set to reset-soonest.",
+			"Account strategy for anthropic-subscription set to drain-soonest-reset.",
 		);
 	});
 
@@ -663,27 +675,27 @@ describe("connector read gate (requiresAuth only, not requiresElevated)", () => 
 	// via gateConnectorCommandByName BEFORE runCommand) refuse the bare read to
 	// an authorized-but-not-elevated sender. With requiresAuth only, the read
 	// passes the bridge and the write subcommands re-check isElevated in-handler.
-	it.each([
-		"accounts",
-		"backend",
-	])("lets an authorized non-elevated sender through the bridge for /%s", (name) => {
-		const decision = gateConnectorCommandByName(
-			"agent-accounts-backend",
-			name,
-			{ isAuthorized: true, isElevated: false, senderName: "t" },
-		);
-		expect(decision.allowed).toBe(true);
-	});
+	it.each(["accounts", "backend"])(
+		"lets an authorized non-elevated sender through the bridge for /%s",
+		(name) => {
+			const decision = gateConnectorCommandByName(
+				"agent-accounts-backend",
+				name,
+				{ isAuthorized: true, isElevated: false, senderName: "t" },
+			);
+			expect(decision.allowed).toBe(true);
+		},
+	);
 
-	it.each([
-		"accounts",
-		"backend",
-	])("refuses an unauthorized sender at the bridge for /%s", (name) => {
-		const decision = gateConnectorCommandByName(
-			"agent-accounts-backend",
-			name,
-			{ isAuthorized: false, isElevated: false, senderName: "t" },
-		);
-		expect(decision.allowed).toBe(false);
-	});
+	it.each(["accounts", "backend"])(
+		"refuses an unauthorized sender at the bridge for /%s",
+		(name) => {
+			const decision = gateConnectorCommandByName(
+				"agent-accounts-backend",
+				name,
+				{ isAuthorized: false, isElevated: false, senderName: "t" },
+			);
+			expect(decision.allowed).toBe(false);
+		},
+	);
 });
