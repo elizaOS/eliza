@@ -135,6 +135,59 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
   });
 
+  it("does not navigate the auth popup until CLI-session creation completes", async () => {
+    vi.useFakeTimers();
+    const popup = {
+      closed: false,
+      close: vi.fn(),
+      location: { href: "" },
+      opener: {},
+    } as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    type DirectLoginResult = Awaited<
+      ReturnType<typeof client.cloudLoginDirect>
+    >;
+    let resolveSession: ((value: DirectLoginResult) => void) | undefined;
+    cloudLoginDirectSpy.mockReturnValue(
+      new Promise<DirectLoginResult>((resolve) => {
+        resolveSession = resolve;
+      }),
+    );
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      await act(async () => {
+        void result.current.handleCloudLogin(popup);
+        await Promise.resolve();
+      });
+
+      expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+      expect(popup.location.href).toBe("");
+
+      await act(async () => {
+        resolveSession?.({
+          ok: true,
+          apiBase: "https://api.elizacloud.ai",
+          browserUrl:
+            "https://elizacloud.ai/auth/cli-login?session=sess-serialized",
+          sessionId: "sess-serialized",
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(popup.location.href).toBe(
+        "https://elizacloud.ai/auth/cli-login?session=sess-serialized",
+      );
+      expect(assignSpy).not.toHaveBeenCalled();
+
+      unmount();
+      vi.clearAllTimers();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("closes a pre-opened popup when direct cloud login startup throws", async () => {
     const popup = {
       closed: false,

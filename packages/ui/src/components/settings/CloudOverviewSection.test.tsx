@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Covers the Cloud overview's account escape hatch. Mobile users can get stuck
- * on a connected Cloud session without a desktop account menu, so this section
- * must expose the same sign-out path inline with the Cloud status.
+ * Covers the Cloud overview's login launch and account escape hatch. Desktop
+ * login preserves the popup handle for the auth handoff, while connected mobile
+ * users retain the same inline sign-out path as the desktop account menu.
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -10,8 +10,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";
 import { CloudOverviewSection } from "./CloudOverviewSection";
 
+const cloudLoginWindow = vi.hoisted(() => ({
+  popup: { closed: false } as unknown as Window,
+  preOpen: vi.fn(),
+}));
+
 vi.mock("../../agent-surface", () => ({
   useAgentElement: () => ({ ref: null, agentProps: {} }),
+}));
+
+vi.mock("../../state/cloud-login-launch", () => ({
+  preOpenCloudLoginWindow: cloudLoginWindow.preOpen,
 }));
 
 function t(_key: string, opts?: { defaultValue?: string; id?: string }) {
@@ -25,7 +34,7 @@ function seedCloudOverviewState(
     elizaCloudLoginBusy: boolean;
     elizaCloudUserId: string | null;
     handleCloudDisconnect: () => Promise<void>;
-    handleCloudLogin: () => Promise<void>;
+    handleCloudLogin: (popup?: Window | null) => Promise<void>;
     handleCloudSignOut: () => Promise<void>;
   }> = {},
 ) {
@@ -49,9 +58,22 @@ afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
   vi.clearAllMocks();
+  cloudLoginWindow.preOpen.mockReturnValue(cloudLoginWindow.popup);
 });
 
 describe("CloudOverviewSection", () => {
+  it("pre-opens the shared cloud auth window before starting login", () => {
+    const handleCloudLogin = vi.fn(async () => undefined);
+    cloudLoginWindow.preOpen.mockReturnValue(cloudLoginWindow.popup);
+    seedCloudOverviewState({ handleCloudLogin });
+
+    render(<CloudOverviewSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Connect Cloud" }));
+
+    expect(cloudLoginWindow.preOpen).toHaveBeenCalledTimes(1);
+    expect(handleCloudLogin).toHaveBeenCalledWith(cloudLoginWindow.popup);
+  });
+
   it("exposes a sign-out action for connected Cloud accounts", () => {
     const handleCloudDisconnect = vi.fn(async () => undefined);
     const handleCloudSignOut = vi.fn(async () => undefined);
