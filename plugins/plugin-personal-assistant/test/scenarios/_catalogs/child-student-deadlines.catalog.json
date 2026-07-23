@@ -17,48 +17,90 @@
       "pack": "L1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "Child owner asks for help with a Friday book report, gets distracted, then confirms. Live verification must show a stored report plan with an earlier checkpoint, no parent-only or therapy framing."
+      "status": "verified",
+      "notes": "Child owner asks for help with a Friday book report, gets distracted, then confirms. Live verification must show a stored report plan with an earlier checkpoint, no parent-only or therapy framing. VERIFIED 2026-07-23 live (claude-opus-4-7, judged by gpt-5.6-sol, min score 0.65) in an isolated per-scenario runner process @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); store rows queried from the preserved per-run PGLite and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 0.65,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) — inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run 5f8a3894-9dc4-4296-8cd7-65bd8aea1dd1 @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "1 matching definition(s) for \"book report\" — stored: \"Book report: read 3 chapters + make poster\" cadence=once dueAt=2026-07-24T09:00:00.000Z tz=UTC reminderPlan=steps=[0m,435m]"
+      }
     },
     {
       "id": "child-book-report-cancel-reask",
       "pack": "L1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "Cancellation/re-ask flow. Live verification must show the canceled science-report reminder was not persisted and only the confirmed ask-Ms.-Rivera replacement exists."
+      "status": "verified",
+      "notes": "Cancellation/re-ask flow. Live verification must show the canceled science-report reminder was not persisted and only the confirmed ask-Ms.-Rivera replacement exists. VERIFIED 2026-07-23 live (claude-opus-4-7, judged by gpt-5.6-sol, min score 1) in an isolated per-scenario runner process @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); store rows queried from the preserved per-run PGLite and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) — inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run 0124601a-5461-4a3d-8a94-10eb4d007913 @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "1 matching definition(s) for \"ask Ms. Rivera\" — stored: \"Ask Ms. Rivera what the science report topic is\" cadence=once dueAt=2026-07-24T09:00:00.000Z tz=UTC reminderPlan=steps=[0m] || no matching definition for \"science report due next monday\" among 3 stored definition(s): \"Review Project Atlas launch checklist\" cadence=once dueAt=2026-07-23T20:03:40.672Z tz=America/Los_Angeles reminderPlan=steps=[0m] | \"Send diligence packet comments\" cadence=once dueAt=2026-07-23T21:33:40.726Z tz=America/Los_Angeles reminderPlan=steps=[0m] | \"Ask Ms. Rivera what the science report topic is\" cadence=once dueAt=2026-07-24T09:00:00.000Z tz=UTC reminderPlan=steps=[0m]"
+      }
     },
     {
       "id": "child-morning-routine-plain-words",
       "pack": "L1",
       "tier": "T1",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "Plain child morning routine. Live verification must show a daily routine/reminder covering teeth, lunch, and math folder without infantilizing or clinical wording."
+      "status": "verified",
+      "notes": "Plain child morning routine. Live verification must show a daily routine/reminder covering teeth, lunch, and math folder without infantilizing or clinical wording. VERIFIED 2026-07-23 live (claude-opus-4-7, judged by gpt-5.6-sol, min score 1) in an isolated per-scenario runner process @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); store rows queried from the preserved per-run PGLite and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) — inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run c44124cb-635e-4009-ab41-ca05d0dd322c @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "1 matching definition(s) for \"school morning\" — stored: \"Before-school checklist: brush teeth, pack lunch, math folder\" cadence=daily tz=UTC reminderPlan=steps=[0m]"
+      }
     },
     {
       "id": "student-term-paper-night-owl-deadline",
       "pack": "L1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "Night-owl adult student asks for a seminar-paper plan. Live verification must show the stored reminder plan avoids default 8am/9am slots and includes draft/citations/final-pass phases."
+      "status": "verified",
+      "notes": "Night-owl adult student asks for a seminar-paper plan. Live verification must show the stored reminder plan avoids default 8am/9am slots and includes draft/citations/final-pass phases. VERIFIED 2026-07-23 live (claude-opus-4-7, judged by gpt-5.6-sol, min score 1) in an isolated per-scenario runner process @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); store rows queried from the preserved per-run PGLite and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) — inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run 9afd17f1-a95b-4352-aaf9-f64f71ef9fa9 @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "1 matching definition(s) for \"seminar paper\" — stored: \"Seminar paper writing sessions\" cadence=once dueAt=2026-07-30T17:00:00.000Z tz=UTC reminderPlan=steps=[0m]"
+      }
     },
     {
       "id": "student-lab-report-distractor-deadline",
       "pack": "L1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "Lab-report deadline survives an unrelated pizza distractor. Live verification must show a report plan exists and no pizza task was created."
+      "status": "verified",
+      "notes": "Lab-report deadline survives an unrelated pizza distractor. Live verification must show a report plan exists and no pizza task was created. VERIFIED 2026-07-23 live (claude-opus-4-7, judged by gpt-5.6-sol, min score 1) in an isolated per-scenario runner process @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); store rows queried from the preserved per-run PGLite and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) — inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run 9d32a34a-c2be-462f-a040-4bff03d5d186 @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "1 matching definition(s) for \"chem lab report\" — stored: \"Chem lab report: collect data, write analysis, submit before midnight Tuesday\" cadence=once dueAt=2026-07-28T09:00:00.000Z tz=UTC reminderPlan=steps=[0m,2205m,4410m] || no matching definition for \"pizza\" among 3 stored definition(s): \"Review Project Atlas launch checklist\" cadence=once dueAt=2026-07-23T20:10:50.599Z tz=America/Los_Angeles reminderPlan=steps=[0m] | \"Send diligence packet comments\" cadence=once dueAt=2026-07-23T21:40:50.674Z tz=America/Los_Angeles reminderPlan=steps=[0m] | \"Chem lab report: collect data, write analysis, submit before midnight Tuesday\" cadence=once dueAt=2026-07-28T09:00:00.000Z tz=UTC reminderPlan=steps=[0m,2205m,4410m]"
+      }
     },
     {
       "id": "student-report-two-phase-commit",
       "pack": "L1",
       "tier": "T1",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "Two-phase commit for a history report. Live verification must show the first turn asks before saving and the confirmed turn creates the outline/draft/proofread reminder plan."
+      "status": "verified",
+      "notes": "Two-phase commit for a history report. Live verification must show the first turn asks before saving and the confirmed turn creates the outline/draft/proofread reminder plan. VERIFIED 2026-07-23 live (claude-opus-4-7, judged by gpt-5.6-sol, min score 1) in an isolated per-scenario runner process @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); store rows queried from the preserved per-run PGLite and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) — inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run a99f31d5-3c73-47c8-9ec4-20d6e157947f @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "1 matching definition(s) for \"history report\" — stored: \"History report milestones\" cadence=once dueAt=2026-07-27T09:00:00.000Z tz=UTC reminderPlan=steps=[0m,1290m,2595m,3885m]"
+      }
     }
   ]
 }

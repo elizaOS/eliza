@@ -52,11 +52,23 @@ export default scenario({
       kind: "message",
       name: "owner asks to be set up fast",
       text: "hey — just installed you. can you get me set up? i don't want to fiddle with a bunch of settings, just the sensible defaults.",
+      responseJudge: {
+        name: "fast-start-engages-onboarding",
+        minimumScore: 0.6,
+        rubric:
+          "A fresh owner asked to be set up with sensible defaults; the assistant has a pending first-run affordance. Grade PASS only if the assistant engages with getting the owner set up (accepts the defaults choice and/or asks a needed setup question such as wake time) in plain words. Fail if it denies having a setup flow, claims the entire setup is already finished before asking anything, or dumps internal jargon (task ids, cron/ISO formats).",
+      },
     },
     {
       kind: "message",
       name: "owner answers wake time",
       text: "i usually wake up around 6:30am",
+      responseJudge: {
+        name: "fast-start-wake-answer-plain-ack",
+        minimumScore: 0.6,
+        rubric:
+          "The owner just answered a setup question with their wake time (around 6:30am). Grade PASS only if the assistant acknowledges the 6:30am answer and continues the setup conversation coherently in plain words. Fail if it ignores the wake time, contradicts it, or leaks internal jargon (task ids, cron expressions, ISO timestamps) into the reply.",
+      },
     },
   ],
   finalChecks: [

@@ -1,6 +1,8 @@
 // Exercises the catalog coverage reporter against the real MVP scenario ledgers.
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const scriptPath = join(
@@ -62,9 +64,9 @@ describe("LifeOps persona catalog coverage", () => {
     expect(output).toContain("E1 29 authored (target 28, +1)");
     expect(output).toContain("F1 35 authored (target 32, +3)");
     expect(output).toContain(
-      "Total: 296 authored (target 292), 153/296 verified, 143 unverified",
+      "Total: 300 authored (target 296), 163/300 verified, 137 unverified",
     );
-    expect(output).not.toContain("296/292 authored");
+    expect(output).not.toContain("300/296 authored");
   });
 
   test("--unverified prints a board-triage list without hiding surface blockers", () => {
@@ -76,7 +78,7 @@ describe("LifeOps persona catalog coverage", () => {
       "J1 10/10 unverified (lifeops-bench:3, scenario-runner:7)",
     );
     expect(output).toContain(
-      "Total: 143/296 authored rows still need verification",
+      "Total: 137/300 authored rows still need verification",
     );
   });
 
@@ -109,6 +111,40 @@ describe("LifeOps persona catalog coverage", () => {
     );
     expect(result.stderr).toContain(
       "B2: 6/22 verified; --require-verified requires every authored row to be verified",
+    );
+  });
+
+  test("L1 and FR1 pass --require-verified with structured row evidence", () => {
+    for (const pack of ["L1", "FR1"]) {
+      const result = runCoverageResult("--pack", pack, "--require-verified");
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+    }
+  });
+
+  test("strict-evidence packs reject a verified row whose evidence receipt is missing", () => {
+    const catalogDir = join(
+      import.meta.dirname,
+      "../../../plugins/plugin-personal-assistant/test/scenarios/_catalogs",
+    );
+    const tampered = mkdtempSync(join(tmpdir(), "lifeops-catalogs-"));
+    cpSync(catalogDir, tampered, { recursive: true });
+    const fr1File = join(tampered, "first-run-onboarding.catalog.json");
+    const fr1 = JSON.parse(readFileSync(fr1File, "utf8"));
+    delete fr1.scenarios[0].evidence;
+    writeFileSync(fr1File, JSON.stringify(fr1));
+
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, "--pack", "FR1", "--require-verified"],
+      {
+        encoding: "utf8",
+        env: { ...process.env, LIFEOPS_CATALOG_DIR: tampered },
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "verified rows in pack FR1 must carry an evidence object",
     );
   });
 });

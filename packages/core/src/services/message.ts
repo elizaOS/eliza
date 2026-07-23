@@ -3024,91 +3024,11 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-// Completed-side-effect detection is split by grammatical certainty so that
-// only ASSERTIONS of finished work fire; consent-seeking offers, questions,
-// and conditionals must pass through untouched (a rewritten offer forces an
-// unwanted planner run — the user asked a question and got an action).
-//
-// Perfective first-person claims ("I've set…", "I have scheduled…", "I just
-// added…") carry an explicit completion auxiliary, so they read as reports in
-// any sentence shape — including tag questions ("I've set it — anything
-// else?"). Only a leading subordinator ("Once I've set…") turns one into a
-// plan instead of a report. Adjacency keeps denials out: "I have not set"
-// never matches.
-const PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
-// Bare simple-past claims ("I set a reminder for 9am."). "set" is the one
-// verb here whose past tense equals its base form, so offers ("Should I
-// set…?", "Before I set…") collide with reports on the raw pattern — this
-// branch is additionally gated on the word preceding "I" and on the
-// containing sentence not being a question.
-const BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
-// State-of-the-world completion claims that need no first-person subject
-// ("that's all set", "your reminders are set", "Done —"). The bare "done —"
-// branch is anchored to the start of the (trimmed) reply or of a sentence, so
-// congratulations like "Well done — that's every task cleared." are not
-// misread as completion claims.
-const STATE_SIDE_EFFECT_CLAIM_PATTERN =
-	/\b(?:(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|scheduled|in\s+place)\b)|(?:^|[.!?]\s+)done\s*[—–-]/i;
-// A modal, interrogative auxiliary, or subordinator immediately before the
-// matched "I" makes the clause an offer/question/condition ("Should I
-// set…?", "Shall I set…?", "When I set…", "Once I've set…"), not a report of
-// finished work.
-const NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN =
-	/\b(?:should|shall|can|could|may|might|would|will|do|does|did|must|if|unless|once|when|whenever|while|before|after|until|whether)\s+$/i;
-// The claim must be ABOUT a schedulable/saved thing, not e.g. "I've set aside
-// some thoughts". Vocabulary mirrors the scheduled-item nouns the LifeOps
-// surfaces own.
-const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
-	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|check[- ]?ins?|follow[- ]?ups?)\b/i;
+// Shared with the planner-path REPLY guard; the detector lives in a leaf
+// module so the action can import it without pulling in this service.
+import { replyClaimsCompletedSideEffect } from "./message/side-effect-claims.ts";
 
-// True when the sentence containing the match (scanning forward from the
-// match) terminates in "?" — the shape of a consent-seeking offer or a
-// clarifying question ("I set reminders in the morning usually — should I?").
-function sideEffectClaimSentenceIsQuestion(
-	text: string,
-	fromIndex: number,
-): boolean {
-	for (let i = fromIndex; i < text.length; i += 1) {
-		const ch = text[i];
-		if (ch === "?") return true;
-		if (ch === "." || ch === "!" || ch === "\n") return false;
-	}
-	return false;
-}
-
-/**
- * True when a Stage-1 reply ASSERTS that a scheduling/save side effect already
- * happened. On the simple path no tool has run, so any such assertion is
- * fabricated — the "not loaded must never read as zero" doctrine applied to
- * writes: "no tool ran" must never read as "done" (#16935; observed live: a
- * bill-reminder ask answered "Done — I've set two reminders" with zero tool
- * calls, plus invented "session-only" caveats). Consent-seeking offers,
- * questions, and conditionals ("Want me to set…?", "Should I set…?", "I could
- * set…") are NOT claims and must return false — rewriting them to "On it."
- * turns a question the user asked into an action they did not consent to.
- */
-export function replyClaimsCompletedSideEffect(reply: string): boolean {
-	const text = reply.trim();
-	if (!text) return false;
-	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) return false;
-	if (STATE_SIDE_EFFECT_CLAIM_PATTERN.test(text)) return true;
-	for (const match of text.matchAll(PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN)) {
-		if (
-			!NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(text.slice(0, match.index))
-		) {
-			return true;
-		}
-	}
-	for (const match of text.matchAll(BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN)) {
-		const prefix = text.slice(0, match.index);
-		if (NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(prefix)) continue;
-		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
-		return true;
-	}
-	return false;
-}
+export { replyClaimsCompletedSideEffect };
 
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
@@ -9414,6 +9334,83 @@ async function _composeContinuationDecisionState(
  */
 export class DefaultMessageService implements IMessageService {
 	/**
+	 * Rooms (keyed `${agentId}:${roomId}`) holding a reply that has been handed
+	 * to the delivery callback but whose response-memory row is not yet stored
+	 * (the simple-path deliver-then-persist window). A follow-up turn triggered
+	 * by that delivery must not compose its prompt until the reply row exists,
+	 * or RECENT_MESSAGES silently omits the reply the user is answering —
+	 * `processMessage` awaits these barriers before any composition. Barriers
+	 * always settle (resolve, never reject) whether the persist succeeds or
+	 * fails; a persist failure propagates in the owning turn, never to the
+	 * waiting turn. Same-room turns otherwise still run concurrently — turn
+	 * preemption (`turnControllers.abortTurn` fired from a later message's
+	 * Stage-1 field evaluators) depends on that, so this is deliberately a
+	 * narrow persistence barrier, not per-room handler serialization.
+	 */
+	private readonly pendingReplyPersists = new Map<string, Set<Promise<void>>>();
+
+	private pendingReplyPersistKey(runtime: IAgentRuntime, roomId: UUID): string {
+		return `${runtime.agentId}:${roomId}`;
+	}
+
+	/**
+	 * Register a delivered-reply persistence barrier. Must be called BEFORE the
+	 * delivery callback fires: the instant the reply reaches the client a
+	 * follow-up can arrive, and its compose must find this barrier already
+	 * pending. Returns the release fn; call it once the persist settles
+	 * (success or failure). Constraint for callback authors: a delivery
+	 * callback must never await a same-room `handleMessage` to completion —
+	 * that turn waits on a barrier this turn only releases after the callback
+	 * returns. Fire-and-forget from a callback is fine.
+	 */
+	private registerPendingReplyPersist(
+		runtime: IAgentRuntime,
+		roomId: UUID,
+	): () => void {
+		const key = this.pendingReplyPersistKey(runtime, roomId);
+		let release: (() => void) | undefined;
+		const barrier = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let barriers = this.pendingReplyPersists.get(key);
+		if (!barriers) {
+			barriers = new Set();
+			this.pendingReplyPersists.set(key, barriers);
+		}
+		barriers.add(barrier);
+		return () => {
+			release?.();
+			const set = this.pendingReplyPersists.get(key);
+			if (set) {
+				set.delete(barrier);
+				if (set.size === 0) {
+					this.pendingReplyPersists.delete(key);
+				}
+			}
+		};
+	}
+
+	/**
+	 * Wait until every reply already handed to a delivery callback for this
+	 * room has finished persisting. Snapshot semantics: only barriers pending
+	 * at call time are awaited — exactly the causal set for a follow-up
+	 * reacting to a delivered reply. Rooms with no pending barrier (the
+	 * overwhelmingly common case) return without awaiting anything.
+	 */
+	private async awaitDeliveredReplyPersistence(
+		runtime: IAgentRuntime,
+		roomId: UUID,
+	): Promise<void> {
+		const barriers = this.pendingReplyPersists.get(
+			this.pendingReplyPersistKey(runtime, roomId),
+		);
+		if (!barriers || barriers.size === 0) return;
+		await timeInferenceSpan("message:compose:reply-persist-barrier", () =>
+			Promise.all([...barriers]),
+		);
+	}
+
+	/**
 	 * Main message handling entry point
 	 */
 	async handleMessage(
@@ -10098,6 +10095,13 @@ export class DefaultMessageService implements IMessageService {
 		startTime: number,
 		opts: ResolvedMessageOptions,
 	): Promise<MessageProcessingResult> {
+		// A reply already handed to a delivery callback for this room may still
+		// be persisting (deliver-then-persist fast path). Composing now would
+		// read RECENT_MESSAGES without the reply this message may be answering,
+		// so wait for those persists to settle first. Same room only, a few
+		// hundred ms worst case, and a no-op when nothing is pending.
+		await this.awaitDeliveredReplyPersistence(runtime, message.roomId);
+
 		const agentResponses = latestResponseIds.get(runtime.agentId);
 		if (!agentResponses) throw new Error("Agent responses map not found");
 
@@ -10943,8 +10947,17 @@ export class DefaultMessageService implements IMessageService {
 			if (responseContent) {
 				const deliverableResponseContent = responseContent;
 				if (mode === "simple") {
-					// Keep content hooks and DB write before delivery so the wire
-					// response and stored memory match. Do not put MESSAGE_SENT
+					// Keep content hooks before delivery so the wire response carries
+					// their edits. The response-memory DB write runs AFTER the
+					// callback: it is the largest post-LLM cost on this path
+					// (~250-440ms measured via the message:delivery:persistence
+					// InferenceTiming span) and the user must not wait on it. The
+					// persist is still awaited before this turn proceeds, so
+					// everything downstream in THIS turn (MESSAGE_SENT, post-turn
+					// evaluators, followUp) observes the stored reply — and a
+					// CONCURRENT same-room turn started off this delivery waits on
+					// the pendingReplyPersists barrier before composing, so its
+					// RECENT_MESSAGES read observes it too. Do not put MESSAGE_SENT
 					// handlers or post-turn evaluators before the callback; they are
 					// side effects and must not stall user-visible streaming.
 					await timeInferenceSpan("message:delivery:hooks", () =>
@@ -10960,44 +10973,89 @@ export class DefaultMessageService implements IMessageService {
 							}),
 						),
 					);
-					if (responseMessages.length > 0) {
-						for (const responseMemory of responseMessages) {
-							if (
-								responseMemory.id &&
-								persistedEarlyReplyIds.has(responseMemory.id)
-							) {
-								continue;
-							}
-							responseMemory.content = deliverableResponseContent;
-							if (shouldSkipResponseMemoryPersistence(responseMemory)) {
-								runtime.logger.debug(
-									{ src: "service:message", memoryId: responseMemory.id },
-									"Skipping transient response memory persistence",
-								);
-								continue;
-							}
-							runtime.logger.debug(
-								{ src: "service:message", memoryId: responseMemory.id },
-								"Saving response to memory",
-							);
-							await timeInferenceSpan("message:delivery:persistence", () =>
-								runtime.createMemory(responseMemory, "messages"),
-							);
-
-							detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
-								this.emitMessageSent(
-									runtime,
-									responseMemory,
-									message.content.source ?? "messageHandler",
+					// Registered BEFORE the callback fires so a follow-up prompted
+					// by this delivery always finds the barrier pending; released
+					// (never rejected) in the finally once the persist settles.
+					const releaseReplyPersistBarrier = this.registerPendingReplyPersist(
+						runtime,
+						message.roomId,
+					);
+					try {
+						// Settled-result handling instead of catch blocks: a delivery
+						// failure must not skip the persist, and callers classify the
+						// raw delivery error by identity (TURN_ABORTED / generation-
+						// timeout checks at the conversation route), so both failures
+						// are rethrown UNCHANGED after both operations settle.
+						let deliveryOutcome: PromiseSettledResult<unknown> = {
+							status: "fulfilled",
+							value: undefined,
+						};
+						if (callback) {
+							[deliveryOutcome] = await Promise.allSettled([
+								timeInferenceSpan("message:delivery:callback", () =>
+									callback(deliverableResponseContent),
 								),
-							);
+							]);
+							if (deliveryOutcome.status === "fulfilled") {
+								markInference(INFERENCE_MARKS.replyDelivered);
+							}
 						}
-					}
-					if (callback) {
-						await timeInferenceSpan("message:delivery:callback", () =>
-							callback(deliverableResponseContent),
-						);
-						markInference(INFERENCE_MARKS.replyDelivered);
+						const [persistOutcome] = await Promise.allSettled([
+							(async () => {
+								for (const responseMemory of responseMessages) {
+									if (
+										responseMemory.id &&
+										persistedEarlyReplyIds.has(responseMemory.id)
+									) {
+										continue;
+									}
+									responseMemory.content = deliverableResponseContent;
+									if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+										runtime.logger.debug(
+											{ src: "service:message", memoryId: responseMemory.id },
+											"Skipping transient response memory persistence",
+										);
+										continue;
+									}
+									runtime.logger.debug(
+										{ src: "service:message", memoryId: responseMemory.id },
+										"Saving response to memory",
+									);
+									await timeInferenceSpan("message:delivery:persistence", () =>
+										runtime.createMemory(responseMemory, "messages"),
+									);
+
+									detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+										this.emitMessageSent(
+											runtime,
+											responseMemory,
+											message.content.source ?? "messageHandler",
+										),
+									);
+								}
+							})(),
+						]);
+						if (persistOutcome.status === "rejected") {
+							// The persist failure (data loss) outranks the delivery
+							// failure for propagation; the held delivery failure is
+							// reported so it is never silently superseded.
+							if (deliveryOutcome.status === "rejected") {
+								runtime.reportError(
+									"MessageService.simpleDeliveryCallback",
+									deliveryOutcome.reason,
+									{
+										agentId: runtime.agentId,
+										roomId: message.roomId,
+									},
+								);
+							}
+							throw persistOutcome.reason;
+						}
+						if (deliveryOutcome.status === "rejected") {
+							throw deliveryOutcome.reason;
+						}
+					} finally {
+						releaseReplyPersistBarrier();
 					}
 				}
 			}

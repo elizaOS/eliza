@@ -72,6 +72,28 @@ describe("extractTaskCreatePlanWithLlm datetime fields", () => {
     expect(plan.dueInMinutes).toBeNull();
   });
 
+  it("honors multiStep=true and treats anything else as a single-task ask", async () => {
+    const multi = await extractTaskCreatePlanWithLlm({
+      runtime: makeRuntime(() =>
+        JSON.stringify({ ...BASE_PLAN_JSON, multiStep: true }),
+      ),
+      intent: "set reminders for outline, rough draft, and final proofread",
+      state: undefined,
+    });
+    expect(multi.multiStep).toBe(true);
+
+    const malformed = await extractTaskCreatePlanWithLlm({
+      runtime: makeRuntime(() =>
+        JSON.stringify({ ...BASE_PLAN_JSON, multiStep: "yes" }),
+      ),
+      intent: "remind me friday at 5pm to call mom",
+      state: undefined,
+    });
+    // Strict true-only: a malformed flag degrades to the crisp single-ask
+    // path, never to an extra confirmation round.
+    expect(malformed.multiStep).toBe(false);
+  });
+
   it("keeps dueDate, dueInDays and dueInMinutes when valid", async () => {
     const runtime = makeRuntime(() =>
       JSON.stringify({

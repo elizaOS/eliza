@@ -129,3 +129,48 @@ describe("first-run customize e2e", () => {
     expect(afterBoot.length).toBe(6);
   });
 });
+
+describe("volunteered windows anchor the seeded pack (#16941)", () => {
+  it("anchors the good-morning cron to a volunteered morning window", async () => {
+    // Live failure: an owner who volunteered a 06:30 wake in speech still got
+    // the 06:00 default — the finalize step discarded volunteered windows.
+    const runtime = createMinimalRuntimeStub();
+    const service = newService(runtime);
+
+    await service.runCustomizePath({
+      preferredName: "Sam",
+      timezone: "America/Los_Angeles",
+      morningWindow: { startLocal: "06:30", endLocal: "11:30" },
+      eveningWindow: { startLocal: "18:00", endLocal: "22:00" },
+    });
+    await service.runCustomizePath({ categories: ["reminder packs"] });
+    const done = await service.runCustomizePath({ channel: "in_app" });
+    expect(done.status).toBe("ok");
+
+    const gm = done.scheduledTasks.find(
+      (task) => task.idempotencyKey === "lifeops:first-run:default:gm",
+    );
+    expect(gm?.trigger).toMatchObject({
+      kind: "cron",
+      expression: "30 6 * * *",
+    });
+  });
+
+  it("keeps the 06:00 default when no window was volunteered", async () => {
+    const runtime = createMinimalRuntimeStub();
+    const service = newService(runtime);
+
+    await service.runCustomizePath({ preferredName: "Sam" });
+    await service.runCustomizePath({ categories: ["reminder packs"] });
+    const done = await service.runCustomizePath({ channel: "in_app" });
+    expect(done.status).toBe("ok");
+
+    const gm = done.scheduledTasks.find(
+      (task) => task.idempotencyKey === "lifeops:first-run:default:gm",
+    );
+    expect(gm?.trigger).toMatchObject({
+      kind: "cron",
+      expression: "0 6 * * *",
+    });
+  });
+});

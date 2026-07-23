@@ -1,0 +1,77 @@
+{
+  "catalogId": "first-run-onboarding",
+  "title": "Pack FR1 - First-run onboarding journey verification catalog",
+  "source": {
+    "parentIssue": "#16941",
+    "packId": "FR1",
+    "persona": "fresh owner, first boot (onboarding journey)",
+    "targetCount": 4,
+    "notes": [
+      "Verification ledger for the four first-run onboarding scenarios (fast-start, customize walk, abandon/resume, channel fallback). Wired into the check-lifeops-persona-catalog-coverage.mjs EXPECTED_CATALOGS gate under the row-evidence contract: every verified row carries a structured evidence receipt (model, judge, judgeScore, pointer, artifactReceipt).",
+      "Scope of the claim, stated precisely: first-run is conductor-driven, not model-invocable \u2014 the production in-chat conductor lives in the client (packages/ui/src/first-run/), which a headless runner cannot exercise. Each scenario therefore splits the proof: LIVE judged message turns show the model engaging with the surfaced firstRunProvider affordance (trajectory evidence), while the final check drives the real FirstRunService through the PRODUCTION scheduled-task runner (the same seam the conductor uses) and asserts the persisted app_lifeops.life_scheduled_tasks rows via LifeOpsRepository. These rows are DOMAIN-CONTRACT proofs of FirstRunService + the persisted store, NOT an end-to-end UI onboarding-journey proof; the conductor UI leg is client e2e territory.",
+      "PR #15016's earlier live evidence is deliberately NOT back-filled here: it recorded no judge scores and attached no report JSON/JSONL, so these rows verify only from current-SHA runs with full artifacts."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "first-run-fast-start-seeds-first-reminder",
+      "pack": "FR1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Fast-start (defaults) path. Verification must show the default pack (gm/gn/checkin/morning-brief) materialized in the real scheduled-task store with the gm cron anchored to the answered wake time, plus judged live turns engaging the onboarding affordance. VERIFIED 2026-07-23 live (claude-opus-4-7, judged turns by gpt-5.6-sol, min score 1) @ 500448d5fc1 (rebased; captured pre-rebase as 37b2a0decd0); re-captured after the firstRun provider planner-state fix (first sweep run failed judge 0.00 when the affordance never composed); FirstRunService driven through the production scheduled-task runner, persisted app_lifeops.life_scheduled_tasks rows queried via LifeOpsRepository and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) \u2014 inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run 831a0a0b-8067-42d0-94b2-9cbc1590aa1d @ 500448d5fc1 (rebased; captured pre-rebase as 37b2a0decd0)",
+        "artifactReceipt": "app_scheduling.life_scheduled_tasks (source=first_run, firstRunPack=defaults): gm cron '30 6 * * *' UTC (anchored to the answered 6:30am wake), gn '0 22 * * *', checkin '0 9 * * *', morning-brief relative_to_anchor wake.confirmed+0m, weekly-review manual, local-backup '0 */6 * * *' \u2014 plus finalCheck defaults-pack-seeded-anchored-to-wake passed"
+      }
+    },
+    {
+      "id": "first-run-customize-walk-seeds-first-reminder",
+      "pack": "FR1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Customize path under the three-question contract (#14691: name, categories, channel; timezone/windows volunteered or inferred). Verification must show the seeded pack anchored to the volunteered morning window and the preferred name persisted. VERIFIED 2026-07-23 live (claude-opus-4-7, judged turns by gpt-5.6-sol, min score 1) @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); FirstRunService driven through the production scheduled-task runner, persisted app_lifeops.life_scheduled_tasks rows queried via LifeOpsRepository and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) \u2014 inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run 05cba86b-1c96-4d11-a4e3-0b1051b1f6d7 @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "app_scheduling.life_scheduled_tasks (source=first_run): gm cron '30 6 * * *' tz=America/Los_Angeles (anchored to Sam's volunteered 6:30-11:30 morning window, never asked), gn/checkin/morning-brief/weekly-review/local-backup seeded in the same tz \u2014 plus finalCheck customize-walk-conditional-q5-and-seeded-pack passed"
+      }
+    },
+    {
+      "id": "first-run-abandon-resume-no-data-loss",
+      "pack": "FR1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Abandon mid-customize then resume. Verification must show resume advances to the first unanswered question (no re-asking), partial answers survive, and the flow still reaches the seeded pack. VERIFIED 2026-07-23 live (claude-opus-4-7, judged turns by gpt-5.6-sol, min score 1) @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); FirstRunService driven through the production scheduled-task runner, persisted app_lifeops.life_scheduled_tasks rows queried via LifeOpsRepository and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) \u2014 inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run 054989b5-8e07-4c55-8c71-0af502d46f22 @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "app_scheduling.life_scheduled_tasks (source=first_run): gm cron '0 7 * * *' tz=America/Chicago (Riley's pre-abandon answers survived the interruption; resume did not re-ask), full pack seeded \u2014 plus finalCheck resume-preserves-answers-no-reask passed"
+      }
+    },
+    {
+      "id": "first-run-channel-fallback-to-in-app",
+      "pack": "FR1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Unconnected channel choice (telegram) must record fallbackToInApp with a surfaced warning and a '(fallback)' completion message, and the pack must still seed. VERIFIED 2026-07-23 live (claude-opus-4-7, judged turns by gpt-5.6-sol, min score 1) @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a); FirstRunService driven through the production scheduled-task runner, persisted app_lifeops.life_scheduled_tasks rows queried via LifeOpsRepository and hand-reviewed.",
+      "evidence": {
+        "model": "claude-opus-4-7 via cli-subscription (ELIZA_CHAT_VIA_CLI=claude, provider=cli)",
+        "judge": "gpt-5.6-sol via codex CLI (local OpenAI-compatible judge shim; SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1)",
+        "judgeScore": 1,
+        "pointer": "PR for #16941 (branch test/l1-pack-live-verify) \u2014 inline report.json excerpt + native.jsonl + preserved-PGLite store dump for run da29127a-864b-443c-a73c-8916d70a8167 @ 13987698a2c (rebased; captured pre-rebase as 16daf3ace0a)",
+        "artifactReceipt": "app_scheduling.life_scheduled_tasks (source=first_run): full defaults pack seeded with output target in_app; turn reply surfaced the unconnected-Telegram warning with connect options \u2014 finalCheck unconnected-channel-falls-back-with-warning passed"
+      }
+    }
+  ]
+}

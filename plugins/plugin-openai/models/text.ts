@@ -667,11 +667,9 @@ function normalizeNativeToolsForCall(
     }
 
     const description = firstString(tool.description, functionTool.description);
-    // Default to a permissive object schema. The empty-properties shape
-    // (`{ type: "object", properties: {}, additionalProperties: false }`) is
-    // accepted by OpenAI but rejected by strict-grammar providers like
-    // Cerebras with `Object fields require at least one of: 'properties' or
-    // 'anyOf' with a list of possible properties`.
+    // A missing schema means the tool takes no arguments. Provider-specific
+    // normalization below turns this bare object into the explicit closed
+    // shape required by strict grammar compilers.
     const rawSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
     const strict =
@@ -700,7 +698,9 @@ function normalizeNativeToolsForCall(
       // recursively so deep schemas are accepted by the grammar compiler.
       // Pass isRoot: true so the top-level invariant is enforced (must be
       // type:"object" with no root oneOf/anyOf/enum/not).
-      inputSchema = normalizeSchemaForCerebras(inputSchema, true) as JSONSchema7;
+      inputSchema = normalizeSchemaForCerebras(inputSchema, true, {
+        strict: strict !== false,
+      }) as JSONSchema7;
     }
 
     // Cerebras's grammar compiler rejects function names containing characters
@@ -1205,9 +1205,12 @@ function sanitizeJsonSchema(
   transforms?: RecordArgTransform[]
 ): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    // Permissive fallback: no `properties: {}`/`additionalProperties: false`
-    // pair, which strict-grammar providers reject. See `normalizeSchemaForCerebras`
-    // in @elizaos/core for the rationale.
+    // Bare-object fallback. In Cerebras mode `normalizeSchemaForCerebras`
+    // closes this afterwards (explicit empty `properties` +
+    // `additionalProperties: false`) — Cerebras's grammar compiler rejects a
+    // bare `{type: "object"}` with a request-fatal 400. See
+    // `normalizeSchemaForCerebras` in @elizaos/core for the live-bisected
+    // provider rules.
     return { type: "object" };
   }
 

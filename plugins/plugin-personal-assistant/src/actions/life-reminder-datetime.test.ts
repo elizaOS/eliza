@@ -28,12 +28,22 @@ import {
 import { getZonedDateParts } from "../lifeops/time.js";
 import type { ExtractedTaskParams } from "./lib/extract-task-plan.js";
 import {
+  isLifeSaveRetraction,
+  readRecentLifeSaveCache,
+  writeRecentLifeSaveCache,
+} from "./lib/lifeops-deferred-draft.js";
+import {
+  applyLeadUpReminderShape,
   buildCadenceFromLlmParams,
   buildCadenceFromUpdateFields,
+  formatLeadOffsetPhrase,
+  parseMilestoneListFromIntent,
+  reminderStepMinutesBeforeDue,
   resolveDefinitionFromIntent,
   resolveOnceDueAt,
   runLifeConnectedQuery,
   runLifeOperationHandler,
+  wantsEarlierReminderNudge,
 } from "./life.js";
 
 const serviceState = vi.hoisted(() => ({
@@ -42,6 +52,7 @@ const serviceState = vi.hoisted(() => ({
     request: { preset?: string; minutes?: number };
   }>,
   createCalls: [] as Array<Record<string, unknown>>,
+  extraDefinitions: [] as Array<Record<string, unknown>>,
   goalCreateCalls: [] as Array<Record<string, unknown>>,
   deleteDefinitionCalls: [] as string[],
   deleteGoalCalls: [] as string[],
@@ -85,7 +96,13 @@ vi.mock("../lifeops/service.js", () => {
     async createDefinition(request: Record<string, unknown>) {
       serviceState.createCalls.push(request);
       return {
-        definition: { title: request.title, cadence: request.cadence },
+        definition: {
+          id: `def-created-${serviceState.createCalls.length}`,
+          title: request.title,
+          cadence: request.cadence,
+          status: "active",
+        },
+        reminderPlan: request.reminderPlan ?? null,
       };
     }
     async createGoal(request: Record<string, unknown>) {
@@ -121,6 +138,7 @@ vi.mock("../lifeops/service.js", () => {
             domain: "user_lifeops",
           },
         },
+        ...serviceState.extraDefinitions,
       ];
     }
     async listGoals() {
@@ -133,6 +151,9 @@ vi.mock("../lifeops/service.js", () => {
           },
         },
       ];
+    }
+    async reviewGoalsForWeek() {
+      return { summary: { totalGoals: 0 }, goals: [] };
     }
     async deleteDefinition(id: string) {
       serviceState.deleteDefinitionCalls.push(id);
@@ -168,6 +189,7 @@ function makeParams(
     dueInDays: null,
     dueWeekday: null,
     dueInMinutes: null,
+    multiStep: false,
     ...overrides,
   };
 }
@@ -247,6 +269,73 @@ describe("resolveOnceDueAt", () => {
     expect(
       resolveOnceDueAt({ ...base, dueInDays: 0, timeOfDayMinute: 8 * 60 }),
     ).toBeNull();
+  });
+});
+
+describe("buildCadenceFromLlmParams (explicit daily slots, negation scope)", () => {
+  // Live-proven defect (#16941, student-term-paper-night-owl-deadline): the
+  // slot extractor turned "no 8am/9am reminders" into 8am + 9am slots, so the
+  // saved plan contradicted both the owner's ask and the assistant's reply.
+  it("excludes clock times under a negation cue in the same clause", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW,
+        timeZone: DENVER,
+        intent:
+          "Break the seminar paper into work sessions and remind me at 1pm and 5pm — no 8am/9am reminders",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 1020]);
+  });
+
+  it("excludes clock times after 'do not' across a slash group", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW,
+        timeZone: DENVER,
+        intent:
+          "please break it up, but do not set me some 8am/9am reminder. remind me at 1pm and 9pm",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 1260]);
+  });
+
+  it("keeps a time affirmed by the 'don't forget' idiom", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW,
+        timeZone: DENVER,
+        intent: "remind me at 8am and don't forget the 5pm one",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([480, 1020]);
+  });
+
+  it("resets negation scope at a contrastive connective", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW,
+        timeZone: DENVER,
+        intent: "no morning pings but 9pm works, also 1pm please",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 1260]);
   });
 });
 
@@ -1473,6 +1562,10 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
       } as HandlerOptions,
     );
     expect(result.success).toBe(true);
+    // A completed persist is canonical: the planner must echo the action's
+    // own confirmation instead of paraphrasing the save state (#16941).
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.userFacingText ?? "").not.toBe("");
     expect(serviceState.createCalls).toHaveLength(1);
     const cadence = serviceState.createCalls[0]?.cadence as {
       kind: string;
@@ -1489,6 +1582,48 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     expect(weekday).toBe(5);
     expect(parts.hour).toBe(17);
     expect(parts.minute).toBe(0);
+  });
+
+  it("previews (never writes) a multi-milestone dated ask until the owner confirms (#16941)", async () => {
+    // Live finding: "history report due Monday 9am — set reminders for
+    // outline, rough draft, and final proofread" took the crisp-single-ask
+    // immediate-save exemption and persisted pre-consent. multiStep asks must
+    // keep the two-phase preview even with a resolved once cadence.
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "History report milestones",
+          cadenceKind: "once",
+          dueWeekday: 1,
+          timeOfDay: "09:00",
+          multiStep: true,
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "my history report is due next monday at 9am. can you set reminders for outline, rough draft, and final proofread?",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent:
+            "my history report is due next monday at 9am - set reminders for outline, rough draft, and final proofread",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(result.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
   });
 
   it('anchors "remind me tomorrow at 9am" to the owner timezone fact, not the host clock (#13509)', async () => {
@@ -1580,5 +1715,705 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
       (result.data as Record<string, unknown> | undefined)?.missingField,
     ).toBe("schedule");
     expect(serviceState.createCalls).toHaveLength(0);
+  });
+});
+
+describe("runLifeOperationHandler consent gate (#16941)", () => {
+  const CHILD_ASK =
+    "before school i always forget stuff. can you remind me every morning to brush teeth, pack my lunch, and put my math folder in my bag? just say it normal, not like a baby.";
+
+  function routineRuntime(): IAgentRuntime {
+    return makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Before-school checklist",
+          cadenceKind: "daily",
+          windows: ["morning"],
+        });
+      }
+      return "";
+    });
+  }
+
+  function makeMessageWithId(id: string, text: string): Memory {
+    return { ...makeMessage(text), id } as Memory;
+  }
+
+  beforeEach(() => {
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+  });
+
+  it("reports already-saved instead of stacking a structurally identical definition", async () => {
+    // Live finding: after a save, a re-described confirm turn ("yes lock it
+    // in! and can it bug me before friday too") minted a second identical
+    // definition. Same normalized title + same cadence = same item.
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-dup",
+        title: "Before-school checklist",
+        status: "active",
+        cadence: { kind: "daily", windows: ["morning"] },
+      },
+    });
+
+    const result = await runLifeOperationHandler(
+      routineRuntime(),
+      makeMessage("yes save the before-school checklist please"),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "save the before-school checklist routine",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(result.data).toMatchObject({ deduplicated: true });
+    expect(result.text).toContain("already saved");
+  });
+
+  it("ignores bare planner confirmed:true on a fresh recurring create", async () => {
+    // Live finding: the planner asserted confirmed:true on the FIRST call of
+    // a daily-routine ask and saved a definition the child never approved.
+    // Without an explicit yes in the owner text or a prior-turn draft, the
+    // flag is not consent.
+    const result = await runLifeOperationHandler(
+      routineRuntime(),
+      makeMessage(CHILD_ASK),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: CHILD_ASK,
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(result.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
+  });
+
+  it("blocks a same-turn preview→confirmed:true re-call from self-approving", async () => {
+    // Exact live repro: preview on message M, then the planner re-calls
+    // create with confirmed:true still on message M. The draft's
+    // sourceMessageId matches, so the flag still is not consent.
+    const runtime = routineRuntime();
+    const message = makeMessageWithId(
+      "00000000-0000-0000-0000-000000000011",
+      CHILD_ASK,
+    );
+
+    const preview = await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: { action: "create_reminder", intent: CHILD_ASK },
+    } as HandlerOptions);
+    expect(preview.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+
+    const recall = await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: {
+        action: "create_reminder",
+        intent: CHILD_ASK,
+        confirmed: true,
+      },
+    } as HandlerOptions);
+
+    expect(recall.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(recall.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
+  });
+
+  it("honors planner confirmed:true against a draft previewed on an earlier message", async () => {
+    // A prior-turn draft means the owner actually saw the preview; a muted
+    // acknowledgement ("mhm") plus the planner flag may then save.
+    const runtime = routineRuntime();
+
+    const preview = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId("00000000-0000-0000-0000-000000000021", CHILD_ASK),
+      undefined,
+      {
+        parameters: { action: "create_reminder", intent: CHILD_ASK },
+      } as HandlerOptions,
+    );
+    expect(preview.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+
+    const confirm = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId("00000000-0000-0000-0000-000000000022", "mhm"),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: CHILD_ASK,
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+
+    expect(confirm.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+  });
+});
+
+describe("lead-up reminder shape (#16941)", () => {
+  const BASE_PLAN = {
+    steps: [{ channel: "in_app" as const, offsetMinutes: 0, label: "due" }],
+  };
+  const ASK = "yes lock it in! and can it bug me before friday too";
+
+  it("detects explicit lead-up asks and ignores plain confirmations", () => {
+    expect(wantsEarlierReminderNudge(ASK)).toBe(true);
+    expect(
+      wantsEarlierReminderNudge("remind me earlier in the week as well"),
+    ).toBe(true);
+    expect(wantsEarlierReminderNudge("not just friday morning, please")).toBe(
+      true,
+    );
+    expect(wantsEarlierReminderNudge("yes lock it in!")).toBe(false);
+    expect(wantsEarlierReminderNudge("remind me friday at 5pm")).toBe(false);
+  });
+
+  it("widens the once lead and anchors an early step at relevance start", () => {
+    const now = Date.parse("2026-07-20T09:00:00.000Z");
+    const shaped = applyLeadUpReminderShape({
+      cadence: { kind: "once", dueAt: "2026-07-24T09:00:00.000Z" },
+      plan: BASE_PLAN,
+      ownerText: ASK,
+      title: "Book report",
+      milestones: [],
+      now,
+    });
+    // Steps fire at (dueAt - lead) + offset: offset 0 is the early nudge a
+    // day out, offset = lead is the due-time reminder.
+    expect(shaped.cadence).toMatchObject({
+      kind: "once",
+      visibilityLeadMinutes: 1440,
+    });
+    expect(shaped.plan.steps).toEqual([
+      {
+        channel: "in_app",
+        offsetMinutes: 0,
+        label: "Early start: Book report",
+      },
+      {
+        channel: "in_app",
+        offsetMinutes: 1440,
+        label: "Book report reminder",
+      },
+    ]);
+    expect(reminderStepMinutesBeforeDue(shaped.cadence, 0)).toBe(1440);
+    expect(reminderStepMinutesBeforeDue(shaped.cadence, 1440)).toBe(0);
+  });
+
+  it("shrinks the lead toward the midpoint when the deadline is close", () => {
+    const now = Date.parse("2026-07-20T09:00:00.000Z");
+    const shaped = applyLeadUpReminderShape({
+      cadence: { kind: "once", dueAt: "2026-07-20T12:00:00.000Z" },
+      plan: BASE_PLAN,
+      ownerText: ASK,
+      title: "Book report",
+      milestones: [],
+      now,
+    });
+    expect(shaped.cadence).toMatchObject({ visibilityLeadMinutes: 90 });
+  });
+
+  it("leaves the shape alone without an ask, without runway, or off-once", () => {
+    const now = Date.parse("2026-07-20T09:00:00.000Z");
+    expect(
+      applyLeadUpReminderShape({
+        cadence: { kind: "once", dueAt: "2026-07-24T09:00:00.000Z" },
+        plan: BASE_PLAN,
+        ownerText: "yes lock it in!",
+        title: "Book report",
+        milestones: [],
+        now,
+      }).plan.steps,
+    ).toHaveLength(1);
+    expect(
+      applyLeadUpReminderShape({
+        cadence: { kind: "once", dueAt: "2026-07-20T09:30:00.000Z" },
+        plan: BASE_PLAN,
+        ownerText: ASK,
+        title: "Book report",
+        milestones: [],
+        now,
+      }).plan.steps,
+    ).toHaveLength(1);
+    expect(
+      applyLeadUpReminderShape({
+        cadence: { kind: "daily", windows: ["morning"] },
+        plan: BASE_PLAN,
+        ownerText: ASK,
+        title: "Book report",
+        milestones: [],
+        now,
+      }).plan.steps,
+    ).toHaveLength(1);
+  });
+
+  it("renders lead offsets as human phrases", () => {
+    expect(formatLeadOffsetPhrase(1440)).toBe("a day");
+    expect(formatLeadOffsetPhrase(90)).toBe("1.5 hours");
+    expect(formatLeadOffsetPhrase(60)).toBe("1 hour");
+    expect(formatLeadOffsetPhrase(45)).toBe("45 minutes");
+    expect(formatLeadOffsetPhrase(4320)).toBe("3 days");
+  });
+
+  it("persists the lead shape and reports it on a crisp confirm-with-additions save", async () => {
+    serviceState.createCalls.length = 0;
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Book report",
+          cadenceKind: "once",
+          dueInDays: 3,
+          timeOfDay: "09:00",
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "yes lock it in! and can it bug me before friday too so i actually read the chapters, not just friday morning.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "save the book report reminder plan",
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    const created = serviceState.createCalls[0] as {
+      cadence: { kind: string; visibilityLeadMinutes?: number };
+      reminderPlan: { steps: Array<{ offsetMinutes: number }> };
+    };
+    expect(created.cadence.visibilityLeadMinutes ?? 0).toBeGreaterThanOrEqual(
+      60,
+    );
+    expect(created.reminderPlan.steps.length).toBeGreaterThanOrEqual(2);
+    expect(
+      created.reminderPlan.steps.every((step) => step.offsetMinutes >= 0),
+    ).toBe(true);
+    // The stored lead must surface in the confirmed reply, not stay a silent
+    // row: the live failure was an earlier checkpoint "proposed, not created".
+    expect(result.text ?? "").toContain("early nudge");
+  });
+});
+
+describe("recent-save retraction (#16941)", () => {
+  beforeEach(() => {
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+    serviceState.deleteDefinitionCalls.length = 0;
+  });
+
+  function makeMessageWithId(id: string, text: string): Memory {
+    return { ...makeMessage(text), id } as Memory;
+  }
+
+  it("classifies retractions narrowly", () => {
+    expect(
+      isLifeSaveRetraction(
+        "actually no wait don't save that one. my teacher changed it and i need to ask her tomorrow first.",
+      ),
+    ).toBe(true);
+    expect(isLifeSaveRetraction("cancel that")).toBe(true);
+    expect(isLifeSaveRetraction("never mind")).toBe(true);
+    expect(isLifeSaveRetraction("please undo that")).toBe(true);
+    expect(
+      isLifeSaveRetraction(
+        "ok now save just this: tomorrow after school remind me to ask Ms. Rivera what the science report topic is.",
+      ),
+    ).toBe(false);
+    expect(isLifeSaveRetraction("delete the workout habit")).toBe(false);
+    expect(
+      isLifeSaveRetraction("don't forget to set a reminder for friday"),
+    ).toBe(false);
+  });
+
+  it("deletes the just-saved row whatever operation the planner picked", async () => {
+    const runtime = makeRuntime(() => "");
+    const savedMessage = makeMessageWithId(
+      "00000000-0000-0000-0000-000000000031",
+      "can you remind me about my science report?",
+    );
+    await writeRecentLifeSaveCache(runtime, savedMessage, {
+      definitionId: "def-science",
+      title: "Science report - start this weekend",
+      sourceMessageId: "00000000-0000-0000-0000-000000000031",
+      createdAt: Date.now(),
+    });
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-science",
+        title: "Science report - start this weekend",
+        status: "active",
+        cadence: { kind: "once", dueAt: "2026-07-25T09:00:00.000Z" },
+      },
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId(
+        "00000000-0000-0000-0000-000000000032",
+        "actually no wait don't save that one. my teacher changed it and i need to ask her tomorrow first.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "review",
+          intent: "confirm no science report reminder exists",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(serviceState.deleteDefinitionCalls).toEqual(["def-science"]);
+    expect(result.success).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.data).toMatchObject({ retractedRecentSave: true });
+    expect(result.text ?? "").toContain("Science report");
+    // The undo handle is one-shot: a later unrelated turn must not re-delete.
+    expect(await readRecentLifeSaveCache(runtime, savedMessage)).toBeNull();
+  });
+
+  it("never retracts from the same message that saved", async () => {
+    const runtime = makeRuntime(() => "");
+    const message = makeMessageWithId(
+      "00000000-0000-0000-0000-000000000041",
+      "don't save that one",
+    );
+    await writeRecentLifeSaveCache(runtime, message, {
+      definitionId: "def-science",
+      title: "Science report",
+      sourceMessageId: "00000000-0000-0000-0000-000000000041",
+      createdAt: Date.now(),
+    });
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-science",
+        title: "Science report",
+        status: "active",
+        cadence: { kind: "once", dueAt: "2026-07-25T09:00:00.000Z" },
+      },
+    });
+
+    await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: { action: "review", intent: "review reminders" },
+    } as HandlerOptions);
+
+    expect(serviceState.deleteDefinitionCalls).toEqual([]);
+  });
+
+  it("parks an undo handle on an un-previewed crisp save and honors the next-turn retraction", async () => {
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Science report - start this weekend",
+          cadenceKind: "once",
+          dueInDays: 2,
+          timeOfDay: "09:00",
+        });
+      }
+      return "";
+    });
+
+    const saveResult = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId(
+        "00000000-0000-0000-0000-000000000051",
+        "can you remind me about my science report? it's due next monday and i think i should start this weekend.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "remind me about my science report due monday",
+        },
+      } as HandlerOptions,
+    );
+    expect(saveResult.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    const parked = await readRecentLifeSaveCache(
+      runtime,
+      makeMessage("any text"),
+    );
+    expect(parked?.definitionId).toBe("def-created-1");
+
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-created-1",
+        title: "Science report - start this weekend",
+        status: "active",
+        cadence: { kind: "once", dueAt: "2026-07-27T09:00:00.000Z" },
+      },
+    });
+    const retractResult = await runLifeOperationHandler(
+      runtime,
+      makeMessageWithId(
+        "00000000-0000-0000-0000-000000000052",
+        "actually no wait don't save that one. my teacher changed it and i need to ask her tomorrow first.",
+      ),
+      undefined,
+      {
+        parameters: { action: "review", intent: "check reminders" },
+      } as HandlerOptions,
+    );
+
+    expect(serviceState.deleteDefinitionCalls).toEqual(["def-created-1"]);
+    expect(retractResult.success).toBe(true);
+    expect(retractResult.data).toMatchObject({ retractedRecentSave: true });
+  });
+});
+
+describe("sentence-scoped explicit confirmation (#16941)", () => {
+  it("treats a leading yes with a later negation clause as consent", async () => {
+    // Live failure: "yes lock it in! … not just friday morning" tripped the
+    // message-wide negation veto, so three confirmed creates all previewed
+    // and nothing persisted. The negation lives in a different sentence than
+    // the confirmation cue, so it must not cancel the yes.
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Book report milestones",
+          cadenceKind: "once",
+          dueInDays: 3,
+          timeOfDay: "09:00",
+          multiStep: true,
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "yes lock it in! and can it bug me before friday too so i actually read the chapters, not just friday morning.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "save the book report reminder plan",
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+  });
+
+  it("still refuses consent when the negation shares the sentence with the cue", async () => {
+    serviceState.createCalls.length = 0;
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Book report milestones",
+          cadenceKind: "once",
+          dueInDays: 3,
+          timeOfDay: "09:00",
+          multiStep: true,
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("hold off, don't save that plan yet"),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent: "book report reminder plan",
+          confirmed: true,
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+});
+
+describe("buildCadenceFromLlmParams (deadline exclusion + phrase slots, #16941)", () => {
+  const NOW2 = new Date("2026-07-20T12:00:00-06:00");
+  const DENVER2 = "America/Denver";
+
+  it("never turns the deadline clock into a work slot", () => {
+    // Live failure: "due thursday at 5pm" produced a 17:00 daily slot, so the
+    // saved plan scheduled a work session exactly at the due instant.
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW2,
+        timeZone: DENVER2,
+        intent:
+          "my seminar paper is due thursday at 5pm. remind me at 1pm and again late evening — no 8am/9am reminders",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 1290]);
+  });
+
+  it("maps owner phrase anchors (after dinner, after school) to slots", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW2,
+        timeZone: DENVER2,
+        intent:
+          "draft session at 1pm, citations after dinner, and a run after school",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 930, 1170]);
+  });
+
+  it("keeps phrase anchors under negation excluded", () => {
+    const built = buildCadenceFromLlmParams(
+      makeParams({ cadenceKind: "daily" }),
+      {
+        now: NOW2,
+        timeZone: DENVER2,
+        intent: "remind me at 1pm and 3pm but not after dinner",
+      },
+    );
+    expect(built?.cadence.kind).toBe("times_per_day");
+    const slots =
+      built?.cadence.kind === "times_per_day" ? built.cadence.slots : [];
+    expect(slots.map((slot) => slot.minuteOfDay)).toEqual([780, 900]);
+  });
+});
+
+describe("milestone reminder plans (#16941)", () => {
+  const DUE = "2026-07-27T09:00:00.000Z";
+  const NOW3 = Date.parse("2026-07-23T09:00:00.000Z");
+
+  it("parses an enumerated milestone list from the intent", () => {
+    expect(
+      parseMilestoneListFromIntent(
+        "Set reminders to prepare a history report due Monday at 9am: outline, rough draft, and final proofread",
+      ),
+    ).toEqual(["outline", "rough draft", "final proofread"]);
+    expect(
+      parseMilestoneListFromIntent(
+        "can you set reminders for outline, rough draft, and final proofread?",
+      ),
+    ).toEqual(["outline", "rough draft", "final proofread"]);
+    // Single-item and schedule-prose segments never become milestone lists.
+    expect(
+      parseMilestoneListFromIntent("remind me to pay the electric bill"),
+    ).toEqual([]);
+  });
+
+  it("spreads milestone steps across the runway, all before the due step", () => {
+    const shaped = applyLeadUpReminderShape({
+      cadence: { kind: "once", dueAt: DUE },
+      plan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "due" }],
+      },
+      ownerText: "yes save it exactly like that.",
+      title: "History report milestones",
+      milestones: ["Outline", "Rough draft", "Final proofread"],
+      now: NOW3,
+    });
+    // 4 days of runway → lead 3 days; milestones at 0/-2d/-1d before due,
+    // then the due-time step at offset = lead.
+    expect(shaped.cadence).toMatchObject({ visibilityLeadMinutes: 4320 });
+    expect(shaped.plan.steps.map((step) => step.offsetMinutes)).toEqual([
+      0, 1440, 2880, 4320,
+    ]);
+    expect(shaped.plan.steps.map((step) => step.label)).toEqual([
+      "Outline",
+      "Rough draft",
+      "Final proofread",
+      "Due: History report milestones",
+    ]);
+    const beforeDue = shaped.plan.steps.map((step) =>
+      reminderStepMinutesBeforeDue(shaped.cadence, step.offsetMinutes),
+    );
+    expect(beforeDue).toEqual([4320, 2880, 1440, 0]);
+  });
+
+  it("persists milestone steps on a confirmed multiStep save and names them", async () => {
+    // Live failure (student-report-two-phase-commit): the confirmed save
+    // stored ONE reminder at the deadline with a bare [0m] plan — "no derived
+    // milestone schedule". Planner-supplied details.steps must become
+    // spread reminder-plan steps.
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "History report milestones",
+          cadenceKind: "once",
+          dueInDays: 4,
+          timeOfDay: "09:00",
+          multiStep: true,
+        });
+      }
+      return "";
+    });
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("yes save it exactly like that."),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent:
+            "Set reminders to prepare a history report due Monday at 9am: outline, rough draft, and final proofread",
+          confirmed: true,
+          details: {
+            steps: ["Outline", "Rough draft", "Final proofread"],
+          },
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    const created = serviceState.createCalls[0] as {
+      cadence: { visibilityLeadMinutes?: number };
+      reminderPlan: { steps: Array<{ offsetMinutes: number; label: string }> };
+    };
+    const lead = created.cadence.visibilityLeadMinutes ?? 0;
+    expect(lead).toBeGreaterThanOrEqual(120);
+    const beforeDue = created.reminderPlan.steps.filter(
+      (step) => lead - step.offsetMinutes >= 60,
+    );
+    expect(beforeDue.map((step) => step.label)).toEqual([
+      "Outline",
+      "Rough draft",
+      "Final proofread",
+    ]);
+    expect(result.text ?? "").toContain("early nudges");
   });
 });

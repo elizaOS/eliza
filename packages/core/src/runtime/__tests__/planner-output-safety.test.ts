@@ -108,6 +108,21 @@ describe("planner output user-visible safety", () => {
 		]);
 	});
 
+	it("routes action records from a direct JSON array without exposing the batch", () => {
+		const output = parsePlannerOutput(
+			'[{"status":"queued"},{"action":"BROWSER","parameters":{"url":"https://example.com"}}]',
+		);
+
+		expect(output.messageToUser).toBeUndefined();
+		expect(output.toolCalls).toEqual([
+			{
+				id: undefined,
+				name: "BROWSER",
+				params: { url: "https://example.com" },
+			},
+		]);
+	});
+
 	it("drops a malformed action envelope emitted in the native text channel", () => {
 		const output = parsePlannerOutput({
 			text: '{"action":"BROWSER","parameters":{"url":"https://example.com"},"status":',

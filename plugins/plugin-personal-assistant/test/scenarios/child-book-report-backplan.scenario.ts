@@ -2,6 +2,13 @@
  * Child-voice school deadline scenario: a twelve-year-old owner gives a messy
  * report deadline, gets distracted, then confirms. The outcome bar is a real
  * stored reminder plan for the report, not a friendly echo of the ask.
+ *
+ * The explicit confirmation turn is load-bearing: the pack's consent bar
+ * (two-phase commit — preview an owner write, save only after a yes) means
+ * "save the reminder plan please" for a multi-part derived plan correctly
+ * yields an unsaved preview (the child has not yet seen the derived
+ * title/timing), so the stored-outcome final checks can only be satisfied
+ * after the child says yes to the preview.
  */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
@@ -39,6 +46,11 @@ export default scenario({
       kind: "message",
       name: "distractor before consent",
       text: "wait also what if i make the poster blue? actually don't answer that, save the reminder plan please.",
+    },
+    {
+      kind: "message",
+      name: "child confirms the previewed plan",
+      text: "yes lock it in! and can it bug me before friday too so i actually read the chapters, not just friday morning.",
     },
   ],
   finalChecks: [
