@@ -31,6 +31,7 @@ import {
   DEFAULT_MORNING_WINDOW,
   parseCategories,
   parsePreferredName,
+  parseTimeWindow,
   parseTimezone,
   validateChannel,
 } from "./questions.js";
@@ -759,11 +760,16 @@ async function finalizeCustomizeAnswers(
   // Timezone is the device zone, threaded in as the inferred `timezone` input;
   // absent it, the host zone is the honest best-effort (never fabricated).
   const timezone = parseTimezone(answers.timezone) ?? resolveDefaultTimeZone();
-  // Windows are learned, not asked. These effective values only seed the
-  // initial default pack's schedule; they are never persisted as owner facts by
-  // the customize path (see writeFirstRunFacts).
-  const morningWindow = DEFAULT_MORNING_WINDOW;
-  const eveningWindow = DEFAULT_EVENING_WINDOW;
+  // Windows are learned, not asked — but an owner who VOLUNTEERS one in
+  // speech has answered it, and the seeded pack must anchor to that instead
+  // of the 06:00 default (#16941 live: a volunteered 06:30/07:00 wake still
+  // seeded the good-morning cron at "0 6 * * *"). These effective values only
+  // seed the initial default pack's schedule; they are never persisted as
+  // owner facts by the customize path (see writeFirstRunFacts).
+  const morningWindow =
+    parseTimeWindow(answers.morningWindow) ?? DEFAULT_MORNING_WINDOW;
+  const eveningWindow =
+    parseTimeWindow(answers.eveningWindow) ?? DEFAULT_EVENING_WINDOW;
   const categories = parseCategories(answers.categories) ?? [];
   const validation = await validateChannel(answers.channel, runtime);
   const finalized: FinalizedCustomizeAnswers = {

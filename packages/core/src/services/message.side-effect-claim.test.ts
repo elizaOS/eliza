@@ -91,6 +91,28 @@ describe("replyClaimsCompletedSideEffect", () => {
 		expect(
 			replyClaimsCompletedSideEffect("Your reminders are set for tomorrow."),
 		).toBe(true);
+		// Live L1 shapes (#16941): bare completion opener and "is now set up".
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Saved! ✅ Your book report plan is now set up as reminders.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Your study schedule is now set up — three blocks before Thursday.",
+			),
+		).toBe(true);
+	});
+
+	it("does not flag descriptions of existing scheduled state", () => {
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Your dentist appointment is scheduled for Tuesday at 3pm.",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect("Saved by the bell — great show."),
+		).toBe(false);
 	});
 
 	it("matches bare simple-past assertions and perfective claims with a tag question", () => {
@@ -280,5 +302,34 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 		// The fabricated confirmation must never ship — replaced by a plain ack
 		// the planner path then supersedes with a tool-grounded reply.
 		expect(patch.reply).toBe("On it.");
+	});
+});
+
+describe("setup-completion claims (#16941)", () => {
+	it("flags 'you're all set with sensible defaults' as a fabricated setup claim", () => {
+		// Live failure (first-run fast-start): a fresh boot "set me up" ask was
+		// answered "You're all set with sensible defaults" with zero tool calls
+		// and no first-run flow engagement.
+		expect(
+			replyClaimsCompletedSideEffect(
+				"You're all set with sensible defaults — no fiddling needed.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect("Your setup is now set up and ready."),
+		).toBe(true);
+	});
+
+	it("does not flag honest setup offers or questions", () => {
+		expect(
+			replyClaimsCompletedSideEffect(
+				"I can set you up with sensible defaults — what time do you usually wake up?",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Setup hasn't run yet. Want defaults, or a quick customize?",
+			),
+		).toBe(false);
 	});
 });

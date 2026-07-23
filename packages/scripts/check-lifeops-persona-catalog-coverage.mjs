@@ -12,10 +12,15 @@ import path from "node:path";
 import process from "node:process";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
-const CATALOG_DIR = path.join(
-  REPO_ROOT,
-  "plugins/plugin-personal-assistant/test/scenarios/_catalogs",
-);
+// LIFEOPS_CATALOG_DIR exists for the checker's own tests: they copy the real
+// ledger set to a temp dir and tamper with one row to prove the gate rejects
+// it. Scenario-id resolution always runs against the real repo corpus.
+const CATALOG_DIR = process.env.LIFEOPS_CATALOG_DIR
+  ? path.resolve(process.env.LIFEOPS_CATALOG_DIR)
+  : path.join(
+      REPO_ROOT,
+      "plugins/plugin-personal-assistant/test/scenarios/_catalogs",
+    );
 const TS_SCENARIO_ROOTS = [
   "plugins/plugin-personal-assistant/test/scenarios",
   "packages/scenario-runner/test/scenarios",
@@ -43,6 +48,21 @@ const EXPECTED_CATALOGS = [
   ["co-parenting.catalog.json", "J1", 10],
   ["third-party-support.catalog.json", "K1", 10],
   ["child-student-deadlines.catalog.json", "L1", 6],
+  ["first-run-onboarding.catalog.json", "FR1", 4],
+];
+
+// Packs verified under the row-evidence contract (#16941): every `verified`
+// row must carry a structured `evidence` object — model under test, judge,
+// minimum judge score, evidence pointer, and the hand-inspected persisted-store
+// receipt — so a flip to verified is mechanically auditable. Packs verified
+// before the contract keep their prose notes; new verification work joins
+// this set.
+const STRICT_EVIDENCE_PACKS = new Set(["L1", "FR1"]);
+const STRICT_EVIDENCE_STRING_FIELDS = [
+  "model",
+  "judge",
+  "pointer",
+  "artifactReceipt",
 ];
 
 const VALID_TIERS = new Set(["T1", "T2", "T3", "T4"]);
@@ -242,6 +262,38 @@ function summarize() {
       }
       if (status === "verified") {
         verified += 1;
+        if (STRICT_EVIDENCE_PACKS.has(expectedPack)) {
+          const evidence = entry.evidence;
+          if (
+            !evidence ||
+            typeof evidence !== "object" ||
+            Array.isArray(evidence)
+          ) {
+            errors.push(
+              `${where}: verified rows in pack ${expectedPack} must carry an evidence object (model, judge, judgeScore, pointer, artifactReceipt)`,
+            );
+          } else {
+            for (const field of STRICT_EVIDENCE_STRING_FIELDS) {
+              if (
+                typeof evidence[field] !== "string" ||
+                evidence[field].trim().length === 0
+              ) {
+                errors.push(
+                  `${where}: evidence.${field} must be a non-empty string`,
+                );
+              }
+            }
+            if (
+              typeof evidence.judgeScore !== "number" ||
+              evidence.judgeScore < 0 ||
+              evidence.judgeScore > 1
+            ) {
+              errors.push(
+                `${where}: evidence.judgeScore must be a number between 0 and 1`,
+              );
+            }
+          }
+        }
       } else if (status === "authored") {
         unverified.push({
           id,

@@ -1428,6 +1428,31 @@ export const scheduledTaskAction: Action & {
       );
     }
 
+    // Routing contract (lifeops provider): every owner "remind me…" ask
+    // belongs to the OWNER_REMINDERS definition flow — the raw scheduler
+    // surface has no consent preview, builds no reminder plan, and its
+    // records are invisible to OWNER_REMINDERS review. Observed live
+    // (#16941, child-cancel-reask): the model created reminders here once it
+    // fixed a trigger-shape error (the redirect hint only fires on trigger
+    // failures), so a "canceled" science-report reminder silently survived in
+    // a store the review path never reads. Delegating hands the ORIGINAL
+    // owner message to the life flow, so extraction and the consent gate run
+    // against the real ask. Autonomy-sourced creates keep the raw surface:
+    // background automations schedule their own work here by design.
+    if (
+      subaction === "create" &&
+      normalizeKind(params.kind) === "reminder" &&
+      message.content.source !== "autonomy"
+    ) {
+      return runLifeOperationHandler(
+        runtime,
+        message,
+        state,
+        { parameters: { action: "create", ownerSurface: "OWNER_REMINDERS" } },
+        callback,
+      );
+    }
+
     const scope = makeRunnerScope(runtime, message);
     let result: ActionResult;
     switch (subaction) {
