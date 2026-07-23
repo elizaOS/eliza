@@ -11,9 +11,8 @@
  * `registered-action-inventory.js`. The canonical spec is a deliberately
  * curated subset (prompt docs), so the doc alone once read as the full action
  * surface and got DOCUMENT/MEMORY/FILES/SETTINGS mis-filed as missing
- * (#14365/#14366/#14367); the inventory section makes the doc reflect what is
- * actually registered, and the view→action ratchet
- * (`packages/scripts/view-action-ratchet.mjs`) fails CI when it goes stale.
+ * (#14365/#14366/#14367); the inventory section makes the generated document
+ * reflect what is actually registered.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -607,8 +606,7 @@ registered action surface** scanned from source
 declaration under \`packages/core\`, \`packages/agent\`, and \`plugins/*\`, plus
 view-scoped actions. An action can be real and registered without having a
 canonical spec entry — before concluding an action "does not exist", check this
-list. CI (\`node packages/scripts/view-action-ratchet.mjs\`) fails when this
-section drifts from source.
+list. Regenerate this document after changing the registered action surface.
 
 ${inventoryRows.join("\n")}
 

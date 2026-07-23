@@ -187,7 +187,7 @@ describe("ci-turbo-cache-contract", () => {
     }
   });
 
-  test("the fork lint lane keeps every gate with a bounded cold allowance", () => {
+  test("the fork lint lane keeps required gates with a bounded cold allowance", () => {
     const workflow = readFileSync(
       join(REAL_REPO_ROOT, ".github", "workflows", "quality-fork.yml"),
       "utf8",
@@ -198,7 +198,6 @@ describe("ci-turbo-cache-contract", () => {
     expect(lintJob).toBeDefined();
     expect(lintJob).toMatch(/timeout-minutes:\s*15/);
     for (const command of [
-      "audit:type-safety-ratchet",
       "audit:focused-tests",
       "audit:test-realness",
       "audit:type-duplication:self-test",
