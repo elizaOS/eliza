@@ -87,9 +87,9 @@ export class TeamPoolRegistry {
   }>(4096, HOT_PATH_SELECTION_TTL_MS);
   private readonly hotPathHydrations = new Map<string, Promise<void>>();
   private hotPathInvalidationGeneration = 0;
+  private readonly decryptedCredentials = new Map<string, { apiKey: string; expiresAt: number }>();
   private readonly maxOrgPools: number;
   private keepAlive: ReturnType<typeof setInterval> | null = null;
-  private readonly decryptedCredentials = new Map<string, { apiKey: string; expiresAt: number }>();
 
   constructor(options?: { maxOrgPools?: number }) {
     this.maxOrgPools = options?.maxOrgPools ?? DEFAULT_MAX_ORG_POOLS;
